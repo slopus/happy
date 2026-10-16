@@ -340,7 +340,11 @@ class LiveUpdatesTest {
         // Appended on the collector's thread while this one reads it.
         val shown = java.util.concurrent.CopyOnWriteArrayList<Map<String, SessionPresence>>()
         val collector = Thread {
-            runBlocking { kotlinx.coroutines.withTimeoutOrNull(3_000) { h.account.presence.sessions.collect { shown += it } } }
+            // Interrupted at the end; that is how it stops, not a failure to print.
+            try {
+                runBlocking { kotlinx.coroutines.withTimeoutOrNull(3_000) { h.account.presence.sessions.collect { shown += it } } }
+            } catch (_: InterruptedException) {
+            }
         }.apply { start() }
         eventually { shown.isNotEmpty() }
         val before = store.versions.value

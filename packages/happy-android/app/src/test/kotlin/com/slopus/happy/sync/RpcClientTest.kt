@@ -1,5 +1,6 @@
 package com.slopus.happy.sync
 
+import com.slopus.happy.testing.cancelAndAwait
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.net.SocketIoClient
 import com.slopus.happy.net.SocketIoUrl
@@ -51,7 +52,7 @@ class RpcClientTest {
 
     @After
     fun tearDown() {
-        scope.cancel()
+        scope.cancelAndAwait()
         h.close()
     }
 

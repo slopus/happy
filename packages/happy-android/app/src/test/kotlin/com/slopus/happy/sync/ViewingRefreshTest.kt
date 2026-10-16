@@ -1,5 +1,6 @@
 package com.slopus.happy.sync
 
+import com.slopus.happy.testing.cancelAndAwait
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.net.ConnectionStatus
 import kotlinx.coroutines.CoroutineScope
@@ -37,7 +38,7 @@ class ViewingRefreshTest {
 
     @After
     fun tearDown() {
-        scope.cancel()
+        scope.cancelAndAwait()
         h.close()
     }
 

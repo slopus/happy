@@ -1,5 +1,6 @@
 package com.slopus.happy.sync
 
+import com.slopus.happy.testing.cancelAndAwait
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.data.HappyDatabase
@@ -51,7 +52,7 @@ class MessageSyncTest {
 
     @After
     fun tearDown() {
-        scope.cancel()
+        scope.cancelAndAwait()
         database.close()
         server.close()
     }

@@ -1,5 +1,6 @@
 package com.slopus.happy.sync
 
+import com.slopus.happy.testing.cancelAndAwait
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +20,7 @@ class InvalidateSyncTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     @After
-    fun tearDown() = scope.cancel()
+    fun tearDown() = scope.cancelAndAwait()
 
     @Test
     fun theDefaultRetryWaitNeverExceedsOneSecond() {

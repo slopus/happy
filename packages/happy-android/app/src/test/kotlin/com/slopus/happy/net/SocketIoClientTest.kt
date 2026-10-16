@@ -1,5 +1,6 @@
 package com.slopus.happy.net
 
+import com.slopus.happy.testing.cancelAndAwait
 import com.slopus.happy.testing.FakeHappyServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -89,7 +90,7 @@ class SocketIoClientTest {
 
     @After
     fun tearDown() {
-        scope.cancel()
+        scope.cancelAndAwait()
         server.close()
     }
 
