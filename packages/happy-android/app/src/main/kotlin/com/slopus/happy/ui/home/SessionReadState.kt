@@ -64,16 +64,6 @@ class SessionReadState {
         if (viewing.value == sessionId) viewing.value = null
     }
 
-    @Synchronized
-    fun markRead(sessionId: String) {
-        if (sessionId in unread.value) unread.value = unread.value - sessionId
-    }
-
-    @Synchronized
-    fun markUnread(sessionId: String) {
-        if (sessionId !in unread.value) unread.value = unread.value + sessionId
-    }
-
     /** Another account, or none: nothing carries over. */
     @Synchronized
     fun reset() {
