@@ -403,6 +403,8 @@ export const ja: TranslationStructure = {
         resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
+        restartSession: 'セッションを再起動',
+        restartSessionCouldNotStop: '再起動のためにセッションを停止できませんでした。セッションは実行中のままです。',
         killSessionSubtitle: 'セッションを即座に終了',
         archiveSessionSubtitle: 'このセッションをアーカイブして停止',
         metadata: 'メタデータ',

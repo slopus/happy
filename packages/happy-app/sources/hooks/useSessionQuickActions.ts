@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill, sessionSetAgentModes, forkAndSpawn, type ForkSource } from '@/sync/ops';
+import { machineResumeSession, machineStopSession, sessionArchive, sessionKill, sessionSetAgentModes, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -10,6 +10,7 @@ import { sync } from '@/sync/sync';
 import { resolveMessageModeMeta, UnsupportedPermissionModeError } from '@/sync/messageMeta';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
+import { delay } from '@/utils/time';
 import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { useSessionStatus } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -136,6 +137,95 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
     };
 }
 
+type ResumeMode = { model?: string; permissionMode?: string };
+
+/**
+ * The model and permission mode a session starts again with: the ones its next
+ * message would use.
+ */
+function resolveResumeMode(session: Session): ResumeMode {
+    try {
+        const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
+        return { model: modeMeta.model ?? undefined, permissionMode: modeMeta.permissionMode };
+    } catch (error) {
+        if (error instanceof UnsupportedPermissionModeError) {
+            // Refuse loudly instead of substituting a mode: swapping in a
+            // default would silently change what the agent may do.
+            throw new HappyError(error.message, false);
+        }
+        throw error;
+    }
+}
+
+/** How long Restart keeps asking the machine to start the session again. */
+const RESTART_RESUME_TIMEOUT_MS = 15_000;
+const RESTART_RESUME_RETRY_MS = 500;
+/** How long Restart waits to see a session that stopped itself go offline. */
+const RESTART_OFFLINE_TIMEOUT_MS = 10_000;
+
+/**
+ * Stop a live session so that it can be started again.
+ *
+ * Archive's way of stopping a session — asking its own process to exit — is
+ * not enough here. The daemon finds out only once the process has gone, and
+ * until then it answers a resume as if the session were still running:
+ * success, with nothing started, which would leave the session down. When the
+ * daemon does the stopping itself, it marks the process as stopping first and
+ * refuses a resume with an error until it has exited, so the resume that
+ * follows can simply be retried.
+ *
+ * A daemon only knows the sessions that started while it was running, though,
+ * and a CLI upgrade restarts it. A session older than its daemon is stopped the
+ * way Archive stops it, and the resume waits for the server to see it offline.
+ */
+async function stopForRestart(session: Session, machineId: string): Promise<void> {
+    const stopped = await machineStopSession(machineId, session.id);
+    if (stopped.success) {
+        return;
+    }
+    const killed = await sessionKill(session.id);
+    if (killed.success) {
+        await waitUntilOffline(session.id, RESTART_OFFLINE_TIMEOUT_MS);
+        return;
+    }
+    // Nothing answered. A session that went offline in the meantime has
+    // nothing left to stop, but one the server still sees running would get a
+    // second copy next to it.
+    if (storage.getState().sessions[session.id]?.active) {
+        throw new HappyError(t('sessionInfo.restartSessionCouldNotStop'), false);
+    }
+}
+
+async function waitUntilOffline(sessionId: string, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (storage.getState().sessions[sessionId]?.active && Date.now() < deadline) {
+        await delay(250);
+    }
+}
+
+/**
+ * Start a just-stopped session again. While its old process is still on the
+ * way out, the daemon answers with an error instead of waiting for it, so keep
+ * asking until it takes the session back.
+ */
+async function resumeOnceStopped(session: Session, machineId: string, mode: ResumeMode): Promise<void> {
+    const deadline = Date.now() + RESTART_RESUME_TIMEOUT_MS;
+    while (true) {
+        const result = await machineResumeSession({ machineId, sessionId: session.id, ...mode });
+        switch (result.type) {
+            case 'success':
+                return;
+            case 'requestToApproveDirectoryCreation':
+                throw new HappyError(t('sessionInfo.resumeSessionUnexpectedDirectoryPrompt'), false);
+            case 'error':
+                if (Date.now() >= deadline) {
+                    throw new HappyError(result.errorMessage, false);
+                }
+                await delay(RESTART_RESUME_RETRY_MS);
+        }
+    }
+}
+
 export function useSessionQuickActions(
     session: Session,
     options: UseSessionQuickActionsOptions = {},
@@ -154,6 +244,12 @@ export function useSessionQuickActions(
     const continuationExperimentsEnabled = useSetting('expResumeSession');
     const resumeAvailability = React.useMemo(
         () => getResumeAvailability(session, machine, sessionStatus.isConnected),
+        [machine, session, sessionStatus.isConnected],
+    );
+    // Restart is offered for a live session that its machine could resume once
+    // stopped. A session that has already stopped is offered Resume instead.
+    const canRestart = React.useMemo(
+        () => sessionStatus.isConnected && getResumeAvailability(session, machine, false).canResume,
         [machine, session, sessionStatus.isConnected],
     );
 
@@ -208,22 +304,10 @@ export function useSessionQuickActions(
             throw new HappyError(t('sessionInfo.resumeSessionMissingMachine'), false);
         }
 
-        let modeMeta: ReturnType<typeof resolveMessageModeMeta>;
-        try {
-            modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
-        } catch (error) {
-            if (error instanceof UnsupportedPermissionModeError) {
-                // Refuse loudly instead of substituting a mode: swapping in a
-                // default would silently change what the agent may do.
-                throw new HappyError(error.message, false);
-            }
-            throw error;
-        }
         const result = await machineResumeSession({
             machineId,
             sessionId: session.id,
-            model: modeMeta.model ?? undefined,
-            permissionMode: modeMeta.permissionMode,
+            ...resolveResumeMode(session),
         });
 
         switch (result.type) {
@@ -300,6 +384,24 @@ export function useSessionQuickActions(
         performResume();
     }, [performResume]);
 
+    // Archive followed by Resume, without the parts of Archive that only suit
+    // a session that is going away: the worktree cleanup, taking the row out
+    // of the list, and moving the screen off the chat.
+    const [restartingSession, performRestart] = useHappyAction(async () => {
+        // Before anything is stopped, so a mode the resume would refuse cannot
+        // leave the session down.
+        const mode = resolveResumeMode(session);
+        await stopForRestart(session, machineId);
+        await resumeOnceStopped(session, machineId, mode);
+        // No refresh, unlike Resume: the session keeps its id and its live
+        // updates, while the server's stored copy can still say it is offline
+        // for a few seconds, which would hide the row that just came back.
+    });
+
+    const restartSession = React.useCallback(() => {
+        performRestart();
+    }, [performRestart]);
+
     // Fork the session (no truncation) — copies the on-disk Claude JSONL
     // and spawns a fresh Happy session on the same machine. Works for
     // both active and inactive sessions; the source row stays untouched.
@@ -340,6 +442,10 @@ export function useSessionQuickActions(
             items.push({ id: 'resume', icon: 'play-circle-outline', label: t('sessionInfo.resumeSession'), onPress: resumeSession });
         }
 
+        if (canRestart) {
+            items.push({ id: 'restart', icon: 'refresh-outline', label: t('sessionInfo.restartSession'), onPress: restartSession });
+        }
+
         if (canFork) {
             items.push({ id: 'fork', icon: 'git-branch-outline', label: t('session.forkAction'), onPress: forkSession });
             items.push({ id: 'duplicate', icon: 'time-outline', label: t('session.duplicateAction'), onPress: openDuplicateSheet });
@@ -357,12 +463,14 @@ export function useSessionQuickActions(
         archiveSession,
         canCopySessionMetadata,
         canFork,
+        canRestart,
         copySessionMetadata,
         copySessionMetadataAndLogs,
         forkSource,
         forkSession,
         openDetails,
         openDuplicateSheet,
+        restartSession,
         resumeAvailability.canShowResume,
         resumeSession,
     ]);
@@ -384,6 +492,7 @@ export function useSessionQuickActions(
         archivingSession,
         canArchive: true,
         canCopySessionMetadata,
+        canRestart,
         canResume: resumeAvailability.canResume,
         canShowResume: resumeAvailability.canShowResume,
         canFork,
@@ -393,6 +502,8 @@ export function useSessionQuickActions(
         forking,
         openDetails,
         openDuplicateSheet,
+        restartSession,
+        restartingSession,
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,
         resumingSession,

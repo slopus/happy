@@ -402,6 +402,8 @@ export const ca: TranslationStructure = {
         resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
+        restartSession: 'Reinicia la sessió',
+        restartSessionCouldNotStop: 'No s’ha pogut aturar la sessió per reiniciar-la. Encara s’està executant.',
         killSessionSubtitle: 'Finalitzar immediatament la sessió',
         archiveSessionSubtitle: 'Arxiva aquesta sessió i atura-la',
         metadata: 'Metadades',
