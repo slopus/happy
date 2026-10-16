@@ -5,9 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import com.slopus.happy.chat.tools.DiffLineType
-import com.slopus.happy.chat.tools.FileChangeKind
-import com.slopus.happy.diff.FileChangeKind as DiffFileChangeKind
+import com.slopus.happy.diff.DiffLineType
+import com.slopus.happy.diff.FileChangeKind
 import com.slopus.happy.ui.diff.DiffFileSummary
 import com.slopus.happy.ui.diff.DiffTags as SharedDiffTags
 import com.slopus.happy.ui.diff.DiffChunk as SharedDiffChunk
@@ -114,12 +113,5 @@ fun DiffFileHeader(
     modifier: Modifier = Modifier,
     right: (@Composable RowScope.() -> Unit)? = null,
 ) {
-    val shared = when (kind) {
-        FileChangeKind.Added -> DiffFileChangeKind.Added
-        FileChangeKind.Deleted -> DiffFileChangeKind.Deleted
-        FileChangeKind.Renamed -> DiffFileChangeKind.Renamed
-        FileChangeKind.Binary -> DiffFileChangeKind.Binary
-        FileChangeKind.Modified -> DiffFileChangeKind.Modified
-    }
-    SharedDiffFileHeader(DiffFileSummary(path, shared, additions, deletions), modifier, right = right)
+    SharedDiffFileHeader(DiffFileSummary(path, kind, additions, deletions), modifier, right = right)
 }
