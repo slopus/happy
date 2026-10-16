@@ -14,11 +14,11 @@ import UIKit
 /// inserts, deletes, moves or reconfigures those. The open chat's row stays
 /// selected across every update.
 ///
-/// Its own rows follow the person's text size, as RN's do: the headings'
-/// heights come measured at that size with the rows
+/// Its rows and notices follow the person's text size, as RN's do: the
+/// headings' and the bots' heights come measured at that size with the rows
 /// (`TabletGroupedHeights`), and the chats' and archived cards' are
-/// fixed, as in RN, with their text drawn scaled inside. The bots are
-/// home's rows and the notices home's header, still at the designed size
+/// fixed, as in RN, with their text drawn scaled inside. The notices are
+/// home's header, measured off the main thread at that size as home's are
 /// (docs/DYNAMIC-TYPE.md).
 final class TabletGroupedListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
     private typealias Row = TabletGroupedRow
@@ -30,12 +30,15 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
     /// The table has asked for its rows once; from then on it only takes
     /// changesets.
     private var tableLoaded = false
-    /// The headings' heights for `model`'s rows, measured off the main
-    /// thread at this screen's text size and the list's width.
+    /// The headings' and bots' heights for `model`'s rows, measured off the
+    /// main thread at this screen's text size and the list's width.
     private var headings = TabletHeadingHeights<Row.ID>()
     private let banners = HomeListHeaderView()
-    private var bannerState: BannerState?
-    private var headerSized: (state: BannerState, width: CGFloat)?
+    private var bannerState: HomeBanners?
+    /// What the header was last measured for; its height lands only for
+    /// this.
+    private(set) var headerRequested: HeaderKey?
+    private(set) var headerTask: Task<Void, Never>?
     private lazy var actions = HomeSessionActions(context: context, session: session, host: self)
     /// useHappyAction: one kill at a time per chat; its swipe is off
     /// meanwhile (`enabled={!archivingSession}`).
@@ -93,11 +96,17 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         }
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
         tableView.addGestureRecognizer(longPress)
+        // Home's notices, drawn here at the person's text size.
+        banners.traitOverrides.followsTextSize = true
         banners.onTroubleshoot = { [weak self] in self?.open(.troubleshoot) }
         banners.onNativeUpdate = { [weak self] in self?.openStore() }
         banners.onWhatsNew = { [weak self] in self?.openWhatsNew() }
         nativeUpdateObservation = NativeUpdateCheck.shared.observe { [weak self] in
             self?.updateBanners()
+        }
+        // A new text size or screen: the notices are measured again.
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]) { (self: Self, _) in
+            self.sizeHeader()
         }
         tableView.reloadData()
         tableLoaded = true
@@ -128,6 +137,7 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         animated: Bool
     ) -> Int {
         let previous = model
+        let previousMetrics = self.headings.metrics
         model = next
         // Before any insert asks for a height.
         self.headings = headings
@@ -151,6 +161,10 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
             // Every avatar on screen redraws; the rest are made when shown.
             reconfigure = tableView.indexPathsForVisibleRows ?? []
         }
+        let bots = botsTakingLines(from: previousMetrics)
+        if !bots.isEmpty {
+            reconfigure = Array(Set(reconfigure).union(bots))
+        }
         if !reconfigure.isEmpty {
             tableView.reconfigureRows(at: reconfigure)
         }
@@ -164,13 +178,31 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
     }
 
     /// New heights for the rows as they are: a new text size or width.
-    /// Returns how many rows moved.
+    /// Returns how many rows moved or took new lines.
     @discardableResult
     func applyHeadings(_ headings: TabletHeadingHeights<TabletGroupedRow.ID>, moved: Set<TabletGroupedRow.ID>) -> Int {
+        let previousMetrics = self.headings.metrics
         self.headings = headings
-        guard isViewLoaded, tableLoaded, !moved.isEmpty else { return 0 }
-        UIView.performWithoutAnimation { tableView.performBatchUpdates(nil) }
-        return moved.count
+        guard isViewLoaded, tableLoaded else { return 0 }
+        let bots = botsTakingLines(from: previousMetrics)
+        guard !moved.isEmpty || !bots.isEmpty else { return 0 }
+        UIView.performWithoutAnimation {
+            tableView.performBatchUpdates {
+                if !bots.isEmpty { tableView.reconfigureRows(at: bots) }
+            }
+        }
+        return max(moved.count, bots.count)
+    }
+
+    /// Every bot's row when the lines its cell draws with changed: all of
+    /// them, so a cell the table made ahead for a row off screen takes the
+    /// new lines too; the table reconfigures only the cells it has.
+    private func botsTakingLines(from previous: TabletHeadingMetrics?) -> [IndexPath] {
+        guard headings.metrics?.sessionLines != previous?.sessionLines else { return [] }
+        return model.rows.indices.compactMap { index in
+            if case .bot = model.rows[index] { return IndexPath(row: index, section: 0) }
+            return nil
+        }
     }
 
     /// Selects the open chat's row, wherever it moved; nothing else stays
@@ -228,7 +260,12 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         case .archiveHeader(let age):
             (cell as? TabletSectionHeaderCell)?.configure(SessionListViewController.dayTitle(age))
         case .bot(let session):
-            (cell as? SessionRowCell)?.configure(session, style: model.avatarStyle, monochrome: model.avatarMonochrome)
+            guard let cell = cell as? SessionRowCell else { return }
+            // Home's row, drawn here at the person's text size, with the
+            // lines its height was measured with.
+            cell.traitOverrides.followsTextSize = true
+            cell.lines = headings.metrics?.sessionLines ?? .designed
+            cell.configure(session, style: model.avatarStyle, monochrome: model.avatarMonochrome)
         case .machine(let id, let name):
             (cell as? TabletMachineRuleCell)?.configure(name: name, opens: id?.isEmpty == false)
         case .workspace(let header):
@@ -253,7 +290,6 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
     private func fixedHeight(_ row: Row, width: CGFloat) -> CGFloat? {
         let hairline = view.hairline
         switch row {
-        case .bot: return HomeRowHeights.flatSession(width: width)
         case .chat(let chat):
             return TabletGroupedRowHeights.chat(width: width, hairline: hairline, first: chat.first, last: chat.last, projectEnd: chat.projectEnd)
         case .archived(let archived):
@@ -265,10 +301,14 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
 
     // MARK: Banners
 
-    private struct BannerState: Equatable {
-        var offlineTitle: String?
-        var nativeUpdate: Bool
-        var whatsNew: Bool
+    /// Everything the header's height is measured from: the notices and
+    /// their words, the list's width, how wide a group may grow, and the
+    /// text size and screen.
+    struct HeaderKey: Equatable {
+        var banners: HomeBanners
+        var width: CGFloat
+        var maxWidth: CGFloat
+        var text: TextEnvironment
     }
 
     /// HomeListHeader.tsx: the offline plaque, then the update banner. The
@@ -281,35 +321,57 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
                 ? Strings.Troubleshoot.bannerTitleOne(name: offline[0].name)
                 : Strings.Troubleshoot.bannerTitleMany
         }
-        let state = BannerState(
+        let state = HomeBanners(
             offlineTitle: offlineTitle,
             nativeUpdate: NativeUpdateCheck.shared.updateURL != nil,
             whatsNew: changelogMarker.hasUnread(latestTitle: ChangelogViewController.bundled.latestTitle)
         )
         guard state != bannerState else { return }
         bannerState = state
-        banners.offlineTitle = state.offlineTitle
-        banners.showsNativeUpdate = state.nativeUpdate
-        banners.showsWhatsNew = state.whatsNew
-        if banners.isEmpty {
-            tableView.tableHeaderView = nil
-        } else {
-            tableView.tableHeaderView = banners
-            sizeHeader()
+        sizeHeader()
+    }
+
+    /// The header is measured off the main thread, as home's is, and set,
+    /// with what it shows, once its height is in; only when the notices,
+    /// the width or the text size changed. No notices takes it away at
+    /// once.
+    private func sizeHeader() {
+        guard isViewLoaded, let state = bannerState else { return }
+        guard !state.isEmpty else {
+            headerRequested = nil
+            if tableView.tableHeaderView != nil { tableView.tableHeaderView = nil }
+            return
+        }
+        let key = HeaderKey(
+            banners: state,
+            width: tableView.bounds.width,
+            maxWidth: ContentWidth.maxWidth,
+            text: TextEnvironment(traitCollection)
+        )
+        guard key.width > 0, key != headerRequested else { return }
+        headerRequested = key
+        headerTask = Task { @MainActor [weak self] in
+            let height = await Task.detached(priority: .userInitiated) {
+                HomeRowMeasurer.headerHeight(
+                    key.banners,
+                    width: key.width,
+                    maxWidth: key.maxWidth,
+                    environment: HomeTextEnvironment(key.text)
+                )
+            }.value
+            self?.landHeader(key, height: height)
         }
     }
 
-    private func sizeHeader() {
-        guard tableView.tableHeaderView === banners else { return }
-        let width = tableView.bounds.width
-        // Measured again only when what it shows or the width changed.
-        guard headerSized?.state != bannerState || headerSized?.width != width else { return }
-        headerSized = bannerState.map { ($0, width) }
-        let height = banners.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-        if banners.frame.size != CGSize(width: width, height: height) {
-            banners.frame = CGRect(x: 0, y: 0, width: width, height: height)
-            tableView.tableHeaderView = banners
-        }
+    /// A header height measured off the main thread. Only one measured for
+    /// exactly what was last asked for lands; any other is refused, and the
+    /// header shown stays.
+    func landHeader(_ key: HeaderKey, height: CGFloat) {
+        guard key == headerRequested else { return }
+        // The words the height was measured with.
+        banners.content = key.banners
+        banners.frame = CGRect(x: 0, y: 0, width: key.width, height: height)
+        tableView.tableHeaderView = banners
     }
 
     // MARK: Actions

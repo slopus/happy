@@ -61,6 +61,9 @@ final class SessionInfoViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Header.tsx's title and every row's Text scale; the rows are
+        // measured from their labels as drawn, as Settings' are.
+        followsTextSize()
         showsBackTitle()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         #if DEBUG
