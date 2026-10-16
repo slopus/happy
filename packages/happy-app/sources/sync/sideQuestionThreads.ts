@@ -49,8 +49,6 @@ export type SideQuestionThread = {
     exchanges: readonly SideQuestionExchange[];
     /** The follow-up being typed in the panel, kept so leaving the chat does not lose it. */
     draft: string;
-    /** Opened with nothing asked, so the panel should take the keyboard once. */
-    wantsFocus: boolean;
 };
 
 export type SideQuestionThreadsDeps = {
@@ -67,7 +65,7 @@ type ThreadsState = {
     threads: Record<string, SideQuestionThread>;
 };
 
-const EMPTY_THREAD: SideQuestionThread = { exchanges: [], draft: '', wantsFocus: false };
+const EMPTY_THREAD: SideQuestionThread = { exchanges: [], draft: '' };
 
 export function createSideQuestionThreads(deps: SideQuestionThreadsDeps) {
     const useThreadsStore = create<ThreadsState>()(() => ({ threads: {} }));
@@ -136,21 +134,18 @@ export function createSideQuestionThreads(deps: SideQuestionThreadsDeps) {
     };
 
     /**
-     * `/btw` from the chat's composer: shows the chat's thread, starting one if
-     * it has none, and asks `question` in it. An empty question only opens it,
-     * ready to type one.
+     * `/btw <question>` from the chat's composer: shows the chat's thread,
+     * starting one if it has none, and asks `question` in it. There is nothing
+     * to open without a question.
      */
     const open = (sessionId: string, question: string) => {
         const text = question.trim();
+        if (!text) return;
         useThreadsStore.setState((state) => ({
             threads: { ...state.threads, [sessionId]: state.threads[sessionId] ?? EMPTY_THREAD },
         }));
-        if (text) {
-            enqueue(sessionId, text);
-            askNext(sessionId);
-        } else {
-            update(sessionId, (thread) => (thread.wantsFocus ? thread : { ...thread, wantsFocus: true }));
-        }
+        enqueue(sessionId, text);
+        askNext(sessionId);
     };
 
     const setDraft = (sessionId: string, draft: string) => {
@@ -164,11 +159,6 @@ export function createSideQuestionThreads(deps: SideQuestionThreadsDeps) {
         setDraft(sessionId, '');
         enqueue(sessionId, text);
         askNext(sessionId);
-    };
-
-    /** The panel took the keyboard it was asked to. */
-    const focused = (sessionId: string) => {
-        update(sessionId, (thread) => (thread.wantsFocus ? { ...thread, wantsFocus: false } : thread));
     };
 
     /** Ends the thread: drops the question still being answered, and forgets the rest. */
@@ -190,7 +180,7 @@ export function createSideQuestionThreads(deps: SideQuestionThreadsDeps) {
         return useThreadsStore((state) => state.threads[sessionId] ?? null);
     }
 
-    return { open, setDraft, sendDraft, focused, close, getThread, useThread };
+    return { open, setDraft, sendDraft, close, getThread, useThread };
 }
 
 function describeResult(result: SideQuestionResult): SideQuestionExchangeState {

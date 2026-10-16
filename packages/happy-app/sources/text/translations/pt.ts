@@ -717,8 +717,8 @@ export const pt: TranslationStructure = {
 
     sideQuestion: {
         title: 'Pergunta paralela',
+        usage: 'Uso: /btw <sua pergunta>',
         subtitle: 'Respondida com base neste chat — nada daqui é adicionado à conversa.',
-        placeholder: 'Pergunte sobre este chat…',
         followUpPlaceholder: 'Faça outra pergunta…',
         send: 'Perguntar',
         close: 'Fechar',

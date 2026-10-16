@@ -95,20 +95,19 @@ describe('side question threads', () => {
         expect(calls).toHaveLength(2);
     });
 
-    it('opens a bare /btw ready to type, without losing an earlier thread', async () => {
+    it('opens nothing without a question, and leaves an open thread as it is', async () => {
         const { threads, calls } = threadsWithStubbedRpc();
-        threads.open('chat-a', '');
-        expect(threads.getThread('chat-a')).toEqual({ exchanges: [], draft: '', wantsFocus: true });
+        threads.open('chat-a', '   ');
+        expect(threads.getThread('chat-a')).toBeNull();
         expect(calls).toHaveLength(0);
-        threads.focused('chat-a');
-        expect(threads.getThread('chat-a')?.wantsFocus).toBe(false);
 
         threads.open('chat-a', 'what changed?');
         calls[0].resolve(answered('Two files.'));
         await flush();
+        const before = threads.getThread('chat-a');
         threads.open('chat-a', '');
-        expect(threads.getThread('chat-a')?.exchanges).toHaveLength(1);
-        expect(threads.getThread('chat-a')?.wantsFocus).toBe(true);
+        expect(threads.getThread('chat-a')).toBe(before);
+        expect(calls).toHaveLength(1);
     });
 
     it('cancels the question in flight on close, and a late answer lands nowhere', async () => {

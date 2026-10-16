@@ -736,8 +736,8 @@ export const ru: TranslationStructure = {
 
     sideQuestion: {
         title: 'Вопрос между делом',
+        usage: 'Использование: /btw <ваш вопрос>',
         subtitle: 'Ответ по этому чату — в сам чат ничего не попадёт.',
-        placeholder: 'Спросите об этом чате…',
         followUpPlaceholder: 'Задайте уточняющий вопрос…',
         send: 'Спросить',
         close: 'Закрыть',

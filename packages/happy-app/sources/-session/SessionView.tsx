@@ -965,13 +965,18 @@ export function SessionViewLoaded({
         if (sendingSessionsRef.current.has(sessionId)) return;
         const liveMessage = composer?.getMessage() ?? '';
         // /btw asks Claude a side question in the chat's side panel; it never
-        // becomes a message
+        // becomes a message. Without a question it only says how to use it,
+        // as Claude Code does.
         const sideQuestion = supportsSideQuestions(storage.getState().sessions[sessionId]?.metadata)
             ? parseSideQuestionCommand(liveMessage)
             : null;
         if (sideQuestion !== null) {
             composer?.clearMessage();
-            openSideQuestion(sessionId, sideQuestion);
+            if (sideQuestion) {
+                openSideQuestion(sessionId, sideQuestion);
+            } else {
+                sync.showLocalNotice(sessionId, t('sideQuestion.usage'));
+            }
             return;
         }
         const draftUpdatedAt = storage.getState().sessions[sessionId]?.draftUpdatedAt;

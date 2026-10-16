@@ -718,8 +718,8 @@ export const ca: TranslationStructure = {
 
     sideQuestion: {
         title: 'Pregunta al marge',
+        usage: 'Ús: /btw <la teva pregunta>',
         subtitle: 'Resposta basada en aquest xat — res d’aquí no s’afegeix a la conversa.',
-        placeholder: 'Pregunta sobre aquest xat…',
         followUpPlaceholder: 'Fes una altra pregunta…',
         send: 'Pregunta',
         close: 'Tanca',

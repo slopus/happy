@@ -736,8 +736,8 @@ export const en: TranslationStructure = {
 
     sideQuestion: {
         title: 'Side question',
+        usage: 'Usage: /btw <your question>',
         subtitle: 'Answered from this chat — nothing here is added to it.',
-        placeholder: 'Ask about this chat…',
         followUpPlaceholder: 'Ask a follow-up…',
         send: 'Ask',
         close: 'Close',
