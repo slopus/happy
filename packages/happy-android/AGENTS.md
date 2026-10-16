@@ -233,6 +233,13 @@ top-level keys as pending and asks for a sync. Device-only preferences
 (localSettings.ts) are `AppGraph.localSettings.values`, stored as one JSON
 document in SharedPreferences.
 
+What's New reads `res/raw/changelog.json`, a byte-for-byte copy of
+happy-app's `sources/changelog/changelog.json`, with its images in
+`res/drawable-nodpi/changelog_*`. When happy-app's changes, copy it over
+(`ChangelogTest` fails until you do); a new image also needs an entry in
+`Changelog.images`. `AppGraph.changelog` is the read marker Home's update
+banner needs.
+
 ## Build and test
 
 ```

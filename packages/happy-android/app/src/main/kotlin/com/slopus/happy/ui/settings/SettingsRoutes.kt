@@ -37,6 +37,8 @@ import com.slopus.happy.model.settings.ConnectApi
 import com.slopus.happy.model.settings.HttpConnectApi
 import com.slopus.happy.model.settings.Languages
 import com.slopus.happy.ui.SettingsRoute
+import com.slopus.happy.ui.changelog.Changelog
+import com.slopus.happy.ui.changelog.ChangelogScreen
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -52,6 +54,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object LanguageRoute
 @Serializable data object AgentsRoute
 @Serializable data object ConnectClaudeRoute
+@Serializable data object ChangelogRoute
 
 /** Settings and its screens. [SettingsRoute] is the entry point. */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
@@ -60,6 +63,11 @@ fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     composable<AppearanceRoute> { Appearance(graph, nav) }
     composable<AgentsRoute> { Agents(graph, nav) }
     composable<ConnectClaudeRoute> { ConnectClaudeScreen(onBack = { nav.popBackStack() }) }
+    composable<ChangelogRoute> {
+        val resources = LocalResources.current
+        val changelog = remember(resources) { Changelog.bundled(resources) }
+        ChangelogScreen(changelog, onViewed = graph.changelog::markViewed, onBack = { nav.popBackStack() })
+    }
     composable<LanguageRoute> {
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
         LanguageScreen(
@@ -179,13 +187,11 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
     val onError = errorAlert(alerts)
 
     val cancel = stringResource(R.string.common_cancel)
-    val ok = stringResource(R.string.common_ok)
     val disconnect = stringResource(R.string.modals_disconnect)
     val disconnectClaudeTitle = stringResource(R.string.modals_disconnect_service, "Claude")
     val disconnectClaudeMessage = stringResource(R.string.modals_disconnect_service_confirm, "Claude")
     val disconnectGitHubTitle = stringResource(R.string.modals_disconnect_github)
     val disconnectGitHubMessage = stringResource(R.string.modals_disconnect_github_confirm)
-    val terminalUnavailable = stringResource(R.string.settings_connect_terminal_unavailable)
 
     val connectGitHub = rememberHappyAction(onError) { uriHandler.openUri(api.gitHubOAuthUrl()) }
     val disconnectGitHub = rememberHappyAction(onError) {
@@ -200,8 +206,6 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
     fun confirm(title: String, message: String, action: HappyAction) = alerts.show(
         Alert(title, message, listOf(AlertButton(cancel), AlertButton(disconnect, destructive = true, onClick = action::run))),
     )
-    // STUB: the screens these rows open are not built yet.
-    val terminalStub = { alerts.show(Alert(terminalUnavailable, null, listOf(AlertButton(ok)))) }
     val connect = rememberTerminalConnect(graph)
     var enteringUrl by remember { mutableStateOf(false) }
 
@@ -228,7 +232,7 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
         onAccount = { nav.navigate(AccountRoute) },
         onAppearance = { nav.navigate(AppearanceRoute) },
         onAgents = { nav.navigate(AgentsRoute) },
-        onWhatsNew = terminalStub,
+        onWhatsNew = { nav.navigate(ChangelogRoute) },
         onOpenUrl = uriHandler::openUri,
     )
     if (enteringUrl) EnterTerminalUrlPrompt(connect, onDismiss = { enteringUrl = false })
