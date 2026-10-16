@@ -37,6 +37,7 @@ object HomeStateTags {
     const val NEW_SESSION = "homeState.newSession"
     const val OFFLINE_BANNER = "homeState.offlineBanner"
     const val UPDATE_BANNER = "homeState.updateBanner"
+    const val CHANGELOG_BANNER = "homeState.changelogBanner"
 }
 
 /** EmptyMainScreen.tsx */
@@ -113,12 +114,33 @@ private fun ShowArchivedAction(onClick: () -> Unit) {
     )
 }
 
+/**
+ * UpdateBanner's cases on Android, highest priority first: a required store
+ * update, then unread What's New. (No OTA updates in a native build.)
+ */
+sealed interface HomeUpdate {
+    data class Native(val url: String) : HomeUpdate
+    data object Changelog : HomeUpdate
+
+    companion object {
+        fun resolve(nativeUrl: String?, changelogUnread: Boolean): HomeUpdate? = when {
+            nativeUrl != null -> Native(nativeUrl)
+            changelogUnread -> Changelog
+            else -> null
+        }
+    }
+}
+
 /** HomeListHeader: the offline plaque first (it's about right now), then the update. */
 @Composable
-fun HomeBanners(offline: OfflineBanner?, updateUrl: String?, actions: HomeScreenActions) {
+fun HomeBanners(offline: OfflineBanner?, update: HomeUpdate?, actions: HomeScreenActions) {
     Column(modifier = Modifier.fillMaxWidth()) {
         offline?.let { OfflineMachinesBanner(it, actions.onTroubleshoot) }
-        updateUrl?.let { url -> UpdateBanner(onClick = { actions.onOpenUrl(url) }) }
+        when (update) {
+            is HomeUpdate.Native -> UpdateBanner(onClick = { actions.onOpenUrl(update.url) })
+            HomeUpdate.Changelog -> ChangelogBanner(onClick = actions.onWhatsNew)
+            null -> Unit
+        }
     }
 }
 
@@ -147,6 +169,21 @@ fun UpdateBanner(onClick: () -> Unit) {
             title = stringResource(R.string.update_banner_native_update_available),
             subtitle = stringResource(R.string.update_banner_tap_to_update_play_store),
             icon = { Icon(Ionicon.DownloadOutline, size = 28.dp, color = colors.success) },
+            showChevron = true,
+            onClick = onClick,
+        )
+    }
+}
+
+/** UpdateBanner's changelog case: sparkles (28, text colour), "What's new", a chevron to What's New. */
+@Composable
+fun ChangelogBanner(onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    BannerGroup(Modifier.testTag(HomeStateTags.CHANGELOG_BANNER)) {
+        Item(
+            title = stringResource(R.string.update_banner_whats_new),
+            subtitle = stringResource(R.string.update_banner_see_latest),
+            icon = { Icon(Ionicon.SparklesOutline, size = 28.dp, color = colors.text) },
             showChevron = true,
             onClick = onClick,
         )

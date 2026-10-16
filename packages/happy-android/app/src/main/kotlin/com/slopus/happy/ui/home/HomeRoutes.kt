@@ -5,12 +5,14 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,7 +40,9 @@ import com.slopus.happy.ui.onboarding.OnboardingSettingsRoute
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.changelog.Changelog
 import com.slopus.happy.ui.settings.AppearanceRoute
+import com.slopus.happy.ui.settings.ChangelogRoute
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.AvatarSettings
 import com.slopus.happy.ui.components.AvatarStyle
@@ -159,6 +163,7 @@ fun NavGraphBuilder.homeRoutes(
             graph = graph,
             onSettings = { nav.navigate(SettingsRoute) },
             onAppearance = { nav.navigate(AppearanceRoute) },
+            onWhatsNew = { nav.navigate(ChangelogRoute) },
             onOnboardingSettings = { nav.navigate(OnboardingSettingsRoute) },
             onOpenSession = onOpenSession,
             onTroubleshoot = onTroubleshoot,
@@ -188,6 +193,7 @@ private fun HomeRouteScreen(
     graph: AppGraph,
     onSettings: () -> Unit,
     onAppearance: () -> Unit,
+    onWhatsNew: () -> Unit,
     onOnboardingSettings: () -> Unit,
     onOpenSession: (String) -> Unit,
     onTroubleshoot: () -> Unit,
@@ -201,6 +207,14 @@ private fun HomeRouteScreen(
     val local by graph.localSettings.values.collectAsStateWithLifecycle()
     val connection by graph.connectionStatus.collectAsStateWithLifecycle()
     val updateUrl by services.updateUrl.collectAsStateWithLifecycle()
+    val resources = LocalResources.current
+    val latestChangelog = remember(resources) { Changelog.bundled(resources).latestTitle }
+    val lastViewedChangelog by graph.changelog.lastViewedTitle.collectAsStateWithLifecycle()
+    // useChangelog: a first install has seen everything so far; only what comes later is news.
+    LaunchedEffect(latestChangelog) {
+        if (graph.changelog.lastViewedTitle.value.isEmpty() && latestChangelog.isNotEmpty()) graph.changelog.markViewed(latestChangelog)
+    }
+    val update = HomeUpdate.resolve(updateUrl, lastViewedChangelog.isNotEmpty() && graph.changelog.hasUnread(latestChangelog))
     val uriHandler = LocalUriHandler.current
     var alert by remember { mutableStateOf<Alert?>(null) }
     val showAlert = remember { { next: Alert -> alert = next } }
@@ -231,7 +245,7 @@ private fun HomeRouteScreen(
             },
         )
     }
-    val actions = remember(onSettings, onAppearance, onNewSession, onTroubleshoot, uriHandler) {
+    val actions = remember(onSettings, onAppearance, onNewSession, onTroubleshoot, onWhatsNew, uriHandler) {
         HomeScreenActions(
             onSettings = onSettings,
             onAppearance = onAppearance,
@@ -239,6 +253,7 @@ private fun HomeRouteScreen(
             onNewSession = onNewSession,
             onTroubleshoot = onTroubleshoot,
             onOpenUrl = uriHandler::openUri,
+            onWhatsNew = onWhatsNew,
         )
     }
 
@@ -249,7 +264,7 @@ private fun HomeRouteScreen(
             grouping = settings.sessionListGrouping,
             callbacks = callbacks,
             actions = actions,
-            updateUrl = updateUrl,
+            update = update,
             linkContent = { OnboardingLinkComputer(graph, onSettings = onOnboardingSettings) },
             offlineContent = { computers, onShowArchived ->
                 LinkComputerChecklist(graph, computers = computers, onTroubleshoot = onTroubleshoot, onShowArchived = onShowArchived)

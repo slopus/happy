@@ -116,6 +116,7 @@ class HomeScreenActions(
     val onNewSession: () -> Unit,
     val onTroubleshoot: () -> Unit,
     val onOpenUrl: (String) -> Unit,
+    val onWhatsNew: () -> Unit,
 )
 
 /**
@@ -136,7 +137,7 @@ fun HomeScreen(
     callbacks: HomeListCallbacks,
     actions: HomeScreenActions,
     modifier: Modifier = Modifier,
-    updateUrl: String? = null,
+    update: HomeUpdate? = null,
     linkContent: @Composable () -> Unit = {},
     offlineContent: @Composable (computers: List<String>, onShowArchived: (() -> Unit)?) -> Unit = { _, _ -> },
 ) {
@@ -164,7 +165,7 @@ fun HomeScreen(
                     offlineContent(state.computers, if (state.hasArchivedSessions) showArchived else null)
                 state.emptyState == HomeEmptyState.NoSessions ->
                     NoSessionsState(onNewSession = actions.onNewSession, onShowArchived = if (state.hasArchivedSessions) showArchived else null)
-                else -> HomeList(state, callbacks, actions, updateUrl)
+                else -> HomeList(state, callbacks, actions, update)
             }
         }
     }
@@ -310,7 +311,7 @@ private val ConnectionStatus.label: Int
     }
 
 @Composable
-private fun HomeList(state: HomeListState, callbacks: HomeListCallbacks, actions: HomeScreenActions, updateUrl: String?) {
+private fun HomeList(state: HomeListState, callbacks: HomeListCallbacks, actions: HomeScreenActions, update: HomeUpdate?) {
     val colors = HappyTheme.colors
     val flat = state.grouping == SessionListGrouping.Flat
     LazyColumn(
@@ -320,9 +321,9 @@ private fun HomeList(state: HomeListState, callbacks: HomeListCallbacks, actions
             .testTag(HomeTags.LIST),
         contentPadding = PaddingValues(top = HomeSpec.contentTop),
     ) {
-        if (state.offlineBanner != null || updateUrl != null) {
+        if (state.offlineBanner != null || update != null) {
             item(key = "banners", contentType = "banners") {
-                HomeBanners(state.offlineBanner, updateUrl, actions)
+                HomeBanners(state.offlineBanner, update, actions)
             }
         }
         items(state.rows, key = { it.key }, contentType = { it::class }) { row ->

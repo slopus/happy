@@ -98,6 +98,7 @@ class HomeLayoutTest {
         onProjectMenu = { _, _ -> },
     )
     private var newSession = 0
+    private var whatsNew = 0
     private val actions = HomeScreenActions(
         onSettings = {},
         onAppearance = {},
@@ -105,6 +106,7 @@ class HomeLayoutTest {
         onNewSession = { newSession++ },
         onTroubleshoot = {},
         onOpenUrl = {},
+        onWhatsNew = { whatsNew++ },
     )
 
     private fun cli(id: String, at: Long = noon, active: Boolean = true) = session(
@@ -220,6 +222,31 @@ class HomeLayoutTest {
         rule.onAllNodesWithTag(HomeTags.DAY_HEADER, useUnmergedTree = true).assertCountEquals(1)
         rule.node(HomeTags.ARCHIVE_TOGGLE).performClick()
         assertEquals(listOf(true), archiveHidden)
+    }
+
+    /**
+     * HomeListHeader: the offline plaque, then UpdateBanner (a store update
+     * outranks What's New), each an inset card 4 under the list's top
+     * and 16 above what follows; the changelog card opens What's New.
+     */
+    @Test
+    fun bannersStackAboveTheListAndWhatsNewOpensTheChangelog() {
+        assertEquals(HomeUpdate.Native("u"), HomeUpdate.resolve("u", changelogUnread = true))
+        assertEquals(HomeUpdate.Changelog, HomeUpdate.resolve(null, changelogUnread = true))
+        assertNull(HomeUpdate.resolve(null, changelogUnread = false))
+
+        val two = listOf(studio.copy(active = false), machine("m2", machineMetadata { put("displayName", "Laptop") }, active = false))
+        val current = state(listOf(cli("a")), machines = two)
+        rule.setHappyContent {
+            HomeScreen(current, ConnectionStatus.CONNECTED, SessionListGrouping.Flat, callbacks, actions, update = HomeUpdate.Changelog)
+        }
+        val offline = rule.node(HomeStateTags.OFFLINE_BANNER).bounds
+        val changelog = rule.node(HomeStateTags.CHANGELOG_BANNER).bounds
+        val row = rule.node(FlatRowTags.ROW).bounds
+        assertDp("changelog under the offline plaque", offline.bottom, changelog.top)
+        assertDp("rows 16 under the last card's bottom margin", changelog.bottom, row.top)
+        rule.node(HomeStateTags.CHANGELOG_BANNER).performClick()
+        assertEquals(1, whatsNew)
     }
 
     @Test
