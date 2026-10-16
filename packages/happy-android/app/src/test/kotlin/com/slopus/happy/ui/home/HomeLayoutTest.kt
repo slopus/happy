@@ -68,7 +68,7 @@ import java.time.ZoneOffset
 
 /**
  * The phone home screen against happy-app's layout:
- * - MainView's header: logo 19 in a 32 box; "Happy" 16/20 centred; the
+ * - MainView's header: logo 19 in a 32 box; "Sessions" (`tabs.sessions`) 16/20 centred; the
  *   status line (11/16, 6 dot) hangs 2 into the title's bottom while the
  *   socket isn't connected; the filter and settings buttons are 44 squares
  *   split by a 22-high hairline, the gear 16 from the edge.
@@ -297,7 +297,7 @@ class HomeLayoutTest {
 
     /**
      * TalkBack over Home, as MainView, FlatSessionRow and SessionsList label
-     * it: "Happy" is a header; Filter and Settings are named buttons; an
+     * it: "Sessions" is a header; Filter and Settings are named buttons; an
      * unread row's top-right reads "new results" and not the stamp hidden
      * under the dot; the archive toggle is a button, selected while the
      * archive shows. Grouped by project, every row is a button.
@@ -305,7 +305,7 @@ class HomeLayoutTest {
     @Test
     fun homeReadsForTalkBack() {
         show(state(listOf(cli("a"), cli("gone", noon, active = false)), hidden = false, unread = setOf("a")))
-        rule.onNode(hasText("Happy") and isHeading(), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("Sessions") and isHeading(), useUnmergedTree = true).assertExists()
         rule.onNode(hasContentDescription("Filter") and hasRole(Role.Button)).assertExists()
         rule.onNode(hasContentDescription("Settings") and hasRole(Role.Button)).assertExists()
         rule.onAllNodesWithTag(FlatRowTags.TOP_RIGHT, useUnmergedTree = true)[0].assert(hasContentDescription("new results"))

@@ -214,7 +214,8 @@ private fun HomeHeader(connectionStatus: ConnectionStatus, grouping: SessionList
     val colors = HappyTheme.colors
     Header(
         alignment = TitleAlignment.Center,
-        titleContent = { HomeHeaderTitle(stringResource(R.string.sidebar_sessions_title), connectionStatus) },
+        // MainView's phone header names the tab (`tabs.sessions`); HomeHeader's "Happy" is no longer mounted.
+        titleContent = { HomeHeaderTitle(stringResource(R.string.tabs_sessions), connectionStatus) },
         left = {
             Box(modifier = Modifier.size(HomeSpec.logoBox).testTag(HomeTags.LOGO), contentAlignment = Alignment.Center) {
                 Image(
