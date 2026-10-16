@@ -1,8 +1,17 @@
 package com.slopus.happy.ui.chat
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -13,7 +22,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -61,7 +70,16 @@ object CopyMenuSpec {
     val iconGap = 10.dp
     val icon = 17.dp
     val label = happyTextStyle(fontSize = 15, lineHeight = 20)
+    /** AnimatedOverlay.tsx AnimatedPopup: in over 190 ms from 0.96 and 8 lower, out over 140 ms. */
+    const val ENTER_MS = 190
+    const val EXIT_MS = 140
+    const val ENTER_SCALE = 0.96f
+    val enterOffset = 8.dp
 }
+
+// AnimatedOverlay.tsx: Easing.out(Easing.cubic) and Easing.in(Easing.cubic).
+private val enterEasing = CubicBezierEasing(0.33f, 1f, 0.68f, 1f)
+private val exitEasing = CubicBezierEasing(0.32f, 0f, 0.67f, 0f)
 
 /**
  * LongPressCopyable.tsx's placement, in window pixels: above [anchor] when
@@ -86,7 +104,9 @@ fun copyMenuPosition(anchor: IntRect, window: IntSize, density: Density): IntOff
  * menu: 152 wide, radius 14, the surface with a hairline divider border and
  * elevation 8; one 44-high row, 14 in, copy-outline 17 in text 10 before
  * "Copy" 15/20, surfaceSelected while pressed. Tapping outside or Back
- * closes it; Copy puts [text] on the clipboard and closes it.
+ * closes it; Copy puts [text] on the clipboard and closes it. Opening is a
+ * light haptic; the menu fades in over 190 ms from 0.96 scale and 8 lower,
+ * and fades out over 140 ms (AnimatedPopup).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -96,25 +116,30 @@ fun LongPressCopyable(
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    var open by remember { mutableStateOf(false) }
+    val menu = remember { MutableTransitionState(false) }
+    val haptics = LocalHapticFeedback.current
     // Held here, not in the menu: closing the menu would cancel the copy.
     val copy = rememberCopyText()
     Column(
         modifier = modifier.combinedClickable(
             interactionSource = remember { MutableInteractionSource() },
             indication = null,
+            hapticFeedbackEnabled = false,
             onClick = {},
-            onLongClick = { open = true },
+            onLongClick = {
+                haptics.light()
+                menu.targetState = true
+            },
         ),
         horizontalAlignment = horizontalAlignment,
     ) {
         content()
-        if (open) CopyMenu(onCopy = { copy(text) }, onClose = { open = false })
+        if (menu.currentState || menu.targetState) CopyMenu(menu, onCopy = { copy(text) }, onClose = { menu.targetState = false })
     }
 }
 
 @Composable
-private fun CopyMenu(onCopy: () -> Unit, onClose: () -> Unit) {
+private fun CopyMenu(menu: MutableTransitionState<Boolean>, onCopy: () -> Unit, onClose: () -> Unit) {
     val density = LocalDensity.current
     val position = remember(density) {
         object : PopupPositionProvider {
@@ -122,8 +147,17 @@ private fun CopyMenu(onCopy: () -> Unit, onClose: () -> Unit) {
                 copyMenuPosition(anchorBounds, windowSize, density)
         }
     }
-    Popup(popupPositionProvider = position, onDismissRequest = onClose, properties = PopupProperties(focusable = true)) {
-        CopyMenuContent(onCopy, onClose)
+    // Only the open menu takes focus and Back; a closing one just fades.
+    Popup(popupPositionProvider = position, onDismissRequest = onClose, properties = PopupProperties(focusable = menu.targetState)) {
+        AnimatedVisibility(
+            visibleState = menu,
+            enter = fadeIn(tween(CopyMenuSpec.ENTER_MS, easing = enterEasing)) +
+                scaleIn(tween(CopyMenuSpec.ENTER_MS, easing = enterEasing), initialScale = CopyMenuSpec.ENTER_SCALE) +
+                slideInVertically(tween(CopyMenuSpec.ENTER_MS, easing = enterEasing)) { with(density) { CopyMenuSpec.enterOffset.roundToPx() } },
+            exit = fadeOut(tween(CopyMenuSpec.EXIT_MS, easing = exitEasing)),
+        ) {
+            CopyMenuContent(onCopy, onClose)
+        }
     }
 }
 

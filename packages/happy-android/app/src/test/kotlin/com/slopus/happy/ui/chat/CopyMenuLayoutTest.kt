@@ -42,6 +42,22 @@ class CopyMenuLayoutTest {
     private fun userRow(text: String) =
         ChatReduction.buildRow(ChatMessage.UserText("u", "l", 0, text), isClaudeFlavor = false) as ChatRow.User
 
+    // AnimatedPopup: in over 190 ms, out over 140 ms; still drawn while it fades out.
+    @Test
+    fun theMenuFadesInAndOut() {
+        rule.setHappyContent { UserMessage(userRow("Hello there"), gray, MessageCallbacks()) }
+        rule.node(MessageTags.USER_BODY).performTouchInput { longClick() }
+        rule.waitForIdle()
+        rule.mainClock.autoAdvance = false
+        rule.node(CopyMenuTags.COPY).performClick()
+        rule.mainClock.advanceTimeBy(70)
+        rule.node(CopyMenuTags.MENU).assertExists()
+        rule.mainClock.advanceTimeBy(200)
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        rule.node(CopyMenuTags.MENU).assertDoesNotExist()
+    }
+
     // Long press opens the menu rather than copying; Copy copies and closes it.
     @Test
     fun longPressOffersCopy() {

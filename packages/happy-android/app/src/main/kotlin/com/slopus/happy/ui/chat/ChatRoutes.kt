@@ -137,7 +137,6 @@ private fun ChatRoute(
     val machine by rememberMachine(graph, machineId)
     var resuming by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    var aborting by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
     val notSent = stringResource(R.string.errors_unknown_error)
@@ -186,20 +185,8 @@ private fun ChatRoute(
                     }
                 }
             },
-            onAbort = {
-                scope.launch {
-                    aborting = true
-                    try {
-                        actions.abort(sessionId)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        report(e)
-                    } finally {
-                        aborting = false
-                    }
-                }
-            },
+            // AgentInput.tsx: a failed stop shakes the button rather than raising an alert.
+            onAbort = { actions.abort(sessionId) },
             loadOlder = { account?.messages?.loadOlder(sessionId) ?: false },
             onPermission = { answer, mode ->
                 actions.answerPermission(sessionId, answer)
@@ -271,7 +258,6 @@ private fun ChatRoute(
             draft = draft.text,
             bubbleColor = settings.userMessageBubbleColor,
             actions = screenActions,
-            aborting = aborting,
             compactToolCalls = settings.compactToolCalls,
             showLineNumbersInToolViews = settings.showLineNumbersInToolViews,
             modes = modes,
