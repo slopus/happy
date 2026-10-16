@@ -1,7 +1,8 @@
 package com.slopus.happy.ui.home
 
 import com.slopus.happy.model.DayTitle
-import com.slopus.happy.model.ForkSource
+import com.slopus.happy.sync.ForkSource
+import com.slopus.happy.sync.OpResult
 import com.slopus.happy.model.HomeEmptyState
 import com.slopus.happy.model.HomeModelFixtures.machine
 import com.slopus.happy.model.HomeModelFixtures.machineMetadata
@@ -190,25 +191,25 @@ class HomeListTest {
     }
 
     private class FakeActions(
-        var kill: ActionResult = ActionResult.Success,
-        var archive: ActionResult = ActionResult.Success,
+        var kill: OpResult = OpResult(true),
+        var archive: OpResult = OpResult(true),
     ) : SessionActions {
         val calls = mutableListOf<String>()
         var archivingDuringCall: Set<String>? = null
         var archiver: SessionArchiver? = null
 
-        override suspend fun kill(sessionId: String): ActionResult {
+        override suspend fun kill(sessionId: String): OpResult {
             calls += "kill:$sessionId"
             archivingDuringCall = archiver?.archiving?.value
             return kill
         }
 
-        override suspend fun archiveOnServer(sessionId: String): ActionResult {
+        override suspend fun archiveOnServer(sessionId: String): OpResult {
             calls += "archive:$sessionId"
             return archive
         }
 
-        override suspend fun delete(sessionId: String): ActionResult = ActionResult.Success
+        override suspend fun delete(sessionId: String): OpResult = OpResult(true)
     }
 
     @Test fun archiveKillsAndLeavesTheListOnThePress() = runTest {
@@ -221,21 +222,21 @@ class HomeListTest {
     }
 
     @Test fun archiveFallsBackToTheServerForAnUnreachableAgent() = runTest {
-        val actions = FakeActions(kill = ActionResult.Failure("offline"))
+        val actions = FakeActions(kill = OpResult(false, "offline"))
         val archiver = SessionArchiver(actions)
         assertEquals(ArchiveResult.Archived, archiver.archive(cli("a", noon)))
         assertEquals(listOf("kill:a", "archive:a"), actions.calls)
     }
 
     @Test fun failedArchiveBringsTheRowBack() = runTest {
-        val actions = FakeActions(kill = ActionResult.Failure(null), archive = ActionResult.Failure("Server error: 500"))
+        val actions = FakeActions(kill = OpResult(false, null), archive = OpResult(false, "Server error: 500"))
         val archiver = SessionArchiver(actions)
         assertEquals(ArchiveResult.Failed("Server error: 500", bot = false), archiver.archive(cli("a", noon)))
         assertEquals(emptySet<String>(), archiver.archiving.value)
     }
 
     @Test fun botIsOnlyKilled() = runTest {
-        val actions = FakeActions(kill = ActionResult.Failure(null))
+        val actions = FakeActions(kill = OpResult(false, null))
         val archiver = SessionArchiver(actions)
         val bot = session("bot", metadata = metadata {
             putJsonObject("bot") {

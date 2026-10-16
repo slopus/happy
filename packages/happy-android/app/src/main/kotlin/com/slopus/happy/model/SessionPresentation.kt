@@ -1,5 +1,7 @@
 package com.slopus.happy.model
 
+import com.slopus.happy.sync.ForkSource
+
 // How a session is named and placed, from happy-app's utils/sessionUtils.ts,
 // utils/sessionActivity.ts, utils/worktreePaths.ts and utils/sessionFork.ts.
 // Everything here is plain arithmetic over stored fields; strings that come
@@ -78,16 +80,6 @@ object WorktreePaths {
         val index = path.indexOf(MARKER)
         return if (index == -1) null else path.substring(index + MARKER.length)
     }
-}
-
-/** sessionFork.ts `ForkSource`: what the daemon needs to copy a Claude session or Codex thread. */
-sealed interface ForkSource {
-    val sessionId: String
-    val machineId: String
-    val directory: String
-
-    data class Claude(override val sessionId: String, override val machineId: String, override val directory: String, val claudeSessionId: String) : ForkSource
-    data class Codex(override val sessionId: String, override val machineId: String, override val directory: String, val codexThreadId: String) : ForkSource
 }
 
 /** sessionFork.ts `getSessionForkSource` */
