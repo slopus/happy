@@ -6,6 +6,11 @@
     <!-- app.config.js android.permissions; asked for at runtime (push/PushPermission.kt) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- expo-store-review's isAvailableAsync looks for the Play Store (ui/home/ReviewPrompt.kt). -->
+    <queries>
+        <package android:name="com.android.vending" />
+    </queries>
+
     <application
         android:name=".HappyApplication"
         android:allowBackup="false"

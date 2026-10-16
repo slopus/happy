@@ -223,6 +223,7 @@ private fun ProjectCardRow(project: ProjectHomeEntry, callbacks: HomeListCallbac
             .fillMaxWidth()
             .height(ProjectListSpec.projectRow)
             .testTag(ProjectListTags.PROJECT)
+            .sessionPressDown(session?.id, callbacks)
             .combinedClickable(
                 enabled = session != null || origin != null,
                 role = Role.Button,
@@ -302,6 +303,7 @@ private fun WorktreeRow(worktree: ProjectWorktree, last: Boolean, callbacks: Hom
             .fillMaxWidth()
             .height(ProjectListSpec.worktreeRow)
             .testTag(ProjectListTags.WORKTREE)
+            .sessionPressDown(worktree.session.id, callbacks)
             .clickable(role = Role.Button) { callbacks.onOpen(worktree.session.id) }
             .padding(horizontal = ProjectListSpec.rowPaddingX),
         verticalAlignment = Alignment.CenterVertically,
@@ -369,6 +371,7 @@ private fun ChatRow(session: SessionRowData, bot: Boolean, archived: Boolean, ca
             .height(ProjectListSpec.botRow)
             .alpha(if (archived) ProjectListSpec.ARCHIVED_ALPHA else 1f)
             .testTag(ProjectListTags.CHAT)
+            .sessionPressDown(session.id, callbacks)
             .clickable(role = Role.Button) { callbacks.onOpen(session.id) }
             .padding(horizontal = ProjectListSpec.rowPaddingX),
         verticalAlignment = Alignment.CenterVertically,
