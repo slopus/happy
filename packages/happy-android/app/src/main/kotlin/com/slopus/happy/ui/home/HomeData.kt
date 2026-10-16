@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
@@ -22,6 +23,11 @@ data class HomeSnapshot(
     val sessions: List<Session>,
     val machines: List<Machine>,
     val projects: Map<String, Project> = emptyMap(),
+    /**
+     * useIsDataReady: a computer is known, or the first sync has finished.
+     * Until then no machines means "not read yet", not "link a computer".
+     */
+    val ready: Boolean = true,
 )
 
 /**
@@ -29,12 +35,14 @@ data class HomeSnapshot(
  * ([HappyStore.versions]), with the in-memory presence on top: online and
  * thinking come from [sessionPresence] and [machinePresence], never from the
  * stored `active` column. A record that didn't change keeps its parsed
- * object, so one chat's update doesn't re-parse every other.
+ * object, so one chat's update doesn't re-parse every other. [synced] says
+ * whether a sync has ever finished for this account.
  */
 fun homeSnapshots(
     store: HappyStore,
     sessionPresence: Flow<Map<String, SessionPresence>>,
     machinePresence: Flow<Map<String, MachinePresence>>,
+    synced: Flow<Boolean> = flowOf(true),
     io: CoroutineDispatcher = Dispatchers.IO,
 ): Flow<HomeSnapshot> {
     val records = flow {
@@ -44,10 +52,11 @@ fun homeSnapshots(
             .distinctUntilChanged()
             .collect { emit(reader.read(store)) }
     }.flowOn(io)
-    return combine(records, sessionPresence, machinePresence) { (sessions, machines), sessionLive, machineLive ->
+    return combine(records, sessionPresence, machinePresence, synced.distinctUntilChanged()) { (sessions, machines), sessionLive, machineLive, wasSynced ->
         HomeSnapshot(
             sessions = sessions.map { session -> sessionLive[session.id]?.let(session::withPresence) ?: session },
             machines = machines.map { machine -> machineLive[machine.id]?.let(machine::withPresence) ?: machine },
+            ready = wasSynced || machines.isNotEmpty(),
         )
     }
 }

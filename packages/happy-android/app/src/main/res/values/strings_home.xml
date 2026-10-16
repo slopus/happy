@@ -13,4 +13,37 @@
     <!-- ProjectHomeList.tsx -->
     <string name="home_create_workspace">Create workspace</string>
     <string name="home_create_workspace_in">Create workspace in %1$s</string>
+    <!-- machine/[id].tsx -->
+    <string name="machine_not_found">Machine not found</string>
+    <string name="machine_unknown">unknown machine</string>
+    <string name="machine_stop_daemon_confirm_title">Stop Daemon?</string>
+    <string name="machine_stop_daemon_confirm_message">You will not be able to spawn new sessions on this machine until you restart the daemon on your computer again. Your current sessions will stay alive.</string>
+    <string name="machine_daemon_stopped">Daemon Stopped</string>
+    <string name="machine_stop_daemon_failed">Failed to stop daemon. It may not be running.</string>
+    <string name="machine_rename_title">Rename Machine</string>
+    <string name="machine_rename_message">Give this machine a custom name. Leave empty to use the default hostname.</string>
+    <string name="machine_rename_placeholder">Enter machine name</string>
+    <string name="machine_renamed">Machine renamed successfully</string>
+    <string name="machine_rename_failed">Failed to rename machine</string>
+    <!-- session/[id]/info.tsx -->
+    <string name="home_info_resume_command">Resume Command</string>
+    <string name="home_info_client">Client</string>
+    <string name="home_info_model">Model</string>
+    <string name="home_info_sandbox">Sandbox</string>
+    <string name="home_info_skip_permissions">Dangerously Skip Permissions</string>
+    <string name="home_info_enabled">Enabled</string>
+    <string name="home_info_disabled">Disabled</string>
+    <string name="home_info_unknown">Unknown</string>
+    <string name="home_info_subagents">Subagents</string>
+    <string name="home_info_subagents_detail">%1$s running · %2$s queued</string>
+    <string name="home_info_workflows">Workflows</string>
+    <string name="home_info_processes">Background processes</string>
+    <string name="home_info_running">%1$s running</string>
+    <string name="home_info_tasks">Tasks</string>
+    <string name="home_info_tasks_detail">%1$s in progress · %2$s pending</string>
+    <string name="home_info_raw_json">Raw JSON (Dev Mode)</string>
+    <string name="home_info_raw_agent_state">Agent State</string>
+    <string name="home_info_raw_metadata">Metadata</string>
+    <string name="home_info_raw_status">Session Status</string>
+    <string name="home_info_raw_session">Full Session Object</string>
 </resources>
