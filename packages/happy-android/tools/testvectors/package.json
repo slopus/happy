@@ -2,9 +2,10 @@
   "name": "happy-android-testvectors",
   "private": true,
   "type": "module",
-  "description": "Generates crypto test vectors for happy-android by running happy-app's TypeScript sources.",
+  "description": "Generates test vectors for happy-android by running happy-app's TypeScript sources.",
   "scripts": {
-    "generate": "node generate.mjs"
+    "generate": "node generate.mjs",
+    "generate:send": "node send.mjs"
   },
   "dependencies": {
     "@stablelib/hex": "2.0.1",
