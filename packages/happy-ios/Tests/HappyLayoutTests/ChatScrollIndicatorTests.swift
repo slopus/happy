@@ -55,6 +55,28 @@ final class ChatScrollIndicatorTests: XCTestCase {
         XCTAssertEqual(sideways.indicatorInsets, ChatIndicatorInsets(newest: 0, oldest: 0, side: 62))
     }
 
+    /// At an accessibility text size the dock's height falls between
+    /// pixels: on the iPhone 17 Pro at AX3 the track ended 258.562 up while
+    /// the snapped dock stood 258⅔ up. Snapped, the insets meet the dock.
+    func testOnTheScreensPixelsTheInsetsMeetTheSnappedDock() {
+        let tall = ChatScreenLayout(.init(
+            size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [.inset(block(height: 60.4))], composerHeight: 70.3
+        ))
+        for scale: CGFloat in [2, 3] {
+            let dock = PixelGrid.snap(tall.dock, scale: scale)
+            let snapped = tall.indicatorInsets.snapped(scale: scale)
+            XCTAssertNotEqual(tall.indicatorInsets.newest, phone.height - dock.minY, "@\(scale)")
+            XCTAssertEqual(snapped.newest, phone.height - dock.minY, accuracy: 1e-9, "@\(scale)")
+            XCTAssertEqual(snapped.oldest, 103)
+            XCTAssertEqual(PixelGrid.round(tall.newestEdgeInset, scale: scale) * scale, (tall.newestEdgeInset * scale).rounded())
+        }
+        XCTAssertEqual(ChatIndicatorInsets(newest: 258.562, oldest: 102.9, side: 0.2).snapped(scale: 3), ChatIndicatorInsets(
+            newest: 776.0 / 3, oldest: 309.0 / 3, side: 1.0 / 3
+        ))
+        XCTAssertEqual(PixelGrid.round(225.062, scale: 2), 225)
+        XCTAssertEqual(PixelGrid.round(225.062, scale: 0), 225.062)
+    }
+
     // MARK: Where the indicator is
 
     func testAtTheNewestMessageTheIndicatorRestsOnTheDock() {

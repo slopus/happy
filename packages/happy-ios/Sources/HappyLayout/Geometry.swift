@@ -94,6 +94,13 @@ public enum PixelGrid {
         let height = rect.height > 0 ? max(maxY - minY, 1) / scale : 0
         return CGRect(x: minX / scale, y: minY / scale, width: width, height: height)
     }
+
+    /// Rounds a length to the nearest device pixel, for an inset measured
+    /// to a snapped edge, so it lands where `snap` put that edge.
+    public static func round(_ value: CGFloat, scale: CGFloat) -> CGFloat {
+        guard scale > 0, value.isFinite else { return value }
+        return (value * scale).rounded() / scale
+    }
 }
 
 extension CGRect {

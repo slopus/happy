@@ -20,6 +20,18 @@ public struct ChatIndicatorInsets: Equatable, Sendable {
         self.oldest = max(0, oldest)
         self.side = max(0, side)
     }
+
+    /// These insets on the screen's pixels. The header and the dock are
+    /// snapped there (`PixelGrid.snap`); at a large text size the dock's
+    /// height isn't, and unsnapped insets would leave the track a fraction
+    /// of a pixel off the dock.
+    public func snapped(scale: CGFloat) -> ChatIndicatorInsets {
+        ChatIndicatorInsets(
+            newest: PixelGrid.round(newest, scale: scale),
+            oldest: PixelGrid.round(oldest, scale: scale),
+            side: PixelGrid.round(side, scale: scale)
+        )
+    }
 }
 
 /// UIKit's vertical scroll indicator over the chat's flipped list: where it
