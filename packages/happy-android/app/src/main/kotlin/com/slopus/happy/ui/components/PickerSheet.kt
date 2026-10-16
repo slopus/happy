@@ -119,9 +119,13 @@ fun PickerSheetPanel(
     }
 }
 
-/** A group heading (13 semibold secondary, 24 in, 12 above, 4 below); a hairline 8 above every group after the first. */
+/**
+ * A group heading (13 semibold secondary, 24 in, 12 above, 4 below), after
+ * an optional [icon] 8 before it (a provider's mark); a hairline 8 above
+ * every group after the first.
+ */
 @Composable
-fun PickerSheetSection(key: String, title: String?, separated: Boolean) {
+fun PickerSheetSection(key: String, title: String?, separated: Boolean, icon: (@Composable () -> Unit)? = null) {
     val colors = HappyTheme.colors
     if (separated) {
         Box(
@@ -134,25 +138,33 @@ fun PickerSheetSection(key: String, title: String?, separated: Boolean) {
         )
     }
     if (title != null) {
-        Text(
-            title,
-            style = PickerSheetSpec.sectionTitle,
-            color = colors.textSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Row(
             modifier = Modifier
                 .testTag(PickerSheetTags.section(key))
                 .padding(start = PickerSheetSpec.rowInset, end = PickerSheetSpec.rowInset, top = 12.dp, bottom = 4.dp)
                 .semantics { heading() },
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            icon?.invoke()
+            Text(
+                title,
+                style = PickerSheetSpec.sectionTitle,
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+        }
     }
 }
 
 /**
  * PickerSheetOption: the whole row (at least 56, 24 in, 8 vertical) is the
  * target. A 20 radio (2 border, a 10 dot when chosen) or, for an action, a
- * 20 add glyph; 16 on, the 16 label and an optional 13 second line.
- * Disabled rows are drawn at 45%.
+ * 20 add glyph; 16 on, the 16 label (after an optional 14 secondary
+ * [labelIcon], 6 apart) and an optional 13 second line. Disabled rows are
+ * drawn at 45%.
  */
 @Composable
 fun PickerSheetOption(
@@ -163,6 +175,7 @@ fun PickerSheetOption(
     onClick: () -> Unit,
     disabled: Boolean = false,
     action: Boolean = false,
+    labelIcon: Ionicon? = null,
 ) {
     val colors = HappyTheme.colors
     val chat = ChatTheme.colors
@@ -191,7 +204,14 @@ fun PickerSheetOption(
             }
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(label, style = PickerSheetSpec.label, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (labelIcon != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(labelIcon, 14.dp, colors.textSecondary)
+                    Text(label, style = PickerSheetSpec.label, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            } else {
+                Text(label, style = PickerSheetSpec.label, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             if (description != null) {
                 Text(
                     description,

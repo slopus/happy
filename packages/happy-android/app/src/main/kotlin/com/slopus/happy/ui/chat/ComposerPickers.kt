@@ -62,12 +62,14 @@ import com.slopus.happy.R
 import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.isRig
+import com.slopus.happy.model.providerIconKind
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.model.settings.ModeOptions
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.PickerSheetOption
+import com.slopus.happy.ui.components.ProviderIcon
 import com.slopus.happy.ui.components.PickerSheetPanel
 import com.slopus.happy.ui.components.PickerSheetSection
 import com.slopus.happy.ui.theme.HappyTheme
@@ -102,6 +104,7 @@ object ComposerPickerSpec {
 
     const val sheetMaxHeightFraction = 0.7f
     val scrim = Color(0x52000000)
+    val sectionIcon = 16.dp
     val empty = happyTextStyle(fontSize = 14)
     val emptyPaddingHorizontal = 24.dp
     val emptyPaddingVertical = 12.dp
@@ -123,6 +126,14 @@ internal fun SessionMetadata?.sandboxEnabled(): Boolean = when (val sandbox = th
     else -> true
 }
 
+/** AgentInput.tsx `permissionKindIcon` */
+internal fun permissionKindIcon(kind: String): Ionicon = when (kind) {
+    "read-only" -> Ionicon.LockClosedOutline
+    "safe-yolo" -> Ionicon.ShieldCheckmarkOutline
+    "yolo" -> Ionicon.WarningOutline
+    else -> Ionicon.FolderOpenOutline
+}
+
 /**
  * The compact composer's permission, model and effort chips (AgentInput.tsx
  * `mobileActionMiddle`, Android's popup pickers), filling the action row's
@@ -134,7 +145,8 @@ internal fun SessionMetadata?.sandboxEnabled(): Boolean = when (val sandbox = th
  * 14 textSecondary; then the effort level (or "EFFORT") in a 64 chip padded
  * 2 at the start; effort only when the model has levels and it can change.
  * A chip with nothing to pick is drawn at 0.58. Each chip opens its
- * [PickerSheet], after dropping the keyboard.
+ * [PickerSheet], after dropping the keyboard: permission rows carry their
+ * kind's glyph, model groups their provider's icon.
  */
 @Composable
 fun ComposerModeChips(
@@ -281,6 +293,7 @@ private fun ComposerPickerOptions(
                     description = mode.description,
                     selected = selectedKey == mode.key,
                     disabled = !modes.canChangePermission || mode.disabled,
+                    labelIcon = mode.semanticKind?.let(::permissionKindIcon),
                     onClick = { onSelect(AgentModeField.PERMISSION_MODE, mode) },
                 )
             }
@@ -297,7 +310,9 @@ private fun ComposerPickerOptions(
                 )
             }
             ModeOptions.groupModelsByProvider(modes.availableModels).forEachIndexed { index, group ->
-                PickerSheetSection(group.key, group.title, separated = index > 0)
+                PickerSheetSection(group.key, group.title, separated = index > 0) {
+                    ProviderIcon(providerIconKind(group.models.firstOrNull()?.providerKind), size = ComposerPickerSpec.sectionIcon)
+                }
                 for (model in group.models) {
                     PickerSheetOption(
                         key = model.key,
