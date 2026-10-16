@@ -150,6 +150,26 @@ class MetadataParsingTest {
         assertEquals(AgentAttention(permissionRequests = 1, pendingCommunications = 2), attention)
     }
 
+    /**
+     * agentCommunications.ts `readQuestions`: a form waits on the user only if
+     * a question can be answered, by an option or by writing one's own.
+     * `allowCustom: false` with no options leaves nothing to answer.
+     */
+    @Test
+    fun agentAttentionSkipsFormsWithNothingToAnswer() {
+        val closed = AgentAttention.parse(
+            """{"communications":{
+                  "q1":{"kind":"form","form":{"questions":[{"id":"a","header":"h","question":"Which?","allowCustom":false}]}}}}""",
+        )
+        assertEquals(AgentAttention.None, closed)
+        val withOptions = AgentAttention.parse(
+            """{"communications":{
+                  "q1":{"kind":"form","form":{"questions":[{"id":"a","header":"h","question":"Which?","allowCustom":false,
+                    "options":[{"label":"Yes"}]}]}}}}""",
+        )
+        assertEquals(AgentAttention(permissionRequests = 0, pendingCommunications = 1), withOptions)
+    }
+
     @Test
     fun sessionStatePrecedence() {
         val asking = AgentAttention(0, 1)

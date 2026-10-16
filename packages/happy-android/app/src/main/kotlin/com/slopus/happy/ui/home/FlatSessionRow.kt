@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -144,7 +148,26 @@ class HomeListCallbacks(
     val onOpenMachine: (machineId: String) -> Unit,
     val onCreateWorkspace: (WorkspaceOrigin) -> Unit,
     val onProjectMenu: (projectName: String, origin: WorkspaceOrigin) -> Unit,
+    /** A finger landed on a session's row, before it is a tap (useSessionPressHandlers' onPressIn). */
+    val onPressDown: (sessionId: String) -> Unit = {},
 )
+
+/**
+ * Reports a finger landing on a session's row to [HomeListCallbacks.onPressDown],
+ * so its chat starts loading before the tap completes. It only watches: the
+ * tap, long press, scroll and swipe still belong to the row's own handlers.
+ */
+fun Modifier.sessionPressDown(sessionId: String?, callbacks: HomeListCallbacks): Modifier =
+    if (sessionId == null) {
+        this
+    } else {
+        pointerInput(sessionId, callbacks) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                callbacks.onPressDown(sessionId)
+            }
+        }
+    }
 
 /**
  * One session in the flat home list: 60 avatar centred in a row padded 16
@@ -197,6 +220,7 @@ fun FlatSessionRow(
                 .testTag(FlatRowTags.ROW)
                 .background(if (selected) colors.surfaceSelected else flatListBackground(colors))
                 .then(if (selected) Modifier.semantics { this.selected = true } else Modifier)
+                .sessionPressDown(session.id, callbacks)
                 .combinedClickable(
                     onClick = { callbacks.onOpen(session.id) },
                     onLongClick = { callbacks.onMenu(session.id) },

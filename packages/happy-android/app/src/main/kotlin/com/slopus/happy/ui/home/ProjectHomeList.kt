@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -48,9 +49,10 @@ import com.slopus.happy.model.VisibleGitChanges
 import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.WorktreeToggle
 import com.slopus.happy.model.compactCount
-import com.slopus.happy.model.resolveFlatRowPresentation
 import com.slopus.happy.model.projectGitChanges
+import com.slopus.happy.model.resolveFlatRowPresentation
 import com.slopus.happy.model.workspaceOrigin
+import com.slopus.happy.ui.chat.light
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
@@ -221,6 +223,7 @@ private fun ProjectCardRow(project: ProjectHomeEntry, callbacks: HomeListCallbac
             .fillMaxWidth()
             .height(ProjectListSpec.projectRow)
             .testTag(ProjectListTags.PROJECT)
+            .sessionPressDown(session?.id, callbacks)
             .combinedClickable(
                 enabled = session != null || origin != null,
                 role = Role.Button,
@@ -300,6 +303,7 @@ private fun WorktreeRow(worktree: ProjectWorktree, last: Boolean, callbacks: Hom
             .fillMaxWidth()
             .height(ProjectListSpec.worktreeRow)
             .testTag(ProjectListTags.WORKTREE)
+            .sessionPressDown(worktree.session.id, callbacks)
             .clickable(role = Role.Button) { callbacks.onOpen(worktree.session.id) }
             .padding(horizontal = ProjectListSpec.rowPaddingX),
         verticalAlignment = Alignment.CenterVertically,
@@ -323,16 +327,22 @@ private fun WorktreeToggleRow(toggle: WorktreeToggle, callbacks: HomeListCallbac
     val colors = HappyTheme.colors
     val label = if (toggle.expanded) stringResource(R.string.sidebar_show_fewer_workspaces)
     else stringResource(R.string.sidebar_show_all_workspaces, toggle.worktreeCount)
+    val haptics = LocalHapticFeedback.current
+    // ProjectHomeList.tsx's toggle: a light tick, then the list changes.
+    val flip = {
+        haptics.light()
+        callbacks.onToggleProject(toggle.projectId)
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(ProjectListSpec.worktreeRow)
             .testTag(ProjectListTags.TOGGLE)
-            .clickable(role = Role.Button) { callbacks.onToggleProject(toggle.projectId) }
+            .clickable(role = Role.Button, onClick = flip)
             .semantics {
                 // accessibilityState={{ expanded }}
-                if (toggle.expanded) collapse { callbacks.onToggleProject(toggle.projectId); true }
-                else expand { callbacks.onToggleProject(toggle.projectId); true }
+                if (toggle.expanded) collapse { flip(); true }
+                else expand { flip(); true }
             }
             .padding(horizontal = ProjectListSpec.rowPaddingX),
         verticalAlignment = Alignment.CenterVertically,
@@ -361,6 +371,7 @@ private fun ChatRow(session: SessionRowData, bot: Boolean, archived: Boolean, ca
             .height(ProjectListSpec.botRow)
             .alpha(if (archived) ProjectListSpec.ARCHIVED_ALPHA else 1f)
             .testTag(ProjectListTags.CHAT)
+            .sessionPressDown(session.id, callbacks)
             .clickable(role = Role.Button) { callbacks.onOpen(session.id) }
             .padding(horizontal = ProjectListSpec.rowPaddingX),
         verticalAlignment = Alignment.CenterVertically,

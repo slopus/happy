@@ -125,7 +125,7 @@ class AccountSync(
 
     // sync.ts applyMessages: the switch lands in the mirror and in metadata,
     // so other devices see plan mode and the next metadata update keeps it.
-    private val planMode = PlanModeFollower { sessionId ->
+    private val planMode = PlanModeFollower(permissionMode = { composer.mirrors.value[it]?.permissionMode }) { sessionId ->
         composer.setAgentModes(sessionId, mapOf(AgentModeField.PERMISSION_MODE to "plan"))
     }
 

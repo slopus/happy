@@ -331,6 +331,21 @@ class HomeServices private constructor(private val graph: AppGraph) {
         NewSessionServices(drafts, snapshots, settings, machineActions, starter, newSessionLabels(resources), resources::getString, scope)
     }.also { newSessionServices = it }
 
+    private var reviewPrompter: ReviewPrompter? = null
+    private var playStoreReview: PlayStoreReview? = null
+
+    /** requestReview.ts: its stamps in the app's own preferences, its answer in the synced settings. */
+    @Synchronized
+    fun review(context: Context): Pair<ReviewPrompter, PlayStoreReview> {
+        val prompter = reviewPrompter ?: ReviewPrompter(
+            answered = { settings.value.let { it.reviewPromptAnswered to it.reviewPromptLikedApp } },
+            answer = { liked -> graph.settings.change { it.copy(reviewPromptAnswered = true, reviewPromptLikedApp = liked) } },
+            stamps = PrefsReviewStamps(context.getSharedPreferences(PrefsReviewStamps.PREFS_NAME, Context.MODE_PRIVATE)),
+        ).also { reviewPrompter = it }
+        val store = playStoreReview ?: PlayStoreReview(context.applicationContext).also { playStoreReview = it }
+        return prompter to store
+    }
+
     private var botFaces: BotFaces? = null
 
     /** The bundled bot faces, read from the assets once. */
@@ -653,6 +668,24 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
             if (withDock) dockFocused = true else navigation.onNewSession()
         }
     }
+    // SessionsList's requestReview(), once its list has sessions.
+    val reviewable = asksForReview(state, phone = withDock)
+    val reviewStrings = ReviewStrings(
+        title = stringResource(R.string.review_enjoying_app),
+        message = stringResource(R.string.review_feedback_prompt),
+        yes = stringResource(R.string.review_yes_i_love_it),
+        no = stringResource(R.string.review_not_really),
+    )
+    LaunchedEffect(reviewable) {
+        if (!reviewable) return@LaunchedEffect
+        val activity = context.findActivity() ?: return@LaunchedEffect
+        val (prompter, store) = services.review(context.applicationContext)
+        prompter.run(
+            isAvailable = store::isAvailable,
+            ask = { confirm(showAlert, reviewStrings.title, reviewStrings.message, confirmText = reviewStrings.yes, cancelText = reviewStrings.no) },
+            review = { store.request(activity) },
+        )
+    }
     val createWorkspaceLabel = stringResource(R.string.home_create_workspace)
     val cancelLabel = stringResource(R.string.common_cancel)
 
@@ -670,6 +703,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
             onProjectMenu = { name, origin ->
                 alert = Alert(name, null, listOf(AlertButton(cancelLabel), AlertButton(createWorkspaceLabel) { onCreateWorkspace(origin) }))
             },
+            onPressDown = { id -> graph.account.value?.messages?.preload(id) },
         )
     }
     val actions = remember(navigation, uriHandler) {
@@ -765,11 +799,16 @@ internal fun rememberSessionMenus(
             ResumeBlock.MachineOffline to stringResource(R.string.session_info_resume_session_machine_offline),
         ),
         metadataCopied = stringResource(R.string.session_info_metadata_copied),
+        metadataCopyFailed = stringResource(R.string.session_info_failed_to_copy_metadata),
         success = stringResource(R.string.common_success),
         resumeTexts = rememberResumeTexts(),
     )
     return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, onDuplicate, strings, context, scope, showAlert, onBeforeArchive) {
         fun error(message: String) = showAlert(Alert(strings.error, message, listOf(AlertButton(strings.ok))))
+
+        // copySessionMetadataToClipboard's answer either way.
+        fun copied(ok: Boolean) =
+            if (ok) showAlert(Alert(strings.success, strings.metadataCopied, listOf(AlertButton(strings.ok)))) else error(strings.metadataCopyFailed)
 
         // Resume and fork answer like a spawn; anything but a session is a failure here.
         fun spawned(result: SpawnSessionResult, fallback: String) = when (result) {
@@ -811,15 +850,13 @@ internal fun rememberSessionMenus(
                         SessionActionId.Duplicate -> AlertButton(strings.duplicate) { onDuplicate(session) }
                         SessionActionId.CopyMetadata -> AlertButton(strings.copyMetadata) {
                             val metadata = session.metadata ?: return@AlertButton error(strings.error)
-                            copyToClipboard(context, prettyJson.encodeToString(JsonObject.serializer(), metadata.raw))
-                            showAlert(Alert(strings.success, strings.metadataCopied, listOf(AlertButton(strings.ok))))
+                            copied(copyToClipboard(context, prettyJson.encodeToString(JsonObject.serializer(), metadata.raw)))
                         }
                         SessionActionId.CopyMetadataAndLogs -> AlertButton(strings.copyMetadata + " & Client Logs") {
                             val metadata = session.metadata ?: return@AlertButton error(strings.error)
                             scope.launch {
                                 val logs = withContext(Dispatchers.IO) { ClientLogs.read() }
-                                copyToClipboard(context, ClientLogs.metadataAndLogs(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), logs))
-                                showAlert(Alert(strings.success, strings.metadataCopied, listOf(AlertButton(strings.ok))))
+                                copied(copyToClipboard(context, ClientLogs.metadataAndLogs(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), logs)))
                             }
                         }
                         SessionActionId.Archive -> AlertButton(strings.archive, destructive = true) { menus.archive(session.id) }
@@ -858,6 +895,7 @@ private data class SessionMenuStrings(
     val resumeFailed: String,
     val blocks: Map<ResumeBlock, String>,
     val metadataCopied: String,
+    val metadataCopyFailed: String,
     val success: String,
     val resumeTexts: ResumeTexts,
 )
@@ -865,7 +903,11 @@ private data class SessionMenuStrings(
 /** JSON.stringify(value, null, 2). */
 private val prettyJson = Json(HappyJson) { prettyPrint = true; prettyPrintIndent = "  " }
 
-internal fun copyToClipboard(context: Context, text: String) {
+/** Clipboard.setStringAsync: false when the system refuses the clip (too large, or not allowed). */
+internal fun copyToClipboard(context: Context, text: String): Boolean = try {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText("Happy", text))
+    true
+} catch (_: RuntimeException) {
+    false
 }

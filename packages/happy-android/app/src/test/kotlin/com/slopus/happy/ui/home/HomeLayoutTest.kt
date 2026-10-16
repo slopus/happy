@@ -3,6 +3,13 @@ package com.slopus.happy.ui.home
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import com.slopus.happy.model.WorktreeToggle
+import com.slopus.happy.model.ProjectHomeRow
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -68,7 +75,7 @@ import java.time.ZoneOffset
 
 /**
  * The phone home screen against happy-app's layout:
- * - MainView's header: logo 19 in a 32 box; "Happy" 16/20 centred; the
+ * - MainView's header: logo 19 in a 32 box; "Sessions" (`tabs.sessions`) 16/20 centred; the
  *   status line (11/16, 6 dot) hangs 2 into the title's bottom while the
  *   socket isn't connected; the filter and settings buttons are 44 squares
  *   split by a 22-high hairline, the gear 16 from the edge.
@@ -297,7 +304,7 @@ class HomeLayoutTest {
 
     /**
      * TalkBack over Home, as MainView, FlatSessionRow and SessionsList label
-     * it: "Happy" is a header; Filter and Settings are named buttons; an
+     * it: "Sessions" is a header; Filter and Settings are named buttons; an
      * unread row's top-right reads "new results" and not the stamp hidden
      * under the dot; the archive toggle is a button, selected while the
      * archive shows. Grouped by project, every row is a button.
@@ -305,7 +312,7 @@ class HomeLayoutTest {
     @Test
     fun homeReadsForTalkBack() {
         show(state(listOf(cli("a"), cli("gone", noon, active = false)), hidden = false, unread = setOf("a")))
-        rule.onNode(hasText("Happy") and isHeading(), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("Sessions") and isHeading(), useUnmergedTree = true).assertExists()
         rule.onNode(hasContentDescription("Filter") and hasRole(Role.Button)).assertExists()
         rule.onNode(hasContentDescription("Settings") and hasRole(Role.Button)).assertExists()
         rule.onAllNodesWithTag(FlatRowTags.TOP_RIGHT, useUnmergedTree = true)[0].assert(hasContentDescription("new results"))
@@ -327,6 +334,36 @@ class HomeLayoutTest {
         rule.onNodeWithTag(ProjectListTags.WORKTREE).assert(hasRole(Role.Button) and hasText("Gdansk"))
         rule.onNode(hasContentDescription("Create workspace in happy", substring = true) and hasRole(Role.Button)).assertExists()
         rule.assertActionsLabelled()
+    }
+
+    /**
+     * ProjectHomeList.tsx's toggle: `hapticsLight()` on every flip, from a
+     * tap or from TalkBack's expand, before the project's worktrees change.
+     */
+    @Test
+    fun theWorktreeToggleTicksLightly() {
+        val ticks = mutableListOf<HapticFeedbackType>()
+        val toggled = mutableListOf<String>()
+        val haptics = object : HapticFeedback {
+            override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {
+                ticks += hapticFeedbackType
+            }
+        }
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalHapticFeedback provides haptics) {
+                ProjectHomeRowContent(
+                    ProjectHomeRow.Toggle(WorktreeToggle("p1", worktreeCount = 5, hiddenCount = 2, expanded = false, unread = false, working = false, blocked = false)),
+                    HomeListCallbacks(
+                        onOpen = {}, onMenu = {}, onArchive = {}, onSetArchiveHidden = {}, onToggleProject = { toggled += it },
+                        onOpenMachine = {}, onCreateWorkspace = {}, onProjectMenu = { _, _ -> },
+                    ),
+                )
+            }
+        }
+        rule.node(ProjectListTags.TOGGLE).performClick()
+        rule.node(ProjectListTags.TOGGLE).performSemanticsAction(SemanticsActions.Expand)
+        assertEquals(listOf("p1", "p1"), toggled)
+        assertEquals(listOf(HapticFeedbackType.ContextClick, HapticFeedbackType.ContextClick), ticks)
     }
 
     @Test

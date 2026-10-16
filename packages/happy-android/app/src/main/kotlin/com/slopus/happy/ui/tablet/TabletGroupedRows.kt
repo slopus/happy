@@ -68,6 +68,7 @@ import com.slopus.happy.ui.home.OfflineBanner
 import com.slopus.happy.ui.home.SwipeToArchive
 import com.slopus.happy.ui.home.gitAddedColor
 import com.slopus.happy.ui.home.gitRemovedColor
+import com.slopus.happy.ui.home.sessionPressDown
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -423,6 +424,7 @@ private fun CompactSessionRow(
                 .testTag(TabletGroupedTags.COMPACT_ROW)
                 .background(if (selected) colors.surfaceSelected else colors.surface)
                 .then(if (selected) Modifier.semantics { this.selected = true } else Modifier)
+                .sessionPressDown(session.id, callbacks)
                 .combinedClickable(onClick = { callbacks.onOpen(session.id) }, onLongClick = { callbacks.onMenu(session.id) }),
         ) {
             Row(
@@ -514,7 +516,8 @@ private fun ArchivedSessionCard(
             .background(if (selected) colors.surfaceSelected else colors.surface)
             .border(hairline(), colors.divider, shape)
             .then(if (selected) Modifier.semantics { this.selected = true } else Modifier)
-            .combinedClickable(onClick = { callbacks.onOpen(session.id) }, onLongClick = { callbacks.onMenu(session.id) })
+            .sessionPressDown(session.id, callbacks)
+                .combinedClickable(onClick = { callbacks.onOpen(session.id) }, onLongClick = { callbacks.onMenu(session.id) })
             .padding(horizontal = TabletGroupedSpec.itemPaddingHorizontal),
         verticalAlignment = Alignment.CenterVertically,
     ) {
