@@ -68,7 +68,12 @@ public final class HomeViewController: UIViewController {
         view.addSubview(dockView)
         view.addSubview(header)
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
-            input: HomeDerivation.Input(expandedProjects: context.account.localSettings.expandedProjects, includesDock: true),
+            input: HomeDerivation.Input(
+                expandedProjects: context.account.localSettings.expandedProjects,
+                includesDock: true,
+                // In the screens' language; a new one builds home again.
+                unknownMachine: localized("status.unknown", "unknown")
+            ),
             state: HomeDerivation.Applied(),
             derive: { [clockWake] in HomeDerivation.derive($0, applied: $1, wake: clockWake) },
             apply: { [weak self] update in

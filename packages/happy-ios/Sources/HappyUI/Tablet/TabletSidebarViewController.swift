@@ -91,7 +91,12 @@ final class TabletSidebarViewController: UIViewController {
             self.applyBorder()
         }
         let pipeline = ApplyPipeline<TabletSidebarViewInput, TabletSidebarViewState, TabletSidebarViewUpdate>(
-            input: TabletSidebarViewInput(text: TextEnvironment(traitCollection)),
+            input: TabletSidebarViewInput(
+                // In the screens' language; a new one builds the sidebar
+                // again.
+                feeds: TabletSidebarInput(unknownMachine: localized("status.unknown", "unknown")),
+                text: TextEnvironment(traitCollection)
+            ),
             state: TabletSidebarViewState(),
             derive: { [clockWake] in TabletGroupedHeights.derive($0, applied: $1, wake: clockWake) },
             apply: { [weak self] update in

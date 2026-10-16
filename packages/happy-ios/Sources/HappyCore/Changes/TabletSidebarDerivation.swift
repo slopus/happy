@@ -34,13 +34,21 @@ public struct TabletSidebarFrame: Equatable, Sendable {
         snapshot: HomeSnapshot,
         clock: SessionList.Clock = SessionList.Clock(),
         git: [GitCheckoutKey: GitHeadingStatus] = [:],
-        draftSessionIds: Set<String> = []
+        draftSessionIds: Set<String> = [],
+        unknownMachine: String = ProjectHomeData.unknownMachineText
     ) {
         switch state.content {
         case .loading: content = .loading
         case .empty(let variant): content = .empty(variant)
         case .list(let list, let offline) where list.grouping == .project:
-            content = .grouped(TabletGroupedList(snapshot, offline: offline, clock: clock, git: git, draftSessionIds: draftSessionIds))
+            content = .grouped(TabletGroupedList(
+                snapshot,
+                offline: offline,
+                clock: clock,
+                git: git,
+                draftSessionIds: draftSessionIds,
+                unknownMachine: unknownMachine
+            ))
         case .list(let list, let offline):
             content = .list(HomeListModel(list, offline: offline, expandedProjects: [], draftSessionIds: draftSessionIds))
         }
@@ -66,11 +74,20 @@ public struct TabletSidebarInput: Sendable {
     public var snapshot: HomeSnapshot?
     public var git: [GitCheckoutKey: GitHeadingStatus]
     public var draftSessionIds: Set<String>
+    /// `status.unknown` in the screens' language, read on the main thread
+    /// when the sidebar is built; a new language builds it again.
+    public var unknownMachine: String
 
-    public init(snapshot: HomeSnapshot? = nil, git: [GitCheckoutKey: GitHeadingStatus] = [:], draftSessionIds: Set<String> = []) {
+    public init(
+        snapshot: HomeSnapshot? = nil,
+        git: [GitCheckoutKey: GitHeadingStatus] = [:],
+        draftSessionIds: Set<String> = [],
+        unknownMachine: String = ProjectHomeData.unknownMachineText
+    ) {
         self.snapshot = snapshot
         self.git = git
         self.draftSessionIds = draftSessionIds
+        self.unknownMachine = unknownMachine
     }
 }
 
@@ -111,7 +128,7 @@ public enum TabletSidebarDerivation {
     }
 
     public static func derive(_ input: TabletSidebarInput, applied: Applied, clock: SessionList.Clock? = nil) -> (output: TabletSidebarUpdate, state: Applied)? {
-        derive(input.snapshot, git: input.git, applied: applied, clock: clock, draftSessionIds: input.draftSessionIds)
+        derive(input.snapshot, git: input.git, applied: applied, clock: clock, draftSessionIds: input.draftSessionIds, unknownMachine: input.unknownMachine)
     }
 
     /// `derive` at one instant (`clock`, or now), with `wake` set for the
@@ -136,11 +153,19 @@ public enum TabletSidebarDerivation {
         git: [GitCheckoutKey: GitHeadingStatus] = [:],
         applied: Applied,
         clock: SessionList.Clock? = nil,
-        draftSessionIds: Set<String> = []
+        draftSessionIds: Set<String> = [],
+        unknownMachine: String = ProjectHomeData.unknownMachineText
     ) -> (output: TabletSidebarUpdate, state: Applied)? {
         guard let snapshot else { return nil }
         let clock = clock ?? SessionList.Clock()
-        let frame = TabletSidebarFrame(TabletSidebarState(snapshot, clock: clock), snapshot: snapshot, clock: clock, git: git, draftSessionIds: draftSessionIds)
+        let frame = TabletSidebarFrame(
+            TabletSidebarState(snapshot, clock: clock),
+            snapshot: snapshot,
+            clock: clock,
+            git: git,
+            draftSessionIds: draftSessionIds,
+            unknownMachine: unknownMachine
+        )
         guard frame != applied.frame else { return nil }
         var state = applied
         state.frame = frame

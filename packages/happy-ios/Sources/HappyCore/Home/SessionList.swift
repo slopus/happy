@@ -145,7 +145,9 @@ public struct SessionList: Equatable, Sendable {
     /// (SessionsListWrapper.tsx hands it to ProjectHomeList).
     public var projects: ProjectHomeData?
 
-    public init(_ snapshot: HomeSnapshot, clock: Clock = Clock()) {
+    /// `unknownMachine` names the project list's section of chats that name
+    /// no computer (`ProjectHomeData`).
+    public init(_ snapshot: HomeSnapshot, clock: Clock = Clock(), unknownMachine: String = ProjectHomeData.unknownMachineText) {
         let settings = AccountSettings(snapshot.settings)
         let machines = Dictionary(snapshot.machines.machines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let projects = Dictionary(snapshot.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -211,7 +213,7 @@ public struct SessionList: Equatable, Sendable {
         self.avatarStyle = settings.avatarStyle
         self.avatarMonochrome = settings.avatarMonochrome
         self.grouping = settings.sessionListGrouping
-        self.projects = settings.sessionListGrouping == .project ? ProjectHomeData(snapshot, clock: clock) : nil
+        self.projects = settings.sessionListGrouping == .project ? ProjectHomeData(snapshot, clock: clock, unknownMachine: unknownMachine) : nil
     }
 
     /// Newest activity first; ties in id order so the list never shuffles.
