@@ -31,6 +31,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -196,9 +199,11 @@ fun LazyListScope.diffFileItems(
     if (body.hiddenCount > 0) item(key = "$keyPrefix:showMore") { Box(rowModifier) { ShowMoreBar(body, palette) } }
 }
 
-/** Laid out but invisible while the syntax gate holds. */
+/** Laid out but invisible, and unread by TalkBack, while the syntax gate holds. */
 private fun Modifier.syntaxGate(pending: Boolean) =
-    alpha(if (pending) 0f else 1f).testTag(if (pending) DiffTags.SYNTAX_PENDING else DiffTags.SYNTAX_READY)
+    alpha(if (pending) 0f else 1f)
+        .then(if (pending) Modifier.semantics { hideFromAccessibility() } else Modifier)
+        .testTag(if (pending) DiffTags.SYNTAX_PENDING else DiffTags.SYNTAX_READY)
 
 /** A couple of columns of slack keeps the last glyph off the right edge. */
 private fun codeWidth(file: DiffFile, metrics: DiffMetrics): Dp = ceil((file.maxColumns + 2) * metrics.charWidth.value).dp + 8.dp
@@ -212,7 +217,7 @@ private fun ShowMoreBar(body: DiffFileBody, palette: DiffPalette) {
                 .fillMaxWidth()
                 .background(palette.hunkBg)
                 .testTag(DiffTags.SHOW_MORE)
-                .clickable(enabled = !body.expanding) { body.expand() }
+                .clickable(enabled = !body.expanding, role = Role.Button) { body.expand() }
                 .padding(vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
@@ -324,7 +329,7 @@ private fun DiffRowCode(row: DiffRow, palette: DiffPalette, metrics: DiffMetrics
                     .height(metrics.lineHeight)
                     .background(palette.hunkBg)
                     .testTag(DiffTags.HUNK)
-                    .then(if (canExpand) Modifier.clickable { onExpandContext() } else Modifier),
+                    .then(if (canExpand) Modifier.clickable(role = Role.Button) { onExpandContext() } else Modifier),
             )
         }
         is DiffRow.Message -> Text(
@@ -400,7 +405,7 @@ private fun HunkBar(row: DiffRow.Hunk, palette: DiffPalette, metrics: DiffMetric
             .height(metrics.lineHeight)
             .background(palette.hunkBg)
             .testTag(DiffTags.HUNK)
-            .then(if (canExpand) Modifier.clickable { onExpandContext() } else Modifier)
+            .then(if (canExpand) Modifier.clickable(role = Role.Button) { onExpandContext() } else Modifier)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),

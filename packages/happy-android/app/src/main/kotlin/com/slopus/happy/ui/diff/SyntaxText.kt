@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -31,7 +33,8 @@ val DarkSyntaxColors: Map<SpanKind, Color> = mapOf(
 /**
  * SyntaxText.tsx: [code] coloured by Prism through the same queue, cache
  * and one-second reveal gate as diffs ([LocalDiffSyntax]). Plain runs keep
- * [color]; classified ones take [colors]. Invisible while pending.
+ * [color]; classified ones take [colors]. Invisible, and hidden from
+ * TalkBack, while pending.
  */
 @Composable
 fun SyntaxText(
@@ -65,6 +68,9 @@ fun SyntaxText(
         text,
         style = style,
         color = color,
-        modifier = modifier.alpha(if (pending) 0f else 1f).testTag(if (pending) DiffTags.SYNTAX_PENDING else DiffTags.SYNTAX_READY),
+        modifier = modifier
+            .alpha(if (pending) 0f else 1f)
+            .then(if (pending) Modifier.semantics { hideFromAccessibility() } else Modifier)
+            .testTag(if (pending) DiffTags.SYNTAX_PENDING else DiffTags.SYNTAX_READY),
     )
 }

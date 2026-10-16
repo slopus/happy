@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -25,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
 import com.slopus.happy.diff.DiffBuilder
 import com.slopus.happy.diff.DiffFile
 import com.slopus.happy.diff.DiffSource
@@ -185,6 +189,23 @@ class DiffViewLayoutTest {
         assertTrue("keyword coloured: ${text.spanStyles}", text.spanStyles.any { it.item.color == keyword && text.substring(it.start, it.end) == "val" })
         // Word emphasis: the changed digit sits on wordDel.
         assertTrue("word emphasis", text.spanStyles.any { it.item.background == Color(0xFFFFC1C0) })
+    }
+
+    /** DiffFileView: rows held back by the syntax gate can't be reached by a screen reader either. */
+    @Test
+    fun pendingRowsAreHiddenFromTalkBack() {
+        val stalled = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = Unit
+        }
+        rule.mainClock.autoAdvance = false
+        show(syntax = SyntaxService(stalled)) { DiffFileView(file("val a = 1\n", "val a = 2\n", path = "c.kt")) }
+        rule.mainClock.advanceTimeByFrame()
+        val pending = rule.onAllNodesWithTag(DiffTags.SYNTAX_PENDING, useUnmergedTree = true)
+        assertTrue("held back", pending.fetchSemanticsNodes().isNotEmpty())
+        pending[0].assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.HideFromAccessibility))
+        rule.mainClock.advanceTimeBy(1_100)
+        rule.onAllNodesWithTag(DiffTags.SYNTAX_READY, useUnmergedTree = true)[0]
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.HideFromAccessibility))
     }
 
     @Test

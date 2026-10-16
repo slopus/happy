@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.diff.DiffDocument
@@ -198,7 +199,7 @@ fun DiffFilesList(
                         width
                             .background(tint)
                             .testTag(DiffTags.SIZE_HINT)
-                            .clickable { overrides[item.path] = false }
+                            .clickable(role = Role.Button) { overrides[item.path] = false }
                             .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center,
                     ) {

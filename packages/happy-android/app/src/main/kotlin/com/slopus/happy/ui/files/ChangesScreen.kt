@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -147,7 +148,7 @@ private fun ChangesMessage(message: String, onRetry: (() -> Unit)? = null) {
                 stringResource(R.string.common_retry),
                 style = retryStyle,
                 color = colors.text,
-                modifier = Modifier.padding(top = 8.dp).testTag(ChangesTags.RETRY).clickable(onClick = onRetry).padding(12.dp),
+                modifier = Modifier.padding(top = 8.dp).testTag(ChangesTags.RETRY).clickable(role = Role.Button, onClick = onRetry).padding(12.dp),
             )
         }
     }

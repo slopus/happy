@@ -13,6 +13,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.collapse
+import androidx.compose.ui.semantics.expand
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -68,7 +72,15 @@ fun DiffFileHeader(
         modifier = modifier
             .fillMaxWidth()
             .testTag(DiffTags.HEADER)
-            .then(if (onToggle != null) Modifier.clickable(onClick = onToggle) else Modifier)
+            .then(
+                if (onToggle != null) {
+                    Modifier
+                        .clickable(role = Role.Button, onClick = onToggle)
+                        .semantics { if (collapsed) expand { onToggle(); true } else collapse { onToggle(); true } }
+                } else {
+                    Modifier
+                },
+            )
             .background(palette.hunkBg)
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
