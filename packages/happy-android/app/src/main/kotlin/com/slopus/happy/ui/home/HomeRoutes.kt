@@ -54,6 +54,9 @@ import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.forkSource
 import com.slopus.happy.model.parseJsonObject
 import com.slopus.happy.sync.OpResult
+import com.slopus.happy.sync.SendException
+import com.slopus.happy.sync.SendOptions
+import com.slopus.happy.sync.SendResult
 import com.slopus.happy.ui.files.SessionChangesRoute
 import com.slopus.happy.ui.session.DuplicateSheet
 import com.slopus.happy.ui.session.LiveSessionContinuations
@@ -241,6 +244,61 @@ class HomeServices private constructor(private val graph: AppGraph) {
     }
 
     private var newSessionServices: NewSessionServices? = null
+
+    /** pendingChats.ts: chats opened from a tab strip's `+` that no machine has answered for yet. */
+    val pendingChats = PendingChatStore()
+
+    private val pendingFailures = MutableStateFlow<String?>(null)
+
+    /** A strip start that failed, in its own words, until the screen has shown it. */
+    val pendingChatFailure: StateFlow<String?> = pendingFailures.asStateFlow()
+
+    fun dismissPendingChatFailure() {
+        pendingFailures.value = null
+    }
+
+    val pendingChatHandover = PendingChatHandover(
+        pendingChats,
+        object : PendingChatSessions {
+            override suspend fun send(sessionId: String, text: String): Boolean {
+                val sender = account.value?.sender ?: return false
+                return when (val result = sender.send(sessionId, text, SendOptions(source = "new_session"))) {
+                    is SendResult.Accepted -> true
+                    is SendResult.NotSent -> result.message?.let { throw SendException(it) } ?: false
+                }
+            }
+
+            override fun draft(sessionId: String): String? = account.value?.composer?.mirrors?.value?.get(sessionId)?.draft
+
+            override suspend fun writeDraft(sessionId: String, text: String) {
+                account.value?.composer?.setText(sessionId, text)
+            }
+
+            override fun exists(sessionId: String): Boolean = session(sessionId) != null
+
+            override fun alert(message: String) {
+                pendingFailures.value = message
+            }
+        },
+    )
+
+    /** Where each checkout's tab strip was scrolled to (first item, offset), across the screens that show it. */
+    val stripOffsets = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
+
+    private var pendingChatStarter: PendingChatStarter? = null
+
+    /** The tab strip's `+`, starting with the new-session [SessionStarter] one start at a time. */
+    @Synchronized
+    fun pendingChatStarter(context: Context): PendingChatStarter = pendingChatStarter ?: run {
+        val starter = newSession(context).starter
+        PendingChatStarter(
+            pendingChats,
+            pendingChatHandover,
+            scope,
+            start = { request -> starter.start(request.draft, target = request.target) { false } },
+            failed = { pendingFailures.value = it },
+        )
+    }.also { pendingChatStarter = it }
 
     /** The new-session composer, its draft in the app's own preferences. */
     @Synchronized
@@ -607,6 +665,8 @@ class SessionMenus(
     private val showError: (String?, Boolean) -> Unit,
     /** maybeCleanupWorktree's "Delete Worktree?". */
     private val confirmCleanup: suspend () -> Boolean = { false },
+    /** On the press, before the machine is asked: a screen standing on the chat leaves first. */
+    private val onBeforeArchive: (sessionId: String) -> Unit = {},
 ) {
     /** useSessionActionAlert: "Session", one button per action, then Cancel. */
     fun open(sessionId: String) {
@@ -617,6 +677,7 @@ class SessionMenus(
     /** useSessionArchiveAction: the same archive the menu runs. */
     fun archive(sessionId: String) {
         val session = services.session(sessionId) ?: return
+        onBeforeArchive(sessionId)
         services.launch {
             val result = services.archiver.archive(session) { services.cleanupWorktree(session, confirmCleanup) }
             if (result is ArchiveResult.Failed) showError(result.message, result.bot)
@@ -625,7 +686,7 @@ class SessionMenus(
 }
 
 @Composable
-private fun rememberSessionMenus(
+internal fun rememberSessionMenus(
     services: HomeServices,
     continuationExperiments: Boolean,
     devMode: Boolean,
@@ -633,6 +694,7 @@ private fun rememberSessionMenus(
     onDetails: ((String) -> Unit)?,
     onDuplicate: (Session) -> Unit,
     showAlert: (Alert) -> Unit,
+    onBeforeArchive: (sessionId: String) -> Unit = {},
 ): SessionMenus {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -665,7 +727,7 @@ private fun rememberSessionMenus(
         success = stringResource(R.string.common_success),
         resumeTexts = rememberResumeTexts(),
     )
-    return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, onDuplicate, strings, context, scope, showAlert) {
+    return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, onDuplicate, strings, context, scope, showAlert, onBeforeArchive) {
         fun error(message: String) = showAlert(Alert(strings.error, message, listOf(AlertButton(strings.ok))))
 
         // Resume and fork answer like a spawn; anything but a session is a failure here.
@@ -728,6 +790,7 @@ private fun rememberSessionMenus(
             confirmCleanup = {
                 confirm(showAlert, strings.cleanupTitle, strings.cleanupMessage, strings.cleanupDelete, strings.cleanupKeep, destructive = true)
             },
+            onBeforeArchive = onBeforeArchive,
         )
         menus
     }

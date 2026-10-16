@@ -1,6 +1,7 @@
 package com.slopus.happy.chat
 
 import androidx.compose.runtime.Immutable
+import com.slopus.happy.model.AgentGoal
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -8,8 +9,8 @@ import kotlinx.serialization.json.JsonObject
 /**
  * The parts of a session's decrypted agent state the chat reads
  * (storageTypes.ts `AgentStateSchema`): permission requests, agent
- * communications, whether the user drives the agent from the terminal, and
- * the plan's rate-limit windows.
+ * communications, whether the user drives the agent from the terminal, the
+ * plan's rate-limit windows, and the agent's active goal.
  *
  * Parsing is per entry: a malformed request or communication is skipped
  * without losing the rest, where zod would reject the whole state.
@@ -23,6 +24,8 @@ data class AgentState(
     val completedCommunications: Map<String, CompletedAgentCommunication> = emptyMap(),
     /** Ephemeral; null when absent or malformed, without touching the rest. */
     val usageLimits: UsageLimits? = null,
+    /** `agentGoalStatus` while active; null when absent, inactive or malformed, without touching the rest. */
+    val agentGoal: AgentGoal? = null,
 ) {
     @Immutable
     data class PermissionRequest(
@@ -87,6 +90,7 @@ data class AgentState(
                 communications = entries(o["communications"], AgentCommunication::parse),
                 completedCommunications = entries(o["completedCommunications"], CompletedAgentCommunication::parse),
                 usageLimits = UsageLimits.parse(o["usageLimits"]),
+                agentGoal = AgentGoal.parse(o),
             )
         }
 
