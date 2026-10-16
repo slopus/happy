@@ -55,6 +55,7 @@ import com.slopus.happy.ui.autocomplete.rememberSessionSuggestions
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.files.MessageDetailRoute
 import com.slopus.happy.ui.files.toolPressRoute
 import com.slopus.happy.ui.home.resumeAvailability
 import com.slopus.happy.ui.usage.LocalUsageDisplay
@@ -87,6 +88,7 @@ fun NavGraphBuilder.chatRoutes(
             onBack = { nav.popBackStack() },
             onInfo = { onInfo(route.id) },
             onToolPress = { message -> nav.navigate(toolPressRoute(route.id, message)) },
+            onToolFilePress = { message, file -> nav.navigate(MessageDetailRoute(route.id, message.id, file = file)) },
             // A resume that comes back as another session replaces this chat, as navigateToSession does.
             onOpenSession = { id -> if (id != route.id) nav.navigate(SessionRoute(id)) { popUpTo<SessionRoute> { inclusive = true } } },
         )
@@ -101,6 +103,7 @@ private fun ChatRoute(
     onBack: () -> Unit,
     onInfo: () -> Unit,
     onToolPress: (ChatMessage.ToolCallMessage) -> Unit,
+    onToolFilePress: (ChatMessage.ToolCallMessage, String) -> Unit,
     onOpenSession: (String) -> Unit,
 ) {
     val account by graph.account.collectAsStateWithLifecycle()
@@ -157,6 +160,7 @@ private fun ChatRoute(
             onBack = onBack,
             onInfo = onInfo,
             onToolPress = onToolPress,
+            onToolFilePress = onToolFilePress,
             onDraftChange = draft::set,
             onSend = onSend@{ text ->
                 val picked = latestImages?.images?.toList().orEmpty()
