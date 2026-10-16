@@ -45,10 +45,9 @@ sealed interface ArchiveResult {
 /**
  * useSessionQuickActions' archive. The row leaves the list on the press
  * ([archiving]) and only comes back if the archive fails. A bot is only
- * killed; anything else is killed, and retired on the server when its agent
- * can't be reached.
- *
- * Not ported: maybeCleanupWorktree's prompt to delete a worktree checkout.
+ * killed; anything else first gets [archive]'s `cleanup` (maybeCleanupWorktree's
+ * prompt to delete its worktree), then is killed, and retired on the server
+ * when its agent can't be reached.
  */
 class SessionArchiver(private val actions: SessionActions) {
     private val state = MutableStateFlow<Set<String>>(emptySet())
@@ -56,13 +55,14 @@ class SessionArchiver(private val actions: SessionActions) {
     /** storage.ts archivingSessionIds: archived here, not yet confirmed by the server. */
     val archiving: StateFlow<Set<String>> = state.asStateFlow()
 
-    suspend fun archive(session: Session): ArchiveResult {
+    suspend fun archive(session: Session, cleanup: suspend () -> Unit = {}): ArchiveResult {
         state.update { it + session.id }
         val bot = session.metadata?.bot != null
         val result = try {
             if (bot) {
                 actions.kill(session.id)
             } else {
+                cleanup()
                 actions.kill(session.id).takeIf { it.success } ?: actions.archiveOnServer(session.id)
             }
         } catch (e: Throwable) {

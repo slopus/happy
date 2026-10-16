@@ -66,7 +66,13 @@ class SessionInfoScreenTest {
             RewindPoint("u2", "second question", 2_000.0),
         )
 
+        /** What the worktree prompt is answered with; null: no worktree to ask about. */
+        var cleanupAnswer: Boolean? = null
+
         override suspend fun archive(session: Session): ArchiveResult = archive.also { calls += "archive:${session.id}" }
+        override suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) {
+            if (cleanupAnswer != null) calls += "cleanup:${confirm()}"
+        }
         override suspend fun delete(session: Session): OpResult = OpResult(true).also { calls += "delete:${session.id}" }
         override suspend fun resume(machineId: String, sessionId: String) = SpawnSessionResult.Success("resumed").also { calls += "resume" }
         override suspend fun fork(source: ForkSource, options: ForkOptions): SpawnSessionResult {
@@ -92,14 +98,19 @@ class SessionInfoScreenTest {
     private val opened = mutableListOf<String>()
     private val copied = mutableListOf<String>()
     private var left = 0
+    private var successor: String? = null
+    private var archivedTo: String? = null
+    private var logs = emptyList<String>()
     private val actions = SessionInfoActions(
         onBack = {},
         onOpenSession = { opened += it },
         onOpenMachine = { opened += "machine:$it" },
         onChanges = null,
-        onArchived = { left++ },
+        onArchived = { archivedTo = it; left++ },
         onDeleted = { left++ },
         copyToClipboard = { copied += it },
+        tabSuccessor = { successor },
+        clientLogs = { logs },
     )
 
     private fun show(session: Session?, ready: Boolean = true, experiments: Boolean = true, fakes: Fakes = Fakes(), devMode: Boolean = false) {
@@ -168,6 +179,51 @@ class SessionInfoScreenTest {
         rule.node(SessionInfoTags.ARCHIVE).performClick()
         rule.waitForIdle()
         assertEquals(1, left)
+    }
+
+    @Test
+    fun archiveHandsOverToTheNeighbouringTab() {
+        // Read on the press, before the archive takes the chat out of its checkout.
+        successor = "s-neighbour"
+        show(claudeSession())
+        rule.node(SessionInfoTags.ARCHIVE).performClick()
+        successor = null
+        rule.waitForIdle()
+        assertEquals("s-neighbour", archivedTo)
+    }
+
+    @Test
+    fun aCleanWorktreeIsOfferedForDeletionFirst() {
+        val fakes = Fakes().apply { cleanupAnswer = true }
+        show(claudeSession(), fakes = fakes)
+        rule.node(SessionInfoTags.ARCHIVE).performClick()
+        rule.onNodeWithText("Delete Worktree?").assertExists()
+        rule.onNodeWithText("The worktree has no uncommitted changes. Would you like to delete the worktree files?").assertExists()
+        assertTrue(fakes.calls.isEmpty())
+        rule.onNode(hasText("Delete Worktree") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("cleanup:true", "archive:session-0123456789-abcdef"), fakes.calls)
+
+        // Delete asks too, after its own confirmation; keeping the files still deletes the chat.
+        fakes.calls.clear()
+        rule.node(SessionInfoTags.DELETE).performClick()
+        rule.onNode(hasText("Delete Session") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        rule.onNode(hasText("Keep Files") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("cleanup:false", "delete:session-0123456789-abcdef"), fakes.calls)
+    }
+
+    @Test
+    fun copiesTheMetadataWithTheClientLogs() {
+        logs = listOf("10-16 12:00:00.000 I Happy: one", "10-16 12:00:01.000 W Happy: two")
+        show(claudeSession())
+        rule.node(SessionInfoTags.COPY_METADATA_AND_LOGS).performScrollTo().performClick()
+        rule.waitForIdle()
+        val text = copied.single()
+        assertTrue(text.startsWith("=== Session Metadata ===\n{\n"))
+        assertTrue(text.contains("\"claudeSessionId\": \"claude-0123456789-xyz\""))
+        assertTrue(text.endsWith("}\n\n=== Client Logs (2 entries) ===\n10-16 12:00:00.000 I Happy: one\n10-16 12:00:01.000 W Happy: two"))
+        rule.onNodeWithText("Session metadata copied to clipboard").assertExists()
     }
 
     @Test

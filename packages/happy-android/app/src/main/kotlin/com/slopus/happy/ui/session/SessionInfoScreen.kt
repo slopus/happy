@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.diagnostics.ClientLogs
 import com.slopus.happy.model.InfoSetting
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.SandboxSummary
@@ -62,6 +63,7 @@ import com.slopus.happy.ui.components.ItemList
 import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.TitleAlignment
+import com.slopus.happy.ui.components.confirm
 import com.slopus.happy.ui.home.ArchiveResult
 import com.slopus.happy.ui.home.ResumeBlock
 import com.slopus.happy.ui.home.canForkSession
@@ -72,7 +74,9 @@ import com.slopus.happy.ui.home.resumeAvailability
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.PlexMono
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -100,6 +104,7 @@ object SessionInfoTags {
     const val SESSION_ID = "sessionInfo.sessionId"
     const val RESUME_COMMAND = "sessionInfo.resumeCommand"
     const val COPY_METADATA = "sessionInfo.copyMetadata"
+    const val COPY_METADATA_AND_LOGS = "sessionInfo.copyMetadataAndLogs"
     const val RAW_JSON = "sessionInfo.rawJson"
 }
 
@@ -128,6 +133,9 @@ interface SessionInfoControls {
 
     /** sessionDelete, after a best-effort kill of a session still running. */
     suspend fun delete(session: Session): OpResult
+
+    /** maybeCleanupWorktree, before an archive or delete: [confirm] asks whether to delete the worktree. */
+    suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) {}
 }
 
 @Immutable
@@ -137,11 +145,18 @@ class SessionInfoActions(
     val onOpenMachine: (String) -> Unit,
     /** The session's changes screen; null while the app has none. */
     val onChanges: ((String) -> Unit)?,
-    /** Archived: leave this screen and the chat behind it. */
-    val onArchived: () -> Unit,
-    /** Deleted: likewise. */
+    /**
+     * Archived: leave this screen, and the chat behind it for [successor],
+     * the checkout's neighbouring tab, when there is one ([tabSuccessor]).
+     */
+    val onArchived: (successor: String?) -> Unit,
+    /** Deleted: leave this screen and the chat behind it. */
     val onDeleted: () -> Unit,
     val copyToClipboard: (String) -> Unit,
+    /** useWorktreeTabSuccessor, read when archive is pressed, before the chat leaves its checkout. */
+    val tabSuccessor: (sessionId: String) -> String? = { null },
+    /** log.getLogs() for "Copy session metadata & Client Logs". */
+    val clientLogs: suspend () -> List<String> = { withContext(Dispatchers.IO) { ClientLogs.read() } },
 )
 
 /**
@@ -152,10 +167,13 @@ class SessionInfoActions(
  * outdated-CLI warning, the session's ids and times (each id copies), its
  * metadata, agent state, activity and, in dev mode, the raw JSON.
  *
- * Not ported: the worktree cleanup prompt before archive and delete,
- * copying client logs (this app keeps none), and the live git status (only
- * Happy Agent's published summary is shown). A delete waits for the server
- * instead of leaving first, so a failure can still be shown here.
+ * Archive and delete first offer to delete a clean worktree nobody else is
+ * in (maybeCleanupWorktree). An archived chat that was one tab of a
+ * checkout hands over to its neighbouring tab.
+ *
+ * Not ported: the live git status (only Happy Agent's published summary is
+ * shown). A delete waits for the server instead of leaving first, so a
+ * failure can still be shown here. Client logs are the app's own logcat.
  */
 @Composable
 fun SessionInfoScreen(
@@ -253,6 +271,13 @@ private fun SessionInfoContent(
     fun copy(text: String, confirmation: String) {
         actions.copyToClipboard(text)
         show(successTitle, confirmation)
+    }
+    val cleanupTitle = stringResource(R.string.session_info_worktree_cleanup_title)
+    val cleanupMessage = stringResource(R.string.session_info_worktree_cleanup_message)
+    val cleanupDelete = stringResource(R.string.session_info_worktree_cleanup_delete)
+    val cleanupKeep = stringResource(R.string.session_info_worktree_cleanup_keep)
+    suspend fun cleanupWorktree() = controls.cleanupWorktree(session) {
+        confirm({ alert = it }, cleanupTitle, cleanupMessage, cleanupDelete, cleanupKeep, destructive = true)
     }
 
     val resume = resumeAvailability(session, machine)
@@ -374,10 +399,12 @@ private fun SessionInfoContent(
                 loading = archiving,
                 onClick = {
                     archiving = true
+                    val successor = actions.tabSuccessor(session.id)
                     scope.launch {
                         try {
+                            if (metadata?.bot == null) cleanupWorktree()
                             when (val result = controls.archive(session)) {
-                                ArchiveResult.Archived -> actions.onArchived()
+                                ArchiveResult.Archived -> actions.onArchived(successor)
                                 is ArchiveResult.Failed -> show(errorTitle, result.message ?: if (result.bot) botArchiveFailed else archiveFailed)
                             }
                         } finally {
@@ -403,6 +430,7 @@ private fun SessionInfoContent(
                                     deleting = true
                                     scope.launch {
                                         try {
+                                            cleanupWorktree()
                                             val result = controls.delete(session)
                                             if (result.success) actions.onDeleted() else show(errorTitle, result.message ?: deleteFailed)
                                         } finally {
@@ -531,6 +559,17 @@ private fun SessionInfoContent(
                     icon = { Icon(Ionicon.CopyOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
                     onClick = { copy(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), metadataCopied) },
                     modifier = Modifier.testTag(SessionInfoTags.COPY_METADATA),
+                )
+                Item(
+                    title = stringResource(R.string.session_info_copy_metadata) + "\n& Client Logs",
+                    icon = { Icon(Ionicon.DocumentTextOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                    onClick = {
+                        scope.launch {
+                            val logs = actions.clientLogs()
+                            copy(ClientLogs.metadataAndLogs(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), logs), metadataCopied)
+                        }
+                    },
+                    modifier = Modifier.testTag(SessionInfoTags.COPY_METADATA_AND_LOGS),
                 )
             }
         }
