@@ -57,6 +57,7 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.files.MessageDetailRoute
 import com.slopus.happy.ui.files.toolPressRoute
+import com.slopus.happy.ui.home.SessionViewingEffect
 import com.slopus.happy.ui.home.resumeAvailability
 import com.slopus.happy.ui.usage.LocalUsageDisplay
 import com.slopus.happy.ui.usage.UsageDisplay
@@ -132,6 +133,8 @@ private fun ChatRoute(
     // sync.ts onSessionVisible's git half: the checkout is asked for its status now.
     val git = remember(graph) { GitStatusServices.of(graph) }
     LaunchedEffect(git, sessionId, account) { if (account != null) git.sessionVisible(sessionId) }
+    // useSessionVisibility: the open chat reads at once and can't turn unread.
+    SessionViewingEffect(graph, sessionId)
     val statuses by git.statuses.collectAsStateWithLifecycle()
     val gitStatus = gitStatusKey(metadata?.machineId, metadata?.path)?.let(statuses::get)
 
