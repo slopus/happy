@@ -18,6 +18,7 @@ import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.push.PushRegistrationEffect
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.chat.chatRoutes
 import com.slopus.happy.ui.components.Alert
@@ -79,6 +80,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 chatRoutes(graph, nav)
             }
             DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
+            PushRegistrationEffect(graph)
         }
     } }
 }
