@@ -66,9 +66,10 @@ fun sandboxSummary(sandbox: JsonElement?, homeDir: String?): SandboxSummary {
     )
 }
 
-/** info.tsx `formatDangerouslySkipPermissionsMetadata`; this app keeps no per-session permission mode. */
-fun dangerouslySkipPermissions(value: Boolean?, flavor: String?, sandbox: JsonElement?): InfoSetting = when {
+/** info.tsx `formatDangerouslySkipPermissionsMetadata`; [permissionMode] is the session's (its composer mirror). */
+fun dangerouslySkipPermissions(value: Boolean?, flavor: String?, sandbox: JsonElement?, permissionMode: String? = null): InfoSetting = when {
     value != null -> if (value) InfoSetting.Enabled else InfoSetting.Disabled
+    permissionMode == "bypassPermissions" || permissionMode == "yolo" -> InfoSetting.Enabled
     flavor == "claude" && ((sandbox as? JsonObject)?.get("enabled") as? JsonPrimitive)?.booleanOrNull == true -> InfoSetting.Enabled
     else -> InfoSetting.Unknown
 }
@@ -88,11 +89,24 @@ fun SessionMetadata.aiProviderName(): String {
 /** `${id.substring(0, 8)}...${id.substring(id.length - 8)}` */
 fun shortId(id: String): String = "${id.take(8)}...${id.takeLast(8)}"
 
-/** sessionGitPresentation.ts as far as this app has git data: Happy Agent's published summary. */
+/** sessionGitPresentation.ts `resolveSessionGitPresentation`'s counts. */
 data class SessionGitPresentation(val changedFileCount: Long?, val changes: VisibleGitChanges?)
 
-fun SessionMetadata?.gitPresentation(): SessionGitPresentation {
-    val git = rigGitSummary() ?: return SessionGitPresentation(null, null)
-    val changes = if (git.insertions == 0L && git.deletions == 0L) null else VisibleGitChanges(!git.countsExact, git.insertions, git.deletions)
-    return SessionGitPresentation(git.changedFiles, changes)
+/**
+ * Happy Agent's published comparison wins (it includes committed branch
+ * work a working-tree status can't see). Otherwise the live status: the
+ * file count from [files] (staged and unstaged, each path once), the line
+ * counts from [status] once it has answered, else summed from [files].
+ */
+fun SessionMetadata?.gitPresentation(status: GitStatus? = null, files: GitStatusFiles? = null): SessionGitPresentation {
+    rigGitSummary()?.let { git ->
+        val changes = if (git.insertions == 0L && git.deletions == 0L) null else VisibleGitChanges(!git.countsExact, git.insertions, git.deletions)
+        return SessionGitPresentation(git.changedFiles, changes)
+    }
+    val all = files?.let { it.stagedFiles + it.unstagedFiles }
+    val count = all?.map { it.fullPath }?.toSet()?.size?.toLong()
+    val live = status != null && status.lastUpdatedAt > 0
+    val insertions = if (live) status.linesAdded else all?.sumOf { it.linesAdded.toLong() } ?: 0
+    val deletions = if (live) status.linesRemoved else all?.sumOf { it.linesRemoved.toLong() } ?: 0
+    return SessionGitPresentation(count, if (insertions > 0 || deletions > 0) VisibleGitChanges(false, insertions, deletions) else null)
 }
