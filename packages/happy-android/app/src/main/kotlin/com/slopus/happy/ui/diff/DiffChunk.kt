@@ -72,11 +72,11 @@ fun DiffChunk(
  */
 @Composable
 fun DiffChunk(
+    modifier: Modifier = Modifier,
     patch: String? = null,
     oldText: String? = null,
     newText: String? = null,
     fileName: String? = null,
-    modifier: Modifier = Modifier,
     showLineNumbers: Boolean = true,
     layout: DiffLayoutMode = DiffLayoutMode.Scroll,
     contextLines: Int = 3,
