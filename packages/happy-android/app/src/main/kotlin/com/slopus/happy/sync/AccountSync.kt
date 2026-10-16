@@ -85,6 +85,17 @@ class AccountSync(
     /** Spawn, resume, stop, fork and the daemon's shell (ops.ts). */
     val machineOps = MachineOps(rpc, api, store, decoder, refreshSessions = ::syncNow, io = io)
 
+    /** Each session's draft and picks, synced through its metadata (ops.ts sessionSetAgentModes, rigComposer.ts). */
+    val composer = SessionComposer(
+        store,
+        decoder,
+        emitWithAck = rpc::emitWithAck,
+        isConnected = { socket.status.value == ConnectionStatus.CONNECTED },
+        parent = job,
+        dispatcher = io.limitedParallelism(1),
+        clock = clock,
+    )
+
     /** The socket's state, as Home's header shows it (homeConnectionStatus.ts). */
     val connectionStatus: StateFlow<ConnectionStatus> = socket.status
 
@@ -128,6 +139,7 @@ class AccountSync(
                 }
             }
         }
+        composer.start()
         socket.connect()
         deltaSync.invalidate()
     }
@@ -152,6 +164,7 @@ class AccountSync(
         socket.emit("app-state", appState(foreground.value))
         deltaSync.invalidate()
         messages.invalidateViewing()
+        scope.launch { composer.flushAhead() }
     }
 
     /** Read at every connect, so a reconnect in the background does not claim the app is active. */

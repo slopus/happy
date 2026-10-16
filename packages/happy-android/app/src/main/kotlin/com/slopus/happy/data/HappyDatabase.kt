@@ -24,8 +24,9 @@ import android.database.sqlite.SQLiteOpenHelper
  * grows backwards on demand, forwards with every new message. A null
  * `messages_oldest_seq` means no page has been loaded yet.
  *
- * The outbox is the only data here the server does not have, so schema
- * upgrades from version 2 on migrate instead of starting over.
+ * The outbox and the composer mirror are the only data here the server does
+ * not have, so schema upgrades from version 2 on migrate instead of starting
+ * over.
  */
 class HappyDatabase(context: Context, name: String? = NAME) :
     SQLiteOpenHelper(context, name, null, VERSION) {
@@ -43,13 +44,11 @@ class HappyDatabase(context: Context, name: String? = NAME) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion == 1) {
-            // Version 1 synced every message from seq 0, so what it stored is
-            // complete history: the oldest stored seq is the floor.
-            MIGRATE_1_TO_2.forEach(db::execSQL)
-            return
-        }
-        startOver(db)
+        if (oldVersion !in 1..2) return startOver(db)
+        // Version 1 synced every message from seq 0, so what it stored is
+        // complete history: the oldest stored seq is the floor.
+        if (oldVersion == 1) MIGRATE_1_TO_2.forEach(db::execSQL)
+        MIGRATE_2_TO_3.forEach(db::execSQL)
     }
 
     // Nothing newer can be read safely; everything but the outbox can be fetched again.
@@ -62,7 +61,7 @@ class HappyDatabase(context: Context, name: String? = NAME) :
 
     companion object {
         const val NAME = "happy.db"
-        const val VERSION = 2
+        const val VERSION = 3
 
         // Messages accepted on this device and not yet echoed back by the
         // server. `content` is the ciphertext exactly as it is POSTed (so a
@@ -84,6 +83,15 @@ class HappyDatabase(context: Context, name: String? = NAME) :
             )
         """
         private const val OUTBOX_INDEX = "CREATE INDEX outbox_by_session ON outbox (session_id, position)"
+
+        // The device side of each session's composer (sync/SessionComposer.kt):
+        // draft text and picker choices, one JSON document per session.
+        private const val COMPOSER = """
+            CREATE TABLE composer (
+                session_id TEXT PRIMARY KEY NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+                value TEXT NOT NULL
+            )
+        """
 
         private val SCHEMA = listOf(
             // Watermarks: where the next delta sync of each stream starts.
@@ -143,6 +151,7 @@ class HappyDatabase(context: Context, name: String? = NAME) :
             """,
             OUTBOX,
             OUTBOX_INDEX,
+            COMPOSER,
             // Account-level JSON documents: settings (with the server version),
             // settings changes not yet accepted by the server, and the profile.
             """
@@ -165,7 +174,11 @@ class HappyDatabase(context: Context, name: String? = NAME) :
                 OUTBOX_INDEX,
             ).map(String::trimIndent)
 
+        private val MIGRATE_2_TO_3
+            get() = listOf(COMPOSER).map(String::trimIndent)
+
         private val DROP = listOf(
+            "DROP TABLE IF EXISTS composer",
             "DROP TABLE IF EXISTS outbox",
             "DROP TABLE IF EXISTS messages",
             "DROP TABLE IF EXISTS sessions",
