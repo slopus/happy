@@ -3,7 +3,6 @@ package com.slopus.happy.ui.session
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.sync.ComposerMirror
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -57,5 +56,3 @@ internal fun sessionJson(session: Session, agentState: JsonObject?, composer: Co
     session.lastMessageSentAt?.let { put("lastMessageSentAt", it) }
 }
 
-/** JSON.stringify(value, null, 2). */
-internal val prettyJson = Json { prettyPrint = true; prettyPrintIndent = "  " }

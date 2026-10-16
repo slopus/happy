@@ -1,5 +1,6 @@
 package com.slopus.happy.chat
 
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -38,3 +39,7 @@ internal val JsonElement?.strings: List<String>?
         return array.map { it.str ?: return null }
     }
 
+private val PrettyJson = Json { prettyPrint = true; prettyPrintIndent = "  " }
+
+/** JSON.stringify(value, null, 2): every dump and copy of tool, session and metadata JSON. */
+internal fun prettyJson(element: JsonElement): String = PrettyJson.encodeToString(JsonElement.serializer(), element)

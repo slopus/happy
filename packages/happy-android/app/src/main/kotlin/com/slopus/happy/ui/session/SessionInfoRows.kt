@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.chat.prettyJson
 import com.slopus.happy.model.InfoSetting
 import com.slopus.happy.model.SandboxSummary
 import com.slopus.happy.ui.components.Icon
@@ -93,7 +94,7 @@ internal fun RawJson(title: String, icon: Ionicon, color: Color, json: JsonObjec
             .horizontalScroll(rememberScrollState())
             .padding(12.dp),
     ) {
-        Text(prettyJson.encodeToString(JsonObject.serializer(), json), style = SessionInfoSpec.code, color = colors.text)
+        Text(prettyJson(json), style = SessionInfoSpec.code, color = colors.text)
     }
 }
 

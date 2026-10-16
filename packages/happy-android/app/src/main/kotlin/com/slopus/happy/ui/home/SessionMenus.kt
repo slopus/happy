@@ -9,10 +9,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.slopus.happy.R
+import com.slopus.happy.chat.prettyJson
 import com.slopus.happy.diagnostics.ClientLogs
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.forkSource
-import com.slopus.happy.net.HappyJson
 import com.slopus.happy.resume.ResumeOutcome
 import com.slopus.happy.resume.ResumeTexts
 import com.slopus.happy.resume.rememberResumeTexts
@@ -23,8 +23,6 @@ import com.slopus.happy.ui.components.confirm
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 
 /** The session alert and the archive, as the list's rows run them. */
 class SessionMenus(
@@ -143,13 +141,13 @@ internal fun rememberSessionMenus(
                         SessionActionId.Duplicate -> AlertButton(strings.duplicate) { onDuplicate(session) }
                         SessionActionId.CopyMetadata -> AlertButton(strings.copyMetadata) {
                             val metadata = session.metadata ?: return@AlertButton error(strings.error)
-                            copied(copyToClipboard(context, prettyJson.encodeToString(JsonObject.serializer(), metadata.raw)))
+                            copied(copyToClipboard(context, prettyJson(metadata.raw)))
                         }
                         SessionActionId.CopyMetadataAndLogs -> AlertButton(strings.copyMetadata + " & Client Logs") {
                             val metadata = session.metadata ?: return@AlertButton error(strings.error)
                             scope.launch {
                                 val logs = withContext(Dispatchers.IO) { ClientLogs.read() }
-                                copied(copyToClipboard(context, ClientLogs.metadataAndLogs(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), logs)))
+                                copied(copyToClipboard(context, ClientLogs.metadataAndLogs(prettyJson(metadata.raw), logs)))
                             }
                         }
                         SessionActionId.Archive -> AlertButton(strings.archive, destructive = true) { menus.archive(session.id) }
@@ -192,9 +190,6 @@ private data class SessionMenuStrings(
     val success: String,
     val resumeTexts: ResumeTexts,
 )
-
-/** JSON.stringify(value, null, 2). */
-private val prettyJson = Json(HappyJson) { prettyPrint = true; prettyPrintIndent = "  " }
 
 /** Clipboard.setStringAsync: false when the system refuses the clip (too large, or not allowed). */
 internal fun copyToClipboard(context: Context, text: String): Boolean = try {
