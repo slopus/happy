@@ -69,7 +69,11 @@ import java.time.ZoneOffset
  * - Starting: an 18 high line in the gap above the composer names the
  *   step with "To interrupt press stop"; the backdrop refuses; Stop hands
  *   the composer back. The backdrop otherwise closes it.
- * - The new-session screen is the same composer under a back header.
+ * - The new-session screen is the same composer under a back header. On
+ *   an offline machine (new/index.tsx) the machine row is followed by the
+ *   help: 12/10 in, a 14 cloud, "Machine is offline" 13 semibold 4 above
+ *   the steps and "Switch machines" at 12/18; the rows under it fade to
+ *   0.4 and take no presses. The dock itself shows no help.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -117,9 +121,10 @@ class HomeDockTest {
         phase: StartPhase? = null,
         images: List<AttachmentPreview> = emptyList(),
         canAttachImages: Boolean = true,
+        machineId: String = "m1",
     ) = HomeDockState(
         prompt = prompt,
-        options = resolveNewSessionOptions(NewSessionDraft(selectedMachineId = "m1"), machines, sessions, AgentDefaultOverrides()),
+        options = resolveNewSessionOptions(NewSessionDraft(selectedMachineId = machineId), machines, sessions, AgentDefaultOverrides()),
         labels = NewSessionLabels(),
         phase = phase,
         focused = focused,
@@ -304,5 +309,38 @@ class HomeDockTest {
         rule.node(HomeDockTags.BACKDROP).performClick()
         assertTrue(focusChanges.isEmpty())
         assertEquals(0, backs)
+        rule.onAllNodesWithTag(HomeDockTags.OFFLINE_HELP).assertCountEquals(0)
+    }
+
+    @Test
+    fun theNewSessionScreenExplainsAnOfflineMachine() {
+        rule.setHappyContent {
+            NewSessionScreen(NewSessionDock(dock(focused = true, machineId = "m2"), dockActions) {}, onBack = {})
+        }
+        val machine = rule.node(HomeDockTags.row(NewSessionPage.Machine)).bounds
+        val help = rule.node(HomeDockTags.OFFLINE_HELP).bounds
+        val project = rule.node(HomeDockTags.row(NewSessionPage.Project)).bounds
+        assertTrue("help under the machine row", help.top >= machine.bottom - TOLERANCE)
+        assertTrue("the other rows under the help", project.top >= help.bottom - TOLERANCE)
+        assertDp("help with the rows, 24 in", 24, help.left)
+        assertDp("title after 12 + the 14 cloud + 8", 24 + 12 + 14 + 8, rule.onNodeWithText("Machine is offline", useUnmergedTree = true).bounds.left)
+        rule.onNodeWithText("Switch machines", substring = true, useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("happy daemon start", substring = true, useUnmergedTree = true).assertExists()
+        // Only another machine helps: the rows under it take no presses.
+        rule.node(HomeDockTags.row(NewSessionPage.Project)).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+        rule.node(HomeDockTags.row(NewSessionPage.Project)).performClick()
+        rule.node(HomeDockTags.row(NewSessionPage.Agent)).performClick()
+        assertTrue(pickers.isEmpty())
+        rule.node(HomeDockTags.row(NewSessionPage.Machine)).performClick()
+        assertEquals(listOf(NewSessionPage.Machine), pickers)
+    }
+
+    @Test
+    fun theDockLeavesAnOfflineMachineToSend() {
+        show(dock(focused = true, machineId = "m2"))
+        rule.node(HomeDockTags.ROWS).assertIsDisplayed()
+        rule.onAllNodesWithTag(HomeDockTags.OFFLINE_HELP).assertCountEquals(0)
+        rule.node(HomeDockTags.row(NewSessionPage.Project)).performClick()
+        assertEquals(listOf(NewSessionPage.Project), pickers)
     }
 }

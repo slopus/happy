@@ -155,6 +155,9 @@ data class NewSessionOptions(
 ) {
     val hasHarness: Boolean get() = agents.isNotEmpty()
 
+    /** new/index.tsx `isOffline`: the daemon that would run this harness is known and offline. */
+    val agentMachineOffline: Boolean get() = resolveAgentMachine(choice, resolvedAgent)?.isOnline == false
+
     /** The permission chip's one word. */
     val permissionLabel: String? get() = permissionModeShortLabel(permission?.name)
 

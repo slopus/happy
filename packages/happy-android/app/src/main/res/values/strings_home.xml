@@ -59,6 +59,8 @@
     <string name="home_dock_row_workspace">WORKSPACE</string>
     <string name="home_dock_row_harness">HARNESS</string>
     <string name="home_dock_harness_help">Help</string>
+    <!-- new/index.tsx offlineHelp for Happy Agent (English only upstream). -->
+    <string name="home_dock_happy_agent_offline">Happy Agent is offline on this computer</string>
     <string name="home_dock_harness_help_label">Harness setup help</string>
     <string name="home_dock_picker_machine">Machine</string>
     <string name="home_dock_picker_project">Project</string>
