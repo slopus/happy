@@ -261,6 +261,40 @@ Following now:
   sidebar's 14 in a chat's slot and 12 over an archived card's avatar
   sit in fixed boxes too.
 
+- Home's dock, resting and open (HomeDock.tsx). The capsule keeps its
+  56 and its prompt, scaled, is centred in it and cut at its edge, as
+  `composerSurface`'s `overflow: 'hidden'` cuts it. The open composer's
+  screen follows (`followsTextSize()`), so Composer's card draws scaled
+  there as in the chat, its text measured off the main thread with the
+  text size in its key (`textKey(fitting:)`), which the open's two-frame
+  wait and the Session | Bot premeasure already use. A picker row is
+  RN's 42, or one line of `focusConfigTriggerValue` (17, Plex's 1.3 em)
+  when that is taller; the menu's value, the system's body font, which
+  scales on its own, is centred in it and moves no height. The lede, the
+  status line and the faces' "Avatar" and credit draw scaled. Their
+  heights come from `HomeDockText`, made off the main thread for the
+  text size, the screen and the lede's lane, and asked for by home as it
+  lays out, so the open finds them made; the open waits for them inside
+  the same two frames as the card's text. The 24 icon box, the 42
+  minimum, the 32 segmented control, the faces and the die keep their
+  size.
+- The new-session screen (new/index.tsx). The prompt draws at `16 × m`
+  on a `22 × m` line, measured off the main thread with the scaled style
+  and line in its key, so a new size measures it again; the typed text
+  is restyled in place, its selection kept. The 44 field, the 120 cap,
+  the 40 action row, the 36 harness capsule and the 38 controls keep
+  their size. Every label's size (the place rows, the offline help, the
+  harness's name, the pickers' options, sections, notes and empty
+  lines, a settings page's title) comes from `MeasuredLabelSizes`: the
+  label's words, style, lines, alignment, text size, screen and width,
+  measured off the main thread as a label measures itself. A size not
+  yet measured stands as one line of its style at the width asked, and
+  the screen lays out again once when the pass lands, so a label that
+  wraps, or one whose width places what follows it (the harness's
+  chevron), is a frame late the first time it is seen. The search and
+  path fields are one line of their style. The header's pill grows with
+  its title in a 44 capsule.
+
 ## Header titles
 
 happy-app has two kinds of header on iOS (`app/(app)/_layout.tsx`):
@@ -300,8 +334,6 @@ past; in the 42 row it is cut by the middle box, as RN's
   Their measurers take a `TextEnvironment` as an input and cache key, a
   text size change invalidates every height as a width change does, and
   then their screens opt in.
-- Home's dock (the same card, under a screen that doesn't follow, so it
-  stays at the designed size) and the new-session screen.
 - The `createPlainHeader` title of message detail (Chat's).
 - The rows of session info, machine and changes.
 - On a device: the composer at each size, the chips' native menus over

@@ -87,6 +87,10 @@ public final class HomeViewController: UIViewController {
         observation = pipeline.observation
         // Tablet (HappyUI/Tablet): the shell flips this with the window's width.
         registerForTraitChanges([TabletLayoutTrait.self]) { (self: Self, _) in self.updateNavigation(animated: false) }
+        // A new text size: the dock's text heights are made again.
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]) { (self: Self, _) in
+            self.view.setNeedsLayout()
+        }
         // The stream ends when the session stops.
         let statusUpdates = session.statusUpdates
         Task { @MainActor [weak self] in
@@ -138,6 +142,9 @@ public final class HomeViewController: UIViewController {
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        // The dock's text heights for this width and text size, made off
+        // the main thread before the composer opens.
+        dock?.prepareText(width: view.bounds.width, text: TextEnvironment(traitCollection))
         let showsDock = state != nil && state != .link
         let layout = HomeScreenLayout(
             size: view.bounds.size,
@@ -161,6 +168,7 @@ public final class HomeViewController: UIViewController {
                 dock.update(snapshot)
             } else {
                 dock = HomeDockController(restingView: dockView, host: self, context: context, session: session, snapshot: snapshot)
+                view.setNeedsLayout()
             }
         }
         guard update.contentChanged else { return 0 }

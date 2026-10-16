@@ -75,6 +75,10 @@ final class NewSessionViewController: UIViewController {
     /// a tap on the composer closes the picker, a tap on a row switches it.
     private let backdrop = UIControl()
     private let keyboardTracker = UIView()
+    /// Every label's size at the person's text size, measured off the main
+    /// thread (`MeasuredLabelSizes`): the rows, the offline help, the
+    /// harness's name and the pickers.
+    private let labelSizes = MeasuredLabelSizes()
 
     private var activePicker: Picker?
     private var pickerView: NewSessionPickerView?
@@ -124,6 +128,16 @@ final class NewSessionViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // new/index.tsx's Text and TextInputs scale; every height here is
+        // measured at the size off the main thread (the prompt by
+        // `ComposerTextHeights`, the labels by `labelSizes`).
+        followsTextSize()
+        labelSizes.onChange = { [weak self] in
+            guard let self else { return }
+            self.view.setNeedsLayout()
+            self.pickerView?.content.setNeedsLayout()
+        }
+        composerView.sizes = labelSizes
         view.backgroundColor = UIColor(Palette.groupedBackground)
         setUpHeader()
 
@@ -304,10 +318,11 @@ final class NewSessionViewController: UIViewController {
         guard size.width > 0 else { return }
         let composerWidth = max(0, size.width - 2 * NewSessionScreenLayout.Metrics.composerPaddingHorizontal)
         let composerHeight = composerView.layout(width: composerWidth).size.height
-        var rows: [NewSessionScreenLayout.Row] = [.config(label: machineRow.label.measurable)]
-        if !offlineView.isHidden { rows.append(.offline(title: offlineView.title.measurable, body: offlineView.body.measurable)) }
-        rows.append(.config(label: pathRow.label.measurable))
-        if !worktreeRow.isHidden { rows.append(.config(label: worktreeRow.label.measurable)) }
+        let measure = labelSizes.measurable
+        var rows: [NewSessionScreenLayout.Row] = [.config(label: measure(machineRow.label))]
+        if !offlineView.isHidden { rows.append(.offline(title: measure(offlineView.title), body: measure(offlineView.body))) }
+        rows.append(.config(label: measure(pathRow.label)))
+        if !worktreeRow.isHidden { rows.append(.config(label: measure(worktreeRow.label))) }
         let layout = NewSessionScreenLayout(.init(
             size: size,
             safeTop: safeTop,
@@ -398,6 +413,7 @@ final class NewSessionViewController: UIViewController {
         activePicker = picker
         searchText = ""
         let content = NewSessionPickerContentView()
+        content.sizes = labelSizes
         let pickerView = NewSessionPickerView(content: content)
         self.pickerView = pickerView
         rebuildPicker()

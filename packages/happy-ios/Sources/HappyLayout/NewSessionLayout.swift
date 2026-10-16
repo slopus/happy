@@ -229,13 +229,17 @@ public struct NewSessionComposerLayout: Equatable, Sendable {
         public var textHeight: CGFloat
         public var agentLabel: Measurable
         public var showsSettings: Bool
+        /// The prompt's line at the text size: 22 × RN's multiplier. The
+        /// text is never shorter; the 44 field and the 120 cap stay.
+        public var lineHeight: CGFloat
 
-        public init(width: CGFloat, hairline: CGFloat, textHeight: CGFloat, agentLabel: Measurable, showsSettings: Bool) {
+        public init(width: CGFloat, hairline: CGFloat, textHeight: CGFloat, agentLabel: Measurable, showsSettings: Bool, lineHeight: CGFloat = Metrics.lineHeight) {
             self.width = width
             self.hairline = hairline
             self.textHeight = textHeight
             self.agentLabel = agentLabel
             self.showsSettings = showsSettings
+            self.lineHeight = lineHeight
         }
     }
 
@@ -261,7 +265,7 @@ public struct NewSessionComposerLayout: Equatable, Sendable {
         let contentX = border + M.paddingLeft
         let contentWidth = max(0, width - 2 * border - M.paddingLeft - M.paddingRight)
 
-        let textHeight = min(M.inputMaxHeight, max(M.lineHeight, input.textHeight))
+        let textHeight = min(M.inputMaxHeight, max(input.lineHeight, input.textHeight))
         textScrolls = input.textHeight > M.inputMaxHeight
         let fieldY = border + M.paddingVertical
         let fieldHeight = max(M.fieldMinHeight, textHeight)
