@@ -83,6 +83,8 @@ class AppFlowTest {
 
     @Test
     fun restoreWithSecretKeyThenSync() {
+        // With no computer the link page takes the home over, and the filter only shows while loading.
+        server.addMachine("m1")
         server.addSession("s1", updatedAt = 100)
         server.setSettings(buildJsonObject { put("analyticsOptOut", true) }, version = 2)
 

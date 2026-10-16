@@ -78,7 +78,8 @@ class OnboardingFlowTest {
         // The other phone approves.
         server.approveAccountRequest(decodeBase64(publicKey), AccountLink.sealSecret(server.secret, decodeBase64(publicKey)))
 
-        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 10_000)
+        // The account has no computer, so home is the link page (the filter only shows while loading).
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 10_000)
         val signedIn = graph.auth.state.value as AuthState.SignedIn
         assertArrayEquals(server.secret, signedIn.credentials.secretBytes())
         assertEquals(server.token, signedIn.credentials.token)
@@ -101,7 +102,7 @@ class OnboardingFlowTest {
         rule.waitUntilAtLeastOneExists(hasTestTag(RestoreTags.KEY_INPUT), 5_000)
         server.approveAccountRequest(decodeBase64(publicKey), AccountLink.sealSecret(server.secret, decodeBase64(publicKey)))
 
-        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 10_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 10_000)
         val signedIn = graph.auth.state.value as AuthState.SignedIn
         assertArrayEquals(server.secret, signedIn.credentials.secretBytes())
         assertEquals(setOf(publicKey), synchronized(server) { server.accountRequests.keys.toSet() })
@@ -110,7 +111,7 @@ class OnboardingFlowTest {
     @Test
     fun aTerminalLinkOpensTheConfirmScreenAndAcceptConnectsIt() {
         rule.onNodeWithText("Create account").performClick()
-        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 5_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 5_000)
         val account = graph.auth.state.value as AuthState.SignedIn
 
         val terminal = Sodium.boxKeypair()
