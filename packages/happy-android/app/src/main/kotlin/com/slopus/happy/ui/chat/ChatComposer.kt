@@ -1,0 +1,279 @@
+package com.slopus.happy.ui.chat
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import com.slopus.happy.R
+import com.slopus.happy.model.SessionState
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.Octicon
+import com.slopus.happy.ui.components.StatusDot
+import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.contentMaxWidth
+import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.ui.theme.happyTextStyle
+
+object ComposerTags {
+    const val COMPOSER = "composer"
+    const val STATUS_ROW = "composer.status"
+    const val STATUS_TEXT = "composer.status.text"
+    const val PANEL = "composer.panel"
+    const val INPUT_CONTAINER = "composer.inputContainer"
+    const val INPUT = "composer.input"
+    const val ACTION_ROW = "composer.actionRow"
+    const val PRIMARY = "composer.primary"
+}
+
+/** agentInputLayout.ts `MOBILE_COMPOSER_METRICS` and AgentInput.tsx's stylesheet (Android phone). */
+object ComposerSpec {
+    val containerPaddingHorizontal = 8.dp
+    val containerPaddingVertical = 8.dp
+    val statusPaddingHorizontal = 16.dp
+    val statusPaddingBottom = 4.dp
+    val statusMinHeight = 20.dp
+    val statusDot = 6.dp
+    val statusGap = 4.dp
+    val statusText = happyTextStyle(fontSize = 11)
+    val shellRadius = 30.dp
+    val shellInset = 10.dp
+    val shellPaddingTop = 8.dp
+    val shellPaddingBottom = 8.dp
+    val inputMinHeight = 44.dp
+    val inputMaxHeight = 120.dp
+    val input = happyTextStyle(fontSize = 16, lineHeight = 22)
+    val inputPaddingVertical = 4.dp
+    /** (actionSize 42 - addIcon 26) / 2: the caret lines up with the add glyph. */
+    val inputPaddingHorizontal = 8.dp
+    val actionRowHeight = 42.dp
+    val actionRowGap = 2.dp
+    val primarySize = 42.dp
+    val primaryMarginLeft = 8.dp
+    val primaryIcon = 16.dp
+    val lockIcon = 14.dp
+}
+
+/** The status line above the composer (useSessionStatus → AgentInput `connectionStatus`). */
+@Immutable
+data class ComposerStatus(val text: String, val color: Color, val pulsing: Boolean)
+
+/** utils/sessionUtils.ts `useSessionStatus` colours. */
+object SessionStatusColors {
+    val disconnected = Color(0xFF999999)
+    val attention = Color(0xFFFF9500)
+    val thinking = Color(0xFF007AFF)
+    val online = Color(0xFF34C759)
+}
+
+/** What the composer's round button does (agentInputPrimaryAction.ts). */
+enum class PrimaryAction { Stop, Blocked, Send, Idle }
+
+/**
+ * `resolveAgentInputPrimaryAction` without voice: Stop wins on an empty
+ * composer while the agent can be stopped; a non-steerable busy agent
+ * locks sending; otherwise text sends.
+ */
+fun resolvePrimaryAction(
+    hasContent: Boolean,
+    showAbort: Boolean,
+    canAbort: Boolean,
+    blocked: Boolean,
+    disabled: Boolean = false,
+): PrimaryAction = when {
+    showAbort && canAbort && !hasContent -> PrimaryAction.Stop
+    blocked && hasContent -> PrimaryAction.Blocked
+    !disabled && hasContent -> PrimaryAction.Send
+    else -> PrimaryAction.Idle
+}
+
+/**
+ * The chat composer on a phone (AgentInput.tsx, compact mobile layout).
+ * Spec: 8 around it. Above the card the status row: 16 in, 4 below, at
+ * least 20 high; a 6 dot (pulsing while attention or thinking) 4 before
+ * 11pt text in the status colour. The card: input.background, radius 30,
+ * a hairline glass border, 10 side insets, 8 above and below. The input
+ * box is at least 44 high, padded 8/4, the text 16/22 growing to 120 then
+ * scrolling, placeholder in the input placeholder colour. Under it the
+ * 42-high action row: the middle (pickers) takes the room, then the 42
+ * round primary button 8 further in (10 from the middle). Primary looks:
+ * send/idle surfaceHighest when it can send else #D1D1D6 (dark #3A3A3C),
+ * Octicons arrow-up 16 in text (textSecondary when idle); stop
+ * button.primary.background (dark #F5F5F5) with Octicons stop 16 white
+ * (dark black); locked surfaceHigh with a 1 divider border and
+ * lock-closed 14 textSecondary. A spinner replaces the glyph while
+ * stopping.
+ */
+@Composable
+fun ChatComposer(
+    text: String,
+    onTextChange: (String) -> Unit,
+    status: ComposerStatus?,
+    primary: PrimaryAction,
+    onPrimary: () -> Unit,
+    modifier: Modifier = Modifier,
+    aborting: Boolean = false,
+    middle: @Composable () -> Unit = {},
+    /** Above the input inside the panel (the attachment strip). */
+    top: @Composable () -> Unit = {},
+) {
+    val colors = HappyTheme.colors
+    val hairline = with(LocalDensity.current) { 1f.toDp() }
+    val shell = RoundedCornerShape(ComposerSpec.shellRadius)
+    val layout = LocalWindowLayout.current
+    Column(
+        modifier = modifier
+            .testTag(ComposerTags.COMPOSER)
+            .fillMaxWidth()
+            .padding(horizontal = ComposerSpec.containerPaddingHorizontal, vertical = ComposerSpec.containerPaddingVertical)
+            // `innerContainer`: held to layout.maxWidth, centred.
+            .contentMaxWidth(layout),
+    ) {
+        if (status != null) {
+            Row(
+                modifier = Modifier
+                    .testTag(ComposerTags.STATUS_ROW)
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = ComposerSpec.statusMinHeight)
+                    .padding(horizontal = ComposerSpec.statusPaddingHorizontal)
+                    .padding(bottom = ComposerSpec.statusPaddingBottom),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ComposerSpec.statusGap),
+            ) {
+                StatusDot(status.color, Modifier.padding(top = 1.dp), pulsing = status.pulsing, size = ComposerSpec.statusDot)
+                Text(status.text, style = ComposerSpec.statusText, color = status.color, modifier = Modifier.testTag(ComposerTags.STATUS_TEXT))
+            }
+        }
+        Column(
+            modifier = Modifier
+                .testTag(ComposerTags.PANEL)
+                .fillMaxWidth()
+                .clip(shell)
+                .background(colors.input.background)
+                .border(hairline, ChatTheme.colors.glassBorder, shell)
+                .padding(horizontal = ComposerSpec.shellInset)
+                .padding(top = ComposerSpec.shellPaddingTop, bottom = ComposerSpec.shellPaddingBottom),
+        ) {
+            top()
+            Box(
+                modifier = Modifier
+                    .testTag(ComposerTags.INPUT_CONTAINER)
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = ComposerSpec.inputMinHeight)
+                    .padding(horizontal = ComposerSpec.inputPaddingHorizontal, vertical = ComposerSpec.inputPaddingVertical),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                BasicTextField(
+                    value = text,
+                    onValueChange = onTextChange,
+                    textStyle = ComposerSpec.input.copy(color = colors.input.text),
+                    cursorBrush = SolidColor(colors.input.text),
+                    modifier = Modifier
+                        .testTag(ComposerTags.INPUT)
+                        .fillMaxWidth()
+                        .heightIn(max = ComposerSpec.inputMaxHeight),
+                    decorationBox = { field ->
+                        Box {
+                            if (text.isEmpty()) {
+                                Text(
+                                    stringResource(R.string.session_input_placeholder),
+                                    style = ComposerSpec.input,
+                                    color = colors.input.placeholder,
+                                    maxLines = 1,
+                                )
+                            }
+                            field()
+                        }
+                    },
+                )
+            }
+            Row(
+                modifier = Modifier.testTag(ComposerTags.ACTION_ROW).fillMaxWidth().heightIn(min = ComposerSpec.actionRowHeight),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ComposerSpec.actionRowGap),
+            ) {
+                Box(modifier = Modifier.weight(1f).heightIn(min = ComposerSpec.actionRowHeight), contentAlignment = Alignment.CenterStart) {
+                    middle()
+                }
+                // With the row gap on each side: 2 + 8 between the middle and the button, as in RN.
+                Spacer(Modifier.width(ComposerSpec.primaryMarginLeft - ComposerSpec.actionRowGap))
+                PrimaryButton(primary, aborting, onPrimary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    val dark = colors.dark
+    val background = when (action) {
+        PrimaryAction.Stop -> if (dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
+        PrimaryAction.Blocked -> colors.surfaceHigh
+        PrimaryAction.Send -> colors.surfaceHighest
+        PrimaryAction.Idle -> if (dark) Color(0xFF3A3A3C) else Color(0xFFD1D1D6)
+    }
+    val enabled = action == PrimaryAction.Send || action == PrimaryAction.Stop
+    // Literal in happy-app (AgentInput.tsx accessibilityLabel).
+    val label = if (action == PrimaryAction.Stop) "Stop" else "Send"
+    Box(
+        modifier = Modifier
+            .testTag(ComposerTags.PRIMARY)
+            .size(ComposerSpec.primarySize)
+            .clip(CircleShape)
+            .background(background)
+            .then(if (action == PrimaryAction.Blocked) Modifier.border(1.dp, colors.divider, CircleShape) else Modifier)
+            .clickable(enabled = enabled && !aborting, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            aborting -> CircularProgressIndicator(
+                Modifier.size(20.dp),
+                color = if (dark) Color.Black else colors.text,
+                strokeWidth = 2.dp,
+            )
+            action == PrimaryAction.Stop -> Icon(Octicon.Stop, ComposerSpec.primaryIcon, if (dark) Color.Black else Color.White)
+            action == PrimaryAction.Blocked -> Icon(Ionicon.LockClosed, ComposerSpec.lockIcon, colors.textSecondary)
+            else -> Icon(
+                Octicon.ArrowUp,
+                ComposerSpec.primaryIcon,
+                if (action == PrimaryAction.Send) colors.text else colors.textSecondary,
+            )
+        }
+    }
+}
+
+/** Whether Stop belongs on the composer: the agent is busy or waiting on the user. */
+fun showsAbort(state: SessionState): Boolean =
+    state == SessionState.Thinking || state == SessionState.PermissionRequired || state == SessionState.InputRequired

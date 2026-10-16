@@ -147,8 +147,8 @@ class OnboardingLayoutTest {
     }
 
     @Test
-    fun restoreScreenStubKeepsTheQrLayout() {
-        rule.setHappyContent { RestoreScreen(onBack = {}, onUseSecretKey = {}) }
+    fun restoreScreenWaitsWithASpinnerInTheCodesPlace() {
+        rule.setHappyContent { RestoreScreen(qrUrl = null, onBack = {}, onUseSecretKey = {}) }
         val instruction = rule.node(RestoreTags.INSTRUCTION).bounds
         val path = rule.node(RestoreTags.PATH).bounds
         val slot = rule.node(RestoreTags.QR_SLOT).bounds
@@ -159,6 +159,20 @@ class OnboardingLayoutTest {
         assertBox("use key button", useKey, ((PHONE_WIDTH - 280) / 2f).dp, slot.bottom + 32.dp, 280.dp, 44.dp)
         // The column is centred in the content area (below the 64 header, inside 24 padding).
         assertDp("centred", instruction.top - (64 + 24).dp, (PHONE_HEIGHT - 24).dp - useKey.bottom)
+    }
+
+    @Test
+    fun restoreScreenShowsTheCodeInAWhiteFrame() {
+        rule.setHappyContent { RestoreScreen(qrUrl = "happy:///account?abc", onBack = {}, onUseSecretKey = {}) }
+        rule.node(RestoreTags.QR_SLOT).assertDoesNotExist()
+        val path = rule.node(RestoreTags.PATH).bounds
+        val frame = rule.node(RestoreTags.QR_FRAME).bounds
+        val code = rule.node(RestoreTags.QR_CODE).bounds
+        // 260 code inside 12 of padding: a 284 frame.
+        assertBox("frame", frame, ((PHONE_WIDTH - 284) / 2f).dp, path.bottom + 32.dp, 284.dp, 284.dp)
+        assertBox("code", code, frame.left + 12.dp, frame.top + 12.dp, 260.dp, 260.dp)
+        val useKey = rule.node(RestoreTags.USE_KEY).bounds
+        assertDp("use key 32 below the frame", frame.bottom + 32.dp, useKey.top)
     }
 
     @Test

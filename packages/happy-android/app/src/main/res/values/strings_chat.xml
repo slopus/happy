@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The chat's strings with no happy-app catalog key, in English only.
+  strings.xml is generated from the catalogs (tools/translations); this file is not.
+-->
+<resources>
+    <!-- a record of a retired or unknown kind; happy-app drops these silently -->
+    <string name="chat_message_unsupported">This message can\'t be shown in this version of the app</string>
+</resources>

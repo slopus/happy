@@ -18,14 +18,24 @@ import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.push.PushRegistrationEffect
+import com.slopus.happy.ui.chat.SessionRoute
+import com.slopus.happy.ui.chat.chatRoutes
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
-import com.slopus.happy.ui.home.HomeScreen
+import com.slopus.happy.ui.connect.DeepLinkEffect
+import com.slopus.happy.ui.tablet.TabletShell
+import com.slopus.happy.ui.connect.connectRoutes
+import com.slopus.happy.ui.home.homeRoutes
 import com.slopus.happy.ui.onboarding.RestoreManualScreen
-import com.slopus.happy.ui.onboarding.RestoreScreen
+import com.slopus.happy.ui.onboarding.TroubleshootRoute
+import com.slopus.happy.ui.machine.MachineRoute
+import com.slopus.happy.ui.onboarding.onboardingRoutes
+import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
+import com.slopus.happy.ui.settings.LocalizedContent
 import com.slopus.happy.ui.settings.settingsRoutes
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.CancellationException
@@ -48,26 +58,39 @@ import kotlinx.serialization.Serializable
 fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
     val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
     val auth by graph.auth.state.collectAsStateWithLifecycle()
+    val language by graph.language.language.collectAsStateWithLifecycle()
 
-    HappyTheme(preference = theme) {
+    LocalizedContent(language.locale) { HappyTheme(preference = theme) {
         val dark = HappyTheme.colors.dark
         LaunchedEffect(dark) { onDarkThemeChange(dark) }
 
         val signedIn = auth as? AuthState.SignedIn
         key(signedIn != null) {
             val nav = rememberNavController()
-            NavHost(navController = nav, startDestination = if (signedIn != null) HomeRoute else WelcomeRoute) {
-                composable<WelcomeRoute> { Welcome(graph, nav) }
-                composable<ServerRoute> { Server(graph, nav) }
-                composable<RestoreRoute> {
-                    RestoreScreen(onBack = { nav.popBackStack() }, onUseSecretKey = { nav.navigate(RestoreManualRoute) })
+            val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
+            val troubleshoot = { nav.navigate(TroubleshootRoute) }
+            // The tablet shell (sidebar beside the stack) or, on a phone, just the stack.
+            TabletShell(graph, nav, signedIn = signedIn != null, onOpenSession = openSession, onTroubleshoot = troubleshoot) {
+                NavHost(navController = nav, startDestination = if (signedIn != null) HomeRoute else WelcomeRoute) {
+                    composable<WelcomeRoute> { Welcome(graph, nav) }
+                    composable<ServerRoute> { Server(graph, nav) }
+                    composable<RestoreManualRoute> { RestoreManual(graph, nav) }
+                    homeRoutes(
+                        graph,
+                        nav,
+                        onOpenSession = openSession,
+                        onTroubleshoot = troubleshoot,
+                    )
+                    settingsRoutes(graph, nav)
+                    onboardingRoutes(graph, nav, onOpenMachine = { id -> nav.navigate(MachineRoute(id)) })
+                    connectRoutes(graph, nav)
+                    chatRoutes(graph, nav, onInfo = { id -> nav.navigate(SessionInfoRoute(id)) })
                 }
-                composable<RestoreManualRoute> { RestoreManual(graph, nav) }
-                composable<HomeRoute> { HomeScreen(onSettings = { nav.navigate(SettingsRoute) }) }
-                settingsRoutes(graph, nav)
             }
+            DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
+            PushRegistrationEffect(graph)
         }
-    }
+    } }
 }
 
 @Composable

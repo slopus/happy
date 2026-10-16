@@ -138,6 +138,10 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
         sessions[sessions.indexOf(session)] = session.copy(seq = maxOf(session.seq, seq), updatedAt = updatedAt)
     }
 
+    fun session(id: String): ApiSession? = synchronized(this) { sessions.firstOrNull { it.id == id } }
+
+    fun machine(id: String): ApiMachine? = synchronized(this) { machines.firstOrNull { it.id == id } }
+
     fun addMachine(id: String) = synchronized(this) {
         machines += ApiMachine(
             id = id, seq = 1, createdAt = 1, updatedAt = 1, active = true, activeAt = 1,
@@ -170,10 +174,13 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
         val query = { name: String -> request.url.queryParameter(name) }
         if (path == "/" && request.method == "GET") return text("Welcome to Happy Server!")
         if (path == "/v1/auth" && request.method == "POST") return auth(request)
+        if (path == "/v1/auth/request/status" && request.method == "GET") return terminalStatus(query("publicKey"))
+        if (path == "/v1/auth/account/request" && request.method == "POST") return accountRequest(request)
         if (path == "/v1/updates/") return MockResponse.Builder().webSocketUpgrade(SocketConnection()).build()
         if (request.headers["Authorization"] != "Bearer $token") return json(401, """{"error":"Unauthorized"}""")
 
         return when {
+            path.startsWith("/v1/sessions/") && "/attachments/" in path -> attachmentRoute(request)
             path == "/v2/sessions" -> {
                 val limit = query("limit")?.toInt() ?: 50
                 val changedSince = query("changedSince")?.toLong()
@@ -242,6 +249,83 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
                 }
                 json(200, HappyJson.encodeToString(ApiSettingsUpdateResult.serializer(), result))
             }
+            path == "/v1/auth/response" && request.method == "POST" -> answer(request, terminalRequests.mapValues { it.value.response }) { key, response ->
+                terminalRequests.getValue(key).response = response
+            }
+            path == "/v1/auth/account/response" && request.method == "POST" -> answer(request, accountRequests) { key, response ->
+                accountRequests[key] = response
+            }
+            else -> json(404, """{"error":"Not found"}""")
+        }
+    }
+
+    // Attachments (attachmentRoutes.ts): local storage by default, S3 presigned when [presignedStorageUrl] is set.
+
+    /** Stored encrypted blobs by ref. */
+    val attachments = mutableMapOf<String, ByteArray>()
+
+    /** The base URL the server names in the URLs it hands out (resolveBaseUrl); this server's own by default. */
+    var attachmentBaseUrl: String? = null
+
+    /** S3 mode: request-upload answers a POST policy for this storage URL, request-download a presigned GET under it. */
+    var presignedStorageUrl: String? = null
+
+    /** Next request-upload statuses to fail with. */
+    val failAttachmentUploads = ArrayDeque<Int>()
+
+    private fun attachmentRoute(request: RecordedRequest): MockResponse {
+        val path = request.url.encodedPath
+        val sessionId = path.removePrefix("/v1/sessions/").substringBefore("/")
+        val action = path.substringAfter("/attachments/")
+        if (sessions.none { it.id == sessionId }) return json(404, """{"error":"Session not found"}""")
+        val base = attachmentBaseUrl ?: url
+        val prefix = "sessions/$sessionId/attachments/"
+        return when {
+            action == "request-upload" && request.method == "POST" -> {
+                failAttachmentUploads.removeFirstOrNull()?.let { return json(it, """{"error":"nope"}""") }
+                val size = HappyJson.parseToJsonElement(request.body!!.utf8()).jsonObject["size"]!!.jsonPrimitive.long
+                if (size > 10 * 1024 * 1024) return json(413, """{"error":"File too large (max 10MB)"}""")
+                val file = "${java.util.UUID.randomUUID()}.enc"
+                val storage = presignedStorageUrl
+                if (storage == null) {
+                    json(200, buildJsonObject {
+                        put("ref", prefix + file)
+                        put("uploadUrl", "$base/v1/sessions/$sessionId/attachments/$file")
+                        put("method", "PUT")
+                    }.toString())
+                } else {
+                    json(200, buildJsonObject {
+                        put("ref", prefix + file)
+                        put("uploadUrl", storage)
+                        put("method", "POST")
+                        put("formFields", buildJsonObject {
+                            put("key", prefix + file)
+                            put("policy", "secret-policy")
+                            put("X-Amz-Signature", "s3-secret")
+                        })
+                    }.toString())
+                }
+            }
+            action == "request-download" && request.method == "POST" -> {
+                val ref = HappyJson.parseToJsonElement(request.body!!.utf8()).jsonObject["ref"]!!.jsonPrimitive.content
+                if (!ref.startsWith(prefix)) return json(400, """{"error":"Ref does not belong to this session"}""")
+                val storage = presignedStorageUrl
+                val downloadUrl = if (storage == null) {
+                    "$base/v1/sessions/$sessionId/attachments/${ref.removePrefix(prefix)}"
+                } else {
+                    "$storage/$ref?X-Amz-Signature=s3-secret"
+                }
+                json(200, buildJsonObject { put("downloadUrl", downloadUrl) }.toString())
+            }
+            request.method == "PUT" -> {
+                val body = request.body!!.toByteArray()
+                if (body.size > 10 * 1024 * 1024) return json(413, """{"error":"File too large (max 10MB)"}""")
+                attachments[prefix + action] = body
+                json(200, """{"ok":true}""")
+            }
+            request.method == "GET" -> attachments[prefix + action]
+                ?.let { MockResponse.Builder().code(200).addHeader("Content-Type", "application/octet-stream").body(okio.Buffer().write(it)).build() }
+                ?: json(404, """{"error":"Attachment not found"}""")
             else -> json(404, """{"error":"Not found"}""")
         }
     }
@@ -527,6 +611,52 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
         if (!Sodium.signVerifyDetached(signature, challenge, publicKey)) return json(401, """{"error":"Invalid signature"}""")
         authenticatedKeys += encodeBase64(publicKey)
         return json(200, """{"success":true,"token":"$token"}""")
+    }
+
+    // Device and terminal linking (authRoutes.ts)
+
+    class TerminalRequest(val supportsV2: Boolean, var response: String? = null)
+
+    /** Terminals waiting to be approved, by base64 box public key (what `/v1/auth/request` would create). */
+    val terminalRequests = mutableMapOf<String, TerminalRequest>()
+
+    /** New phones' account link requests, by base64 box public key, with the approval once given. */
+    val accountRequests = mutableMapOf<String, String?>()
+
+    fun addTerminalRequest(publicKey: ByteArray, supportsV2: Boolean) = synchronized(this) {
+        terminalRequests[encodeBase64(publicKey)] = TerminalRequest(supportsV2)
+    }
+
+    /** A phone that has the account approves a link request, as `/v1/auth/account/response` does. */
+    fun approveAccountRequest(publicKey: ByteArray, response: ByteArray) = synchronized(this) {
+        accountRequests[encodeBase64(publicKey)] = encodeBase64(response)
+    }
+
+    private fun boxKey(value: String?): String? =
+        value?.let { runCatching { decodeBase64(it) }.getOrNull() }?.takeIf { it.size == 32 }?.let { encodeBase64(it) }
+
+    private fun terminalStatus(publicKey: String?): MockResponse {
+        val request = boxKey(publicKey)?.let { terminalRequests[it] }
+            ?: return json(200, """{"status":"not_found","supportsV2":false}""")
+        if (request.response != null) return json(200, """{"status":"authorized","supportsV2":false}""")
+        return json(200, """{"status":"pending","supportsV2":${request.supportsV2}}""")
+    }
+
+    private fun accountRequest(request: RecordedRequest): MockResponse {
+        val body = HappyJson.parseToJsonElement(request.body!!.utf8()).jsonObject
+        val key = boxKey(body.getValue("publicKey").jsonPrimitive.content) ?: return json(401, """{"error":"Invalid public key"}""")
+        val response = accountRequests.getOrPut(key) { null }
+            ?: return json(200, """{"state":"requested"}""")
+        return json(200, """{"state":"authorized","token":"$token","response":"$response"}""")
+    }
+
+    /** `/v1/auth/response` and `/v1/auth/account/response`: the first answer to a known request sticks. */
+    private fun answer(request: RecordedRequest, pending: Map<String, String?>, store: (String, String) -> Unit): MockResponse {
+        val body = HappyJson.parseToJsonElement(request.body!!.utf8()).jsonObject
+        val key = boxKey(body.getValue("publicKey").jsonPrimitive.content) ?: return json(401, """{"error":"Invalid public key"}""")
+        if (key !in pending) return json(404, """{"error":"Request not found"}""")
+        if (pending[key] == null) store(key, body.getValue("response").jsonPrimitive.content)
+        return json(200, """{"success":true}""")
     }
 
     private fun json(code: Int, body: String) = MockResponse.Builder()

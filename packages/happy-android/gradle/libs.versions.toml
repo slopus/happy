@@ -17,6 +17,10 @@ kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
 okhttp = "5.5.0"
 bouncycastle = "1.86"
+play-services-code-scanner = "16.1.0"
+zxing = "3.5.4"
+firebase-messaging = "25.0.1"
+coil = "3.6.3"
 
 junit = "4.13.2"
 robolectric = "4.17"
@@ -47,6 +51,13 @@ okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver3", version.ref = "okhttp" }
 
 bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+
+play-services-code-scanner = { module = "com.google.android.gms:play-services-code-scanner", version.ref = "play-services-code-scanner" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
+coil-test = { module = "io.coil-kt.coil3:coil-test", version.ref = "coil" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }

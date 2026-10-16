@@ -10,17 +10,17 @@
     <string name="server_url_invalid">Invalid URL format</string>
 
     <!-- QR scanning is not part of this build -->
-    <string name="settings_account_link_new_device_unavailable">Linking a device needs the QR scanner, which this build of the Android app does not include yet. Use the secret key on the new device instead.</string>
-    <!-- shown where the QR code would be -->
-    <string name="onboarding_restore_qr_unavailable">Linking by QR code is coming to the Android app. For now, restore with your secret key.</string>
 
     <!-- literals in happy-app: SettingsView.tsx, hooks/useHappyAction.ts -->
     <string name="settings_agents">Agents</string>
     <string name="settings_agents_subtitle">Connected machines and agent defaults</string>
     <string name="happy_action_unknown_error">Unknown error</string>
+    <!-- literals in settings/appearance.tsx -->
+    <string name="settings_appearance_file_diffs_sidebar">File Diffs Sidebar</string>
+    <string name="settings_appearance_file_diffs_sidebar_description">Show git changes next to the chat on desktop</string>
 
     <!-- terminal connect (QR scanner, URL) is not part of this build yet -->
-    <string name="settings_connect_terminal_unavailable">Connecting a terminal needs the QR scanner, which this build of the Android app does not include yet.</string>
+    <string name="settings_agents_machine_unavailable">The machine screen is not in this build of the Android app yet.</string>
 
     <!-- the signed-in home has no session UI yet -->
     <string name="home_empty">Your sessions will appear here.</string>

@@ -77,6 +77,38 @@ class AccountSync(
 
     val live = LiveUpdates(store, decoder, presence, messages, requestSync = deltaSync::invalidate)
 
+    private val rpc = RpcClient(socket, store, decoder, io)
+
+    /** Abort, permissions, kill, archive, delete, files and shell for one session (ops.ts). */
+    val sessionOps = SessionOps(rpc, api, store, io)
+
+    /** Spawn, resume, stop, fork and the daemon's shell (ops.ts). */
+    val machineOps = MachineOps(rpc, api, store, decoder, refreshSessions = ::syncNow, io = io)
+
+    /** Happy Agent's native Git changes: snapshot and file sides (happyAgentGit.ts). */
+    val git = HappyAgentGit(rpc, store, io)
+
+    /** Each session's draft and picks, synced through its metadata (ops.ts sessionSetAgentModes, rigComposer.ts). */
+    val composer = SessionComposer(
+        store,
+        decoder,
+        emitWithAck = rpc::emitWithAck,
+        isConnected = { socket.status.value == ConnectionStatus.CONNECTED },
+        parent = job,
+        dispatcher = io.limitedParallelism(1),
+        clock = clock,
+    )
+
+    /** Sending and the stored outbox (sync.ts sendMessage, flushOutbox). */
+    val sender = MessageSender(
+        api, store, decoder, messages, composer,
+        isThinking = { presence.sessions.value[it]?.thinking == true },
+        scope = scope,
+        refreshSessions = ::syncNow,
+        io = io,
+        clock = clock,
+    )
+
     /** The socket's state, as Home's header shows it (homeConnectionStatus.ts). */
     val connectionStatus: StateFlow<ConnectionStatus> = socket.status
 
@@ -113,6 +145,7 @@ class AccountSync(
         scope.launch {
             foreground.drop(1).collect { active ->
                 socket.emit("app-state", appState(active))
+                sender.setForeground(active)
                 if (active) {
                     socket.reconnectNow()
                     requestSync()
@@ -120,6 +153,9 @@ class AccountSync(
                 }
             }
         }
+        composer.start()
+        sender.setForeground(foreground.value)
+        scope.launch { sender.resume() }
         socket.connect()
         deltaSync.invalidate()
     }
@@ -144,6 +180,8 @@ class AccountSync(
         socket.emit("app-state", appState(foreground.value))
         deltaSync.invalidate()
         messages.invalidateViewing()
+        scope.launch { composer.flushAhead() }
+        scope.launch { sender.resume() }
     }
 
     /** Read at every connect, so a reconnect in the background does not claim the app is active. */

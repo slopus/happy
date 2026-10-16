@@ -23,6 +23,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -67,12 +69,16 @@ fun ItemGroup(
     modifier: Modifier = Modifier,
     title: String? = null,
     footer: String? = null,
+    /** The space above an untitled card (`headerStyle` paddingTop). */
+    noTitleSpacer: Dp = ItemGroupSpec.noTitleSpacer,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = HappyTheme.colors
     val shape = RoundedCornerShape(ItemGroupSpec.cardRadius)
     val border = hairline()
-    Column(modifier = modifier.fillMaxWidth().padding(horizontal = ItemGroupSpec.paddingHorizontal)) {
+    // ItemGroup.tsx: centred, held to layout.maxWidth with the 4 padding inside it.
+    val layout = LocalWindowLayout.current
+    Column(modifier = modifier.fillMaxWidth().contentMaxWidth(layout).padding(horizontal = ItemGroupSpec.paddingHorizontal)) {
         if (title != null) {
             Box(
                 modifier = Modifier
@@ -88,7 +94,7 @@ fun ItemGroup(
                 Text(text = title.uppercase(), style = ItemGroupSpec.header, color = colors.grouped.sectionTitle)
             }
         } else {
-            Spacer(modifier = Modifier.height(ItemGroupSpec.noTitleSpacer))
+            Spacer(modifier = Modifier.height(noTitleSpacer))
         }
 
         Column(

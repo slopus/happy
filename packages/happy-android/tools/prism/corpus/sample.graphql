@@ -1,0 +1,9 @@
+# comment
+query GetUser($id: ID!, $first: Int = 10) @cached {
+  user(id: $id) {
+    name
+    posts(first: $first) { edges { node { title } } }
+    ...UserFields
+  }
+}
+fragment UserFields on User { email "description" }
