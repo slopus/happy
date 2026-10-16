@@ -17,8 +17,12 @@ final class SendingDeliveryMetaTests: XCTestCase, @unchecked Sendable {
         "capabilities": .object(["messageReceipts": .bool(true)]),
     ])
 
+    /// The keys of the last `setup()`, to read what was posted.
+    private var fixture = ServerFixture()
+
     private func setup() throws -> (LocalStore, SyncEngine, FakeHTTP) {
-        let fixture = ServerFixture()
+        fixture = ServerFixture()
+        let fixture = fixture
         let http = FakeHTTP()
         let store = try LocalStore.inMemory()
         let decoder = RecordDecoder(keyRing: KeyRing(keys: fixture.keys))
@@ -157,15 +161,20 @@ final class SendingDeliveryMetaTests: XCTestCase, @unchecked Sendable {
     /// hasn't moved. The next send is queued until the receipt arrives.
     func testTheNextSendIsQueuedBetweenDeliveryAndAcceptance() async throws {
         let (store, engine, http) = try setup()
+        // Read from what was posted: delivery starts at acceptance and may
+        // empty the outbox before the test could look there.
+        let posted = PostedMeta()
+        let cipher = RecordCipher(key: fixture.dataKey)
         http.on("POST /v3/sessions/s/messages") { request in
             let item = try request.jsonBody(SendMessagesRequest.self).messages[0]
+            posted.record(try XCTUnwrap(cipher.decrypt(base64: item.content))["meta"])
             return (200, Data(#"{"messages":[{"id":"m1","seq":1,"localId":"\#(item.localId)","createdAt":1,"updatedAt":1}]}"#.utf8))
         }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let first = try await engine.accept(OutgoingMessage(text: "first"), sessionId: "s", filesDirectory: directory)
-        XCTAssertEqual(try store.outbox(localId: first)?.payload["meta"]?["queuedWhileBusy"], .bool(false))
+        _ = try await engine.accept(OutgoingMessage(text: "first"), sessionId: "s", filesDirectory: directory)
         await engine.waitForIdle()
+        XCTAssertEqual(posted.metas.map { $0?["queuedWhileBusy"] }, [.bool(false)], "delivered once, not queued")
         XCTAssertTrue(try store.pendingOutbox().isEmpty)
         XCTAssertEqual(try store.acceptanceRecords(sessionId: "s").map(\.id), ["m1"])
 
@@ -188,4 +197,12 @@ final class SendingDeliveryMetaTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(try store.acceptanceRecords(sessionId: "s").map(\.id), ["m1", "r", "x"])
         XCTAssertTrue(try store.acceptanceRecords(sessionId: "missing").isEmpty)
     }
+}
+
+/// The meta of each message the fake server received.
+private final class PostedMeta: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [JSONValue?] = []
+    var metas: [JSONValue?] { lock.withLock { values } }
+    func record(_ meta: JSONValue?) { lock.withLock { values.append(meta) } }
 }
