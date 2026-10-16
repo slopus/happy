@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -22,6 +23,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,9 +39,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.model.SessionState
+import com.slopus.happy.ui.autocomplete.ComposerCursor
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
@@ -144,8 +153,20 @@ fun ChatComposer(
     middle: @Composable () -> Unit = {},
     /** Above the input inside the panel (the attachment strip). */
     top: @Composable () -> Unit = {},
+    /** Over the chat above the composer, taking no room (autocomplete suggestions). */
+    overlay: @Composable () -> Unit = {},
+    /** Shares the cursor with [overlay]: reported as it moves, placed after an insert. */
+    cursor: ComposerCursor? = null,
 ) {
     val colors = HappyTheme.colors
+    var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
+    val placement = cursor?.placement
+    val value = when {
+        placement != null && placement.text == text -> TextFieldValue(text, placement.selection)
+        field.text == text -> field
+        else -> TextFieldValue(text, TextRange(text.length))
+    }
+    SideEffect { cursor?.selection = value.selection }
     val hairline = with(LocalDensity.current) { 1f.toDp() }
     val shell = RoundedCornerShape(ComposerSpec.shellRadius)
     Column(
@@ -154,6 +175,7 @@ fun ChatComposer(
             .fillMaxWidth()
             .padding(horizontal = ComposerSpec.containerPaddingHorizontal, vertical = ComposerSpec.containerPaddingVertical),
     ) {
+        Box(Modifier.fillMaxWidth().height(0.dp).wrapContentHeight(Alignment.Bottom, unbounded = true)) { overlay() }
         if (status != null) {
             Row(
                 modifier = Modifier
@@ -189,8 +211,13 @@ fun ChatComposer(
                 contentAlignment = Alignment.CenterStart,
             ) {
                 BasicTextField(
-                    value = text,
-                    onValueChange = onTextChange,
+                    value = value,
+                    onValueChange = { next ->
+                        field = next
+                        cursor?.placement = null
+                        cursor?.selection = next.selection
+                        if (next.text != text) onTextChange(next.text)
+                    },
                     textStyle = ComposerSpec.input.copy(color = colors.input.text),
                     cursorBrush = SolidColor(colors.input.text),
                     modifier = Modifier

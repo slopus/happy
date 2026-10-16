@@ -48,6 +48,8 @@ import com.slopus.happy.sync.rigCanAbort
 import com.slopus.happy.ui.attachments.ComposerAddImageButton
 import com.slopus.happy.ui.attachments.ComposerAttachmentStrip
 import com.slopus.happy.ui.attachments.hasComposerImages
+import com.slopus.happy.ui.autocomplete.ComposerSuggestions
+import com.slopus.happy.ui.autocomplete.rememberComposerAutocomplete
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.AvatarBadgeLocation
 import com.slopus.happy.ui.components.Header
@@ -244,6 +246,7 @@ private fun ChatComposerFor(
         canAbort = canAbort,
         blocked = blocked,
     )
+    val autocomplete = rememberComposerAutocomplete(draft, actions.onDraftChange)
     ChatComposer(
         text = draft,
         onTextChange = actions.onDraftChange,
@@ -262,6 +265,8 @@ private fun ChatComposerFor(
             .imePadding(),
         middle = { ComposerAddImageButton() },
         top = { ComposerAttachmentStrip() },
+        overlay = { ComposerSuggestions(autocomplete) },
+        cursor = autocomplete.cursor,
     )
 }
 

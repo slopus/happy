@@ -36,6 +36,8 @@ import com.slopus.happy.ui.attachments.canUseAttachments
 import com.slopus.happy.ui.attachments.prepareComposerAttachments
 import com.slopus.happy.ui.attachments.rememberComposerImages
 import com.slopus.happy.ui.attachments.rememberSessionAttachments
+import com.slopus.happy.ui.autocomplete.LocalSuggestionSource
+import com.slopus.happy.ui.autocomplete.rememberSessionSuggestions
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -155,6 +157,7 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
     CompositionLocalProvider(
         LocalSessionAttachments provides rememberSessionAttachments(graph, sessionId),
         LocalComposerImages provides images,
+        LocalSuggestionSource provides rememberSessionSuggestions(graph, sessionId, state.session?.metadata),
     ) {
         ChatScreen(
             state = state,
