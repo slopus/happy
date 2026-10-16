@@ -724,6 +724,7 @@ export const zhHans: TranslationStructure = {
         send: '提问',
         close: '关闭',
         answering: 'Claude 正在回答…',
+        queued: '正在等待上一个问题的回答…',
         noAnswer: 'Claude 没有给出回答。',
         terminalMode: '此会话正在终端中运行。请在终端中使用 /btw，或从应用发送一条消息以接管控制。',
         notStarted: '此会话中的 Claude 尚未运行。请先发送一条消息——之后即使 Claude 正忙，也可以使用 /btw。',

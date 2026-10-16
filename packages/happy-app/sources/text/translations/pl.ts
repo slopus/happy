@@ -739,6 +739,7 @@ export const pl: TranslationStructure = {
         send: 'Zapytaj',
         close: 'Zamknij',
         answering: 'Claude odpowiada…',
+        queued: 'Czeka na odpowiedź na poprzednie pytanie…',
         noAnswer: 'Claude nie ma odpowiedzi.',
         terminalMode: 'Ta sesja działa w terminalu. Użyj tam /btw albo wyślij wiadomość z aplikacji, aby przejąć sterowanie.',
         notStarted: 'Claude nie działa jeszcze w tej sesji. Najpierw wyślij wiadomość — potem /btw działa nawet wtedy, gdy Claude jest zajęty.',
