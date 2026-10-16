@@ -1,0 +1,11 @@
+syntax = "proto3";
+package demo.v1;
+// comment
+import "google/protobuf/timestamp.proto";
+message User {
+  string name = 1;
+  repeated int32 ids = 2 [packed = true];
+  map<string, double> scores = 3;
+  enum Kind { UNKNOWN = 0; ADMIN = 1; }
+}
+service Users { rpc Get (User) returns (User); }
