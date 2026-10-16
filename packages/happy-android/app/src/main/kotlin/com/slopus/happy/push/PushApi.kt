@@ -4,7 +4,6 @@ import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.net.HappyJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -13,15 +12,11 @@ import java.net.URLEncoder
 import kotlin.math.max
 import kotlin.random.Random
 
-@Serializable
-data class PushToken(val id: String, val token: String, val createdAt: Long, val updatedAt: Long)
-
-@Serializable
-private data class PushTokenList(val tokens: List<PushToken>)
-
 /**
- * happy-server's push token routes (apiPush.ts). Like happy-app, every call
- * retries until it succeeds ([backoff]); cancel the caller to stop it.
+ * happy-server's push token routes (apiPush.ts) for this device's
+ * registration. Like happy-app, every call retries until it succeeds
+ * ([backoff]); cancel the caller to stop it. Settings lists the account's
+ * tokens with its own `PushTokensApi`.
  */
 class PushApi(
     private val http: HappyHttp,
@@ -31,11 +26,6 @@ class PushApi(
     suspend fun register(authToken: String, pushToken: String) = backoff {
         val body = HappyJson.encodeToString(JsonObject.serializer(), JsonObject(mapOf("token" to JsonPrimitive(pushToken))))
         requireSuccess(http.send("POST", "/v1/push-tokens", token = authToken, jsonBody = body), "register")
-    }
-
-    /** GET /v1/push-tokens: every device registered for the account. */
-    suspend fun list(authToken: String): List<PushToken> = backoff {
-        HappyJson.decodeFromString(PushTokenList.serializer(), http.send("GET", "/v1/push-tokens", token = authToken)).tokens
     }
 
     /** DELETE /v1/push-tokens/:token */

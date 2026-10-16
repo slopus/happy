@@ -340,10 +340,11 @@ What happy-app does with expo-notifications, without Expo:
   from notificationRouting.ts's rules (a `/session/<id>` url, else
   `sessionId`); `DeepLinks.offer` turns it into `DeepLink.Session`, which
   `DeepLinkEffect` hands to `onOpenSession` (the chat's).
-- **Settings rows** (push devices, permission): `PushServices.get(context)`
-  has `registrar.currentExpoToken()` / `remove(...)` and `PushApi.list`;
-  `rememberPushPermission().requestOrOpenSettings()` is
-  requestPushPermissionOrOpenSettings.
+- **Settings › Account's push rows** use `rememberPushRegistration(graph)`,
+  Settings' `PushRegistration` over the same registrar and permission
+  (pushRegistration.ts's getPushPermissionInfo,
+  requestPushPermissionOrOpenSettings, getCurrentExpoPushToken,
+  syncCurrentPushToken, removePushToken).
 
 **Firebase is optional at build time.** There is no google-services
 plugin: `app/build.gradle.kts` reads `app/google-services.json`, else
@@ -356,13 +357,7 @@ only if:
 - the file has clients for `com.ex3ndr.happy`, `com.slopus.happy.preview`
   and `com.slopus.happy.dev` (happy-app's has all three);
 - the Expo project above has that Firebase project's FCM V1 service
-  account key (it does for happy-app; a different Firebase project needs
-  its key uploaded to Expo);
+  account key (happy-app's Android pushes already depend on it; a
+  different Firebase project needs its key uploaded to Expo);
 - the device has Play services (otherwise unsupported, as FCM has no
   token there).
-
-## Stubs to replace
-
-- **Settings › Account › Link New Device** still explains that the scanner
-  is missing (`settings_account_link_new_device_unavailable`); Settings wires
-  it to `rememberAccountLink` (above) and deletes that string.

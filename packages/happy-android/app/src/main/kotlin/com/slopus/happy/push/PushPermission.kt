@@ -24,24 +24,23 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.model.settings.PushPermission
+import com.slopus.happy.model.settings.PushPermissionRequest
+import com.slopus.happy.model.settings.PushPermissionStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-enum class PushPermissionStatus { Granted, Denied, Undetermined }
-
-/** pushRegistration.ts PushPermissionInfo. */
-data class PushPermissionInfo(val status: PushPermissionStatus, val canAskAgain: Boolean) {
-    val granted: Boolean get() = status == PushPermissionStatus.Granted
-}
-
-/** The notification permission as expo-notifications reports and asks for it. */
-interface PushPermission {
-    fun info(): PushPermissionInfo
+/**
+ * The notification permission as expo-notifications reports and asks for
+ * it, in pushRegistration.ts's terms (Settings' [PushPermission]).
+ */
+interface NotificationPermission {
+    fun info(): PushPermission
 
     /** Notifications.requestPermissionsAsync: the system prompt (POST_NOTIFICATIONS, Android 13+). */
-    suspend fun request(): PushPermissionInfo
+    suspend fun request(): PushPermission
 
     /** The app's notification settings, for when the prompt can't be shown again. */
     fun openSettings()
@@ -51,23 +50,29 @@ interface PushPermission {
  * requestPushPermissionOrOpenSettings: allowed already, or the prompt if it
  * can still be shown, or the system settings.
  */
-suspend fun PushPermission.requestOrOpenSettings(): PushPermissionInfo {
+suspend fun NotificationPermission.requestOrOpenSettings(): PushPermissionRequest {
     val existing = info()
-    if (existing.granted) return existing
-    if (existing.canAskAgain) return request()
+    if (existing.granted) return PushPermissionRequest(granted = true, openedSettings = false, permission = existing)
+    if (existing.canAskAgain) {
+        val requested = request()
+        return PushPermissionRequest(granted = requested.granted, openedSettings = false, permission = requested)
+    }
     openSettings()
-    return existing
+    return PushPermissionRequest(granted = false, openedSettings = true, permission = existing)
 }
 
+private fun permission(status: PushPermissionStatus, canAskAgain: Boolean) =
+    PushPermission(status, granted = status == PushPermissionStatus.Granted, canAskAgain = canAskAgain)
+
 /**
- * [PushPermission] for this activity. Expo's rules: before Android 13
+ * [NotificationPermission] for this activity. Expo's rules: before Android 13
  * notifications are allowed unless the user turned them off, and then they
  * can't be asked for. From 13 on, POST_NOTIFICATIONS: undetermined until
  * asked once; after a refusal it can be asked again only while the system
  * would still show its prompt (the rationale flag).
  */
 @Composable
-fun rememberPushPermission(): PushPermission {
+fun rememberNotificationPermission(): NotificationPermission {
     val context = LocalContext.current
     val pending = remember { arrayOfNulls<CompletableDeferred<Boolean>>(1) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -75,23 +80,23 @@ fun rememberPushPermission(): PushPermission {
         pending[0] = null
     }
     return remember(context, launcher) {
-        object : PushPermission {
+        object : NotificationPermission {
             private val prefs = context.getSharedPreferences(RegisteredPushTokenStore.PREFS_NAME, Context.MODE_PRIVATE)
 
-            override fun info(): PushPermissionInfo {
+            override fun info(): PushPermission {
                 if (NotificationManagerCompat.from(context).areNotificationsEnabled()) {
-                    return PushPermissionInfo(PushPermissionStatus.Granted, canAskAgain = true)
+                    return permission(PushPermissionStatus.Granted, canAskAgain = true)
                 }
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                    return PushPermissionInfo(PushPermissionStatus.Denied, canAskAgain = false)
+                    return permission(PushPermissionStatus.Denied, canAskAgain = false)
                 }
-                if (!prefs.getBoolean(KEY_ASKED, false)) return PushPermissionInfo(PushPermissionStatus.Undetermined, canAskAgain = true)
+                if (!prefs.getBoolean(KEY_ASKED, false)) return permission(PushPermissionStatus.Undetermined, canAskAgain = true)
                 val activity = context.findActivity()
                 val canAsk = activity != null && ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.POST_NOTIFICATIONS)
-                return PushPermissionInfo(PushPermissionStatus.Denied, canAskAgain = canAsk)
+                return permission(PushPermissionStatus.Denied, canAskAgain = canAsk)
             }
 
-            override suspend fun request(): PushPermissionInfo {
+            override suspend fun request(): PushPermission {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return info()
                 val result = CompletableDeferred<Boolean>()
                 pending[0]?.cancel()
@@ -137,7 +142,7 @@ fun PushRegistrationEffect(graph: AppGraph) {
     PushRegistrationEffect(
         authToken = (auth as? AuthState.SignedIn)?.credentials?.token,
         supported = { services.fcm.supported },
-        permission = rememberPushPermission(),
+        permission = rememberNotificationPermission(),
         sync = { token -> services.registrar.sync(token) },
         forget = services.registrar::forget,
     )
@@ -148,7 +153,7 @@ fun PushRegistrationEffect(graph: AppGraph) {
 fun PushRegistrationEffect(
     authToken: String?,
     supported: () -> Boolean,
-    permission: PushPermission,
+    permission: NotificationPermission,
     sync: suspend (authToken: String) -> Unit,
     forget: () -> Unit,
 ) {

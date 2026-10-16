@@ -8,6 +8,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.model.settings.PushPermission
+import com.slopus.happy.model.settings.PushPermissionRequest
+import com.slopus.happy.model.settings.PushPermissionStatus
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -28,17 +31,17 @@ class PushPromptTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private class FakePermission(var current: PushPermissionInfo, val answer: PushPermissionInfo = current) : PushPermission {
+    class FakePermission(var current: PushPermission, val answer: PushPermission = current) : NotificationPermission {
         val infos = AtomicInteger()
         val requests = AtomicInteger()
         var settingsOpened = 0
 
-        override fun info(): PushPermissionInfo {
+        override fun info(): PushPermission {
             infos.incrementAndGet()
             return current
         }
 
-        override suspend fun request(): PushPermissionInfo {
+        override suspend fun request(): PushPermission {
             requests.incrementAndGet()
             current = answer
             return answer
@@ -49,16 +52,16 @@ class PushPromptTest {
         }
     }
 
-    private val granted = PushPermissionInfo(PushPermissionStatus.Granted, canAskAgain = true)
-    private val undetermined = PushPermissionInfo(PushPermissionStatus.Undetermined, canAskAgain = true)
-    private val blocked = PushPermissionInfo(PushPermissionStatus.Denied, canAskAgain = false)
+    private val granted = GRANTED
+    private val undetermined = UNDETERMINED
+    private val blocked = BLOCKED
 
     private val synced = CopyOnWriteArrayList<String>()
     private val supportedChecks = AtomicInteger()
     private var forgets = 0
     private var authToken by mutableStateOf<String?>("token-1")
 
-    private fun setEffect(permission: PushPermission, supported: Boolean = true) {
+    private fun setEffect(permission: NotificationPermission, supported: Boolean = true) {
         rule.setContent {
             PushRegistrationEffect(
                 authToken = authToken,
@@ -146,16 +149,25 @@ class PushPromptTest {
     @Test
     fun settingsRowsAskOrOpenSettings() = runBlocking {
         val allowed = FakePermission(granted)
-        assertEquals(granted, allowed.requestOrOpenSettings())
+        assertEquals(PushPermissionRequest(granted = true, openedSettings = false, permission = granted), allowed.requestOrOpenSettings())
         assertEquals(0, allowed.requests.get())
 
         val askable = FakePermission(undetermined, answer = granted)
-        assertEquals(granted, askable.requestOrOpenSettings())
+        assertEquals(PushPermissionRequest(granted = true, openedSettings = false, permission = granted), askable.requestOrOpenSettings())
         assertEquals(1, askable.requests.get())
 
+        val refusing = FakePermission(undetermined, answer = blocked)
+        assertEquals(PushPermissionRequest(granted = false, openedSettings = false, permission = blocked), refusing.requestOrOpenSettings())
+
         val refused = FakePermission(blocked)
-        assertEquals(blocked, refused.requestOrOpenSettings())
+        assertEquals(PushPermissionRequest(granted = false, openedSettings = true, permission = blocked), refused.requestOrOpenSettings())
         assertEquals(0, refused.requests.get())
         assertEquals(1, refused.settingsOpened)
+    }
+
+    companion object {
+        val GRANTED = PushPermission(PushPermissionStatus.Granted, granted = true, canAskAgain = true)
+        val UNDETERMINED = PushPermission(PushPermissionStatus.Undetermined, granted = false, canAskAgain = true)
+        val BLOCKED = PushPermission(PushPermissionStatus.Denied, granted = false, canAskAgain = false)
     }
 }

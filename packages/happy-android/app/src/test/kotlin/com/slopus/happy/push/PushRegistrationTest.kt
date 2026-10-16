@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.net.HappyHttp
+import com.slopus.happy.model.settings.PushTokenSync
 import com.slopus.happy.net.HappyJson
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonObject
@@ -53,10 +54,7 @@ class PushRegistrationTest {
                     return json(200, """{"data":{"expoPushToken":"ExponentPushToken[$fcm]"}}""")
                 }
                 synchronized(failures) { failures.removeFirstOrNull() }?.let { (code, body) -> return json(code, body) }
-                return when (request.method) {
-                    "GET" -> json(200, """{"tokens":[{"id":"t1","token":"ExponentPushToken[a]","createdAt":1,"updatedAt":2}]}""")
-                    else -> json(200, """{"success":true}""")
-                }
+                return json(200, """{"success":true}""")
             }
         }
         server.start()
@@ -83,12 +81,11 @@ class PushRegistrationTest {
     @Test
     fun theServerRoutes() = runBlocking {
         api.register("token-1", "ExponentPushToken[a b]")
-        assertEquals(listOf(PushToken("t1", "ExponentPushToken[a]", 1, 2)), api.list("token-1"))
         api.unregister("token-1", "ExponentPushToken[a b]")
 
         // encodeURIComponent of the token in the DELETE path.
         assertEquals(
-            listOf("POST /v1/push-tokens", "GET /v1/push-tokens", "DELETE /v1/push-tokens/ExponentPushToken%5Ba%20b%5D"),
+            listOf("POST /v1/push-tokens", "DELETE /v1/push-tokens/ExponentPushToken%5Ba%20b%5D"),
             requests.map(::summary),
         )
         assertEquals("""{"token":"ExponentPushToken[a b]"}""", requests[0].body!!.utf8())
@@ -170,6 +167,60 @@ class PushRegistrationTest {
 
         registrar.sync("token-1")
         registrar.forget()
+        assertNull(store.load())
+    }
+
+    private fun settingsRegistration(permission: NotificationPermission, supported: Boolean = true, signedIn: Boolean = true) =
+        AppPushRegistration(permission, supported = { supported }, registrar = registrar, store = store, authToken = { "token-1".takeIf { signedIn } })
+
+    @Test
+    fun settingsSyncAsksFirstThenRegisters() = runBlocking {
+        val asking = PushPromptTest.FakePermission(PushPromptTest.UNDETERMINED, answer = PushPromptTest.GRANTED)
+        assertEquals(
+            PushTokenSync(registered = true, token = "ExponentPushToken[fcm-1]", permission = PushPromptTest.GRANTED),
+            settingsRegistration(asking).syncCurrentToken(),
+        )
+        assertEquals(1, asking.requests.get())
+        assertEquals("ExponentPushToken[fcm-1]", settingsRegistration(asking).currentToken())
+
+        // Refused or blocked: nothing registered, the last registered token reported.
+        requests.clear()
+        val refusing = PushPromptTest.FakePermission(PushPromptTest.UNDETERMINED, answer = PushPromptTest.BLOCKED)
+        assertEquals(
+            PushTokenSync(registered = false, token = "ExponentPushToken[fcm-1]", permission = PushPromptTest.BLOCKED),
+            settingsRegistration(refusing).syncCurrentToken(),
+        )
+        val blocked = PushPromptTest.FakePermission(PushPromptTest.BLOCKED)
+        assertEquals(
+            PushTokenSync(registered = false, token = "ExponentPushToken[fcm-1]", permission = PushPromptTest.BLOCKED),
+            settingsRegistration(blocked).syncCurrentToken(),
+        )
+        assertEquals(0, blocked.requests.get())
+        // getCurrentExpoPushToken without permission: the stored token, no exchange.
+        fcmToken = "fcm-2"
+        assertEquals("ExponentPushToken[fcm-1]", settingsRegistration(blocked).currentToken())
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun settingsWhereUnsupportedRegistersNothing() = runBlocking {
+        val allowed = PushPromptTest.FakePermission(PushPromptTest.GRANTED)
+        assertEquals(
+            PushTokenSync(registered = false, token = null, permission = PushPromptTest.GRANTED),
+            settingsRegistration(allowed, supported = false).syncCurrentToken(),
+        )
+        assertNull(settingsRegistration(allowed, supported = false).currentToken())
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun settingsRemovesADevice() = runBlocking {
+        val allowed = PushPromptTest.FakePermission(PushPromptTest.GRANTED)
+        val registration = settingsRegistration(allowed)
+        registration.syncCurrentToken()
+        requests.clear()
+        registration.removeToken("ExponentPushToken[fcm-1]")
+        assertEquals(listOf("DELETE /v1/push-tokens/ExponentPushToken%5Bfcm-1%5D"), requests.map(::summary))
         assertNull(store.load())
     }
 

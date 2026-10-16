@@ -18,13 +18,14 @@ import java.util.concurrent.TimeUnit
 /** The push objects, one per process, built from the app's graph on first use. */
 class PushServices(context: Context, graph: AppGraph) {
     val fcm = FcmTokenSource(context)
+    val store = RegisteredPushTokenStore(context.getSharedPreferences(RegisteredPushTokenStore.PREFS_NAME, Context.MODE_PRIVATE))
     val registrar = PushRegistrar(
         deviceTokens = fcm,
         expo = ExpoPushTokenClient(
             OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build(),
         ),
         api = PushApi(graph.http),
-        store = RegisteredPushTokenStore(context.getSharedPreferences(RegisteredPushTokenStore.PREFS_NAME, Context.MODE_PRIVATE)),
+        store = store,
         installationId = InstallationId(context)::getOrCreate,
         applicationId = context.packageName,
     )
