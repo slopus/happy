@@ -39,7 +39,7 @@ fun canForkSession(session: Session, machine: Machine?, continuationExperiments:
     continuationExperiments && !session.metadata.isRig() && session.forkSource() != null && machine?.isOnline == true
 
 /** The "Session" alert's rows, in order (useSessionQuickActions actionItems). */
-enum class SessionActionId { Details, Resume, Fork, Duplicate, CopyMetadata, Archive }
+enum class SessionActionId { Details, Resume, Fork, Duplicate, CopyMetadata, CopyMetadataAndLogs, Archive }
 
 fun sessionActionIds(session: Session, machine: Machine?, continuationExperiments: Boolean, devMode: Boolean): List<SessionActionId> = buildList {
     add(SessionActionId.Details)
@@ -48,6 +48,9 @@ fun sessionActionIds(session: Session, machine: Machine?, continuationExperiment
         add(SessionActionId.Fork)
         add(SessionActionId.Duplicate)
     }
-    if (devMode) add(SessionActionId.CopyMetadata)
+    if (devMode) {
+        add(SessionActionId.CopyMetadata)
+        add(SessionActionId.CopyMetadataAndLogs)
+    }
     add(SessionActionId.Archive)
 }

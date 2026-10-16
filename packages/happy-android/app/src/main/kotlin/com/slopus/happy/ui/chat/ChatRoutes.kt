@@ -2,9 +2,12 @@ package com.slopus.happy.ui.chat
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -30,8 +33,16 @@ import com.slopus.happy.chat.StoreChatSessionSource
 import com.slopus.happy.chat.SyncChatActions
 import com.slopus.happy.chat.SyncChatMessagesSource
 import com.slopus.happy.chat.SyncChatPresenceSource
+import com.slopus.happy.model.Machine
+import com.slopus.happy.model.SessionState
+import com.slopus.happy.model.gitStatusKey
+import com.slopus.happy.model.isCliOutdated
+import com.slopus.happy.model.resumeCommandBlock
+import com.slopus.happy.projects.GitStatusServices
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
+import com.slopus.happy.sync.MessageMetaResolver
+import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.ui.attachments.LocalComposerImages
 import com.slopus.happy.ui.attachments.LocalSessionAttachments
 import com.slopus.happy.ui.attachments.attachmentNoticeAlert
@@ -45,9 +56,14 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.files.toolPressRoute
+import com.slopus.happy.ui.home.resumeAvailability
+import com.slopus.happy.ui.usage.LocalUsageDisplay
+import com.slopus.happy.ui.usage.UsageDisplay
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
 /** `/session/{id}`: one chat. */
@@ -71,6 +87,8 @@ fun NavGraphBuilder.chatRoutes(
             onBack = { nav.popBackStack() },
             onInfo = { onInfo(route.id) },
             onToolPress = { message -> nav.navigate(toolPressRoute(route.id, message)) },
+            // A resume that comes back as another session replaces this chat, as navigateToSession does.
+            onOpenSession = { id -> if (id != route.id) nav.navigate(SessionRoute(id)) { popUpTo<SessionRoute> { inclusive = true } } },
         )
     }
 }
@@ -83,6 +101,7 @@ private fun ChatRoute(
     onBack: () -> Unit,
     onInfo: () -> Unit,
     onToolPress: (ChatMessage.ToolCallMessage) -> Unit,
+    onOpenSession: (String) -> Unit,
 ) {
     val account by graph.account.collectAsStateWithLifecycle()
     val feed = remember(account) {
@@ -105,12 +124,27 @@ private fun ChatRoute(
         ComposerModeResolver.resolve(metadata, mirror, settings.agentDefaultOverrides, resources::getString)
     }
     val latestMirror by rememberUpdatedState(mirror)
+    val local by graph.localSettings.values.collectAsStateWithLifecycle()
+
+    // sync.ts onSessionVisible's git half: the checkout is asked for its status now.
+    val git = remember(graph) { GitStatusServices.of(graph) }
+    LaunchedEffect(git, sessionId, account) { if (account != null) git.sessionVisible(sessionId) }
+    val statuses by git.statuses.collectAsStateWithLifecycle()
+    val gitStatus = gitStatusKey(metadata?.machineId, metadata?.path)?.let(statuses::get)
+
+    // SessionView.tsx `shouldShowCliWarning`: an outdated CLI not yet acknowledged on this machine.
+    val cliVersion = metadata?.version
+    val machineId = metadata?.machineId
+    val showCliWarning = isCliOutdated(cliVersion) && !(machineId != null && local.acknowledgedCliVersions[machineId] == cliVersion)
+    val machine by rememberMachine(graph, machineId)
+    var resuming by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var aborting by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
     val notSent = stringResource(R.string.errors_unknown_error)
     val latestState by rememberUpdatedState(state)
+    val latestSettings by rememberUpdatedState(settings)
     val images = rememberComposerImages(enabled = state.session != null && canUseAttachments(state.session?.metadata))
     val latestImages by rememberUpdatedState(images)
     val notices = remember { mutableStateListOf<Alert>() }
@@ -177,6 +211,43 @@ private fun ChatRoute(
             onDiscard = { localId -> scope.launch { runCatching { actions.discard(sessionId, localId) } } },
             onAnswerQuestion = { id, answers, kind -> actions.answerQuestion(sessionId, id, answers, kind) },
             onCancelQuestion = { id, kind -> actions.cancelQuestion(sessionId, id, kind) },
+            onDismissCliWarning = {
+                val machine = latestState.session?.metadata?.machineId
+                val version = latestState.session?.metadata?.version
+                if (machine != null && version != null) {
+                    graph.localSettings.change { it.copy(acknowledgedCliVersions = it.acknowledgedCliVersions + (machine to version)) }
+                }
+            },
+            onResume = onResume@{
+                val session = latestState.session ?: return@onResume
+                val machine = session.metadata?.machineId ?: return@onResume
+                if (resuming) return@onResume
+                resuming = true
+                scope.launch {
+                    try {
+                        // useSessionQuickActions performResume: the picks the session would send with.
+                        val meta = MessageMetaResolver.mode(session.metadata, latestMirror, latestSettings.agentDefaultOverrides)
+                        when (val result = actions.resume(sessionId, machine, meta.model?.value, meta.permissionMode)) {
+                            is SpawnSessionResult.Success -> {
+                                latestMirror.permissionMode?.let { mode ->
+                                    runCatching { actions.setModes(result.sessionId, mapOf(AgentModeField.PERMISSION_MODE to mode)) }
+                                }
+                                onOpenSession(result.sessionId)
+                            }
+                            is SpawnSessionResult.RequestToApproveDirectoryCreation ->
+                                failure = resources.getString(R.string.session_info_resume_session_unexpected_directory_prompt)
+                            is SpawnSessionResult.Error -> failure = result.errorMessage.ifEmpty { notSent }
+                            is SpawnSessionResult.Pending -> failure = notSent
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        report(e)
+                    } finally {
+                        resuming = false
+                    }
+                }
+            },
             onModeChange = { field, option ->
                 val patch = ComposerModeResolver.patch(field, option, latestState.session?.metadata, latestMirror)
                 scope.launch {
@@ -196,6 +267,7 @@ private fun ChatRoute(
         LocalSessionAttachments provides rememberSessionAttachments(graph, sessionId),
         LocalComposerImages provides images,
         LocalSuggestionSource provides rememberSessionSuggestions(graph, sessionId, state.session?.metadata),
+        LocalUsageDisplay provides UsageDisplay(settings.alwaysShowContextSize, settings.usageLimitShowRemaining),
     ) {
         ChatScreen(
             state = state,
@@ -206,6 +278,13 @@ private fun ChatRoute(
             compactToolCalls = settings.compactToolCalls,
             showLineNumbersInToolViews = settings.showLineNumbersInToolViews,
             modes = modes,
+            gitStatus = gitStatus,
+            showCliWarning = showCliWarning,
+            inactiveHint = state.session?.let { session ->
+                // happy-app: a disconnected Happy CLI session; a Happy Agent session has its own lifecycle.
+                if (state.sessionState != SessionState.Disconnected || session.isRig) return@let null
+                InactiveHint(resumeAvailability(session.session, machine).canResume, resuming, session.metadata.resumeCommandBlock())
+            },
         )
     }
     notices.firstOrNull()?.let { HappyAlert(it, onDismiss = { notices.removeAt(0) }) }
@@ -214,5 +293,14 @@ private fun ChatRoute(
             Alert(stringResource(R.string.common_error), message, listOf(AlertButton(stringResource(R.string.common_ok)))),
             onDismiss = { failure = null },
         )
+    }
+}
+
+/** The session's machine as the store has it now, re-read when machines change (off the main thread). */
+@Composable
+private fun rememberMachine(graph: AppGraph, machineId: String?): State<Machine?> {
+    val versions by graph.store.versions.collectAsStateWithLifecycle()
+    return produceState<Machine?>(null, machineId, versions.machines, versions.machineActivity) {
+        value = machineId?.let { id -> withContext(Dispatchers.IO) { graph.store.machine(id)?.let(Machine::from) } }
     }
 }

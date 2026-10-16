@@ -12,6 +12,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 data class AlertButton(
     val text: String,
@@ -24,7 +26,34 @@ data class Alert(
     val title: String,
     val message: String? = null,
     val buttons: List<AlertButton>,
+    /** False for `Modal.confirm` (`cancelable: false`): only a button closes it. */
+    val cancelable: Boolean = true,
 )
+
+/**
+ * ModalManager.confirm on Android: [cancelText] then [confirmText], not
+ * dismissable; true when confirmed. [show] puts the alert up.
+ */
+suspend fun confirm(
+    show: (Alert) -> Unit,
+    title: String,
+    message: String?,
+    confirmText: String,
+    cancelText: String,
+    destructive: Boolean = false,
+): Boolean = suspendCancellableCoroutine { continuation ->
+    show(
+        Alert(
+            title,
+            message,
+            listOf(
+                AlertButton(cancelText) { if (continuation.isActive) continuation.resume(false) },
+                AlertButton(confirmText, destructive) { if (continuation.isActive) continuation.resume(true) },
+            ),
+            cancelable = false,
+        ),
+    )
+}
 
 /**
  * happy-app's Modal on Android is the platform alert. This is its Compose
@@ -36,7 +65,7 @@ data class Alert(
 fun HappyAlert(alert: Alert, onDismiss: () -> Unit) {
     val colors = HappyTheme.colors
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (alert.cancelable) onDismiss() },
         containerColor = colors.surface,
         title = { Text(alert.title, style = happyTextStyle(fontSize = 20, lineHeight = 26, weight = FontWeight.SemiBold), color = colors.text) },
         text = alert.message?.let { message ->

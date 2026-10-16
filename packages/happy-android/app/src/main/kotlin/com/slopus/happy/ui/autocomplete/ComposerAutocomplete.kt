@@ -10,6 +10,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -41,10 +43,18 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -107,13 +117,17 @@ object AutocompleteSpec {
 
 /**
  * The composer's cursor, shared with the overlay: the composer reports
- * [selection] as it moves, and applies [placement] once its text matches
- * (after a suggestion is inserted).
+ * [selection] as it moves, applies [placement] once its text matches
+ * (after a suggestion is inserted), and offers its hardware keys to
+ * [onKey] before handling them itself.
  */
 @Stable
 class ComposerCursor {
     var selection by mutableStateOf(TextRange.Zero)
     var placement by mutableStateOf<Placement?>(null)
+
+    /** True when the key was used; the text field then never sees it. */
+    var onKey: (KeyEvent) -> Boolean = { false }
 
     data class Placement(val text: String, val selection: TextRange)
 }
@@ -134,13 +148,16 @@ fun rememberSessionSuggestions(graph: AppGraph, sessionId: String, metadata: Ses
 class ComposerAutocomplete internal constructor(val cursor: ComposerCursor) {
     internal var list by mutableStateOf(SuggestionList())
     internal var query by mutableStateOf<String?>(null)
+
+    /** The query Escape hid; its list stays hidden until the active word changes. */
+    internal var dismissed by mutableStateOf<String?>(null)
     internal var text = ""
     internal var onTextChange: (String) -> Unit = {}
     internal var onPicked: () -> Unit = {}
 
     /** The rows on show: none without an active word. */
-    val suggestions: List<Suggestion> get() = if (query == null) emptyList() else list.suggestions
-    val selected: Int get() = if (query == null) -1 else list.selected
+    val suggestions: List<Suggestion> get() = if (query == null || query == dismissed) emptyList() else list.suggestions
+    val selected: Int get() = if (query == null || query == dismissed) -1 else list.selected
 
     fun moveUp() {
         list = list.movedUp()
@@ -157,6 +174,30 @@ class ComposerAutocomplete internal constructor(val cursor: ComposerCursor) {
         cursor.placement = ComposerCursor.Placement(result.text, TextRange(result.cursorPosition))
         onTextChange(result.text)
         onPicked()
+    }
+
+    /**
+     * AgentInput `handleKeyPress` while suggestions show: up and down move
+     * the selection (wrapping), Enter or Tab (not Shift+Tab) picks the
+     * selected row (the first if none), Escape hides the list. Anything
+     * else, or any key with no list, goes to the text field.
+     */
+    fun onKey(event: KeyEvent): Boolean {
+        if (suggestions.isEmpty()) return false
+        val handled = when (event.key) {
+            Key.DirectionUp, Key.DirectionDown, Key.Enter, Key.NumPadEnter, Key.Escape -> true
+            Key.Tab -> !event.isShiftPressed
+            else -> false
+        }
+        // The key-up of a key we took is swallowed too, so the field never sees half a press.
+        if (!handled || event.type != KeyEventType.KeyDown) return handled
+        when (event.key) {
+            Key.DirectionUp -> moveUp()
+            Key.DirectionDown -> moveDown()
+            Key.Escape -> dismissed = query
+            else -> select(maxOf(selected, 0))
+        }
+        return true
     }
 }
 
@@ -175,8 +216,10 @@ fun rememberComposerAutocomplete(text: String, onTextChange: (String) -> Unit): 
     state.text = text
     state.onTextChange = onTextChange
     state.onPicked = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
+    state.cursor.onKey = state::onKey
     val query = source?.let { findActiveWord(text, state.cursor.selection.toTextSelection(text), COMPOSER_PREFIXES)?.activeWord }
     state.query = query
+    if (state.dismissed != null && state.dismissed != query) state.dismissed = null
     LaunchedEffect(source, query) {
         if (source != null && query != null) state.list = state.list.replaced(source.suggestions(query))
     }
@@ -221,7 +264,27 @@ private fun SuggestionCard(suggestions: List<Suggestion>, selected: Int, onSelec
     val hairline = with(LocalDensity.current) { 1f.toDp() }
     val width = LocalWindowLayout.current.width
     val wide = width.isFinite && width > AutocompleteSpec.wideScreen
+    val listState = rememberLazyListState()
+    // Keyboard selection keeps the selected row in view, scrolling no further than needed.
+    LaunchedEffect(selected) {
+        if (selected < 0) return@LaunchedEffect
+        val visible = listState.layoutInfo.visibleItemsInfo
+        val item = visible.firstOrNull { it.index == selected }
+        val viewport = listState.layoutInfo.viewportEndOffset
+        when {
+            item == null && selected < (visible.firstOrNull()?.index ?: 0) -> listState.scrollToItem(selected)
+            item == null -> {
+                // Below the window: bring it in, then down to the bottom edge (scrollToItem may have clamped).
+                listState.scrollToItem(selected)
+                val info = listState.layoutInfo
+                info.visibleItemsInfo.firstOrNull { it.index == selected }?.let { listState.scrollBy((it.offset + it.size - info.viewportEndOffset).toFloat()) }
+            }
+            item.offset < 0 -> listState.scrollToItem(selected)
+            item.offset + item.size > viewport -> listState.scrollBy((item.offset + item.size - viewport).toFloat())
+        }
+    }
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .padding(horizontal = if (wide) AutocompleteSpec.widePaddingHorizontal else AutocompleteSpec.paddingHorizontal)
             .padding(bottom = AutocompleteSpec.marginBottom)
@@ -257,6 +320,7 @@ private fun SuggestionRow(selected: Boolean, onClick: () -> Unit, content: @Comp
     Row(
         modifier = Modifier
             .testTag(AutocompleteTags.ROW)
+            .semantics { this.selected = selected }
             .fillMaxWidth()
             .height(AutocompleteSpec.itemHeight)
             .background(background)

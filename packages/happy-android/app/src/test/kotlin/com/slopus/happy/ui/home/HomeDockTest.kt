@@ -15,6 +15,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.compose.ui.semantics.SemanticsProperties
+import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.ui.attachments.AttachmentStripTags
 import com.slopus.happy.model.HomeModelFixtures.cliAvailability
 import com.slopus.happy.model.HomeModelFixtures.machine
 import com.slopus.happy.model.HomeModelFixtures.machineMetadata
@@ -59,7 +61,10 @@ import java.time.ZoneOffset
  *   HARNESS rows 24 in, at least 42 high, 1 apart and 22 above the
  *   composer, which sits 16 in and 8 above the bottom: 10 in, the input
  *   at least 44 ("Ask Claude Code"), the 42 action row, the 42 primary
- *   button 10 in from the shell's edge, the model chip 10 before it.
+ *   button 10 in from the shell's edge, the model chip 10 before it; the
+ *   42 add-image button at the action row's start, the permission 2 on.
+ * - Images: their 64 thumbnails over the input, the composer 72 taller;
+ *   images alone can be sent. A bot takes none: no button, no strip.
  * - A row opens its picker in place of the rows; a pick closes it.
  * - Starting: an 18 high line in the gap above the composer names the
  *   step with "To interrupt press stop"; the backdrop refuses; Stop hands
@@ -82,6 +87,8 @@ class HomeDockTest {
     private val selections = mutableListOf<Pair<NewSessionPage, String>>()
     private val pickers = mutableListOf<NewSessionPage>()
     private var submits = 0
+    private var addImages = 0
+    private val removed = mutableListOf<String>()
     private var cancels = 0
 
     private val dockActions = HomeDockActions(
@@ -92,6 +99,8 @@ class HomeDockTest {
         onSelect = { page, key -> selections += page to key },
         onOpenPicker = { pickers += it },
         onHarnessHelp = {},
+        onAddImage = { addImages++ },
+        onRemoveImage = { removed += it },
     )
 
     private val callbacks = HomeListCallbacks(
@@ -102,13 +111,23 @@ class HomeDockTest {
         onSettings = {}, onAppearance = {}, onSetGrouping = {}, onNewSession = {}, onTroubleshoot = {}, onOpenUrl = {}, onWhatsNew = {},
     )
 
-    private fun dock(prompt: String = "", focused: Boolean = false, phase: StartPhase? = null) = HomeDockState(
+    private fun dock(
+        prompt: String = "",
+        focused: Boolean = false,
+        phase: StartPhase? = null,
+        images: List<AttachmentPreview> = emptyList(),
+        canAttachImages: Boolean = true,
+    ) = HomeDockState(
         prompt = prompt,
         options = resolveNewSessionOptions(NewSessionDraft(selectedMachineId = "m1"), machines, sessions, AgentDefaultOverrides()),
         labels = NewSessionLabels(),
         phase = phase,
         focused = focused,
+        images = images,
+        canAttachImages = canAttachImages,
     )
+
+    private val image = AttachmentPreview("i1", "file:///nowhere/a.jpg", 10, 20, "image/jpeg", 100, "a.jpg")
 
     private fun show(dock: HomeDockState) {
         val list = deriveHomeList(
@@ -187,8 +206,37 @@ class HomeDockTest {
         assertDp("effort 10 before send", primary.left - 10.dp, effort.right)
         assertTrue("effort at least 64", effort.right - effort.left >= 64.dp - TOLERANCE)
         assertTrue("model before effort", rule.node(HomeDockTags.MODEL).bounds.right < effort.left)
-        assertDp("permission at the row's start", 16 + 10, rule.node(HomeDockTags.PERMISSION).bounds.left)
+        val add = rule.node(HomeDockTags.ADD_IMAGE).bounds
+        assertBox("add image at the row's start", add, (16 + 10).dp, actionRow.top, 42.dp, 42.dp)
+        assertDp("permission 2 after it", add.right + 2.dp, rule.node(HomeDockTags.PERMISSION).bounds.left)
         assertDp("chips 40 high", 40, rule.node(HomeDockTags.MODEL).bounds.let { it.bottom - it.top })
+    }
+
+    @Test
+    fun picturesRideAboveTheInputAndSendWithoutText() {
+        show(dock(focused = true, images = listOf(image)))
+        val composer = rule.node(HomeDockTags.COMPOSER).bounds
+        assertDp("the composer grows by 72", 102 + 72, composer.bottom - composer.top)
+        val thumb = rule.node(AttachmentStripTags.THUMB).bounds
+        assertBox("thumbnail 8 + 4 into the composer's 10, under its 8", thumb, (16 + 10 + 8 + 4).dp, composer.top + 8.dp, 64.dp, 64.dp)
+        // The input's 44 box starts 8 under the thumbnails; one 22 line sits centred in it.
+        assertDp("the input's box 8 under the thumbnails", thumb.bottom + 8.dp + 11.dp, rule.node(HomeDockTags.INPUT).bounds.top)
+        rule.node(HomeDockTags.PRIMARY).assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Send")))
+        rule.node(HomeDockTags.PRIMARY).performClick()
+        assertEquals("images alone can be sent", 1, submits)
+        rule.node(HomeDockTags.ADD_IMAGE).performClick()
+        assertEquals(1, addImages)
+        rule.node(AttachmentStripTags.REMOVE).performClick()
+        assertEquals(listOf("i1"), removed)
+    }
+
+    @Test
+    fun aBotTakesNoPictures() {
+        show(dock(focused = true, images = listOf(image), canAttachImages = false))
+        rule.onAllNodesWithTag(HomeDockTags.ADD_IMAGE, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(AttachmentStripTags.STRIP, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(HomeDockTags.PRIMARY).performClick()
+        assertEquals("nothing to send", 0, submits)
     }
 
     @Test

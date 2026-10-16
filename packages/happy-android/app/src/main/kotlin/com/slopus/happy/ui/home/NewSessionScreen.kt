@@ -27,6 +27,8 @@ import com.slopus.happy.R
 import com.slopus.happy.model.CUSTOM_PROJECT_PATH_KEY
 import com.slopus.happy.model.NewSessionLabels
 import com.slopus.happy.model.NewSessionPage
+import com.slopus.happy.ui.attachments.attachmentNoticeAlert
+import com.slopus.happy.ui.attachments.rememberImagePicker
 import com.slopus.happy.ui.chat.formatLastSeen
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -73,9 +75,12 @@ class NewSessionDock(val state: HomeDockState, val actions: HomeDockActions, val
 
 /**
  * MainView's home prompt and useStartSessionFromDraft as the screen sees
- * them: Send puts the text on the draft and starts; a refusal or failure
- * is an alert ("Create Directory?" asks before a missing one is made);
- * [onStarted] gets the new session, by then with its first message queued.
+ * them: Send puts the text on the draft and starts, the picked images going
+ * with the first message; a refusal or failure is an alert ("Create
+ * Directory?" asks before a missing one is made); [onStarted] gets the new
+ * session, by then with its first message queued. What the images ran into
+ * (no image support, failed uploads) is an alert too; the new session opens
+ * once it is dismissed, since this screen is gone after.
  */
 @Composable
 fun rememberNewSessionDock(
@@ -95,6 +100,10 @@ fun rememberNewSessionDock(
     val labels = remember(resources) { newSessionLabels(resources) }
     var prompt by rememberSaveable { mutableStateOf(initialPrompt()) }
     var alert by remember { mutableStateOf<Alert?>(null) }
+    // The images' alerts, one after another; the last one's dismissal may open the session.
+    var notices by remember { mutableStateOf<List<Alert>>(emptyList()) }
+    var afterNotices by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val picker = rememberImagePicker()
     var confirming by remember { mutableStateOf<Pair<String, CompletableDeferred<Boolean>>?>(null) }
     var prompting by remember { mutableStateOf<Prompt?>(null) }
     val scope = rememberCoroutineScope()
@@ -108,24 +117,35 @@ fun rememberNewSessionDock(
         }
     }
 
-    val actions = remember(newSession, onFocusChange, onStarted, uriHandler, strings) {
+    val actions = remember(newSession, onFocusChange, onStarted, uriHandler, strings, picker) {
         HomeDockActions(
             onPromptChange = { prompt = it },
             onFocusChange = onFocusChange,
             onSubmit = submit@{
                 val text = prompt.trim()
-                if (text.isEmpty() || newSession.starter.phase.value != null) return@submit
+                val images = picker.images.toList()
+                if ((text.isEmpty() && images.isEmpty()) || newSession.starter.phase.value != null) return@submit
                 newSession.setInput(text)
                 scope.launch {
-                    val result = newSession.starter.start { directory ->
+                    val result = newSession.starter.start(attachments = images) { directory ->
                         CompletableDeferred<Boolean>().also { confirming = directory to it }.await()
                     }
                     when (result) {
                         is StartResult.Started -> {
                             prompt = ""
-                            onFocusChange(false)
-                            onStarted(result.sessionId)
+                            images.forEach { picker.remove(it.id) }
+                            val open = {
+                                onFocusChange(false)
+                                onStarted(result.sessionId)
+                            }
+                            if (result.notices.isEmpty()) {
+                                open()
+                            } else {
+                                notices = result.notices.map { attachmentNoticeAlert(it, resources) }
+                                afterNotices = open
+                            }
                         }
+                        is StartResult.NotSent -> notices = result.notices.map { attachmentNoticeAlert(it, resources) }
                         is StartResult.Refused -> alert = Alert(strings.error, result.refusal.message, listOf(AlertButton(strings.ok)))
                         is StartResult.Failed -> alert = Alert(strings.error, result.message, listOf(AlertButton(strings.ok)))
                         StartResult.Abandoned -> Unit
@@ -148,11 +168,19 @@ fun rememberNewSessionDock(
             },
             onOpenPicker = newSession::onOpenPicker,
             onHarnessHelp = { uriHandler.openUri(HARNESS_SETUP_HELP_URL) },
+            onAddImage = picker::attach,
+            onRemoveImage = picker::remove,
         )
     }
-    val state = HomeDockState(prompt, options, labels, phase, focused, showScrim)
+    val state = HomeDockState(prompt, options, labels, phase, focused, showScrim, images = picker.images.toList())
     return NewSessionDock(state, actions) {
         alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
+        notices.firstOrNull()?.let { notice ->
+            HappyAlert(notice, onDismiss = {
+                notices = notices.drop(1)
+                if (notices.isEmpty()) afterNotices?.also { afterNotices = null }?.invoke()
+            })
+        }
         prompting?.let { PromptModal(it, onDismiss = { prompting = null }) }
         confirming?.let { (directory, answer) ->
             // A dismissal that pressed no button is a no.

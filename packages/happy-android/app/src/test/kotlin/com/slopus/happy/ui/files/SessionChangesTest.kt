@@ -2,13 +2,17 @@ package com.slopus.happy.ui.files
 
 import com.slopus.happy.diff.DiffSource
 import com.slopus.happy.diff.FileChangeKind
+import com.slopus.happy.model.GitFileStatus
+import com.slopus.happy.model.GitStatusParser
 import com.slopus.happy.sync.BashResult
 import com.slopus.happy.sync.GitFacts
 import com.slopus.happy.sync.GitFile
 import com.slopus.happy.sync.GitFileContent
 import com.slopus.happy.sync.GitState
 import com.slopus.happy.sync.ReadFileResult
+import com.slopus.happy.sync.SessionFileCache
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -148,5 +152,66 @@ class SessionChangesTest {
         changes.refresh()
         advanceUntilIdle()
         assertEquals(AgentChanges.Load.Error("no state"), changes.state.value.load)
+    }
+
+    @Test
+    fun legacyShowsTheCachedListWhileGitRuns() = runTest(StandardTestDispatcher()) {
+        val ops = FakeOps().apply {
+            status = "1 .M N... 100644 100644 100644 abc def src/a.kt\n"
+            numstat = "1\t1\tsrc/a.kt\n---STAGED---\n"
+        }
+        val cache = SessionFileCache()
+        val first = LegacyChanges(this as TestScope, ops, "s", "/repo", cache, "m:/repo")
+        assertNull(first.state.value.files)
+        first.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf("src/a.kt"), cache.statusFiles("m:/repo")?.files?.unstagedFiles?.map { it.fullPath })
+
+        // Back again: the list is there before git answers, its diffs fetch at once.
+        ops.status = "1 .M N... 100644 100644 100644 abc def src/a.kt\n1 .M N... 100644 100644 100644 abc def src/b.kt\n"
+        val again = LegacyChanges(this, ops, "s", "/repo", cache, "m:/repo")
+        assertEquals(listOf("src/a.kt"), again.state.value.files?.map { it.fullPath })
+        again.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf("src/a.kt", "src/b.kt"), again.state.value.items.map { it.path })
+        assertEquals(2, cache.statusFiles("m:/repo")?.files?.unstagedFiles?.size)
+        // Another checkout starts empty.
+        assertNull(LegacyChanges(this, ops, "s", "/other", cache, "m:/other").state.value.files)
+    }
+
+    @Test
+    fun fileViewerShowsTheCachedCopyThenTheFetch() = runTest(StandardTestDispatcher()) {
+        var diff = "@@ -1 +1 @@\n-a\n+b\n"
+        var read = ReadFileResult(true, Base64.getEncoder().encodeToString("b\n".toByteArray()))
+        val ops = object : SessionFileOps by FakeOps() {
+            override suspend fun bash(sessionId: String, command: String, cwd: String?, timeoutMs: Long) = BashResult(true, stdout = diff, exitCode = 0)
+            override suspend fun readFile(sessionId: String, path: String) = read
+        }
+        val cache = SessionFileCache()
+        assertEquals(
+            listOf(FileLoad.Loaded("b\n", diff)),
+            ops.fileLoads(cache, "s", "/repo/a.kt", "/repo", "a.kt").toList(),
+        )
+        assertEquals("b\n", cache.file("s", "/repo/a.kt")?.content)
+
+        // Committed since: the cached copy first, and file.tsx keeps the diff it had.
+        val old = diff
+        diff = ""
+        read = ReadFileResult(true, Base64.getEncoder().encodeToString("c\n".toByteArray()))
+        assertEquals(
+            listOf(FileLoad.Loaded("b\n", old), FileLoad.Loaded("c\n", old)),
+            ops.fileLoads(cache, "s", "/repo/a.kt", "/repo", "a.kt").toList(),
+        )
+        assertNull(cache.file("s", "/repo/a.kt")?.diff)
+
+        // A failure shows over the copy and leaves the cache alone.
+        read = ReadFileResult(false, error = "gone")
+        assertEquals(FileLoad.Failed("gone"), ops.fileLoads(cache, "s", "/repo/a.kt", "/repo", "a.kt").toList().last())
+        assertEquals("c\n", cache.file("s", "/repo/a.kt")?.content)
+        // Binary by extension caches as binary; a deleted session's files go.
+        assertEquals(listOf(FileLoad.Binary), ops.fileLoads(cache, "s", "/repo/logo.png", "/repo", "logo.png").toList())
+        assertTrue(cache.file("s", "/repo/logo.png")!!.isBinary)
+        cache.forgetSession("s")
+        assertNull(cache.file("s", "/repo/a.kt"))
     }
 }

@@ -50,6 +50,7 @@
     <string name="home_dock_placeholder">Plan, ask, build…</string>
     <string name="home_dock_ask">Ask %1$s</string>
     <string name="home_dock_send">Send</string>
+    <string name="home_dock_add_image">Add image</string>
     <string name="home_dock_stop">Stop</string>
     <string name="home_dock_interrupt_hint">To interrupt press stop</string>
     <string name="home_dock_row_machine">MACHINE</string>

@@ -234,11 +234,11 @@ class LiveUpdatesTest {
     fun projectEventsReachTheCatalog() {
         h.startAndSync()
         val seen = java.util.concurrent.atomic.AtomicInteger()
-        val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        // UNDISPATCHED: subscribed before launch returns, so the event can't beat the collector.
+        val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
             h.account.live.projectChanges.collect { seen.incrementAndGet() }
         }
         try {
-            Thread.sleep(50)
             server.emitUpdate(buildJsonObject { put("t", "update-project"); put("id", "p1") })
             eventually { seen.get() >= 1 }
         } finally {
@@ -255,11 +255,10 @@ class LiveUpdatesTest {
         val state = java.util.concurrent.CopyOnWriteArrayList<String>()
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
         val jobs = listOf(
-            scope.launch { h.account.live.sessionDataUpdates.collect { data.add(it) } },
-            scope.launch { h.account.live.agentStateUpdates.collect { state.add(it) } },
+            scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { h.account.live.sessionDataUpdates.collect { data.add(it) } },
+            scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { h.account.live.agentStateUpdates.collect { state.add(it) } },
         )
         try {
-            Thread.sleep(50)
             server.emitUpdate(server.newMessageBody("s1", server.appendMessage("s1", text(2))))
             eventually { data == listOf("s1") }
             server.emitUpdate(buildJsonObject {

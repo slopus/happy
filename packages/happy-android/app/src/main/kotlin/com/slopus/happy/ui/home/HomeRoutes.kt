@@ -30,9 +30,18 @@ import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
+import com.slopus.happy.attachments.AttachmentServices
+import com.slopus.happy.attachments.AttachmentUploadResult
+import com.slopus.happy.attachments.readAttachmentBytes
+import com.slopus.happy.diagnostics.ClientLogs
 import com.slopus.happy.model.Machine
+import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.SessionListGrouping
+import com.slopus.happy.model.SessionListInputs
+import com.slopus.happy.model.buildSessionListViewData
+import com.slopus.happy.model.worktreeTabSuccessor
 import com.slopus.happy.net.ConnectionStatus
+import com.slopus.happy.ui.components.confirm
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.Settings
@@ -110,7 +119,7 @@ import java.util.WeakHashMap
  * in the background and kept warm between visits, the archive in flight,
  * and the store-version check.
  */
-class HomeServices private constructor(graph: AppGraph) {
+class HomeServices private constructor(private val graph: AppGraph) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val account = graph.account
@@ -133,6 +142,8 @@ class HomeServices private constructor(graph: AppGraph) {
             if (session.isOnline) sessionActions.kill(session.id)
             return sessionActions.delete(session.id)
         }
+
+        override suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) = this@HomeServices.cleanupWorktree(session, confirm)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -189,6 +200,28 @@ class HomeServices private constructor(graph: AppGraph) {
 
     fun launch(block: suspend CoroutineScope.() -> Unit) = scope.launch(block = block)
 
+    /** maybeCleanupWorktree over the session's machine shell, against the chats active now. */
+    suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) {
+        val ops = machineOps ?: return
+        val active = snapshots.value?.sessions.orEmpty().filter { it.active }
+        maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId, active, ops::bash, confirm)
+    }
+
+    /** useWorktreeTabSuccessor, read now: the archived chat's neighbouring tab in the project layout. */
+    fun tabSuccessor(sessionId: String): String? {
+        val grouping = settings.value.sessionListGrouping
+        if (grouping != SessionListGrouping.Project) return null
+        val snapshot = snapshots.value ?: return null
+        val inputs = SessionListInputs(
+            snapshot.sessions,
+            snapshot.machines.associateBy { it.id },
+            snapshot.projects,
+            archivingSessionIds = archiver.archiving.value,
+            gitStatuses = snapshot.gitStatuses,
+        )
+        return worktreeTabSuccessor(buildSessionListViewData(inputs), sessionId, grouping)
+    }
+
     private var newSessionServices: NewSessionServices? = null
 
     /** The new-session composer, its draft in the app's own preferences. */
@@ -203,7 +236,13 @@ class HomeServices private constructor(graph: AppGraph) {
             drafts = drafts,
             machineActions = machineActions,
             sessionActions = sessionActions,
-            sender = LiveFirstMessageSender { account.value },
+            sender = LiveFirstMessageSender(
+                account = { account.value },
+                metadata = { id -> withContext(Dispatchers.IO) { store.session(id)?.metadataJson?.let(SessionMetadata::parse) } },
+                upload = { id, images ->
+                    AttachmentServices.of(graph).transfers?.upload(id, images, ::readAttachmentBytes) ?: AttachmentUploadResult(emptyList(), images.size)
+                },
+            ),
             awaitSession = ::awaitSession,
             scope = scope,
         )
@@ -349,16 +388,21 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
         value = withContext(Dispatchers.IO) { parseJsonObject(graph.store.session(id)?.agentStateJson) }
     }
     val context = LocalContext.current
-    val actions = remember(nav, onOpenSession, context) {
+    val actions = remember(nav, onOpenSession, context, services) {
         val home = { nav.popBackStack(HomeRoute, inclusive = false); Unit }
         SessionInfoActions(
             onBack = { nav.popBackStack() },
             onOpenSession = onOpenSession,
             onOpenMachine = { machineId -> nav.navigate(MachineRoute(machineId)) },
             onChanges = { id -> nav.navigate(SessionChangesRoute(id)) },
-            onArchived = home,
+            // A tab of a checkout hands over to its neighbour instead of dropping to home.
+            onArchived = { successor ->
+                home()
+                if (successor != null) onOpenSession(successor)
+            },
             onDeleted = home,
             copyToClipboard = { text -> copyToClipboard(context, text) },
+            tabSuccessor = services::tabSuccessor,
         )
     }
     SessionInfoScreen(
@@ -508,6 +552,8 @@ class SessionMenus(
     private val services: HomeServices,
     private val buildMenu: (Session) -> Alert?,
     private val showError: (String?, Boolean) -> Unit,
+    /** maybeCleanupWorktree's "Delete Worktree?". */
+    private val confirmCleanup: suspend () -> Boolean = { false },
 ) {
     /** useSessionActionAlert: "Session", one button per action, then Cancel. */
     fun open(sessionId: String) {
@@ -519,7 +565,7 @@ class SessionMenus(
     fun archive(sessionId: String) {
         val session = services.session(sessionId) ?: return
         services.launch {
-            val result = services.archiver.archive(session)
+            val result = services.archiver.archive(session) { services.cleanupWorktree(session, confirmCleanup) }
             if (result is ArchiveResult.Failed) showError(result.message, result.bot)
         }
     }
@@ -544,6 +590,10 @@ private fun rememberSessionMenus(
         fork = stringResource(R.string.session_fork_action),
         duplicate = stringResource(R.string.session_duplicate_action),
         copyMetadata = stringResource(R.string.session_info_copy_metadata),
+        cleanupTitle = stringResource(R.string.session_info_worktree_cleanup_title),
+        cleanupMessage = stringResource(R.string.session_info_worktree_cleanup_message),
+        cleanupDelete = stringResource(R.string.session_info_worktree_cleanup_delete),
+        cleanupKeep = stringResource(R.string.session_info_worktree_cleanup_keep),
         archive = stringResource(R.string.session_archive_action),
         cancel = stringResource(R.string.common_cancel),
         error = stringResource(R.string.common_error),
@@ -604,12 +654,23 @@ private fun rememberSessionMenus(
                             copyToClipboard(context, prettyJson.encodeToString(JsonObject.serializer(), metadata.raw))
                             showAlert(Alert(strings.success, strings.metadataCopied, listOf(AlertButton(strings.ok))))
                         }
+                        SessionActionId.CopyMetadataAndLogs -> AlertButton(strings.copyMetadata + " & Client Logs") {
+                            val metadata = session.metadata ?: return@AlertButton error(strings.error)
+                            scope.launch {
+                                val logs = withContext(Dispatchers.IO) { ClientLogs.read() }
+                                copyToClipboard(context, ClientLogs.metadataAndLogs(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), logs))
+                                showAlert(Alert(strings.success, strings.metadataCopied, listOf(AlertButton(strings.ok))))
+                            }
+                        }
                         SessionActionId.Archive -> AlertButton(strings.archive, destructive = true) { menus.archive(session.id) }
                     }
                 }
                 Alert(strings.title, null, buttons + AlertButton(strings.cancel)).also(showAlert)
             },
             showError = { message, bot -> error(message ?: if (bot) strings.botArchiveFailed else strings.archiveFailed) },
+            confirmCleanup = {
+                confirm(showAlert, strings.cleanupTitle, strings.cleanupMessage, strings.cleanupDelete, strings.cleanupKeep, destructive = true)
+            },
         )
         menus
     }
@@ -622,6 +683,10 @@ private data class SessionMenuStrings(
     val fork: String,
     val duplicate: String,
     val copyMetadata: String,
+    val cleanupTitle: String,
+    val cleanupMessage: String,
+    val cleanupDelete: String,
+    val cleanupKeep: String,
     val archive: String,
     val cancel: String,
     val error: String,
