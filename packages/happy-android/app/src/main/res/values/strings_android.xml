@@ -3,7 +3,7 @@
   Strings with no happy-app catalog key, in English only. strings.xml is
   generated from the catalogs (tools/translations); this file is not.
 -->
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <!-- serverConfig.ts validateServerUrl -->
     <string name="server_url_empty">Server URL cannot be empty</string>
     <string name="server_url_protocol">Server URL must use HTTP or HTTPS protocol</string>

@@ -3,7 +3,7 @@
   Tablet strings with no happy-app catalog key (literals in its source), in
   English only. strings.xml is generated from the catalogs; this file is not.
 -->
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <!-- EmptySessionsTablet.tsx -->
     <string name="tablet_no_sessions_title">No sessions yet</string>
     <string name="tablet_machine_unreachable">%1$s is unreachable</string>

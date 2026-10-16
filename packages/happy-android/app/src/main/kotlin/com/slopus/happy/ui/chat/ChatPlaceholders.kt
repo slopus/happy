@@ -13,7 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -91,7 +91,7 @@ fun EmptyMessages(
     val colors = HappyTheme.colors
     val metadata = session.metadata
     val scope = rememberCoroutineScope()
-    val resources = LocalContext.current.resources
+    val resources = LocalResources.current
     val blocked = pager.blocked
     LaunchedEffect(hasMoreOlder, isLoadingOlder, blocked) {
         if (hasMoreOlder && !isLoadingOlder && blocked == null) scope.launch { pager.request { null } }

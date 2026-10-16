@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- sync.ts's background-send notifications (English only there too). -->
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="push_background_send_pending_title">Message not sent</string>
     <string name="push_background_send_pending_body">A message is still sending in the background. It will fail in 30 seconds if not delivered.</string>
     <string name="push_background_send_failed_title">Message failed</string>

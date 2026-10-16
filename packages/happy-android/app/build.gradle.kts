@@ -140,6 +140,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // The language picker switches locale in the app (ui/settings/LocalizedContent.kt),
+    // so a Play bundle must keep every language rather than only the device's.
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
