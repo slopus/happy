@@ -15,7 +15,7 @@ import UIKit
 /// immutable font and paragraph style made on main.
 struct ComposerTextMeasure: @unchecked Sendable {
     let stamp: ComposerTextHeights.Stamp
-    let text: String
+    var text: String
     let attributes: [NSAttributedString.Key: Any]
 
     func run() -> CGFloat {

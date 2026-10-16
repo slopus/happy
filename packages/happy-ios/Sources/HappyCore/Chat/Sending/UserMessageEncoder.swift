@@ -39,7 +39,7 @@ public enum UserMessageEncoder {
         session: SessionRecord,
         composer: JSONValue = .object([:]),
         settings: JSONValue? = nil,
-        hasPendingUserMessage: Bool = false,
+        hasPendingUserMessage: @autoclosure () throws -> Bool = false,
         sentFrom: String = "ios"
     ) throws -> JSONValue {
         var meta: [String: JSONValue] = ["sentFrom": .string(sentFrom)]
@@ -59,10 +59,11 @@ public enum UserMessageEncoder {
                 }
             }
             meta["expectsAcceptance"] = .bool(true)
-            meta["queuedWhileBusy"] = .bool(
-                message.source != .newSession
-                    && (hasPendingUserMessage || requests || (!questions && session.thinking))
-            )
+            // The pending look reads the store, so it comes last: only an
+            // idle agent's send needs it.
+            let busy = requests || (!questions && session.thinking)
+            let queued = try message.source != .newSession && (busy || hasPendingUserMessage())
+            meta["queuedWhileBusy"] = .bool(queued)
         }
         meta["appendSystemPrompt"] = .string(systemPrompt)
         meta.merge(try modeMeta(metadata: metadata, composer: composer, settings: settings)) { _, value in value }

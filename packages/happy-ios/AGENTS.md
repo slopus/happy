@@ -143,10 +143,6 @@ nothing here is wired to the release skill or to EAS.
     Retry is idempotent by localId, including after a lost acknowledgement.
   - Unsupported permission modes are refused before acceptance: `send` throws
     `UnsupportedPermissionModeError`, and nothing is enqueued or copied.
-  - Known delivery-meta difference: `hasPendingUserMessage` counts local
-    outbox text, but does not yet count delivered messages that the daemon
-    has not accepted (happy-app's reducer `pending`). `thinking` usually
-    covers that interval; otherwise `queuedWhileBusy` can be false there.
 - **Tool outputs are hidden by default** in the chat. This deliberately
   differs from happy-app: tool output is collapsed by default, tap to expand,
   and pending decisions stay open. Every tool row shows its header only

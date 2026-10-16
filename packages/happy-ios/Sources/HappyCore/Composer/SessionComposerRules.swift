@@ -310,101 +310,96 @@ public struct ComposerUsage: Equatable, Sendable {
 /// flushed when the app leaves the foreground or the composer goes away.
 /// A Happy Agent session saves every edit at once and takes remote edits
 /// from the store (`storeChanged`).
+///
+/// It never sees the text, which may be long: only whether each edit left
+/// it blank. useDraft's `value === lastSavedValue` check moved to the
+/// writer, off the main thread (`ComposerDraftModel.Write.Persist`), and
+/// so did the remote edit's comparison with what was saved
+/// (`ComposerStoreDelivery.draftIsSaved`). useDraft also compares a remote
+/// draft with the store's previous one, but that one always equals the
+/// text last saved, so the one comparison decides.
 public struct DraftAutosave: Equatable, Sendable {
     public enum Action: Equatable, Sendable {
         case none
-        case saveNow(String)
+        case saveNow
         /// Save after `interval` unless another change comes first.
-        case saveLater(String)
+        case saveLater
     }
 
     /// 2000ms.
     public static let interval: Duration = .seconds(2)
 
-    public private(set) var lastSaved: String
-    public private(set) var pending: String?
-    /// The stored draft at the last look or save: the subscription's
-    /// `previous`.
-    public private(set) var stored: String
+    /// Whether the text last saved, loaded or taken is blank.
+    public private(set) var savedIsBlank: Bool
+    /// An edit waits for the debounce.
+    public private(set) var hasPending = false
     /// A remote edit came while an input method was composing; look again
     /// when the composition ends.
     public private(set) var remoteDeferred = false
 
     /// Seeded with the draft the composer opened with, so loading it
     /// doesn't write it back.
-    public init(loaded: String) {
-        lastSaved = loaded
-        stored = loaded
+    public init(loadedIsBlank: Bool = true) {
+        savedIsBlank = loadedIsBlank
     }
 
-    /// `synced`: a Happy Agent session, whose draft goes to the mirror on
-    /// every edit.
-    public mutating func textChanged(_ value: String, synced: Bool = false) -> Action {
-        pending = nil
-        guard value != lastSaved else { return .none }
-        let isEmpty = Self.isBlank(value)
-        if synced || Self.isBlank(lastSaved) != isEmpty {
-            lastSaved = value
-            stored = value
-            return .saveNow(value)
+    /// An edit that left the text blank or not. `synced`: a Happy Agent
+    /// session, whose draft goes to the mirror on every edit.
+    public mutating func textChanged(isBlank: Bool, synced: Bool = false) -> Action {
+        hasPending = false
+        if synced || savedIsBlank != isBlank {
+            savedIsBlank = isBlank
+            return .saveNow
         }
-        if !isEmpty {
-            pending = value
-            return .saveLater(value)
+        if !isBlank {
+            hasPending = true
+            return .saveLater
         }
         return .none
     }
 
     /// Nothing but whitespace (`trim().length === 0`). Stops at the first
-    /// other character instead of copying the trimmed text, so a long
-    /// draft costs nothing extra on each keystroke.
+    /// other character instead of copying the trimmed text.
     public static func isBlank(_ text: String) -> Bool {
         !text.unicodeScalars.contains { !blank.contains($0) }
     }
 
     private static let blank = CharacterSet.whitespacesAndNewlines
 
-    /// The scheduled save fired.
-    public mutating func saved(_ value: String) {
-        lastSaved = value
-        stored = value
-        pending = nil
-    }
-
-    /// Background or teardown: the pending edit, if any, to save now.
-    public mutating func flush() -> String? {
-        guard let pending else { return nil }
-        saved(pending)
-        return pending
+    /// Background, teardown or the debounce: whether an edit is pending,
+    /// to save now.
+    public mutating func flush() -> Bool {
+        defer { hasPending = false }
+        return hasPending
     }
 
     /// `clearDraft`, after a send: the stored draft is deleted.
     public mutating func clear() {
-        lastSaved = ""
-        stored = ""
-        pending = nil
+        savedIsBlank = true
+        hasPending = false
     }
 
     /// A synced session's stored draft, read again after its record
-    /// changed. Text that moved, and not to this composer's last save, is
-    /// a remote edit: it drops the pending save, counts as saved, and is
-    /// returned for the text view. Nil leaves the text alone.
+    /// changed. `isSaved`: it is the text last saved (the writer compared
+    /// them off the main thread). True if it is a remote edit to take: it
+    /// drops the pending save and counts as saved (`took`).
     ///
     /// While `composing`, nothing is taken: the edit waits in
     /// `remoteDeferred`, and the composition's end reads the store again.
     /// By then a local edit may have been saved over it, and wins.
-    public mutating func storeChanged(_ draft: String, composing: Bool = false) -> String? {
+    public mutating func storeChanged(isSaved: Bool, composing: Bool = false) -> Bool {
         if composing {
             remoteDeferred = true
-            return nil
+            return false
         }
         remoteDeferred = false
-        let previous = stored
-        stored = draft
-        guard draft != previous, draft != lastSaved else { return nil }
-        pending = nil
-        lastSaved = draft
-        return draft
+        return !isSaved
+    }
+
+    /// A stored draft became the text (loaded or taken).
+    public mutating func took(isBlank: Bool) {
+        savedIsBlank = isBlank
+        hasPending = false
     }
 }
 
