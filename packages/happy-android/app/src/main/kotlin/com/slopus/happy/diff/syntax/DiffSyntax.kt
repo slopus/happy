@@ -190,9 +190,10 @@ class SyntaxService(private val dispatcher: CoroutineDispatcher = Prism.executor
     suspend fun highlight(input: DiffSyntax.Input): DiffSyntax.Result {
         val key = key(input)
         cache.get(key)?.let { return it }
-        val result = withContext(dispatcher) { cache.get(key) ?: DiffSyntax.tokenize(input) }
-        cache.set(key, result, key.length.toLong() * 2)
-        return result
+        // Cached on the worker, so a caller that stopped waiting still leaves the result behind.
+        return withContext(dispatcher) {
+            cache.get(key) ?: DiffSyntax.tokenize(input).also { cache.set(key, it, key.length.toLong() * 2) }
+        }
     }
 
     companion object {
