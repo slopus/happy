@@ -130,6 +130,9 @@ interface ChatActions {
      */
     suspend fun resume(sessionId: String, machineId: String, model: String?, permissionMode: String?): SpawnSessionResult =
         SpawnSessionResult.Error("Not signed in")
+
+    /** sync.refreshSessions: the account's sessions fetched again, as after a resume. */
+    suspend fun refreshSessions() = Unit
 }
 
 /**
@@ -216,6 +219,10 @@ class SyncChatActions(private val account: () -> AccountSync?) : ChatActions {
 
     override suspend fun resume(sessionId: String, machineId: String, model: String?, permissionMode: String?): SpawnSessionResult =
         account().machineOps.resumeSession(machineId, sessionId, model = model, permissionMode = permissionMode)
+
+    override suspend fun refreshSessions() {
+        account.invoke()?.syncNow()
+    }
 
     override suspend fun abort(sessionId: String) = ops().abort(sessionId)
 

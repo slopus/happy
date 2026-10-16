@@ -40,6 +40,11 @@ import androidx.compose.ui.unit.min
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.slopus.happy.R
+import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.resume.ResumeOps
+import com.slopus.happy.resume.ResumeOutcome
+import com.slopus.happy.resume.ResumeTexts
+import com.slopus.happy.resume.SessionResumer
 import com.slopus.happy.sync.ForkOptions
 import com.slopus.happy.sync.ForkSource
 import com.slopus.happy.sync.MachineOps
@@ -57,15 +62,20 @@ import kotlinx.coroutines.launch
 
 /** Resume, fork and duplicate (ops.ts); tests use a fake. */
 interface SessionContinuations {
-    suspend fun resume(machineId: String, sessionId: String): SpawnSessionResult
+    /** [SessionResumer]: with the session's mode picks, refreshed and re-pinned once running. */
+    suspend fun resume(machineId: String, sessionId: String, metadata: SessionMetadata?, texts: ResumeTexts): ResumeOutcome
     suspend fun fork(source: ForkSource, options: ForkOptions = ForkOptions()): SpawnSessionResult
     suspend fun rewindPoints(source: ForkSource): RewindPointsResult
 }
 
 /** [SessionContinuations] over the signed-in account's [MachineOps]. */
-class LiveSessionContinuations(private val ops: () -> MachineOps?) : SessionContinuations {
-    override suspend fun resume(machineId: String, sessionId: String): SpawnSessionResult =
-        ops()?.resumeSession(machineId, sessionId) ?: SpawnSessionResult.Error(SIGNED_OUT)
+class LiveSessionContinuations(
+    private val ops: () -> MachineOps?,
+    private val resumer: SessionResumer,
+    private val resumeOps: () -> ResumeOps?,
+) : SessionContinuations {
+    override suspend fun resume(machineId: String, sessionId: String, metadata: SessionMetadata?, texts: ResumeTexts): ResumeOutcome =
+        resumer.resume(resumeOps(), sessionId, machineId, metadata, texts)
 
     override suspend fun fork(source: ForkSource, options: ForkOptions): SpawnSessionResult =
         ops()?.forkAndSpawn(source, options) ?: SpawnSessionResult.Error(SIGNED_OUT)
