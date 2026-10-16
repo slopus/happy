@@ -63,8 +63,23 @@ class HappyHttp(
         return HappyJson.decodeFromString(response, execute(request, acceptStatus))
     }
 
-    suspend fun <T> delete(path: String, response: KSerializer<T>, token: String? = null): T =
-        HappyJson.decodeFromString(response, execute(request(token).url(serverUrl() + path).delete().build()))
+    /**
+     * Any method, a raw JSON body (or none), the response body as text.
+     * Non-2xx throws [HttpStatusException].
+     */
+    suspend fun send(
+        method: String,
+        path: String,
+        token: String? = null,
+        jsonBody: String? = null,
+        query: Map<String, String> = emptyMap(),
+    ): String {
+        val url = (serverUrl() + path).toHttpUrl().newBuilder().apply {
+            query.forEach { (key, value) -> addQueryParameter(key, value) }
+        }.build()
+        val body = jsonBody?.toRequestBody(JSON) ?: if (method == "POST" || method == "PUT") ByteArray(0).toRequestBody(null) else null
+        return execute(request(token).url(url).method(method, body).build())
+    }
 
     /** GET an absolute URL as text (server probe). */
     suspend fun getText(url: String): String =

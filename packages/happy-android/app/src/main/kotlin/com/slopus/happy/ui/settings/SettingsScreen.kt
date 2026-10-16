@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +25,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.model.Profile
+import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Item
@@ -88,10 +88,14 @@ fun ItemIcon(icon: Ionicon, color: Color) {
     Icon(icon = icon, size = SettingsSpec.itemIcon, color = color)
 }
 
-/** Stands in for the profile avatar until the shared Avatar component is wired in. */
+/**
+ * The profile avatar: generated from the account id. happy-app shows the
+ * uploaded or GitHub picture by URL when there is one; this app has no URL
+ * image loader yet.
+ */
 @Composable
-fun AvatarPlaceholder(profile: Profile, size: Dp) {
-    Box(Modifier.size(size).clip(CircleShape).background(HappyTheme.colors.surfaceHighest))
+fun ProfileAvatar(profile: Profile, size: Dp) {
+    Avatar(id = profile.id, size = size)
 }
 
 /**
@@ -151,7 +155,7 @@ fun SettingsScreen(
     onGitHub: () -> Unit = {},
     onAgents: () -> Unit = {},
     onWhatsNew: () -> Unit = {},
-    avatar: @Composable (Profile, Dp) -> Unit = { p, size -> AvatarPlaceholder(p, size) },
+    avatar: @Composable (Profile, Dp) -> Unit = { p, size -> ProfileAvatar(p, size) },
 ) {
     val colors = HappyTheme.colors
     val cardShape = RoundedCornerShape(SettingsSpec.cardRadius)

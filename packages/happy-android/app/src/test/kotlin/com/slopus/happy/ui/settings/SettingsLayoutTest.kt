@@ -36,9 +36,11 @@ class SettingsLayoutTest {
 
     private val profile = Profile(
         id = "account-1",
+        timestamp = 0,
         firstName = "Ada",
         lastName = "Lovelace",
-        github = GitHubProfile(id = 1, login = "ada", name = "Ada L", avatarUrl = "", bio = "Analytical engines"),
+        avatar = null,
+        github = GitHubProfile(id = 1.0, login = "ada", name = "Ada L", avatarUrl = "", email = null, bio = "Analytical engines"),
         connectedServices = listOf("anthropic"),
     )
 

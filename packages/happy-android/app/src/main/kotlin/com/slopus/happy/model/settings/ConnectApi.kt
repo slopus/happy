@@ -39,7 +39,7 @@ class HttpConnectApi(private val http: HappyHttp, private val token: () -> Strin
     private fun bearer() = token() ?: throw ConnectException("Not signed in")
 
     override suspend fun gitHubOAuthUrl(): String = try {
-        http.get("/v1/connect/github/params", OAuthParams.serializer(), bearer()).url
+        HappyJson.decodeFromString(OAuthParams.serializer(), http.send("GET", "/v1/connect/github/params", bearer())).url
     } catch (e: HttpStatusException) {
         throw if (e.status == 400) ConnectException(errorOf(e) ?: "GitHub OAuth not configured") else ConnectException("Failed to get GitHub OAuth params: ${e.status}")
     }
@@ -50,7 +50,8 @@ class HttpConnectApi(private val http: HappyHttp, private val token: () -> Strin
 
     override suspend fun connectService(service: String, token: JsonElement) {
         val result = try {
-            http.post("/v1/connect/$service/register", RegisterBody(token.toString()), RegisterBody.serializer(), Success.serializer(), bearer())
+            val body = HappyJson.encodeToString(RegisterBody.serializer(), RegisterBody(token.toString()))
+            HappyJson.decodeFromString(Success.serializer(), http.send("POST", "/v1/connect/$service/register", bearer(), body))
         } catch (e: HttpStatusException) {
             throw ConnectException("Failed to connect $service: ${e.status}")
         }
@@ -59,7 +60,7 @@ class HttpConnectApi(private val http: HappyHttp, private val token: () -> Strin
 
     private suspend fun disconnect(path: String, notConnected: String, name: String) {
         val result = try {
-            http.delete(path, Success.serializer(), bearer())
+            HappyJson.decodeFromString(Success.serializer(), http.send("DELETE", path, bearer()))
         } catch (e: HttpStatusException) {
             throw if (e.status == 404) ConnectException(errorOf(e) ?: notConnected) else ConnectException("Failed to disconnect $name: ${e.status}")
         }

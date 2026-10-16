@@ -15,25 +15,47 @@ import com.slopus.happy.sync.ApiSessionPage
 import com.slopus.happy.sync.ApiSettings
 import com.slopus.happy.sync.ApiSettingsUpdate
 import com.slopus.happy.sync.ApiSettingsUpdateResult
+import com.slopus.happy.net.EngineIoHandshake
+import com.slopus.happy.net.EngineIoPacket
+import com.slopus.happy.net.SocketIoPacket
+import com.slopus.happy.sync.ApiOutgoingMessages
+import com.slopus.happy.sync.ApiStoredMessage
+import com.slopus.happy.sync.ApiStoredMessages
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * An in-memory happy-server with the routes the app calls, following the
  * real routes' contracts (authRoutes.ts, sessionRoutes.ts /v2/sessions,
  * v3SessionRoutes.ts, machinesRoutes.ts, accountRoutes.ts). It encrypts its
  * records the way the CLI does, for the account [secret].
+ *
+ * `/v1/updates/` speaks Socket.IO over WebSocket like socket.ts: the auth
+ * middleware, `update`/`ephemeral` emits ([emitUpdate], [emitEphemeral]),
+ * `rpc-call` routed to [rpc] handlers, `update-metadata` with version
+ * checks, and the `new-message` echo of every POSTed message.
  */
 class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() }) {
     val encryption: AccountEncryption = AccountEncryption.create(secret)
@@ -64,7 +86,10 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
         return this
     }
 
-    fun close() = server.close()
+    fun close() {
+        sockets.forEach { it.close(1001, null) }
+        server.close()
+    }
 
     val url: String get() = server.url("/").toString().trimEnd('/')
 
@@ -145,6 +170,7 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
         val query = { name: String -> request.url.queryParameter(name) }
         if (path == "/" && request.method == "GET") return text("Welcome to Happy Server!")
         if (path == "/v1/auth" && request.method == "POST") return auth(request)
+        if (path == "/v1/updates/") return MockResponse.Builder().webSocketUpgrade(SocketConnection()).build()
         if (request.headers["Authorization"] != "Bearer $token") return json(401, """{"error":"Unauthorized"}""")
 
         return when {
@@ -160,13 +186,45 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
                 val hasNext = matching.size > limit
                 json(200, HappyJson.encodeToString(ApiSessionPage.serializer(), ApiSessionPage(page, if (hasNext) "cursor_v1_${page.last().id}" else null, hasNext)))
             }
+            path.startsWith("/v3/sessions/") && path.endsWith("/messages") && request.method == "POST" -> {
+                val id = path.removePrefix("/v3/sessions/").removeSuffix("/messages")
+                failSends.removeFirstOrNull()?.let { return json(it, """{"error":"boom"}""") }
+                if (sessions.none { it.id == id }) return json(404, """{"error":"Session not found"}""")
+                val body = HappyJson.decodeFromString(ApiOutgoingMessages.serializer(), request.body!!.utf8())
+                json(200, HappyJson.encodeToString(ApiStoredMessages.serializer(), ApiStoredMessages(storeSent(id, body))))
+            }
             path.startsWith("/v3/sessions/") && path.endsWith("/messages") -> {
                 val id = path.removePrefix("/v3/sessions/").removeSuffix("/messages")
+                failPages.removeFirstOrNull()?.let { return json(it, """{"error":"boom"}""") }
                 if (sessions.none { it.id == id }) return json(404, """{"error":"Session not found"}""")
-                val after = query("after_seq")?.toLong() ?: 0
+                pageOverride?.invoke(request)?.let { return json(200, HappyJson.encodeToString(ApiMessagePage.serializer(), it)) }
                 val limit = query("limit")?.toInt() ?: 100
-                val matching = messages[id].orEmpty().filter { it.seq > after }.sortedBy { it.seq }
+                val before = query("before_seq")?.toLong()
+                val matching = if (before != null) {
+                    messages[id].orEmpty().filter { it.seq < before }.sortedByDescending { it.seq }
+                } else {
+                    val after = query("after_seq")?.toLong() ?: 0
+                    messages[id].orEmpty().filter { it.seq > after }.sortedBy { it.seq }
+                }
                 json(200, HappyJson.encodeToString(ApiMessagePage.serializer(), ApiMessagePage(matching.take(limit), matching.size > limit)))
+            }
+            path.startsWith("/v1/sessions/") && path.endsWith("/archive") && request.method == "POST" -> {
+                val id = path.removePrefix("/v1/sessions/").removeSuffix("/archive")
+                val index = sessions.indexOfFirst { it.id == id }
+                if (index < 0) return json(404, """{"error":"Session not found"}""")
+                sessions[index] = sessions[index].copy(active = false)
+                json(200, """{"success":true}""")
+            }
+            path.startsWith("/v1/sessions/") && request.method == "DELETE" -> {
+                val id = path.removePrefix("/v1/sessions/")
+                if (!sessions.removeAll { it.id == id }) return json(404, """{"error":"Session not found"}""")
+                messages.remove(id)
+                json(200, """{"success":true}""")
+            }
+            path.startsWith("/v1/machines/") && request.method == "DELETE" -> {
+                val id = path.removePrefix("/v1/machines/")
+                if (!machines.removeAll { it.id == id }) return json(404, """{"error":"Machine not found"}""")
+                json(200, """{"success":true}""")
             }
             path == "/v1/machines" -> json(200, HappyJson.encodeToString(ListSerializer(ApiMachine.serializer()), machines))
             path == "/v1/account/profile" -> if (failProfile) json(500, """{"error":"boom"}""") else json(200, profile.toString())
@@ -187,6 +245,275 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
             else -> json(404, """{"error":"Not found"}""")
         }
     }
+
+    // POST /v3/sessions/:id/messages
+
+    /** Status codes the next message POSTs fail with, in order. */
+    val failSends = ArrayDeque<Int>()
+
+    /** Answers message GETs instead of the stored messages when it returns non-null (a misbehaving server). */
+    var pageOverride: ((RecordedRequest) -> ApiMessagePage?)? = null
+
+    /** Status codes the next message GETs fail with, in order. */
+    val failPages = ArrayDeque<Int>()
+
+    /** Whether a stored message's `new-message` echo goes out on the socket (the server always sends it). */
+    var echoSentMessages = true
+
+    private var clock = 10_000L
+
+    /** v3SessionRoutes.ts: dedupe on localId, assign seqs, echo each new message to every socket. */
+    private fun storeSent(sessionId: String, body: ApiOutgoingMessages): List<ApiStoredMessage> {
+        val list = messages.getOrPut(sessionId) { mutableListOf() }
+        val created = mutableListOf<ApiMessage>()
+        val response = mutableListOf<ApiMessage>()
+        for (message in body.messages.distinctBy { it.localId }) {
+            val existing = list.firstOrNull { it.localId == message.localId }
+            if (existing != null) {
+                response += existing
+                continue
+            }
+            val seq = (list.maxOfOrNull { it.seq } ?: 0) + 1
+            val stored = ApiMessage(
+                id = "msg-$sessionId-$seq",
+                seq = seq,
+                localId = message.localId,
+                content = ApiMessageContent(t = "encrypted", c = message.content),
+                createdAt = ++clock,
+                updatedAt = clock,
+            )
+            list += stored
+            created += stored
+            response += stored
+            val index = sessions.indexOfFirst { it.id == sessionId }
+            sessions[index] = sessions[index].copy(seq = seq, updatedAt = clock)
+        }
+        if (echoSentMessages) {
+            for (message in created) emitUpdate(newMessageBody(sessionId, message))
+        }
+        return response.sortedBy { it.seq }.map { ApiStoredMessage(it.id, it.seq, it.localId, it.createdAt, it.updatedAt) }
+    }
+
+    /** What the server stored for a session, decrypted. */
+    fun sentRecords(sessionId: String): List<Pair<String?, JsonObject>> = synchronized(this) {
+        messages[sessionId].orEmpty().map { it.localId to encryption.dataKeyCipher(dataKey(sessionId)).decryptFromBase64(it.content.c)!!.jsonObject }
+    }
+
+    // The updates socket
+
+    /** Client sockets connected now. */
+    val sockets = CopyOnWriteArrayList<WebSocket>()
+
+    /** Every handshake auth payload, in order. */
+    val socketAuths = CopyOnWriteArrayList<JsonObject>()
+
+    /** Every event the clients emitted (name, first argument), in order. */
+    val socketEvents = LinkedBlockingQueue<Pair<String, JsonElement?>>()
+
+    var pingIntervalMs = 15_000L
+    var pingTimeoutMs = 45_000L
+
+    /** When false, the server answers a handshake with connect_error, as the auth middleware does for a bad token. */
+    var acceptSockets = true
+
+    /** RPC methods a daemon or session registered: full method name to a handler of the encrypted params. */
+    val rpc = mutableMapOf<String, (params: JsonElement) -> JsonElement>()
+
+    /** Acks the server holds back (rpc-call method names), to test timeouts. */
+    val silentRpc = mutableSetOf<String>()
+
+    private val updateSeq = AtomicLong()
+
+    /** Waits for the next client event with [name]. */
+    fun awaitEvent(name: String, timeoutMs: Long = 5_000): JsonElement? {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            val left = deadline - System.currentTimeMillis()
+            check(left > 0) { "no '$name' event within ${timeoutMs}ms" }
+            val event = socketEvents.poll(left, TimeUnit.MILLISECONDS) ?: continue
+            if (event.first == name) return event.second
+        }
+    }
+
+    fun awaitSockets(count: Int, timeoutMs: Long = 5_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (sockets.size < count) {
+            check(System.currentTimeMillis() < deadline) { "${sockets.size} sockets, wanted $count" }
+            Thread.sleep(10)
+        }
+    }
+
+    /** eventRouter.emitUpdate: an `update` with the next account update seq. */
+    fun emitUpdate(body: JsonObject, createdAt: Long = ++clock) {
+        val container = buildJsonObject {
+            put("id", "upd-${updateSeq.incrementAndGet()}")
+            put("seq", updateSeq.get())
+            put("body", body)
+            put("createdAt", createdAt)
+        }
+        emit("update", container)
+    }
+
+    fun emitEphemeral(payload: JsonObject) = emit("ephemeral", payload)
+
+    fun emit(name: String, payload: JsonElement) {
+        val text = EngineIoPacket.Message(SocketIoPacket.Event(name, listOf(payload)).encode()).encode()
+        sockets.forEach { it.send(text) }
+    }
+
+    /** Drops every socket, as a server restart or a network blip would. */
+    fun dropSockets() {
+        val dropped = sockets.toList()
+        sockets.clear()
+        dropped.forEach { it.close(1001, "going away") }
+    }
+
+    fun newMessageBody(sessionId: String, message: ApiMessage) = buildJsonObject {
+        put("t", "new-message")
+        put("sid", sessionId)
+        put("message", HappyJson.encodeToJsonElement(ApiMessage.serializer(), message))
+    }
+
+    /** Adds a message to a session and returns it, without telling anyone. */
+    fun appendMessage(sessionId: String, content: JsonObject, localId: String? = null): ApiMessage = synchronized(this) {
+        val list = messages.getOrPut(sessionId) { mutableListOf() }
+        val seq = (list.maxOfOrNull { it.seq } ?: 0) + 1
+        val message = ApiMessage(
+            id = "msg-$sessionId-$seq",
+            seq = seq,
+            localId = localId,
+            content = ApiMessageContent(t = "encrypted", c = seal(sessionId, content)),
+            createdAt = ++clock,
+            updatedAt = clock,
+        )
+        list += message
+        val index = sessions.indexOfFirst { it.id == sessionId }
+        sessions[index] = sessions[index].copy(seq = seq, updatedAt = clock)
+        message
+    }
+
+    private inner class SocketConnection : WebSocketListener() {
+        override fun onOpen(webSocket: WebSocket, response: Response) {
+            val handshake = EngineIoHandshake(sid = "eio-${sockets.size}", pingInterval = pingIntervalMs, pingTimeout = pingTimeoutMs, maxPayload = 8_388_608)
+            webSocket.send(EngineIoPacket.Open(handshake).encode())
+        }
+
+        override fun onMessage(webSocket: WebSocket, text: String) {
+            val packet = EngineIoPacket.decode(text) as? EngineIoPacket.Message ?: return
+            when (val message = SocketIoPacket.decode(packet.payload)) {
+                is SocketIoPacket.Connect -> {
+                    val auth = message.payload as? JsonObject ?: JsonObject(emptyMap())
+                    socketAuths += auth
+                    val reply = if (acceptSockets && auth["token"]?.jsonPrimitive?.contentOrNull == token) {
+                        sockets += webSocket
+                        SocketIoPacket.Connect(buildJsonObject { put("sid", "sio-${sockets.size}") })
+                    } else {
+                        SocketIoPacket.ConnectError(buildJsonObject { put("message", "Invalid authentication token") })
+                    }
+                    webSocket.send(EngineIoPacket.Message(reply.encode()).encode())
+                }
+                is SocketIoPacket.Event -> {
+                    val payload = message.arguments.firstOrNull()
+                    socketEvents += message.name to payload
+                    val ack = synchronized(this@FakeHappyServer) { answer(message.name, payload) }
+                    if (message.ackId != null && ack != null) {
+                        webSocket.send(EngineIoPacket.Message(SocketIoPacket.Ack(message.ackId!!, listOf(ack)).encode()).encode())
+                    }
+                }
+                SocketIoPacket.Disconnect -> sockets.remove(webSocket)
+                else -> Unit
+            }
+        }
+
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            sockets.remove(webSocket)
+            webSocket.close(1000, null)
+        }
+
+        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            sockets.remove(webSocket)
+        }
+    }
+
+    /** What the server acknowledges an event with, or null to stay silent. */
+    private fun answer(name: String, payload: JsonElement?): JsonElement? {
+        val body = payload as? JsonObject ?: return null
+        return when (name) {
+            "rpc-call" -> {
+                val method = body["method"]?.jsonPrimitive?.contentOrNull ?: return buildJsonObject {
+                    put("ok", false)
+                    put("error", "Invalid parameters: method is required")
+                }
+                if (method in silentRpc) return null
+                val handler = rpc[method] ?: return buildJsonObject {
+                    put("ok", false)
+                    put("error", "RPC method not available")
+                }
+                buildJsonObject {
+                    put("ok", true)
+                    put("result", handler(body["params"] ?: JsonNull))
+                }
+            }
+            "update-metadata" -> {
+                val sid = body["sid"]?.jsonPrimitive?.contentOrNull
+                val index = sessions.indexOfFirst { it.id == sid }
+                if (index < 0) return buildJsonObject { put("result", "error") }
+                val session = sessions[index]
+                val expected = body["expectedVersion"]!!.jsonPrimitive.long
+                if (expected != session.metadataVersion) {
+                    return buildJsonObject {
+                        put("result", "version-mismatch")
+                        put("version", session.metadataVersion)
+                        put("metadata", session.metadata)
+                    }
+                }
+                val metadata = body["metadata"]!!.jsonPrimitive.content
+                sessions[index] = session.copy(metadata = metadata, metadataVersion = expected + 1)
+                emitUpdate(buildJsonObject {
+                    put("t", "update-session")
+                    put("id", session.id)
+                    put("metadata", buildJsonObject {
+                        put("value", metadata)
+                        put("version", expected + 1)
+                    })
+                })
+                buildJsonObject {
+                    put("result", "success")
+                    put("version", expected + 1)
+                    put("metadata", metadata)
+                }
+            }
+            "machine-update-metadata" -> {
+                val id = body["machineId"]?.jsonPrimitive?.contentOrNull
+                val index = machines.indexOfFirst { it.id == id }
+                if (index < 0) return buildJsonObject { put("result", "error"); put("message", "Machine not found") }
+                val machine = machines[index]
+                val expected = body["expectedVersion"]!!.jsonPrimitive.long
+                if (expected != machine.metadataVersion) {
+                    return buildJsonObject {
+                        put("result", "version-mismatch")
+                        put("version", machine.metadataVersion)
+                        put("metadata", machine.metadata)
+                    }
+                }
+                val metadata = body["metadata"]!!.jsonPrimitive.content
+                machines[index] = machine.copy(metadata = metadata, metadataVersion = expected + 1)
+                buildJsonObject {
+                    put("result", "success")
+                    put("version", expected + 1)
+                    put("metadata", metadata)
+                }
+            }
+            else -> null
+        }
+    }
+
+    /** Opens what a sessionRPC or machineRPC sent, with the record's data key. */
+    fun openRpc(recordId: String, params: JsonElement): JsonElement =
+        encryption.dataKeyCipher(dataKey(recordId)).decryptFromBase64(params.jsonPrimitive.content)!!
+
+    /** Seals an RPC answer the way the daemon does. */
+    fun sealRpc(recordId: String, result: JsonElement): JsonElement = JsonPrimitive(seal(recordId, result))
 
     /** Public keys that signed in, in order. */
     val authenticatedKeys = CopyOnWriteArrayList<String>()

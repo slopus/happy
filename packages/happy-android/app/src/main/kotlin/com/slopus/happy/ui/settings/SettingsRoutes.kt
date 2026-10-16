@@ -118,13 +118,13 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
         onScanQr = terminalStub,
         onEnterUrl = terminalStub,
         accounts = ConnectedAccounts(
-            claudeConnected = profile.isAnthropicConnected,
+            claudeConnected = "anthropic" in profile.connectedServices,
             claudeBusy = disconnectClaude.loading,
             gitHubLogin = profile.github?.login,
             gitHubBusy = connectGitHub.loading || disconnectGitHub.loading,
         ),
         onClaude = {
-            if (profile.isAnthropicConnected) confirm(disconnectClaudeTitle, disconnectClaudeMessage, disconnectClaude) else terminalStub()
+            if ("anthropic" in profile.connectedServices) confirm(disconnectClaudeTitle, disconnectClaudeMessage, disconnectClaude) else terminalStub()
         },
         onGitHub = {
             if (profile.github != null) confirm(disconnectGitHubTitle, disconnectGitHubMessage, disconnectGitHub) else connectGitHub.run()

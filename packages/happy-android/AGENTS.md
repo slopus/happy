@@ -18,8 +18,8 @@ architectures comparable (local store, delta sync, crypto layer).
 - **Tool outputs are hidden by default** once the chat UI exists.
 - Built so far: crypto, account auth, the server setting, an empty home
   screen, Settings (Account, Appearance), and the local store with delta
-  sync. Not built: chat and session UI, camera and QR screens, terminal
-  connect, live updates over the socket, push.
+  sync and live updates. Not built: chat and session UI, camera and QR
+  screens, terminal connect, push.
 
 ## Rules
 
@@ -58,8 +58,10 @@ app/
   auth/     account auth (POST /v1/auth), credentials in expo-secure-store's format
   config/   server URL (survives logout), device-only settings (theme)
   data/     HappyDatabase (schema), HappyStore (typed access + change ticks)
-  sync/     SyncApi (wire types), SyncEngine (delta sync), InvalidateSync (retry loop)
-  net/      HappyHttp: OkHttp + kotlinx.serialization, X-Happy-Client header
+  sync/     AccountSync (per-account owner), SyncEngine (delta sync), LiveUpdates,
+            Presence, MessageSync (history), SyncApi + UpdateTypes (wire types)
+  net/      HappyHttp (OkHttp + kotlinx.serialization, X-Happy-Client header),
+            SocketIoClient (the /v1/updates socket)
   ui/       theme, components (Item, ItemGroup, RoundButton, Header, ...), screens
   AppGraph  hand-wired object graph; owns the signed-in sync loop
   model/    typed views of the stored JSON: Settings (sync/settings.ts);
@@ -147,16 +149,72 @@ The custom server URL is not carried over: happy-app keeps it in MMKV
 
 ## Sync
 
-`SyncEngine` keeps the store current with as little traffic as possible.
-Settings: pending local changes are uploaded with the version they were based
-on, merged over the server copy on `version-mismatch`, then re-read.
-Machines and profile: read whole (small, no delta endpoint). Sessions:
+`AppGraph.account` is the signed-in account's `AccountSync` (null when
+signed out); it owns everything below and stops before sign-out clears the
+store. All network, decryption, decoding and SQLite work runs on
+`Dispatchers.IO`; the flows can be collected on the main thread.
+
+**Delta sync** (`SyncEngine`). Settings: pending local changes are uploaded
+with the version they were based on, merged over the server copy on
+`version-mismatch`, then re-read. Machines and profile: read whole (no delta
+endpoint; an empty machine list never wipes known machines). Sessions:
 `/v2/sessions?changedSince=` from the stored watermark, paged by cursor; a
-full listing on first sync and once a day catches deletions. Messages:
-`/v3/sessions/:id/messages?after_seq=` for sessions whose server `seq` is
-ahead of the local watermark. Each write commits with its watermark. Records
-are stored decrypted (the sandbox and file-based encryption protect them at
-rest, as MMKV does for happy-app); their data keys are stored wrapped.
+full listing on first sync and once a day catches deletions. Messages: see
+history below. It runs on sign-in, on every socket connect, and when the app
+returns to the foreground.
+
+**Store merges** (`HappyStore`). Writes merge instead of overwrite: each
+versioned document (metadata, agentState, daemonState) keeps the higher
+version, presence the newer `activeAt`, counters the maximum, so a slow page
+cannot undo a live update. A write that changes nothing touches no row and
+wakes no observer. `versions` counts changes per area (sessions, session
+activity, machines, machine activity, account) and per session (messages,
+outbox); `messageChanges(id)` and `outboxChanges(id)` are its per-chat views.
+Records are stored decrypted (the sandbox and file-based encryption protect
+them at rest, as MMKV does for happy-app); their data keys are stored wrapped.
+
+**Live updates** (`net/SocketIoClient`, `sync/LiveUpdates`). The
+`/v1/updates` socket (apiSocket.ts) with `clientType: user-scoped`, the
+token, `happyClient` and `appState` read at every connect; `app-state` is
+sent on every connect and on foreground changes. Why our own client instead
+of socket.io-client-java: Happy uses five packet types of Engine.IO 4 /
+Socket.IO 5 over WebSocket; the library brings a second Engine.IO stack,
+org.json and its own threading for that. OkHttp's WebSocket is already here,
+and the wire format is tested directly (`SocketIoProtocolTest`). Reconnects
+use socket.io-client's backoff (1 s to 5 s, jitter 0.5, forever); a
+heartbeat watchdog drops links silent past `pingInterval + pingTimeout`. The
+server keeps no recovery state, so every connect runs the delta sync and
+catches up the open chats. `connectionStatus` (`ConnectionStatus`:
+disconnected, connecting, connected, error) is what Home's header shows
+(homeConnectionStatus.ts: shown unless connected).
+
+Handled updates: `new-message` (next seq is appended; a gap fetches
+`after_seq`; turn start/end messages set thinking), `new-session` (stored
+from the update itself), `update-session` (metadata/agentState with their
+versions, three-state `projectId`; control hand-off refetches messages),
+`delete-session`, `new-machine` (carries its data key), `update-machine`,
+`delete-machine`, `update-account` (profile fields, settings with version;
+pending local settings stay on top), `delete-project` (resync). Projects,
+artifacts, friends, feed and KV updates are ignored until those features
+exist. Anything that cannot be applied alone (unknown session or machine)
+asks for the delta sync instead of guessing.
+
+**Presence** (`sync/Presence`, `account.presence`). `activity` and
+`machine-activity` ephemerals and `usage` live in memory only, never in
+SQLite. `sessions` / `machines` (`Map<id, SessionPresence | MachinePresence>`)
+change only when something shown changes: online/offline, thinking, or an
+offline row's last-seen time; heartbeats publish nothing. Stored rows seed
+it and the newer `activeAt` wins; the server is the only authority on being
+online. Home and Chat read status from here, not from the `active` columns.
+
+**History** (`sync/MessageSync`, `account.messages`). A session's stored
+messages are one contiguous seq run (`messages_oldest_seq..messages_seq`).
+`messages(sessionId): Flow<List<MessageRecord>>` opens the chat: it fetches
+the newest page (`before_seq`), catches up forward, then prefetches up to
+five older pages per session per sign-in. `loadOlder(sessionId)` loads one
+page on demand and returns whether the run moved back;
+`paging(sessionId)` gives `isLoaded`, `hasMoreOlder`, `isLoadingOlder`. A
+backward page that does not move the cursor ends history.
 
 ## Settings
 
@@ -203,5 +261,3 @@ cd tools/testvectors && npm install && npm run generate
   user to the secret key; Settings > Account > Link New Device explains that
   the scanner is missing. The API calls (`AuthApi.requestAccountLink`,
   `approveAccountLink`) and crypto (`AccountLink`) are done and tested.
-- **Live updates.** No socket yet; sync runs on sign-in and on every return
-  to the foreground.
