@@ -285,3 +285,22 @@ public struct ChangelogBodyLayout: Equatable, Sendable {
         size = CGSize(width: width, height: y + M.paddingBottom)
     }
 }
+
+/// One What's New release (changelog.tsx's ItemGroup holding `cardContent`):
+/// the title over the card, and the card's body, placed together so a plan
+/// made off the main thread has every frame. Each text is measured once.
+public struct ChangelogEntryLayout: Equatable, Sendable {
+    /// The title and the card, in the entry's coordinates.
+    public var group: ItemGroupLayout
+    /// The summary, texts and bullets, in the card's coordinates.
+    public var body: ChangelogBodyLayout
+
+    public var size: CGSize { group.size }
+
+    public init(width: CGFloat, title: Measurable, summary: Measurable?, items: [ChangelogBodyLayout.Item], bullet: CGSize, maxWidth: CGFloat? = nil) {
+        let cardWidth = ItemGroupLayout.cardWidth(forWidth: width, maxWidth: maxWidth)
+        let body = ChangelogBodyLayout(width: cardWidth, summary: summary, items: items, bullet: bullet)
+        self.body = body
+        group = ItemGroupLayout(.init(width: width, title: title, rows: [.fixed(body.size)], maxWidth: maxWidth))
+    }
+}
