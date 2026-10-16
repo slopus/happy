@@ -1,6 +1,10 @@
 package com.slopus.happy.ui.home
 
 import android.content.SharedPreferences
+import com.slopus.happy.attachments.AttachmentNotice
+import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.attachments.AttachmentUploadResult
+import com.slopus.happy.attachments.prepareAttachmentSend
 import com.slopus.happy.model.AgentType
 import com.slopus.happy.model.GitWorktree
 import com.slopus.happy.model.Machine
@@ -9,6 +13,7 @@ import com.slopus.happy.model.RigModeOption
 import com.slopus.happy.model.RigModelOption
 import com.slopus.happy.model.RigSpawnException
 import com.slopus.happy.model.Session
+import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.SessionType
 import com.slopus.happy.model.Settings
 import com.slopus.happy.model.StartPhase
@@ -81,29 +86,44 @@ class LiveMachineActions(private val ops: () -> MachineOps?) : MachineActions {
     }
 }
 
+/** What a first send did: whether it went out, and the alerts it raised on the way (imageUpload.*). */
+data class FirstSend(val sent: Boolean, val notices: List<AttachmentNotice> = emptyList())
+
 /** How the first message reaches the new session (ops.ts sessionSetAgentModes, sync.ts sendMessage). */
 interface FirstMessageSender {
     /** Pins the picks the session was started with, so the message's meta resolves from them. */
     suspend fun pinModes(sessionId: String, modes: Map<AgentModeField, String?>)
 
     /**
-     * True once [text] is in the outbox; false when [isCurrent] turned false first.
+     * Sent once [text] and the uploaded [attachments] are in the outbox; not
+     * sent when [isCurrent] turned false first, or when the agent takes no
+     * images and there is nothing else to send.
      * @throws SendException with the user's words when nothing was queued.
      */
-    suspend fun send(sessionId: String, text: String, isCurrent: () -> Boolean): Boolean
+    suspend fun send(sessionId: String, text: String, attachments: List<AttachmentPreview>, isCurrent: () -> Boolean): FirstSend
 }
 
-/** [FirstMessageSender] over the signed-in account's composer and sender. */
-class LiveFirstMessageSender(private val account: () -> AccountSync?) : FirstMessageSender {
+/**
+ * [FirstMessageSender] over the signed-in account's composer and sender;
+ * attachments go through [prepareAttachmentSend] against the new session's
+ * [metadata], uploaded with [upload].
+ */
+class LiveFirstMessageSender(
+    private val account: () -> AccountSync?,
+    private val metadata: suspend (sessionId: String) -> SessionMetadata? = { null },
+    private val upload: suspend (sessionId: String, List<AttachmentPreview>) -> AttachmentUploadResult = { _, list -> AttachmentUploadResult(emptyList(), list.size) },
+) : FirstMessageSender {
     override suspend fun pinModes(sessionId: String, modes: Map<AgentModeField, String?>) {
         account()?.composer?.setAgentModes(sessionId, modes)
     }
 
-    override suspend fun send(sessionId: String, text: String, isCurrent: () -> Boolean): Boolean {
-        val sender = account()?.sender ?: return false
-        return when (val result = sender.send(sessionId, text, SendOptions(source = "new_session", isCurrent = isCurrent))) {
-            is SendResult.Accepted -> true
-            is SendResult.NotSent -> result.message?.let { throw SendException(it) } ?: false
+    override suspend fun send(sessionId: String, text: String, attachments: List<AttachmentPreview>, isCurrent: () -> Boolean): FirstSend {
+        val sender = account()?.sender ?: return FirstSend(false)
+        val plan = prepareAttachmentSend(metadata(sessionId), text, attachments) { upload(sessionId, it) }
+        if (!plan.send || (text.isBlank() && plan.records.isEmpty())) return FirstSend(false, plan.notices)
+        return when (val result = sender.send(sessionId, text, SendOptions(source = "new_session", attachments = plan.records, isCurrent = isCurrent))) {
+            is SendResult.Accepted -> FirstSend(true, plan.notices)
+            is SendResult.NotSent -> result.message?.let { throw SendException(it) } ?: FirstSend(false, plan.notices)
         }
     }
 }
@@ -122,10 +142,13 @@ enum class StartRefusal(val message: String) {
 }
 
 sealed interface StartResult {
-    data class Started(val sessionId: String) : StartResult
+    /** [notices]: what the first message's images ran into (an upload that failed). */
+    data class Started(val sessionId: String, val notices: List<AttachmentNotice> = emptyList()) : StartResult
     data class Refused(val refusal: StartRefusal) : StartResult
     /** The machine, git or the server said no; [message] in their words. */
     data class Failed(val message: String) : StartResult
+    /** The session is there but the first message is not: the agent takes no images. Send again reuses it. */
+    data class NotSent(val notices: List<AttachmentNotice>) : StartResult
     /** Stopped, declined, or nothing to send. */
     data object Abandoned : StartResult
 }
@@ -197,10 +220,12 @@ class SessionStarter(
 
     /**
      * Starts from the stored draft, or from [draft] when a caller names its
-     * own place. [confirmDirectory] asks whether to create a missing one.
+     * own place, with [attachments] going out with the first message.
+     * [confirmDirectory] asks whether to create a missing one.
      */
     suspend fun start(
         draft: NewSessionDraft = drafts.draft.value,
+        attachments: List<AttachmentPreview> = emptyList(),
         confirmDirectory: suspend (String) -> Boolean,
     ): StartResult {
         if (run != null) return StartResult.Abandoned
@@ -213,7 +238,7 @@ class SessionStarter(
         val job = scope.launch {
             outcome.complete(
                 try {
-                    execute(prepared, draft, confirmDirectory)
+                    execute(prepared, draft, attachments, confirmDirectory)
                 } catch (e: CancellationException) {
                     StartResult.Abandoned
                 } catch (e: Exception) {
@@ -352,7 +377,12 @@ class SessionStarter(
         )
     }
 
-    private suspend fun execute(prepared: Prepared.Ready, draft: NewSessionDraft, confirmDirectory: suspend (String) -> Boolean): StartResult {
+    private suspend fun execute(
+        prepared: Prepared.Ready,
+        draft: NewSessionDraft,
+        attachments: List<AttachmentPreview>,
+        confirmDirectory: suspend (String) -> Boolean,
+    ): StartResult {
         val sessionId = createdSessions[prepared.signature] ?: when (val spawned = create(prepared, confirmDirectory)) {
             is SpawnSessionResult.Success -> spawned.sessionId
             is SpawnSessionResult.Error -> return StartResult.Failed(spawned.errorMessage)
@@ -361,6 +391,7 @@ class SessionStarter(
         }
         phaseState.value = StartPhase.Opening
         val job = currentCoroutineContext()[Job]
+        var notices = emptyList<AttachmentNotice>()
         try {
             if (!awaitSession(sessionId)) {
                 createdSessions.remove(prepared.signature)
@@ -370,7 +401,7 @@ class SessionStarter(
             prepared.modes?.let { sender.pinModes(sessionId, it) }
             val prompt = draft.input.trim()
             val sent = try {
-                prompt.isEmpty() || sender.send(sessionId, prompt) { job?.isActive != false }
+                if (prompt.isEmpty() && attachments.isEmpty()) FirstSend(true) else sender.send(sessionId, prompt, attachments) { job?.isActive != false }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -378,10 +409,11 @@ class SessionStarter(
                 createdSessions[prepared.signature] = sessionId
                 throw e
             }
-            if (!sent) {
+            if (!sent.sent) {
                 createdSessions[prepared.signature] = sessionId
-                return StartResult.Abandoned
+                return if (sent.notices.isEmpty()) StartResult.Abandoned else StartResult.NotSent(sent.notices)
             }
+            notices = sent.notices
         } catch (e: CancellationException) {
             createdSessions.remove(prepared.signature)
             scope.launch { stopAbandoned(prepared, sessionId) }
@@ -391,7 +423,7 @@ class SessionStarter(
         requestIds.remove(prepared.signature)
         // Only what was consumed is cleared: text typed meanwhile stays.
         drafts.change { current -> if (current.input == draft.input) current.copy(input = "") else current }
-        return StartResult.Started(sessionId)
+        return StartResult.Started(sessionId, notices)
     }
 
     /** The worktree, if one is asked for, then the spawn. */
