@@ -115,7 +115,8 @@ class ChatLayoutTest {
     @Test
     fun idlePendingSendIsQuietDuringGrace() {
         rule.setHappyContent {
-            UserMessage(userRow("fresh", pending = true, createdAt = System.currentTimeMillis()), gray, MessageCallbacks())
+            // A minute ahead: the grace is read off the wall clock, and a slow first composition must not outlast it.
+            UserMessage(userRow("fresh", pending = true, createdAt = System.currentTimeMillis() + 60_000), gray, MessageCallbacks())
         }
         rule.onAllNodesWithText("Sending…").assertCountEquals(0)
     }

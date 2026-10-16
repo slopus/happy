@@ -109,7 +109,7 @@ class LifecycleJourneyTest {
         graph.settings.change { it.copy(sessionListGrouping = SessionListGrouping.Project) }
         rule.waitFor(WorktreeTabTags.tab("a1"))
         rule.waitForIdle()
-        rule.node(ChatScreenTags.TITLE_BUTTON).performClick()
+        openInfo()
         rule.waitFor(SessionInfoTags.ARCHIVE)
         rule.assertActionsLabelled()
         rule.node(SessionInfoTags.ARCHIVE).performScrollTo().performClick()
@@ -148,7 +148,7 @@ class LifecycleJourneyTest {
         rule.waitForText("This session is inactive.", substring = true)
 
         // Resumed from its info, with the pick.
-        rule.node(ChatScreenTags.TITLE_BUTTON).performClick()
+        openInfo()
         rule.waitFor(SessionInfoTags.RESUME)
         rule.node(SessionInfoTags.RESUME).performScrollTo().performClick()
         rule.waitUntil(10_000) { resumes.isNotEmpty() }
@@ -171,7 +171,7 @@ class LifecycleJourneyTest {
             buildJsonObject { put("type", "success"); put("newClaudeSessionId", "claude-copy") }
         }
         val spawns = spawnAnswers("copy", "Copied chat")
-        rule.node(ChatScreenTags.TITLE_BUTTON).performClick()
+        openInfo()
         rule.waitFor(SessionInfoTags.DUPLICATE)
         rule.node(SessionInfoTags.DUPLICATE).performScrollTo().performClick()
         rule.waitFor(DuplicateSheetTags.ROW)
@@ -184,5 +184,11 @@ class LifecycleJourneyTest {
         assertEquals("claude-r1", points.single()["claudeSessionId"]!!.jsonPrimitive.content)
         assertEquals("claude-copy", spawns.single()["resumeClaudeSessionId"]!!.jsonPrimitive.content)
         rule.waitForChatTitle("Copied chat")
+    }
+
+    /** The title takes taps only once the session has loaded; its tag shows earlier. */
+    private fun openInfo() {
+        rule.waitUntilAtLeastOneExists(hasTestTag(ChatScreenTags.TITLE_BUTTON) and hasClickAction(), 10_000)
+        rule.node(ChatScreenTags.TITLE_BUTTON).performClick()
     }
 }
