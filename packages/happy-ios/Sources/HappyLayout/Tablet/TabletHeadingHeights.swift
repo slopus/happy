@@ -3,8 +3,8 @@ import Foundation
 import CoreGraphics
 #endif
 
-/// A heading in the sidebar's grouped list, as much as its height needs.
-/// Every label is one line (`numberOfLines={1}` in SessionsList.tsx and
+/// A heading in the sidebar's grouped list, or a bot, as much as its height
+/// needs. Every label is one line (`numberOfLines={1}` in SessionsList.tsx and
 /// ProjectGroup.tsx) in a style with a fixed line height or the font's, so
 /// its height is that line, or nothing when it is empty. The app's own
 /// words ("Bots", the days, "Show archived") are never empty in any
@@ -20,6 +20,10 @@ public enum TabletHeading: Hashable, Sendable {
     case workspace(title: String, branch: String, changes: TabletHeadingChanges)
     /// "── Show archived ──" or "Hide archived", dividing the page.
     case archiveToggle
+    /// A bot: home's flat session row (FlatSessionRow), which has the
+    /// workspace's line or line counts or neither. Its lines grow with the
+    /// text size as the headings' do, so its height is measured with them.
+    case bot(workspace: Bool, changes: Bool)
 }
 
 /// Which parts of GitLineChanges show: "≈", "+12", "-3".
@@ -58,6 +62,11 @@ public struct TabletHeadingMetrics: Hashable, Sendable {
     public var changesCountLine: CGFloat
     /// One line of `TextStyles.archiveToggle`.
     public var archiveToggleLine: CGFloat
+    /// A bot's lines, as home's flat rows have them at this text size.
+    public var sessionLines: FlatSessionRowLayout.Lines
+    /// git-branch-outline's box beside a bot's workspace, which never
+    /// scales.
+    public var branchIcon: CGFloat
     /// One device pixel.
     public var hairline: CGFloat
 
@@ -70,6 +79,8 @@ public struct TabletHeadingMetrics: Hashable, Sendable {
         changesApproximateLine: CGFloat,
         changesCountLine: CGFloat,
         archiveToggleLine: CGFloat,
+        sessionLines: FlatSessionRowLayout.Lines = .designed,
+        branchIcon: CGFloat = FlatSessionRowLayout.Metrics.branchIconSize,
         hairline: CGFloat
     ) {
         self.sectionLine = sectionLine
@@ -80,12 +91,14 @@ public struct TabletHeadingMetrics: Hashable, Sendable {
         self.changesApproximateLine = changesApproximateLine
         self.changesCountLine = changesCountLine
         self.archiveToggleLine = archiveToggleLine
+        self.sessionLines = sessionLines
+        self.branchIcon = branchIcon
         self.hairline = hairline
     }
 }
 
 extension TabletGroupedRowHeights {
-    /// A heading's height from its own layout, without a cell. Each label
+    /// A heading's or a bot's height from its own layout, without a cell. Each label
     /// is one line of its style, or nothing when its text is empty, as a
     /// label measures it.
     public static func heading(_ heading: TabletHeading, width: CGFloat, metrics: TabletHeadingMetrics) -> CGFloat {
@@ -125,11 +138,18 @@ extension TabletGroupedRowHeights {
                 paddingTop: ArchiveToggleLayout.unbanded.top,
                 paddingBottom: ArchiveToggleLayout.unbanded.bottom
             ).size.height
+        case .bot(let workspace, let changes):
+            return FlatSessionRowLayout.height(
+                lines: metrics.sessionLines,
+                workspace: workspace,
+                changes: changes,
+                branchIcon: metrics.branchIcon
+            )
         }
     }
 }
 
-/// The headings' heights in one list, kept from one derivation to the
+/// The headings' and bots' heights in one list, kept from one derivation to the
 /// next and keyed by what makes them: a row is measured again only when its
 /// heading, the width or the metrics changed. Rows that left the list are
 /// let go, so it holds no more than the list's headings.

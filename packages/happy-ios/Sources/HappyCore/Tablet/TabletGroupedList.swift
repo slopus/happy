@@ -50,7 +50,8 @@ public struct TabletGroupedList: Equatable, Sendable {
         offline: [MachineChoice]?,
         clock: SessionList.Clock = SessionList.Clock(),
         git: [GitCheckoutKey: GitHeadingStatus] = [:],
-        draftSessionIds: Set<String> = []
+        draftSessionIds: Set<String> = [],
+        unknownMachine: String = ProjectHomeData.unknownMachineText
     ) {
         let settings = AccountSettings(snapshot.settings)
         let machines = Dictionary(snapshot.machines.machines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -142,7 +143,7 @@ public struct TabletGroupedList: Equatable, Sendable {
         let allProjects = ProjectHomeData.catalogProjects(rigProjectSessions, member: member)
             + ProjectHomeData.pathProjects(rigPathSessions, prefix: "rig", member: member)
             + ProjectHomeData.pathProjects(happySessions, prefix: "happy", member: member)
-        let groups = Self.machineGroups(allProjects, machines: machines)
+        let groups = Self.machineGroups(allProjects, machines: machines, unknownMachine: unknownMachine)
 
         var ids: [TabletGroupedRow.ID] = []
         var rows: [TabletGroupedRow] = []
@@ -225,7 +226,11 @@ public struct TabletGroupedList: Equatable, Sendable {
     /// projects that name none last. SessionsList.tsx reads the names from
     /// `useAllMachines()`, which lists only computers that are online, so an
     /// offline computer goes by its id there and here.
-    static func machineGroups(_ projects: [ProjectHomeData.Project], machines: [String: MachineRecord]) -> [(machineId: String?, name: String, projects: [ProjectHomeData.Project])] {
+    static func machineGroups(
+        _ projects: [ProjectHomeData.Project],
+        machines: [String: MachineRecord],
+        unknownMachine: String = ProjectHomeData.unknownMachineText
+    ) -> [(machineId: String?, name: String, projects: [ProjectHomeData.Project])] {
         var groups: [(machineId: String?, name: String, projects: [ProjectHomeData.Project])] = []
         var index: [String?: Int] = [:]
         for project in projects {
@@ -237,7 +242,7 @@ public struct TabletGroupedList: Equatable, Sendable {
             let name = nonBlank(machine?.metadata?["displayName"]?.stringValue)
                 ?? nonBlank(machine?.metadata?["host"]?.stringValue)
                 ?? project.machineId
-                ?? "<\(ProjectHomeData.unknownMachineText)>"
+                ?? "<\(unknownMachine)>"
             index[project.machineId] = groups.count
             groups.append((project.machineId, name, [project]))
         }

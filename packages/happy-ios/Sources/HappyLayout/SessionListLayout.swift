@@ -7,7 +7,7 @@ import CoreGraphics
 ///
 ///     |16| avatar 60 |12| title ……………………………… |8| 12:55 PM |16|
 ///     |          (centred) | project
-///     |                    | workspace ⑂ ……………………………… |8| ≈ +12 -3 |16|
+///     |                    | workspace ⑂ ……………………… ✎ |8| ≈ +12 -3 |16|
 ///     ──────────── hairline from x 88 to the right edge ────────────
 ///
 /// At the designed text size the row is 10 + 22 + 20 + 1 + 18 + 10 = 81
@@ -17,7 +17,10 @@ import CoreGraphics
 /// and a row with a workspace taller than one without. Happy Agent's line
 /// counts end the workspace's row (RigGitLineChanges: 8 before them, at
 /// its right edge); the workspace yields them the width, and their line
-/// holds the row up as the workspace's does. The avatar is
+/// holds the row up as the workspace's does. A draft's 13 glyph
+/// (`create-outline`) comes first in that meta, right against the counts'
+/// 8; it keeps its size at every text size, so its box (13.33 tall at most)
+/// never reaches the row's 18 and never changes a height. The avatar is
 /// centred in the row, and the text column too when the avatar is the
 /// taller. The corner slot is at least 56 wide and sized by the timestamp,
 /// which stays measured while a dot covers it, so the title never jumps.
@@ -37,6 +40,8 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
         public static let workspaceMinHeight: CGFloat = 18
         public static let workspaceIconGap: CGFloat = 4
         public static let branchIconSize: CGFloat = 13
+        /// `workspaceMeta`'s draft glyph.
+        public static let draftIconSize: CGFloat = 13
         /// RigGitLineChanges' `paddingLeft`.
         public static let changesPaddingLeft: CGFloat = 8
         /// One line of GitLineChanges' 11s, which set no line height: Plex's
@@ -90,6 +95,9 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
         /// The line counts as drawn ("≈ +12 -3", which never wraps); nil
         /// without any.
         public var changes: CGSize?
+        /// The 13pt draft glyph's RN box, as `branchIcon`'s; nil without a
+        /// draft.
+        public var draftIcon: CGSize?
         public var showsDivider: Bool
         public var lines: Lines
 
@@ -101,6 +109,7 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
             workspace: Measurable?,
             branchIcon: CGSize = CGSize(width: Metrics.branchIconSize, height: Metrics.branchIconSize),
             changes: CGSize? = nil,
+            draftIcon: CGSize? = nil,
             showsDivider: Bool,
             lines: Lines = .designed
         ) {
@@ -111,30 +120,34 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
             self.workspace = workspace
             self.branchIcon = branchIcon
             self.changes = changes
+            self.draftIcon = draftIcon
             self.showsDivider = showsDivider
             self.lines = lines
         }
     }
 
     /// The row's height for these lines, with or without a workspace line
-    /// under a glyph `branchIcon` tall and line counts: what `init` makes
-    /// `size.height`.
-    public static func height(lines: Lines, workspace: Bool, changes: Bool = false, branchIcon: CGFloat = Metrics.branchIconSize) -> CGFloat {
+    /// under a glyph `branchIcon` tall, line counts and a draft glyph
+    /// `draftIcon` tall (0 without one): what `init` makes `size.height`.
+    /// The draft glyph is fixed and under the row's 18, so home's row
+    /// heights leave it out (`HomeRowKind` doesn't carry it).
+    public static func height(lines: Lines, workspace: Bool, changes: Bool = false, branchIcon: CGFloat = Metrics.branchIconSize, draftIcon: CGFloat = 0) -> CGFloat {
         typealias M = Metrics
-        return M.paddingVertical * 2 + max(M.avatarSize, contentHeight(lines: lines, workspace: workspace, changes: changes, branchIcon: branchIcon))
+        return M.paddingVertical * 2 + max(M.avatarSize, contentHeight(lines: lines, workspace: workspace, changes: changes, branchIcon: branchIcon, draftIcon: draftIcon))
     }
 
     /// The text column: the title's row, the project, 1, the workspace's
     /// row.
-    private static func contentHeight(lines: Lines, workspace: Bool, changes: Bool, branchIcon: CGFloat) -> CGFloat {
+    private static func contentHeight(lines: Lines, workspace: Bool, changes: Bool, branchIcon: CGFloat, draftIcon: CGFloat) -> CGFloat {
         typealias M = Metrics
         return max(M.titleRowHeight, lines.title) + lines.project + M.workspaceMarginTop
-            + workspaceRowHeight(lines: lines, workspace: workspace, changes: changes, branchIcon: branchIcon)
+            + workspaceRowHeight(lines: lines, workspace: workspace, changes: changes, branchIcon: branchIcon, draftIcon: draftIcon)
     }
 
-    /// At least 18, the workspace and its glyph, and the counts.
-    private static func workspaceRowHeight(lines: Lines, workspace: Bool, changes: Bool, branchIcon: CGFloat) -> CGFloat {
-        max(Metrics.workspaceMinHeight, workspace ? max(lines.workspace, branchIcon) : 0, changes ? lines.changes : 0)
+    /// At least 18, the workspace and its glyph, the counts and the draft
+    /// glyph.
+    private static func workspaceRowHeight(lines: Lines, workspace: Bool, changes: Bool, branchIcon: CGFloat, draftIcon: CGFloat) -> CGFloat {
+        max(Metrics.workspaceMinHeight, workspace ? max(lines.workspace, branchIcon) : 0, changes ? lines.changes : 0, draftIcon)
     }
 
     public var size: CGSize
@@ -147,6 +160,7 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
     public var workspace: CGRect?
     public var branchIcon: CGRect?
     public var changes: CGRect?
+    public var draftIcon: CGRect?
     public var divider: CGRect?
 
     public init(_ input: Input) {
@@ -158,8 +172,9 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
         let lines = input.lines
         let hasWorkspace = input.workspace != nil
         let hasChanges = input.changes != nil
-        let height = Self.height(lines: lines, workspace: hasWorkspace, changes: hasChanges, branchIcon: input.branchIcon.height)
-        let content = Self.contentHeight(lines: lines, workspace: hasWorkspace, changes: hasChanges, branchIcon: input.branchIcon.height)
+        let draftHeight = input.draftIcon?.height ?? 0
+        let height = Self.height(lines: lines, workspace: hasWorkspace, changes: hasChanges, branchIcon: input.branchIcon.height, draftIcon: draftHeight)
+        let content = Self.contentHeight(lines: lines, workspace: hasWorkspace, changes: hasChanges, branchIcon: input.branchIcon.height, draftIcon: draftHeight)
         let titleRowHeight = max(M.titleRowHeight, lines.title)
 
         let stamp = input.timestamp.size(fitting: max(0, contentWidth - M.cornerMarginLeft))
@@ -184,16 +199,20 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
         project = CGRect(x: x, y: projectY + (lines.project - projectHeight) / 2, width: contentWidth, height: projectHeight)
 
         let workspaceY = projectY + lines.project + M.workspaceMarginTop
-        let workspaceRowHeight = Self.workspaceRowHeight(lines: lines, workspace: hasWorkspace, changes: hasChanges, branchIcon: input.branchIcon.height)
-        // The counts keep their width at the row's right edge (`marginLeft:
-        // 'auto'`, no shrinking); the workspace has what is left. Too wide
-        // for the row, they start where the column does and run past it,
-        // as Yoga places them.
-        let metaWidth = input.changes.map { M.changesPaddingLeft + $0.width } ?? 0
+        let workspaceRowHeight = Self.workspaceRowHeight(lines: lines, workspace: hasWorkspace, changes: hasChanges, branchIcon: input.branchIcon.height, draftIcon: draftHeight)
+        // The meta (the draft glyph, then the counts) keeps its width at
+        // the row's right edge (`marginLeft: 'auto'`, no shrinking); the
+        // workspace has what is left. Too wide for the row, it starts
+        // where the column does and runs past it, as Yoga places it.
+        let draftWidth = input.draftIcon?.width ?? 0
+        let metaWidth = draftWidth + (input.changes.map { M.changesPaddingLeft + $0.width } ?? 0)
         let metaX = max(x, right - metaWidth)
+        draftIcon = input.draftIcon.map { size in
+            CGRect(x: metaX, y: workspaceY + (workspaceRowHeight - size.height) / 2, width: size.width, height: size.height)
+        }
         changes = input.changes.map { size in
             CGRect(
-                x: metaX + M.changesPaddingLeft,
+                x: metaX + draftWidth + M.changesPaddingLeft,
                 y: workspaceY + (workspaceRowHeight - size.height) / 2,
                 width: size.width,
                 height: size.height

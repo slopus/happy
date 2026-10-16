@@ -26,7 +26,7 @@ public enum HomeState: Equatable, Sendable {
     /// for the plaque above the list.
     case list(SessionList, offline: [MachineChoice]?)
 
-    public init(_ snapshot: HomeSnapshot, clock: SessionList.Clock = SessionList.Clock()) {
+    public init(_ snapshot: HomeSnapshot, clock: SessionList.Clock = SessionList.Clock(), unknownMachine: String = ProjectHomeData.unknownMachineText) {
         let machines = snapshot.machines
         // Stored machines are worth showing even before the first full
         // fetch (a live `new-machine` can land first); none are not.
@@ -35,7 +35,7 @@ public enum HomeState: Equatable, Sendable {
             return
         }
         let choices = MachineChoice.collect(machines.machines)
-        let list = SessionList(snapshot, clock: clock)
+        let list = SessionList(snapshot, clock: clock, unknownMachine: unknownMachine)
         let offline = !choices.isEmpty && !choices.contains(where: \.online) ? choices : nil
         if list.visibleCount > 0 {
             self = .list(list, offline: offline)

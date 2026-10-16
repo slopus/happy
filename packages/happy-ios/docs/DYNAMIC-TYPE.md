@@ -157,14 +157,21 @@ Following now:
   once theirs are in; a size change measures them again. A name taller
   than its tab is centred on it and cut by the capsule.
 
-- The iPad sidebar's list grouped by project, its own rows only: the
-  "Bots" and day headings, the computers' rules, the checkouts' headings
-  (project, branch, line changes) and the archive toggle draw scaled, and
-  their heights are measured at that size off the main thread
+- The iPad sidebar's list grouped by project: the "Bots" and day
+  headings, the computers' rules, the checkouts' headings (project,
+  branch, line changes), the archive toggle and the bots draw scaled,
+  and their heights are measured at that size off the main thread
   (`TabletGroupedHeights`, from one line of each style, ceiled to the
   screen's pixels as its label measures it, through the
   HappyLayout layouts), keyed by the heading, the list's width and the
   text size and screen scale, and measured again only for what changed.
+  A bot is home's flat row (FlatSessionRow.tsx) and is as tall as it is
+  on home: its lines are the ones `HomeTextEnvironment` works out (the
+  same `TextStyle.oneLine(in:)`), and its key is only whether it has the
+  workspace's line and line counts, so 81 at the designed size whatever
+  it shows, and 235⅔ with a workspace at the largest on a 3x screen; a
+  new size reconfigures every bot in the batch that moves the heights,
+  so a cell made ahead for a row off screen takes the new lines too.
   A heading's key holds the person's words (a computer's name, a
   project, a branch) but none of the app's: "Bots", the days and "Show
   archived" are one line in any language, so the derivation never reads
@@ -180,9 +187,27 @@ Following now:
   the card, so it never spills over the rows next to it; an archived
   card's at the card's edge, borders and rounded corners included
   (`sessionItemContainer`'s `overflow: 'hidden'`). The glyphs, the
-  faces and the `+` keep their size. Each cell sets the trait on itself;
-  the list does not, because its bots (home's flat rows) and its notices
-  are planned there at the designed size.
+  faces and the `+` keep their size. Each cell sets the trait on itself,
+  and the notices over the list (home's header) too. They are measured
+  off the main thread as home's are (`HomeRowMeasurer.headerHeight`),
+  keyed by their words, the list's width, how wide a group may grow and
+  the text size and screen scale; only a height measured for what was
+  last asked for lands, and the header shows the words it was measured
+  with.
+- Session info and the machine screen (Header.tsx's title and every row:
+  the Item rows, the line counts and the changed files beside "Changes",
+  the trailing values, which are the system font at 14 × the multiplier,
+  and the raw JSON blocks, Menlo 12 on an 18 line, both × the
+  multiplier). Their rows are measured from their labels as drawn when
+  the list lays out, as Settings' are; a size change lays the list out
+  again. The glyphs, the 29 icon squares and the 44 row minimum keep
+  their size. Session info's duplicate sheet (DuplicateSheet.tsx) sets
+  bare font sizes, so its text is the system font at its size × the
+  multiplier and the row preview's 19 line likewise; the card, its list
+  and its buttons are laid out from the labels as drawn, so they grow
+  with the text, and the list shrinks first and scrolls, so the card stays
+  inside 85% of the window (`DuplicateSheetLayout`; upright on a phone
+  the list's 420 cap holds it even at the largest size).
 - Home's "No sessions yet" (EmptyMainScreen.tsx with a computer linked):
   the title, the line under it, "Start New Session" and "Show archived".
   Their sizes are measured off the main thread (`NoSessionsMeasure`, the
@@ -255,10 +280,45 @@ Following now:
   for that one face; RCTFontUtils.mm's closest weight has nothing else
   to pick, so they are drawn regular, and so are they here (from RN
   0.83.1's and expo-font 55.0.4's source; not yet seen on a device).
-  Still not ported, so the third row is not yet RN's whole: the draft
-  glyph (13, `create-outline`) before the counts. This much of the
-  row's `workspaceMeta` gap stays open. The glyph keeps its 13 at every
-  size, under the row's 18, so it would not change a height.
+  The draft glyph (13, `create-outline`) leads the counts in the row's
+  `workspaceMeta`, as RN's does. It keeps its 13 at every size, its box
+  13⅓ tall at most, under the row's 18, so it changes no height; the
+  sidebar's 14 in a chat's slot and 12 over an archived card's avatar
+  sit in fixed boxes too.
+
+- Home's dock, resting and open (HomeDock.tsx). The capsule keeps its
+  56 and its prompt, scaled, is centred in it and cut at its edge, as
+  `composerSurface`'s `overflow: 'hidden'` cuts it. The open composer's
+  screen follows (`followsTextSize()`), so Composer's card draws scaled
+  there as in the chat, its text measured off the main thread with the
+  text size in its key (`textKey(fitting:)`), which the open's two-frame
+  wait and the Session | Bot premeasure already use. A picker row is
+  RN's 42, or one line of `focusConfigTriggerValue` (17, Plex's 1.3 em)
+  when that is taller; the menu's value, the system's body font, which
+  scales on its own, is centred in it and moves no height. The lede, the
+  status line and the faces' "Avatar" and credit draw scaled. Their
+  heights come from `HomeDockText`, made off the main thread for the
+  text size, the screen and the lede's lane, and asked for by home as it
+  lays out, so the open finds them made; the open waits for them inside
+  the same two frames as the card's text. The 24 icon box, the 42
+  minimum, the 32 segmented control, the faces and the die keep their
+  size.
+- The new-session screen (new/index.tsx). The prompt draws at `16 × m`
+  on a `22 × m` line, measured off the main thread with the scaled style
+  and line in its key, so a new size measures it again; the typed text
+  is restyled in place, its selection kept. The 44 field, the 120 cap,
+  the 40 action row, the 36 harness capsule and the 38 controls keep
+  their size. Every label's size (the place rows, the offline help, the
+  harness's name, the pickers' options, sections, notes and empty
+  lines, a settings page's title) comes from `MeasuredLabelSizes`: the
+  label's words, style, lines, alignment, text size, screen and width,
+  measured off the main thread as a label measures itself. A size not
+  yet measured stands as one line of its style at the width asked, and
+  the screen lays out again once when the pass lands, so a label that
+  wraps, or one whose width places what follows it (the harness's
+  chevron), is a frame late the first time it is seen. The search and
+  path fields are one line of their style. The header's pill grows with
+  its title in a 44 capsule.
 
 - The chat's rows and message detail. The list (`ChatListView`) carries
   the trait itself, and so does the placeholder over it; the screen around
@@ -402,8 +462,8 @@ scales. Settings, What's New, Welcome, Home, session info, machine,
 changes and message detail put their title in a title view that follows
 the text size and is fitted again in the bar when the size changes
 (session info, machine and changes through `setPlainHeaderTitle`, which
-keeps `title` for the back button). On session info and machine only the title follows; their rows
-don't yet. Changes' rows follow (above).
+keeps `title` for the back button). Session info and machine follow the
+text size in their rows too, and so do changes' (above).
 
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
 paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),
@@ -416,18 +476,10 @@ past; in the 42 row it is cut by the middle box, as RN's
 
 ## Not yet wired
 
-- The rest of the sidebar (the grouped list's bots and the notices over
-  them): its heights are planned off main at the designed size.
-  Its measurers take a `TextEnvironment` as an input and cache key, a
-  text size change invalidates every height as a width change does, and
-  then it opts in.
 - The rest of the chat screen: its header (the title and subtitle, and
   the CLI warning pill; RN `<Text>`s that scale in RN), what sits over the
   composer (the goal bar, the question banner, the rig activity bar, the
   inactive hint) and the copy menu, which is UIKit's.
-- Home's dock (the same card, under a screen that doesn't follow, so it
-  stays at the designed size) and the new-session screen.
-- The rows of session info and machine.
 - On a device: the composer at each size, the chips' native menus over
   their scaled labels, and a size change while typing (the typed text is
   restyled in place, which may end an IME composition in progress) have
@@ -468,4 +520,3 @@ past; in the 42 row it is cut by the middle box, as RN's
   - Thai, Devanagari and Korean join the texts, under the same checks.
 - Measured text boxes ceil to pixels as RN's do (the chat's still ceil to
   whole points).
-- Fonts made outside `TextStyle` (session info's duplicate sheet).

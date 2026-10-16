@@ -42,6 +42,9 @@ final class MachineViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Header.tsx's title and every row's Text scale; the rows are
+        // measured from their labels as drawn, as Settings' are.
+        followsTextSize()
         // headerBackTitle: machine.back, for screens pushed from here.
         navigationItem.backButtonDisplayMode = .default
         navigationItem.backButtonTitle = Strings.MachineDetail.back

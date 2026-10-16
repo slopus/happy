@@ -4,8 +4,8 @@ import UIKit
 extension UIViewController {
     /// Header.tsx's `createPlainHeader` title: an RN `<Text>` (16, semibold,
     /// one line) that scales with the text size, uncapped, in a header that
-    /// keeps its height, where the bar's own title never scales. Only the
-    /// title follows the text size; the screen's rows don't yet. `title`
+    /// keeps its height, where the bar's own title never scales. The title
+    /// follows the text size even on a screen whose rows don't. `title`
     /// stays set, for the back button of a screen pushed on top. Empty
     /// shows nothing, as `headerTitle: ''` does.
     func setPlainHeaderTitle(_ text: String) {

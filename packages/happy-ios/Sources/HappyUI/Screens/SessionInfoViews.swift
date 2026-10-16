@@ -135,14 +135,31 @@ final class DetailTrailingIcon: UIView {
 }
 
 /// `rightElement={<Text style={{ color, fontSize: 14 }}>…</Text>}`: a plain
-/// React Native Text, so the system font.
+/// React Native Text, so the system font, at 14 × the text size's
+/// multiplier where the screen follows it.
 final class DetailTrailingText: UILabel {
+    static let fontSize: CGFloat = 14
+
     init(_ text: String, color: ColorToken) {
         super.init(frame: .zero)
         self.text = text
-        font = .systemFont(ofSize: 14)
         textColor = UIColor(color)
         numberOfLines = 1
+        applyTextSize()
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.applyTextSize()
+            self.setNeedsLayoutUpTheTree()
+        }
+    }
+
+    private func applyTextSize() {
+        font = .systemFont(ofSize: Self.fontSize * (traitCollection.textEnvironment?.scale.multiplier ?? 1))
+    }
+
+    /// Measured before its first trait update: measure what it will draw.
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        applyTextSize()
+        return super.sizeThatFits(size)
     }
 
     @available(*, unavailable)
