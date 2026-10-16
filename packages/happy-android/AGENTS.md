@@ -201,6 +201,22 @@ outbox); `messageChanges(id)` and `outboxChanges(id)` are its per-chat views.
 Records are stored decrypted (the sandbox and file-based encryption protect
 them at rest, as MMKV does for happy-app); their data keys are stored wrapped.
 
+**How big it gets, and logout.** happy-app keeps no messages on disk at all:
+they live in memory for the run (its decrypt cache holds 1000) and are
+fetched again on the next start. Here they stay in SQLite so a chat opens
+offline and at once, and nothing prunes them: a session's rows go when the
+session is deleted (`ON DELETE CASCADE`), and only chats that were opened
+are stored, each from its newest page back as far as the reader scrolled
+plus the five-page background budget. That is the bound, recorded rather
+than enforced; a chat's rows are one contiguous run of seqs, so trimming
+the middle would break paging. Migrations keep everything from schema 1 on
+(`DatabaseMigrationTest`, one test per hop). Logout (`AppGraph.logout`):
+the `beforeLogout` hooks first, while signed in (the push unregister); then
+the database, local settings, the What's New marker, the new-session draft
+(stored and in memory, `afterLogoutWipe`), picked-image copies and the
+image loader's caches; then the credentials. The server choice stays
+(`LogoutWipeTest`).
+
 **Live updates** (`net/SocketIoClient`, `sync/LiveUpdates`). The
 `/v1/updates` socket (apiSocket.ts) with `clientType: user-scoped`, the
 token, `happyClient` and `appState` read at every connect; `app-state` is

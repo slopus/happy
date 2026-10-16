@@ -191,6 +191,12 @@ class NewSessionDraftStore(private val prefs: SharedPreferences, private val clo
         state.value = stamped
     }
 
+    /** Logout: the stored draft is already gone; the one in memory follows it. */
+    @Synchronized
+    fun reset() {
+        state.value = NewSessionDraft()
+    }
+
     companion object {
         const val PREFS_NAME = "new-session"
         const val KEY = "new-session-draft-v1"

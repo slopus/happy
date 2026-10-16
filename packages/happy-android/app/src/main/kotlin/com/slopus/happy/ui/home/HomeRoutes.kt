@@ -207,6 +207,7 @@ class HomeServices private constructor(private val graph: AppGraph) {
     val updateUrl: StateFlow<String?> = update.asStateFlow()
 
     init {
+        graph.afterLogoutWipe { newSessionServices?.resetDraft() }
         scope.launch {
             var account: AccountSync? = null
             graph.account.collect { next -> if (next !== account) { account = next; reads.reset() } }
