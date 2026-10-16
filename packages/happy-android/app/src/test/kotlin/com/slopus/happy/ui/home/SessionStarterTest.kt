@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.attachments.AttachmentNotice
 import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.model.AgentType
+import com.slopus.happy.model.BotRequest
 import com.slopus.happy.model.GitWorktree
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.HappyAgentSpawnTarget
@@ -64,6 +65,27 @@ class SessionStarterTest {
         machineMetadata {
             put("machineKind", "rig")
             putJsonObject("capabilities") { put("newSession", true); put("worktrees", true) }
+            putJsonObject("defaults") { put("providerId", "codex"); put("modelId", "gpt"); put("permissionMode", "auto") }
+            putJsonArray("models") {
+                addJsonObject {
+                    put("code", "gpt"); put("value", "GPT"); put("providerId", "codex"); put("id", "gpt")
+                    putJsonArray("thinkingLevels") { add("low"); add("high") }
+                    put("defaultThinkingLevel", "high")
+                }
+            }
+            putJsonArray("operatingModes") {
+                addJsonObject { put("code", "auto"); put("value", "Auto") }
+                addJsonObject { put("code", "read_only"); put("value", "Read only") }
+            }
+        },
+    )
+
+    /** The same Happy Agent, new enough to make bots. */
+    private val botRig = machine(
+        "b1",
+        machineMetadata {
+            put("machineKind", "rig")
+            putJsonObject("capabilities") { put("newSession", true); put("worktrees", true); put("bots", true) }
             putJsonObject("defaults") { put("providerId", "codex"); put("modelId", "gpt"); put("permissionMode", "auto") }
             putJsonArray("models") {
                 addJsonObject {
@@ -147,6 +169,7 @@ class SessionStarterTest {
     private fun TestScope.harness(
         machines: List<Machine> = listOf(cli),
         draft: NewSessionDraft,
+        faces: BotFaceWearer = BotFaceWearer { _, _ -> null },
         send: suspend (NewSessionDraftStore) -> Boolean = { true },
     ): Harness {
         val prefs = context.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE)
@@ -167,6 +190,7 @@ class SessionStarterTest {
             awaitSession = { fakeMachines.phases += fakeMachines.phase(); true },
             scope = this,
             requestId = { "request-1" },
+            faces = faces,
         )
         fakeMachines.phase = { starter.phase.value }
         return Harness(starter, drafts, fakeMachines, fakeSessions, sender)
@@ -374,5 +398,43 @@ class SessionStarterTest {
         // Happy Agent's session is killed, not asked of the daemon.
         assertEquals(listOf("s1"), sessions.killed)
         assertTrue(machines.stopped.isEmpty())
+    }
+
+    /**
+     * useStartSessionFromDraft's bot: Happy Agent's spawn with the bot as its
+     * destination, whatever harness the draft chose; no first message (the
+     * prompt stays in the draft); then "Putting on a face…". A face that
+     * fails is reported, never a reason to lose the bot.
+     */
+    @Test fun aBotIsMadeOnHappyAgentThenWearsItsFace() = runTest {
+        val worn = mutableListOf<Pair<String, String>>()
+        val h = harness(
+            listOf(botRig),
+            NewSessionDraft(input = "keep me", selectedMachineId = "b1", selectedPath = "~/code", agentType = AgentType.Claude),
+            faces = { id, seed -> worn += id to seed; null },
+        )
+        val result = h.starter.start(bot = BotRequest("Release Bot", "seed0001"), confirmDirectory = yes)
+        assertEquals(StartResult.Started("s1"), result)
+        val request = h.machines.spawns.single()
+        assertEquals("rig", request.agent)
+        assertEquals(HappyAgentSpawnTarget.Bot("Release Bot"), request.happyAgentTarget)
+        assertEquals(listOf("s1" to "seed0001"), worn)
+        assertTrue(h.sent.isEmpty())
+        assertEquals("keep me", h.drafts.draft.value.input)
+    }
+
+    @Test fun aFaceThatFailsLeavesTheBotForARetry() = runTest {
+        val failure = BotFaceFailure(BotFaceLeg.Uploading, "offline")
+        val h = harness(listOf(botRig), NewSessionDraft(selectedMachineId = "b1"), faces = { _, _ -> failure })
+        assertEquals(StartResult.Started("s1", faceFailure = failure), h.starter.start(bot = BotRequest("Ada", "s"), confirmDirectory = yes))
+        assertTrue(h.sessions.killed.isEmpty())
+    }
+
+    @Test fun anOlderHappyAgentOrABadNameMakesNoBot() = runTest {
+        val old = harness(listOf(rig), NewSessionDraft(selectedMachineId = "r1"))
+        assertEquals(StartResult.Refused(StartRefusal.BotsUnsupported), old.starter.start(bot = BotRequest("Ada", "s"), confirmDirectory = yes))
+        val blank = harness(listOf(botRig), NewSessionDraft(selectedMachineId = "b1"))
+        assertEquals(StartResult.Failed("Give the bot a name"), blank.starter.start(bot = BotRequest("  ", "s"), confirmDirectory = yes))
+        assertTrue(old.machines.spawns.isEmpty() && blank.machines.spawns.isEmpty())
     }
 }
