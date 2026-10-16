@@ -72,7 +72,7 @@ public final class HomeViewController: UIViewController {
                 expandedProjects: context.account.localSettings.expandedProjects,
                 includesDock: true,
                 // In the screens' language; a new one builds home again.
-                unknownMachine: localized("status.unknown", "unknown")
+                unknownMachine: Strings.Home.unknownMachine
             ),
             state: HomeDerivation.Applied(),
             derive: { [clockWake] in HomeDerivation.derive($0, applied: $1, wake: clockWake) },

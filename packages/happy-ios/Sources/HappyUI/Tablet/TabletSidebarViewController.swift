@@ -94,7 +94,7 @@ final class TabletSidebarViewController: UIViewController {
             input: TabletSidebarViewInput(
                 // In the screens' language; a new one builds the sidebar
                 // again.
-                feeds: TabletSidebarInput(unknownMachine: localized("status.unknown", "unknown")),
+                feeds: TabletSidebarInput(unknownMachine: Strings.Home.unknownMachine),
                 text: TextEnvironment(traitCollection)
             ),
             state: TabletSidebarViewState(),

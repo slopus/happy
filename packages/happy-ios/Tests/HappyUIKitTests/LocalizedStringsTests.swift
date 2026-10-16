@@ -35,9 +35,10 @@ final class LocalizedStringsTests: XCTestCase {
     }
 
     /// The header's connection status, Appearance's bubble colours and avatar
-    /// styles, and the `<unknown>` of a chat with no computer read the key
-    /// happy-app's `t()` call reads (HomeHeaderTitle.tsx, appearance.tsx,
-    /// ProjectHomeList.tsx), whose catalogs have words of their own.
+    /// styles, and the word in the `<unknown>` of a chat with no computer
+    /// read the key happy-app's `t()` call reads (HomeHeaderTitle.tsx,
+    /// appearance.tsx, ProjectHomeList.tsx), whose catalogs have words of
+    /// their own.
     func testStatusColoursAndStylesFollowTheLanguage() async {
         let statuses: [(RealtimeStatus, String)] = [
             (.connected, "connected"), (.connecting, "connecting"), (.disconnected, "disconnected"), (.error, "error"),
@@ -52,7 +53,7 @@ final class LocalizedStringsTests: XCTestCase {
         for style in styles {
             XCTAssertEqual(Strings.SettingsAppearance.avatarStyleName(style), TranslationCatalog.english("settingsAppearance.avatarStyleOptions.\(style)"))
         }
-        XCTAssertEqual(Strings.Home.unknownMachine, "<unknown>")
+        XCTAssertEqual(Strings.Home.unknownMachine, "unknown")
         for code in ["ru", "ja"] {
             let catalog = await TranslationCatalog.load(code)
             AppLocalization.use(catalog)
@@ -70,8 +71,8 @@ final class LocalizedStringsTests: XCTestCase {
                 XCTAssertEqual(Strings.SettingsAppearance.avatarStyleName(style), words, code)
                 XCTAssertNotEqual(words, style.capitalized, code)
             }
-            XCTAssertEqual(Strings.Home.unknownMachine, "<\(catalog("status.unknown"))>", code)
-            XCTAssertNotEqual(Strings.Home.unknownMachine, "<unknown>", code)
+            XCTAssertEqual(Strings.Home.unknownMachine, catalog("status.unknown"), code)
+            XCTAssertNotEqual(Strings.Home.unknownMachine, "unknown", code)
         }
     }
 
