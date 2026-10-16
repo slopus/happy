@@ -52,6 +52,15 @@ architectures comparable (local store, delta sync, crypto layer).
    Android 14's non-linear scaling Compose keeps each line height's ratio to
    its font, where RN converts the line height separately, so at large
    scales our lines run a few dp taller.
+   **Tablet:** `ui/layout/WindowLayout.kt` answers responsive.ts and
+   layout.ts through `LocalWindowLayout` (the tablet shell is width ≥ 768;
+   the 9-inch diagonal only sets the 800 content max width). Read it, not
+   `LocalConfiguration`, for any `useIsTablet` branch; hold wide content with
+   `Modifier.contentMaxWidth` or `CenteredInputWidth`. `ui/tablet/TabletShell`
+   wraps HappyApp's NavHost; under it `LocalTabletShell` is true and
+   `HeaderBackButton` renders nothing. Tablet tests use
+   `w1280dp-h800dp-xhdpi`; without `ProvideWindowLayout` a composable lays
+   out as an unlimited phone.
 4. **The local store is SQLite through the framework API**
    (`SQLiteOpenHelper`, WAL, hand-written SQL in `data/`). Why not a library:
    the schema is a handful of tables whose rows are mostly JSON documents

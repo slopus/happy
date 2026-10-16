@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -162,6 +163,7 @@ fun FlatSessionRow(
     callbacks: HomeListCallbacks,
     modifier: Modifier = Modifier,
     archiving: Boolean = false,
+    selected: Boolean = false,
 ) {
     LocalHomeRowObserver.current?.let { observe -> SideEffect { observe(row.session.id) } }
     val session = row.session
@@ -191,7 +193,8 @@ fun FlatSessionRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag(FlatRowTags.ROW)
-                .background(flatListBackground(colors))
+                .background(if (selected) colors.surfaceSelected else flatListBackground(colors))
+                .then(if (selected) Modifier.semantics { this.selected = true } else Modifier)
                 .combinedClickable(
                     onClick = { callbacks.onOpen(session.id) },
                     onLongClick = { callbacks.onMenu(session.id) },

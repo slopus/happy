@@ -49,6 +49,7 @@ import com.slopus.happy.chat.tools.PermissionOptionState
 import com.slopus.happy.chat.tools.answeredChoice
 import com.slopus.happy.chat.tools.permissionOptionState
 import com.slopus.happy.chat.tools.permissionOptions
+import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
@@ -111,6 +112,8 @@ fun PermissionFooter(
     val scope = rememberCoroutineScope()
     val pending = permission.status == PermissionStatus.Pending
     val maxHeight = minOf(PermissionSpec.maxHeight, (LocalConfiguration.current.screenHeightDp * 0.35f).dp)
+    // `buttonContainer.alignItems`: a tablet hugs each button to its label at the trailing edge; a phone stretches them.
+    val stretch = !LocalWindowLayout.current.isTablet
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -119,6 +122,7 @@ fun PermissionFooter(
             .heightIn(max = maxHeight)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(PermissionSpec.gap),
+        horizontalAlignment = if (stretch) Alignment.Start else Alignment.End,
     ) {
         for (option in options) {
             PermissionButton(
@@ -127,6 +131,7 @@ fun PermissionFooter(
                 maxLines = option.maxLines,
                 loading = pending && loading == option.choice,
                 enabled = pending && loading == null,
+                stretch = stretch,
                 modifier = Modifier.testTag(PermissionTags.option(option.choice)),
                 onClick = {
                     loading = option.choice
@@ -155,6 +160,7 @@ private fun PermissionButton(
     maxLines: Int,
     loading: Boolean,
     enabled: Boolean,
+    stretch: Boolean,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
@@ -169,13 +175,13 @@ private fun PermissionButton(
     }
     Box(
         modifier = modifier
-            .fillMaxWidth()
+            .then(if (stretch) Modifier.fillMaxWidth() else Modifier)
             .alpha(opacity),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .then(if (stretch) Modifier.fillMaxWidth() else Modifier)
                 .defaultMinSize(minHeight = PermissionSpec.buttonMinHeight)
                 .clip(shape)
                 .background(if (state == PermissionOptionState.Selected) colors.surfaceHighest else colors.surface)
