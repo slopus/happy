@@ -351,14 +351,23 @@ final class ChatRowsTextSizeTests: XCTestCase {
     // MARK: The placeholder
 
     private func placeholderFonts(_ view: ChatPlaceholderView) -> [CGFloat] {
-        view.subviews.compactMap { $0 as? ChatTextView }.filter { $0.superview != nil }.flatMap { view in
+        view.subviews.compactMap { $0 as? ChatTextView }.filter { !$0.isHidden }.flatMap { view in
             view.layout.map { fonts($0.string).map(\.pointSize) } ?? []
         }
     }
 
-    /// EmptyMessages is measured as drawn, on main: at its traits' size,
-    /// and made again when they change, without being shown again.
-    func testThePlaceholderIsMadeAgainAtANewSize() {
+    /// Lays the placeholder out and waits for the plan it asks for, made
+    /// off the main thread.
+    private func measured(_ placeholder: ChatPlaceholderView) async {
+        placeholder.updateTraitsIfNeeded()
+        placeholder.layoutIfNeeded()
+        await placeholder.measure.measured()
+        placeholder.layoutIfNeeded()
+    }
+
+    /// EmptyMessages is measured off main at its traits' size, and again
+    /// when they change, without being shown again.
+    func testThePlaceholderIsMadeAgainAtANewSize() async {
         let placeholder = ChatPlaceholderView(frame: CGRect(x: 0, y: 0, width: 393, height: 700))
         placeholder.traitOverrides.followsTextSize = true
         placeholder.traitOverrides.preferredContentSizeCategory = .large
@@ -370,30 +379,30 @@ final class ChatRowsTextSizeTests: XCTestCase {
         placeholder.updateTraitsIfNeeded()
         let state = ChatEmptyState(metadata: .object(["host": .string("mac"), "path": .string("/p")]), createdAt: 0, now: 60_000)
         placeholder.show(.empty(state, .noMessages))
-        placeholder.layoutIfNeeded()
+        await measured(placeholder)
         let designed = placeholderFonts(placeholder)
         // The host, the path, "No messages yet" and the date.
         XCTAssertEqual(designed, [18, 14, 20, 16])
 
         placeholder.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
-        placeholder.updateTraitsIfNeeded()
-        placeholder.layoutIfNeeded()
+        await measured(placeholder)
         let scale = multiplier(.accessibilityExtraExtraExtraLarge)
         let grown = placeholderFonts(placeholder)
         XCTAssertEqual(grown.count, designed.count)
         for (size, before) in zip(grown, designed) {
             XCTAssertEqual(size, before * scale, accuracy: 0.0001)
         }
-        for view in placeholder.subviews.compactMap({ $0 as? ChatTextView }) {
+        for view in placeholder.subviews.compactMap({ $0 as? ChatTextView }) where !view.isHidden {
             guard let layout = view.layout else { continue }
             XCTAssertLessThanOrEqual(layout.size.height, view.frame.height + 0.5, layout.string.string)
+            // Ceiled to the screen's pixels.
+            XCTAssertEqual((layout.size.height * 3).rounded(), layout.size.height * 3, accuracy: 0.0001)
         }
         XCTAssertEqual(placeholder.content, .empty(state, .noMessages))
 
         // Without the trait, the designed size.
         placeholder.traitOverrides.followsTextSize = false
-        placeholder.updateTraitsIfNeeded()
-        placeholder.layoutIfNeeded()
+        await measured(placeholder)
         XCTAssertEqual(placeholderFonts(placeholder), designed)
     }
 

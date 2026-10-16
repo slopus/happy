@@ -294,9 +294,15 @@ Following now:
     (`MessageDetailReadingPlace`). Until the new plans land the old ones
     stay drawn whole: the text is in the plan, so a row never mixes sizes.
   - The placeholder (EmptyMessages, the pending chat's and the deleted
-    state) is measured on the main thread when it lays out, as it was at
-    the designed size, and made again when the size changes; its 72 glyph
-    stays.
+    state) is measured off main (`ChatPlaceholderMeasure`, through
+    `OffMainPlan`): its words are read on main when it is shown, then a
+    background task measures them at its width, text size and screen
+    scale, and only a plan for what was asked last is drawn, whole. Its
+    height only centres the column (`ChatPlaceholderLayout`), so the
+    keyboard moving the dock measures nothing. Until the first plan is in
+    it shows nothing, the loading spinner included; after a change the
+    last plan stays until the next. Its glyphs (72, 64, 48), margins and
+    paddings, the paging spinner and RoundButton's 32 stay.
   - A text box ends on the screen's next pixel, as RN's does
     (`ChatTextLayout`, `PixelGrid.ceil`): the screen's scale comes with
     the text size (`TextEnvironment.displayScale`) on every string made at
@@ -304,13 +310,15 @@ Following now:
     the next whole point (the header, the bars over the composer, the
     question sheet, the copy menu).
   - Tested on Linux: the layouts at XS, the default, XXXL, AX-M and
-    AX-XXXL (`ChatTextSizeLayoutTests`), the changesets
-    (`ApplyPerfChatTextSizeTests`) and the reading place. UIKit tests
-    (`ChatRowsTextSizeTests`, `MessageDetailTextSizeTests`,
-    `ChatRowWordsTests`: the plans' text at the multiplier and fitting its
-    frames, the designed size unchanged, the cells drawing their plans,
-    the placeholder made again, and the fixture chat and message screen
-    planned again at a new size) are built, not run: the Mac was offline.
+    AX-XXXL (`ChatTextSizeLayoutTests`, `ChatPlaceholderLayoutTests`), the
+    changesets (`ApplyPerfChatTextSizeTests`) and the reading place. UIKit
+    tests (`ChatRowsTextSizeTests`, `MessageDetailTextSizeTests`,
+    `ChatRowWordsTests`, `ChatHistoryViewsTests`: the plans' text at the
+    multiplier and fitting its frames, the designed size unchanged, the
+    cells drawing their plans, the placeholder measured again at a new
+    size or width but not a new height, and the fixture chat and message
+    screen planned again at a new size) are built, not run: the Mac was
+    offline.
     Not seen on a simulator or device.
 
 - Diffs, on the Changes screen (`SessionChangesViewController`) and in the
