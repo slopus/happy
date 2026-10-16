@@ -30,8 +30,12 @@ import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
+import com.slopus.happy.attachments.AttachmentServices
+import com.slopus.happy.attachments.AttachmentUploadResult
+import com.slopus.happy.attachments.readAttachmentBytes
 import com.slopus.happy.diagnostics.ClientLogs
 import com.slopus.happy.model.Machine
+import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.model.SessionListInputs
 import com.slopus.happy.model.buildSessionListViewData
@@ -114,7 +118,7 @@ import java.util.WeakHashMap
  * in the background and kept warm between visits, the archive in flight,
  * and the store-version check.
  */
-class HomeServices private constructor(graph: AppGraph) {
+class HomeServices private constructor(private val graph: AppGraph) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val account = graph.account
@@ -220,7 +224,13 @@ class HomeServices private constructor(graph: AppGraph) {
             drafts = drafts,
             machineActions = machineActions,
             sessionActions = sessionActions,
-            sender = LiveFirstMessageSender { account.value },
+            sender = LiveFirstMessageSender(
+                account = { account.value },
+                metadata = { id -> withContext(Dispatchers.IO) { store.session(id)?.metadataJson?.let(SessionMetadata::parse) } },
+                upload = { id, images ->
+                    AttachmentServices.of(graph).transfers?.upload(id, images, ::readAttachmentBytes) ?: AttachmentUploadResult(emptyList(), images.size)
+                },
+            ),
             awaitSession = ::awaitSession,
             scope = scope,
         )
