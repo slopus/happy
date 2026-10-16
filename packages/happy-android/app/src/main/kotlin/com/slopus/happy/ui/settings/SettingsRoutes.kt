@@ -8,7 +8,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalResources
 import com.slopus.happy.model.settings.PushText
 import com.slopus.happy.model.settings.PushTokensApi
-import com.slopus.happy.model.settings.UnavailablePushRegistration
+import com.slopus.happy.push.rememberPushRegistration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
@@ -247,7 +247,7 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
     val profile by rememberProfile(graph)
     val api = rememberConnectApi(graph)
     val tokensApi = remember(graph) { PushTokensApi(graph.http) { (graph.auth.state.value as? AuthState.SignedIn)?.credentials?.token } }
-    val pushRegistration = remember(tokensApi) { UnavailablePushRegistration(tokensApi) }
+    val pushRegistration = rememberPushRegistration(graph)
     val scope = rememberCoroutineScope()
     val alerts = remember { Alerts() }
     val onError = errorAlert(alerts)
