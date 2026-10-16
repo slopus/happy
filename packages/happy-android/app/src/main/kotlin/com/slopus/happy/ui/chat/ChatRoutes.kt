@@ -113,6 +113,10 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
                 }
             },
             loadOlder = { account?.messages?.loadOlder(sessionId) ?: false },
+            onPermission = { answer, mode ->
+                actions.answerPermission(sessionId, answer)
+                if (mode != null) actions.setModes(sessionId, permissionMode = mode, modelMode = null, effortLevel = null)
+            },
         )
     }
 
@@ -122,6 +126,8 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
         bubbleColor = settings.userMessageBubbleColor,
         actions = screenActions,
         aborting = aborting,
+        compactToolCalls = settings.compactToolCalls,
+        showLineNumbersInToolViews = settings.showLineNumbersInToolViews,
     )
     failure?.let { message ->
         HappyAlert(

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -109,6 +110,7 @@ class ChatScreenActions(
     val onAbort: () -> Unit = {},
     val loadOlder: suspend () -> Boolean = { false },
     val onToolPress: (com.slopus.happy.chat.ChatMessage.ToolCallMessage) -> Unit = {},
+    val onPermission: PermissionHandler = { _, _ -> },
 )
 
 /**
@@ -132,14 +134,22 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
     aborting: Boolean = false,
     now: Long = System.currentTimeMillis(),
+    compactToolCalls: Boolean = false,
+    showLineNumbersInToolViews: Boolean = false,
 ) {
     val colors = HappyTheme.colors
     val session = state.session
+    val toolEnvironment = ToolEnvironment(
+        compactToolCalls = compactToolCalls,
+        showLineNumbers = showLineNumbersInToolViews,
+        flavor = session?.metadata?.flavor,
+        path = session?.metadata?.path,
+    )
     val listState = rememberLazyListState()
     val loadOlder by rememberUpdatedState(actions.loadOlder)
     val pager = remember(session?.id) { OlderPager { loadOlder() } }
     val callbacks = remember(actions) {
-        MessageCallbacks(onOptionPress = { actions.onSend(it) }, onToolPress = actions.onToolPress)
+        MessageCallbacks(onOptionPress = { actions.onSend(it) }, onToolPress = actions.onToolPress, onPermission = actions.onPermission)
     }
     val bubble = userMessageBubblePalette(bubbleColor, colors.dark)
     val title = when {
@@ -168,16 +178,18 @@ fun ChatScreen(
             when {
                 !state.sessionLoaded -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
                 session == null -> DeletedSession()
-                state.snapshot.rows.isNotEmpty() -> ChatList(
-                    rows = state.snapshot.rows,
-                    hasMoreOlder = state.snapshot.hasMoreOlder,
-                    isLoadingOlder = state.snapshot.isLoadingOlder,
-                    controlledByUser = session.usesControlledSessionUi && session.agentState?.controlledByUser == true,
-                    bubble = bubble,
-                    callbacks = callbacks,
-                    pager = pager,
-                    state = listState,
-                )
+                state.snapshot.rows.isNotEmpty() -> CompositionLocalProvider(LocalToolEnvironment provides toolEnvironment) {
+                    ChatList(
+                        rows = state.snapshot.rows,
+                        hasMoreOlder = state.snapshot.hasMoreOlder,
+                        isLoadingOlder = state.snapshot.isLoadingOlder,
+                        controlledByUser = session.usesControlledSessionUi && session.agentState?.controlledByUser == true,
+                        bubble = bubble,
+                        callbacks = callbacks,
+                        pager = pager,
+                        state = listState,
+                    )
+                }
                 state.snapshot.loaded -> EmptyMessages(
                     session = session,
                     hasMoreOlder = state.snapshot.hasMoreOlder,

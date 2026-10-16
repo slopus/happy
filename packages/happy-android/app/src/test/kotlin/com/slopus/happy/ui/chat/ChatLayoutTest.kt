@@ -173,7 +173,7 @@ class ChatLayoutTest {
         val tool = ToolCall(name = "Bash", title = "ls -la", state = ToolState.Running, input = null, createdAt = 0)
         rule.setHappyContent { MessageView(ChatRow.Tool(ChatMessage.ToolCallMessage("t", 0, tool)), gray, MessageCallbacks()) }
         rule.onNodeWithText("ls -la").assertExists()
-        val row = rule.node(MessageTags.TOOL).bounds
+        val row = rule.node(ToolTags.COMPACT).bounds
         assertBox("row", row, 8.dp, 2.dp, (PHONE_WIDTH - 16).dp, 28.dp)
     }
 

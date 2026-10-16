@@ -89,7 +89,7 @@ interface ChatActions {
 
     suspend fun cancelQuestion(sessionId: String, communicationId: String, kind: String = "form")
 
-    /** Persists the composer's per-session mode picks (permission, model, effort). */
+    /** Persists the composer's per-session mode picks (permission, model, effort); null leaves a pick as it is. */
     suspend fun setModes(sessionId: String, permissionMode: String?, modelMode: String?, effortLevel: String?) = Unit
 }
 

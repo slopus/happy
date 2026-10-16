@@ -70,7 +70,6 @@ object MessageTags {
     const val AGENT = "message.agent"
     const val AGENT_COPY = "message.agent.copy"
     const val EVENT = "message.event"
-    const val TOOL = "message.tool"
     const val UNSUPPORTED = "message.unsupported"
 }
 
@@ -109,17 +108,6 @@ object MessageSpec {
     val eventMarginHorizontal = 8.dp
     val eventPaddingVertical = 8.dp
     val eventText = happyTextStyle(fontSize = 14)
-    val toolMarginHorizontal = 8.dp
-    val toolRowMinHeight = 28.dp
-    val toolRowPaddingHorizontal = 8.dp
-    val toolRowPaddingVertical = 3.dp
-    val toolRowMarginVertical = 2.dp
-    val toolRowGap = 10.dp
-    val toolIconBox = 20.dp
-    val toolIcon = 18.dp
-    val toolLabel = happyTextStyle(fontSize = 15, lineHeight = 20)
-    val toolElapsed = happyTextStyle(fontSize = 13, family = PlexMono)
-    val toolStatusIcon = 20.dp
 }
 
 /** What a row needs from the screen. */
@@ -127,6 +115,8 @@ class MessageCallbacks(
     /** Pressing an `<options>` choice sends it as the next message. */
     val onOptionPress: (String) -> Unit = {},
     val onToolPress: (ChatMessage.ToolCallMessage) -> Unit = {},
+    /** Answers a tool's permission request; [mode] is the permission mode the composer switches to after. */
+    val onPermission: PermissionHandler = { _, _ -> },
 )
 
 /** One chat row, dispatched by kind (MessageView.tsx `RenderBlock`). */
@@ -136,7 +126,7 @@ fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks
         is ChatRow.User -> UserMessage(row, bubble, callbacks, modifier)
         is ChatRow.AgentText -> AgentMessage(row, callbacks, modifier)
         is ChatRow.Event -> EventMessage(row.message.event, modifier)
-        is ChatRow.Tool -> ToolRow(row.message, callbacks, modifier)
+        is ChatRow.Tool -> ToolView(row.message, callbacks, modifier)
         is ChatRow.Unsupported -> UnsupportedMessage(modifier)
     }
 }
@@ -379,63 +369,6 @@ fun EventMessage(event: AgentEvent, modifier: Modifier = Modifier) {
         Text(text, style = MessageSpec.eventText, color = ChatTheme.colors.agentEventText, textAlign = TextAlign.Center)
     }
 }
-
-/**
- * A tool call as ToolView's compact activity row (tool outputs are hidden
- * by default; the full view opens on press). Spec: 8 side margins, 2 above
- * and below; the row at least 28 high, padded 8/3, radius 4; a 20 icon box
- * (18 glyph), then 10 apart the label (15/20 textSecondary, one line), the
- * elapsed seconds while running (mono 13 secondary, 8 in), and the status:
- * a spinner while running, alert-circle-outline 20 in the warning colour on
- * error, remove-circle-outline 20 when denied or cancelled.
- */
-@Composable
-fun ToolRow(message: ChatMessage.ToolCallMessage, callbacks: MessageCallbacks, modifier: Modifier = Modifier) {
-    val tool = message.tool
-    val colors = HappyTheme.colors
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = MessageSpec.toolMarginHorizontal, vertical = MessageSpec.toolRowMarginVertical)
-            .testTag(MessageTags.TOOL),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = MessageSpec.toolRowMinHeight)
-                .clip(RoundedCornerShape(4.dp))
-                .clickable { callbacks.onToolPress(message) }
-                .padding(horizontal = MessageSpec.toolRowPaddingHorizontal, vertical = MessageSpec.toolRowPaddingVertical),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(MessageSpec.toolRowGap),
-        ) {
-            Icon(Ionicon.ConstructOutline, MessageSpec.toolIcon, colors.textSecondary, Modifier.size(MessageSpec.toolIconBox))
-            Text(
-                text = toolActivityLabel(tool.name, tool.title, tool.description),
-                style = MessageSpec.toolLabel,
-                color = colors.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            val denied = tool.permission?.status == PermissionStatus.Denied || tool.permission?.status == PermissionStatus.Canceled
-            when {
-                denied -> Icon(Ionicon.RemoveCircleOutline, MessageSpec.toolStatusIcon, colors.textSecondary)
-                tool.state == ToolState.Running -> CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    color = colors.text,
-                    strokeWidth = 2.dp,
-                )
-                tool.state == ToolState.Error -> Icon(Ionicon.AlertCircleOutline, MessageSpec.toolStatusIcon, colors.warning)
-                else -> Unit
-            }
-        }
-    }
-}
-
-/** The label until the tool registry is ported: the protocol title, the description, or the name. */
-private fun toolActivityLabel(name: String, title: String?, description: String?): String =
-    title?.trim()?.takeIf { it.isNotEmpty() } ?: description?.trim()?.takeIf { it.isNotEmpty() } ?: name
 
 /**
  * A record this build cannot show (a retired or unknown kind). happy-app
