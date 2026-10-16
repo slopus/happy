@@ -32,6 +32,7 @@ import com.slopus.happy.chat.SyncChatPresenceSource
 import com.slopus.happy.chat.str
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.model.gitStatusKey
 import com.slopus.happy.model.isRig
 import com.slopus.happy.sync.HappyAgentGit
 import com.slopus.happy.ui.components.Alert
@@ -109,8 +110,12 @@ private fun ChangesRouteScreen(graph: AppGraph, sessionId: String, file: String?
     // Opened outside the chat: tell sync the session is on screen so its state stays fresh.
     LaunchedEffect(sync, sessionId) { sync?.messages?.onSessionVisible(sessionId) }
     val rig = metadata?.isRig()
-    val legacy = remember(ops, sessionId, rig, metadata?.path) {
-        if (ops != null && rig == false) LegacyChanges(scope, ops, sessionId, metadata.path) else null
+    val legacy = remember(ops, sessionId, rig, metadata?.path, metadata?.machineId) {
+        if (ops != null && sync != null && rig == false) {
+            LegacyChanges(scope, ops, sessionId, metadata.path, sync.fileCache, gitStatusKey(metadata.machineId, metadata.path))
+        } else {
+            null
+        }
     }
     val agent = remember(ops, sessionId, rig) {
         if (ops != null && rig == true) AgentChanges(scope, ops, sessionId, HappyAgentGit.supportsHappyAgentGit(metadata)) else null
@@ -149,7 +154,7 @@ private fun FileRouteScreen(graph: AppGraph, route: SessionFileRoute, onBack: ()
     val sync = account
     val load by produceState<FileLoad>(FileLoad.Loading, sync, loaded, filePath, gitDiffPath) {
         if (sync == null || !loaded) return@produceState
-        value = SyncSessionFileOps(sync).loadFile(route.id, filePath, sessionPath, gitDiffPath)
+        SyncSessionFileOps(sync).fileLoads(sync.fileCache, route.id, filePath, sessionPath, gitDiffPath).collect { value = it }
     }
     FileScreen(load, filePath, onBack, route.line, route.column)
 }

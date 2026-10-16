@@ -17,6 +17,8 @@ import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ToolCall
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.diff.DiffSource
+import com.slopus.happy.model.GitFileStatus
+import com.slopus.happy.model.GitFileStatusKind
 import com.slopus.happy.sync.GitFacts
 import com.slopus.happy.sync.GitFile
 import com.slopus.happy.sync.GitFileContent
