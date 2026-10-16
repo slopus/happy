@@ -29,6 +29,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        graph.setForeground(true)
         graph.requestSync()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        graph.setForeground(false)
     }
 }

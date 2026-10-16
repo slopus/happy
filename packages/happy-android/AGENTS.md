@@ -18,16 +18,16 @@ architectures comparable (local store, delta sync, crypto layer).
 - **Tool outputs are hidden by default** once the chat UI exists.
 - Built so far: crypto, account auth, the server setting, an empty home
   screen, Settings (Account, Appearance), and the local store with delta
-  sync. Not built: chat and session UI, camera and QR screens, terminal
-  connect, live updates over the socket, push.
+  sync and live updates. Not built: chat and session UI, camera and QR
+  screens, terminal connect, push.
 
 ## Rules
 
 1. **UI is Jetpack Compose** (Material 3 is fine), with the theme and design
    tokens taken from happy-app (`sources/theme.ts`, `constants/Typography.ts`).
-   Use the Android branch where theme.ts uses `Platform.select`. Strings come
-   from `sources/text/translations/en.ts`; resource names are the key paths
-   with `_`.
+   Use the Android branch where theme.ts uses `Platform.select`. Strings are
+   generated from happy-app's catalogs (see Localization); never edit
+   `res/values*/strings.xml` by hand.
 2. **Gradle with the Kotlin DSL and the version catalog**
    (`gradle/libs.versions.toml`). The wrapper is committed; there is no Gradle
    on PATH.
@@ -58,12 +58,59 @@ app/
   auth/     account auth (POST /v1/auth), credentials in expo-secure-store's format
   config/   server URL (survives logout), device-only settings (theme)
   data/     HappyDatabase (schema), HappyStore (typed access + change ticks)
-  sync/     SyncApi (wire types), SyncEngine (delta sync), InvalidateSync (retry loop)
-  net/      HappyHttp: OkHttp + kotlinx.serialization, X-Happy-Client header
+  sync/     AccountSync (per-account owner), SyncEngine (delta sync), LiveUpdates,
+            Presence, MessageSync (history), SyncApi + UpdateTypes (wire types)
+  net/      HappyHttp (OkHttp + kotlinx.serialization, X-Happy-Client header),
+            SocketIoClient (the /v1/updates socket)
   ui/       theme, components (Item, ItemGroup, RoundButton, Header, ...), screens
   AppGraph  hand-wired object graph; owns the signed-in sync loop
+  model/    typed views of the stored JSON: Settings (sync/settings.ts);
+            settings/ has agentDefaults.ts, local settings, SettingsRepository
+  text/     Resources.plural / pluralResource, PluralExactNumbers (generated)
 tools/testvectors/   generates crypto test vectors by running happy-app's TypeScript
+tools/translations/  generates the string resources from happy-app's catalogs
 ```
+
+## Localization
+
+All UI text comes from happy-app's ten catalogs (`sources/text/_default.ts`,
+which serves English, and `translations/*.ts`), generated into
+`res/values/strings.xml` and `res/values-{ru,pl,es,it,pt,ca,ja,b+zh+Hans,b+zh+Hant}/strings.xml`.
+After happy-app's catalogs change, regenerate and commit the output:
+
+```
+cd tools/translations && npm run generate
+```
+
+`TranslationResourcesTest` fails until you do. A string happy-app doesn't
+have goes in `res/values/strings_android.xml` (English only); add it to
+happy-app's catalogs instead where you can.
+
+How a catalog entry becomes a resource:
+
+- **Name**: the key path, camelCase to snake_case, dots to `_`
+  (`settings.whatsNewSubtitle` → `settings_whats_new_subtitle`). If two keys
+  come out alike, the later one keeps its dots as `__`
+  (`settingsVoice.language.title` → `settings_voice__language__title`).
+- **String**: `stringResource(R.string.common_cancel)`.
+- **Function**: a format string whose arguments are the function's
+  parameters in `_default.ts`'s annotation order, text as `%n$s` and numbers
+  as `%n$d` (pass `Int`):
+  `stringResource(R.string.settings_github_connected, login)`.
+- **Function that picks words by a count**: `<plurals>`, rendered with
+  `pluralResource(R.plurals.time_minutes_ago, count, count)` (or
+  `resources.plural(…)`), never `pluralStringResource`: where a catalog
+  spells out a number its Android plural category doesn't cover (Japanese
+  `count === 1`, Portuguese 0), the generator adds a `<name>_n<number>`
+  string, and only `plural` knows to use it. The count is also a format
+  argument, in its place among the parameters.
+- **Function that picks words by a boolean or a fixed set of strings**: one
+  string per case, `<name>_true` / `<name>_false` or `<name>_<value>`
+  (`settings.featureToggled({ feature, enabled })` →
+  `settings_feature_toggled_true` / `_false`, each taking `feature` as
+  `%1$s`; `settings.machineStatus({ name, status })` →
+  `settings_machine_status_online` / `_offline`). Choose the resource in
+  Kotlin; the chooser is not a format argument.
 
 ## Credentials and upgrades from the React Native build
 
@@ -102,16 +149,85 @@ The custom server URL is not carried over: happy-app keeps it in MMKV
 
 ## Sync
 
-`SyncEngine` keeps the store current with as little traffic as possible.
-Settings: pending local changes are uploaded with the version they were based
-on, merged over the server copy on `version-mismatch`, then re-read.
-Machines and profile: read whole (small, no delta endpoint). Sessions:
+`AppGraph.account` is the signed-in account's `AccountSync` (null when
+signed out); it owns everything below and stops before sign-out clears the
+store. All network, decryption, decoding and SQLite work runs on
+`Dispatchers.IO`; the flows can be collected on the main thread.
+
+**Delta sync** (`SyncEngine`). Settings: pending local changes are uploaded
+with the version they were based on, merged over the server copy on
+`version-mismatch`, then re-read. Machines and profile: read whole (no delta
+endpoint; an empty machine list never wipes known machines). Sessions:
 `/v2/sessions?changedSince=` from the stored watermark, paged by cursor; a
-full listing on first sync and once a day catches deletions. Messages:
-`/v3/sessions/:id/messages?after_seq=` for sessions whose server `seq` is
-ahead of the local watermark. Each write commits with its watermark. Records
-are stored decrypted (the sandbox and file-based encryption protect them at
-rest, as MMKV does for happy-app); their data keys are stored wrapped.
+full listing on first sync and once a day catches deletions. Messages: see
+history below. It runs on sign-in, on every socket connect, and when the app
+returns to the foreground.
+
+**Store merges** (`HappyStore`). Writes merge instead of overwrite: each
+versioned document (metadata, agentState, daemonState) keeps the higher
+version, presence the newer `activeAt`, counters the maximum, so a slow page
+cannot undo a live update. A write that changes nothing touches no row and
+wakes no observer. `versions` counts changes per area (sessions, session
+activity, machines, machine activity, account) and per session (messages,
+outbox); `messageChanges(id)` and `outboxChanges(id)` are its per-chat views.
+Records are stored decrypted (the sandbox and file-based encryption protect
+them at rest, as MMKV does for happy-app); their data keys are stored wrapped.
+
+**Live updates** (`net/SocketIoClient`, `sync/LiveUpdates`). The
+`/v1/updates` socket (apiSocket.ts) with `clientType: user-scoped`, the
+token, `happyClient` and `appState` read at every connect; `app-state` is
+sent on every connect and on foreground changes. Why our own client instead
+of socket.io-client-java: Happy uses five packet types of Engine.IO 4 /
+Socket.IO 5 over WebSocket; the library brings a second Engine.IO stack,
+org.json and its own threading for that. OkHttp's WebSocket is already here,
+and the wire format is tested directly (`SocketIoProtocolTest`). Reconnects
+use socket.io-client's backoff (1 s to 5 s, jitter 0.5, forever); a
+heartbeat watchdog drops links silent past `pingInterval + pingTimeout`. The
+server keeps no recovery state, so every connect runs the delta sync and
+catches up the open chats. `connectionStatus` (`ConnectionStatus`:
+disconnected, connecting, connected, error) is what Home's header shows
+(homeConnectionStatus.ts: shown unless connected).
+
+Handled updates: `new-message` (next seq is appended; a gap fetches
+`after_seq`; turn start/end messages set thinking), `new-session` (stored
+from the update itself), `update-session` (metadata/agentState with their
+versions, three-state `projectId`; control hand-off refetches messages),
+`delete-session`, `new-machine` (carries its data key), `update-machine`,
+`delete-machine`, `update-account` (profile fields, settings with version;
+pending local settings stay on top), `delete-project` (resync). Projects,
+artifacts, friends, feed and KV updates are ignored until those features
+exist. Anything that cannot be applied alone (unknown session or machine)
+asks for the delta sync instead of guessing.
+
+**Presence** (`sync/Presence`, `account.presence`). `activity` and
+`machine-activity` ephemerals and `usage` live in memory only, never in
+SQLite. `sessions` / `machines` (`Map<id, SessionPresence | MachinePresence>`)
+change only when something shown changes: online/offline, thinking, or an
+offline row's last-seen time; heartbeats publish nothing. Stored rows seed
+it and the newer `activeAt` wins; the server is the only authority on being
+online. Home and Chat read status from here, not from the `active` columns.
+
+**History** (`sync/MessageSync`, `account.messages`). A session's stored
+messages are one contiguous seq run (`messages_oldest_seq..messages_seq`).
+`messages(sessionId): Flow<List<MessageRecord>>` opens the chat: it fetches
+the newest page (`before_seq`), catches up forward, then prefetches up to
+five older pages per session per sign-in. `loadOlder(sessionId)` loads one
+page on demand and returns whether the run moved back;
+`paging(sessionId)` gives `isLoaded`, `hasMoreOlder`, `isLoadingOlder`. A
+backward page that does not move the cursor ends history.
+
+## Settings
+
+`AppGraph.settings` (`SettingsRepository`) is the account's settings as
+happy-app's `storage.settings` holds them: the stored server copy with
+pending changes on top, parsed by `Settings.parse` (settingsParse: every
+field of `SettingsSchema` with its default, unknown keys kept in `unknown`;
+one field of the wrong type resets all known fields, as zod's `safeParse`
+does). Read `settings.settings` (a `StateFlow<Settings>`); change with
+`settings.change { it.copy(field = value) }`, which records the changed
+top-level keys as pending and asks for a sync. Device-only preferences
+(localSettings.ts) are `AppGraph.localSettings.values`, stored as one JSON
+document in SharedPreferences.
 
 ## Build and test
 
@@ -145,5 +261,3 @@ cd tools/testvectors && npm install && npm run generate
   user to the secret key; Settings > Account > Link New Device explains that
   the scanner is missing. The API calls (`AuthApi.requestAccountLink`,
   `approveAccountLink`) and crypto (`AccountLink`) are done and tested.
-- **Live updates.** No socket yet; sync runs on sign-in and on every return
-  to the foreground.
