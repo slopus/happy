@@ -31,12 +31,7 @@ class LiveKitAudioManager(
     private val _volume = MutableStateFlow(1.0f)
 
     private var audioStateListener: AudioStateListener? = null
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-
-    init {
-        // Configure audio session when manager is created
-        AudioUtils.configureAudioSession(context)
-    }
+    // Happy patch: the room's AudioSwitchHandler is the only focus/routing owner.
 
     override suspend fun startRecording() {
         if (_isRecording.value) {
@@ -120,7 +115,8 @@ class LiveKitAudioManager(
 
     override suspend fun setMicMuted(muted: Boolean) {
         try {
-            softwareMuteProcessor?.setMuted(muted) ?: AudioUtils.setMicrophoneMuted(context, muted)
+            // Mute only this call, never the device-wide microphone setting.
+            softwareMuteProcessor?.setMuted(muted) ?: room.localParticipant.setMicrophoneEnabled(!muted)
             _isMuted.value = muted
             audioStateListener?.onMuteStateChanged(muted)
         } catch (e: Exception) {
@@ -174,17 +170,14 @@ class LiveKitAudioManager(
     }
 
     override fun cleanup() {
-        scope.launch {
-            try {
-                stopRecording()
-                stopPlayback()
-                AudioUtils.resetAudioSession(context)
-            } catch (e: Exception) {
-                // Log cleanup errors but don't throw
-                Log.d("LiveKitAudioManager", "Error during audio cleanup: ${e.message}")
-            }
-        }
-        scope.cancel()
+        // The session awaits stopRecording/stopPlayback before this synchronous cleanup.
+        // Do not enqueue work on a scope that is immediately cancelled or reset global routing.
+        localAudioTrack = null
+        remoteAudioTracks.clear()
+        audioStateListener = null
+        _isRecording.value = false
+        _isPlaying.value = false
+        _isMuted.value = false
     }
 
     /**

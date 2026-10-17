@@ -14,6 +14,8 @@ import io.livekit.android.room.Room
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Complete implementation of ConversationSession
@@ -32,6 +34,8 @@ internal class ConversationSessionImpl(
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     @Volatile private var conversationId: String? = null
+    private val closeLock = Mutex()
+    @Volatile private var closed = false
 
     // Event handler for processing conversation events.
     // The deprecated config callbacks are intentionally bridged here for back-compat.
@@ -118,6 +122,7 @@ internal class ConversationSessionImpl(
         }
 
     override suspend fun start() {
+        check(!closed) { "Conversation session has ended" }
         try {
             _status.value = ConversationStatus.CONNECTING
 
@@ -131,7 +136,7 @@ internal class ConversationSessionImpl(
 
             // Set up connection state listener
             connection.setOnConnectionStateListener { connectionState ->
-                _status.value = connectionState.toConversationStatus()
+                if (!closed) _status.value = connectionState.toConversationStatus()
             }
 
             // Text-only sessions use the ConvAI WebSocket endpoint, which lives on the same host
@@ -142,12 +147,16 @@ internal class ConversationSessionImpl(
             val originalOnConnect = config.onConnect
             val wrappedConfig = config.copy(
                 onConnect = { id ->
-                    conversationId = id
-                    originalOnConnect?.runCatching { invoke(id) }
+                    if (!closed) {
+                        conversationId = id
+                        originalOnConnect?.runCatching { invoke(id) }
+                    }
                 }
             )
 
             connection.connect(serverUrl, wrappedConfig)
+            currentCoroutineContext().ensureActive()
+            check(!closed) { "Conversation session ended while connecting" }
 
             // Ensure audio starts only after room is connected (addresses LK permission ordering)
             if (!config.textOnly) {
@@ -161,50 +170,34 @@ internal class ConversationSessionImpl(
                 }
             }
         } catch (e: Exception) {
-            _status.value = ConversationStatus.ERROR
-
-            // Clean up any resources that were initialized before the failure
-            audioManager.runCatching { stopRecording() }.logException("stopRecording")
-            audioManager.runCatching { stopPlayback() }.logException("stopPlayback")
-
-            connection.runCatching { disconnect() }.logException("disconnect")
-
-            eventHandler.runCatching { cleanup() }.logException("eventHandler.cleanup")
-            audioManager.runCatching { cleanup() }.logException("audioManager.cleanup")
-
+            close(ConversationStatus.ERROR)
+            if (e is CancellationException) throw e
             throw RuntimeException("Failed to start conversation session", e)
         }
     }
 
     override suspend fun endSession() {
-        _status.value = ConversationStatus.DISCONNECTING
+        close(ConversationStatus.DISCONNECTED)
+    }
 
-        val exceptionHandler: Result<*>.(String) -> Unit = { functionName ->
-            onFailure {
-                _status.value = ConversationStatus.ERROR
-                Log.w(
-                    "ConversationSession",
-                    "Error ending conversation session ($functionName): ${it.message}",
-                    it
-                )
+    /** Happy patch: cancellation cannot skip audio stop, room release, or final scope disposal. */
+    private suspend fun close(finalStatus: ConversationStatus) = withContext(NonCancellable) {
+        closeLock.withLock {
+            if (closed) return@withLock
+            closed = true
+            _status.value = ConversationStatus.DISCONNECTING
+            try {
+                audioManager.runCatching { stopRecording() }.logException("stopRecording")
+                audioManager.runCatching { stopPlayback() }.logException("stopPlayback")
+                connection.runCatching { close() }.logException("connection.close")
+                eventHandler.runCatching { cleanup() }.logException("eventHandler.cleanup")
+                audioManager.runCatching { cleanup() }.logException("audioManager.cleanup")
+            } finally {
+                _status.value = finalStatus
+                conversationId = null
+                scope.cancel()
             }
         }
-
-        // Stop audio
-        audioManager.runCatching { stopRecording() }.exceptionHandler("stopRecording")
-        audioManager.runCatching { stopPlayback() }.exceptionHandler("stopPlayback")
-
-        // Disconnect from network
-        connection.runCatching { disconnect() }.exceptionHandler("disconnect")
-
-        // Clean up resources
-        eventHandler.runCatching { cleanup() }.exceptionHandler("eventHandler.cleanup")
-        audioManager.runCatching { cleanup() }.exceptionHandler("audioManager.cleanup")
-
-        _status.value = ConversationStatus.DISCONNECTED
-        conversationId = null
-
-        scope.cancel()
     }
 
     override fun sendUserMessage(message: String) {

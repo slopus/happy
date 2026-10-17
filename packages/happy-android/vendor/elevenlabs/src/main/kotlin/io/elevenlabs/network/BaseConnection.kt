@@ -31,6 +31,9 @@ abstract class BaseConnection {
      */
     abstract fun disconnect(details: DisconnectionDetails? = null)
 
+    /** Happy patch: terminal cleanup, including resources beyond a reusable disconnect. */
+    open suspend fun close() { disconnect() }
+
     /**
      * Send a message through the connection
      *

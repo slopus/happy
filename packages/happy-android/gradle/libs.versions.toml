@@ -23,7 +23,8 @@ play-review = "2.0.2"
 zxing = "3.5.4"
 firebase-messaging = "25.0.1"
 coil = "3.6.3"
-elevenlabs = "0.12.2"
+livekit = "2.26.0"
+gson = "2.10.1"
 
 junit = "4.13.2"
 robolectric = "4.17"
@@ -63,7 +64,10 @@ firebase-messaging = { module = "com.google.firebase:firebase-messaging", versio
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 coil-test = { module = "io.coil-kt.coil3:coil-test", version.ref = "coil" }
-elevenlabs = { module = "io.elevenlabs:elevenlabs-android", version.ref = "elevenlabs" }
+livekit = { module = "io.livekit:livekit-android", version.ref = "livekit" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version = "1.7.0" }
+androidx-lifecycle-livedata-ktx = { module = "androidx.lifecycle:lifecycle-livedata-ktx", version.ref = "lifecycle" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
@@ -72,6 +76,7 @@ androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "a
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

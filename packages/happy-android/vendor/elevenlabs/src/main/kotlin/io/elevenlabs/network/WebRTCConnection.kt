@@ -236,8 +236,9 @@ class WebRTCConnection(
 
                     is RoomEvent.Disconnected -> {
                         Log.d("WebRTCConnection", "LiveKit room disconnected: ${event.reason}")
-                        if (connectionState == ConnectionState.CONNECTED) {
+                        if (connectionState != ConnectionState.IDLE && connectionState != ConnectionState.DISCONNECTED) {
                             updateConnectionState(ConnectionState.DISCONNECTED)
+                            invokeOnDisconnect(DisconnectionDetails.Error(IllegalStateException("Voice room disconnected: ${event.reason}")))
                         }
                     }
 
@@ -461,6 +462,20 @@ class WebRTCConnection(
     fun cleanup() {
         disconnect()
         scope.cancel()
+    }
+
+    override suspend fun close() = withContext(NonCancellable) {
+        try {
+            disconnect()
+        } finally {
+            try {
+                // release() synchronously disconnects and disposes native room resources.
+                // AudioSwitch's dedicated thread then drains its supported stop operation.
+                room.release()
+            } finally {
+                scope.cancel()
+            }
+        }
     }
 
     private class AudioFrameSink(

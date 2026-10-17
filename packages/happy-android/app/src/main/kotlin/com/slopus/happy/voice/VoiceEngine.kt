@@ -3,6 +3,7 @@ package com.slopus.happy.voice
 import android.os.SystemClock
 import com.slopus.happy.auth.AuthCredentials
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,13 +46,14 @@ class VoiceEngine(
     override val state = mutableState.asStateFlow()
     @Volatile private var generation = 0L
     private var starting: Job? = null
+    @Volatile private var closing: CompletableDeferred<Unit>? = null
     private var connection: VoiceConnection? = null
     private var context: VoiceSessionContext? = null
     private var silence: Job? = null
     private var agentSpeaking = false
 
     override suspend fun start(sessionId: String, microphone: MicrophonePermission): VoiceStart = withContext(dispatcher) {
-        if (state.value.status in listOf(VoiceStatus.Connecting, VoiceStatus.Connected)) return@withContext VoiceStart.Declined
+        if (closing != null || state.value.status in listOf(VoiceStatus.Connecting, VoiceStatus.Connected)) return@withContext VoiceStart.Declined
         val epoch = ++generation
         starting = currentCoroutineContext()[Job]
         mutableState.value = VoiceState(status = VoiceStatus.Connecting)
@@ -133,17 +135,25 @@ class VoiceEngine(
 
     override suspend fun stop() {
         // Most account switches have never opened voice; don't dispatch to Android's main looper for those.
-        if (state.value.status == VoiceStatus.Disconnected && starting == null && connection == null) return
+        if (state.value.status == VoiceStatus.Disconnected && starting == null && connection == null && closing == null) return
         withContext(dispatcher) {
-        ++generation // Invalidate callbacks before cancellation or SDK teardown can deliver more callbacks.
-        val pending = starting
-        starting = null
-        val opened = connection
-        connection = null
-        clear()
-        if (pending != currentCoroutineContext()[Job]) pending?.cancelAndJoin()
-        withContext(NonCancellable) { runCatching { opened?.end() } }
-        Unit
+            closing?.let { it.await(); return@withContext }
+            val completed = CompletableDeferred<Unit>().also { closing = it }
+            ++generation // Invalidate callbacks before cancellation or SDK teardown can deliver more callbacks.
+            val pending = starting
+            starting = null
+            val opened = connection
+            connection = null
+            clear()
+            try {
+                withContext(NonCancellable) {
+                    if (pending != currentCoroutineContext()[Job]) pending?.cancelAndJoin()
+                    runCatching { opened?.end() }
+                }
+            } finally {
+                closing = null
+                completed.complete(Unit)
+            }
         }
     }
 

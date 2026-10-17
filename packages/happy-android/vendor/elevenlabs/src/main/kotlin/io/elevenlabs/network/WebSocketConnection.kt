@@ -153,6 +153,8 @@ class WebSocketConnection(
         scope.cancel()
     }
 
+    override suspend fun close() { cleanup() }
+
     /**
      * Listener for a single connection attempt. okhttp holds on to it for the lifetime of
      * its socket, which outlives the session: it keeps delivering callbacks after we close
