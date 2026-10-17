@@ -34,6 +34,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow Happy v2 (preview) to access your camera to scan QR codes and share photos with AI.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Allow Happy to use your microphone to talk with your coding agents.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Allow Happy v2 (preview) to find and connect to local devices on your network.</string>
 	<key>UIApplicationSceneManifest</key>

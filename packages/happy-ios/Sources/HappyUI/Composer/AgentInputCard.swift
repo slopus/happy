@@ -1451,7 +1451,10 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         case .blocked:
             iconView.icon = .ionicons("lock-closed")
             iconView.size = AgentInputCardLayout.Metrics.lockIconSize
-        case .send, .idle, .voice:
+        case .voice:
+            iconView.icon = .ionicons("mic-outline")
+            iconView.size = AgentInputCardLayout.Metrics.primaryIconSize
+        case .send, .idle:
             // HomeDock draws Ionicons' arrow; AgentInput Octicons'.
             iconView.icon = style == .newSession ? .ionicons("arrow-up") : .octicons("arrow-up")
             iconView.size = AgentInputCardLayout.Metrics.primaryIconSize

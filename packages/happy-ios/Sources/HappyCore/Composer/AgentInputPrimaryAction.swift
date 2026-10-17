@@ -1,14 +1,13 @@
 import Foundation
 
 /// agentInputPrimaryAction.ts: what the composer's one round button does.
-/// Send, stop and (in happy-app) voice share it.
+/// Send, stop and voice share it.
 public enum AgentInputPrimaryAction: String, Equatable, Sendable {
     case send
     case stop
     /// The agent refuses steering while it works; pressing shakes the card.
     case blocked
-    /// Voice is not ported (FEATURES.md exclusions); kept so the resolver
-    /// stays the port of happy-app's.
+    /// Starts or reopens the foreground voice conversation.
     case voice
     case idle
 

@@ -111,7 +111,6 @@ nothing here is wired to the release skill or to EAS.
 - **Every happy-app feature an iPhone user can reach**, tracked in
   [`docs/FEATURES.md`](docs/FEATURES.md). Excluded on purpose, with the
   reasons in that file:
-  - voice mode;
   - anything gated by the `experiments` setting: the Usage page and the
     Rig file browser in the chat;
   - developer tools and every `dev/*` screen;
@@ -120,6 +119,12 @@ nothing here is wired to the release skill or to EAS.
   - artifacts and the recent-sessions screen, which have no entry point;
   - web and desktop-only UI (command palette, shortcut hints, sidebar
     navigator, web tab bar), purchases and analytics.
+- **Voice mode is included by the current product request.** The official
+  ElevenLabs Swift SDK provides WebRTC microphone and speaker transport.
+  Happy's authenticated backend alone grants its free or subscribed allowance;
+  a missing client RevenueCat configuration never prevents a valid grant.
+  Voice stops on background, account switch/sign-out, audio interruption or
+  headphone removal. Client tools use the existing outbox and permission RPCs.
 - **Offline first.** Everything the account has is kept in the local
   SQLite store, and the UI reads only from that store. The network only
   moves deltas:

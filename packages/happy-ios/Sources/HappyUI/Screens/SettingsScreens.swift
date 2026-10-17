@@ -7,7 +7,7 @@ import UIKit
 
 /// Settings (components/SettingsView.tsx): the profile or logo header,
 /// connecting a terminal, connected accounts, the feature pages and About.
-/// Voice, Usage, Support Us and the Developer row are not ported (see
+/// Usage and the Developer row are not ported (see
 /// docs/FEATURES.md); logout and the push rows live on the Account page, as
 /// they do in happy-app.
 public final class SettingsViewController: UIViewController {
@@ -78,6 +78,13 @@ public final class SettingsViewController: UIViewController {
         enterURL.showsChevron = false
         sections.append(ItemGroupView(rows: [scan, enterURL]))
 
+        sections.append(ItemGroupView(rows: [
+            ItemRowView(title: Strings.SupportUs.title, subtitle: Strings.SupportUs.subtitle,
+                        icon: ItemIcon(.ionicons("heart-outline"), tint: Palette.iconRed)) { [weak self] in
+                self?.open(.supportUs)
+            },
+        ]))
+
         let claude = ItemRowView(
             title: Strings.Settings.claudeCode,
             subtitle: model.claudeConnected ? Strings.SettingsAccount.statusActive : Strings.Settings.connectAccount,
@@ -121,6 +128,10 @@ public final class SettingsViewController: UIViewController {
                 self?.open(.settingsAppearance)
             },
             agents,
+            ItemRowView(title: Strings.Voice.title, subtitle: Strings.Voice.subtitle,
+                        icon: ItemIcon(.ionicons("mic-outline"), tint: blue)) { [weak self] in
+                self?.open(.settingsVoice)
+            },
         ]))
         // ItemGroup counts the `{experiments && …}` slot after Agents even
         // when it is empty, so Agents keeps its divider in happy-app.

@@ -39,6 +39,9 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0"),
+        // Official WebRTC voice transport; microphone, speaker and echo
+        // cancellation use the same ElevenLabs conversation JWT as happy-app.
+        .package(url: "https://github.com/elevenlabs/elevenlabs-swift-sdk.git", exact: "3.4.0"),
     ],
     targets: [
         .target(
@@ -75,7 +78,10 @@ let package = Package(
         ),
         .target(
             name: "HappyUI",
-            dependencies: ["HappyCore", "HappyCrypto", "HappyWire", "HappyStore", "HappyLayout", "HappyIcons"],
+            dependencies: [
+                "HappyCore", "HappyCrypto", "HappyWire", "HappyStore", "HappyLayout", "HappyIcons",
+                .product(name: "ElevenLabs", package: "elevenlabs-swift-sdk", condition: .when(platforms: [.iOS])),
+            ],
             // Fonts and images live with the code that draws them, so
             // `Bundle.module` resolves the same way under xtool and Xcode.
             resources: [.process("Resources")]

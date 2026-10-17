@@ -132,6 +132,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         statusDot.isUserInteractionEnabled = false
         addSubview(statusDot)
         statusLabel.isUserInteractionEnabled = false
+        statusLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(voiceStatusTapped)))
         addSubview(statusLabel)
 
         card.delegate = self
@@ -168,6 +169,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(appWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(appWillResignActive), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        center.addObserver(self, selector: #selector(voiceChanged), name: .voiceStateChanged, object: nil)
         registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitHorizontalSizeClass.self]) { (self: Self, _) in
             self.applyDetails()
             self.composerDelegate?.composerDidInvalidateHeight(self)
@@ -436,7 +438,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             paddingH: paddingH,
             maxContentWidth: maxContentWidth,
             screenWidth: screenWidth,
-            statusText: status == nil ? nil : statusSize,
+            statusText: status == nil && voiceStatus == nil ? nil : statusSize,
             panel: card.panelInput(width: innerWidth),
             usageWeek: usage?.weekPercent == nil ? nil : weekSize,
             usageContext: usage?.context == nil ? nil : contextButton.labelSize
@@ -558,13 +560,15 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             isSendBlocked: SessionComposerRules.isSendBlocked(record),
             isSendDisabled: false,
             showAbortButton: SessionComposerRules.showsAbortButton(record),
-            canAbort: SessionComposerRules.canAbort(record) && !stopRequested
+            canAbort: SessionComposerRules.canAbort(record) && !stopRequested,
+            canVoice: record != nil && !environment.sessionId.hasPrefix("pending-chat:")
         )
         var configuration = card.configuration
         configuration.permission = chips.permission.map(Self.chip)
         configuration.model = Self.chip(chips.model)
         configuration.effort = chips.effort.map(Self.chip)
         configuration.primaryAction = primary
+        configuration.primaryAccessibilityLabel = primary == .voice ? Strings.Voice.title : nil
         configuration.isPrimaryBusy = isAborting
         configuration.showsAdd = canAttach
         // localSettings.zenMode, as SessionView passes it.
@@ -688,6 +692,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// Stop and send share the button; which one fires comes from the live
     /// text, not the configuration, which can lag a fast type-then-tap.
     func agentInputCardDidPressPrimary(_ card: AgentInputCardView) {
+        if !hasComposerContent, card.configuration.primaryAction == .voice, let host = hostViewController {
+            blur()
+            VoiceCoordinator.shared.start(account: environment.account, sessionId: environment.sessionId, presenting: host)
+            return
+        }
         if !hasComposerContent, card.configuration.primaryAction == .stop {
             abort()
             return
@@ -1049,15 +1058,23 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         let scale = textScale
         detailsScale = scale
         let style = scale.map { TextStyles.composerStatus.scaled($0) } ?? TextStyles.composerStatus
-        if let status {
+        if let voiceStatus {
+            let color = UIColor(Palette.iconBlue)
+            statusLabel.attributedText = style.attributedString("\(Strings.Voice.title) · \(voiceStatus)", color: color, lineBreakMode: .byTruncatingTail)
+            statusSize = statusLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
+            statusDot.backgroundColor = color
+            statusDot.isPulsing = true
+        } else if let status {
             let color = UIColor(Self.color(status.tone))
             statusLabel.attributedText = style.attributedString(Self.text(status.text), color: color, lineBreakMode: .byTruncatingTail)
             statusSize = statusLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
             statusDot.backgroundColor = color
             statusDot.isPulsing = status.isPulsing
         }
-        statusDot.isHidden = status == nil
-        statusLabel.isHidden = status == nil
+        statusDot.isHidden = status == nil && voiceStatus == nil
+        statusLabel.isHidden = status == nil && voiceStatus == nil
+        statusLabel.isUserInteractionEnabled = voiceStatus != nil
+        statusLabel.accessibilityTraits = voiceStatus == nil ? .staticText : .button
 
         if let percent = usage?.weekPercent {
             weekLabel.attributedText = style.attributedString(Strings.Composer.percentWeek(percent), color: UIColor(Palette.textSecondary))
@@ -1086,6 +1103,27 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         for view in [statusDot, statusLabel, weekButton, contextButton] as [UIView] {
             view.alpha = alpha
         }
+    }
+
+    private var voiceStatus: String? {
+        switch VoiceCoordinator.shared.state(for: environment.account) {
+        case .connecting: Strings.Voice.connecting
+        case .active(let activity, let muted):
+            muted ? Strings.Voice.muted : activity == .agentSpeaking ? Strings.Voice.agentSpeaking : activity == .userSpeaking ? Strings.Voice.userSpeaking : Strings.Voice.listening
+        default: nil
+        }
+    }
+
+    @objc private func voiceChanged() {
+        applyDetails()
+        setNeedsLayout()
+        composerDelegate?.composerDidInvalidateHeight(self)
+    }
+
+    @objc private func voiceStatusTapped() {
+        guard let host = hostViewController else { return }
+        blur()
+        VoiceCoordinator.shared.start(account: environment.account, sessionId: environment.sessionId, presenting: host)
     }
 
     @objc private func contextTapped() {
