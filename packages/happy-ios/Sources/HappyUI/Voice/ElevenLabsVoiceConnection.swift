@@ -8,7 +8,7 @@ import UIKit
 /// its audio session. No API key or purchase SDK is present in this client.
 @MainActor
 final class ElevenLabsVoiceConnection: VoiceConnection {
-    private let conversation: Conversation
+    let conversation: Conversation
     private var observations = Set<AnyCancellable>()
     private var toolTasks: [String: Task<Void, Never>] = [:]
     private var handledTools = Set<String>()
@@ -24,6 +24,9 @@ final class ElevenLabsVoiceConnection: VoiceConnection {
                                            language: request.language.flatMap(Language.init(rawValue:))),
             dynamicVariables: ["sessionId": request.sessionId, "initialConversationContext": request.context],
             userId: grant?.elevenUserId,
+            // The SDK defaults to keeping capture warm after disconnect.
+            // This foreground-only call must release recording when stopped.
+            audioConfiguration: AudioPipelineConfiguration(recordingAlwaysPrepared: false),
             onVadScore: { score in
                 Task { @MainActor in tracker.vad(score) }
             }

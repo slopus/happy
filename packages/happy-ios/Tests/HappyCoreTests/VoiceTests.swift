@@ -147,6 +147,24 @@ final class VoiceLifecycleTests: XCTestCase {
         await until { second.state == .active(activity: .listening, muted: false) }
         second.stop()
     }
+
+    func testRapidMuteTapsCannotDesynchronizeMicrophoneAndUI() async {
+        let gate = ConnectionGate()
+        let connection = TestVoiceConnection()
+        connection.muteGate = gate
+        let session = VoiceSession(permission: { true }, credentials: { .allowed(Self.grant) }, connect: { _, _, _, _ in connection })
+        session.start(request)
+        await until { session.state == .active(activity: .listening, muted: false) }
+        let first = Task { await session.toggleMute() }
+        await until { connection.mutes == [true] }
+        let second = Task { await session.toggleMute() }
+        await second.value
+        XCTAssertEqual(connection.mutes, [true])
+        await gate.release()
+        await first.value
+        XCTAssertEqual(session.state, .active(activity: .listening, muted: true))
+        session.stop()
+    }
 }
 
 @MainActor
@@ -156,8 +174,9 @@ private final class TestVoiceConnection: VoiceConnection {
     var contexts: [String] = []
     var prompts: [String] = []
     var endGate: ConnectionGate?
+    var muteGate: ConnectionGate?
     func end() async { ended += 1; await endGate?.wait() }
-    func setMuted(_ muted: Bool) async throws { mutes.append(muted) }
+    func setMuted(_ muted: Bool) async throws { mutes.append(muted); await muteGate?.wait() }
     func context(_ text: String) async throws { contexts.append(text) }
     func prompt(_ text: String) async throws { prompts.append(text) }
 }

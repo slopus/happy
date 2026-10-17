@@ -75,6 +75,7 @@ public final class VoiceSession {
     private var pendingPrompts: [String] = []
     private var activity: VoiceActivity = .listening
     private var muted = false
+    private var changingMute = false
     private let permission: @MainActor () async -> Bool
     private let credentials: @Sendable () async throws -> VoiceCredentials
     private let connect: Connect
@@ -165,17 +166,21 @@ public final class VoiceSession {
         pendingPrompts.removeAll()
         activity = .listening
         muted = false
+        changingMute = false
         state = .idle
         Task { await old?.end(); oldLease?.finish() }
     }
 
     public func toggleMute() async {
-        guard let connection else { return }
+        guard let connection, !changingMute else { return }
         let current = generation
+        let target = !muted
+        changingMute = true
+        defer { if current == generation { changingMute = false } }
         do {
-            try await connection.setMuted(!muted)
+            try await connection.setMuted(target)
             guard current == generation else { return }
-            muted.toggle()
+            muted = target
             state = .active(activity: activity, muted: muted)
         } catch {
             guard current == generation else { return }

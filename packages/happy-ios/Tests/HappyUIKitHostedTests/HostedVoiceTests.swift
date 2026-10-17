@@ -53,7 +53,7 @@ final class HostedVoiceTests: XCTestCase {
             XCTAssertLessThanOrEqual(row.frame.maxX, list.bounds.width)
         }
         XCTAssertTrue(rows(screen).contains { $0.title == Strings.Voice.openSettings && $0.onTap != nil })
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { window.layer.render(in: $0.cgContext) }
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
         let attachment = XCTAttachment(image: image)
         attachment.name = "Voice permission at largest text"
         attachment.lifetime = .keepAlways
