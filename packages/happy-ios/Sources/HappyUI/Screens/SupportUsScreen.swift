@@ -61,7 +61,7 @@ public final class SupportUsViewController: UIViewController {
         let manage = linkRow(
             title: Strings.SupportUs.manage,
             subtitle: Strings.SupportUs.appStore,
-            icon: ItemIcon(.ionicons("open-outline"), tint: Palette.iconBlue),
+            icon: ItemIcon(.ionicons("card-outline"), tint: Palette.iconBlue),
             url: Self.manageSubscriptionsURL,
             identifier: "supportUs.manage"
         )
@@ -98,6 +98,12 @@ public final class SupportUsViewController: UIViewController {
                 ),
             ]),
         ]
+        // Groups configure row dividers, which reapplies ItemRowView's
+        // default enabled state. Apply the unavailable state afterward.
+        for row in [subscribe, restore] {
+            row.isEnabled = false
+            row.titleLabel.color = Palette.textSecondary
+        }
     }
 
     /// Apple's account-wide subscription management page works independently
@@ -106,8 +112,6 @@ public final class SupportUsViewController: UIViewController {
 
     private func unavailableRow(title: String, explanation: String, identifier: String) -> ItemRowView {
         let row = ItemRowView(title: title, detail: Strings.SupportUs.notAvailable)
-        row.isEnabled = false
-        row.titleLabel.color = Palette.textSecondary
         row.accessibilityHint = explanation
         row.accessibilityIdentifier = identifier
         return row

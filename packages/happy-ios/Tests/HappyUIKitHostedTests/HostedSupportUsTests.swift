@@ -5,7 +5,7 @@ import UIKit
 import XCTest
 
 @MainActor
-final class SupportUsTests: XCTestCase {
+final class HostedSupportUsTests: XCTestCase {
     override func setUp() {
         super.setUp()
         Fonts.registerBundledFonts()
@@ -45,18 +45,24 @@ final class SupportUsTests: XCTestCase {
     func testManagementAndProjectLinksWorkWithoutPurchaseConfiguration() async throws {
         var opened: [URL] = []
         let screen = SupportUsViewController(openURL: { opened.append($0); return true })
-        screen.loadViewIfNeeded()
+        let scene = try await hostedActiveScene()
+        let window = hostedKeyWindow(in: scene, root: UINavigationController(rootViewController: screen))
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
         let list = try XCTUnwrap(screen.view as? GroupedListView)
         let manage = try XCTUnwrap(rows(list).first { $0.accessibilityIdentifier == "supportUs.manage" })
         XCTAssertTrue(manage.isEnabled)
         XCTAssertTrue(manage.accessibilityTraits.contains(.button))
         manage.sendActions(for: .touchUpInside)
-        for _ in 0..<10 where opened.isEmpty { await Task.yield() }
+        let manageDeadline = Date().addingTimeInterval(2)
+        while opened.isEmpty && Date() < manageDeadline { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(opened, [URL(string: "https://apps.apple.com/account/subscriptions")!])
 
         let project = try XCTUnwrap(rows(list).first { $0.accessibilityIdentifier == "supportUs.project" })
         project.sendActions(for: .touchUpInside)
-        for _ in 0..<10 where opened.count < 2 { await Task.yield() }
+        let projectDeadline = Date().addingTimeInterval(2)
+        while opened.count < 2 && Date() < projectDeadline { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(opened, [SupportUsViewController.manageSubscriptionsURL, Strings.Links.github])
     }
 
@@ -73,7 +79,7 @@ final class SupportUsTests: XCTestCase {
             section.layoutIfNeeded()
             let group = try XCTUnwrap(section as? ItemGroupView)
             XCTAssertGreaterThanOrEqual(section.frame.minY, previousBottom)
-            XCTAssertEqual(section.frame.height, group.layout(width: section.bounds.width).size.height)
+            XCTAssertEqual(section.frame.height, group.layout(width: section.bounds.width).size.height, accuracy: 1 / list.traitCollection.displayScale)
             XCTAssertLessThanOrEqual(section.frame.maxX, list.bounds.width)
             previousBottom = section.frame.maxY
             for row in group.rows {
@@ -85,13 +91,14 @@ final class SupportUsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(list.contentSize.height, previousBottom)
     }
 
-    func testLargeTextKeepsStatusReadableAndLinksReachable() throws {
+    func testLargeTextKeepsStatusReadableAndLinksReachable() async throws {
         let screen = SupportUsViewController(openURL: { _ in true })
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        let scene = try await hostedActiveScene()
+        let window = hostedKeyWindow(in: scene, root: UINavigationController(rootViewController: screen))
         window.traitOverrides.preferredContentSizeCategory = .large
-        window.rootViewController = UINavigationController(rootViewController: screen)
-        window.isHidden = false
         defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
         window.layoutIfNeeded()
         let list = try XCTUnwrap(screen.view as? GroupedListView)
         let normalHeight = list.contentSize.height
@@ -99,20 +106,23 @@ final class SupportUsTests: XCTestCase {
         for style in [UIUserInterfaceStyle.light, .dark] {
             window.overrideUserInterfaceStyle = style
             window.layoutIfNeeded()
-            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { context in
-                window.layer.render(in: context.cgContext)
-            }
-            let attachment = XCTAttachment(image: image)
-            attachment.name = style == .light ? "Support us — light" : "Support us — dark"
-            attachment.lifetime = .keepAlways
-            add(attachment)
+            try await Task.sleep(for: .milliseconds(100))
+            attach(window, name: style == .light ? "Support us — light" : "Support us — dark")
         }
 
         window.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
         window.updateTraitsIfNeeded()
         window.layoutIfNeeded()
         list.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        window.layoutIfNeeded()
         XCTAssertGreaterThan(list.contentSize.height, normalHeight)
+        for row in rows(list) where row.onTap == nil && row.detail == Strings.SupportUs.notAvailable {
+            XCTAssertFalse(row.isEnabled, "text/appearance changes must keep unconfigured actions unavailable")
+            XCTAssertFalse(row.isUserInteractionEnabled)
+            XCTAssertFalse(row.accessibilityTraits.contains(.button))
+            XCTAssertEqual(row.titleLabel.color, Palette.textSecondary)
+        }
         for group in list.sections.compactMap({ $0 as? ItemGroupView }) where group.footer != nil {
             group.layoutIfNeeded()
             let footer = group.footerLabel
@@ -122,6 +132,26 @@ final class SupportUsTests: XCTestCase {
         let last = try XCTUnwrap(list.sections.last)
         list.scrollRectToVisible(last.frame, animated: false)
         XCTAssertGreaterThan(list.contentOffset.y, 0, "legal/project links remain reachable at the largest text size")
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            window.overrideUserInterfaceStyle = style
+            list.contentOffset = .zero
+            window.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+            attach(window, name: style == .light ? "Support us — largest text light" : "Support us — largest text dark")
+            list.scrollRectToVisible(last.frame, animated: false)
+            window.layoutIfNeeded()
+            attach(window, name: style == .light ? "Support us — largest text bottom light" : "Support us — largest text bottom dark")
+        }
+    }
+
+    private func attach(_ window: UIWindow, name: String) {
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { context in
+            window.layer.render(in: context.cgContext)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func rows(_ list: GroupedListView) -> [ItemRowView] {
