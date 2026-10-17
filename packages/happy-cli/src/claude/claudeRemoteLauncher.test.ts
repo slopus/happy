@@ -4,6 +4,7 @@ import { claudeRemoteLauncher } from './claudeRemoteLauncher';
 import { closeClaudeTurnWithStatus, mapClaudeLogMessageToSessionEnvelopes, type ClaudeSessionProtocolState } from './utils/sessionProtocolMapper';
 import { CLAUDE_LOGIN_EXPIRED_MESSAGE } from './utils/providerAuth';
 import type { SessionEnvelope } from '@slopus/happy-wire';
+import type { Metadata } from '@/api/types';
 
 // Exercise the real outgoing queue, SDK converter and protocol mapper without
 // a terminal, credential store, provider process, relay or push service.
@@ -56,6 +57,34 @@ function fixture() {
 
 describe('claudeRemoteLauncher provider auth', () => {
     beforeEach(() => { vi.mocked(claudeRemote).mockReset(); });
+
+    it('publishes the remote catalog and actual model without dropping existing session fields', async () => {
+        const { session, stop } = fixture();
+        let metadata: Metadata = {
+            path: '/fixture/project', host: 'fixture', homeDir: '/fixture',
+            happyHomeDir: '/fixture/.happy', happyLibDir: '/happy', happyToolsDir: '/happy/tools',
+            summary: { text: 'keep me', updatedAt: 1 },
+        };
+        const withMetadata = {
+            ...session,
+            client: {
+                ...session.client,
+                updateMetadata: (update: (current: Metadata) => Metadata) => { metadata = update(metadata); },
+            },
+        };
+        vi.mocked(claudeRemote).mockImplementation(async opts => {
+            opts.onSDKMetadata?.({
+                models: [{ value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus', description: 'Opus 5.5' }],
+                model: 'claude-opus-5-5', requestedModel: 'opus', tools: ['Read'],
+            });
+            stop();
+        });
+        await claudeRemoteLauncher(withMetadata as any);
+        expect(metadata.currentModelCode).toBe('claude-opus-5-5');
+        expect(metadata.models?.[0]).toMatchObject({ code: 'claude-opus-5-5', id: 'claude-opus-5-5' });
+        expect(metadata.tools).toEqual(['Read']);
+        expect(metadata.summary?.text).toBe('keep me');
+    });
 
     it('flushes back-to-back auth output before closing the failed wire turn, without a done push', async () => {
         const { session, state, envelopes, notification, stop } = fixture();

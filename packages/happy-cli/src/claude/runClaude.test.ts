@@ -88,7 +88,12 @@ vi.mock('@/claude/claudeLocal', () => ({
     claudeLocal: vi.fn(),
 }));
 
-import { runClaude } from './runClaude';
+vi.mock('./utils/discoverClaudeModels', () => ({
+    discoverClaudeModels: vi.fn(async () => []),
+}));
+
+import { runClaude, type StartOptions } from './runClaude';
+import { discoverClaudeModels } from './utils/discoverClaudeModels';
 
 function createDeferred<T>() {
     let resolve!: (value: T | PromiseLike<T>) => void;
@@ -111,6 +116,7 @@ async function expectPromptRejectsFast(promise: Promise<unknown>, pattern: RegEx
 
 async function startRemoteRunClaudeHarness(opts: {
     metadata?: Record<string, unknown>;
+    startOptions?: StartOptions;
     updateAgentState?: ReturnType<typeof vi.fn>;
     registerHandler?: ReturnType<typeof vi.fn>;
 } = {}) {
@@ -146,7 +152,7 @@ async function startRemoteRunClaudeHarness(opts: {
     };
     const api = {
         getOrCreateMachine: vi.fn(async () => ({})),
-        getOrCreateSession: vi.fn(async () => ({
+        getOrCreateSession: vi.fn(async (_request: unknown) => ({
             id: 'happy-session-1',
             seq: 0,
             metadata: {},
@@ -170,6 +176,7 @@ async function startRemoteRunClaudeHarness(opts: {
     } as any, {
         startingMode: 'remote',
         shouldStartDaemon: false,
+        ...opts.startOptions,
     });
 
     await vi.waitFor(() => {
@@ -182,7 +189,7 @@ async function startRemoteRunClaudeHarness(opts: {
     if (!scannerOptions || !loopOptions) {
         throw new Error('runClaude harness did not start');
     }
-    const runtimeSession = { thinking: false, cleanup: vi.fn() };
+    const runtimeSession = { thinking: false, model: loopOptions.model as string | undefined, sessionId: 'claude-session-1', cleanup: vi.fn() };
     loopOptions.onSessionReady(runtimeSession);
     const goalActionHandler = registerHandler.mock.calls.find(([method]) => method === 'goal-action')?.[1];
 
@@ -279,6 +286,53 @@ describe('runClaude remote JSONL scanner', () => {
             }
         }
         originalListeners.clear();
+    });
+
+    it('includes an explicit model in final session metadata and the local loop options', async () => {
+        const harness = await startRemoteRunClaudeHarness({ startOptions: { model: 'claude-opus-5-5[1m]' } });
+        const request = harness.api.getOrCreateSession.mock.calls[0]?.[0] as unknown as { metadata: { currentModelCode: string; models: Array<{code: string}> } };
+        expect(request.metadata.currentModelCode).toBe('claude-opus-5-5[1m]');
+        expect(request.metadata.models.map(model => model.code)).toContain('claude-opus-5-5[1m]');
+        expect(harness.loopOptions.model).toBe('claude-opus-5-5[1m]');
+        await harness.finish();
+    });
+
+    it('publishes a discovered catalog without replacing a later selection', async () => {
+        const discovery = createDeferred<Awaited<ReturnType<typeof discoverClaudeModels>>>();
+        vi.mocked(discoverClaudeModels).mockReturnValueOnce(discovery.promise);
+        const harness = await startRemoteRunClaudeHarness({ metadata: { currentModelCode: 'sonnet' } });
+        discovery.resolve([
+            { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus', description: 'Opus 5.5' },
+            { value: 'sonnet', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet', description: 'Sonnet 5' },
+        ]);
+        await vi.waitFor(() => expect(harness.sessionClient.getMetadata().models).toBeDefined());
+        expect(harness.sessionClient.getMetadata().currentModelCode).toBe('claude-sonnet-5');
+        const signal = vi.mocked(discoverClaudeModels).mock.calls.at(-1)?.[0].signal;
+        await harness.finish();
+        expect(signal?.aborted).toBe(true);
+    });
+
+    it('pins the native resolved model for remote takeover even when the launch used an alias', async () => {
+        const harness = await startRemoteRunClaudeHarness({ startOptions: { startingMode: 'local', model: 'opus' } });
+        const hookOptions = mockStartHookServer.mock.calls.at(-1)?.[0];
+        hookOptions.onSessionHook('claude-session-1', { model: 'claude-opus-5-5' });
+        expect(harness.runtimeSession.model).toBe('claude-opus-5-5');
+        expect(harness.sessionClient.getMetadata().currentModelCode).toBe('claude-opus-5-5');
+        const onUserMessage = harness.sessionClient.onUserMessage.mock.calls[0][0];
+        await onUserMessage({ role: 'user', content: { type: 'text', text: 'hello' } });
+        expect(harness.loopOptions.messageQueue.queue[0].mode.model).toBe('claude-opus-5-5');
+        await harness.finish();
+    });
+
+    it('ignores a late local catalog after switching to the remote runtime', async () => {
+        const discovery = createDeferred<Awaited<ReturnType<typeof discoverClaudeModels>>>();
+        vi.mocked(discoverClaudeModels).mockReturnValueOnce(discovery.promise);
+        const harness = await startRemoteRunClaudeHarness({ startOptions: { startingMode: 'local' }, metadata: {} });
+        harness.loopOptions.onModeChange('remote');
+        discovery.resolve([{ value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus', description: 'Opus 5.5' }]);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(harness.sessionClient.getMetadata().models).toBeUndefined();
+        await harness.finish();
     });
 
     it('does not forward terminal JSONL messages while local mode owns the transcript', async () => {
