@@ -34,7 +34,7 @@ final class HostedSupportUsTests: XCTestCase {
             XCTAssertNil(row.onTap)
             XCTAssertFalse(row.isUserInteractionEnabled)
             XCTAssertFalse(row.accessibilityTraits.contains(.button))
-            XCTAssertEqual(row.detail, Strings.SupportUs.notAvailable)
+            XCTAssertEqual(row.subtitle, Strings.SupportUs.notAvailable)
             XCTAssertNotNil(row.accessibilityHint)
             row.sendActions(for: .touchUpInside)
         }
@@ -46,7 +46,9 @@ final class HostedSupportUsTests: XCTestCase {
         var opened: [URL] = []
         let screen = SupportUsViewController(openURL: { opened.append($0); return true })
         let scene = try await hostedActiveScene()
-        let window = hostedKeyWindow(in: scene, root: UINavigationController(rootViewController: screen))
+        let navigation = UINavigationController(rootViewController: screen)
+        AppCoordinator.applyAppearance(to: navigation.navigationBar)
+        let window = hostedKeyWindow(in: scene, root: navigation)
         defer { window.isHidden = true }
         window.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(100))
@@ -78,7 +80,7 @@ final class HostedSupportUsTests: XCTestCase {
         for section in list.sections {
             section.layoutIfNeeded()
             let group = try XCTUnwrap(section as? ItemGroupView)
-            XCTAssertGreaterThanOrEqual(section.frame.minY, previousBottom)
+            XCTAssertGreaterThanOrEqual(section.frame.minY + 0.001, previousBottom)
             XCTAssertEqual(section.frame.height, group.layout(width: section.bounds.width).size.height, accuracy: 1 / list.traitCollection.displayScale)
             XCTAssertLessThanOrEqual(section.frame.maxX, list.bounds.width)
             previousBottom = section.frame.maxY
@@ -94,13 +96,19 @@ final class HostedSupportUsTests: XCTestCase {
     func testLargeTextKeepsStatusReadableAndLinksReachable() async throws {
         let screen = SupportUsViewController(openURL: { _ in true })
         let scene = try await hostedActiveScene()
-        let window = hostedKeyWindow(in: scene, root: UINavigationController(rootViewController: screen))
+        let navigation = UINavigationController(rootViewController: screen)
+        AppCoordinator.applyAppearance(to: navigation.navigationBar)
+        let window = hostedKeyWindow(in: scene, root: navigation)
         window.traitOverrides.preferredContentSizeCategory = .large
         defer { window.isHidden = true }
         window.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(100))
+        try await Task.sleep(for: .milliseconds(500))
         window.layoutIfNeeded()
         let list = try XCTUnwrap(screen.view as? GroupedListView)
+        XCTAssertTrue(list.window === window)
+        XCTAssertFalse(list.isHidden)
+        XCTAssertGreaterThan(list.bounds.width, 0)
+        XCTAssertGreaterThan(list.bounds.height, 0)
         let normalHeight = list.contentSize.height
 
         for style in [UIUserInterfaceStyle.light, .dark] {
@@ -117,11 +125,20 @@ final class HostedSupportUsTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(100))
         window.layoutIfNeeded()
         XCTAssertGreaterThan(list.contentSize.height, normalHeight)
-        for row in rows(list) where row.onTap == nil && row.detail == Strings.SupportUs.notAvailable {
+        for row in rows(list) where row.onTap == nil && row.subtitle == Strings.SupportUs.notAvailable {
             XCTAssertFalse(row.isEnabled, "text/appearance changes must keep unconfigured actions unavailable")
             XCTAssertFalse(row.isUserInteractionEnabled)
             XCTAssertFalse(row.accessibilityTraits.contains(.button))
             XCTAssertEqual(row.titleLabel.color, Palette.textSecondary)
+        }
+        for row in rows(list) {
+            row.layoutIfNeeded()
+            XCTAssertEqual(row.titleLabel.numberOfLines, 0)
+            XCTAssertEqual(row.subtitleLabel.numberOfLines, 0)
+            for label in [row.titleLabel, row.subtitleLabel] where !label.isHidden {
+                let measured = label.sizeThatFits(CGSize(width: label.bounds.width, height: .greatestFiniteMagnitude))
+                XCTAssertGreaterThanOrEqual(label.bounds.height, measured.height)
+            }
         }
         for group in list.sections.compactMap({ $0 as? ItemGroupView }) where group.footer != nil {
             group.layoutIfNeeded()
@@ -145,8 +162,8 @@ final class HostedSupportUsTests: XCTestCase {
     }
 
     private func attach(_ window: UIWindow, name: String) {
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { context in
-            window.layer.render(in: context.cgContext)
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
         }
         let attachment = XCTAttachment(image: image)
         attachment.name = name

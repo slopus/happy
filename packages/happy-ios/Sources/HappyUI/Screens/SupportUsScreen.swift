@@ -104,6 +104,14 @@ public final class SupportUsViewController: UIViewController {
             row.isEnabled = false
             row.titleLabel.color = Palette.textSecondary
         }
+        // These short groups can grow vertically. Keep all their words
+        // visible at accessibility text sizes instead of Item's usual caps.
+        for group in list.sections.compactMap({ $0 as? ItemGroupView }) {
+            for row in group.rows.compactMap({ $0 as? ItemRowView }) {
+                row.titleLabel.numberOfLines = 0
+                row.subtitleLabel.numberOfLines = 0
+            }
+        }
     }
 
     /// Apple's account-wide subscription management page works independently
@@ -111,7 +119,7 @@ public final class SupportUsViewController: UIViewController {
     static let manageSubscriptionsURL = URL(string: "https://apps.apple.com/account/subscriptions")!
 
     private func unavailableRow(title: String, explanation: String, identifier: String) -> ItemRowView {
-        let row = ItemRowView(title: title, detail: Strings.SupportUs.notAvailable)
+        let row = ItemRowView(title: title, subtitle: Strings.SupportUs.notAvailable)
         row.accessibilityHint = explanation
         row.accessibilityIdentifier = identifier
         return row
