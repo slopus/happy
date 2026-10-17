@@ -322,7 +322,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         tabStrip.onLongPress = { [weak self] id in self?.sessionActions.present(sessionId: id) }
         tabStrip.onAdd = { [weak self] in self?.newTab() }
         tabStrip.showsAdd = true
-        view.addSubview(tabStrip)
+        view.insertSubview(tabStrip, belowSubview: statusBarStrip)
     }
 
     private func installKeyboardTracker() {
