@@ -23,6 +23,7 @@ play-review = "2.0.2"
 zxing = "3.5.4"
 firebase-messaging = "25.0.1"
 coil = "3.6.3"
+revenuecat = "10.28.1"
 
 junit = "4.13.2"
 robolectric = "4.17"
@@ -62,6 +63,8 @@ firebase-messaging = { module = "com.google.firebase:firebase-messaging", versio
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 coil-test = { module = "io.coil-kt.coil3:coil-test", version.ref = "coil" }
+revenuecat-purchases = { module = "com.revenuecat.purchases:purchases", version.ref = "revenuecat" }
+revenuecat-ui = { module = "com.revenuecat.purchases:purchases-ui", version.ref = "revenuecat" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }

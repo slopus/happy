@@ -124,6 +124,7 @@ export const ru: TranslationStructure = {
         termsOfService: 'Условия использования',
         eula: 'EULA',
         supportUs: 'Поддержите нас',
+        supportUnavailable: 'Покупки сейчас недоступны. Попробуйте позже.',
         supportUsSubtitlePro: 'Спасибо за вашу поддержку!',
         supportUsSubtitle: 'Поддержать разработку проекта',
         scanQrCodeToAuthenticate: 'Отсканируйте QR-код для авторизации',

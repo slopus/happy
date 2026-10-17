@@ -130,6 +130,7 @@
     <string name="settings_terms_of_service">Условия использования</string>
     <string name="settings_eula">EULA</string>
     <string name="settings_support_us">Поддержите нас</string>
+    <string name="settings_support_unavailable">Покупки сейчас недоступны. Попробуйте позже.</string>
     <string name="settings_support_us_subtitle_pro">Спасибо за вашу поддержку!</string>
     <string name="settings_support_us_subtitle">Поддержать разработку проекта</string>
     <string name="settings_scan_qr_code_to_authenticate">Отсканируйте QR-код для авторизации</string>

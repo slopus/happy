@@ -155,6 +155,7 @@ export const pl: TranslationStructure = {
         termsOfService: 'Warunki użytkowania',
         eula: 'EULA',
         supportUs: 'Wesprzyj nas',
+        supportUnavailable: 'Zakupy są teraz niedostępne. Spróbuj ponownie później.',
         supportUsSubtitlePro: 'Dziękujemy za wsparcie!',
         supportUsSubtitle: 'Wesprzyj rozwój projektu',
         scanQrCodeToAuthenticate: 'Zeskanuj kod QR, aby się uwierzytelnić',

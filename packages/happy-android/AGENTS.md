@@ -550,6 +550,26 @@ only if:
 - the device has Play services (otherwise unsupported, as FCM has no
   token there).
 
+## Purchases
+
+`AppGraph.purchases` owns RevenueCat's optional account lifecycle. The public
+Google SDK key is supplied by `EXPO_PUBLIC_REVENUE_CAT_GOOGLE` or
+`-Phappy.revenueCatGoogleKey`; an empty key leaves purchases unavailable.
+`purchases.purchases` is the flat `StateFlow<Purchases>` from purchases.ts,
+cached per server/account and wiped on logout. Configure with the token's
+server-issued subject as appUserID. Startup/foreground and successful paywalls
+sync purchases and fetch customer info. SDK operations serialize with paywalls;
+account generations reject stale results after logout, account or server changes.
+
+`suspend purchases.presentPaywall(flow)` (also `Paywall.present`) uses the
+current offering and the `flow` custom variable, never an offering named after
+the flow. `PaywallHost` at app scope renders RevenueCat's native Compose dialog
+and dismisses on account changes. Purchased and Restored return
+`PaywallOutcome(success = true, purchased = true)` after refresh; closing returns
+success with purchased false. `hasPro()` reads the real entitlement for voice;
+Settings' Support us row additionally treats debug builds as Pro, as RN does.
+The row is inert for Pro and otherwise presents `voluntary_support`.
+
 ## Attachments and images
 
 - **Transfer** (`attachments/`): apiAttachments.ts over OkHttp. Local

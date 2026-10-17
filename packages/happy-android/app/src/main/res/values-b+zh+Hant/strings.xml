@@ -118,6 +118,7 @@
     <string name="settings_terms_of_service">服務條款</string>
     <string name="settings_eula">終端使用者授權協議</string>
     <string name="settings_support_us">支援我們</string>
+    <string name="settings_support_unavailable">目前無法購買，請稍後再試。</string>
     <string name="settings_support_us_subtitle_pro">感謝您的支援！</string>
     <string name="settings_support_us_subtitle">支援專案開發</string>
     <string name="settings_scan_qr_code_to_authenticate">掃描 QR Code 進行驗證</string>

@@ -138,6 +138,7 @@ export const es: TranslationStructure = {
         termsOfService: 'Términos de servicio',
         eula: 'EULA',
         supportUs: 'Apóyanos',
+        supportUnavailable: 'Las compras no están disponibles en este momento. Inténtalo de nuevo más tarde.',
         supportUsSubtitlePro: '¡Gracias por su apoyo!',
         supportUsSubtitle: 'Apoya el desarrollo del proyecto',
         scanQrCodeToAuthenticate: 'Escanea el código QR para autenticarte',

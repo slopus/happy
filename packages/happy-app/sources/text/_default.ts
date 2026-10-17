@@ -137,6 +137,7 @@ export const en = {
         termsOfService: 'Terms of Service',
         eula: 'EULA',
         supportUs: 'Support us',
+        supportUnavailable: 'Purchases are unavailable right now. Please try again later.',
         supportUsSubtitlePro: 'Thank you for your support!',
         supportUsSubtitle: 'Support project development',
         scanQrCodeToAuthenticate: 'Scan QR code to authenticate',

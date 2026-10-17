@@ -17,6 +17,10 @@ import com.slopus.happy.model.settings.LanguageController
 import com.slopus.happy.model.settings.SettingsRepository
 import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HappyHttp
+import com.slopus.happy.payments.PreferencesPurchasesCache
+import com.slopus.happy.payments.PurchaseAccount
+import com.slopus.happy.payments.PurchasesRepository
+import com.slopus.happy.payments.RevenueCatPurchases
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
 import com.slopus.happy.ui.home.NewSessionDraftStore
@@ -30,6 +34,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -84,6 +89,13 @@ class AppGraph(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    val purchases = PurchasesRepository(
+        scope,
+        RevenueCatPurchases(appContext, BuildConfig.REVENUE_CAT_GOOGLE_KEY, BuildConfig.DEBUG),
+        PreferencesPurchasesCache(context.getSharedPreferences(PreferencesPurchasesCache.PREFS_NAME, Context.MODE_PRIVATE)),
+        currentAccount = { purchaseAccount() },
+    )
+
     /** The account's synced settings; a change is uploaded by the next sync. */
     val settings = SettingsRepository(store, scope, onChanged = ::requestSync)
 
@@ -108,9 +120,18 @@ class AppGraph(
 
     init {
         scope.launch {
+            combine(auth.state, serverConfig.url) { _, _ -> purchaseAccount() }.collect(purchases::setAccount)
+        }
+        scope.launch {
+            foreground.collect { if (it) purchases.refresh() }
+        }
+        scope.launch {
             auth.state.collect { state -> accountLock.withLock { switchAccount(state) } }
         }
     }
+
+    private fun purchaseAccount(): PurchaseAccount? = (auth.state.value as? AuthState.SignedIn)?.publicId
+        ?.takeIf { it.isNotBlank() }?.let { PurchaseAccount(serverConfig.url.value, it) }
 
     /** Ask for a delta sync now (sign-in, app back in the foreground). No-op when signed out. */
     fun requestSync() {
@@ -144,6 +165,7 @@ class AppGraph(
     fun logout(): Job = scope.launch {
         accountLock.withLock {
             (auth.state.value as? AuthState.SignedIn)?.let { signedIn -> logoutHooks.forEach { it(signedIn.credentials.token) } }
+            purchases.setAccount(null)
             stopAccount()
             withContext(Dispatchers.IO) {
                 store.clearAll()

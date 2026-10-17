@@ -139,6 +139,7 @@ export const zhHant: TranslationStructure = {
         termsOfService: '服務條款',
         eula: '終端使用者授權協議',
         supportUs: '支援我們',
+        supportUnavailable: '目前無法購買，請稍後再試。',
         supportUsSubtitlePro: '感謝您的支援！',
         supportUsSubtitle: '支援專案開發',
         scanQrCodeToAuthenticate: '掃描 QR Code 進行驗證',

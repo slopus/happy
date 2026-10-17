@@ -78,6 +78,7 @@ enum class Ionicon(val codepoint: Int) {
     GitNetworkOutline(0xf347), // git-network-outline
     GlobeOutline(0xf350), // globe-outline
     HardwareChipOutline(0xf365), // hardware-chip-outline
+    Heart(0xf36a), // heart
     HelpCircleOutline(0xf37e), // help-circle-outline
     HomeOutline(0xf383), // home-outline
     HourglassOutline(0xf386), // hourglass-outline

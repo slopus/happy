@@ -118,6 +118,7 @@
     <string name="settings_terms_of_service">服务条款</string>
     <string name="settings_eula">最终用户许可协议</string>
     <string name="settings_support_us">支持我们</string>
+    <string name="settings_support_unavailable">目前无法购买，请稍后重试。</string>
     <string name="settings_support_us_subtitle_pro">感谢您的支持！</string>
     <string name="settings_support_us_subtitle">支持项目开发</string>
     <string name="settings_scan_qr_code_to_authenticate">扫描二维码进行认证</string>

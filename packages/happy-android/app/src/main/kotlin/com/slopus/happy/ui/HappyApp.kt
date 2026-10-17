@@ -19,6 +19,7 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.push.PushRegistrationEffect
+import com.slopus.happy.payments.PaywallHost
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.chat.chatRoutes
 import com.slopus.happy.ui.components.Alert
@@ -69,6 +70,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
         LaunchedEffect(dark) { onDarkThemeChange(dark) }
 
         val signedIn = auth as? AuthState.SignedIn
+        PaywallHost(graph.purchases)
         key(signedIn != null) {
             val nav = rememberNavController()
             val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
