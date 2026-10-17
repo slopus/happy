@@ -85,6 +85,10 @@ android {
         versionName = versionNameValue
 
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.cluster-fluster.com\"")
+        val voiceAgentId = Regex("""elevenLabsAgentId:\s*"([^"]+)"""")
+            .find(providers.fileContents(layout.projectDirectory.file("../../happy-app/app.config.js")).asText.get())
+            ?.groupValues?.get(1) ?: error("app.config.js has no elevenLabsAgentId")
+        buildConfigField("String", "ELEVENLABS_AGENT_ID", "\"$voiceAgentId\"")
         buildConfigField("String", "BUILD_COMMIT_SHA", buildCommitSha?.let { "\"$it\"" } ?: "null")
         buildConfigField("String", "BUILD_COMMIT_TIMESTAMP", buildCommitTimestamp?.let { "\"$it\"" } ?: "null")
     }
@@ -327,6 +331,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    implementation(libs.elevenlabs)
 
     // QR codes (AGENTS.md "QR codes"): Google Code Scanner reads them, as
     // expo-camera's launchScanner does on Android; ZXing's encoder draws them.

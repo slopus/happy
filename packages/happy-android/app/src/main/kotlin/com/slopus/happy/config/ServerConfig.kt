@@ -24,6 +24,13 @@ class ServerConfig(
 
     val isCustom: Boolean get() = state.value != defaultUrl
 
+    /** serverConfig.ts: voice defaults to Happy's server, even for a self-hosted account. */
+    var useCustomServerForVoice: Boolean
+        get() = isCustom && prefs.getBoolean("use-custom-server-for-voice", false)
+        set(value) { prefs.edit().putBoolean("use-custom-server-for-voice", value).apply() }
+
+    val voiceUrl: String get() = if (useCustomServerForVoice) url.value else defaultUrl
+
     /** `host[:port]` of a custom server, for the header subtitle; null on the default server. */
     val customHostLabel: String?
         get() {
