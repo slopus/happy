@@ -121,6 +121,13 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private let tabStrip = ChatWorktreeTabStrip()
     /// The strip's scroll on the screen this one replaced, to start from.
     private var inheritedStripOffset: CGFloat?
+    /// Drawn from the account's newest home snapshot before the first
+    /// frame (`seed`), for the first observations to start from.
+    private var seededSession: ChatSessionState?
+    private var seededCheckout: WorktreeCheckout??
+    /// How often the store's record changed what the screen drew: none
+    /// while it agrees with the seed.
+    private(set) var sessionUpdates = 0
     private lazy var sessionActions: HomeSessionActions = {
         let actions = HomeSessionActions(context: context, session: account, host: self)
         actions.onBeforeArchive = { [weak self] id in self?.tabArchiving(id) }
@@ -287,6 +294,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             keyboardTracker.heightAnchor.constraint(equalToConstant: 1),
         ])
 
+        seed()
         observeChat()
         // Every chat being opened: this screen's own record when it is one,
         // and the strip's stand-ins.
@@ -347,6 +355,23 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         )
     }
 
+    /// The session and its checkout as the account's newest home snapshot
+    /// has them, drawn before the first frame, so the header, the avatar,
+    /// the status line and the tabs need no wait. The observations start
+    /// from it and change nothing while the store agrees.
+    private func seed() {
+        guard let seed = services.seed() else { return }
+        seededSession = seed.session
+        seededCheckout = .some(seed.checkout)
+        // The header was set up before, unseeded: its checkout is observed
+        // again, from the seed.
+        checkoutObservation?.cancel()
+        checkoutObservation = nil
+        checkoutSessionId = nil
+        sessionChanged(seed.session)
+        updateTabStrip()
+    }
+
     /// The session's record, and its rows worked out off the main thread,
     /// for `chatId`: a pipeline of its own for each chat the screen shows,
     /// starting from an empty list and the newest page. Run again when a
@@ -354,8 +379,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func observeChat() {
         let generation = chatGeneration
         let chatId = self.chatId
-        observation = services.observeSession { [weak self] state in
+        let seeded = seededSession
+        seededSession = nil
+        observation = services.observeSession(seeded) { [weak self] state in
             guard let self, self.chatGeneration == generation else { return }
+            self.sessionUpdates += 1
             self.sessionChanged(state)
         }
         let planner = self.planner
@@ -743,7 +771,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         let id = headerSessionId
         guard id != checkoutSessionId else { return }
         checkoutSessionId = id
-        checkoutObservation = services.observeCheckout(id) { [weak self] checkout in
+        // The seed is this chat's own checkout.
+        let seeded = id == sessionId ? seededCheckout : nil
+        seededCheckout = nil
+        if let seeded { checkout = seeded }
+        checkoutObservation = services.observeCheckout(id, seeded) { [weak self] checkout in
             guard let self else { return }
             self.checkout = checkout
             self.updateHeader()
