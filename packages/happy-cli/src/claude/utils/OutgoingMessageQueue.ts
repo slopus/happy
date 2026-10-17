@@ -103,22 +103,25 @@ export class OutgoingMessageQueue {
     }
     
     /**
-     * Process queue - send messages in ID order that are released
+     * Process queue - send released messages in ID order, skipping
+     * unreleased items so they don't block later ready messages.
      * (Internal implementation without lock)
      */
     private processQueueInternal(): void {
         // Sort by ID to ensure order
         this.queue.sort((a, b) => a.id - b.id);
-        
-        // Process from front of queue
-        while (this.queue.length > 0) {
-            const item = this.queue[0];
-            
-            // If not released yet, stop processing (maintain order)
+
+        // Send all released items, skipping unreleased ones
+        let i = 0;
+        while (i < this.queue.length) {
+            const item = this.queue[i];
+
+            // Skip unreleased items — they'll be sent when released
             if (!item.released) {
-                break;
+                i++;
+                continue;
             }
-            
+
             // Send if not already sent
             if (!item.sent) {
                 if (item.logMessage.type !== 'system') {
@@ -126,9 +129,10 @@ export class OutgoingMessageQueue {
                 }
                 item.sent = true;
             }
-            
-            // Remove from queue
-            this.queue.shift();
+
+            // Remove sent item from queue
+            this.queue.splice(i, 1);
+            // Don't increment i since splice shifts remaining items
         }
     }
     
