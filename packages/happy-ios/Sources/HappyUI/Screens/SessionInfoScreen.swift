@@ -143,7 +143,7 @@ final class SessionInfoViewController: UIViewController {
             setPlainHeaderTitle(seed.title ?? Strings.Session.newChat)
         }
         navigationItem.rightBarButtonItem = UIBarButtonItem(
-            image: .icon(.ionicons("ellipsis-horizontal"), size: 22),
+            image: .icon(.materialIcons("more-horiz"), size: 22),
             menu: UIMenu(children: [
                 UIAction(title: Strings.SessionInfoLoading.retry) { [weak self] _ in self?.retryLoading() },
                 UIAction(title: Strings.SessionInfoLoading.copyDiagnostics) { [weak self] _ in self?.copyLoadingDiagnostics() },
