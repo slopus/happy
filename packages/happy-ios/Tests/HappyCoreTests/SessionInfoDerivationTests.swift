@@ -78,6 +78,23 @@ final class SessionInfoDerivationTests: XCTestCase {
         XCTAssertNil(derive(Self.detail(Self.record), git: status, after: update.state))
     }
 
+    /// Home's record gives the title the first frame shows, so the screen's
+    /// own snapshot, holding the same record, changes no title.
+    func testHomesRecordSeedsTheTitleTheFirstFrameShows() throws {
+        let untitled = Fixture.session("s2", machine: "m1", path: "/work/other")
+        let home = HomeSnapshot(machines: MachinesSnapshot(synced: true, machines: []), sessions: [untitled, Self.record])
+        for record in [Self.record, untitled] {
+            let seed = try XCTUnwrap(SessionInfoSeed(home, sessionId: record.id))
+            let first = try XCTUnwrap(derive(Self.detail(record)))
+            XCTAssertEqual(seed.title, first.output.frame.model?.title, record.id)
+        }
+        XCTAssertEqual(SessionInfoSeed(home, sessionId: Self.record.id)?.title, "Primary")
+        XCTAssertNil(SessionInfoSeed(home, sessionId: untitled.id)?.title, "reads New chat")
+        // Not in home, or no home yet: nothing to seed.
+        XCTAssertNil(SessionInfoSeed(home, sessionId: "missing"))
+        XCTAssertNil(SessionInfoSeed(nil, sessionId: Self.record.id))
+    }
+
     func testMetadataRebuildsItsGroupAndRetextsItsBlock() throws {
         let first = try XCTUnwrap(derive(Self.detail(Self.record)))
         var record = Self.record

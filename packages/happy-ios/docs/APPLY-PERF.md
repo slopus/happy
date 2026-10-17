@@ -119,6 +119,16 @@ rule 8), and what the Linux benchmarks measure.
   `ClockWake` yet.
 - None of the UIKit behaviour is verified: no simulator run, no device
   timings.
+- Pushing a screen holds the main thread longer than the 4.2 ms block,
+  and that turn is UIKit's. With session info's own work under the block
+  (its groups made a few rows a frame), its push turn was 13.9 ms in Debug
+  and 15.0 ms in Preview (medians of seven warm opens; 29.4 and 40.8 ms
+  the first time in the process). Pushing an empty screen with the same
+  title, in the same test, took 19.4 and 19.2 ms. The end of the push
+  animation is two more turns of about 5 to 6 ms for the empty screen.
+  iPhone 17 Pro simulator, iOS 26.5, Xcode 27.1, 1 MB agent state
+  (`HostedSessionInfoTests.testHowLongOpeningSessionInfoHoldsTheMainThread`,
+  which prints both). Not worked on.
 
 ## Before and after
 
