@@ -79,11 +79,13 @@ final class HostedHomeChatTimingTests: XCTestCase {
         var completed: CFTimeInterval?
         var samples = 0
         var times: [CFTimeInterval] = []
+        var positions: [CGFloat] = []
         let frames = HomeTapFrames {
             times.append(CACurrentMediaTime())
             guard let chat = navigation.topViewController as? ChatViewController,
                   chat.isViewLoaded, chat.view.window != nil else { return }
             let x = chat.view.layer.presentation()?.convert(.zero, to: window.layer.presentation()).x
+            if let x { positions.append(x) }
             if let x, x > 0.5, x < window.bounds.width - 0.5, firstMovement == nil {
                 firstMovement = CACurrentMediaTime()
             }
@@ -98,6 +100,7 @@ final class HostedHomeChatTimingTests: XCTestCase {
         frames.stop()
         let longest = busy.stop()
         XCTAssertNotNil(firstMovement, "must observe the moving presentation layer")
+        print("HOMEPOSITIONS \(positions.prefix(12))")
         let gaps = zip(times, times.dropFirst()).map { $1 - $0 }
         print(String(format: "HOMETAP %@ dispatch %.2f firstMovement %.2f end %.2f frames %d longestMain %.2f frameGap %.2f",
                      heavy ? "heavy" : "short", (returned - tapped) * 1000,

@@ -313,9 +313,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         tabStrip.onAdd = { [weak self] in self?.newTab() }
         tabStrip.showsAdd = true
         view.addSubview(tabStrip)
-        statusBarStrip.isHidden = true
+        statusBarStrip.isHidden = !hidesHeader
         view.addSubview(statusBarStrip)
-        landscapeBack.isHidden = true
+        landscapeBack.isHidden = !hidesHeader
         landscapeBack.addTarget(self, action: #selector(goBack), for: .touchUpInside)
         view.addSubview(landscapeBack)
 
@@ -402,7 +402,14 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         // sync.ts `onSessionVisible`: a session someone has opened is no
         // longer an abandoned start, in this account.
         account.spawnRequests.release(sessionId: chatId)
-        if contentInstalled { updateHeaderVisibility(animated: animated) }
+        if contentInstalled {
+            updateHeaderVisibility(animated: animated)
+        } else {
+            // The shell owns the bar from its first frame too, without
+            // constructing the landscape controls before the push.
+            hidesHeader = tabletBranches.chatHidesHeaderInLandscape
+            navigationController?.setNavigationBarHidden(hidesHeader, animated: animated)
+        }
         historyPager?.isActive = true
     }
 
@@ -452,7 +459,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         if !sessionApplied { missing.append("session") }
         if !checkoutApplied { missing.append("checkout") }
         if !rowsApplied { missing.append("rows") }
-        if !(isTabletLayout ? plainTitleView.measure.isSettled : titleView.measure.isSettled) { missing.append("header") }
+        let header: UIView = isTabletLayout ? plainTitleView : titleView
+        if !hidesHeader && (!(isTabletLayout ? plainTitleView.measure.isSettled : titleView.measure.isSettled)
+            || header.window == nil || header.bounds.width <= 1) {
+            missing.append("header")
+        }
         if !tabStrip.isHidden, !tabStrip.isSettled { missing.append("strip") }
         if !composer.isRestored { missing.append("composer") }
         if !placeholder.isHidden, !placeholder.measure.isSettled { missing.append("placeholder") }
@@ -469,7 +480,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     /// Whether a change may animate: not before the screen's first frame.
     private var isShown: Bool {
-        contentInstalled && opening == nil && isViewLoaded && view.window != nil && transitionCoordinator == nil
+        contentInstalled && openingReport != nil && isViewLoaded && view.window != nil && transitionCoordinator == nil
     }
 
     private static func services(account: AccountSession, context: AppContext, sessionId: String) -> ChatServices {

@@ -73,6 +73,34 @@ final class HostedChatNavigationTests: XCTestCase {
         XCTAssertEqual(chat.constructionStageSeconds.count, completedStages,
                        "no additional views may be constructed for a signed-out account")
     }
+
+    func testUpdatesDuringConstructionAndAfterReadinessReachTheHeader() async throws {
+        let (controller, account) = try await signedIn()
+        let store = account.store
+        try await Task.detached {
+            try store.addPendingSettings(["sessionListGrouping": .string("flat")])
+        }.value
+        let flat = try await until {
+            account.homeFeed.latest.map { AccountSettings($0.settings).sessionListGrouping == .flat } == true
+        }
+        XCTAssertTrue(flat)
+        let record = try XCTUnwrap(account.homeFeed.latest?.sessions.first { $0.id == "seeded-tab-4" })
+        let context = AppContext(account: controller, variant: .preview, version: "test")
+        let (_, navigation, root) = try await hosted()
+        root.push(.session(id: record.id), context: context)
+        let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
+        for (version, title) in [(2, "Changed while opening"), (3, "Changed after opening")] {
+            var metadata = record.metadata?.objectValue ?? [:]
+            metadata["summary"] = .object(["text": .string(title), "updatedAt": .number(Double(version))])
+            let payload = VersionedPayload(version: version, cipher: "updated", value: JSONValue.object(metadata))
+            _ = try await Task.detached {
+                try store.applySessionUpdate(id: record.id, metadata: payload, agentState: nil, projectId: nil)
+            }.value
+            let updated = try await until { chat.navigationItem.title == title && chat.openingReport != nil }
+            XCTAssertTrue(updated, "the newest session must survive deferred construction and remain observed")
+        }
+        await controller.signOut()
+    }
     private func signedIn() async throws -> (AccountController, AccountSession) {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()),
