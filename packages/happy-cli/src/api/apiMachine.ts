@@ -7,6 +7,7 @@ import { io, Socket } from 'socket.io-client';
 import { z } from 'zod';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
+import { createSocketProxyOptions, describeProxyForRemote, getProxyConfig, mergeRemoteProxyConfig, setProxyConfig } from '@/proxy';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
@@ -155,6 +156,7 @@ export class ApiMachineClient {
     private reconnectTimeout: NodeJS.Timeout | null = null;
     private reconnectCapabilityHeld = false;
     private shutdownRequested = false;
+    private relayReconnecting = false;
 
     constructor(
         private token: string,
@@ -364,6 +366,39 @@ export class ApiMachineClient {
 
             return { message: 'Daemon stop request acknowledged, starting shutdown sequence...' };
         });
+
+        // Register proxy configuration handlers. The mobile app reads and writes
+        // the daemon's proxy section through these, and the relay socket is
+        // reconnected immediately so the change takes effect without a restart.
+        this.rpcHandlerManager.registerHandler('get-proxy-config', async () => {
+            return await describeProxyForRemote();
+        });
+
+        this.rpcHandlerManager.registerHandler('set-proxy-config', async (params: any) => {
+            const next = mergeRemoteProxyConfig(params?.config ?? params, getProxyConfig());
+            logger.debug(`[API MACHINE] Applying proxy configuration from the app (mode: ${next.mode})`);
+            await setProxyConfig(next);
+            this.reconnectForProxyChange();
+            return await describeProxyForRemote();
+        });
+    }
+
+    /**
+     * Reconnects the relay socket so a proxy change takes effect immediately.
+     * The disconnect handler is suppressed for this intentional close, otherwise
+     * it would schedule a competing reconnect.
+     */
+    private reconnectForProxyChange(): void {
+        if (this.shutdownRequested) {
+            return;
+        }
+        this.relayReconnecting = true;
+        this.socket.close();
+        this.connect();
+        const timer = setTimeout(() => {
+            this.relayReconnecting = false;
+        }, 1000);
+        timer.unref();
     }
 
     private syncResumeSessionRpcRegistration(): void {
@@ -489,6 +524,11 @@ export class ApiMachineClient {
         const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
         logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);
 
+        const socketProxyOptions = createSocketProxyOptions(serverUrl);
+        if (socketProxyOptions.transportOptions) {
+            logger.debug('[API MACHINE] Relay socket will use the configured proxy');
+        }
+
         this.socket = io(serverUrl, {
             transports: ['websocket'],
             auth: {
@@ -499,6 +539,7 @@ export class ApiMachineClient {
             },
             path: '/v1/updates',
             reconnection: false,
+            ...socketProxyOptions
         });
 
         this.socket.on('connect', () => {
@@ -532,6 +573,11 @@ export class ApiMachineClient {
             logger.debug(`[API MACHINE] Disconnected from server — reason: ${reason}`);
             this.rpcHandlerManager.onSocketDisconnect();
             this.stopKeepAlive();
+            if (this.relayReconnecting) {
+                // Intentional reconnect after a proxy change: `connect()` already
+                // opened the replacement socket.
+                return;
+            }
             if (!this.shutdownRequested) {
                 this.startSmartReconnect();
             }

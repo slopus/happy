@@ -131,6 +131,45 @@ happy connect status
 | `HAPPY_DISABLE_CAFFEINATE` | Disable macOS sleep prevention |
 | `HAPPY_EXPERIMENTAL` | Enable experimental features |
 
+### Proxy
+
+Happy applies one proxy configuration to everything it does: the relay WebSocket,
+REST calls, attachment uploads, `fetch` based calls and the agents it spawns.
+
+```bash
+happy proxy configure          # interactive: mode, PAC URL, or a manual proxy
+happy proxy status             # what is configured and what it resolves to
+happy proxy disable            # never proxy, ignore the environment
+```
+
+| Mode | Description |
+|------|-------------|
+| `env` (default) | Standard proxy environment variables: `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY` and their lowercase variants |
+| `system` | The operating system's proxy settings (macOS, Windows, GNOME), including PAC, falling back to the environment |
+| `pac` | A specific PAC (proxy auto-config) script URL, resolved per destination |
+| `manual` | An explicit `http`, `https`, `socks4`, `socks4a`, `socks5` or `socks5h` proxy, with optional credentials |
+| `off` | Never use a proxy and ignore the environment |
+
+The same configuration can be set non-interactively, for example for a Clash or
+mihomo mixed port:
+
+```bash
+happy proxy configure --mode manual --protocol http --host 127.0.0.1 --port 7890 --yes
+happy proxy configure --mode manual --protocol socks5h --host 127.0.0.1 --port 1080 --yes
+happy proxy configure --mode system --yes
+happy proxy configure --mode pac --pac-url http://wpad.example.com/proxy.pac --yes
+```
+
+Notes:
+
+- Local traffic (the daemon, local MCP servers, sandbox proxies) is never
+  proxied, and `NO_PROXY` bypasses are honoured.
+- With `env` mode nothing changes for users who do not set proxy variables.
+- The proxy is exported to spawned agents as proxy environment variables, so
+  the coding agents reach their own APIs through it too.
+- The mobile app exposes the same settings under **Settings → Proxy**, applied to
+  a chosen computer through the machine RPC.
+
 ### Sandbox (experimental)
 
 Happy can run agents inside an OS-level sandbox to restrict file system and network access.

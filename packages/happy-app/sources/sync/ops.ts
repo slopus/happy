@@ -1352,6 +1352,64 @@ export async function spawnSideChat(source: ForkSource): Promise<SpawnSessionRes
     return forkAndSpawn(source, { isSideChat: true });
 }
 
+// --- Proxy configuration (machine scoped) -----------------------------------
+
+/** Where a machine's proxy comes from. */
+export type ProxyMode = 'off' | 'env' | 'system' | 'pac' | 'manual';
+
+/** Manual proxy protocols the daemon supports. */
+export type ProxyProtocol = 'http' | 'https' | 'socks4' | 'socks4a' | 'socks5' | 'socks5h';
+
+/**
+ * Manual proxy sent to the machine. The password is only included when it is
+ * being changed: the machine keeps the stored one otherwise and never sends it
+ * back to the app.
+ */
+export interface ProxyManualConfig {
+    protocol: ProxyProtocol;
+    host: string;
+    port: number;
+    username?: string;
+    password?: string;
+}
+
+/** Proxy configuration the app asks a machine to apply. */
+export interface ProxyConfig {
+    mode: ProxyMode;
+    manual?: ProxyManualConfig;
+    pacUrl?: string;
+    noProxy: string[];
+    useForChildProcesses: boolean;
+}
+
+/** Proxy state reported by a machine. */
+export interface ProxyStatus {
+    config: {
+        mode: ProxyMode;
+        manual?: Omit<ProxyManualConfig, 'password'> & { hasPassword: boolean };
+        pacUrl?: string;
+        noProxy: string[];
+        useForChildProcesses: boolean;
+    };
+    relayUrl: string;
+    proxyUrl?: string;
+    pacUrl?: string;
+    source?: 'manual' | 'pac' | 'system' | 'env';
+    agentReady: boolean;
+    systemSource?: string;
+    systemMode?: string;
+}
+
+/** Reads the proxy configuration of a machine. */
+export async function machineGetProxyConfig(machineId: string): Promise<ProxyStatus> {
+    return await apiSocket.machineRPC<ProxyStatus, Record<string, never>>(machineId, 'get-proxy-config', {});
+}
+
+/** Applies a proxy configuration to a machine; the machine reconnects its relay. */
+export async function machineSetProxyConfig(machineId: string, config: ProxyConfig): Promise<ProxyStatus> {
+    return await apiSocket.machineRPC<ProxyStatus, { config: ProxyConfig }>(machineId, 'set-proxy-config', { config });
+}
+
 // Export types for external use
 export type {
     SessionBashRequest,

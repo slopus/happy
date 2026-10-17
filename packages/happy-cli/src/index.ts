@@ -26,6 +26,8 @@ import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { handleAuthCommand } from './commands/auth'
 import { handleConnectCommand } from './commands/connect'
 import { handleSandboxCommand } from './commands/sandbox'
+import { handleProxyCommand } from './commands/proxy'
+import { configureProxy } from './proxy'
 import { handleServerCommand } from './commands/server'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
@@ -47,6 +49,16 @@ import { sanitizeSessionEnvironment } from './daemon/sessionEnvironment'
 
   // Check if first argument is a subcommand
   const subcommand = args[0]
+
+  // Apply the configured proxy (settings.json -> proxyConfig) before any
+  // network work happens: relay socket, axios, fetch and spawned agents.
+  if (!args.includes('--version')) {
+    try {
+      await configureProxy()
+    } catch (error) {
+      logger.debug(`[proxy] Failed to configure proxy: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
   
   // Log which subcommand was detected (for debugging)
   if (!args.includes('--version')) {
@@ -103,6 +115,17 @@ Conversation history is preserved on the server, but in-flight tool calls are in
   } else if (subcommand === 'sandbox') {
     try {
       await handleSandboxCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'proxy') {
+    try {
+      await handleProxyCommand(args.slice(1));
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -721,6 +744,7 @@ ${chalk.bold('Usage:')}
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
+  happy proxy             Configure the proxy used to reach Happy
   happy notify            Send push notification
   happy daemon            Manage background service that allows
                             to spawn new sessions away from your computer
@@ -743,6 +767,8 @@ ${chalk.bold('Examples:')}
   happy acp opencode --verbose
                            Print raw ACP backend/envelope events
   happy auth login --force Authenticate
+  happy proxy              Show the proxy configuration and what it resolves to
+  happy proxy configure    Configure system, PAC or manual proxy settings
   happy doctor             Run diagnostics
 
 ${chalk.bold('Happy supports ALL Claude options!')}
