@@ -660,7 +660,7 @@
     <string name="settings_voice_language_footer_n0">0言語が利用可能</string>
     <string name="settings_voice_language_auto_detect">自動検出</string>
     <string name="settings_voice_byo_title">自分のエージェントを使う</string>
-    <string name="settings_voice_byo_description">Happy のデフォルトの代わりに、独自の ElevenLabs エージェントを使用します。サブスクリプション不要 — 自分の ElevenLabs アカウントで直接接続できます。エージェントには2つのクライアントツールを定義する必要があります: messageClaudeCode（コーディングエージェントにテキストを送信）と processPermissionRequest（ツール使用を許可または拒否）。セッションコンテキストは {{initialConversationContext}} 動的変数を通じて受信されます。</string>
+    <string name="settings_voice_byo_description">Happy のデフォルトの代わりに、独自の ElevenLabs エージェントを使用します。サブスクリプション不要 — 自分の ElevenLabs アカウントで直接接続できます。エージェントには2つのクライアントツールを定義する必要があります: sendMessageToSession（コーディングエージェントにテキストを送信）と processPermissionRequest（ツール使用を許可または拒否）。セッションコンテキストは {{initialConversationContext}} 動的変数を通じて受信されます。</string>
     <string name="settings_voice_custom_agent_id">ElevenLabs Agent ID</string>
     <string name="settings_voice_custom_agent_id_not_set">未設定</string>
     <string name="settings_voice_custom_agent_id_description">ElevenLabs Agent ID を入力してください。空のままにすると Happy のデフォルトが使用されます。</string>
@@ -668,7 +668,7 @@
     <string name="settings_voice_bypass_token">直接接続</string>
     <string name="settings_voice_bypass_token_subtitle">Happy サーバーをスキップし、ElevenLabs に直接接続</string>
     <string name="settings_voice_prompt_guide_title">エージェントプロンプトガイド</string>
-    <string name="settings_voice_prompt_guide_description">ElevenLabs エージェントには以下が必要です:\n\n• ツール: messageClaudeCode — パラメータ: message (string)。アクティブなコーディングセッションにメッセージを送信します。\n• ツール: processPermissionRequest — パラメータ: decision (\"allow\" または \"deny\")。保留中のツール許可を承認または拒否します。\n• 動的変数: {{initialConversationContext}} — 開始時にセッション履歴とコンテキストを受信します。\n\nエージェントはユーザーとコーディングエージェント間の音声ブリッジとして機能します。簡潔に、話しかけられた時のみ応答し、コーディングエージェントが作業を完了したら報告する必要があります。</string>
+    <string name="settings_voice_prompt_guide_description">ElevenLabs エージェントには以下が必要です:\n\n• ツール: sendMessageToSession — パラメータ: sessionId (string), message (string)。指定されたコーディングセッションにメッセージを送信します。\n• ツール: processPermissionRequest — パラメータ: requestId (string), decision (\"allow\" または \"deny\")。保留中のツール許可を承認または拒否します。\n• 動的変数: {{initialConversationContext}} — 開始時にセッション履歴とコンテキストを受信します。\n\nエージェントはユーザーとコーディングエージェント間の音声ブリッジとして機能します。簡潔に、話しかけられた時のみ応答し、コーディングエージェントが作業を完了したら報告する必要があります。</string>
     <string name="settings_voice_usage_title">使用状況（過去30日間）</string>
     <string name="settings_voice_usage_footer">過去30日間に使用した音声時間。無料プラン: 20分。サブスクリプション: 5時間。月間最大100会話。</string>
     <string name="settings_voice_usage_label">音声時間</string>

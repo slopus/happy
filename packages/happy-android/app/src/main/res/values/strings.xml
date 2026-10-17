@@ -678,7 +678,7 @@
     <string name="settings_voice_language_footer_n0">0 languages available</string>
     <string name="settings_voice_language_auto_detect">Auto-detect</string>
     <string name="settings_voice_byo_title">Bring Your Own Agent</string>
-    <string name="settings_voice_byo_description">Use your own ElevenLabs agent instead of the Happy default. No subscription required — connect directly with your own ElevenLabs account. Your agent must define two client tools: messageClaudeCode (sends text to the coding agent) and processPermissionRequest (allows or denies tool use). It receives session context via the {{initialConversationContext}} dynamic variable.</string>
+    <string name="settings_voice_byo_description">Use your own ElevenLabs agent instead of the Happy default. No subscription required — connect directly with your own ElevenLabs account. Your agent must define two client tools: sendMessageToSession (sends text to the coding agent) and processPermissionRequest (allows or denies tool use). It receives session context via the {{initialConversationContext}} dynamic variable.</string>
     <string name="settings_voice_custom_agent_id">ElevenLabs Agent ID</string>
     <string name="settings_voice_custom_agent_id_not_set">Not configured</string>
     <string name="settings_voice_custom_agent_id_description">Enter your ElevenLabs agent ID. Leave empty to use the Happy default.</string>
@@ -686,7 +686,7 @@
     <string name="settings_voice_bypass_token">Direct Connection</string>
     <string name="settings_voice_bypass_token_subtitle">Skip Happy server, connect straight to ElevenLabs</string>
     <string name="settings_voice_prompt_guide_title">Agent Prompt Guide</string>
-    <string name="settings_voice_prompt_guide_description">Your ElevenLabs agent needs:\n\n• Tool: messageClaudeCode — parameter: message (string). Sends a message to the active coding session.\n• Tool: processPermissionRequest — parameter: decision (\"allow\" or \"deny\"). Approves or denies a pending tool permission.\n• Dynamic variable: {{initialConversationContext}} — receives session history and context on start.\n\nThe agent acts as a voice bridge between the user and coding agents. It should be concise, only respond when addressed, and report when a coding agent finishes work.</string>
+    <string name="settings_voice_prompt_guide_description">Your ElevenLabs agent needs:\n\n• Tool: sendMessageToSession — parameters: sessionId (string), message (string). Sends a message to the specified coding session.\n• Tool: processPermissionRequest — parameters: requestId (string), decision (\"allow\" or \"deny\"). Approves or denies a pending tool permission.\n• Dynamic variable: {{initialConversationContext}} — receives session history and context on start.\n\nThe agent acts as a voice bridge between the user and coding agents. It should be concise, only respond when addressed, and report when a coding agent finishes work.</string>
     <string name="settings_voice_usage_title">Usage (Last 30 Days)</string>
     <string name="settings_voice_usage_footer">Voice time used in the last 30 days. Free tier: 20 min. Subscribed: 5 hours. Max 100 conversations per month.</string>
     <string name="settings_voice_usage_label">Voice Time</string>

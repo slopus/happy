@@ -696,7 +696,7 @@
     <string name="settings_voice_language_footer_n0">0 idiomas disponibles</string>
     <string name="settings_voice_language_auto_detect">Detectar automáticamente</string>
     <string name="settings_voice_byo_title">Trae tu propio agente</string>
-    <string name="settings_voice_byo_description">Usa tu propio agente de ElevenLabs en lugar del predeterminado de Happy. No se requiere suscripción — conéctate directamente con tu propia cuenta de ElevenLabs. Tu agente debe definir dos herramientas de cliente: messageClaudeCode (envía texto al agente de código) y processPermissionRequest (permite o deniega el uso de herramientas). Recibe el contexto de la sesión a través de la variable dinámica {{initialConversationContext}}.</string>
+    <string name="settings_voice_byo_description">Usa tu propio agente de ElevenLabs en lugar del predeterminado de Happy. No se requiere suscripción — conéctate directamente con tu propia cuenta de ElevenLabs. Tu agente debe definir dos herramientas de cliente: sendMessageToSession (envía texto al agente de código) y processPermissionRequest (permite o deniega el uso de herramientas). Recibe el contexto de la sesión a través de la variable dinámica {{initialConversationContext}}.</string>
     <string name="settings_voice_custom_agent_id">ElevenLabs Agent ID</string>
     <string name="settings_voice_custom_agent_id_not_set">No configurado</string>
     <string name="settings_voice_custom_agent_id_description">Ingresa tu ElevenLabs Agent ID. Déjalo vacío para usar el predeterminado de Happy.</string>
@@ -704,7 +704,7 @@
     <string name="settings_voice_bypass_token">Conexión directa</string>
     <string name="settings_voice_bypass_token_subtitle">Omite el servidor de Happy, conéctate directamente a ElevenLabs</string>
     <string name="settings_voice_prompt_guide_title">Guía de prompt del agente</string>
-    <string name="settings_voice_prompt_guide_description">Tu agente de ElevenLabs necesita:\n\n• Herramienta: messageClaudeCode — parámetro: message (string). Envía un mensaje a la sesión de código activa.\n• Herramienta: processPermissionRequest — parámetro: decision (\"allow\" o \"deny\"). Aprueba o deniega un permiso de herramienta pendiente.\n• Variable dinámica: {{initialConversationContext}} — recibe el historial y contexto de la sesión al iniciar.\n\nEl agente actúa como puente de voz entre el usuario y los agentes de código. Debe ser conciso, responder solo cuando se le habla e informar cuando un agente de código termina su trabajo.</string>
+    <string name="settings_voice_prompt_guide_description">Tu agente de ElevenLabs necesita:\n\n• Herramienta: sendMessageToSession — parámetros: sessionId (string), message (string). Envía un mensaje a la sesión de código especificada.\n• Herramienta: processPermissionRequest — parámetros: requestId (string), decision (\"allow\" o \"deny\"). Aprueba o deniega un permiso de herramienta pendiente.\n• Variable dinámica: {{initialConversationContext}} — recibe el historial y contexto de la sesión al iniciar.\n\nEl agente actúa como puente de voz entre el usuario y los agentes de código. Debe ser conciso, responder solo cuando se le habla e informar cuando un agente de código termina su trabajo.</string>
     <string name="settings_voice_usage_title">Uso (últimos 30 días)</string>
     <string name="settings_voice_usage_footer">Tiempo de voz utilizado en los últimos 30 días. Plan gratuito: 20 min. Suscrito: 5 horas. Máx. 100 conversaciones al mes.</string>
     <string name="settings_voice_usage_label">Tiempo de voz</string>

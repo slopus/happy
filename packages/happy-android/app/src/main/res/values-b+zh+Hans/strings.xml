@@ -660,7 +660,7 @@
     <string name="settings_voice_language_footer_n0">0 种可用语言</string>
     <string name="settings_voice_language_auto_detect">自动检测</string>
     <string name="settings_voice_byo_title">使用自己的代理</string>
-    <string name="settings_voice_byo_description">使用您自己的 ElevenLabs 代理代替 Happy 默认代理。无需订阅 — 直接使用您自己的 ElevenLabs 账户连接。您的代理必须定义两个客户端工具：messageClaudeCode（向编码代理发送文本）和 processPermissionRequest（允许或拒绝工具使用）。通过 {{initialConversationContext}} 动态变量接收会话上下文。</string>
+    <string name="settings_voice_byo_description">使用您自己的 ElevenLabs 代理代替 Happy 默认代理。无需订阅 — 直接使用您自己的 ElevenLabs 账户连接。您的代理必须定义两个客户端工具：sendMessageToSession（向编码代理发送文本）和 processPermissionRequest（允许或拒绝工具使用）。通过 {{initialConversationContext}} 动态变量接收会话上下文。</string>
     <string name="settings_voice_custom_agent_id">ElevenLabs Agent ID</string>
     <string name="settings_voice_custom_agent_id_not_set">未配置</string>
     <string name="settings_voice_custom_agent_id_description">输入您的 ElevenLabs Agent ID。留空则使用 Happy 默认代理。</string>
@@ -668,7 +668,7 @@
     <string name="settings_voice_bypass_token">直接连接</string>
     <string name="settings_voice_bypass_token_subtitle">跳过 Happy 服务器，直接连接到 ElevenLabs</string>
     <string name="settings_voice_prompt_guide_title">代理提示词指南</string>
-    <string name="settings_voice_prompt_guide_description">您的 ElevenLabs 代理需要：\n\n• 工具：messageClaudeCode — 参数：message (string)。向活跃的编码会话发送消息。\n• 工具：processPermissionRequest — 参数：decision (\"allow\" 或 \"deny\")。批准或拒绝待处理的工具权限。\n• 动态变量：{{initialConversationContext}} — 启动时接收会话历史和上下文。\n\n代理充当用户和编码代理之间的语音桥梁。它应该简洁，仅在被呼叫时回应，并在编码代理完成工作时进行报告。</string>
+    <string name="settings_voice_prompt_guide_description">您的 ElevenLabs 代理需要：\n\n• 工具：sendMessageToSession — 参数：sessionId (string), message (string)。向指定的编码会话发送消息。\n• 工具：processPermissionRequest — 参数：requestId (string), decision (\"allow\" 或 \"deny\")。批准或拒绝待处理的工具权限。\n• 动态变量：{{initialConversationContext}} — 启动时接收会话历史和上下文。\n\n代理充当用户和编码代理之间的语音桥梁。它应该简洁，仅在被呼叫时回应，并在编码代理完成工作时进行报告。</string>
     <string name="settings_voice_usage_title">使用量（过去 30 天）</string>
     <string name="settings_voice_usage_footer">过去 30 天使用的语音时间。免费方案: 20 分钟。订阅用户: 5 小时。每月最多 100 次对话。</string>
     <string name="settings_voice_usage_label">语音时间</string>
