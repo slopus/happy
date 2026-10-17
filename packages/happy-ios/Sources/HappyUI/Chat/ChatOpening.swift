@@ -2,14 +2,8 @@
 import QuartzCore
 import UIKit
 
-/// A chat is shown once it is whole, as Telegram pushes a chat only after
-/// its list's first layout (`ready`): the screen is built at the size and
-/// traits it will be shown with, drawing its record and checkout from the
-/// home snapshot at once (`ChatServices.seed`); its rows, its header's and
-/// bars' text and its composer come in off the main thread, and only then
-/// is it pushed or swapped in, so nothing moves after its first frame. A
-/// chat whose rows take longer than `cap` is shown without them, and they
-/// land in place; nothing else is ever shown late.
+/// Records when deferred chat content settles. This clock is diagnostic:
+/// navigation has already started and never waits for this report.
 @MainActor
 final class ChatOpening {
     /// The longest a tap waits for a chat's rows.

@@ -353,6 +353,8 @@ final class ChatChromeTextSizeTests: XCTestCase {
         window.isHidden = false
         defer { window.isHidden = true }
         window.layoutIfNeeded()
+        let constructed = try await until { chat.contentInstalled && chat.navigationItem.titleView != nil }
+        XCTAssertTrue(constructed)
         let goal = try XCTUnwrap(find(ChatGoalBarView.self, in: chat.view))
         let rig = try XCTUnwrap(find(ChatRigActivityView.self, in: chat.view))
         let dock = try XCTUnwrap(find(ChatDockView.self, in: chat.view))

@@ -30,6 +30,9 @@ enum Route: Hashable {
     case settingsLanguage
     case settingsAgents
     case settingsConnectClaude
+    case settingsVoice
+    case settingsVoiceLanguage
+    case supportUs
     case changelog
     case developer
     case server
@@ -76,6 +79,12 @@ enum Screens {
             return SettingsAgentsViewController(context: context, session: session)
         case .settingsConnectClaude:
             return SettingsConnectClaudeViewController()
+        case .settingsVoice:
+            return VoiceSettingsViewController(context: context, session: session)
+        case .settingsVoiceLanguage:
+            return VoiceLanguageViewController(session: session)
+        case .supportUs:
+            return SupportUsViewController()
         case .changelog:
             return ChangelogViewController()
         case .developer:
@@ -88,9 +97,8 @@ extension UIViewController {
     /// Pushes a route on this screen's navigation stack. Needs a signed-in
     /// account; does nothing while signed out.
     ///
-    /// A chat is readied before it slides in (`ChatOpening`), so the push
-    /// starts up to 150 ms after the call; any push on the stack meanwhile
-    /// drops it.
+    /// Chats push a lightweight shell immediately. Their content is prepared
+    /// during the transition, without a readiness gate on navigation.
     ///
     /// The tablet sidebar has no stack of its own: it pushes onto the one
     /// beside it, as SidebarNavigator.tsx's single stack does, and not
@@ -109,17 +117,6 @@ extension UIViewController {
         (controller as? ChatViewController)?.constructionSeconds = CACurrentMediaTime() - constructionStarted
         #endif
         TabletRoutes.record(route, for: controller)
-        ChatOpening.cancel(on: stack)
-        // A chat slides in whole: readied first, for at most a moment.
-        if animated, let chat = controller as? ChatViewController {
-            ChatOpening.begin(chat, on: stack)
-            chat.open(size: stack.view.bounds.size, safeArea: ChatOpening.safeArea(pushedOnto: stack), traits: stack.traitCollection) { [weak stack] _ in
-                guard let stack else { return }
-                ChatOpening.end(chat, on: stack)
-                stack.pushViewController(chat, animated: true)
-            }
-            return
-        }
         stack.pushViewController(controller, animated: animated)
     }
 }

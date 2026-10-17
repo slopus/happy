@@ -233,6 +233,8 @@ final class HostedChatListTests: XCTestCase {
             hostWindow?.makeKey()
         }
         window.layoutIfNeeded()
+        let constructed = try await until { chat.contentInstalled }
+        XCTAssertTrue(constructed)
         let list = try XCTUnwrap(subview(ChatListView.self, in: chat.view))
         let dock = try XCTUnwrap(subview(ChatDockView.self, in: chat.view))
         let filled = try await until { list.collectionView.numberOfItems(inSection: 0) > 20 && maxDistance(list) > list.bounds.height }

@@ -471,6 +471,8 @@ final class ChatRowsTextSizeTests: XCTestCase {
         window.isHidden = false
         defer { window.isHidden = true }
         window.layoutIfNeeded()
+        let constructed = try await until { chat.contentInstalled }
+        XCTAssertTrue(constructed)
         let list = try XCTUnwrap(find(ChatListView.self, in: chat.view))
         XCTAssertEqual(list.traitCollection.textEnvironment, environment(.large))
         XCTAssertNil(chat.view.traitCollection.textEnvironment, "the rest of the screen keeps its own size")

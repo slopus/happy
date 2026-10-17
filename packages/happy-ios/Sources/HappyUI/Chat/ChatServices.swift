@@ -37,10 +37,9 @@ struct ChatServices {
     /// Handed over when it differs from `applied`, if the screen shows one.
     var observeCheckout: (_ id: String, _ applied: WorktreeCheckout??, _ onChange: @escaping @MainActor (WorktreeCheckout?) -> Void) -> ApplyObservation
     /// The session and its checkout as the account's newest home snapshot
-    /// has them (`HomeFeed.latest`), worked out at once, so the screen's
-    /// first frame needs no wait for its own observations. Nil before the
-    /// account has read a snapshot.
-    var seed: @MainActor () -> Seed?
+    /// has them (`HomeFeed.latest`), projected on a background task during
+    /// the navigation transition. Nil before home has read a snapshot.
+    var seed: @Sendable () -> Seed?
     /// The chats still on their way to a machine; a `pending-chat:` id is one.
     var pendingChats: PendingChats
     /// The checkout's git status for the header; nil for the fixtures.
@@ -134,7 +133,7 @@ struct ChatServices {
     }
 
     /// A pending chat has no record to seed from.
-    private static func seed(feed: HomeFeed, sessionId: String, record: SessionRecord? = nil) -> @MainActor () -> Seed? {
+    private static func seed(feed: HomeFeed, sessionId: String, record: SessionRecord? = nil) -> @Sendable () -> Seed? {
         {
             guard !PendingChats.isPendingChatId(sessionId), let snapshot = feed.latest else { return nil }
             return seed(snapshot, sessionId: sessionId, record: record)
