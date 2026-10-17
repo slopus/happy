@@ -219,11 +219,11 @@ public final class LocalStore: Sendable {
             if let avatar {
                 let revision = avatarVersion ?? avatar?.version
                 let newer: Bool
-                if let revision, let previous = record.avatarVersion { newer = revision > previous }
+                if let avatarVersion, let previous = record.avatarVersion { newer = avatarVersion > previous }
                 else { newer = (avatarUpdateSeq ?? 0) > (record.avatarUpdateSeq ?? -1) }
                 if newer {
                     record.avatar = avatar
-                    record.avatarVersion = revision ?? record.avatarVersion
+                    if let revision { record.avatarVersion = max(revision, record.avatarVersion ?? -1) }
                     record.avatarUpdateSeq = avatarUpdateSeq
                 }
             }

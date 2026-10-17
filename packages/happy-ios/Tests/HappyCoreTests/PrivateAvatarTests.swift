@@ -172,11 +172,20 @@ final class PrivateAvatarTests: XCTestCase {
         try await engine.pullSessions()
         XCTAssertNil(try store.session(id: "session")?.avatar)
         XCTAssertEqual(try store.session(id: "session")?.avatarVersion, 5)
+        _ = try store.applySessionUpdate(id: "session", metadata: nil, agentState: nil, projectId: nil,
+            avatar: .some(staleListing.avatar), avatarUpdateSeq: 59)
+        XCTAssertNil(try store.session(id: "session")?.avatar,
+            "an old socket descriptor cannot bypass a newer versionless deletion via its descriptor version")
+        XCTAssertEqual(try store.session(id: "session")?.avatarUpdateSeq, 60)
         var fresh = row
         fresh.avatar = .init(ref: "new", preview: "cipher", version: 6)
         fresh.avatarVersion = 6
         try store.upsertSessions([decoder.session(fresh)])
         XCTAssertEqual(try store.session(id: "session")?.avatar?.ref, "new")
+        let newer = AvatarDescriptor(ref: "newer-socket", preview: "cipher", version: 7)
+        _ = try store.applySessionUpdate(id: "session", metadata: nil, agentState: nil, projectId: nil,
+            avatar: .some(newer), avatarUpdateSeq: 61)
+        XCTAssertEqual(try store.session(id: "session")?.avatar, newer)
         await engine.stop()
     }
 
