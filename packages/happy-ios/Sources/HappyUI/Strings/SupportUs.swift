@@ -6,7 +6,7 @@ extension Strings {
         public static var title: String { localized("settings.supportUs", "Support us") }
         public static var subtitle: String { localized("settings.supportUsSubtitle", "Support project development") }
         public static var thankYou: String { localized("settings.supportUsSubtitlePro", "Thank you for your support!") }
-        public static var unavailable: String { localized("settings.supportUnavailable", "Purchases are unavailable right now. Please try again later.") }
+        public static let unavailable = "Purchases are unavailable right now. Please try again later."
 
         // Native's interim purchase page; the RN app hosts these controls
         // inside its remotely configured paywall instead.
