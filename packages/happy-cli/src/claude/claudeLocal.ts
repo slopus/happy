@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
 import { ensureLocalProxyBypass } from "./utils/proxyBypass";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
-import { claudeFindLastSession } from "./utils/claudeFindLastSession";
+import { claudeFindLastSession, writeCurrentSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
@@ -151,12 +151,15 @@ export async function claudeLocal(opts: {
         // Notify about session ID immediately (we know it upfront in offline mode)
         if (startFrom) {
             logger.debug(`[ClaudeLocal] Resuming session: ${startFrom}`);
+            writeCurrentSession(opts.path, startFrom);
             opts.onSessionFound(startFrom);
         } else if (explicitSessionId) {
             logger.debug(`[ClaudeLocal] Using explicit session ID: ${explicitSessionId}`);
+            writeCurrentSession(opts.path, explicitSessionId);
             opts.onSessionFound(explicitSessionId);
         } else {
             logger.debug(`[ClaudeLocal] Generated new session ID: ${newSessionId}`);
+            writeCurrentSession(opts.path, newSessionId!);
             opts.onSessionFound(newSessionId!);
         }
     } else {
