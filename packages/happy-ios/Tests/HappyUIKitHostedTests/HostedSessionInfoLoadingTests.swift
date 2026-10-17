@@ -33,10 +33,12 @@ private final class DetailsSource: @unchecked Sendable {
     }
 
     func fail(_ index: Int? = nil) {
-        let (callback, continuation) = lock.withLock {
+        let pair = lock.withLock { () -> ((@Sendable (SessionDetailFailure) -> Void), AsyncStream<SessionDetailSnapshot>.Continuation)? in
             let offset = index ?? (failures.count - 1)
+            guard failures.indices.contains(offset) else { return nil }
             return (failures[offset], continuations[offset])
         }
+        guard let (callback, continuation) = pair else { XCTFail("The test observation has not started"); return }
         callback(SessionDetailFailure(kind: .database, code: 11))
         continuation.finish()
     }
@@ -95,7 +97,7 @@ final class HostedSessionInfoLoadingTests: XCTestCase {
             await controller.signOut()
         }
         if attach { navigation.pushViewController(info, animated: false) }
-        else { info.loadViewIfNeeded() }
+        info.loadViewIfNeeded()
         return (info, source, snapshot, navigation, window)
     }
 
@@ -158,6 +160,16 @@ final class HostedSessionInfoLoadingTests: XCTestCase {
         navigation.pushViewController(info, animated: false)
         let delayed = try await until { self.rows(info).contains { $0.title == Strings.SessionInfoLoading.delayed } }
         XCTAssertTrue(delayed)
+    }
+
+    func testWatchdogRestartsWhenTheVisibleScreenBecomesActiveAgain() async throws {
+        let (info, _, _, _, _) = try await fixture()
+        NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertFalse(info.loadingDiagnostics().contains("firstFailure"), "inactive time is not a failed first paint")
+        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        let delayed = try await until { self.rows(info).contains { $0.title == Strings.SessionInfoLoading.delayed } }
+        XCTAssertTrue(delayed, "a visible foreground attempt must get its own deadline")
     }
 }
 #endif

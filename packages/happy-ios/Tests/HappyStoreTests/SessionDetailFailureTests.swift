@@ -13,7 +13,7 @@ final class SessionDetailFailureTests: XCTestCase {
         )])
         // A damaged device-local composer row is not read by Home, but it
         // must produce a failure rather than an empty Details stream.
-        try store.writer.write { db in
+        try await store.writer.write { db in
             try db.execute(sql: "INSERT INTO composerState (sessionId, [values]) VALUES (?, ?)", arguments: ["session", "PRIVATE-invalid-json"])
         }
         let errors = AsyncStream<SessionDetailFailure>.makeStream()
@@ -29,7 +29,7 @@ final class SessionDetailFailureTests: XCTestCase {
         let failure = await iterator.next()
         XCTAssertEqual(failure?.kind, .decoding)
         XCTAssertFalse(String(describing: failure).contains("PRIVATE"))
-        try store.writer.write { db in try db.execute(sql: "DELETE FROM composerState WHERE sessionId = ?", arguments: ["session"]) }
+        try await store.writer.write { db in try db.execute(sql: "DELETE FROM composerState WHERE sessionId = ?", arguments: ["session"]) }
         let retry = store.sessionDetailSnapshots(sessionId: "session")
         let recovered = await withTaskGroup(of: SessionDetailSnapshot?.self) { group in
             group.addTask { var iterator = retry.makeAsyncIterator(); return await iterator.next() }

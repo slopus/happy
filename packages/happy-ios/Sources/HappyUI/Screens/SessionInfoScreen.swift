@@ -38,6 +38,7 @@ final class SessionInfoViewController: UIViewController {
     private var observationGeneration = 0
     private var loadWatchdog: Task<Void, Never>?
     private var isVisible = false
+    private var appActive = false
     private var loadState = LoadState.loading
     private var loadStatusGroup: ItemGroupView?
     private var firstFailureDiagnostics: [String: Any]?
@@ -114,6 +115,7 @@ final class SessionInfoViewController: UIViewController {
         gitTask?.cancel()
         copiedReset?.cancel()
         loadWatchdog?.cancel()
+        NotificationCenter.default.removeObserver(self)
     }
 
     override func loadView() {
@@ -148,6 +150,9 @@ final class SessionInfoViewController: UIViewController {
             ])
         )
         navigationItem.rightBarButtonItem?.accessibilityLabel = Strings.SessionInfoLoading.actions
+        appActive = UIApplication.shared.applicationState == .active
+        NotificationCenter.default.addObserver(self, selector: #selector(appWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
         showLoadStatus(.loading)
         beginObservation()
     }
@@ -473,17 +478,29 @@ final class SessionInfoViewController: UIViewController {
 
     private func startLoadWatchdog() {
         loadWatchdog?.cancel()
-        guard isVisible else { return }
+        guard isVisible, appActive, view.window?.windowScene?.activationState == .foregroundActive else { return }
         let timeout = firstPaintTimeout
         loadWatchdog = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: timeout) } catch { return }
-            guard let self, self.isVisible, self.view.window != nil, !Task.isCancelled else { return }
+            guard let self, self.isVisible, self.appActive,
+                  self.view.window?.windowScene?.activationState == .foregroundActive, !Task.isCancelled else { return }
             if case .deleted = self.frame?.content { return }
             guard !self.hasVisibleBody else { return }
             if case .failed = self.loadState { return }
             self.recordFailure(reason: "first-paint-timeout")
             self.showLoadStatus(.delayed)
         }
+    }
+
+    @objc private func appWillResignActive() {
+        appActive = false
+        loadWatchdog?.cancel()
+        loadWatchdog = nil
+    }
+
+    @objc private func appDidBecomeActive() {
+        appActive = true
+        if isVisible { startLoadWatchdog() }
     }
 
     @objc private func retryLoading() {
@@ -548,7 +565,7 @@ final class SessionInfoViewController: UIViewController {
         case .ready: status = "ready"
         }
         var result: [String: Any] = [
-            "reason": reason, "stage": stage, "content": content, "loadState": status, "screenVisible": isVisible,
+            "reason": reason, "stage": stage, "content": content, "loadState": status, "screenVisible": isVisible, "appActive": appActive,
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
             "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
             "os": UIDevice.current.systemVersion, "model": Self.deviceModel,
