@@ -1,4 +1,6 @@
 import React, { useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
+import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
 import { useConversation } from '@elevenlabs/react-native';
 import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
@@ -14,6 +16,36 @@ const VAD_THRESHOLD = 0.5;
 const VAD_SILENCE_MS = 300;
 let vadSilenceTimer: ReturnType<typeof setTimeout> | null = null;
 let agentIsSpeaking = false;
+
+async function configureVoiceAudioSession(): Promise<void> {
+    if (Platform.OS !== 'android') {
+        return;
+    }
+
+    await AudioSession.configureAudio({
+        android: {
+            preferredOutputList: ['bluetooth', 'headset', 'earpiece', 'speaker'],
+            audioTypeOptions: {
+                ...AndroidAudioTypePresets.communication,
+                forceHandleAudioRouting: true,
+            },
+        },
+    });
+    await AudioSession.startAudioSession();
+
+    const outputs = await AudioSession.getAudioOutputs();
+    if (outputs.includes('bluetooth')) {
+        await AudioSession.selectAudioOutput('bluetooth');
+    }
+}
+
+async function stopVoiceAudioSession(): Promise<void> {
+    if (Platform.OS !== 'android') {
+        return;
+    }
+
+    await AudioSession.stopAudioSession();
+}
 
 // Global voice session implementation
 class RealtimeVoiceSessionImpl implements VoiceSession {
@@ -53,7 +85,8 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                     }
                 },
             };
-            
+
+            await configureVoiceAudioSession();
             await conversationInstance.startSession(sessionConfig);
             return conversationInstance.getId?.() ?? null;
         } catch (error) {
@@ -74,6 +107,11 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
         } catch (error) {
             console.error('Failed to end realtime session:', error);
         } finally {
+            try {
+                await stopVoiceAudioSession();
+            } catch (error) {
+                console.warn('Failed to stop voice audio session:', error);
+            }
             storage.getState().setRealtimeStatus('disconnected');
         }
     }
