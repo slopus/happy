@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyLayout
+import QuartzCore
 import UIKit
 
 /// Every screen a signed-in account can push, after happy-app's
@@ -100,7 +101,13 @@ extension UIViewController {
               let stack = navigationController ?? tabletDetailNavigation,
               navigationController != nil || !TabletRoutes.isShowing(route, in: stack)
         else { return }
+        #if DEBUG || HAPPY_FIXTURES
+        let constructionStarted = CACurrentMediaTime()
+        #endif
         let controller = Screens.make(route, context: context, session: session)
+        #if DEBUG || HAPPY_FIXTURES
+        (controller as? ChatViewController)?.constructionSeconds = CACurrentMediaTime() - constructionStarted
+        #endif
         TabletRoutes.record(route, for: controller)
         ChatOpening.cancel(on: stack)
         // A chat slides in whole: readied first, for at most a moment.

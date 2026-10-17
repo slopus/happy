@@ -3,6 +3,9 @@
 How home and the chat get from a store change to the screen (AGENTS.md
 rule 8), and what the Linux benchmarks measure.
 
+For the real-device route measurements and their limits, see
+[Navigation measurements](NAVIGATION-PERF.md).
+
 ## The path
 
 - `Core/Changes/ApplyPipeline` derives off the main thread. Each derivation

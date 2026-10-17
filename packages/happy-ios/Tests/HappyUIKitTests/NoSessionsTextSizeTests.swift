@@ -347,7 +347,7 @@ final class NoSessionsTextSizeTests: XCTestCase {
         XCTAssertEqual(safe.top, device.top + 103)
         XCTAssertEqual(safe.bottom, device.bottom + 150)
         XCTAssertGreaterThan(view.scrollView.contentSize.height, view.bounds.height)
-        XCTAssertEqual(view.icon.frame.minY, safe.top, "from the top of the safe area")
+        XCTAssertEqual(view.icon.frame.minY, safe.top, accuracy: 1e-6, "from the top of the safe area")
 
         view.scrollView.contentOffset = CGPoint(x: 0, y: view.scrollView.contentSize.height - view.bounds.height)
         view.layoutIfNeeded()

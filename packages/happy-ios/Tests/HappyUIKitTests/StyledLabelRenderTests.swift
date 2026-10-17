@@ -131,6 +131,48 @@ final class StyledLabelRenderTests: XCTestCase {
         withExtendedLifetime(window) {}
     }
 
+    /// Measuring a first render must not invalidate the container's cache
+    /// while it is still being measured. Joining a window still invalidates.
+    func testAFirstDrawFromMeasuringAsksNoLayoutOfWhatMeasuresIt() {
+        let (window, host) = host()
+        let container = MeasuringContainer(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
+        let measured = StyledLabel(style: TextStyles.itemTitle, color: Palette.text, lines: 2)
+        measured.string = "Measured first"
+        container.addSubview(measured)
+        let read = StyledLabel(style: TextStyles.itemSubtitle, color: Palette.text)
+        read.string = "Read first"
+        container.addSubview(read)
+        container.measure {
+            XCTAssertGreaterThan(measured.sizeThatFits(CGSize(width: 300, height: CGFloat.greatestFiniteMagnitude)).height, 0)
+            XCTAssertGreaterThan(read.intrinsicContentSize.height, 0)
+            XCTAssertGreaterThan(read.lineHeight, 0)
+            XCTAssertEqual(read.attributedText?.string, "Read first")
+        }
+        XCTAssertEqual(measured.renders, 1)
+        XCTAssertEqual(read.renders, 1)
+        XCTAssertEqual(container.invalidatedWhileMeasuring, 0)
+
+        let laidOut = StyledLabel(style: TextStyles.itemTitle, color: Palette.text)
+        laidOut.string = "Laid out first"
+        laidOut.frame = CGRect(x: 0, y: 0, width: 300, height: 40)
+        container.addSubview(laidOut)
+        let beforeLayout = container.invalidations
+        laidOut.setNeedsLayout()
+        laidOut.layoutIfNeeded()
+        XCTAssertEqual(laidOut.renders, 1)
+        XCTAssertGreaterThan(container.invalidations, beforeLayout)
+
+        let joining = StyledLabel(style: TextStyles.itemTitle, color: Palette.text)
+        joining.string = "Joined first"
+        let holder = MeasuringContainer(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
+        holder.addSubview(joining)
+        let beforeJoin = holder.invalidations
+        host.addSubview(holder)
+        XCTAssertEqual(joining.renders, 1)
+        XCTAssertGreaterThan(holder.invalidations, beforeJoin)
+        withExtendedLifetime(window) {}
+    }
+
     /// Text set straight on the label stands until it next draws: a new
     /// text, style or text size.
     func testTextSetDirectlyStandsUntilTheNextDraw() {
@@ -156,6 +198,24 @@ final class StyledLabelRenderTests: XCTestCase {
         XCTAssertEqual(label.attributedText?.string, "Styled again")
         XCTAssertEqual(label.renders, 2)
         withExtendedLifetime(window) {}
+    }
+}
+
+private final class MeasuringContainer: UIView {
+    private var measuring = false
+    private(set) var invalidations = 0
+    private(set) var invalidatedWhileMeasuring = 0
+
+    func measure(_ body: () -> Void) {
+        measuring = true
+        defer { measuring = false }
+        body()
+    }
+
+    override func setNeedsLayout() {
+        super.setNeedsLayout()
+        invalidations += 1
+        if measuring { invalidatedWhileMeasuring += 1 }
     }
 }
 #endif

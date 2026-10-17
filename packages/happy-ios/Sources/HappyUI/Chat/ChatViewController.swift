@@ -124,6 +124,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// Readying the screen before it is shown (`open`), and how that went.
     private var opening: ChatOpening?
     private(set) var openingReport: ChatOpening.Report?
+    #if DEBUG || HAPPY_FIXTURES
+    /// Separate from ChatOpening's readiness clock, which starts after load.
+    var constructionSeconds: CFTimeInterval = 0
+    private(set) var loadingSeconds: CFTimeInterval = 0
+    private(set) var openingLayoutSeconds: CFTimeInterval = 0
+    #endif
     private var borrowsTraits = false
     /// What the first frame waits for, each in once.
     private var sessionApplied = false
@@ -216,6 +222,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     }
 
     override func viewDidLoad() {
+        #if DEBUG || HAPPY_FIXTURES
+        let loadingStarted = CACurrentMediaTime()
+        defer { loadingSeconds = CACurrentMediaTime() - loadingStarted }
+        #endif
         super.viewDidLoad()
         isTabletLayout = traitCollection.isTabletLayout
         view.backgroundColor = UIColor(Palette.surface)
@@ -394,7 +404,13 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// What the screen still waits for before its first frame, laid out
     /// at its size first so each piece has been asked for.
     private func openingMissing() -> [String] {
-        if view.window == nil { view.layoutIfNeeded() }
+        if view.window == nil {
+            #if DEBUG || HAPPY_FIXTURES
+            let layoutStarted = CACurrentMediaTime()
+            defer { openingLayoutSeconds += CACurrentMediaTime() - layoutStarted }
+            #endif
+            view.layoutIfNeeded()
+        }
         var missing: [String] = []
         if !sessionApplied { missing.append("session") }
         if !checkoutApplied { missing.append("checkout") }

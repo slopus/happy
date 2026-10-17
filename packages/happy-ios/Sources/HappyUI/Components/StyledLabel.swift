@@ -12,7 +12,8 @@ import UIKit
 /// A new label draws nothing until it is first measured, laid out, drawn,
 /// read or put on a window, so one made and set up before it joins its
 /// screen draws once, at the screen's text size, not once as designed and
-/// again when the screen's size reaches it.
+/// again when the screen's size reaches it. Rendering for measurement or a
+/// read does not ask its container for another layout while it is measuring.
 public final class StyledLabel: UILabel {
     public var string: String = "" {
         didSet {
@@ -63,7 +64,7 @@ public final class StyledLabel: UILabel {
 
     /// The style as drawn: scaled where the label follows the text size.
     public var renderedStyle: TextStyle {
-        renderFirst()
+        renderFirst(invalidating: false)
         return textScale.map { style.scaled($0) } ?? style
     }
 
@@ -85,34 +86,34 @@ public final class StyledLabel: UILabel {
         measurements += 1
         #endif
         // Measured before its first trait update: measure what it will draw.
-        if rendered { syncTextSize() } else { renderFirst() }
+        if rendered { syncTextSize(invalidating: false) } else { renderFirst(invalidating: false) }
         return super.sizeThatFits(size)
     }
 
     public override var intrinsicContentSize: CGSize {
-        renderFirst()
+        renderFirst(invalidating: false)
         return super.intrinsicContentSize
     }
 
     public override func textRect(forBounds bounds: CGRect, limitedToNumberOfLines numberOfLines: Int) -> CGRect {
-        renderFirst()
+        renderFirst(invalidating: false)
         return super.textRect(forBounds: bounds, limitedToNumberOfLines: numberOfLines)
     }
 
     public override func layoutSubviews() {
-        renderFirst()
+        renderFirst(invalidating: true)
         super.layoutSubviews()
     }
 
     public override func drawText(in rect: CGRect) {
-        renderFirst()
+        renderFirst(invalidating: false)
         super.drawText(in: rect)
     }
 
     /// Read as drawn. Set directly, it stands until the label next draws.
     public override var attributedText: NSAttributedString? {
         get {
-            renderFirst()
+            renderFirst(invalidating: false)
             return super.attributedText
         }
         set {
@@ -123,7 +124,7 @@ public final class StyledLabel: UILabel {
 
     public override var text: String? {
         get {
-            renderFirst()
+            renderFirst(invalidating: false)
             return super.text
         }
         set {
@@ -135,7 +136,7 @@ public final class StyledLabel: UILabel {
     public override func didMoveToWindow() {
         super.didMoveToWindow()
         guard rendered else {
-            if window != nil { renderFirst() }
+            if window != nil { renderFirst(invalidating: true) }
             return
         }
         if syncTextSize() { setNeedsLayoutUpTheTree() }
@@ -149,26 +150,26 @@ public final class StyledLabel: UILabel {
 
     /// Draws again when the text size here changed; true when it did.
     @discardableResult
-    private func syncTextSize() -> Bool {
+    private func syncTextSize(invalidating: Bool = true) -> Bool {
         let scale = traitCollection.textEnvironment?.scale
         guard scale != textScale else { return false }
         textScale = scale
-        render()
+        render(invalidating: invalidating)
         return true
     }
 
     /// Draws the text for the first time, at the text size here now: the
     /// traits UIKit would hand down before the next layout, taken now, as a
     /// label just put in its screen still has the ones it had before.
-    private func renderFirst() {
+    private func renderFirst(invalidating: Bool) {
         guard !rendered else { return }
         updateTraitsIfNeeded()
         rendered = true
         textScale = traitCollection.textEnvironment?.scale
-        render()
+        render(invalidating: invalidating)
     }
 
-    private func render() {
+    private func render(invalidating: Bool = true) {
         // Not drawn yet: the first draw takes everything set until then.
         guard rendered else {
             setNeedsLayout()
@@ -187,8 +188,10 @@ public final class StyledLabel: UILabel {
         } else {
             super.attributedText = text
         }
-        setNeedsLayout()
-        superview?.setNeedsLayout()
+        if invalidating {
+            setNeedsLayout()
+            superview?.setNeedsLayout()
+        }
     }
 
     public override var numberOfLines: Int {

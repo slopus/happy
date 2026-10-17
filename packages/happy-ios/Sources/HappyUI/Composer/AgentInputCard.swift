@@ -306,7 +306,32 @@ public final class AgentInputCardView: UIView {
     private let effortChip = ComposerChipButton(chip: .effort)
     private let primaryHost = PassthroughView()
     private let primaryButton = ComposerPrimaryButton()
-    private let desktopControls = AgentInputDesktopControlsView()
+    private var installedDesktopControls: AgentInputDesktopControlsView?
+    /// A phone's compact card never mounts the hidden desktop button tree.
+    /// Keep it after the first wide layout so resizing preserves its controls.
+    private var desktopControls: AgentInputDesktopControlsView {
+        if let installedDesktopControls { return installedDesktopControls }
+        let controls = AgentInputDesktopControlsView()
+        controls.onSelect = { [weak self] key, chip in
+            guard let self else { return }
+            self.delegate?.agentInputCard(self, didSelect: key, in: chip)
+        }
+        controls.onStop = { [weak self] in
+            guard let self else { return }
+            self.delegate?.agentInputCardDidPressStop(self)
+        }
+        controls.onImage = { [weak self] in
+            guard let self else { return }
+            self.delegate?.agentInputCardDidPressAdd(self)
+        }
+        controls.onSend = { [weak self] in
+            guard let self else { return }
+            self.delegate?.agentInputCardDidPressSend(self)
+        }
+        installedDesktopControls = controls
+        actionsGroup.addSubview(controls)
+        return controls
+    }
     private var primaryFlash: CGFloat = 0
     /// The text, kept off the main thread from the storage's edits, so a
     /// measurement or the draft gets it without a copy on main.
@@ -421,24 +446,6 @@ public final class AgentInputCardView: UIView {
         primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
         primaryHost.addSubview(primaryButton)
         actionsGroup.addSubview(primaryHost)
-
-        desktopControls.onSelect = { [weak self] key, chip in
-            guard let self else { return }
-            self.delegate?.agentInputCard(self, didSelect: key, in: chip)
-        }
-        desktopControls.onStop = { [weak self] in
-            guard let self else { return }
-            self.delegate?.agentInputCardDidPressStop(self)
-        }
-        desktopControls.onImage = { [weak self] in
-            guard let self else { return }
-            self.delegate?.agentInputCardDidPressAdd(self)
-        }
-        desktopControls.onSend = { [weak self] in
-            guard let self else { return }
-            self.delegate?.agentInputCardDidPressSend(self)
-        }
-        actionsGroup.addSubview(desktopControls)
 
         // didSet doesn't run in the initializer.
         syncTextSize()
@@ -1107,7 +1114,7 @@ public final class AgentInputCardView: UIView {
         frosted.isHidden = isDesktop
         middle.isHidden = isDesktop
         primaryHost.isHidden = isDesktop
-        desktopControls.isHidden = !isDesktop
+        installedDesktopControls?.isHidden = !isDesktop
         surface.layer.cornerRadius = isDesktop ? AgentInputDesktopLayout.Metrics.panelRadius : metrics.shellRadius
         let padding = isDesktop
             ? (top: AgentInputDesktopLayout.Metrics.textPaddingTop, bottom: AgentInputDesktopLayout.Metrics.textPaddingBottom)
