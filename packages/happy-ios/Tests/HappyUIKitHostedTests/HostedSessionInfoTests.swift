@@ -45,6 +45,11 @@ final class HostedSessionInfoTests: XCTestCase {
         let store = account.store
         let record = Self.session(agentState: agentState)
         try await Task.detached { try store.upsertSessions([record]) }.value
+        // Home, under every chat, keeps the account's home feed read.
+        let home = Task { for await _ in account.homeFeed.snapshots() {} }
+        addTeardownBlock { home.cancel() }
+        let read = try await until { account.homeFeed.latest?.sessions.isEmpty == false }
+        XCTAssertTrue(read, "home never read the store")
         return (controller, account)
     }
 
@@ -155,6 +160,42 @@ final class HostedSessionInfoTests: XCTestCase {
         XCTAssertTrue(screen.contains(firstFrame.origin), "\(firstFrame)")
         XCTAssertGreaterThanOrEqual(firstFrame.minY, navigation.navigationBar.frame.maxY - 1)
         XCTAssertEqual(info.title, "Session info screen")
+        await controller.signOut()
+    }
+
+    /// The bar has the title home shows as the screen is pushed, before its
+    /// own snapshot is read; that snapshot, holding the same session, then
+    /// changes nothing in the title.
+    func testTheTitleIsInTheBarAsItIsPushedAndTheSessionsOwnSnapshotChangesNothing() async throws {
+        let (controller, _) = try await signedIn(agentState: .object(["controlledByUser": .bool(false)]))
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let (window, navigation, root) = try await hosted()
+        root.push(.sessionInfo(id: Self.sessionId), context: context)
+        let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
+        // Loaded as the push's transition starts; loaded now, before the
+        // session's own snapshot can have reached the main thread, it has
+        // the title and none of the groups.
+        info.loadViewIfNeeded()
+        let titleView = try XCTUnwrap(info.navigationItem.titleView as? NavigationTitleView)
+        XCTAssertEqual(titleView.title, "Session info screen")
+        XCTAssertEqual(info.title, "Session info screen")
+        XCTAssertTrue(subviews(ItemGroupView.self, in: info.view).isEmpty)
+        let size = titleView.frame.size
+        XCTAssertGreaterThan(size.width, 0)
+        #if DEBUG
+        let renders = titleView.titleLabel.renders
+        #endif
+
+        // The session's own snapshot is in once its groups are shown.
+        let opened = try await until { !self.shownGroups(info, in: window).isEmpty }
+        XCTAssertTrue(opened, "session info showed no groups")
+        XCTAssertTrue(info.navigationItem.titleView === titleView, "the same title view")
+        XCTAssertEqual(titleView.title, "Session info screen")
+        XCTAssertEqual(titleView.frame.size, size)
+        XCTAssertEqual(info.title, "Session info screen")
+        #if DEBUG
+        XCTAssertEqual(titleView.titleLabel.renders, renders, "the title was not drawn again")
+        #endif
         await controller.signOut()
     }
 

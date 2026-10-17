@@ -155,14 +155,24 @@ rule 8), and what the Linux benchmarks measure.
 - The sidebar's stamps and day headings are written at the time of the
   derivation and catch up with the next store change; it does not use
   `ClockWake` yet.
-- None of the UIKit behaviour is verified on a device. What's New is
-  timed on the iOS 26.5 simulator only (below).
+- None of the UIKit behaviour is verified on a device. What's New and
+  session info's push are timed on the iOS 26.5 simulator only (below).
 - Troubleshooting's guide is a section of its own with `UITextView`
   terminal lines that lay themselves out again whenever the guide's safe
   area changes, so while it crosses the bar's edge. `ItemRowView` keeps
   no layout either and measures its labels on those passes (14 label
   measurements over a 41-frame scroll of six groups in
   `GroupedListMeasureTests`). Neither moves a frame.
+- Pushing a screen holds the main thread longer than the 4.2 ms block,
+  and that turn is UIKit's. With session info's own work under the block
+  (its groups made a few rows a frame), its push turn was 13.9 ms in Debug
+  and 15.0 ms in Preview (medians of seven warm opens; 29.4 and 40.8 ms
+  the first time in the process). Pushing an empty screen with the same
+  title, in the same test, took 19.4 and 19.2 ms. The end of the push
+  animation is two more turns of about 5 to 6 ms for the empty screen.
+  iPhone 17 Pro simulator, iOS 26.5, Xcode 27.1, 1 MB agent state
+  (`HostedSessionInfoTests.testHowLongOpeningSessionInfoHoldsTheMainThread`,
+  which prints both). Not worked on.
 
 ## Before and after
 

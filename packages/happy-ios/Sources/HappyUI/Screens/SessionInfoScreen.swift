@@ -113,6 +113,12 @@ final class SessionInfoViewController: UIViewController {
         followsTextSize()
         showsBackTitle()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
+        // The title home already shows, in the bar as the screen slides in.
+        // The first frame of the session's own snapshot sets the same title,
+        // which changes nothing (`setPlainHeaderTitle`).
+        if let seed = SessionInfoSeed(session.homeFeed.latest, sessionId: sessionId) {
+            setPlainHeaderTitle(seed.title ?? Strings.Session.newChat)
+        }
         #if DEBUG
         let includesRaw = true
         #else
