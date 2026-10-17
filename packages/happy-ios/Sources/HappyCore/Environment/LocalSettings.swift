@@ -39,6 +39,13 @@ public enum ThemePreference: String, CaseIterable, Sendable {
     }
 }
 
+/// The local Home renderer. Older installations and unknown future values
+/// keep the established table renderer.
+public enum HomeListRenderer: String, CaseIterable, Sendable {
+    case tableView = "UITableView"
+    case ultraList = "UltraList"
+}
+
 /// Device-only settings that belong to the signed-in account, like
 /// happy-app's `local-settings`. Logout clears them, as happy-app's
 /// `clearPersistence()` does; the server setting lives elsewhere because it
@@ -73,6 +80,11 @@ public final class LocalSettings: Sendable {
     public var themePreference: ThemePreference {
         get { storage.string(forKey: Keys.themePreference).flatMap(ThemePreference.init(rawValue:)) ?? .adaptive }
         set { storage.set(newValue.rawValue, forKey: Keys.themePreference) }
+    }
+
+    public var homeListRenderer: HomeListRenderer {
+        get { storage.string(forKey: Keys.homeListRenderer).flatMap(HomeListRenderer.init(rawValue:)) ?? .tableView }
+        set { storage.set(newValue.rawValue, forKey: Keys.homeListRenderer) }
     }
 
     /// Ten taps on Settings › Version.
@@ -141,7 +153,7 @@ public final class LocalSettings: Sendable {
     }
 
     public func clear() {
-        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.markdownCopyV2, Keys.expandedProjects, Keys.acknowledgedCliVersions, Keys.registeredPushToken, Keys.zenMode, NewSessionDraft.storageKey] {
+        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.homeListRenderer, Keys.devModeEnabled, Keys.markdownCopyV2, Keys.expandedProjects, Keys.acknowledgedCliVersions, Keys.registeredPushToken, Keys.zenMode, NewSessionDraft.storageKey] {
             storage.set(nil, forKey: key)
         }
     }
@@ -156,6 +168,7 @@ public final class LocalSettings: Sendable {
     private enum Keys {
         static let linkComputerChecklist = "linkComputerChecklist"
         static let themePreference = "themePreference"
+        static let homeListRenderer = "homeListRenderer"
         static let devModeEnabled = "devModeEnabled"
         static let markdownCopyV2 = "markdownCopyV2"
         static let expandedProjects = "expandedProjects"

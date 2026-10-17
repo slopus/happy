@@ -85,6 +85,28 @@ public final class SettingsAppearanceViewController: UIViewController {
             },
         ]))
 
+        let renderer = context.account.localSettings.homeListRenderer
+        let rendererRow = ItemRowView(
+            title: Strings.HomeRenderer.title,
+            subtitle: Strings.HomeRenderer.description,
+            detail: renderer.rawValue,
+            icon: ItemIcon(.ionicons("list-outline"), tint: connecting)
+        ) { [weak self] in
+            guard let self else { return }
+            let alert = UIAlertController(title: Strings.HomeRenderer.title, message: nil, preferredStyle: .alert)
+            for choice in HomeListRenderer.allCases {
+                let action = UIAlertAction(title: choice.rawValue, style: .default) { [weak self] _ in
+                    guard let self else { return }
+                    HomeRendererPreference.set(choice, settings: self.context.account.localSettings)
+                    self.rebuild()
+                }
+                alert.addAction(action)
+            }
+            alert.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
+            self.present(alert, animated: true)
+        }
+        sections.append(ItemGroupView(rows: [rendererRow]))
+
         sections.append(ItemGroupView(title: Strings.SettingsLanguage.title, footer: Strings.SettingsLanguage.description, rows: [
             ItemRowView(
                 title: Strings.SettingsLanguage.currentLanguage,

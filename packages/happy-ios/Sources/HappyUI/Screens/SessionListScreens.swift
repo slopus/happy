@@ -36,6 +36,8 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     /// changed): the owner derives the rows again.
     var onExpandedProjectsChange: (() -> Void)?
     private let tableView = UITableView(frame: .zero, style: .plain)
+    private var ultraList: HomeUltraListAdapter?
+    let rendererPreference: HomeListRenderer
     /// The table has asked for its rows once; from then on it only takes
     /// changesets.
     private var tableLoaded = false
@@ -79,6 +81,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     }
 
     private func applySelection() {
+        if ultraList != nil { updateUltraList(); return }
         guard isViewLoaded, tableLoaded else { return }
         if let path = selectedSessionId.flatMap({ model.index(ofSession: $0) }).map({ IndexPath(row: $0, section: 0) }) {
             tableView.selectRow(at: path, animated: false, scrollPosition: .none)
@@ -92,6 +95,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     init(context: AppContext, session: AccountSession) {
         self.context = context
         self.session = session
+        rendererPreference = context.account.localSettings.homeListRenderer
         super.init(nibName: nil, bundle: nil)
         followsTextSize()
     }
@@ -102,6 +106,25 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     }
 
     override func loadView() {
+        if rendererPreference == .ultraList {
+            let rendered = HomeUltraListView()
+            let adapter = HomeUltraListAdapter(view: rendered, pictures: session.avatarPictures)
+            adapter.onSelect = { [weak self] id in self?.select(id) }
+            adapter.onLongPress = { [weak self] id in self?.hold(id) }
+            adapter.onArchive = { [weak self] id in
+                guard let self, self.context.account.session === self.session,
+                      case .flat(.session(let row))? = self.row(id), !row.archived else { return }
+                self.actions.archive(row.id)
+            }
+            adapter.onCreateWorkspace = { [weak self] id in
+                guard let self, self.context.account.session === self.session,
+                      case .project(.project(let entry))? = self.row(id) else { return }
+                self.createWorkspace(entry)
+            }
+            ultraList = adapter
+            view = rendered
+            return
+        }
         view = tableView
     }
 
@@ -142,6 +165,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         registerForTraitChanges([UITraitDisplayScale.self, UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
             self.requestTextEnvironment()
         }
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.updateUltraList() }
         tableView.backgroundColor = UIColor(model.grouped ? Palette.groupedBackground : Palette.flatListBackground)
         // The rows come in with the first text environment.
         requestTextEnvironment()
@@ -160,6 +184,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     /// dock; the scroll indicator starts at the header's edge.
     private func applyContentInsets() {
         guard isViewLoaded, let insets = contentInsets else { return }
+        if let ultraList { ultraList.setInsets(insets); return }
         tableView.contentInset = UIEdgeInsets(top: insets.contentTop, left: 0, bottom: insets.listBottom, right: 0)
         tableView.verticalScrollIndicatorInsets = UIEdgeInsets(top: insets.chromeTop, left: 0, bottom: 0, right: 0)
         if !didScrollToTop {
@@ -170,6 +195,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateUltraList()
         sizeHeader()
     }
 
@@ -179,6 +205,11 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     func apply(_ next: HomeListModel, changeset: RowChangeset, animated: Bool) -> Int {
         let previous = model
         model = next
+        if ultraList != nil {
+            updateUltraList()
+            if next.offline != previous.offline { updateBanners() }
+            return changeset.touchedRows
+        }
         guard isViewLoaded, tableLoaded else { return 0 }
         if next.grouped != previous.grouped {
             // The two layouts share no row ids, so the changeset swaps every
@@ -333,6 +364,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         guard isViewLoaded, environment.text == textRequested, environment != textEnvironment else { return }
         let first = textEnvironment == nil
         textEnvironment = environment
+        if ultraList != nil { updateUltraList(); sizeHeader(); return }
         ApplyPerf.measure(.homeList) {
             if first {
                 tableLoaded = true
@@ -483,10 +515,11 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
             if tableView.tableHeaderView != nil {
                 keepingTopRow { tableView.tableHeaderView = nil }
             }
+            ultraList?.setBanner(nil, height: 0)
             return
         }
         guard let environment = textEnvironment else { return }
-        let key = HeaderKey(banners: state, width: tableView.bounds.width, maxWidth: ContentWidth.maxWidth, environment: environment)
+        let key = HeaderKey(banners: state, width: view.bounds.width, maxWidth: ContentWidth.maxWidth, environment: environment)
         guard key.width > 0, key != headerRequested else { return }
         headerRequested = key
         headerTask = Task { @MainActor [weak self] in
@@ -503,6 +536,12 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     /// is.
     func landHeader(_ key: HeaderKey, height: CGFloat) {
         guard key == headerRequested else { return }
+        if let ultraList {
+            banners.content = key.banners
+            banners.frame = CGRect(x: 0, y: 0, width: key.width, height: height)
+            ultraList.setBanner(banners, height: height)
+            return
+        }
         ApplyPerf.measure(.homeList) {
             // The words the height was measured with.
             banners.content = key.banners
@@ -571,6 +610,50 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
 
     // MARK: Delegate
 
+    private func updateUltraList() {
+        guard let ultraList, let environment = textEnvironment else { return }
+        ultraList.update(.init(model: model, width: view.bounds.width, environment: environment, dark: traitCollection.userInterfaceStyle == .dark, selected: selectedSessionId))
+    }
+
+    func deactivateRenderer() {
+        textEnvironmentTask?.cancel(); headerTask?.cancel(); ultraList?.deactivate()
+    }
+
+    private func row(_ id: HomeListRow.ID) -> Item? {
+        model.ids.firstIndex(of: id).map { model.rows[$0] }
+    }
+
+    private func select(_ id: HomeListRow.ID) {
+        guard context.account.session === session, let item = row(id) else { return }
+        select(item)
+    }
+
+    private func select(_ item: Item) {
+        switch item {
+        case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
+            session.updateSettings(["hideInactiveSessions": .bool(!hidden)])
+        case .project(.worktreeToggle(let toggle)):
+            toggleExpanded(toggle.projectId)
+        default:
+            guard let sessionId = item.sessionId else { return }
+            push(.session(id: sessionId), context: context)
+        }
+        applySelection()
+    }
+
+    private func hold(_ id: HomeListRow.ID) {
+        guard context.account.session === session, let item = row(id) else { return }
+        hold(item)
+    }
+
+    private func hold(_ item: Item) {
+        switch item {
+        case .flat(.session(let row)): actions.present(sessionId: row.id)
+        case .project(.project(let entry)): showProjectActions(entry)
+        default: break
+        }
+    }
+
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         guard let item = item(at: indexPath) else { return 0 }
         return height(item, grouped: grouped, width: tableView.bounds.width)
@@ -589,16 +672,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         guard let item = item(at: indexPath) else { return }
-        switch item {
-        case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
-            session.updateSettings(["hideInactiveSessions": .bool(!hidden)])
-        case .project(.worktreeToggle(let toggle)):
-            toggleExpanded(toggle.projectId)
-        default:
-            guard let sessionId = item.sessionId else { return }
-            push(.session(id: sessionId), context: context)
-        }
-        applySelection() // Tablet
+        select(item)
     }
 
     /// FlatSessionRow.tsx's swipe: "Archive Session" on red. Only the flat
@@ -626,14 +700,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
               let indexPath = tableView.indexPathForRow(at: gesture.location(in: tableView)),
               let item = item(at: indexPath)
         else { return }
-        switch item {
-        case .flat(.session(let row)):
-            actions.present(sessionId: row.id)
-        case .project(.project(let entry)):
-            showProjectActions(entry)
-        default:
-            break
-        }
+        hold(item)
     }
 }
 

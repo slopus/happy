@@ -73,6 +73,7 @@ final class TabletSidebarViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        NotificationCenter.default.addObserver(self, selector: #selector(rendererChanged), name: HomeRendererPreference.didChange, object: nil)
         view.backgroundColor = UIColor(Palette.groupedBackground)
         view.clipsToBounds = true
         spinner.color = UIColor(Palette.textSecondary)
@@ -264,6 +265,27 @@ final class TabletSidebarViewController: UIViewController {
         list = controller
         view.setNeedsLayout()
         return model.rows.count
+    }
+
+    @objc private func rendererChanged() {
+        guard context.account.session === session else { return }
+        let renderer = context.account.localSettings.homeListRenderer
+        if let previous = list, previous.rendererPreference != renderer {
+            let model = previous.model
+            let hidden = previous.view.isHidden
+            previous.deactivateRenderer(); previous.willMove(toParent: nil)
+            previous.view.removeFromSuperview(); previous.removeFromParent(); list = nil
+            _ = showList(model, changeset: RowChangeset()); list?.view.isHidden = hidden
+        }
+        if let previous = grouped, previous.rendererPreference != renderer {
+            let model = previous.model
+            let headings = previous.headings
+            let hidden = previous.view.isHidden
+            previous.deactivateRenderer(); previous.willMove(toParent: nil)
+            previous.view.removeFromSuperview(); previous.removeFromParent(); grouped = nil
+            _ = showGrouped(model, changeset: RowChangeset(), headings: headings, moved: [])
+            grouped?.view.isHidden = hidden
+        }
     }
 
     private func showGrouped(

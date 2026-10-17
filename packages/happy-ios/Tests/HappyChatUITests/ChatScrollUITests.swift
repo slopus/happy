@@ -6,7 +6,7 @@ import XCTest
 /// so each action would wait out the minute. Best effort: the wait is
 /// private API, replaced where it is found and left alone where it isn't
 /// (the tests are only slower then).
-private let skipsQuiescence: Bool = {
+let skipsQuiescence: Bool = {
     guard let process = NSClassFromString("XCUIApplicationProcess") else { return false }
     var replaced = false
     let one: @convention(block) (AnyObject, Bool) -> Void = { _, _ in }
