@@ -18,4 +18,6 @@
     <string name="settings_appearance_file_diffs_sidebar_description">Show git changes next to the chat on desktop</string>
     <!-- ChatList.tsx's scroll-to-bottom button, unnamed there -->
     <string name="chat_scroll_to_bottom">Scroll to bottom</string>
+    <!-- Accessibility label for the unlabeled close-circle in settings/voice/language.tsx. -->
+    <string name="voice_clear_search">Clear search</string>
 </resources>

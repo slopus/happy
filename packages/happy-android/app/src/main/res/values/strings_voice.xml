@@ -1,4 +1,0 @@
-<resources>
-    <!-- Accessibility label for the unlabeled close-circle in settings/voice/language.tsx. -->
-    <string name="voice_clear_search">Clear search</string>
-</resources>

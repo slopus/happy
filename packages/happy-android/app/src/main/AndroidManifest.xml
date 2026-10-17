@@ -7,8 +7,10 @@
     <!-- app.config.js android.permissions; asked for at runtime (push/PushPermission.kt) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Removal markers are absent from the merged manifest; lint still inspects them. -->
     <!-- ElevenLabs uses audio only; remove LiveKit's unused video capture surface. -->
-    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove"
+        tools:ignore="PermissionImpliesUnsupportedChromeOsHardware" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" tools:node="remove" />
 
     <!-- expo-store-review's isAvailableAsync looks for the Play Store (ui/home/ReviewPrompt.kt). -->
@@ -23,7 +25,8 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Happy">
-        <service android:name="io.livekit.android.room.track.screencapture.ScreenCaptureService" tools:node="remove" />
+        <service android:name="io.livekit.android.room.track.screencapture.ScreenCaptureService"
+            tools:node="remove" tools:ignore="MissingClass" />
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
