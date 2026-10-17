@@ -50,6 +50,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
     private var controller: AccountController?
     private var probe: ChatScrollProbe?
+    private var whatsNew: WhatsNewProbe?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
@@ -59,6 +60,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
         self.window = window
         let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "whatsnew" {
+            whatsNew = WhatsNewProbe(window: window, arguments: arguments)
+            return
+        }
         let fixture = arguments.firstIndex(of: "-fixture").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } ?? FixtureScenario.long.rawValue
         let scrollTo = arguments.firstIndex(of: "-scrollTo").flatMap { arguments.indices.contains($0 + 1) ? Double(arguments[$0 + 1]) : nil }
         Task {

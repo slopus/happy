@@ -66,8 +66,13 @@ Following now:
 - Troubleshooting, the offline checklist home shows when every computer is
   offline, and the QR scanner (happy-app opens the system's, which scales).
 - Their inputs (the server field, the secret key) and the text not drawn by
-  `StyledLabel` (What's New's paragraphs, the Claude command, terminal
-  lines).
+  `StyledLabel` (the Claude command, terminal lines).
+- What's New's releases: the titles, summary lines, paragraphs and bullets
+  are laid out off the main thread at the list's width and text size
+  (`ChangelogPlan`, with the screen's `TextEnvironment` in its input), so
+  a new size plans every release again once, off the main thread, and the
+  old plan stays drawn until the new one is in. `GroupedListMeasureTests`
+  checks the drawn frames against the plan at L, XXXL, AX-M and AX-XXXL.
 - The chat's composer, on its own: `SessionComposerView` sets the trait on
   itself, because its height is worked out from its text as drawn every
   time the chat lays out, and nothing in the chat's plan assumes it. The

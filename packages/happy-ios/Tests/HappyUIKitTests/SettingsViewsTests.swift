@@ -71,16 +71,17 @@ final class SettingsViewsTests: XCTestCase {
         XCTAssertEqual(card.label.string, Strings.SettingsAccount.secretKeyLabel)
     }
 
-    func testChangelogCardHasATextPerBlock() {
-        let card = ChangelogCardView(entry: Changelog.Entry(
-            title: "T",
-            summary: "Thanks [@a](https://example.com)",
-            markdown: "- **Bots** — one\n- two\n\nAfter."
-        ))
-        XCTAssertNotNil(card.summary)
-        XCTAssertEqual(card.texts.count, 3)
-        XCTAssertEqual(card.bullets.map { $0 != nil }, [true, true, false])
-        XCTAssertEqual(card.texts[0].attributedText.string, "Bots — one")
+    func testChangelogPlanHasATextPerBlock() throws {
+        let plan = ChangelogPlan.make(
+            .init(width: 393, text: TextEnvironment(scale: .standard, displayScale: 3), maxWidth: nil),
+            entries: [Changelog.Entry(title: "T", summary: "Thanks [@a](https://example.com)", markdown: "- **Bots** — one\n- two\n\nAfter.")]
+        )
+        let entry = try XCTUnwrap(plan.entries.first)
+        XCTAssertEqual(entry.summary?.string.string, "Thanks @a")
+        XCTAssertEqual(entry.texts.count, 3)
+        XCTAssertEqual(entry.layout.body.bullets.map { $0 != nil }, [true, true, false])
+        XCTAssertNotNil(entry.bullet)
+        XCTAssertEqual(entry.texts[0].string.string, "Bots — one")
     }
 }
 #endif
