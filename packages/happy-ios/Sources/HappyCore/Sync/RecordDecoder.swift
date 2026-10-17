@@ -7,7 +7,7 @@ import HappyWire
 struct RecordDecoder: Sendable {
     let keyRing: KeyRing
 
-    func session(_ row: APISession, previous: SessionRecord? = nil) -> SessionRecord {
+    func session(_ row: APISession, previous: SessionRecord? = nil, avatarUpdateSeq: Int? = nil) -> SessionRecord {
         let cipher = keyRing.cipher(wrappedKey: row.dataEncryptionKey)
         let sameKey = previous?.dataKeyCipher == row.dataEncryptionKey
         let cachedMetadata = sameKey && previous?.metadataVersion == row.metadataVersion
@@ -29,7 +29,8 @@ struct RecordDecoder: Sendable {
             agentStateCipher: row.agentState,
             agentState: cachedAgentState ?? row.agentState.flatMap { cipher?.decrypt(base64: $0) },
             dataKeyCipher: row.dataEncryptionKey,
-            decryptable: cipher != nil, avatar: row.avatar, avatarVersion: row.avatarVersion ?? row.avatar?.version
+            decryptable: cipher != nil, avatar: row.avatar, avatarVersion: row.avatarVersion ?? row.avatar?.version,
+            avatarUpdateSeq: avatarUpdateSeq
         )
     }
 

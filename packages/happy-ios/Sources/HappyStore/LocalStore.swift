@@ -135,6 +135,15 @@ public final class LocalStore: Sendable {
         return try performRead { db in try SessionRecord.filter(ids.contains(Column("id"))).fetchAll(db) }
     }
 
+    /// A tiny checkpoint captured before an HTTP listing. Old servers have
+    /// no deletion revision, so an in-flight fetch must not undo live art.
+    public func avatarUpdateSequences() throws -> [String: Int] {
+        try performRead { db in
+            try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, avatarUpdateSeq FROM session WHERE avatarUpdateSeq IS NOT NULL")
+                .map { ($0["id"] as String, $0["avatarUpdateSeq"] as Int) })
+        }
+    }
+
     /// Merges sessions from a list fetch or a `new-session` update.
     public func upsertSessions(_ incoming: [SessionRecord], reconcileComposer: SessionComposerReconciliation? = nil) throws {
         try applySessionListBatch(incoming, reconcileComposer: reconcileComposer)
@@ -214,7 +223,7 @@ public final class LocalStore: Sendable {
                 else { newer = (avatarUpdateSeq ?? 0) > (record.avatarUpdateSeq ?? -1) }
                 if newer {
                     record.avatar = avatar
-                    record.avatarVersion = revision
+                    record.avatarVersion = revision ?? record.avatarVersion
                     record.avatarUpdateSeq = avatarUpdateSeq
                 }
             }
@@ -867,12 +876,13 @@ public final class LocalStore: Sendable {
             record.projectId = incoming.projectId
         }
         // Revisions survive deletion, so a delayed fetch cannot resurrect art.
+        let sameAvatarCheckpoint = incoming.avatarUpdateSeq == record.avatarUpdateSeq
         if let revision = incoming.avatarVersion,
-           revision >= (record.avatarVersion ?? -1) {
+           revision > (record.avatarVersion ?? -1)
+            || (revision == record.avatarVersion && sameAvatarCheckpoint && incoming.updatedAt >= old.updatedAt) {
             record.avatar = incoming.avatar
             record.avatarVersion = revision
-        } else if incoming.avatarVersion == nil, record.avatarVersion == nil,
-                  incoming.updatedAt >= old.updatedAt, record.avatarUpdateSeq == nil {
+        } else if incoming.avatarVersion == nil, sameAvatarCheckpoint, incoming.updatedAt >= old.updatedAt {
             record.avatar = incoming.avatar
         }
         record.seq = max(record.seq, incoming.seq)

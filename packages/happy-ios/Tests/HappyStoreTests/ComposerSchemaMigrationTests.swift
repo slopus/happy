@@ -19,7 +19,7 @@ final class ComposerSchemaMigrationTests: XCTestCase {
             try Schema.migrator.migrate(writer, upTo: "v5")
             try await writer.write { db in try db.execute(sql: Self.cachedData) }
             before = try Self.contents(writer)
-            originalColumns = try writer.read { db in
+            originalColumns = try await writer.read { db in
                 try Dictionary(uniqueKeysWithValues: Self.preservedTables.map { ($0, try db.columns(in: $0).map(\.name)) })
             }
             try await writer.read { db in
@@ -88,6 +88,27 @@ final class ComposerSchemaMigrationTests: XCTestCase {
             let count = try await store.writer.read { db in try ComposerStateRecord.fetchCount(db) }
             XCTAssertEqual(count, 1)
         }
+    }
+
+    func testAvatarBackfillPreservesOfflineDataAndOnlyInvalidatesFullListingMarker() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("avatar-backfill-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("store.sqlite")
+        do {
+            let writer = try DatabaseQueue(path: url.path)
+            try Schema.migrator.migrate(writer, upTo: "v6")
+            try await writer.write { db in
+                try db.execute(sql: Self.cachedData)
+                try db.execute(sql: "INSERT INTO syncState VALUES ('sessions.lastFullSync', 999)")
+            }
+        }
+        let store = try LocalStore.open(at: url)
+        XCTAssertNil(try store.cursor(.sessionsLastFullSync))
+        XCTAssertEqual(try store.cursor(.sessionsChangedSince), 1234)
+        XCTAssertEqual(try store.session(id: "session")?.metadata?["machineId"]?.stringValue, "machine")
+        XCTAssertEqual(try store.messages(sessionId: "session").count, 1)
+        XCTAssertEqual(try store.sessionDetail(sessionId: "session").composer, .object([:]))
     }
 
     private static let preservedTables = [

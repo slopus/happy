@@ -9,19 +9,19 @@ public struct AvatarImageSource: Hashable, Sendable {
     public let id: String
     public let descriptor: AvatarDescriptor
     public let dataKeyCipher: String?
+    public let cacheKey: String
 
     public init(scope: Scope, id: String, descriptor: AvatarDescriptor, dataKeyCipher: String?) {
         self.scope = scope
         self.id = id
         self.descriptor = descriptor
         self.dataKeyCipher = dataKeyCipher
-    }
-
-    public var cacheKey: String {
         // Length-delimited JSON distinguishes refs, preview replacements and
-        // key rotation, and is hashed before being used as a disk filename.
-        (try? JSONEncoder().encode([scope.rawValue, id, descriptor.ref, String(descriptor.version), descriptor.preview, dataKeyCipher ?? ""]))
+        // key rotation. Derive once with row models off main, so configuring
+        // a reused cell only performs the memory cache lookup.
+        let identity = (try? JSONEncoder().encode([scope.rawValue, id, descriptor.ref, String(descriptor.version), descriptor.preview, dataKeyCipher ?? ""]))
             .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        self.cacheKey = PictureFiles.name(identity)
     }
 
     public static func project(_ project: ProjectRecord) -> Self? {

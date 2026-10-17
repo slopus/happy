@@ -61,6 +61,11 @@ final class PrivateAvatarTests: XCTestCase {
         XCTAssertEqual(result.avatarUpdateSeq, 50)
         _ = try store.applySessionUpdate(id: row.id, metadata: nil, agentState: nil, projectId: nil)
         XCTAssertEqual(try store.session(id: row.id), result, "omitted avatar is not deletion")
+        _ = try store.applySessionUpdate(id: row.id, metadata: nil, agentState: nil, projectId: nil,
+            avatar: .some(nil), avatarUpdateSeq: 52)
+        try store.upsertSessions([row])
+        XCTAssertNil(try store.session(id: row.id)?.avatar)
+        XCTAssertEqual(try store.session(id: row.id)?.avatarVersion, 5, "versionless deletion retains the known revision")
     }
 
     func testUnversionedSocketOrderAndNoop() async throws {
@@ -91,18 +96,59 @@ final class PrivateAvatarTests: XCTestCase {
         XCTAssertEqual(decoder.session(row).avatarVersion, 3, "descriptor version supports servers before separate tombstone revisions")
         let store = try LocalStore.inMemory()
         try store.upsertSessions([decoder.session(row)])
-        try store.upsertSessions([decoder.session(old)])
-        XCTAssertEqual(try store.session(id: "session")?.avatar?.version, 3, "an older server omitting artwork cannot clear a known revision")
+        // A live deletion without a revision must survive a listing that
+        // started before it, while a later authoritative fetch may clear art.
+        _ = try store.applySessionUpdate(id: "session", metadata: nil, agentState: nil, projectId: nil,
+            avatar: .some(nil), avatarUpdateSeq: 20)
+        try store.upsertSessions([decoder.session(row)])
+        XCTAssertNil(try store.session(id: "session")?.avatar)
+        XCTAssertEqual(try store.session(id: "session")?.avatarVersion, 3)
+        let sequences = try store.avatarUpdateSequences()
+        try store.upsertSessions([decoder.session(old, avatarUpdateSeq: sequences["session"])])
+        XCTAssertNil(try store.session(id: "session")?.avatar, "an old server's authoritative null clears art after its live checkpoint")
         json["avatar"] = .object(["ref": .string(""), "preview": .string("bad"), "version": .number(-1)])
         let malformed = try JSONDecoder().decode(APISession.self, from: JSONValue.object(json).encoded())
         XCTAssertNil(malformed.avatar)
         XCTAssertEqual(malformed.id, "session")
+        let newSession = try JSONDecoder().decode(NewSessionUpdate.self, from: JSONValue.object(json).encoded())
+        XCTAssertNil(newSession.asSession?.avatar)
+        XCTAssertEqual(newSession.asSession?.id, "session", "malformed art never drops the full new-session event")
         json["avatar"] = .null
         json["avatarVersion"] = .number(4)
         let removed = try JSONDecoder().decode(APISession.self, from: JSONValue.object(json).encoded())
         try store.upsertSessions([decoder.session(removed)])
         XCTAssertNil(try store.session(id: "session")?.avatar)
         XCTAssertEqual(try store.session(id: "session")?.avatarVersion, 4)
+        let malformedPatch = try JSONDecoder().decode(UpdateSessionUpdate.self,
+            from: Data(#"{"id":"session","avatar":{"ref":"bad"},"avatarVersion":"bad"}"#.utf8))
+        XCTAssertNil(malformedPatch.avatar as Any?)
+        XCTAssertNil(malformedPatch.avatarVersion)
+    }
+
+    func testLiveVersionlessDeletionDuringHTTPListingIsNotResurrected() async throws {
+        let fixture = ServerFixture()
+        let store = try LocalStore.inMemory()
+        var row = fixture.session("session", updatedAt: 100)
+        row.avatar = .init(ref: "ref", preview: "cipher", version: 5)
+        let decoder = RecordDecoder(keyRing: KeyRing(keys: fixture.keys))
+        try store.upsertSessions([decoder.session(row)])
+        let http = FakeHTTP()
+        let stale = row
+        http.on("GET /v2/sessions") { _ in
+            _ = try store.applySessionUpdate(id: "session", metadata: nil, agentState: nil, projectId: nil,
+                avatar: .some(nil), avatarUpdateSeq: 60)
+            return (200, try JSONEncoder().encode(SessionsPage(sessions: [stale], nextCursor: nil, hasNext: false)))
+        }
+        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
+        try await engine.pullSessions()
+        XCTAssertNil(try store.session(id: "session")?.avatar)
+        XCTAssertEqual(try store.session(id: "session")?.avatarVersion, 5)
+        var fresh = row
+        fresh.avatar = .init(ref: "new", preview: "cipher", version: 6)
+        fresh.avatarVersion = 6
+        try store.upsertSessions([decoder.session(fresh)])
+        XCTAssertEqual(try store.session(id: "session")?.avatar?.ref, "new")
+        await engine.stop()
     }
 
     func testAvatarGrantSendsCredentialsOnlyToServerAndChecksActiveRef() async throws {

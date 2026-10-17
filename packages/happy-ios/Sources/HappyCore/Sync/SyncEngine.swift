@@ -204,6 +204,7 @@ public actor SyncEngine {
         let lastFull = try store.cursor(.sessionsLastFullSync)
         let startedAt = now()
         let full = since == nil || lastFull == nil || startedAt - (lastFull ?? 0) >= options.fullSessionReconcileIntervalMs
+        let avatarSequences = try store.avatarUpdateSequences()
         // The server wants a positive value; 1 means "everything", which is
         // still correct, just not a delta.
         let changedSince = full ? nil : max(1, (since ?? 0) - options.changedSinceOverlapMs)
@@ -222,7 +223,7 @@ public actor SyncEngine {
             repeat {
                 let page = try await api.sessions(changedSince: changedSince, cursor: pageCursor, limit: options.sessionsPageSize)
                 let previous = Dictionary(uniqueKeysWithValues: try store.sessions(ids: page.sessions.map(\.id)).map { ($0.id, $0) })
-                let records = page.sessions.map { decoder.session($0, previous: previous[$0.id]) }
+                let records = page.sessions.map { decoder.session($0, previous: previous[$0.id], avatarUpdateSeq: avatarSequences[$0.id]) }
                 await presence.prepareSessions(records, previous: previous)
                 try await batch.append(records)
                 for session in page.sessions {
