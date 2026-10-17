@@ -1084,7 +1084,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     }
 
     private var isFixture: Bool {
-        #if DEBUG
+        #if DEBUG || HAPPY_FIXTURES
         FixtureScenarios.isFixture(sessionId)
         #else
         false

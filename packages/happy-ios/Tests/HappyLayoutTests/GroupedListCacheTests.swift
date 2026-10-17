@@ -292,3 +292,67 @@ final class DrawnSectionsTests: XCTestCase {
         XCTAssertEqual(DrawnSections.update([], frames: frames, visible: rect(0, 0, 393, 800)), [0, 2, 3, 4, 5])
     }
 }
+
+/// A cache held by a view, as `ItemGroupView` and `GroupedListView` hold
+/// theirs, whose content asks it to measure again while it is measured: a
+/// label drawing for the first time asks its superview for layout.
+private final class Holder {
+    var layouts = WidthLayoutCache<CGFloat>()
+    var list = GroupedListCache<Int>()
+}
+
+final class ReentrantInvalidationTests: XCTestCase {
+    func testAWidthInvalidatedWhileItIsMadeIsReturnedButNotKept() {
+        let holder = Holder()
+        var made = 0
+        var invalidates = true
+        let make: (CGFloat) -> CGFloat = { width in
+            made += 1
+            // Without the static entry point this is a simultaneous access
+            // to `layouts` and traps.
+            if invalidates { holder.layouts.invalidate() }
+            return width * 2
+        }
+        XCTAssertEqual(WidthLayoutCache.layout(holder, \.layouts, width: 361, make), 722)
+        XCTAssertNil(holder.layouts.cached(width: 361), "made across an invalidation: not kept")
+        XCTAssertEqual(made, 1)
+
+        invalidates = false
+        XCTAssertEqual(WidthLayoutCache.layout(holder, \.layouts, width: 361, make), 722)
+        XCTAssertEqual(made, 2, "made again")
+        XCTAssertEqual(holder.layouts.cached(width: 361), 722)
+        XCTAssertEqual(WidthLayoutCache.layout(holder, \.layouts, width: 361, make), 722)
+        XCTAssertEqual(made, 2, "kept once nothing invalidated it")
+        XCTAssertEqual(holder.layouts.made, 2)
+    }
+
+    func testASectionInvalidatedWhileItIsMeasuredIsMeasuredAgainNextPass() throws {
+        let holder = Holder()
+        var asked: [Int] = [0, 0]
+        var invalidating: Int? = 1
+        let content: (Int) -> Measurable = { index in
+            Measurable { width in
+                asked[index] += 1
+                if invalidating == index { holder.list.invalidate(index) }
+                return CGSize(width: width, height: CGFloat(100 + index))
+            }
+        }
+        func pass() -> GroupedListLayout? {
+            GroupedListCache.layout(holder, \.list, size: phone, safeArea: phoneUnderBar, ids: [0, 1], content: content)
+        }
+        let first = try XCTUnwrap(pass())
+        assertFrame(first.sections[0], rect(0, 103, 393, 100))
+        assertFrame(first.sections[1], rect(0, 203, 393, 101))
+        XCTAssertEqual(asked, [1, 1])
+
+        // Nothing measured across the invalidation was kept: not the pass,
+        // and not the heights.
+        invalidating = nil
+        let second = try XCTUnwrap(pass(), "the pass after is laid out, not skipped as already applied")
+        XCTAssertEqual(second, first)
+        XCTAssertEqual(asked, [2, 2])
+        XCTAssertNil(pass())
+        XCTAssertEqual(asked, [2, 2])
+        XCTAssertEqual(holder.list.measured, 4)
+    }
+}

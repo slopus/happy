@@ -126,7 +126,9 @@ public final class ItemGroupView: UIView {
     }
 
     public func layout(width: CGFloat) -> ItemGroupLayout {
-        layouts.layout(width: width) { width in
+        // Measured with no access to the cache open: a label drawing for
+        // the first time asks the group for layout, which invalidates it.
+        WidthLayoutCache.layout(self, \.layouts, width: width) { width in
             #if DEBUG
             MeasureCounters.count("group.layout")
             #endif
@@ -281,7 +283,10 @@ public final class GroupedListView: UIScrollView {
     public override func layoutSubviews() {
         super.layoutSubviews()
         let sections = sections
-        guard let layout = cache.layout(
+        // Measured with no access to the cache open: a section measured
+        // may ask for layout, and so invalidate it (`GroupedListCache`).
+        guard let layout = GroupedListCache.layout(
+            self, \.cache,
             size: bounds.size,
             safeArea: LayoutInsets(safeAreaInsets),
             ids: sections.map(ObjectIdentifier.init),

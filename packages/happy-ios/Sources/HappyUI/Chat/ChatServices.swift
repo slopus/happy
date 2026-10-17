@@ -66,7 +66,7 @@ struct ChatServices {
     static func make(account: AccountSession, sessionId: String, isCurrent: @escaping @MainActor () -> Bool = { true }) -> ChatServices {
         let store = account.store
         let feed = account.homeFeed
-        #if DEBUG
+        #if DEBUG || HAPPY_FIXTURES
         if FixtureScenarios.isFixture(sessionId) {
             let world = FixtureChatWorld.shared
             let record = FixtureScenarios.record(sessionId: sessionId)
