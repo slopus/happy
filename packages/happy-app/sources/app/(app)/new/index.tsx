@@ -94,6 +94,7 @@ import {
 import { resolvePermissionStyle, resolveSelectedOption } from '@/utils/newSessionModeSelection';
 import { resolveHappyAgentSpawnTarget } from '@/sync/happyAgentSpawn';
 import { MobileGlassSurface } from '@/components/MobileGlass';
+import { getNewSessionInputMaxHeight } from '@/utils/newSessionComposerLayout';
 import { getNativeGlassInteractivity } from '@/components/glassInteractionPolicy';
 import { BubblePressable } from '@/components/BubblePressable';
 import { Header } from '@/components/navigation/Header';
@@ -742,6 +743,7 @@ function PathPickerContent({
 // because all of its props are stable.
 type PromptInputProps = {
     compact?: boolean;
+    maxHeight?: number;
     placeholder: string;
     onKeyPress?: (e: KeyPressEvent) => boolean;
 };
@@ -758,7 +760,7 @@ const PromptInput = React.memo(React.forwardRef<MultiTextInputHandle, PromptInpu
                 lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
                 paddingTop={props.compact ? 0 : COMPOSER_INPUT_VERTICAL_PADDING}
                 paddingBottom={props.compact ? 0 : COMPOSER_INPUT_VERTICAL_PADDING}
-                maxHeight={props.compact ? COMPACT_COMPOSER_INPUT_MAX_HEIGHT : COMPOSER_INPUT_MAX_HEIGHT}
+                maxHeight={props.maxHeight ?? (props.compact ? COMPACT_COMPOSER_INPUT_MAX_HEIGHT : COMPOSER_INPUT_MAX_HEIGHT)}
                 // No multiline/returnKeyType/submitBehavior overrides: MultiTextInput
                 // already defaults to a multiline field whose return key types a line
                 // break. The compact composer used to opt out of that, which turned the
@@ -790,6 +792,19 @@ function NewSessionScreen() {
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+    const [visibleHeight, setVisibleHeight] = React.useState(windowHeight);
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        const viewport = window.visualViewport;
+        const update = () => setVisibleHeight(viewport?.height ?? window.innerHeight);
+        update();
+        viewport?.addEventListener('resize', update);
+        window.addEventListener('resize', update);
+        return () => {
+            viewport?.removeEventListener('resize', update);
+            window.removeEventListener('resize', update);
+        };
+    }, []);
 
     // Persisted draft state (survives navigation).
     //
@@ -2199,6 +2214,9 @@ function NewSessionScreen() {
     );
 
     const composerPlaceholder = selectedAgent === 'codex' ? 'Ask Codex' : `Ask ${agent.label}`;
+    const inputMaxHeight = Platform.OS === 'web'
+        ? getNewSessionInputMaxHeight(Math.min(windowHeight, visibleHeight), windowWidth < 768)
+        : undefined;
     const sendButtonIconColor = isNativeMobile
         ? theme.colors.text
         : theme.colors.button.primary.tint;
@@ -2257,12 +2275,13 @@ function NewSessionScreen() {
             onLayout={isNativeMobile
                 ? (event) => setMobileComposerHeight(event.nativeEvent.layout.height)
                 : undefined}
-            style={[styles.inputBox, isNativeMobile && styles.mobileInputBox]}
+            style={[styles.inputBox, isNativeMobile && styles.mobileInputBox, Platform.OS === 'web' && { flexShrink: 0 }]}
         >
             <View style={[styles.inputField, isNativeMobile && styles.mobileInputField]}>
                 <PromptInput
                     ref={composerInputRef}
                     compact={isNativeMobile}
+                    maxHeight={inputMaxHeight}
                     placeholder={isNativeMobile ? composerPlaceholder : 'What would you like to work on?'}
                     onKeyPress={handleKeyPress}
                 />
@@ -2338,15 +2357,8 @@ function NewSessionScreen() {
         </MobileGlassSurface>
     );
 
-    return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' && !sidebarLayout.showSidebar && !isNativeMobile ? Constants.statusBarHeight + headerHeight : 0}
-            style={[
-                styles.container,
-                isNativeMobile && { backgroundColor: 'transparent' },
-            ]}
-        >
+    const screenContent = (
+        <>
             {isNativeMobile && (
                 <Header
                     title={<Text style={styles.mobileHeaderTitle}>{t('newSession.title')}</Text>}
@@ -2445,16 +2457,26 @@ function NewSessionScreen() {
                         </>
                     ) : (
                         <>
-                            <View style={styles.inlineConfigWrap}>
-                                {configContent}
-                            </View>
+                            {Platform.OS === 'web' ? (
+                                <ScrollView
+                                    style={{ flex: 1, minHeight: 0 }}
+                                    contentContainerStyle={styles.inlineConfigWrap}
+                                    keyboardShouldPersistTaps="handled"
+                                >
+                                    {configContent}
+                                </ScrollView>
+                            ) : (
+                                <View style={styles.inlineConfigWrap}>
+                                    {configContent}
+                                </View>
+                            )}
                             {Platform.OS === 'web' && activePicker && (
                                 <Pressable
                                     style={styles.clickAwayBackdropBehind}
                                     onPress={closePicker}
                                 />
                             )}
-                            <View style={{ flex: 1 }} />
+                            {Platform.OS !== 'web' && <View style={{ flex: 1 }} />}
                             <View style={styles.inlineComposerWrap}>
                                 {composerNode}
                             </View>
@@ -2524,6 +2546,29 @@ function NewSessionScreen() {
                     ) : null}
                 </BottomSheet>
             )}
+        </>
+    );
+
+    // The keyboard can shrink the visual viewport without changing the CSS
+    // layout viewport. Bound the Web screen even when Dimensions has already
+    // picked up that smaller height; KeyboardAvoidingView only handles native.
+    if (Platform.OS === 'web') {
+        return (
+            <View style={[
+                styles.container,
+                { maxHeight: Math.max(0, visibleHeight - (sidebarLayout.showSidebar ? 0 : headerHeight)) },
+            ]}>
+                {screenContent}
+            </View>
+        );
+    }
+    return (
+        <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' && !sidebarLayout.showSidebar && !isNativeMobile ? Constants.statusBarHeight + headerHeight : 0}
+            style={[styles.container, isNativeMobile && { backgroundColor: 'transparent' }]}
+        >
+            {screenContent}
         </KeyboardAvoidingView>
     );
 }
