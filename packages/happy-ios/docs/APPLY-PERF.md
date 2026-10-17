@@ -3,6 +3,9 @@
 How home and the chat get from a store change to the screen (AGENTS.md
 rule 8), and what the Linux benchmarks measure.
 
+For the real-device route measurements and their limits, see
+[Navigation measurements](NAVIGATION-PERF.md).
+
 ## The path
 
 - `Core/Changes/ApplyPipeline` derives off the main thread. Each derivation
@@ -108,6 +111,44 @@ rule 8), and what the Linux benchmarks measure.
   runs no SQL; coming back reads the database afresh, and a value equal to
   the one on screen applies nothing.
 
+- Grouped lists (`GroupedListView`: Settings and its pages, session info,
+  the machine screen, troubleshooting, What's New) measure each section
+  once per width (`GroupedListCache`), and each `ItemGroupView` keeps its
+  layout per width (`WidthLayoutCache`).
+  - A scroll frame measures and places nothing: the list's layout pass
+    returns as soon as it finds the size, safe area and sections it placed
+    last.
+  - Installing sections measures only the ones that weren't there (Agents
+    and session info swap single groups). A group whose title, footer or
+    rows change, or whose row asks the card for layout, is measured alone.
+    Anything else asking the list for layout, a new text size among them
+    (`setNeedsLayoutUpTheTree`), measures every section once.
+  - UIKit asks a section for layout each time its safe area changes, which
+    is every frame while it crosses the bars' edges. Those calls come with
+    insets the view hasn't seen, and the group and its card don't take
+    them as content changing (`SafeAreaLayoutCalls`).
+  - A section whose height changes must say so: an `ItemRowView` setter, a
+    row's `superview?.setNeedsLayout()`, or the group's. Before, a stale
+    height was corrected by the next scroll; now it stays.
+- What's New (`ChangelogViewController`) is laid out off the main thread:
+  `ChangelogPlan` parses each release's markdown and lays out its title,
+  summary, paragraphs and bullets with TextKit 1 (`ChatTextLayout`) at the
+  list's width and text size, placed by `ChangelogEntryLayout`. The first
+  screen is planned on its own, then the releases after it, so the text is
+  in as the screen slides in. The main thread only hands each release its
+  plan; a new width or text size plans every release again, once, and the
+  old plan stays drawn until then.
+  - The text is drawn into bitmaps off the main thread too
+    (`ChangelogRaster`), only for releases within a screen of what shows
+    (`DrawnSections`, kept until two screens away), so a release scrolling
+    in costs the main thread its layers' contents. Until its bitmaps are in,
+    a release's text is blank; a new text size or width blanks it for
+    the moment its new bitmaps take.
+  - Links open on a tap (only http(s) ones in the markdown, as
+    `handleLinkPress` has it; any in the summary line), a long press on a
+    paragraph or bullet offers Copy as RN's `selectable` Text does, and
+    VoiceOver reads each text, with its links as actions, from the plan.
+
 ## Known gaps
 
 - Heading heights are one line of their style, read from a
@@ -117,8 +158,24 @@ rule 8), and what the Linux benchmarks measure.
 - The sidebar's stamps and day headings are written at the time of the
   derivation and catch up with the next store change; it does not use
   `ClockWake` yet.
-- None of the UIKit behaviour is verified: no simulator run, no device
-  timings.
+- None of the UIKit behaviour is verified on a device. What's New and
+  session info's push are timed on the iOS 26.5 simulator only (below).
+- Troubleshooting's guide is a section of its own with `UITextView`
+  terminal lines that lay themselves out again whenever the guide's safe
+  area changes, so while it crosses the bar's edge. `ItemRowView` keeps
+  no layout either and measures its labels on those passes (14 label
+  measurements over a 41-frame scroll of six groups in
+  `GroupedListMeasureTests`). Neither moves a frame.
+- Pushing a screen holds the main thread longer than the 4.2 ms block,
+  and that turn is UIKit's. With session info's own work under the block
+  (its groups made a few rows a frame), its push turn was 13.9 ms in Debug
+  and 15.0 ms in Preview (medians of seven warm opens; 29.4 and 40.8 ms
+  the first time in the process). Pushing an empty screen with the same
+  title, in the same test, took 19.4 and 19.2 ms. The end of the push
+  animation is two more turns of about 5 to 6 ms for the empty screen.
+  iPhone 17 Pro simulator, iOS 26.5, Xcode 27.1, 1 MB agent state
+  (`HostedSessionInfoTests.testHowLongOpeningSessionInfoHoldsTheMainThread`,
+  which prints both). Not worked on.
 
 ## Before and after
 
@@ -142,3 +199,45 @@ measure UIKit. "Before" is a model of the b1247fce screens:
 | Streaming 50 tokens into a 2000-message chat (46-row window) | window, grouping and row inputs built on the main thread per update; 1 row measured; every visible cell handed its plan | 0 main-thread derivation; 1 row measured and 1 reconfigure per token; 0 for an unchanged snapshot |
 | A page of older history | — | only the added rows measured, inserted after the oldest |
 | 300-odd inputs in 340 ms, 2 ms per apply | — | at most 22 applies, each starting at least 16.67 ms after the last one ended (wall clock) |
+
+### What's New on the simulator
+
+Timed by the chat harness (`-screen whatsnew -autoscroll 4000`,
+`Harness/WhatsNewHarness.swift`) on an iPhone 17 Pro, iOS 26.5 simulator,
+Debug build, two runs each. "Before" is 8f1e2c3f: an `ItemGroupView` per
+release holding a `UITextView` per paragraph, in a list that measured every
+section on every layout pass. A "block" is the main thread's run between
+waits, timed by a run-loop observer; a hitch is a display-link interval
+over 1.5 frames. The scroll goes to the end and back at 4000 pt/s.
+
+| | Before, Large | After, Large | Before, AX-XXXL | After, AX-XXXL |
+| --- | --- | --- | --- | --- |
+| Opening (push, warm, median) | 295 ms | 14 ms | 303 ms | 14 ms |
+| Every release laid out, from the push | in the push | 48 ms, off main | in the push | 50 ms, off main |
+| Main thread per scroll frame (median) | 45.7 ms | 1.05 ms | 43.3 ms | 0.52 ms |
+| Hitches over the scroll | 255 of 258 frames | 0 of 798 | 679 of 682 | 0 of 8328 |
+| Blocks over 4.2 ms | 255 | 5 of 2550 (longest 7.7) | 679 | 7 of 25788 (longest 4.8) |
+| `UITextView` measurements per scroll frame | 132 | 0 (none left) | 132 | 0 |
+
+Built with `-O` (`SWIFT_OPTIMIZATION_LEVEL=-O`; the harness's fixtures
+are Debug only, so there is no Release harness) it is the same picture:
+the scroll frame 49.8 to 0.93 ms at Large and 46.8 to 0.73 ms at AX-XXXL,
+no hitches after (0 of 532 and 0 of 5552 frames), 5 of 1695 and 1 of 17212
+blocks over 4.2 ms (the longest 5.4 and 4.4 ms). The push stays one block
+of 13 to 14 ms; What's New's own share is about 2 ms of it (making the
+list and its empty releases, placing them), the rest UIKit's navigation and
+the title's picture.
+
+Where the time went before (`sample`, 1 ms): per scroll frame, 54% was
+`UITextView`'s own TextKit 2 viewport layout, 28% the list measuring every
+`UITextView` again through each group and card, and 18% UIKit's selection
+caret caches; opening made about 130 `UITextView`s and measured each 4
+times (512 measurements). Drawing a release's text in `draw(_:)` on main,
+the first cut of the fix, still cost 8 to 33 ms on the frame a release came
+in; `ChangelogRaster` moved that off.
+
+AX-XXXL is four times taller after: before, the paragraphs stayed at the
+designed 16 pt there (their text views never took the text size) while
+the titles and bullets grew; now every text is at RN's 3.571 multiplier.
+At Large a paragraph's line is 25, as RN lays it out, where the
+`UITextView` laid 24.

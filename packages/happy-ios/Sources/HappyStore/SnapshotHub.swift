@@ -8,7 +8,11 @@ actor SnapshotHub<Value: Equatable & Sendable> {
     private let project: @Sendable (Value) -> Value
     private var subscribers: [UUID: AsyncStream<Value>.Continuation] = [:]
     private var raw: Value?
-    private var published: Value?
+    private var published: Value? {
+        didSet { newest.value = published }
+    }
+    /// `published`, read at once from any thread.
+    private let newest = Newest()
     private var task: Task<Void, Never>?
     private var generation: UInt64 = 0
     private var retiring: [UUID: Task<Void, Never>] = [:]
@@ -19,6 +23,10 @@ actor SnapshotHub<Value: Equatable & Sendable> {
     }
 
     deinit { task?.cancel() }
+
+    /// The value subscribers were last handed, or nil while none listen:
+    /// what a screen draws first, before its own subscription answers.
+    nonisolated var latest: Value? { newest.value }
 
     nonisolated func snapshots() -> AsyncStream<Value> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
@@ -119,4 +127,13 @@ actor SnapshotHub<Value: Equatable & Sendable> {
     }
 
     private func forgetRetired(_ id: UUID) { retiring.removeValue(forKey: id) }
+
+    private final class Newest: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: Value?
+        var value: Value? {
+            get { lock.withLock { stored } }
+            set { lock.withLock { stored = newValue } }
+        }
+    }
 }

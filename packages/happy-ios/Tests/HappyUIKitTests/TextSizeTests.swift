@@ -160,9 +160,11 @@ final class TextSizeTests: XCTestCase {
 
     func testWhatsNewFollowsTheTextSize() throws {
         let (window, host) = host(.extraExtraExtraLarge, follows: true)
-        let card = ChangelogCardView(entry: Changelog.Entry(title: "1", summary: "Summary", markdown: "- one\n\nTwo"))
-        attach(card, to: host)
-        let paragraph = try XCTUnwrap(card.texts.last?.attributedText)
+        let plan = ChangelogPlan.make(
+            .init(width: 393, text: host.traitCollection.measuredTextEnvironment, maxWidth: nil),
+            entries: [Changelog.Entry(title: "1", summary: "Summary", markdown: "- one\n\nTwo")]
+        )
+        let paragraph = try XCTUnwrap(plan.entries.first?.texts.last?.string)
         let font = try XCTUnwrap(paragraph.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
         XCTAssertEqual(font.pointSize, TextStyles.changelogBody.size * TextScale(.extraExtraExtraLarge).multiplier, accuracy: 0.0001)
         withExtendedLifetime(window) {}

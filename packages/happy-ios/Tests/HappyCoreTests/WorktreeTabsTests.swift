@@ -172,6 +172,31 @@ final class WorktreeTabsTests: XCTestCase {
         XCTAssertEqual(checkout?.id, "p1\u{0}w1")
     }
 
+    func testAHappyAgentChatAndAHappyChatInOneFolderAreTwoProjects() {
+        let home = snapshot([
+            record("happy", path: "/src/happy", createdAt: 1),
+            record("rig", path: "/src/happy", createdAt: 2, rig: true),
+            record("padded", path: " /src/happy\n", createdAt: 3),
+        ])
+        XCTAssertEqual(WorktreeCheckout.locate("happy", in: home)?.tabs.map(\.id), ["happy", "padded"])
+        let rig = WorktreeCheckout.locate("rig", in: home)
+        XCTAssertEqual(rig?.tabs.map(\.id), ["rig"])
+        XCTAssertEqual(rig?.id, "rig:[\"m1\",\"/src/happy\"]\u{0}")
+    }
+
+    func testTheProjectIsNamedByItsLiveChatAndTheCheckoutByItsOwn() {
+        let project = (id: "p1", name: "Happy")
+        let home = snapshot([
+            record("stale", createdAt: 1, rig: true, project: (id: "p1", name: "Old name"), workspace: (id: "w1", name: "Old workspace")),
+            record("live", createdAt: 5, rig: true, project: project, workspace: (id: "w2", name: "Other")),
+            record("tab", createdAt: 3, rig: true, project: project, workspace: (id: "w1", name: "Strip work")),
+        ])
+        let checkout = WorktreeCheckout.locate("tab", in: home)
+        XCTAssertEqual(checkout?.projectName, "Happy", "the project's first chat in list order names it")
+        XCTAssertEqual(checkout?.workspaceName, "Strip work", "the checkout's own first chat names it")
+        XCTAssertEqual(checkout?.tabs.map(\.id), ["stale", "tab"])
+    }
+
     func testBotsSideChatsAndTheArchiveAreInNoCheckout() {
         // A Happy CLI chat that has stopped is in the archive.
         let archived = record("archived", path: "/src/happy", active: false)

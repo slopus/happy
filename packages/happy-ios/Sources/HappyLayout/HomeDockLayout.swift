@@ -465,6 +465,73 @@ public struct HomeDockFocusMotion: Equatable, Sendable {
     // `AgentInputCardReveal`, at this same progress.
 }
 
+/// The resting dock fading in as it goes from hidden to shown. This goes
+/// past happy-app, whose MainView mounts HomeDock at once and whose
+/// HomeDock is `display: 'none'` while the composer is open; the port was
+/// asked for it.
+///
+/// It has two parts: the capsule's surface (its blur, frost, rim and
+/// shadow) and what is on it and around it (the prompt, the send button,
+/// the scrim).
+public struct HomeDockFade: Equatable, Sendable {
+    /// What the dock comes back from.
+    public enum Origin: Equatable, Sendable {
+        /// Home's content came in (its first state on launch, or a state
+        /// with a dock after Link Your Computer).
+        case appearing
+        /// The open composer closed: its shell has just shrunk back to the
+        /// capsule in `HomeDockFocusMotion.closeDuration`, an empty capsule
+        /// at `composerAlpha` 0.72, and gone.
+        case focus
+    }
+
+    /// The first show: from nothing, 220ms ease-out.
+    public static let appearDuration: Double = 0.22
+    /// Back from the composer, in the close's own 180ms, ease-out: the
+    /// surface from the closed shell's 0.72, so it doesn't dip, and the
+    /// prompt and the button from nothing, as the shell had none. It starts
+    /// once the close has ended, so the two never overlap.
+    public static let returnDuration: Double = HomeDockFocusMotion.closeDuration
+
+    /// The surface's presence when the fade starts.
+    public var surfaceFrom: CGFloat
+    /// The prompt's, the button's and the scrim's.
+    public var contentFrom: CGFloat
+    public var duration: Double
+
+    public init(surfaceFrom: CGFloat, contentFrom: CGFloat, duration: Double) {
+        self.surfaceFrom = surfaceFrom
+        self.contentFrom = contentFrom
+        self.duration = duration
+    }
+
+    /// The fade for the dock going from hidden to shown, or nil to show it
+    /// at once: off a window (nothing sees it, and a home that comes back
+    /// from a pushed screen with its dock showing never fades again) or
+    /// with Reduce Motion on.
+    public static func shown(from origin: Origin, onWindow: Bool, reduceMotion: Bool) -> HomeDockFade? {
+        guard onWindow, !reduceMotion else { return nil }
+        switch origin {
+        case .appearing:
+            return HomeDockFade(surfaceFrom: 0, contentFrom: 0, duration: appearDuration)
+        case .focus:
+            return HomeDockFade(surfaceFrom: HomeDockFocusMotion(progress: 0).composerAlpha, contentFrom: 0, duration: returnDuration)
+        }
+    }
+
+    /// How present each part is `elapsed` seconds in, each from where it
+    /// starts to 1 on the same curve.
+    public func presence(at elapsed: Double) -> (surface: CGFloat, content: CGFloat) {
+        guard duration > 0 else { return (1, 1) }
+        let eased = CGFloat(HomeDockFocusMotion.easeOut(elapsed / duration))
+        return (surfaceFrom + (1 - surfaceFrom) * eased, contentFrom + (1 - contentFrom) * eased)
+    }
+
+    public func isFinished(at elapsed: Double) -> Bool {
+        elapsed >= duration
+    }
+}
+
 /// A refused press while a session starts: two beats pointing at Stop
 /// (`refusalFlash`), each `withTiming`'s default ease-in-out.
 public enum HomeDockRefusal {

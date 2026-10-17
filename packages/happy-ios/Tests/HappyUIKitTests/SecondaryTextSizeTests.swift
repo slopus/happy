@@ -86,18 +86,27 @@ final class SecondaryTextSizeTests: XCTestCase {
         }
     }
 
-    func testARawJSONBlockScalesItsMenloAndItsLine() {
+    /// Laid out off the main thread: the block asks at a width, and is
+    /// measured once its layout is in.
+    private func measured(_ view: CodeBlockView, width: CGFloat) async -> CodeBlockLayout {
+        _ = view.layout(width: width)
+        await view.measured()
+        return view.layout(width: width)
+    }
+
+    func testARawJSONBlockScalesItsMenloAndItsLine() async {
         let code = "{\n  \"a\": 1\n}"
         let width: CGFloat = 393
         typealias M = CodeBlockLayout.Metrics
         let designed = CodeBlockView(code: code)
         // Three 18pt lines between 12 above and below, 12 under the box.
-        XCTAssertEqual(designed.layout(width: width).text.height, 3 * 18, accuracy: 0.5)
+        let designedLayout = await measured(designed, width: width)
+        XCTAssertEqual(designedLayout.text.height, 3 * 18, accuracy: 0.5)
         for category in categories {
             for scale in scales {
                 let view = CodeBlockView(code: code)
                 follow(view, scale: scale, category: category)
-                let layout = view.layout(width: width)
+                let layout = await measured(view, width: width)
                 let line = M.lineHeight * multiplier(category)
                 XCTAssertEqual(layout.text.height, 3 * line, accuracy: 1 / scale + 0.01, "\(category.rawValue) @\(scale)x")
                 XCTAssertEqual(layout.size.height, layout.text.height + M.padding * 2 + M.marginBottom, accuracy: 1e-9)
@@ -106,13 +115,13 @@ final class SecondaryTextSizeTests: XCTestCase {
         }
     }
 
-    func testARawJSONBlockRedrawsAtANewTextSize() {
+    func testARawJSONBlockRedrawsAtANewTextSize() async {
         let view = CodeBlockView(code: "{}")
         follow(view, scale: 3, category: .large)
-        let large = view.layout(width: 393).size.height
+        let large = await measured(view, width: 393).size.height
         view.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
         view.updateTraitsIfNeeded()
-        XCTAssertEqual(view.textScale, TextScale(.accessibilityExtraExtraExtraLarge))
+        await view.measured()
         XCTAssertGreaterThan(view.layout(width: 393).size.height, large)
     }
 

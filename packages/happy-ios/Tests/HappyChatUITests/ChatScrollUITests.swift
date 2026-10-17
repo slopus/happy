@@ -2,10 +2,10 @@ import ObjectiveC
 import XCTest
 
 /// XCUITest waits for the app to be idle before and after every action, and
-/// gives up only after a minute. The harness keeps the scroll indicator
-/// flashing with `-flash`, so it is never idle then. Best effort: the wait is
-/// private API, replaced where it is found and left alone where it isn't (the
-/// tests are only slower then).
+/// gives up only after a minute. The harness's chat never goes idle for it,
+/// so each action would wait out the minute. Best effort: the wait is
+/// private API, replaced where it is found and left alone where it isn't
+/// (the tests are only slower then).
 private let skipsQuiescence: Bool = {
     guard let process = NSClassFromString("XCUIApplicationProcess") else { return false }
     var replaced = false
@@ -22,26 +22,15 @@ private let skipsQuiescence: Bool = {
     return replaced
 }()
 
-/// UIKit's indicator: 3 from the track's ends (`ChatScrollIndicatorLayout`).
-private enum ChatIndicatorStyle {
-    static let endInset: CGFloat = 3
-}
-
 /// The chat list driven by a finger, in `HappyChatHarness`: an interactive
-/// keyboard dismiss, and a long press and drag on the scroll indicator. The
-/// harness's probe (`ChatScrollProbe`) reports the list, UIKit's indicator
-/// and where `ChatScrollIndicatorLayout` says it must be, and what each
-/// finger did.
+/// keyboard dismiss, and a long press at the edge where an indicator would
+/// be. The harness's probe (`ChatScrollProbe`) reports the list and what
+/// each finger did.
 final class ChatScrollUITests: XCTestCase {
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
         print("ChatScrollUITests skips quiescence: \(skipsQuiescence)")
-    }
-
-    override func tearDown() {
-        XCUIDevice.shared.orientation = .portrait
-        super.tearDown()
     }
 
     private func launch(_ arguments: [String]) -> XCUIApplication {
@@ -94,17 +83,6 @@ final class ChatScrollUITests: XCTestCase {
         number(probe["rows"]) > 20 && number(probe["maxDistance"]) > number((probe["listSize"] as? [NSNumber])?.last)
     }
 
-    /// UIKit's indicator where the layout says, at rest.
-    private func assertIndicatorMatches(_ probe: [String: Any], _ label: String, file: StaticString = #filePath, line: UInt = #line) {
-        guard let actual = frame(probe["actual"]), let expected = frame(probe["expected"]) else {
-            XCTFail("\(label): no indicator in \(probe)", file: file, line: line)
-            return
-        }
-        XCTAssertEqual(actual.minX, expected.minX, accuracy: 0.5, "\(label): side", file: file, line: line)
-        XCTAssertEqual(actual.minY, expected.minY, accuracy: 0.5, "\(label): top", file: file, line: line)
-        XCTAssertEqual(actual.height, expected.height, accuracy: 0.5, "\(label): length", file: file, line: line)
-    }
-
     // MARK: Keyboard
 
     /// The finger starts on the list above the dock and drags slowly to the
@@ -136,106 +114,44 @@ final class ChatScrollUITests: XCTestCase {
         XCTAssertGreaterThan(finger, 80)
         // 1 to 1, give or take the frames where the two sample apart.
         XCTAssertEqual(content / finger, 1, accuracy: 0.15, "content \(content) for a finger's \(finger) while the keyboard moved")
-
-        // After the keyboard has gone, the indicator rests on the dock.
-        state = probe(app, timeout: 3) { self.number($0["keyboardTop"]) >= window[1] - 60 && !(($0["decelerating"] as? Bool) ?? true) }
-        Thread.sleep(forTimeInterval: 1)
-        state = probe(app)
-        attach("after", state)
-        let insets = try XCTUnwrap(state["indicatorInsets"] as? [NSNumber]).map { CGFloat($0.doubleValue) }
-        // On a phone the list runs under the dock; docked, on an iPad, it
-        // stops above it and nothing covers it.
-        let list = try XCTUnwrap(frame(state["list"]))
-        XCTAssertEqual(insets[0], max(0, list.maxY - number(state["dockMinY"])), accuracy: 0.5)
     }
 
-    // MARK: Dragging the indicator
+    // MARK: The edge
 
-    /// A long press on the indicator, then a drag up its track and a hold:
-    /// the reader goes back through the history, and the indicator stays
-    /// under the finger, older rows joining included. `fraction` is how far
-    /// up the track, 1 at its top, under the header.
-    private func dragIndicator(to fraction: CGFloat, hold: TimeInterval, label: String, expectsOlderRows: Bool = false) throws {
-        let app = launch(["-fixture", "long", "-flash"])
-        var state = probe(app) { self.filled($0) && self.number($0["actualAlpha"]) > 0.5 }
+    /// The list shows no scroll indicator, so there is none to grab. A long
+    /// press at the right edge, where UIKit's rested above the dock at the
+    /// newest message, then a drag up, pulls the conversation past its
+    /// newest message as any drag does, and it springs back. With the
+    /// indicator the same press scrubbed back through the history: on the
+    /// iOS 26.5 simulator a drag of 259 points took the reader 3,488 points
+    /// back.
+    func testALongPressAtTheEdgeDragsTheConversationLikeAnyFinger() throws {
+        let app = launch(["-fixture", "long"])
+        var state = probe(app) { self.filled($0) }
         Thread.sleep(forTimeInterval: 0.5)
-        state = probe(app) { self.number($0["actualAlpha"]) > 0.5 }
-        attach("\(label) before", state)
-        assertIndicatorMatches(state, "\(label) at rest")
-        let indicator = try XCTUnwrap(frame(state["actualInWindow"]))
+        state = probe(app)
+        attach("before", state)
+        XCTAssertEqual(number(state["visibleMinY"]), 0, accuracy: 1, "at the newest message")
         let list = try XCTUnwrap(frame(state["list"]))
-        func touches(_ state: [String: Any]) -> Int {
-            ((state["lastTouch"] as? [String: Any])?["index"] as? NSNumber)?.intValue ?? 0
-        }
-        // First a press the app must see: a short pull past the newest
-        // message, mid-list, which bounces back.
-        point(app, list.midX, list.midY).press(forDuration: 0.05, thenDragTo: point(app, list.midX, list.midY - 40), withVelocity: 400, thenHoldForDuration: 0)
-        state = probe(app, timeout: 3) { touches($0) > 0 && !(($0["decelerating"] as? Bool) ?? true) }
-        let seen = touches(state)
-        attach("\(label) mid-list events", state["events"] ?? [])
-        XCTAssertGreaterThan(seen, 0, "a press mid-list never reached the app's window")
-        // A short pull right on the indicator's line: whether a touch that
-        // near the edge reaches the app at all.
-        point(app, indicator.midX, list.midY).press(forDuration: 0.05, thenDragTo: point(app, indicator.midX, list.midY - 40), withVelocity: 400, thenHoldForDuration: 0)
-        state = probe(app, timeout: 3) { touches($0) > seen && !(($0["decelerating"] as? Bool) ?? true) }
-        attach("\(label) edge events", "\(touches(state) > seen ? "reached" : "never reached") the app: \(state["events"] ?? [])")
-        let edge = touches(state)
-        state = probe(app, timeout: 3) { self.number($0["actualAlpha"]) > 0.5 }
-        // On the iOS 26.5 simulator a long press on the drawn indicator's
-        // middle, 4.5 from the screen's edge, never reached the app; 4 points
-        // in, on the indicator still, it does.
-        let start = point(app, indicator.midX - 4, indicator.midY)
-        // `fraction` of the way from where it is to the top of its track:
-        // past that, the finger runs ahead of an indicator that can't follow.
-        let insets = try XCTUnwrap(state["indicatorInsets"] as? [NSNumber]).map { CGFloat($0.doubleValue) }
-        let topMidY = list.minY + insets[1] + ChatIndicatorStyle.endInset + indicator.height / 2
-        let targetY = indicator.midY - fraction * (indicator.midY - topMidY)
-        let end = point(app, indicator.midX - 4, targetY)
-        start.press(forDuration: 0.8, thenDragTo: end, withVelocity: 300, thenHoldForDuration: hold)
-        state = probe(app, timeout: 3) { touches($0) > edge }
-        attach("\(label) events", state["events"] ?? [])
+        let dockMinY = number(state["dockMinY"])
+        // 4 points in from where UIKit drew its indicator's middle (3 thick,
+        // 3 from the side): where a press on it reached the app.
+        let x = list.maxX - 8.5
+        point(app, x, dockMinY - 24).press(forDuration: 0.8, thenDragTo: point(app, x, dockMinY - 224), withVelocity: 200, thenHoldForDuration: 0.5)
+        state = probe(app, timeout: 3) { (($0["lastTouch"] as? [String: Any])?["index"] as? NSNumber) != nil && !(($0["decelerating"] as? Bool) ?? true) }
+        Thread.sleep(forTimeInterval: 0.5)
+        state = probe(app)
+        attach("events", state["events"] ?? [])
         let touch = try XCTUnwrap(state["lastTouch"] as? [String: Any])
-        XCTAssertGreaterThan(touches(state), edge, "the press on the indicator never reached the app's window, though one mid-list did")
-        attach("\(label) touch", touch)
-        attach("\(label) after", state)
-        XCTAssertGreaterThan(number(state["visibleMinY"]), 100, "dragging the indicator up goes back through the history")
-        // Against where it sat under the finger at the press: on the iOS
-        // 26.5 simulator it moved 10 once UIKit took hold of it, and never
-        // strayed further while the rows stayed.
-        XCTAssertLessThan(number(touch["maxIndicatorGap"]), 16, "the indicator kept up with the finger")
-        let joined = number(touch["rowsEnd"]) > number(touch["rowsStart"])
-        let fingerOnIt = abs(number(touch["endFingerFromIndicator"])) <= number(touch["endIndicatorLength"]) / 2 + 4
-        let assertFingerOnIt = {
-            XCTAssertTrue(fingerOnIt, "the finger ended on the indicator: \(touch["endFingerFromIndicator"] ?? "?") from its middle, \(touch["endIndicatorLength"] ?? "?") long")
-        }
-        if expectsOlderRows {
-            XCTAssertTrue(joined, "older rows joined while the indicator was held")
-            // UIKit's own indicator: the same offset is a smaller share of
-            // more content, so it drops below a finger held still.
-            XCTExpectFailure("UIKit's indicator drops away from a still finger as older rows join", options: .nonStrict(), failingBlock: assertFingerOnIt)
-        } else {
-            assertFingerOnIt()
-        }
-        state = probe(app, timeout: 3) { !(($0["decelerating"] as? Bool) ?? true) && self.number($0["actualAlpha"]) > 0.5 }
-        assertIndicatorMatches(state, "\(label) after the drag")
-    }
-
-    func testDraggingTheIndicatorKeepsItUnderTheFinger() throws {
-        try dragIndicator(to: 0.5, hold: 0.5, label: "halfway")
-    }
-
-    func testHoldingTheIndicatorAtTheTopAsOlderRowsJoin() throws {
-        try dragIndicator(to: 1, hold: 3, label: "top", expectsOlderRows: true)
-    }
-
-    func testOnItsSideTheIndicatorClearsTheSafeArea() throws {
-        XCUIDevice.shared.orientation = .landscapeLeft
-        let app = launch(["-fixture", "long", "-flash"])
-        let state = probe(app) { self.filled($0) && self.number($0["actualAlpha"]) > 0.5 && (self.number(($0["window"] as? [NSNumber])?.first) > self.number(($0["window"] as? [NSNumber])?.last)) }
-        attach("landscape", state)
-        let safe = try XCTUnwrap(state["safeArea"] as? [NSNumber]).map { CGFloat($0.doubleValue) }
-        let insets = try XCTUnwrap(state["indicatorInsets"] as? [NSNumber]).map { CGFloat($0.doubleValue) }
-        XCTAssertEqual(insets[2], safe[3], accuracy: 0.5, "the indicator's side clears the safe area")
-        assertIndicatorMatches(state, "landscape at rest")
+        attach("touch", touch)
+        attach("after", state)
+        let finger = number(touch["fingerTravel"])
+        let content = number(touch["offsetTravel"])
+        XCTAssertLessThan(finger, -150, "the finger went up")
+        XCTAssertEqual(touch["recognizers"] as? [String], ["UIScrollViewPanGestureRecognizer"], "the list's own pan")
+        // Past the newest message the list gives less than the finger, as
+        // a pull past any end does, and springs back.
+        XCTAssertLessThan(abs(content), abs(finger), "content \(content) for a finger's \(finger)")
+        XCTAssertEqual(number(state["visibleMinY"]), 0, accuracy: 1, "back at the newest message")
     }
 }

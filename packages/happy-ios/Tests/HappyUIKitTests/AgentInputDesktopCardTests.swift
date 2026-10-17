@@ -29,6 +29,27 @@ final class AgentInputDesktopCardTests: XCTestCase {
         XCTAssertNil(card(desktop: nil).desktopLayout(width: 800))
     }
 
+    func testACompactCardOnlyBuildsDesktopControlsWhenItBecomesWide() throws {
+        let card = card(desktop: nil)
+        func controls(_ view: UIView) -> [AgentInputDesktopControlsView] {
+            (view as? AgentInputDesktopControlsView).map { [$0] } ?? view.subviews.flatMap(controls)
+        }
+        XCTAssertTrue(controls(card).isEmpty)
+        var configuration = card.configuration
+        configuration.desktop = AgentInputDesktopConfiguration(send: send)
+        card.configuration = configuration
+        let installed = try XCTUnwrap(controls(card).first)
+        XCTAssertEqual(controls(card).count, 1)
+        XCTAssertFalse(installed.isHidden)
+        configuration.desktop = nil
+        card.configuration = configuration
+        XCTAssertTrue(installed.isHidden)
+        configuration.desktop = AgentInputDesktopConfiguration(send: send)
+        card.configuration = configuration
+        XCTAssertTrue(controls(card).first === installed)
+        XCTAssertFalse(installed.isHidden)
+    }
+
     func testTheSameTextViewCarriesAcrossTheLine() {
         let card = card(desktop: nil)
         let textView = card.textView

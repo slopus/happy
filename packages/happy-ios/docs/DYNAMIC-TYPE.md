@@ -51,9 +51,14 @@ titles (`OnboardingContent.tsx`, `TITLE_MAX_SCALE`). It sets no
 A screen follows the text size when its controller calls
 `followsTextSize()`, which sets the `FollowsTextSize` trait on its view.
 `StyledLabel` draws scaled only under that trait, and draws again when the
-size changes; everywhere else it draws as designed. A screen opts in only
-when every height on it is measured from its text as drawn, never from a
-plan made at the designed size.
+size changes; everywhere else it draws as designed. A new label draws
+nothing until it is first measured, laid out, drawn, read or put on a
+window, and then takes the traits UIKit would hand it before its next
+layout: a label made and set up off its screen and then put in it draws
+its text once, at the screen's size, where it used to draw once as
+designed and again when the screen's size reached it (`StyledLabelRenderTests`).
+A screen opts in only when every height on it is measured from its text as
+drawn, never from a plan made at the designed size.
 
 Following now:
 
@@ -66,8 +71,13 @@ Following now:
 - Troubleshooting, the offline checklist home shows when every computer is
   offline, and the QR scanner (happy-app opens the system's, which scales).
 - Their inputs (the server field, the secret key) and the text not drawn by
-  `StyledLabel` (What's New's paragraphs, the Claude command, terminal
-  lines).
+  `StyledLabel` (the Claude command, terminal lines).
+- What's New's releases: the titles, summary lines, paragraphs and bullets
+  are laid out off the main thread at the list's width and text size
+  (`ChangelogPlan`, with the screen's `TextEnvironment` in its input), so
+  a new size plans every release again once, off the main thread, and the
+  old plan stays drawn until the new one is in. `GroupedListMeasureTests`
+  checks the drawn frames against the plan at L, XXXL, AX-M and AX-XXXL.
 - The chat's composer, on its own: `SessionComposerView` sets the trait on
   itself, because its height is worked out from its text as drawn every
   time the chat lays out, and nothing in the chat's plan assumes it. The
@@ -200,7 +210,9 @@ Following now:
   and the raw JSON blocks, Menlo 12 on an 18 line, both × the
   multiplier). Their rows are measured from their labels as drawn when
   the list lays out, as Settings' are; a size change lays the list out
-  again. The glyphs, the 29 icon squares and the 44 row minimum keep
+  again. The raw JSON blocks are the exception: they are laid out off
+  the main thread at the text size (`CodeBlockView`), and the block grows
+  when its layout lands. The glyphs, the 29 icon squares and the 44 row minimum keep
   their size. Session info's duplicate sheet (DuplicateSheet.tsx) sets
   bare font sizes, so its text is the system font at its size × the
   multiplier and the row preview's 19 line likewise; the card, its list

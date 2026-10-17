@@ -108,7 +108,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         view.addSubview(spinner)
         updateTitle()
 
-        observation = services.observeSession { [weak self] state in
+        observation = services.observeSession(nil) { [weak self] state in
             self?.sessionChanged(state)
         }
         let stream = services.feed.snapshots(sessionId: sessionId)

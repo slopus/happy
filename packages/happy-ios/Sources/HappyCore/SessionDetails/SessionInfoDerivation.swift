@@ -156,6 +156,21 @@ public struct SessionInfoUpdate: Sendable {
     public var changes: SessionInfoChanges
 }
 
+/// What the screen can show before its own snapshot is read: the title
+/// home already has for the session, so the bar has it as the screen
+/// slides in.
+public struct SessionInfoSeed: Equatable, Sendable {
+    /// As `SessionInfoModel.title` reads it; nil reads "New chat".
+    public var title: String?
+
+    /// From home's snapshot; nil when home doesn't hold the session, and
+    /// the screen waits for its own snapshot as before.
+    public init?(_ snapshot: HomeSnapshot?, sessionId: String) {
+        guard let record = snapshot?.sessions.first(where: { $0.id == sessionId }) else { return nil }
+        title = record.title
+    }
+}
+
 /// info.tsx off the main thread: the model, the raw JSON and exactly which
 /// groups and rows changed against what the screen shows. A new message
 /// (a new `updatedAt` and `seq`) retexts two rows; a heartbeat or a cursor

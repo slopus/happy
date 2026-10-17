@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyLayout
+import QuartzCore
 import UIKit
 
 /// Every screen a signed-in account can push, after happy-app's
@@ -87,6 +88,10 @@ extension UIViewController {
     /// Pushes a route on this screen's navigation stack. Needs a signed-in
     /// account; does nothing while signed out.
     ///
+    /// A chat is readied before it slides in (`ChatOpening`), so the push
+    /// starts up to 150 ms after the call; any push on the stack meanwhile
+    /// drops it.
+    ///
     /// The tablet sidebar has no stack of its own: it pushes onto the one
     /// beside it, as SidebarNavigator.tsx's single stack does, and not
     /// again onto the chat already on top. The route is recorded so the
@@ -96,8 +101,25 @@ extension UIViewController {
               let stack = navigationController ?? tabletDetailNavigation,
               navigationController != nil || !TabletRoutes.isShowing(route, in: stack)
         else { return }
+        #if DEBUG || HAPPY_FIXTURES
+        let constructionStarted = CACurrentMediaTime()
+        #endif
         let controller = Screens.make(route, context: context, session: session)
+        #if DEBUG || HAPPY_FIXTURES
+        (controller as? ChatViewController)?.constructionSeconds = CACurrentMediaTime() - constructionStarted
+        #endif
         TabletRoutes.record(route, for: controller)
+        ChatOpening.cancel(on: stack)
+        // A chat slides in whole: readied first, for at most a moment.
+        if animated, let chat = controller as? ChatViewController {
+            ChatOpening.begin(chat, on: stack)
+            chat.open(size: stack.view.bounds.size, safeArea: ChatOpening.safeArea(pushedOnto: stack), traits: stack.traitCollection) { [weak stack] _ in
+                guard let stack else { return }
+                ChatOpening.end(chat, on: stack)
+                stack.pushViewController(chat, animated: true)
+            }
+            return
+        }
         stack.pushViewController(controller, animated: animated)
     }
 }

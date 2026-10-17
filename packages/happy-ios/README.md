@@ -10,3 +10,12 @@ swift test --build-system native   # Linux or macOS: crypto, wire, store, sync, 
 xtool dev build                    # Linux: the dev app bundle, needs `xtool sdk`
 xcodegen && open Happy.xcodeproj   # macOS
 ```
+
+The chat fixtures (`Sources/HappyUI/Chat/Fixtures`) are built in Debug and
+where `HAPPY_FIXTURES` is set, never in the shipped app. The hosted tests use
+them, so to run those in Preview:
+
+```sh
+xcodebuild test -scheme HappyUIKitHosted -configuration Preview ENABLE_TESTABILITY=YES \
+  "SWIFT_ACTIVE_COMPILATION_CONDITIONS=\$(inherited) HAPPY_FIXTURES" ...
+```

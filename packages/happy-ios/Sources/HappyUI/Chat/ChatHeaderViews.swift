@@ -13,8 +13,11 @@ import UIKit
 /// the controls beside it (`ChatHeaderTitleLayout`). Tapping it opens the
 /// session's info. Its text follows the screen's text size (`text`), laid
 /// out off the main thread (`ChatHeaderMeasure.title`), and the capsule
-/// asks the bar for the size its plan says; until the first is in it asks
-/// for none. The capsule keeps RN's 44 and cuts text taller than that, as
+/// asks the bar for the size its plan says. Until the first is in, and
+/// while there is nothing to head it (a chat still loading), it shows
+/// nothing and asks for a point: the bar (iOS 26) never takes a title view
+/// that is zero wide when its item goes on, and never looks again. The
+/// capsule keeps RN's 44 and cuts text taller than that, as
 /// `mobileTitlePillGlass`'s `overflow: 'hidden'` does.
 final class ChatHeaderTitleView: UIControl {
     private let glass = HeaderGlassView()
@@ -25,6 +28,8 @@ final class ChatHeaderTitleView: UIControl {
     private let changes = ChatGitChangesView()
     private var model: ChatHeaderTitleModel?
     let measure = OffMainPlan<ChatHeaderTitleInput, ChatHeaderTitlePlan> { ChatHeaderMeasure.title($0) }
+    /// Told once a plan is taken.
+    var onPlanned: (() -> Void)?
     /// The last plan made at `maxWidth`: the size the capsule asks for.
     private var wanted: (input: ChatHeaderTitleInput, size: CGSize)?
 
@@ -75,15 +80,27 @@ final class ChatHeaderTitleView: UIControl {
         fatalError("init(coder:) is not supported")
     }
 
-    /// `title || subtitle` heads the capsule, as in happy-app.
+    /// `title || subtitle` heads the capsule, as in happy-app. With neither
+    /// (the session isn't loaded yet) there is no capsule, rather than an
+    /// empty one that then grows.
     func update(title: String, subtitle: String?, changes: SessionDetails.LineChanges?) {
         let heading = title.isEmpty ? (subtitle ?? "") : title
+        accessibilityLabel = heading
+        accessibilityValue = subtitle
+        guard !heading.isEmpty else {
+            model = nil
+            measure.reset()
+            if wanted != nil {
+                wanted = nil
+                sizeChanged()
+            }
+            setNeedsLayout()
+            return
+        }
         model = ChatHeaderTitleModel(
             heading: heading, subtitle: subtitle,
             changes: changes.map { GitLineChanges(approximate: $0.approximate, insertions: $0.insertions, deletions: $0.deletions) }
         )
-        accessibilityLabel = heading
-        accessibilityValue = subtitle
         requestPlan()
         setNeedsLayout()
     }
@@ -111,17 +128,23 @@ final class ChatHeaderTitleView: UIControl {
             let size = applied.plan.layout.size
             let changed = wanted?.size != size
             wanted = (applied.input, size)
-            if changed {
-                invalidateIntrinsicContentSize()
-                frame.size = size
-                superview?.setNeedsLayout()
-            }
+            if changed { sizeChanged() }
         }
         setNeedsLayout()
+        onPlanned?()
+    }
+
+    /// Asks the bar for `intrinsicContentSize`. In the bar the frame is the
+    /// bar's to set, which it does only once a push is over; until then the
+    /// capsule stays centred in what it has.
+    private func sizeChanged() {
+        invalidateIntrinsicContentSize()
+        if window == nil { frame.size = intrinsicContentSize }
+        superview?.setNeedsLayout()
     }
 
     override var intrinsicContentSize: CGSize {
-        wanted?.size ?? CGSize(width: 0, height: ChatHeaderTitleLayout.Metrics.height)
+        wanted?.size ?? CGSize(width: 1, height: ChatHeaderTitleLayout.Metrics.height)
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
@@ -157,6 +180,12 @@ final class ChatHeaderTitleView: UIControl {
             changes.setLayoutFrame(frame)
             changes.apply(parts)
         }
+    }
+
+    /// The capsule takes touches where it is drawn, wider than the frame
+    /// while the bar has yet to hand it its size.
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        super.point(inside: point, with: event) || (!glass.isHidden && glass.frame.contains(point))
     }
 
     override var isHighlighted: Bool {
@@ -211,6 +240,8 @@ final class ChatPlainHeaderTitleView: UIControl {
     private let changes = ChatGitChangesView()
     private var model: ChatHeaderTitleModel?
     let measure = OffMainPlan<ChatPlainHeaderInput, ChatPlainHeaderPlan> { ChatHeaderMeasure.plain($0) }
+    /// Told once a plan is taken.
+    var onPlanned: (() -> Void)?
 
     /// The screen's text size and pixels, as `ChatHeaderTitleView.text`.
     var text: TextEnvironment? {
@@ -233,7 +264,10 @@ final class ChatPlainHeaderTitleView: UIControl {
         column.addSubview(changes)
         isAccessibilityElement = true
         accessibilityTraits = [.button, .header]
-        measure.onApply = { [weak self] in self?.setNeedsLayout() }
+        measure.onApply = { [weak self] in
+            self?.setNeedsLayout()
+            self?.onPlanned?()
+        }
         registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
             self.setNeedsLayout()
         }

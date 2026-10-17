@@ -1,4 +1,6 @@
-#if DEBUG && canImport(UIKit)
+#if (DEBUG || HAPPY_FIXTURES) && canImport(UIKit)
+// The fixtures: in Debug, and in builds that ask for them (HAPPY_FIXTURES,
+// the hosted tests in Preview). Never in the shipped app.
 import Foundation
 import HappyCore
 import HappyStore
