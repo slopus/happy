@@ -12,8 +12,12 @@ final class ElevenLabsVoiceConnection: VoiceConnection {
     private var observations = Set<AnyCancellable>()
     private var toolTasks: [String: Task<Void, Never>] = [:]
     private var handledTools = Set<String>()
+    private let teardown: Teardown
 
-    private init(_ conversation: Conversation) { self.conversation = conversation }
+    private init(_ conversation: Conversation, teardown: Teardown) {
+        self.conversation = conversation
+        self.teardown = teardown
+    }
 
     static func connect(grant: VoiceGrant?, request: VoiceStart, context: VoiceContext,
                         activity: @escaping @MainActor (VoiceActivity) -> Void,
@@ -31,18 +35,25 @@ final class ElevenLabsVoiceConnection: VoiceConnection {
                 Task { @MainActor in tracker.vad(score) }
             }
         )
+        // SDK state becomes .ended before its awaited room teardown. Its
+        // disconnect callback runs after capture/playback cleanup, so only
+        // that callback may release the shared audio lifetime to a new call.
+        let teardown = Teardown()
+        let onDisconnect: @Sendable (DisconnectionReason) -> Void = { _ in
+            Task { @MainActor in
+                teardown.finish()
+                disconnected()
+            }
+        }
         let conversation: Conversation
         if let grant {
-            conversation = try await ElevenLabs.startConversation(conversationToken: grant.conversationToken, config: config)
+            conversation = try await ElevenLabs.startConversation(conversationToken: grant.conversationToken, config: config, onDisconnect: onDisconnect)
         } else if let agentId = request.customAgentId {
-            conversation = try await ElevenLabs.startConversation(agentId: agentId, config: config)
+            conversation = try await ElevenLabs.startConversation(agentId: agentId, config: config, onDisconnect: onDisconnect)
         } else { throw APIError.unauthenticated }
-        let connection = ElevenLabsVoiceConnection(conversation)
+        let connection = ElevenLabsVoiceConnection(conversation, teardown: teardown)
         conversation.$agentState.removeDuplicates().sink { state in
             tracker.agentSpeaking(state == .speaking)
-        }.store(in: &connection.observations)
-        conversation.$state.sink { state in
-            if case .ended = state { disconnected() }
         }.store(in: &connection.observations)
         conversation.$pendingToolCalls.sink { [weak connection] calls in
             guard let connection else { return }
@@ -65,10 +76,29 @@ final class ElevenLabsVoiceConnection: VoiceConnection {
         for task in toolTasks.values { task.cancel() }
         toolTasks.removeAll()
         await conversation.endConversation()
+        // A remote disconnect may already be tearing down when Stop arrives.
+        // In that case SDK endConversation returns early; still await cleanup.
+        await teardown.wait()
     }
     func setMuted(_ muted: Bool) async throws { try await conversation.setMuted(muted) }
     func context(_ text: String) async throws { try await conversation.updateContext(text) }
     func prompt(_ text: String) async throws { try await conversation.sendMessage(text) }
+
+    @MainActor
+    private final class Teardown {
+        private var finished = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+        func finish() {
+            finished = true
+            let pending = waiters
+            waiters.removeAll()
+            for waiter in pending { waiter.resume() }
+        }
+        func wait() async {
+            guard !finished else { return }
+            await withCheckedContinuation { waiters.append($0) }
+        }
+    }
 }
 
 @MainActor
