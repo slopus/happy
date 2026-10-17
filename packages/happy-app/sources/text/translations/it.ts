@@ -903,6 +903,8 @@ export const it: TranslationStructure = {
         submissionFailed: "Avvio in pausa. Il messaggio è salvato qui.",
         submissionInterrupted: "Avvio interrotto. Controlla la sessione prima di inviare di nuovo.",
         submissionRestore: "Ripristina testo",
+        submissionDismiss: "Cancella messaggio salvato",
+        submissionDismissFailed: "Impossibile cancellare il messaggio salvato. Riprova.",
         submissionCheckSession: "Controlla sessione",
         submissionRestoreWarning: "La sessione o il messaggio potrebbero già esistere. Ripristinare il testo non lo invia di nuovo. Controlla la sessione prima di inviare.",
         submissionAttachmentRecovery: "Gli allegati restano selezionati fino all’accettazione. Dopo un aggiornamento della pagina, seleziona di nuovo i file originali prima di inviare.",

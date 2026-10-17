@@ -22,6 +22,7 @@ export type FirstSubmissionLive = {
     environmentVariables?: Record<string, string>;
     released?: () => void;
     accepted?: () => void;
+    replacementSaveFailed?: () => void;
 };
 type Dependencies = {
     save(scope: string, value: string): Promise<void>;
@@ -55,6 +56,13 @@ export function matchSubmissionAttachmentIds(required: FirstSubmissionInput['att
 
 export function containsSubmissionAttachments(required: FirstSubmissionInput['attachments'], selected: FirstSubmissionInput['attachments']) {
     return matchSubmissionAttachmentIds(required, selected).size === required.length;
+}
+
+/** Paused recovery is optional. Only an active launch or attachments explicitly
+ * restored into the editor can block a new, user-initiated submission. */
+export function canSubmitFirstSubmission(snapshot: FirstSubmissionSnapshot | null, attachments: FirstSubmissionInput['attachments']) {
+    return !snapshot || snapshot.phase === 'failed' || (snapshot.phase === 'restored'
+        && containsSubmissionAttachments(snapshot.attachments, attachments));
 }
 
 /** A single scoped operation owns work, not a mounted composer. Disk is a
@@ -92,19 +100,22 @@ export class FirstSubmissionOwner {
 
     async submit(input: FirstSubmissionInput, live: FirstSubmissionLive): Promise<boolean> {
         if (this.busy || this.clearing || !this.current()) return false;
-        if (this.snapshot && (this.snapshot.phase !== 'restored'
-            || !containsSubmissionAttachments(this.snapshot.attachments, input.attachments))) return false;
+        if (!canSubmitFirstSubmission(this.snapshot, input.attachments)) return false;
         this.busy = true;
+        const previous = { snapshot: this.snapshot, live: this.live, receipt: this.receipt };
+        let saved = false;
         const generation = this.generation;
         const current = () => generation === this.generation && this.current();
         // Explicit whitelist: never serialize live API credentials, blobs or machine metadata.
         const { text, prompt, machineId, path, agent, worktreeKey, permissionMode, modelMode, effortLevel, fastMode, sidebarListId } = input;
         this.live = { ...live, images: live.images.map(image => ({ ...image })) };
+        this.receipt = undefined;
         this.publish({ version: 1, scope: this.scope, phase: 'saving', text, prompt, machineId, path, agent, worktreeKey,
             permissionMode, modelMode, effortLevel, fastMode, sidebarListId, attachments: input.attachments.map(({ id, name }) => ({ id, name })) });
         try {
             await this.persist('saving', current);
             if (!current()) return false;
+            saved = true;
             live.released?.();
             await this.persist('spawning', current);
             if (!current()) return false;
@@ -118,7 +129,13 @@ export class FirstSubmissionOwner {
             return await this.finish('hydrate', current);
         } catch {
             if (current()) {
-                if (this.receipt) this.fail('storage', 'project');
+                if (!saved && previous.snapshot) {
+                    // Keep both the visible recovery and any accepted receipt if
+                    // the replacement never made it to disk. The editor stays intact.
+                    this.live = previous.live; this.receipt = previous.receipt;
+                    this.publish(previous.snapshot);
+                    try { live.replacementSaveFailed?.(); } catch { /* optional feedback */ }
+                } else if (this.receipt) this.fail('storage', 'project');
                 else this.fail(this.getSnapshot()?.phase === 'saving' ? 'storage' : 'interrupted');
             }
             return false;
@@ -179,7 +196,7 @@ export class FirstSubmissionOwner {
         return current();
     }
     async retry(expected = this.snapshot): Promise<boolean> {
-        if (expected !== this.snapshot || this.busy || !this.live || !this.snapshot?.retry || !this.current()) return false;
+        if (expected !== this.snapshot || this.busy || this.clearing || !this.live || !this.snapshot?.retry || !this.current()) return false;
         this.busy = true;
         const generation = this.generation;
         const current = () => generation === this.generation && this.current();

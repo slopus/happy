@@ -27,7 +27,7 @@ import { t } from '@/text';
 import { storage, useProfile, useAllMachines, useIsDataReady, useLocalSetting, useLocalSettingMutable, useSetting, useSettingMutable } from '@/sync/storage';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useFirstSubmission } from '@/hooks/useFirstSubmission';
-import { containsSubmissionAttachments, matchSubmissionAttachmentIds } from '@/sync/firstSubmission';
+import { canSubmitFirstSubmission, containsSubmissionAttachments, matchSubmissionAttachmentIds } from '@/sync/firstSubmission';
 import { composeDraftAttachmentSelectionGeneration, useComposeDraft } from '@/sync/composeDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
@@ -171,7 +171,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         rightWidth: desktopRightPanelWidth,
     } = useDesktopWorkspaceLayout();
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
-    const { pending, submit, retry, restore, checkSession } = useFirstSubmission();
+    const { pending, submit, retry, restore, checkSession, dismiss } = useFirstSubmission();
     const sending = pending?.phase === 'saving';
     const hydrationError = pending?.failure === 'hydrate';
     const { text, setText, images: draftImages, setImages: setDraftImages } = useComposeDraft();
@@ -676,8 +676,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         const images = activeImageAgent
             ? [...selectedCustomReferenceImages, ...userImages]
             : userImages.length > 0 ? userImages : undefined;
-        if ((!trimmed && !images) || (pending && (pending.phase !== 'restored'
-            || !containsSubmissionAttachments(pending.attachments, images ?? [])))) return;
+        if ((!trimmed && !images) || !canSubmitFirstSubmission(pending, images ?? [])) return;
         if (activeImageAgent && (!effectiveImageAgent || activeImageStyles.length === 0)) return;
         const prompt = activeImageAgent && effectiveImageAgent
             ? buildImageAgentPrompt({
@@ -1109,6 +1108,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                                 {pending.sessionId && <Pressable accessibilityRole="button" onPress={checkSession} style={styles.sessionHydrationRetry} testID="compose-home-check-session"><Text style={styles.sessionHydrationRetryText}>{t('newSession.submissionCheckSession')}</Text></Pressable>}
                                 <Pressable accessibilityRole="button" onPress={() => restoreSubmission()} style={styles.sessionHydrationRetry} testID="compose-home-restore-submission"><Text style={styles.sessionHydrationRetryText}>{t('newSession.submissionRestore')}</Text></Pressable>
                                 {pending.attachments.length > 0 && <Pressable accessibilityRole="button" onPress={() => restoreSubmission(true)} style={styles.sessionHydrationRetry} testID="compose-home-restore-text-only"><Text style={styles.sessionHydrationRetryText}>{t('newSession.submissionRestoreTextOnly')}</Text></Pressable>}
+                                <Pressable accessibilityRole="button" onPress={dismiss} style={({ pressed }) => [styles.sessionHydrationRetry, pressed && styles.sessionHydrationRetryPressed]} testID="compose-home-dismiss-submission"><Text style={styles.sessionHydrationRetryText}>{t('newSession.submissionDismiss')}</Text></Pressable>
                             </View>}
                         </View>
                     )}
@@ -1146,8 +1146,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         onChangeText={handleTextChange}
                         onSend={handleSend}
                         isSending={sending}
-                        isSendDisabled={!canSubmit || Boolean(pending && (pending.phase !== 'restored'
-                            || !containsSubmissionAttachments(pending.attachments, selectedImages)))}
+                        isSendDisabled={!canSubmit || !canSubmitFirstSubmission(pending, activeImageAgent
+                            ? [...selectedCustomReferenceImages, ...selectedImages] : selectedImages)}
                         selectedImages={hasImages ? selectedImages : undefined}
                         selectedImagesPresentation={activeImageAgent ? 'featured' : 'compact'}
                         // Image agent needs images only; the normal composer

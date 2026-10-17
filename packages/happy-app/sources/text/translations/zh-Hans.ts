@@ -951,6 +951,8 @@ export const zhHans: TranslationStructure = {
         submissionFailed: "启动已暂停，消息已保存在此处。",
         submissionInterrupted: "启动被中断。再次发送前，请先检查会话。",
         submissionRestore: "恢复文字",
+        submissionDismiss: "清除已保存消息",
+        submissionDismissFailed: "未能清除已保存消息，请重试。",
         submissionCheckSession: "检查会话",
         submissionRestoreWarning: "会话或消息可能已创建。恢复文字不会重新发送；再次提交前，请先检查会话。",
         submissionAttachmentRecovery: "附件会保留到消息被接受。刷新后再次发送前，请重新选择原文件。",

@@ -28,6 +28,62 @@ function fixture() {
     return { owner, deps, disk, effects, receipt, invalidate: () => { current = false; } };
 }
 describe('recoverable first submission', () => {
+    it.each(['error', 'cancelled'])('allows an explicit new submission after a %s without restoring old text', async type => {
+        const f = fixture(); f.deps.spawn.mockResolvedValueOnce({ type } as any);
+        await f.owner.submit(input, { images: [] });
+        expect(await f.owner.submit({ ...input, text: 'new request', prompt: 'new request', attachments: [] }, { images: [] })).toBe(true);
+        expect(f.owner.getSnapshot()).toMatchObject({ text: 'new request', phase: 'ready', attachments: [] });
+        expect(f.deps.send).toHaveBeenCalledExactlyOnceWith('session', expect.objectContaining({ prompt: 'new request' }), expect.anything(), expect.any(Function));
+    });
+    it('allows fresh input after refresh without replaying the interrupted message', async () => {
+        const f = fixture();
+        f.disk.set('account/server', JSON.stringify({ ...input, version: 1, scope: 'account/server', phase: 'sending', sessionId: 'old-session' }));
+        f.owner.activate('account/server', () => true);
+        expect(f.effects).toEqual([]);
+        expect(await f.owner.submit({ ...input, prompt: 'fresh input', attachments: [] }, { images: [] })).toBe(true);
+        expect(f.deps.send).toHaveBeenCalledExactlyOnceWith('session', expect.objectContaining({ prompt: 'fresh input' }), expect.anything(), expect.any(Function));
+    });
+    it('preserves the old recovery and receipt if saving a replacement fails', async () => {
+        const f = fixture(); f.deps.project.mockResolvedValueOnce(false);
+        await f.owner.submit(input, { images: [] });
+        const saved = f.disk.get('account/server');
+        const previous = f.owner.getSnapshot();
+        f.deps.save.mockRejectedValueOnce(new Error('quota'));
+        const released = vi.fn();
+        expect(await f.owner.submit({ ...input, text: 'new request' }, { images: [], released })).toBe(false);
+        expect(f.owner.getSnapshot()).toBe(previous);
+        expect(f.disk.get('account/server')).toBe(saved);
+        expect(released).not.toHaveBeenCalled();
+        expect(await f.owner.retry()).toBe(true);
+        expect(f.effects).toEqual(['spawn', 'send']);
+    });
+    it('does not reuse the old accepted receipt after a replacement is saved', async () => {
+        const f = fixture(); f.deps.project.mockResolvedValueOnce(false);
+        await f.owner.submit(input, { images: [] });
+        f.deps.save.mockImplementation(async (scope, value) => {
+            if (JSON.parse(value)?.phase === 'spawning') throw new Error('quota');
+            f.disk.set(scope, value);
+        });
+        expect(await f.owner.submit({ ...input, text: 'new request' }, { images: [] })).toBe(false);
+        expect(f.owner.getSnapshot()).toMatchObject({ text: 'new request', phase: 'failed' });
+        expect(f.owner.getSnapshot()?.sessionId).toBeUndefined();
+        expect(f.owner.getSnapshot()?.retry).toBeUndefined();
+        expect(await f.owner.retry()).toBe(false);
+        expect(f.deps.project).toHaveBeenCalledTimes(1);
+    });
+    it('blocks retry and replacement while a recovery record is being cleared', async () => {
+        const f = fixture(); f.deps.project.mockResolvedValueOnce(false);
+        await f.owner.submit(input, { images: [] });
+        const cleared = deferred<void>();
+        f.deps.save.mockImplementationOnce(() => cleared.promise);
+        const dismissing = f.owner.dismiss();
+        expect(await f.owner.retry()).toBe(false);
+        expect(await f.owner.submit(input, { images: [] })).toBe(false);
+        cleared.resolve();
+        expect(await dismissing).toBe(true);
+        expect(f.owner.getSnapshot()).toBeNull();
+        expect(f.effects).toEqual(['spawn', 'send']);
+    });
     it('retains restored text across refresh without sending and replaces it only after durable submission', async () => {
         const f = fixture(); f.deps.spawn.mockResolvedValueOnce({ type: 'error' } as any);
         await f.owner.submit(input, { images: [] });

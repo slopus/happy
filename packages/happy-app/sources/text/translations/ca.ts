@@ -905,6 +905,8 @@ export const ca: TranslationStructure = {
         submissionFailed: "L’inici s’ha pausat. El missatge està desat aquí.",
         submissionInterrupted: "L’inici s’ha interromput. Comprova la sessió abans de tornar a enviar.",
         submissionRestore: "Restaura el text",
+        submissionDismiss: "Esborra el missatge desat",
+        submissionDismissFailed: "No s’ha pogut esborrar el missatge desat. Torna-ho a provar.",
         submissionCheckSession: "Comprova la sessió",
         submissionRestoreWarning: "La sessió o el missatge ja podrien existir. Restaurar el text no el torna a enviar. Comprova la sessió abans d’enviar.",
         submissionAttachmentRecovery: "Els adjunts continuen seleccionats fins que s’acceptin. Després de recarregar la pàgina, torna a seleccionar els fitxers originals abans d’enviar.",

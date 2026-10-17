@@ -976,6 +976,8 @@ export const en: TranslationStructure = {
         submissionFailed: "Startup paused. Your message is saved here.",
         submissionInterrupted: "Startup was interrupted. Check the session before sending again.",
         submissionRestore: "Restore text",
+        submissionDismiss: "Clear saved message",
+        submissionDismissFailed: "Could not clear the saved message. Please try again.",
         submissionCheckSession: "Check session",
         submissionRestoreWarning: "The session or message may already exist. Restoring text does not resend it. Check the session before submitting again.",
         submissionAttachmentRecovery: "Attachments remain selected until accepted. After a refresh, reselect the original files before sending.",

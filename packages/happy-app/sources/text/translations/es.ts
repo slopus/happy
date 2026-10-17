@@ -905,6 +905,8 @@ export const es: TranslationStructure = {
         submissionFailed: "El inicio se ha pausado. Tu mensaje está guardado aquí.",
         submissionInterrupted: "El inicio se interrumpió. Revisa la sesión antes de volver a enviar.",
         submissionRestore: "Restaurar texto",
+        submissionDismiss: "Borrar mensaje guardado",
+        submissionDismissFailed: "No se pudo borrar el mensaje guardado. Inténtalo de nuevo.",
         submissionCheckSession: "Revisar sesión",
         submissionRestoreWarning: "La sesión o el mensaje podrían existir ya. Restaurar el texto no lo reenvía. Revisa la sesión antes de volver a enviar.",
         submissionAttachmentRecovery: "Los adjuntos siguen seleccionados hasta su aceptación. Después de recargar, vuelve a seleccionar los archivos originales antes de enviar.",

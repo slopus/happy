@@ -906,6 +906,8 @@ export const ja: TranslationStructure = {
         submissionFailed: "開始が一時停止しました。メッセージはここに保存されています。",
         submissionInterrupted: "開始が中断されました。再送信する前にセッションを確認してください。",
         submissionRestore: "テキストを復元",
+        submissionDismiss: "保存済みメッセージを消去",
+        submissionDismissFailed: "保存済みメッセージを消去できませんでした。もう一度お試しください。",
         submissionCheckSession: "セッションを確認",
         submissionRestoreWarning: "セッションまたはメッセージがすでに存在する可能性があります。テキストの復元では再送信されません。再度送信する前にセッションを確認してください。",
         submissionAttachmentRecovery: "添付ファイルは受け付けられるまで選択状態が保持されます。ページ更新後は送信前に元のファイルを選択し直してください。",

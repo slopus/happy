@@ -904,6 +904,8 @@ export const pt: TranslationStructure = {
         submissionFailed: "Inicialização pausada. Sua mensagem está salva aqui.",
         submissionInterrupted: "A inicialização foi interrompida. Confira a sessão antes de enviar novamente.",
         submissionRestore: "Restaurar texto",
+        submissionDismiss: "Limpar mensagem salva",
+        submissionDismissFailed: "Não foi possível limpar a mensagem salva. Tente novamente.",
         submissionCheckSession: "Conferir sessão",
         submissionRestoreWarning: "A sessão ou a mensagem pode já existir. Restaurar o texto não o envia novamente. Confira a sessão antes de enviar.",
         submissionAttachmentRecovery: "Os anexos permanecem selecionados até serem aceitos. Após recarregar a página, selecione os arquivos originais novamente antes de enviar.",

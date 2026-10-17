@@ -922,6 +922,8 @@ export const pl: TranslationStructure = {
         submissionFailed: "Uruchamianie wstrzymane. Wiadomość jest tutaj zapisana.",
         submissionInterrupted: "Uruchamianie przerwano. Sprawdź sesję przed ponownym wysłaniem.",
         submissionRestore: "Przywróć tekst",
+        submissionDismiss: "Usuń zapisaną wiadomość",
+        submissionDismissFailed: "Nie udało się usunąć zapisanej wiadomości. Spróbuj ponownie.",
         submissionCheckSession: "Sprawdź sesję",
         submissionRestoreWarning: "Sesja lub wiadomość może już istnieć. Przywrócenie tekstu nie wysyła go ponownie. Sprawdź sesję przed wysłaniem.",
         submissionAttachmentRecovery: "Załączniki pozostają wybrane do momentu przyjęcia. Po odświeżeniu strony wybierz ponownie oryginalne pliki przed wysłaniem.",

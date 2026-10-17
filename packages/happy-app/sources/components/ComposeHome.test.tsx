@@ -276,6 +276,102 @@ describe('ComposeHome session hydration recovery', () => {
         consoleErrorSpy.mockRestore();
     });
 
+    it.each(['web', 'android'])('sends the current %s input directly after a paused launch without restoring', async platform => {
+        mocks.platformOS = platform;
+        mocks.machineSpawnNewSession.mockResolvedValueOnce({ type: 'error', errorMessage: 'launch failed' });
+        mocks.ensureSessionHydrated.mockResolvedValue(true);
+        let renderer: any;
+        act(() => { useComposeDraft.getState().setImages([]); renderer = TestRenderer.create(<ComposeHome variant="screen" />); });
+        act(() => renderer.root.findByType('MessageComposer').props.onChangeText('old request'));
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); });
+        expect(renderer.root.findByProps({ testID: 'compose-home-starting-text' }).props.children).toBe('old request');
+        act(() => renderer.root.findByType('MessageComposer').props.onChangeText('new request'));
+        expect(renderer.root.findByType('MessageComposer').props.isSendDisabled).toBe(false);
+        await act(async () => {
+            renderer.root.findByType('MessageComposer').props.onSend();
+            renderer.root.findByType('MessageComposer').props.onSend();
+        });
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(2);
+        expect(mocks.sendMessage).toHaveBeenCalledExactlyOnceWith('session-1', 'new request', expect.anything());
+        expect(mocks.navigateToSession).toHaveBeenCalledExactlyOnceWith('session-1');
+        act(() => renderer.unmount());
+    });
+
+    it('clears a paused card durably while keeping current editor text and attachments', async () => {
+        mocks.machineSpawnNewSession.mockResolvedValueOnce({ type: 'error', errorMessage: 'launch failed' });
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ComposeHome variant="screen" />); });
+        act(() => renderer.root.findByType('MessageComposer').props.onChangeText('old request'));
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); });
+        act(() => renderer.root.findByType('MessageComposer').props.onChangeText('keep this edit'));
+        await act(async () => { await renderer.root.findByProps({ testID: 'compose-home-dismiss-submission' }).props.onPress(); });
+        expect(renderer.root.findAllByProps({ testID: 'compose-home-starting' })).toHaveLength(0);
+        expect(useComposeDraft.getState().text).toBe('keep this edit');
+        expect(useComposeDraft.getState().images.map(image => image.id)).toEqual(['image-a', 'image-b']);
+        const scope = getFirstSubmissionScope()!;
+        expect(JSON.parse(globalThis.localStorage.getItem(`first-submission-v1:${scope.key}`)!)).toBeNull();
+        act(() => { renderer.unmount(); setFirstSubmissionScope(scope.key, scope.serverUrl); });
+        act(() => { renderer = TestRenderer.create(<ComposeHome variant="screen" />); });
+        expect(renderer.root.findAllByProps({ testID: 'compose-home-starting' })).toHaveLength(0);
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the card and reports failure when clearing durable storage fails', async () => {
+        mocks.machineSpawnNewSession.mockResolvedValueOnce({ type: 'error', errorMessage: 'launch failed' });
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ComposeHome variant="screen" />); });
+        act(() => renderer.root.findByType('MessageComposer').props.onChangeText('recoverable text'));
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); });
+        const setItem = vi.spyOn(globalThis.localStorage, 'setItem').mockImplementationOnce(() => { throw new Error('blocked'); });
+        await act(async () => { await renderer.root.findByProps({ testID: 'compose-home-dismiss-submission' }).props.onPress(); });
+        expect(renderer.root.findByProps({ testID: 'compose-home-starting-text' }).props.children).toBe('recoverable text');
+        expect(Modal.alert).toHaveBeenLastCalledWith('common.error', 'newSession.submissionDismissFailed');
+        setItem.mockRestore();
+        act(() => renderer.unmount());
+    });
+
+    it('ignores a late check-session result after its recovery card is cleared', async () => {
+        vi.useFakeTimers();
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ComposeHome variant="screen" />); });
+        act(() => renderer.root.findByType('MessageComposer').props.onChangeText('old request'));
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); await vi.runAllTimersAsync(); });
+        let resolveHydration!: (result: boolean) => void;
+        mocks.ensureSessionHydrated.mockImplementationOnce(() => new Promise<boolean>(resolve => { resolveHydration = resolve; }));
+        let checking!: Promise<void>;
+        act(() => { checking = renderer.root.findByProps({ testID: 'compose-home-check-session' }).props.onPress(); });
+        await act(async () => { await renderer.root.findByProps({ testID: 'compose-home-dismiss-submission' }).props.onPress(); });
+        await act(async () => { resolveHydration(true); await checking; });
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('preserves the uncertain-start warning when saving a new request fails', async () => {
+        const scope = getFirstSubmissionScope()!;
+        globalThis.localStorage.setItem(`first-submission-v1:${scope.key}`, JSON.stringify({
+            version: 1, scope: scope.key, phase: 'spawning', text: 'interrupted request', prompt: 'interrupted request',
+            agent: 'codex', machineId: 'machine-1', path: '/work', worktreeKey: null, attachments: [],
+        }));
+        setFirstSubmissionScope(scope.key, scope.serverUrl);
+        let renderer: any;
+        act(() => { useComposeDraft.getState().setImages([]); renderer = TestRenderer.create(<ComposeHome variant="screen" />); });
+        act(() => renderer.root.findByType('MessageComposer').props.onChangeText('new request'));
+        const setItem = vi.spyOn(globalThis.localStorage, 'setItem').mockImplementationOnce(() => { throw new Error('quota'); });
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); });
+        setItem.mockRestore();
+        expect(renderer.root.findByProps({ testID: 'compose-home-starting-text' }).props.children).toBe('interrupted request');
+        expect(useComposeDraft.getState().text).toBe('new request');
+        expect(Modal.alert).toHaveBeenCalledWith('common.error', 'newSession.submissionSaveFailed');
+        vi.mocked(Modal.confirm).mockResolvedValueOnce(false);
+        await act(async () => { await renderer.root.findByProps({ testID: 'compose-home-restore-submission' }).props.onPress(); });
+        expect(Modal.confirm).toHaveBeenCalledWith('newSession.submissionInterrupted', 'newSession.submissionRestoreWarning');
+        expect(useComposeDraft.getState().text).toBe('new request');
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
     it('defers first history load until active bootstrap is ready', async () => {
         vi.useFakeTimers();
         mocks.isDataReady = false;
@@ -385,10 +481,8 @@ describe('ComposeHome session hydration recovery', () => {
             { id: 'image-c', uri: 'file:///c.png' },
         ]);
 
-        await act(async () => {
-            renderer.root.findByType('MessageComposer').props.onSend();
-            await Promise.resolve();
-        });
+        // New input may be submitted independently; retry still belongs to the
+        // saved original when the user chooses the recovery action instead.
         expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(1);
 
         mocks.ensureSessionHydrated.mockResolvedValue(true);
@@ -514,7 +608,7 @@ describe('ComposeHome session hydration recovery', () => {
         ))).toEqual([]);
     });
 
-    it('keeps recovery blocked until missing original attachments are explicitly reselected', async () => {
+    it('keeps recovery saved without restoring text when original attachments are missing', async () => {
         vi.useFakeTimers();
         vi.mocked(Modal.confirm).mockResolvedValue(true);
         let renderer: any;
@@ -524,7 +618,8 @@ describe('ComposeHome session hydration recovery', () => {
         act(() => useComposeDraft.getState().setImages([]));
         await act(async () => { await renderer.root.findByProps({ testID: 'compose-home-restore-submission' }).props.onPress(); });
         expect(renderer.root.findByProps({ testID: 'compose-home-starting-text' }).props.children).toBe('recover attachments');
-        expect(renderer.root.findByType('MessageComposer').props.isSendDisabled).toBe(true);
+        expect(renderer.root.findByType('MessageComposer').props.initialValue).toBe('');
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
         expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(1);
         act(() => renderer.unmount());
     });
@@ -549,7 +644,7 @@ describe('ComposeHome session hydration recovery', () => {
         act(() => useComposeDraft.getState().setImages([]));
         vi.mocked(Modal.confirm).mockResolvedValueOnce(false);
         await act(async () => { await renderer.root.findByProps({ testID: 'compose-home-restore-text-only' }).props.onPress(); });
-        expect(renderer.root.findByType('MessageComposer').props.isSendDisabled).toBe(true);
+        expect(renderer.root.findByType('MessageComposer').props.initialValue).toBe('');
         vi.mocked(Modal.confirm).mockResolvedValueOnce(true);
         await act(async () => { await renderer.root.findByProps({ testID: 'compose-home-restore-text-only' }).props.onPress(); });
         expect(renderer.root.findByType('MessageComposer').props.initialValue).toBe('retain original text');

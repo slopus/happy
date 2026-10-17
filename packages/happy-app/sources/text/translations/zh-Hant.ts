@@ -905,6 +905,8 @@ export const zhHant: TranslationStructure = {
         submissionFailed: "啟動已暫停，訊息已儲存在此處。",
         submissionInterrupted: "啟動已中斷。再次傳送前，請先檢查工作階段。",
         submissionRestore: "還原文字",
+        submissionDismiss: "清除已儲存訊息",
+        submissionDismissFailed: "未能清除已儲存訊息，請重試。",
         submissionCheckSession: "檢查工作階段",
         submissionRestoreWarning: "工作階段或訊息可能已建立。還原文字不會重新傳送；再次提交前，請先檢查工作階段。",
         submissionAttachmentRecovery: "附件會保留到訊息被接受。重新整理後再次傳送前，請重新選擇原檔案。",
