@@ -3000,6 +3000,32 @@ describe('reducer', () => {
             const permMsgId = state.toolIdToMessageId.get('tool-1');
             expect(toolMsgId).toBe(permMsgId); // Same message - properly matched!
         });
+
+        it('does not re-walk completedRequests when the same agentState comes back without tool calls', () => {
+            const state = createReducer();
+            let walks = 0;
+            const completedRequests = new Proxy({
+                'tool-1': { tool: 'Write', arguments: { file_path: '/test.txt' }, status: 'approved' as const, createdAt: 1000, completedAt: 1100 }
+            }, { ownKeys(target) { walks += 1; return Reflect.ownKeys(target); } });
+            const agentState: AgentState = { requests: {}, completedRequests };
+
+            expect(reducer(state, [], agentState).messages).toHaveLength(1);
+            expect(walks).toBe(1);
+
+            // The same object again: an update-session tick with nothing new.
+            expect(reducer(state, [], agentState).messages).toHaveLength(0);
+            expect(walks).toBe(1);
+
+            // A tool call arriving still joins its stored permission.
+            const toolCall: NormalizedMessage = {
+                id: 'msg-1', localId: null, createdAt: 2000, role: 'agent', isSidechain: false,
+                content: [{ type: 'tool-call', id: 'tool-1', name: 'Write', input: { file_path: '/test.txt' }, description: null, uuid: 'u1', parentUUID: null }]
+            };
+            const joined = reducer(state, [toolCall], agentState);
+            expect(walks).toBe(2);
+            expect(joined.messages).toHaveLength(1);
+            expect(joined.messages[0].kind === 'tool-call' && joined.messages[0].tool.permission?.status).toBe('approved');
+        });
     });
 
     describe('session protocol lifecycle and subagent sidechains', () => {

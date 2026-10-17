@@ -3,8 +3,13 @@ export async function delay(ms: number) {
 }
 
 export function exponentialBackoffDelay(currentFailureCount: number, minDelay: number, maxDelay: number, maxFailureCount: number) {
-    let maxDelayRet = minDelay + ((maxDelay - minDelay) / maxFailureCount) * Math.max(currentFailureCount, maxFailureCount);
-    return Math.round(Math.random() * maxDelayRet);
+    // The ceiling doubles per failure from minDelay up to maxDelay, with full
+    // jitter under it. The previous formula took Math.max(count, maxFailureCount),
+    // which pinned the ceiling at maxDelay from the very first failure: nothing
+    // ever ramped, so raising maxDelay would have slowed the first retry too.
+    const failures = Math.min(Math.max(currentFailureCount, 1), maxFailureCount);
+    const ceiling = Math.min(maxDelay, minDelay * Math.pow(2, failures - 1));
+    return Math.round(Math.random() * ceiling);
 }
 
 export type BackoffFunc = <T>(callback: () => Promise<T>) => Promise<T>;
