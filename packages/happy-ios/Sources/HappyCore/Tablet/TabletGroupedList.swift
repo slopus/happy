@@ -137,7 +137,10 @@ public struct TabletGroupedList: Equatable, Sendable {
                 machineId: machineId,
                 path: metadata?["path"]?.stringValue,
                 projectId: session.projectReference,
-                git: shown.changes
+                git: shown.changes,
+                projectAvatar: session.isRig ? session.projectReference.flatMap { projects[$0] }.map {
+                    SessionAvatar(seed: shown.avatar.seed, image: AvatarImageSource.project($0))
+                } : nil
             )
         }
         let allProjects = ProjectHomeData.catalogProjects(rigProjectSessions, member: member)
@@ -290,7 +293,7 @@ public struct TabletGroupedList: Equatable, Sendable {
             id: "\(project.id)\u{0}\(checkout.id)",
             projectName: project.name,
             // `flavor={null}` and no `bot`: a plain face, never badged.
-            avatar: SessionAvatar(seed: first.row.avatar.seed),
+            avatar: first.projectAvatar ?? SessionAvatar(seed: first.row.avatar.seed),
             // `workspace.name ?? (workspace.id || null)`, then the live
             // branch, then "main".
             branch: checkout.name ?? (checkout.id.isEmpty ? nil : checkout.id) ?? status?.branch ?? "main",

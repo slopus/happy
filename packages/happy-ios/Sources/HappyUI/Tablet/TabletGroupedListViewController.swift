@@ -254,6 +254,9 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
 
     /// One configuration for every live cell.
     private func configure(_ cell: UITableViewCell, _ row: Row) {
+        if let cell = cell as? SessionRowCell { cell.avatar.pictures = session.avatarPictures }
+        if let cell = cell as? TabletWorkspaceHeaderCell { cell.avatar.pictures = session.avatarPictures }
+        if let cell = cell as? TabletArchivedCell { cell.avatar.pictures = session.avatarPictures }
         switch row {
         case .botsHeader:
             (cell as? TabletSectionHeaderCell)?.configure(Strings.Tablet.bots)

@@ -22,11 +22,13 @@ public struct APISession: Codable, Hashable, Sendable {
     public var agentStateVersion: Int
     public var dataEncryptionKey: String?
     public var projectId: String?
+    public var avatar: AvatarDescriptor?
+    public var avatarVersion: Int?
 
     public init(
         id: String, seq: Int, createdAt: Int64, updatedAt: Int64, active: Bool, activeAt: Int64,
         metadata: String, metadataVersion: Int, agentState: String?, agentStateVersion: Int,
-        dataEncryptionKey: String?, projectId: String?
+        dataEncryptionKey: String?, projectId: String?, avatar: AvatarDescriptor? = nil, avatarVersion: Int? = nil
     ) {
         self.id = id
         self.seq = seq
@@ -40,6 +42,32 @@ public struct APISession: Codable, Hashable, Sendable {
         self.agentStateVersion = agentStateVersion
         self.dataEncryptionKey = dataEncryptionKey
         self.projectId = projectId
+        self.avatar = avatar
+        self.avatarVersion = avatarVersion
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, seq, createdAt, updatedAt, active, activeAt, metadata, metadataVersion
+        case agentState, agentStateVersion, dataEncryptionKey, projectId, avatar, avatarVersion
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        seq = try c.decode(Int.self, forKey: .seq)
+        createdAt = try c.decode(Int64.self, forKey: .createdAt)
+        updatedAt = try c.decode(Int64.self, forKey: .updatedAt)
+        active = try c.decode(Bool.self, forKey: .active)
+        activeAt = try c.decode(Int64.self, forKey: .activeAt)
+        metadata = try c.decode(String.self, forKey: .metadata)
+        metadataVersion = try c.decode(Int.self, forKey: .metadataVersion)
+        agentState = try c.decodeIfPresent(String.self, forKey: .agentState)
+        agentStateVersion = try c.decode(Int.self, forKey: .agentStateVersion)
+        dataEncryptionKey = try c.decodeIfPresent(String.self, forKey: .dataEncryptionKey)
+        projectId = try c.decodeIfPresent(String.self, forKey: .projectId)
+        // Bad artwork must never prevent the session list from syncing.
+        avatar = try? c.decodeIfPresent(AvatarDescriptor.self, forKey: .avatar)
+        avatarVersion = (try? c.decodeIfPresent(Int.self, forKey: .avatarVersion)).flatMap { $0 >= 0 ? $0 : nil }
     }
 }
 

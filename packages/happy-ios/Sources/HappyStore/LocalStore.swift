@@ -59,7 +59,7 @@ public final class LocalStore: Sendable {
         // Scope invalidation to the columns its consumers actually use.
         let homeSessionRegion = SQLRequest<Row>(sql: """
             SELECT id, createdAt, lastMessageSentAt, active, activeAt, projectId,
-                   metadata, agentState, decryptable, thinking, unread, archiving
+                   metadata, agentState, decryptable, thinking, unread, archiving, avatar, dataKeyCipher
             FROM session
             """)
         // Async consumers must use SharedObservationBridge: GRDB invokes
@@ -188,6 +188,7 @@ public final class LocalStore: Sendable {
         metadata: VersionedPayload?,
         agentState: VersionedPayload?,
         projectId: String??,
+        avatar: AvatarDescriptor?? = nil, avatarVersion: Int? = nil, avatarUpdateSeq: Int? = nil,
         reconcileComposer: SessionComposerReconciliation? = nil
     ) throws -> Bool {
         try performWrite { db in
@@ -205,6 +206,17 @@ public final class LocalStore: Sendable {
             }
             if let projectId {
                 record.projectId = projectId
+            }
+            if let avatar {
+                let revision = avatarVersion ?? avatar?.version
+                let newer: Bool
+                if let revision, let previous = record.avatarVersion { newer = revision > previous }
+                else { newer = (avatarUpdateSeq ?? 0) > (record.avatarUpdateSeq ?? -1) }
+                if newer {
+                    record.avatar = avatar
+                    record.avatarVersion = revision
+                    record.avatarUpdateSeq = avatarUpdateSeq
+                }
             }
             Self.settle(old: old, &record)
             if record != old { _ = try record.updateChanges(db, from: old) }
@@ -473,7 +485,7 @@ public final class LocalStore: Sendable {
             }
             for record in incoming {
                 if let existing = try ProjectRecord.fetchOne(db, key: record.id) {
-                    guard existing.metadataVersion <= record.metadataVersion else { continue }
+                    guard existing.metadataVersion <= record.metadataVersion, existing.updatedAt <= record.updatedAt else { continue }
                     if record != existing { _ = try record.updateChanges(db, from: existing) }
                 } else {
                     try record.insert(db)
@@ -853,6 +865,15 @@ public final class LocalStore: Sendable {
             record.active = incoming.active
             record.activeAt = incoming.activeAt
             record.projectId = incoming.projectId
+        }
+        // Revisions survive deletion, so a delayed fetch cannot resurrect art.
+        if let revision = incoming.avatarVersion,
+           revision >= (record.avatarVersion ?? -1) {
+            record.avatar = incoming.avatar
+            record.avatarVersion = revision
+        } else if incoming.avatarVersion == nil, record.avatarVersion == nil,
+                  incoming.updatedAt >= old.updatedAt, record.avatarUpdateSeq == nil {
+            record.avatar = incoming.avatar
         }
         record.seq = max(record.seq, incoming.seq)
         if incoming.metadataVersion > record.metadataVersion

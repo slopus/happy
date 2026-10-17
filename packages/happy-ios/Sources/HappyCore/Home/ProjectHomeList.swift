@@ -40,6 +40,7 @@ public struct ProjectHomeData: Equatable, Sendable {
         public var projectId: String?
         /// Happy Agent's whole-checkout line counts (rig.ts `getRigGitSummary`).
         public var git: GitLineChanges?
+        public var projectAvatar: SessionAvatar? = nil
     }
 
     public struct Project: Equatable, Sendable {
@@ -103,7 +104,10 @@ public struct ProjectHomeData: Equatable, Sendable {
                 machineId: machineId,
                 path: metadata?["path"]?.stringValue,
                 projectId: session.projectReference,
-                git: row.changes
+                git: row.changes,
+                projectAvatar: session.isRig ? session.projectReference.flatMap { projects[$0] }.map {
+                    SessionAvatar(seed: row.avatar.seed, image: AvatarImageSource.project($0))
+                } : nil
             )
         }
 
@@ -363,7 +367,9 @@ public struct ProjectHomeData: Equatable, Sendable {
             id: project.id,
             name: project.name,
             sessionId: primary?.sessions.first?.row.id,
-            avatar: (primary?.sessions.first ?? worktrees.first?.sessions.first)?.row.avatar,
+            avatar: (primary?.sessions.first ?? worktrees.first?.sessions.first).map {
+                $0.projectAvatar ?? SessionAvatar(seed: $0.row.avatar.seed)
+            },
             worktreeCount: worktrees.count,
             activity: HomeActivity(ownTabs),
             live: ownTabs.contains { $0.active && !$0.machineOffline },

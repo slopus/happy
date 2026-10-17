@@ -31,6 +31,7 @@ public struct SessionAvatar: Equatable, Sendable {
     public var isBot: Bool
     /// The harness badge, when the setting asks for it.
     public var harness: Harness?
+    public var image: AvatarImageSource?
 
     public enum Harness: String, Equatable, Sendable {
         case claude
@@ -39,10 +40,11 @@ public struct SessionAvatar: Equatable, Sendable {
         case rig
     }
 
-    public init(seed: String, isBot: Bool = false, harness: Harness? = nil) {
+    public init(seed: String, isBot: Bool = false, harness: Harness? = nil, image: AvatarImageSource? = nil) {
         self.seed = seed
         self.isBot = isBot
         self.harness = harness
+        self.image = image
     }
 
     /// utils/avatarHarness.ts: Happy Agent wins over the provider it runs;
@@ -266,7 +268,8 @@ public struct SessionList: Equatable, Sendable {
                 isBot: session.isBot,
                 harness: showFlavorIcons
                     ? SessionAvatar.harness(flavor: metadata?["flavor"]?.stringValue, clientId: metadata?["client"]?["id"]?.stringValue)
-                    : nil
+                    : nil,
+                image: AvatarImageSource.resolve(session, project: session.projectReference.flatMap { projects[$0] })
             ),
             timestamp: formatter.timestamp(session.lastActivityAt),
             lastActivityAt: session.lastActivityAt,

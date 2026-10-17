@@ -79,6 +79,23 @@ public final class AccountPictures {
         pictures.get(url.absoluteString)
     }
 
+    public func cached(key: String) -> Picture? { pictures.get(key) }
+
+    /// Private artwork uses an opaque identity and an authenticated loader.
+    /// Disk contains encrypted bytes; decryption/decoding run off main on
+    /// both the offline and network paths.
+    public func picture(key: String, fetch: @escaping @Sendable () async -> Data?, decode: @escaping Decode<Data>) async -> Picture? {
+        let files = self.files
+        return await load(.picture(key)) {
+            let name = PictureFiles.name(key)
+            if let data = await files.read(name), let loaded = decode(data) { return loaded }
+            guard !Task.isCancelled, let data = await fetch(), data.count <= Self.maxBytes,
+                  let loaded = decode(data), !Task.isCancelled else { return nil }
+            await files.write(data, name)
+            return loaded
+        }
+    }
+
     /// The picture at `url`: kept, else from disk, else fetched (and then
     /// written to disk), and decoded by `decode`. Nil when it can't be had.
     /// Every caller of one cache should decode the same way: the first

@@ -19,6 +19,9 @@ public struct SessionRecord: Codable, Hashable, Sendable, FetchableRecord, Persi
     public var active: Bool
     public var activeAt: Int64
     public var projectId: String?
+    public var avatar: AvatarDescriptor?
+    public var avatarVersion: Int?
+    public var avatarUpdateSeq: Int?
 
     public var metadataVersion: Int
     public var metadataCipher: String
@@ -61,7 +64,7 @@ public struct SessionRecord: Codable, Hashable, Sendable, FetchableRecord, Persi
         agentStateVersion: Int, agentStateCipher: String?, agentState: JSONValue?,
         dataKeyCipher: String?, decryptable: Bool, syncedMessageSeq: Int = 0,
         thinking: Bool = false, thinkingAt: Int64 = 0, unread: Bool = false, archiving: Bool = false,
-        lastMessageSentAt: Int64? = nil
+        lastMessageSentAt: Int64? = nil, avatar: AvatarDescriptor? = nil, avatarVersion: Int? = nil, avatarUpdateSeq: Int? = nil
     ) {
         self.id = id
         self.seq = seq
@@ -70,6 +73,9 @@ public struct SessionRecord: Codable, Hashable, Sendable, FetchableRecord, Persi
         self.active = active
         self.activeAt = activeAt
         self.projectId = projectId
+        self.avatar = avatar
+        self.avatarVersion = avatarVersion
+        self.avatarUpdateSeq = avatarUpdateSeq
         self.metadataVersion = metadataVersion
         self.metadataCipher = metadataCipher
         self.metadata = metadata
@@ -291,10 +297,11 @@ public struct ProjectRecord: Codable, Hashable, Sendable, FetchableRecord, Persi
     /// `{ name, kind? }` once decrypted.
     public var metadata: JSONValue?
     public var dataKeyCipher: String?
+    public var avatar: AvatarDescriptor?
 
     public init(
         id: String, externalId: String, createdAt: Int64, updatedAt: Int64,
-        metadataVersion: Int, metadataCipher: String, metadata: JSONValue?, dataKeyCipher: String?
+        metadataVersion: Int, metadataCipher: String, metadata: JSONValue?, dataKeyCipher: String?, avatar: AvatarDescriptor? = nil
     ) {
         self.id = id
         self.externalId = externalId
@@ -304,6 +311,7 @@ public struct ProjectRecord: Codable, Hashable, Sendable, FetchableRecord, Persi
         self.metadataCipher = metadataCipher
         self.metadata = metadata
         self.dataKeyCipher = dataKeyCipher
+        self.avatar = avatar
     }
 
     public var name: String? {

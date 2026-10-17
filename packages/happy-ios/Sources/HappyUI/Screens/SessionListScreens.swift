@@ -398,6 +398,9 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
 
     /// One configuration for every live cell.
     private func configure(_ cell: UITableViewCell, _ item: Item) {
+        if let cell = cell as? SessionRowCell { cell.avatar.pictures = session.avatarPictures }
+        if let cell = cell as? ProjectCardCell { cell.avatar.pictures = session.avatarPictures }
+        if let cell = cell as? ProjectChatCell { cell.avatar.pictures = session.avatarPictures }
         switch item {
         case .flat(.session(let row)):
             guard let cell = cell as? SessionRowCell else { return }

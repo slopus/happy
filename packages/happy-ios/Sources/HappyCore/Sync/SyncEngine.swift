@@ -285,7 +285,7 @@ public actor SyncEngine {
             metadataVersion: row.metadataVersion,
             metadataCipher: row.metadata,
             metadata: metadata,
-            dataKeyCipher: row.dataEncryptionKey
+            dataKeyCipher: row.dataEncryptionKey, avatar: row.avatar
         )
     }
 
@@ -819,7 +819,7 @@ public actor SyncEngine {
         guard !stopped else { return }
         let followUp: Job?
         do {
-            followUp = try await apply(update.body, at: update.createdAt)
+            followUp = try await apply(update.body, at: update.createdAt, seq: update.seq)
         } catch {
             // A merge that failed locally is recovered by the delta pulls.
             await syncAll()
@@ -831,7 +831,7 @@ public actor SyncEngine {
     }
 
     /// Merges one update; returns the pull to run when it did not line up.
-    private func apply(_ body: UpdateBody, at timestamp: Int64) async throws -> Job? {
+    private func apply(_ body: UpdateBody, at timestamp: Int64, seq: Int) async throws -> Job? {
         switch body {
         case .newMessage(let sessionId, let message):
             guard let session = try store.session(id: sessionId) else { return .sessions }
@@ -858,6 +858,7 @@ public actor SyncEngine {
                 metadata: decoder.versioned(body.metadata, cipher: cipher, after: session.metadataVersion),
                 agentState: decoder.versioned(body.agentState, cipher: cipher, after: session.agentStateVersion),
                 projectId: body.projectId,
+                avatar: body.avatar, avatarVersion: body.avatarVersion, avatarUpdateSeq: seq,
                 reconcileComposer: modePushes.reconciliation
             )
             return body.projectId == nil ? nil : .projects

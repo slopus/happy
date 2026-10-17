@@ -21,13 +21,15 @@ public struct ChatSessionState: Equatable, Sendable {
     /// at the presence clock (`HomeSnapshot.presenceNow`). It changes only
     /// when the shown text does, so the clock moving changes nothing else.
     public var lastSeen: ComposerStatus.LastSeen?
+    public var avatarImage: AvatarImageSource?
 
-    public init(record: SessionRecord?, settings: AccountSettings, dataReady: Bool = false, machine: MachineRecord? = nil, lastSeen: ComposerStatus.LastSeen? = nil) {
+    public init(record: SessionRecord?, settings: AccountSettings, dataReady: Bool = false, machine: MachineRecord? = nil, lastSeen: ComposerStatus.LastSeen? = nil, avatarImage: AvatarImageSource? = nil) {
         self.record = record
         self.settings = settings
         self.dataReady = dataReady
         self.machine = machine
         self.lastSeen = lastSeen
+        self.avatarImage = avatarImage
     }
 
     public var metadata: JSONValue? { record?.metadata }
@@ -69,7 +71,10 @@ extension ChatSessionState {
             settings: Self.rendered(AccountSettings(snapshot.settings)),
             dataReady: snapshot.sessionsSynced || !snapshot.sessions.isEmpty,
             machine: machineId.flatMap { id in snapshot.machines.machines.first { $0.id == id } }.map(Self.rendered),
-            lastSeen: stopped ? record.map { ComposerStatus.lastSeen(activeAt: $0.activeAt, now: clock) } : nil
+            lastSeen: stopped ? record.map { ComposerStatus.lastSeen(activeAt: $0.activeAt, now: clock) } : nil,
+            avatarImage: record.flatMap { record in
+                AvatarImageSource.resolve(record, project: snapshot.projects.first { $0.id == record.projectReference })
+            }
         )
     }
 
@@ -92,6 +97,9 @@ extension ChatSessionState {
         record.syncedMessageSeq = 0
         record.thinkingAt = 0
         record.unread = false
+        record.avatar = nil
+        record.avatarVersion = nil
+        record.avatarUpdateSeq = nil
         // Home orders by it; the chat never shows it.
         if case .object(var fields)? = record.metadata, fields["lastMeaningfulMessageAt"] != nil {
             fields["lastMeaningfulMessageAt"] = nil

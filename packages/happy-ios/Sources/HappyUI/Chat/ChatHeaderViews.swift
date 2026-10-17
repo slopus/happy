@@ -349,6 +349,11 @@ final class ChatHeaderAvatarControl: UIControl {
         set { avatar.content = newValue }
     }
 
+    var pictures: AvatarPictures? {
+        get { avatar.pictures }
+        set { avatar.pictures = newValue }
+    }
+
     override init(frame: CGRect) {
         super.init(frame: CGRect(origin: frame.origin, size: CGSize(width: ChatHeaderTitleLayout.Metrics.controlSize, height: ChatHeaderTitleLayout.Metrics.controlSize)))
         glass.isUserInteractionEnabled = false

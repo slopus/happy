@@ -49,6 +49,7 @@ public final class AccountSession: Sendable {
     public let pendingChats = PendingChats()
     /// The session pictures the chat has decoded, this account's alone.
     public let attachmentPictures = AttachmentPictures()
+    public let avatarPictures: AvatarPictures
     /// What each file looked like when last read (the store's
     /// `sessionFileCache`), this account's alone. Disk reads stay under the
     /// prepared account directory; a nil directory keeps it in memory.
@@ -107,6 +108,9 @@ public final class AccountSession: Sendable {
         self.fileCache = SessionFileCache(directory: fileCacheDirectory)
         self.api = HappyAPI(serverURL: dependencies.serverURL, clientID: dependencies.clientID, transport: dependencies.transport)
             .authenticated(token: credentials.token)
+        self.avatarPictures = AvatarPictures(owner: keys.anonID,
+            directory: filesDirectory.map { $0.deletingLastPathComponent().appendingPathComponent("avatars", isDirectory: true) },
+            api: api, keys: keys)
         var syncOptions = SyncEngine.Options()
         syncOptions.deliveryActivity = dependencies.deliveryActivity
         self.sync = SyncEngine(api: api, store: store, keys: keys, options: syncOptions)
@@ -216,6 +220,7 @@ public final class AccountSession: Sendable {
     }
 
     public func stop() async {
+        await avatarPictures.close()
         newSessionDraftHeight.close()
         diffDocuments.close()
         diffSyntax.close()

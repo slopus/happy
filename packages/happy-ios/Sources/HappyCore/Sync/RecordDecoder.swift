@@ -29,7 +29,7 @@ struct RecordDecoder: Sendable {
             agentStateCipher: row.agentState,
             agentState: cachedAgentState ?? row.agentState.flatMap { cipher?.decrypt(base64: $0) },
             dataKeyCipher: row.dataEncryptionKey,
-            decryptable: cipher != nil
+            decryptable: cipher != nil, avatar: row.avatar, avatarVersion: row.avatarVersion ?? row.avatar?.version
         )
     }
 

@@ -247,7 +247,7 @@ final class ProjectCardCell: ProjectListCell {
         self.entry = entry
         avatar.isHidden = entry.avatar == nil
         // The project's picture: never badged, never faded.
-        avatar.content = entry.avatar.map { .init(avatar: SessionAvatar(seed: $0.seed), style: style, monochrome: monochrome) }
+        avatar.content = entry.avatar.map { .init(avatar: $0, style: style, monochrome: monochrome) }
         stem.isHidden = entry.worktreeCount == 0
         nameLabel.string = entry.name
         nameLabel.isShimmering = entry.activity.working

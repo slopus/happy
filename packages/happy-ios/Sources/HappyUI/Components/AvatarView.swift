@@ -12,17 +12,28 @@ public final class AvatarView: UIView {
         public var avatar: SessionAvatar
         public var style: AvatarStyle
         public var monochrome: Bool
+        public var square: Bool
 
-        public init(avatar: SessionAvatar, style: AvatarStyle, monochrome: Bool) {
+        public init(avatar: SessionAvatar, style: AvatarStyle, monochrome: Bool, square: Bool = false) {
             self.avatar = avatar
             self.style = style
             self.monochrome = monochrome
+            self.square = square
         }
     }
 
     public var content: Content? {
         didSet { if content != oldValue { apply() } }
     }
+
+    public weak var pictures: AvatarPictures? {
+        didSet { if pictures !== oldValue { updateImage() } }
+    }
+    let photo = UIImageView()
+    private(set) var imageTask: Task<Void, Never>?
+    private var imageSource: AvatarImageSource?
+    private weak var imageOwner: AvatarPictures?
+    private var imageGeneration: UInt64 = 0
 
     let disc = UIView()
     let glyph = UIImageView()
@@ -34,6 +45,9 @@ public final class AvatarView: UIView {
         super.init(frame: frame)
         disc.clipsToBounds = true
         glyph.contentMode = .scaleAspectFit
+        photo.contentMode = .scaleAspectFill
+        photo.clipsToBounds = true
+        photo.isHidden = true
         badge.backgroundColor = UIColor(Palette.surface)
         badge.layer.shadowColor = UIColor.black.cgColor
         badge.layer.shadowOpacity = 0.2
@@ -43,6 +57,7 @@ public final class AvatarView: UIView {
         addSubview(disc)
         disc.addSubview(pixels)
         disc.addSubview(glyph)
+        disc.addSubview(photo)
         addSubview(badge)
         badge.addSubview(badgeGlyph)
         isUserInteractionEnabled = false
@@ -59,6 +74,8 @@ public final class AvatarView: UIView {
         let size = bounds.width
         disc.setLayoutFrame(bounds)
         disc.layer.cornerRadius = size / 2
+        if content?.square == true { disc.layer.cornerRadius = 0 }
+        photo.setLayoutFrame(disc.bounds)
         pixels.setLayoutFrame(disc.bounds)
         if let content {
             if content.avatar.isBot {
@@ -82,6 +99,7 @@ public final class AvatarView: UIView {
     }
 
     private func apply() {
+        updateImage()
         guard let content else {
             glyph.image = nil
             pixels.colors = []
@@ -98,6 +116,7 @@ public final class AvatarView: UIView {
             glyph.tintColor = UIColor(content.monochrome ? Palette.textSecondary : Palette.text)
             setNeedsLayout()
         } else {
+            glyph.contentMode = .scaleAspectFit
             switch content.style {
             case .brutalist:
                 let pick = GeneratedAvatar.brutalist(seed: seed, monochrome: content.monochrome)
@@ -116,7 +135,7 @@ public final class AvatarView: UIView {
                 pixels.colors = GeneratedAvatar.pixels(seed: seed, monochrome: content.monochrome).map { UIColor($0) }
             }
         }
-        badge.isHidden = content.avatar.harness == nil
+        badge.isHidden = content.avatar.harness == nil || (content.avatar.isBot && photo.image == nil)
         if let harness = content.avatar.harness {
             let image = AvatarImages.harness(harness)
             // Codex's and Happy Agent's marks are black; they follow the text
@@ -127,6 +146,35 @@ public final class AvatarView: UIView {
         }
         setNeedsLayout()
     }
+
+    private func updateImage() {
+        let source = content?.avatar.image
+        guard source != imageSource || pictures !== imageOwner else { return }
+        imageTask?.cancel()
+        imageTask = nil
+        imageGeneration &+= 1
+        imageSource = source
+        imageOwner = pictures
+        photo.image = nil
+        photo.isHidden = true
+        guard let source, let pictures else { return }
+        if let image = pictures.cached(source) as? UIImage {
+            photo.image = image
+            photo.isHidden = false
+            return
+        }
+        let generation = imageGeneration
+        imageTask = Task { [weak self] in
+            let image = await pictures.picture(source, decode: AccountPictureImages.decode) as? UIImage
+            guard !Task.isCancelled, let self, self.imageGeneration == generation,
+                  self.imageSource == source, self.pictures === pictures, let image else { return }
+            self.photo.image = image
+            self.photo.isHidden = false
+            self.badge.isHidden = self.content?.avatar.harness == nil
+        }
+    }
+
+    deinit { imageTask?.cancel() }
 }
 
 /// The pixelated avatar: 64 cells drawn at `GeneratedAvatar.pixelFrames`.

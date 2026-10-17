@@ -191,6 +191,18 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v7-private-avatars") { db in
+            try db.alter(table: "session") { t in
+                t.add(column: "avatar", .text)
+                t.add(column: "avatarVersion", .integer)
+                t.add(column: "avatarUpdateSeq", .integer)
+            }
+            try db.alter(table: "project") { t in t.add(column: "avatar", .text) }
+            // Existing rows predate descriptor storage. Backfill once while
+            // keeping their offline content and the first-sync marker.
+            try db.execute(sql: "DELETE FROM syncState WHERE key = 'sessions.lastFullSync'")
+        }
+
         return migrator
     }
 }

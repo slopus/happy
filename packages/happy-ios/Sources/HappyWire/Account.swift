@@ -145,7 +145,6 @@ public struct PushTokensResponse: Codable, Sendable {
 
 /// An element of `GET /v1/projects?ids=`. Metadata is ciphertext under the
 /// project's own data key, or under the account secret when there is none.
-/// The avatar descriptor is ignored: project art is not shown yet.
 public struct APIProject: Codable, Hashable, Sendable {
     public var id: String
     public var externalId: String
@@ -154,10 +153,11 @@ public struct APIProject: Codable, Hashable, Sendable {
     public var dataEncryptionKey: String?
     public var createdAt: Int64
     public var updatedAt: Int64
+    public var avatar: AvatarDescriptor?
 
     public init(
         id: String, externalId: String, metadata: String, metadataVersion: Int,
-        dataEncryptionKey: String?, createdAt: Int64, updatedAt: Int64
+        dataEncryptionKey: String?, createdAt: Int64, updatedAt: Int64, avatar: AvatarDescriptor? = nil
     ) {
         self.id = id
         self.externalId = externalId
@@ -166,6 +166,7 @@ public struct APIProject: Codable, Hashable, Sendable {
         self.dataEncryptionKey = dataEncryptionKey
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.avatar = avatar
     }
 }
 
