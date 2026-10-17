@@ -212,6 +212,9 @@ export const FileViewPanel = React.memo(function FileViewPanel({
         const originalHash = fileState.originalHash;
 
         const interval = setInterval(async () => {
+            // A hidden tab has nobody to warn: skip the RPC (base64 file over
+            // the socket + SHA-256) until it is visible again.
+            if (Platform.OS === 'web' && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
             const content = await readFileContent(sessionId, filePath);
             if (!content) return;
             const currentHash = await computeSHA256(content);
