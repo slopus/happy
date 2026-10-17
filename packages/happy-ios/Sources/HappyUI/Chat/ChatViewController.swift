@@ -303,10 +303,18 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         view.addSubview(dock)
     }
 
-    private func installControls() {
+    private func installButtons() {
         scrollButton.alpha = 0
         scrollButton.addTarget(self, action: #selector(scrollToNewest), for: .touchUpInside)
         view.addSubview(scrollButton)
+        statusBarStrip.isHidden = !hidesHeader
+        view.addSubview(statusBarStrip)
+        landscapeBack.isHidden = !hidesHeader
+        landscapeBack.addTarget(self, action: #selector(goBack), for: .touchUpInside)
+        view.addSubview(landscapeBack)
+    }
+
+    private func installTabStrip() {
         tabStrip.isHidden = true
         tabStrip.glass = !isTabletLayout
         tabStrip.names = Self.tabNames(account)
@@ -315,12 +323,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         tabStrip.onAdd = { [weak self] in self?.newTab() }
         tabStrip.showsAdd = true
         view.addSubview(tabStrip)
-        statusBarStrip.isHidden = !hidesHeader
-        view.addSubview(statusBarStrip)
-        landscapeBack.isHidden = !hidesHeader
-        landscapeBack.addTarget(self, action: #selector(goBack), for: .touchUpInside)
-        view.addSubview(landscapeBack)
+    }
 
+    private func installKeyboardTracker() {
         keyboardTracker.isHidden = true
         keyboardTracker.isUserInteractionEnabled = false
         keyboardTracker.translatesAutoresizingMaskIntoConstraints = false
@@ -385,7 +390,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             { [weak self] in self?.installList() },
             { [weak self] in self?.installHeader() },
             { [weak self] in self?.installDock() },
-            { [weak self] in self?.installControls() },
+            { [weak self] in self?.installButtons() },
+            { [weak self] in self?.installTabStrip() },
+            { [weak self] in self?.installKeyboardTracker() },
             { [weak self] in self?.installComposer() },
             { [weak self] in self?.connectContent() },
         ], isCurrent: { [weak self] in
