@@ -32,6 +32,7 @@ import {
     type ClaudeGoalStatusTranscriptEvent,
 } from '@/claude/claudeGoalStatus';
 import { Session } from './session';
+import { createSideQuestionHandler } from './sideQuestion';
 import { applySandboxPermissionPolicy, normalizeRemotePermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
@@ -622,6 +623,16 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             }
         });
     });
+
+    // /btw from the app. The running query answers it directly, bypassing the
+    // message queue, so it works while Claude is mid-turn and leaves nothing
+    // in the conversation.
+    session.rpcHandlerManager.registerHandler('side-question', createSideQuestionHandler(() => {
+        if (currentRunMode !== 'remote') {
+            return 'local';
+        }
+        return currentSession?.askSideQuestion ?? 'not-started';
+    }));
 
     // Exit when session is archived from web/mobile
     session.on('archived', () => {

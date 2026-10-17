@@ -733,6 +733,23 @@ export const ru: TranslationStructure = {
         close: 'Закрыть боковой чат',
     },
 
+    sideQuestion: {
+        title: 'Вопрос между делом',
+        usage: 'Использование: /btw <ваш вопрос>',
+        subtitle: 'Ответ по этому чату — в сам чат ничего не попадёт.',
+        followUpPlaceholder: 'Задайте уточняющий вопрос…',
+        send: 'Спросить',
+        close: 'Закрыть',
+        answering: 'Claude отвечает…',
+        queued: 'Ждёт ответа на предыдущий вопрос…',
+        noAnswer: 'У Claude нет ответа.',
+        terminalMode: 'Эта сессия запущена в терминале. Используйте /btw там или отправьте сообщение из приложения, чтобы взять управление на себя.',
+        notStarted: 'Claude в этой сессии ещё не запущен. Сначала отправьте сообщение — после этого /btw работает, даже когда Claude занят.',
+        cliOutdated: 'В этой сессии работает Happy CLI без поддержки /btw. Обновите CLI на том компьютере, если ещё не обновили, и перезапустите сессию.',
+        offline: 'Эта сессия не в сети.',
+        failed: ({ error }: { error: string }) => `Не удалось получить ответ: ${error}`,
+    },
+
     settingsVoice: {
         // Voice settings screen
         languageTitle: 'Язык',

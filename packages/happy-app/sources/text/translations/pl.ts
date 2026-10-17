@@ -731,6 +731,23 @@ export const pl: TranslationStructure = {
         close: 'Zamknij czat boczny',
     },
 
+    sideQuestion: {
+        title: 'Pytanie na boku',
+        usage: 'Użycie: /btw <twoje pytanie>',
+        subtitle: 'Odpowiedź na podstawie tego czatu — nic z tego nie trafi do rozmowy.',
+        followUpPlaceholder: 'Zadaj pytanie uzupełniające…',
+        send: 'Zapytaj',
+        close: 'Zamknij',
+        answering: 'Claude odpowiada…',
+        queued: 'Czeka na odpowiedź na poprzednie pytanie…',
+        noAnswer: 'Claude nie ma odpowiedzi.',
+        terminalMode: 'Ta sesja działa w terminalu. Użyj tam /btw albo wyślij wiadomość z aplikacji, aby przejąć sterowanie.',
+        notStarted: 'Claude nie działa jeszcze w tej sesji. Najpierw wyślij wiadomość — potem /btw działa nawet wtedy, gdy Claude jest zajęty.',
+        cliOutdated: 'Ta sesja działa na Happy CLI sprzed /btw. Zaktualizuj CLI na tamtym komputerze, jeśli jeszcze tego nie zrobiono, a potem uruchom sesję ponownie.',
+        offline: 'Ta sesja jest offline.',
+        failed: ({ error }: { error: string }) => `Nie udało się uzyskać odpowiedzi: ${error}`,
+    },
+
     settingsVoice: {
         // Voice settings screen
         languageTitle: 'Język',

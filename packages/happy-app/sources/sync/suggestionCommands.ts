@@ -5,6 +5,7 @@
 
 import Fuse from 'fuse.js';
 import { storage } from './storage';
+import { supportsSideQuestions } from './sideQuestion';
 
 export interface CommandItem {
     command: string;        // The command without slash (e.g., "compact")
@@ -89,6 +90,12 @@ function getCommandsFromSession(sessionId: string): CommandItem[] {
     }
 
     const commands: CommandItem[] = [...DEFAULT_COMMANDS];
+
+    // Claude Code runs /btw only in its terminal UI, so the SDK never lists it;
+    // the app answers it through the side-question RPC instead (sideQuestion.ts).
+    if (supportsSideQuestions(session.metadata)) {
+        commands.push({ command: 'btw', description: 'Ask a quick side question without interrupting the main conversation' });
+    }
 
     const metadataCommands = [
         ...(session.metadata.slashCommands ?? []),
