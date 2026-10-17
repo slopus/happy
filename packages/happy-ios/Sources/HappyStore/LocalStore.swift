@@ -871,6 +871,7 @@ public final class LocalStore: Sendable {
             fresh.thinking = false
             fresh.unread = false
             fresh.archiving = false
+            fresh.avatarVersion = incoming.avatarVersion ?? incoming.avatar?.version
             try fresh.insert(db)
             return (nil, fresh)
         }
@@ -890,7 +891,14 @@ public final class LocalStore: Sendable {
             record.avatar = incoming.avatar
             record.avatarVersion = revision
         } else if incoming.avatarVersion == nil, sameAvatarCheckpoint, incoming.updatedAt >= old.updatedAt {
-            record.avatar = incoming.avatar
+            if let descriptor = incoming.avatar {
+                if descriptor.version >= (record.avatarVersion ?? -1) {
+                    record.avatar = descriptor
+                    record.avatarVersion = descriptor.version
+                }
+            } else {
+                record.avatar = nil
+            }
         }
         record.seq = max(record.seq, incoming.seq)
         if incoming.metadataVersion > record.metadataVersion

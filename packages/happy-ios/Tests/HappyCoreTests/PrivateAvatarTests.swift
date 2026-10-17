@@ -119,9 +119,10 @@ final class PrivateAvatarTests: XCTestCase {
         json["avatar"] = .object(["ref": .string("ref"), "preview": .string("cipher"), "version": .number(3)])
         let row = try JSONDecoder().decode(APISession.self, from: JSONValue.object(json).encoded())
         XCTAssertEqual(decoder.session(row).avatar?.ref, "ref")
-        XCTAssertEqual(decoder.session(row).avatarVersion, 3, "descriptor version supports servers before separate tombstone revisions")
+        XCTAssertNil(decoder.session(row).avatarVersion, "an old GET descriptor is not an authoritative deletion revision")
         let store = try LocalStore.inMemory()
         try store.upsertSessions([decoder.session(row)])
+        XCTAssertEqual(try store.session(id: "session")?.avatarVersion, 3, "retain the descriptor's highwater for old servers")
         // A live deletion without a revision must survive a listing that
         // started before it, while a later authoritative fetch may clear art.
         _ = try store.applySessionUpdate(id: "session", metadata: nil, agentState: nil, projectId: nil,
@@ -159,11 +160,13 @@ final class PrivateAvatarTests: XCTestCase {
         let decoder = RecordDecoder(keyRing: KeyRing(keys: fixture.keys))
         try store.upsertSessions([decoder.session(row)])
         let http = FakeHTTP()
-        let stale = row
+        var stale = row
+        stale.avatar = .init(ref: "newer-descriptor-before-delete", preview: "cipher", version: 6)
+        let staleListing = stale
         http.on("GET /v2/sessions") { _ in
             _ = try store.applySessionUpdate(id: "session", metadata: nil, agentState: nil, projectId: nil,
                 avatar: .some(nil), avatarUpdateSeq: 60)
-            return (200, try JSONEncoder().encode(SessionsPage(sessions: [stale], nextCursor: nil, hasNext: false)))
+            return (200, try JSONEncoder().encode(SessionsPage(sessions: [staleListing], nextCursor: nil, hasNext: false)))
         }
         let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
         try await engine.pullSessions()

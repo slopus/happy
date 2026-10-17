@@ -29,7 +29,10 @@ struct RecordDecoder: Sendable {
             agentStateCipher: row.agentState,
             agentState: cachedAgentState ?? row.agentState.flatMap { cipher?.decrypt(base64: $0) },
             dataKeyCipher: row.dataEncryptionKey,
-            decryptable: cipher != nil, avatar: row.avatar, avatarVersion: row.avatarVersion ?? row.avatar?.version,
+            // Keep the GET revision distinct from the descriptor version:
+            // older servers need the before-fetch socket checkpoint even
+            // when their descriptor happens to have a higher version.
+            decryptable: cipher != nil, avatar: row.avatar, avatarVersion: row.avatarVersion,
             avatarUpdateSeq: avatarUpdateSeq
         )
     }
