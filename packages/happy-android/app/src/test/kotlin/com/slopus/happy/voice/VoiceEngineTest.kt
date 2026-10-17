@@ -162,6 +162,7 @@ class VoiceEngineTest {
         val stop = launch { f.engine.stop() }
         runCurrent()
         assertEquals(VoiceState(), f.engine.state.value)
+        assertEquals(VoiceStart.Declined, f.engine.start("too-soon", f.microphone()))
         ready.complete(Unit); runCurrent(); stop.join()
         assertTrue(start.isCancelled); assertEquals(1, f.log.count { it == "end" })
         f.connect = {}; f.engine.start("new", f.microphone())
