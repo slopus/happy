@@ -15,6 +15,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const it: TranslationStructure = {
+    directoryPicker: {
+        locations: 'Posizioni',
+        home: 'Cartella personale',
+        browse: 'Sfoglia cartelle…',
+        empty: 'Nessuna sottocartella',
+        selectCurrent: ({ name }: { name: string }) => `Seleziona «${name}»`,
+        loadError: 'Impossibile leggere questa cartella. Verifica che il disco sia collegato e che la cartella sia accessibile.',
+        closeBrowser: 'Chiudi esplorazione cartelle',
+    },
     aiServiceConsent: {
         chatOnlyHint: "Sono consentite solo domande e risposte. Sono escluse le operazioni su terminale, file system e browser.",
         toolsHint: "Gli strumenti sono consentiti sui dispositivi autorizzati. L’esecuzione è soggetta alle impostazioni dei permessi dell’applicazione.",

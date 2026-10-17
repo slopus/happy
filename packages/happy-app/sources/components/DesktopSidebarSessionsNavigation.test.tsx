@@ -802,7 +802,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => renderer.unmount());
     });
 
-    it('creates a Workspace List from selected machine and remote directory values', () => {
+    it.each(['/Users/test/project', '/Volumes/External SSD/Development/project'])('creates a Workspace List with the selected directory %s', (directory) => {
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
         act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
@@ -810,7 +810,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-name-input' }).props.onChangeText('Remote project'));
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-machine-trigger' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-machine-picker' }).findByType('PickerContent').props.onSelect('mac'));
-        act(() => renderer.root.findByProps({ testID: 'sidebar-list-directory-picker' }).findByType('PathPickerContent').props.onChangeValue('/Users/test/project'));
+        act(() => renderer.root.findByProps({ testID: 'sidebar-list-directory-picker' }).findByType('PathPickerContent').props.onChangeValue(directory));
         act(() => renderer.root.findByProps({ testID: 'sidebar-create-list-submit' }).props.onPress());
 
         const create = mocks.updateOrganization.mock.calls.at(-1)?.[0];
@@ -819,7 +819,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
             kind: 'workspace',
             machineId: 'mac',
             name: 'Remote project',
-            path: '/Users/test/project',
+            path: directory,
         })]);
         act(() => renderer.unmount());
     });

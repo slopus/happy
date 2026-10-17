@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import { machineBrowseDirectory, type BrowseDirectoryEntry } from '@/sync/ops';
+import { machineBrowseDirectory, type BrowseDirectoryEntry, type BrowseDirectoryRoot } from '@/sync/ops';
+import { DirectoryRootPicker } from './DirectoryRootPicker';
 import { formatWorkingDirectoryLabel } from '@/utils/sessionWorkingDirectory';
 
 export type SessionComposerDirectorySelectorConfig = {
@@ -42,15 +43,25 @@ export const SessionComposerDirectorySelector = React.memo(function SessionCompo
     const [browseParent, setBrowseParent] = React.useState<string | null>(null);
     const [browseDirectories, setBrowseDirectories] = React.useState<BrowseDirectoryEntry[]>([]);
 
+    const [browseRoots, setBrowseRoots] = React.useState<BrowseDirectoryRoot[]>([]);
+    const browseRequest = React.useRef(0);
+
     const resetPicker = React.useCallback(() => {
+        browseRequest.current += 1;
+        setBrowsePath(null);
+        setBrowseParent(null);
+        setBrowseDirectories([]);
+        setBrowseRoots([]);
+        setBrowseLoading(false);
         setCandidate(props.currentPath);
         setError(null);
         setBrowsing(false);
         props.onInvalidStateChange(false);
-    }, [props.currentPath, props.onInvalidStateChange]);
+    }, [props.currentPath, props.machineId, props.onInvalidStateChange]);
 
     React.useEffect(() => {
         resetPicker();
+        return () => { browseRequest.current += 1; };
     }, [resetPicker]);
 
     const close = React.useCallback(() => {
@@ -109,19 +120,34 @@ export const SessionComposerDirectorySelector = React.memo(function SessionCompo
     }, [close, describeError, props.onInvalidStateChange, props.onSwitch]);
 
     const loadDirectory = React.useCallback(async (path: string) => {
+        if (!props.machineOnline) return;
+        const request = ++browseRequest.current;
         setBrowseLoading(true);
         setError(null);
-        const result = await machineBrowseDirectory(props.machineId, path);
-        setBrowseLoading(false);
-        if (!result.success || !result.path) {
-            setError(describeError(result.error ?? 'invalid-directory'));
-            props.onInvalidStateChange(true);
-            return;
+        setBrowsePath(null);
+        setBrowseParent(null);
+        setBrowseDirectories([]);
+        try {
+            const result = await machineBrowseDirectory(props.machineId, path);
+            if (request !== browseRequest.current) return;
+            setBrowseRoots(result.roots ?? []);
+            if (!result.success || !result.path) {
+                setError(describeError(result.error ?? t('directoryPicker.loadError')));
+                props.onInvalidStateChange(true);
+                return;
+            }
+            setBrowsePath(result.path);
+            setBrowseParent(result.parent ?? null);
+            setBrowseDirectories(result.directories ?? []);
+        } catch {
+            if (request === browseRequest.current) {
+                setError(t('directoryPicker.loadError'));
+                props.onInvalidStateChange(true);
+            }
+        } finally {
+            if (request === browseRequest.current) setBrowseLoading(false);
         }
-        setBrowsePath(result.path);
-        setBrowseParent(result.parent ?? null);
-        setBrowseDirectories(result.directories ?? []);
-    }, [describeError, props.machineId, props.onInvalidStateChange]);
+    }, [describeError, props.machineId, props.machineOnline, props.onInvalidStateChange]);
 
     const startBrowsing = React.useCallback(() => {
         setBrowsing(true);
@@ -187,10 +213,11 @@ export const SessionComposerDirectorySelector = React.memo(function SessionCompo
 
                         {browsing ? (
                             <>
+                                <DirectoryRootPicker roots={browseRoots} currentPath={browsePath} disabled={busy || !props.machineOnline} onSelect={loadDirectory} />
                                 <View style={styles.browserHeader}>
                                     <Pressable
                                         accessibilityLabel={t('common.back')}
-                                        disabled={!browseParent || busy}
+                                        disabled={!browseParent || busy || !props.machineOnline}
                                         onPress={() => browseParent && void loadDirectory(browseParent)}
                                         style={[styles.iconButton, !browseParent && styles.chipDisabled]}
                                     >
@@ -201,7 +228,8 @@ export const SessionComposerDirectorySelector = React.memo(function SessionCompo
                                 <ScrollView style={styles.directoryList} contentContainerStyle={styles.directoryListContent}>
                                     {browseDirectories.map((directory) => (
                                         <Pressable
-                                            key={directory.path}
+                                            key={`${directory.name}:${directory.path}`}
+                                            disabled={busy || !props.machineOnline}
                                             testID={`session-working-directory-browse-${directory.name}`}
                                             onPress={() => void loadDirectory(directory.path)}
                                             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
@@ -214,7 +242,7 @@ export const SessionComposerDirectorySelector = React.memo(function SessionCompo
                                 </ScrollView>
                                 <Pressable
                                     testID="session-working-directory-use-current"
-                                    disabled={!browsePath || busy}
+                                    disabled={!browsePath || busy || !!error || !props.machineOnline}
                                     onPress={() => browsePath && void applyPath(browsePath)}
                                     style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, busy && styles.chipDisabled]}
                                 >

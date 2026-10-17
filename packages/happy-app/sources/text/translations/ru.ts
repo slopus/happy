@@ -26,6 +26,15 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const ru: TranslationStructure = {
+    directoryPicker: {
+        locations: 'Расположения',
+        home: 'Домашняя папка',
+        browse: 'Обзор папок…',
+        empty: 'Нет вложенных папок',
+        selectCurrent: ({ name }: { name: string }) => `Выбрать «${name}»`,
+        loadError: 'Не удалось прочитать эту папку. Убедитесь, что диск подключён, а папка доступна.',
+        closeBrowser: 'Закрыть обзор папок',
+    },
     aiServiceConsent: {
         chatOnlyHint: "Разрешены только вопросы и ответы. Операции с терминалом, файловой системой и браузером исключены.",
         toolsHint: "Инструменты разрешены на одобренных устройствах. Выполнение ограничено настройками разрешений приложения.",

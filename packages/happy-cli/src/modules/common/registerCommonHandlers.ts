@@ -9,7 +9,7 @@ import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath, validateReadPath } from './pathSecurity';
-import { browseHomeDirectory } from './browseHomeDirectory';
+import { browseHomeDirectory, getMountedVolumePaths } from './browseHomeDirectory';
 
 const execAsync = promisify(exec);
 
@@ -72,9 +72,9 @@ interface ListDirectoryResponse {
  *
  * Unlike `listDirectory` (scoped to the daemon's process.cwd() at machine
  * level, which is useless for picking arbitrary project folders), this is
- * rooted at the user's HOME directory: the natural place projects live. It
- * returns only sub-directories plus enough navigation context (resolved path,
- * parent, home) for the client to render breadcrumbs without local path math.
+ * rooted at the user's HOME and discovered mounted volumes. It returns only
+ * sub-directories plus navigation context (path, parent, home, root, roots)
+ * for the client to render locations and breadcrumbs without local path math.
  */
 interface BrowseDirectoryRequest {
     // Absolute path to browse. Empty / omitted / '~' resolves to the home dir.
@@ -413,11 +413,11 @@ export function registerCommonHandlers(
         }
     });
 
-    // Browse directory handler - home-rooted directory navigation for the
+    // Browse directory handler - home and mounted-volume navigation for the
     // mobile new-session path picker. Returns only sub-directories so the user
     // can point-and-click drill down to a working directory.
     rpcHandlerManager.registerHandler<BrowseDirectoryRequest, Awaited<ReturnType<typeof browseHomeDirectory>>>('browseDirectory', async (data) => {
-        const result = await browseHomeDirectory(homedir(), data.path);
+        const result = await browseHomeDirectory(homedir(), data.path, await getMountedVolumePaths());
         if (!result.success) {
             logger.debug('Failed to browse directory:', result.error);
         }

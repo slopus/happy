@@ -17,6 +17,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    directoryPicker: {
+        locations: '位置',
+        home: '主目录',
+        browse: '浏览文件夹…',
+        empty: '没有子文件夹',
+        selectCurrent: ({ name }: { name: string }) => `选择“${name}”`,
+        loadError: '无法读取此文件夹，请确认硬盘已连接且目录可访问。',
+        closeBrowser: '关闭文件夹浏览',
+    },
     aiServiceConsent: {
         chatOnlyHint: "仅允许问答。不包含终端、文件系统或浏览器操作。",
         toolsHint: "允许在已授权设备上使用工具。实际操作受应用权限设置限制。",

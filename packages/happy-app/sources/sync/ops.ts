@@ -103,11 +103,19 @@ interface BrowseDirectoryEntry {
     isProjectRoot: boolean;
 }
 
+interface BrowseDirectoryRoot {
+    name: string;
+    path: string;
+    kind: 'home' | 'volume';
+}
+
 interface MachineBrowseDirectoryResponse {
     success: boolean;
     path?: string;
     parent?: string | null;
     home?: string;
+    root?: string;
+    roots?: BrowseDirectoryRoot[];
     directories?: BrowseDirectoryEntry[];
     error?: string;
 }
@@ -865,9 +873,9 @@ export async function sessionListDirectory(sessionId: string, path: string): Pro
  * Browse directories on a machine for the new-session path picker.
  *
  * Routes the daemon `browseDirectory` RPC at the machine level (no session
- * exists yet when picking a working directory). The daemon roots browsing at
- * the user's home directory and returns only sub-directories plus navigation
- * context (resolved path / parent / home), so the UI can render a point-and-
+ * exists yet when picking a working directory). The daemon discovers home and
+ * mounted-volume roots and returns sub-directories plus navigation context
+ * (resolved path / parent / root / roots / home), so the UI can render a point-and-
  * click breadcrumb browser without any local path math.
  *
  * Passing an empty path lands on the home directory.
@@ -1169,6 +1177,7 @@ export type {
     DirectoryEntry,
     MachineBrowseDirectoryResponse,
     BrowseDirectoryEntry,
+    BrowseDirectoryRoot,
     SessionGetDirectoryTreeResponse,
     TreeNode,
     SessionRipgrepResponse,

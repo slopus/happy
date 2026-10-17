@@ -25,7 +25,8 @@ import { useAllMachines, useLocalSetting, useSessions, useSetting } from '@/sync
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { listWorktrees } from '@/utils/worktree';
-import { machineBrowseDirectory } from '@/sync/ops';
+import { machineBrowseDirectory, type BrowseDirectoryRoot } from '@/sync/ops';
+import { DirectoryRootPicker } from './DirectoryRootPicker';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
@@ -261,10 +262,19 @@ export function PickerContent({
 // A single breadcrumb step: a display label and the absolute path it points to.
 type Crumb = { label: string; path: string };
 
-// Build breadcrumb steps from an absolute path, rooted at home ('~'). Falls
-// back to raw absolute segments if the path somehow sits outside home.
-function buildCrumbs(absPath: string | undefined, home: string | undefined): Crumb[] {
+// Keep breadcrumbs inside the root authorized by the daemon. Old daemons
+// still use home-rooted navigation without the optional roots metadata.
+function buildCrumbs(absPath: string | undefined, home: string | undefined, root?: BrowseDirectoryRoot): Crumb[] {
     if (!absPath) return [];
+    if (root && (absPath === root.path || absPath.startsWith(`${root.path}/`))) {
+        let acc = root.path;
+        const out: Crumb[] = [{ label: root.kind === 'home' ? '~' : root.name, path: acc }];
+        for (const segment of absPath.slice(root.path.length).split('/').filter(Boolean)) {
+            acc = `${acc}/${segment}`;
+            out.push({ label: segment, path: acc });
+        }
+        return out;
+    }
     if (home && absPath === home) return [{ label: '~', path: home }];
     if (home && absPath.startsWith(home + '/')) {
         const rel = absPath.slice(home.length + 1).split('/').filter(Boolean);
@@ -329,24 +339,48 @@ export function PathPickerContent({
     const [browseDirs, setBrowseDirs] = React.useState<{ name: string; path: string; isProjectRoot: boolean }[]>([]);
     const [browsePath, setBrowsePath] = React.useState<string | undefined>(undefined);
     const [browseHome, setBrowseHome] = React.useState<string | undefined>(undefined);
+    const [browseRoot, setBrowseRoot] = React.useState<string | undefined>(undefined);
+    const [browseRoots, setBrowseRoots] = React.useState<BrowseDirectoryRoot[]>([]);
+    const browseRequest = React.useRef(0);
     const [browseLoading, setBrowseLoading] = React.useState(false);
     const [browseError, setBrowseError] = React.useState<string | null>(null);
 
-    // Load a directory from the machine. Empty string lands on the home dir.
+    React.useEffect(() => {
+        setBrowsing(false);
+        setBrowsePath(undefined);
+        setBrowseRoots([]);
+        setBrowseDirs([]);
+        setBrowseError(null);
+        setBrowseLoading(false);
+        return () => { browseRequest.current += 1; };
+    }, [machineId]);
+
+    // Each user action discovers the current mounts; no polling or cached roots.
     const loadDir = React.useCallback(async (path: string) => {
-        if (!machineId) return;
+        if (!machineId || !machineOnline) return;
+        const request = ++browseRequest.current;
         setBrowseLoading(true);
         setBrowseError(null);
-        const res = await machineBrowseDirectory(machineId, path);
-        if (res.success) {
-            setBrowseDirs(res.directories ?? []);
-            setBrowsePath(res.path);
-            setBrowseHome(res.home);
-        } else {
-            setBrowseError(res.error ?? 'Failed to list directory');
+        setBrowsePath(undefined);
+        setBrowseDirs([]);
+        try {
+            const res = await machineBrowseDirectory(machineId, path);
+            if (request !== browseRequest.current) return;
+            setBrowseRoots(res.roots ?? []);
+            setBrowseHome(res.home ?? homeDir);
+            setBrowseRoot(res.root);
+            if (res.success && res.path) {
+                setBrowseDirs(res.directories ?? []);
+                setBrowsePath(res.path);
+            } else {
+                setBrowseError(res.error ?? t('directoryPicker.loadError'));
+            }
+        } catch {
+            if (request === browseRequest.current) setBrowseError(t('directoryPicker.loadError'));
+        } finally {
+            if (request === browseRequest.current) setBrowseLoading(false);
         }
-        setBrowseLoading(false);
-    }, [machineId]);
+    }, [machineId, machineOnline, homeDir]);
 
     const startBrowsing = React.useCallback(() => {
         setBrowsing(true);
@@ -360,7 +394,7 @@ export function PathPickerContent({
         onDone?.();
     }, [onChangeValue, onDone]);
 
-    const crumbs = React.useMemo(() => buildCrumbs(browsePath, browseHome ?? homeDir), [browsePath, browseHome, homeDir]);
+    const crumbs = React.useMemo(() => buildCrumbs(browsePath, browseHome ?? homeDir, browseRoots.find((root) => root.path === browseRoot)), [browsePath, browseHome, homeDir, browseRoots, browseRoot]);
 
     const matchedItemKey = React.useMemo(() => {
         const normalizedValue = normalizePathForComparison(currentValue, homeDir);
@@ -464,13 +498,14 @@ export function PathPickerContent({
 
             {browsing ? (
                 <>
+                    <DirectoryRootPicker roots={browseRoots} currentPath={browsePath} disabled={!canBrowse || browseLoading} onSelect={loadDir} />
                     {/* Breadcrumb + exit-browse control */}
                     <View style={pickerStyles.breadcrumbRow}>
                         <Pressable
-                            onPress={() => setBrowsing(false)}
+                            onPress={() => { browseRequest.current += 1; setBrowsing(false); }}
                             hitSlop={8}
                             style={(p) => [pickerStyles.crumbBack, p.pressed && pickerStyles.optionPressed]}
-                            accessibilityLabel="Close browser"
+                            accessibilityLabel={t('directoryPicker.closeBrowser')}
                         >
                             <Ionicons name="close" size={16} color={theme.colors.textSecondary} />
                         </Pressable>
@@ -488,7 +523,7 @@ export function PathPickerContent({
                                         {i > 0 && (
                                             <Ionicons name="chevron-forward" size={12} color={theme.colors.textSecondary} style={pickerStyles.crumbSep} />
                                         )}
-                                        <Pressable onPress={() => !isLast && loadDir(c.path)} hitSlop={6}>
+                                        <Pressable testID={`path-picker-crumb-${c.path}`} disabled={browseLoading || !canBrowse} onPress={() => !isLast && loadDir(c.path)} hitSlop={6}>
                                             <Text
                                                 style={[
                                                     pickerStyles.crumbText,
@@ -526,7 +561,9 @@ export function PathPickerContent({
                         >
                             {browseDirs.map((dir) => (
                                 <Pressable
-                                    key={dir.path}
+                                    key={`${dir.name}:${dir.path}`}
+                                    testID={`path-picker-directory-${dir.path}`}
+                                    disabled={browseLoading || !canBrowse}
                                     style={(p) => [
                                         pickerStyles.option,
                                         embedded && pickerStyles.embeddedOption,
@@ -548,18 +585,20 @@ export function PathPickerContent({
                             ))}
                             {browseDirs.length === 0 && (
                                 <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
-                                    no sub-folders here
+                                    {t('directoryPicker.empty')}
                                 </Text>
                             )}
                         </ScrollView>
                     )}
 
                     {/* Confirm the directory we're currently standing in */}
-                    {!!browsePath && (
+                    {!!browsePath && !browseLoading && !browseError && (
                         <Pressable
+                            testID="path-picker-select-current"
+                            disabled={!canBrowse}
                             onPress={() => selectFolder(browsePath)}
-                            accessibilityRole={Platform.OS === 'android' ? 'button' : undefined}
-                            accessibilityLabel={Platform.OS === 'android' ? `Select ${browsePath}` : undefined}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('directoryPicker.selectCurrent', { name: browsePath })}
                             style={(p) => [
                                 pickerStyles.selectButton,
                                 { backgroundColor: theme.colors.button.primary.background },
@@ -568,7 +607,7 @@ export function PathPickerContent({
                         >
                             <Ionicons name="checkmark" size={16} color={theme.colors.button.primary.tint} />
                             <Text style={[pickerStyles.selectButtonText, { color: theme.colors.button.primary.tint }]} numberOfLines={1}>
-                                Select “{currentFolderName}”
+                                {t('directoryPicker.selectCurrent', { name: currentFolderName })}
                             </Text>
                         </Pressable>
                     )}
@@ -595,9 +634,10 @@ export function PathPickerContent({
                     {/* Point-and-click browse entry — no typing required */}
                     {canBrowse && (
                         <Pressable
+                            testID="path-picker-browse"
                             onPress={startBrowsing}
-                            accessibilityRole={Platform.OS === 'android' ? 'button' : undefined}
-                            accessibilityLabel={Platform.OS === 'android' ? 'Browse folders' : undefined}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('directoryPicker.browse')}
                             style={(p) => [
                                 pickerStyles.option,
                                 embedded && pickerStyles.embeddedOption,
@@ -607,7 +647,7 @@ export function PathPickerContent({
                             <Ionicons name="folder-open-outline" size={16} color={theme.colors.button.primary.background} />
                             <View style={{ flex: 1, minWidth: 0 }}>
                                 <Text style={[pickerStyles.optionText, { color: theme.colors.button.primary.background }]} numberOfLines={1}>
-                                    Browse folders…
+                                    {t('directoryPicker.browse')}
                                 </Text>
                             </View>
                             <Ionicons name="chevron-forward" size={14} color={theme.colors.textSecondary} />

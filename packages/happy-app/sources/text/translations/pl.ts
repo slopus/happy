@@ -26,6 +26,15 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
+    directoryPicker: {
+        locations: 'Lokalizacje',
+        home: 'Folder domowy',
+        browse: 'Przeglądaj foldery…',
+        empty: 'Brak podfolderów',
+        selectCurrent: ({ name }: { name: string }) => `Wybierz „${name}”`,
+        loadError: 'Nie można odczytać tego folderu. Sprawdź, czy dysk jest podłączony, a folder jest dostępny.',
+        closeBrowser: 'Zamknij przeglądanie folderów',
+    },
     aiServiceConsent: {
         chatOnlyHint: "Dozwolone są tylko pytania i odpowiedzi. Nie obejmuje to obsługi terminala, systemu plików ani przeglądarki.",
         toolsHint: "Narzędzia są dozwolone na zatwierdzonych urządzeniach. Wykonywanie operacji podlega ustawieniom uprawnień aplikacji.",

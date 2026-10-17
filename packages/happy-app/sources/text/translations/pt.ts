@@ -15,6 +15,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const pt: TranslationStructure = {
+    directoryPicker: {
+        locations: 'Locais',
+        home: 'Pasta pessoal',
+        browse: 'Explorar pastas…',
+        empty: 'Nenhuma subpasta',
+        selectCurrent: ({ name }: { name: string }) => `Selecionar “${name}”`,
+        loadError: 'Não foi possível ler esta pasta. Verifique se a unidade está conectada e se a pasta está acessível.',
+        closeBrowser: 'Fechar explorador de pastas',
+    },
     aiServiceConsent: {
         chatOnlyHint: "São permitidas apenas perguntas e respostas. Não inclui operações de terminal, sistema de arquivos ou navegador.",
         toolsHint: "Ferramentas são permitidas nos dispositivos autorizados. A execução está sujeita às configurações de permissão do aplicativo.",

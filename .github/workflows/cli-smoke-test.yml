@@ -39,6 +39,11 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'pnpm'
 
+    # npm 10 bundled with Node 20 crashes in Arborist while resolving the
+    # packed server's peer dependencies. Keep Node 20 coverage with npm 11.
+    - name: Use npm 11 for packed server installation
+      run: npm install --global npm@11.19.0
+
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
 

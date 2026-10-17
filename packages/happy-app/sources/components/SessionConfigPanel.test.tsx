@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { act } from 'react';
 import { Platform } from 'react-native';
+import { appThemes } from '@/themePacks';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
@@ -153,27 +154,9 @@ vi.mock('@/utils/sessionUtils', () => ({
     formatPathRelativeToHome: (path: string) => path,
 }));
 vi.mock('@/utils/platform', () => ({ isRunningOnMac: () => false }));
-vi.mock('react-native-unistyles', () => {
-    const theme = {
-        dark: false,
-        colors: {
-            accent: '#08f',
-            button: {
-                primary: { background: '#08f', tint: '#fff' },
-                secondary: { tint: '#555' },
-            },
-            divider: '#ddd',
-            header: { background: '#fff' },
-            input: { background: '#fff' },
-            shadow: { color: '#000', opacity: 0.2 },
-            status: { connected: '#0a0', disconnected: '#a00' },
-            surface: '#fff',
-            surfaceHigh: '#f2f2f2',
-            surfacePressed: '#e8e8e8',
-            text: '#111',
-            textSecondary: '#666',
-        },
-    };
+vi.mock('react-native-unistyles', async () => {
+    const { appThemes } = await import('@/themePacks');
+    const theme = appThemes.ginghamDark;
     return {
         StyleSheet: {
             hairlineWidth: 1,
@@ -184,6 +167,8 @@ vi.mock('react-native-unistyles', () => {
 });
 
 let SessionConfigPanel: typeof import('./SessionConfigPanel').SessionConfigPanel;
+let PathPickerContent: typeof import('./SessionConfigPanel').PathPickerContent;
+let SessionComposerDirectorySelector: typeof import('./SessionComposerDirectorySelector').SessionComposerDirectorySelector;
 let restoreModuleLoad: (() => void) | null = null;
 
 beforeAll(async () => {
@@ -204,7 +189,8 @@ beforeAll(async () => {
         return originalLoad.call(this, request, ...args);
     };
     restoreModuleLoad = () => { NodeModule._load = originalLoad; };
-    ({ SessionConfigPanel } = await import('./SessionConfigPanel'));
+    ({ SessionConfigPanel, PathPickerContent } = await import('./SessionConfigPanel'));
+    ({ SessionComposerDirectorySelector } = await import('./SessionComposerDirectorySelector'));
 });
 
 afterAll(() => {
@@ -306,10 +292,10 @@ describe('SessionConfigPanel composer layout', () => {
         expect(renderer.root.findAllByProps({ testID: 'session-config-inline-picker-path' })).toHaveLength(0);
 
         await act(async () => {
-            renderer.root.findByProps({ accessibilityLabel: 'Browse folders' }).props.onPress();
+            renderer.root.findByProps({ testID: 'path-picker-browse' }).props.onPress();
             await Promise.resolve();
         });
-        const selectFolder = renderer.root.findByProps({ accessibilityLabel: 'Select /Users/test/happy' });
+        const selectFolder = renderer.root.findByProps({ testID: 'path-picker-select-current' });
         let ancestor = selectFolder.parent;
         let scrollsWithShortScreen = false;
         while (ancestor && ancestor.props.testID !== 'session-config-picker-path') {
@@ -322,6 +308,94 @@ describe('SessionConfigPanel composer layout', () => {
         act(() => selectFolder.props.onPress());
         expect(mocks.setPath).toHaveBeenCalledWith('/Users/test/happy');
         expect(renderer.root.findAllByProps({ testID: 'session-config-picker-path' })).toHaveLength(0);
+    });
+
+
+    it.each(['web', 'android'])('selects an external project from the location picker on %s', async (platform) => {
+        (Platform as { OS: string }).OS = platform;
+        const volume = '/Volumes/External SSD';
+        const project = `${volume}/Development/demo`;
+        const roots = [
+            { name: '~', path: '/Users/test', kind: 'home' },
+            { name: 'External SSD', path: volume, kind: 'volume' },
+        ];
+        const onChange = vi.fn();
+        mocks.browseDirectory.mockImplementation(async (_machine: string, path: string) => ({
+            success: true, home: '/Users/test', roots,
+            root: path.startsWith(volume) ? volume : '/Users/test',
+            path: path || '/Users/test',
+            directories: path === volume ? [{ name: 'demo', path: project, isProjectRoot: true }] : [],
+        }));
+        await act(async () => {
+            renderer = TestRenderer.create(<PathPickerContent title="Directory" items={[]} value="" homeDir="/Users/test" machineId="mac" machineOnline manualInput={false} onChangeValue={onChange} />);
+        });
+        await act(async () => renderer.root.findByProps({ testID: 'path-picker-browse' }).props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: `directory-root-${volume}` }).props.onPress());
+        expect(mocks.browseDirectory).toHaveBeenLastCalledWith('mac', volume);
+        const location = renderer.root.findByProps({ testID: `directory-root-${volume}` });
+        expect(location.props.style({ pressed: false })[0].backgroundColor).toBe(appThemes.ginghamDark.colors.surface);
+        expect(location.props.style({ pressed: false })[1].backgroundColor).toBe(appThemes.ginghamDark.colors.surfaceSelected);
+        expect(location.props.style({ pressed: true })[2].backgroundColor).toBe(appThemes.ginghamDark.colors.surfacePressed);
+        expect(renderer.root.findAllByProps({ testID: 'path-picker-crumb-/' })).toHaveLength(0);
+        await act(async () => renderer.root.findByProps({ testID: `path-picker-directory-${project}` }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'path-picker-select-current' }).props.onPress());
+        expect(onChange).toHaveBeenCalledWith(project);
+    });
+
+    it('clears stale selections after a failed navigation and lets the user return home', async () => {
+        const volume = '/Volumes/External SSD';
+        const roots = [
+            { name: '~', path: '/Users/test', kind: 'home' },
+            { name: 'External SSD', path: volume, kind: 'volume' },
+        ];
+        const onChange = vi.fn();
+        mocks.browseDirectory.mockResolvedValueOnce({ success: true, path: '/Users/test', home: '/Users/test', roots, directories: [] });
+        mocks.browseDirectory.mockResolvedValueOnce({ success: false, error: 'Drive disconnected', roots: roots.slice(0, 1) });
+        mocks.browseDirectory.mockResolvedValueOnce({ success: true, path: '/Users/test', home: '/Users/test', roots: roots.slice(0, 1), directories: [] });
+        await act(async () => {
+            renderer = TestRenderer.create(<PathPickerContent title="Directory" items={[]} value="" machineId="mac" machineOnline onChangeValue={onChange} />);
+        });
+        await act(async () => renderer.root.findByProps({ testID: 'path-picker-browse' }).props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: `directory-root-${volume}` }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'path-picker-select-current' })).toHaveLength(0);
+        expect(onChange).not.toHaveBeenCalled();
+        await act(async () => renderer.root.findByProps({ testID: 'directory-root-/Users/test' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'path-picker-select-current' })).toBeDefined();
+    });
+
+    it('uses mounted-volume locations when changing an existing session directory', async () => {
+        const volume = '/Volumes/External SSD';
+        const roots = [
+            { name: '~', path: '/Users/test', kind: 'home' },
+            { name: 'External SSD', path: volume, kind: 'volume' },
+        ];
+        const onSwitch = vi.fn().mockResolvedValue({ success: true });
+        mocks.browseDirectory.mockImplementation(async (_machine: string, path: string) => ({
+            success: true, path, home: '/Users/test', roots, parent: null, directories: [],
+        }));
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionComposerDirectorySelector currentPath="/Users/test" currentPathLabel="~" machineId="mac" machineOnline recentPaths={[]} switching={false} onSwitch={onSwitch} onInvalidStateChange={vi.fn()} />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-working-directory-trigger' }).props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: 'session-working-directory-browse' }).props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: `directory-root-${volume}` }).props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: 'session-working-directory-use-current' }).props.onPress());
+        expect(onSwitch).toHaveBeenCalledWith(volume);
+    });
+
+    it('ignores a late directory response from the previous machine', async () => {
+        let resolveOld!: (value: unknown) => void;
+        mocks.browseDirectory.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+        mocks.browseDirectory.mockResolvedValueOnce({ success: true, path: '/Users/other', home: '/Users/other', directories: [] });
+        const onChange = vi.fn();
+        const picker = (machineId: string) => <PathPickerContent title="Directory" items={[]} value="" machineId={machineId} machineOnline onChangeValue={onChange} />;
+        await act(async () => { renderer = TestRenderer.create(picker('mac')); });
+        act(() => renderer.root.findByProps({ testID: 'path-picker-browse' }).props.onPress());
+        await act(async () => renderer.update(picker('other-mac')));
+        await act(async () => renderer.root.findByProps({ testID: 'path-picker-browse' }).props.onPress());
+        await act(async () => resolveOld({ success: true, path: '/Volumes/Old machine SSD', directories: [] }));
+        act(() => renderer.root.findByProps({ testID: 'path-picker-select-current' }).props.onPress());
+        expect(onChange).toHaveBeenCalledWith('/Users/other');
     });
 
     it('opens Android model options in a modal and closes it on Back', async () => {

@@ -15,6 +15,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    directoryPicker: {
+        locations: 'Locations',
+        home: 'Home folder',
+        browse: 'Browse folders…',
+        empty: 'No subfolders here',
+        selectCurrent: ({ name }: { name: string }) => `Select “${name}”`,
+        loadError: 'Unable to read this folder. Check that the drive is connected and the folder is accessible.',
+        closeBrowser: 'Close folder browser',
+    },
     aiServiceConsent: {
         chatOnlyHint: "Only questions and answers are allowed. Terminal, file system, and browser operations are excluded.",
         toolsHint: "Tools are allowed on the approved devices. Execution remains subject to the application permission settings.",

@@ -18,6 +18,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    directoryPicker: {
+        locations: '場所',
+        home: 'ホームフォルダー',
+        browse: 'フォルダーを参照…',
+        empty: 'サブフォルダーはありません',
+        selectCurrent: ({ name }: { name: string }) => `「${name}」を選択`,
+        loadError: 'このフォルダーを読み取れません。ドライブが接続され、フォルダーにアクセスできることを確認してください。',
+        closeBrowser: 'フォルダー参照を閉じる',
+    },
     aiServiceConsent: {
         chatOnlyHint: "質問と回答のみを許可します。ターミナル、ファイルシステム、ブラウザーの操作は含みません。",
         toolsHint: "許可したデバイスでツールを使用できます。実行はアプリの権限設定に従います。",

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { browseHomeDirectory } from './browseHomeDirectory';
+import { browseHomeDirectory, getMountedVolumePaths } from './browseHomeDirectory';
 
 describe('browseHomeDirectory', () => {
     let fixtureRoot: string;
@@ -31,9 +31,9 @@ describe('browseHomeDirectory', () => {
 
         const result = await browseHomeDirectory(home, link);
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             success: false,
-            error: 'Access denied: Path is outside the home directory',
+            error: 'Access denied: Path is outside the home directory and mounted volumes',
         });
     });
 
@@ -50,7 +50,7 @@ describe('browseHomeDirectory', () => {
         const canonicalDemo = await realpath(demo);
         const result = await browseHomeDirectory(homeAlias, join(homeAlias, 'projects', 'demo'));
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             success: true,
             home: canonicalHome,
             path: canonicalDemo,
@@ -74,4 +74,70 @@ describe('browseHomeDirectory', () => {
         expect(notDirectory.success).toBe(false);
         expect(notDirectory.error).toMatch(/ENOTDIR|not a directory|directory name is invalid/i);
     });
+    it('browses an authorized volume with spaces and stops at its root', async () => {
+        const volume = join(fixtureRoot, 'External SSD');
+        const project = join(volume, 'Development', 'demo');
+        await mkdir(project, { recursive: true });
+        await writeFile(join(project, '.git'), 'gitdir: elsewhere');
+        const canonicalVolume = await realpath(volume);
+        const canonicalHome = await realpath(home);
+
+        const root = await browseHomeDirectory(home, volume, [volume]);
+        expect(root).toMatchObject({
+            success: true, path: canonicalVolume, parent: null, root: canonicalVolume,
+            roots: [
+                { name: '~', path: canonicalHome, kind: 'home' },
+                { name: 'External SSD', path: canonicalVolume, kind: 'volume' },
+            ],
+        });
+        const result = await browseHomeDirectory(home, join(volume, 'Development'), [volume]);
+        expect(result).toMatchObject({
+            success: true, parent: canonicalVolume, root: canonicalVolume,
+            directories: [{ name: 'demo', path: await realpath(project), isProjectRoot: true }],
+        });
+    });
+
+    it('lists migrated project symlinks only when their targets are in an allowed root', async () => {
+        const volume = join(fixtureRoot, 'External SSD');
+        await mkdir(volume);
+        await symlink(volume, join(home, 'migrated'), process.platform === 'win32' ? 'junction' : 'dir');
+        await symlink(outside, join(home, 'private'), process.platform === 'win32' ? 'junction' : 'dir');
+        const result = await browseHomeDirectory(home, home, [volume]);
+        expect(result.directories).toEqual([
+            { name: 'migrated', path: await realpath(volume), isProjectRoot: false },
+        ]);
+        expect(await browseHomeDirectory(home, join(home, 'migrated'), [volume])).toMatchObject({
+            success: true, path: await realpath(volume), root: await realpath(volume),
+        });
+    });
+
+    it('rejects volume escapes through parents, prefix siblings and symlinks', async () => {
+        const volume = join(fixtureRoot, 'External SSD');
+        const sibling = `${volume}-private`;
+        await mkdir(volume);
+        await mkdir(sibling);
+        await symlink(outside, join(volume, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
+        for (const target of [join(volume, '..'), sibling, join(volume, 'escape')]) {
+            expect(await browseHomeDirectory(home, target, [volume])).toMatchObject({ success: false });
+        }
+    });
+
+    it('returns available roots on failure so an unplugged drive can be left', async () => {
+        const removedVolume = join(fixtureRoot, 'Disconnected SSD');
+        const result = await browseHomeDirectory(home, removedVolume, [removedVolume]);
+        expect(result).toMatchObject({
+            success: false,
+            roots: [{ name: '~', path: await realpath(home), kind: 'home' }],
+        });
+        expect(result.path).toBeUndefined();
+    });
+
+    it('does not discover ordinary directories or symlinks as mounted volumes', async () => {
+        const volumes = join(fixtureRoot, 'Volumes');
+        await mkdir(join(volumes, 'unmounted'), { recursive: true });
+        await symlink(outside, join(volumes, 'alias'), process.platform === 'win32' ? 'junction' : 'dir');
+        expect(await getMountedVolumePaths(volumes)).toEqual([]);
+        expect(await getMountedVolumePaths(join(fixtureRoot, 'missing'))).toEqual([]);
+    });
+
 });

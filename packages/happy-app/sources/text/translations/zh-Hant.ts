@@ -17,6 +17,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    directoryPicker: {
+        locations: '位置',
+        home: '個人目錄',
+        browse: '瀏覽資料夾…',
+        empty: '沒有子資料夾',
+        selectCurrent: ({ name }: { name: string }) => `選擇「${name}」`,
+        loadError: '無法讀取此資料夾，請確認硬碟已連接且目錄可存取。',
+        closeBrowser: '關閉資料夾瀏覽',
+    },
     aiServiceConsent: {
         chatOnlyHint: "僅允許問答。不包含終端機、檔案系統或瀏覽器操作。",
         toolsHint: "允許在已授權裝置上使用工具。實際操作受應用程式權限設定限制。",
