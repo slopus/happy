@@ -182,3 +182,16 @@ export function buildProjectGroups(
 
     return [...projects.values()];
 }
+
+/**
+ * The key a workspace's collapsed state is stored under. The primary checkout
+ * IS the project, so it keys on the project id alone — that keeps whatever
+ * state a user already has for a project with no worktrees. A worktree appends
+ * its own path, so each checkout collapses independently.
+ */
+export function projectWorkspaceCollapseKey(
+    projectId: string,
+    workspaceId: string,
+): string {
+    return workspaceId ? projectId + '\u0000' + workspaceId : projectId;
+}
