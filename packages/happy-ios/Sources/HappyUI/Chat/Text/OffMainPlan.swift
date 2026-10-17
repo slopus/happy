@@ -58,6 +58,10 @@ final class OffMainPlan<Input: Equatable & Sendable, Plan: Sendable> {
     /// Whether the plan for what was asked last is in.
     var isCurrent: Bool { requested != nil && applied?.input == requested }
 
+    /// Nothing asked for, or the plan for it is in: nothing on its way
+    /// would change what is drawn (`ChatOpening`).
+    var isSettled: Bool { requested == nil || isCurrent }
+
     /// Forgets the plan and what was asked, so nothing old is drawn when
     /// the view shows again (a bar that went away). A plan on its way is
     /// refused.

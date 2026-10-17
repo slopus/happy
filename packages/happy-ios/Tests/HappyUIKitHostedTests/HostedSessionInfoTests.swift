@@ -123,6 +123,9 @@ final class HostedSessionInfoTests: XCTestCase {
         let context = AppContext(account: controller, variant: .development, version: "test")
         let (window, navigation, root) = try await hosted()
         root.push(.session(id: Self.sessionId), context: context)
+        // A chat is readied before it is pushed (`ChatOpening`).
+        let pushed = try await until { navigation.topViewController is ChatViewController }
+        XCTAssertTrue(pushed, "the chat was never pushed")
         let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
         var avatar: ChatHeaderAvatarControl? {
             chat.navigationItem.rightBarButtonItems?.compactMap { $0.customView as? ChatHeaderAvatarControl }.first

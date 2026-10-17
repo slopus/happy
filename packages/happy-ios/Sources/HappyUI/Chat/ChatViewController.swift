@@ -121,6 +121,14 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private let tabStrip = ChatWorktreeTabStrip()
     /// The strip's scroll on the screen this one replaced, to start from.
     private var inheritedStripOffset: CGFloat?
+    /// Readying the screen before it is shown (`open`), and how that went.
+    private var opening: ChatOpening?
+    private(set) var openingReport: ChatOpening.Report?
+    private var borrowsTraits = false
+    /// What the first frame waits for, each in once.
+    private var sessionApplied = false
+    private var checkoutApplied = false
+    private var rowsApplied = false
     /// Drawn from the account's newest home snapshot before the first
     /// frame (`seed`), for the first observations to start from.
     private var seededSession: ChatSessionState?
@@ -337,9 +345,78 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// person can come back to its tab.
     override func didMove(toParent parent: UIViewController?) {
         super.didMove(toParent: parent)
+        if parent != nil { returnTraits() }
         guard parent == nil, let chat = pendingChat, chat.sessionId != nil || chat.status == .failed else { return }
         let chats = services.pendingChats
         Task { await chats.dismiss(id: chat.id) }
+    }
+
+    // MARK: Opening
+
+    /// Readies the screen to be shown at `size`, with `safeArea` and the
+    /// `traits` of where it is going, and calls `show` to put it there once
+    /// it is whole, or at the cap (`ChatOpening`). Nothing it does before
+    /// then animates.
+    func open(size: CGSize, safeArea: UIEdgeInsets, traits: UITraitCollection, show: @escaping (ChatOpening.Report) -> Void) {
+        borrowTraits(from: traits)
+        borrowsTraits = true
+        updateTraitsIfNeeded()
+        loadViewIfNeeded()
+        // Out of a window a view has no safe area: lent the one it will
+        // have, until it has it.
+        additionalSafeAreaInsets = safeArea
+        view.frame = CGRect(origin: .zero, size: size)
+        historyPager?.isActive = true
+        opening = ChatOpening(missing: { [weak self] in self?.openingMissing() ?? [] }) { [weak self] report in
+            guard let self else { return }
+            self.opening = nil
+            self.openingReport = report
+            self.additionalSafeAreaInsets = .zero
+            show(report)
+            if self.parent != nil { self.returnTraits() }
+        }
+        opening?.check()
+    }
+
+    /// A newer push or switch took over: this screen is never shown.
+    func cancelOpening() {
+        opening?.cancel()
+        opening = nil
+    }
+
+    /// Once in the stack its traits are what it borrowed.
+    private func returnTraits() {
+        guard borrowsTraits else { return }
+        borrowsTraits = false
+        returnBorrowedTraits()
+    }
+
+    /// What the screen still waits for before its first frame, laid out
+    /// at its size first so each piece has been asked for.
+    private func openingMissing() -> [String] {
+        if view.window == nil { view.layoutIfNeeded() }
+        var missing: [String] = []
+        if !sessionApplied { missing.append("session") }
+        if !checkoutApplied { missing.append("checkout") }
+        if !rowsApplied { missing.append("rows") }
+        if !(isTabletLayout ? plainTitleView.measure.isSettled : titleView.measure.isSettled) { missing.append("header") }
+        if !tabStrip.isHidden, !tabStrip.isSettled { missing.append("strip") }
+        if !composer.isRestored { missing.append("composer") }
+        if !placeholder.isHidden, !placeholder.measure.isSettled { missing.append("placeholder") }
+        if !cliWarning.isHidden, !cliWarning.measure.isSettled { missing.append("cliWarning") }
+        let bars = [
+            inactiveHint.isHidden || inactiveHint.measure.isSettled,
+            goalBar.isHidden || goalBar.measure.isSettled,
+            questionBanner.isHidden || questionBanner.measure.isSettled,
+            rigActivity.isHidden || rigActivity.measure.isSettled,
+        ]
+        if bars.contains(false) { missing.append("dock") }
+        return missing
+    }
+
+    /// Whether a change may animate: not before the screen's first frame.
+    private var isShown: Bool {
+        opening == nil && isViewLoaded && view.window != nil
     }
 
     private static func services(account: AccountSession, context: AppContext, sessionId: String) -> ChatServices {
@@ -615,6 +692,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     private func sessionChanged(_ state: ChatSessionState) {
         session = state
+        sessionApplied = true
         rows?.update { $0.session = state }
         updateHeader()
         updateCliWarning()
@@ -622,6 +700,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         updateDockBars()
         updateComposer()
         scheduleMeasure()
+        opening?.check()
     }
 
     // MARK: Header
@@ -638,6 +717,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.updateHeaderText()
         }
+        titleView.onPlanned = { [weak self] in self?.opening?.check() }
+        plainTitleView.onPlanned = { [weak self] in self?.opening?.check() }
         titleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
         plainTitleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
         avatarControl.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
@@ -774,12 +855,17 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         // The seed is this chat's own checkout.
         let seeded = id == sessionId ? seededCheckout : nil
         seededCheckout = nil
-        if let seeded { checkout = seeded }
+        if let seeded {
+            checkout = seeded
+            checkoutApplied = true
+        }
         checkoutObservation = services.observeCheckout(id, seeded) { [weak self] checkout in
             guard let self else { return }
             self.checkout = checkout
+            self.checkoutApplied = true
             self.updateHeader()
             self.updateTabStrip()
+            self.opening?.check()
         }
     }
 
@@ -812,6 +898,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         guard shown == tabStrip.isHidden else { return }
         tabStrip.isHidden = !shown
         view.setNeedsLayout()
+        // In place at once, so no animation that runs next (the composer
+        // growing, a bar) carries it in from nothing.
+        if isShown { UIView.performWithoutAnimation { view.layoutIfNeeded() } }
     }
 
     /// Switching swaps the chat in place rather than pushing a screen, so
@@ -821,15 +910,23 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         switchChat(to: id)
     }
 
+    /// The next chat is readied at this one's size, safe area and traits
+    /// (`open`) and swapped in once whole, so its first frame is final:
+    /// nothing slides to hide a late piece.
     private func switchChat(to id: String) {
-        guard let navigation = navigationController, let index = navigation.viewControllers.firstIndex(of: self) else { return }
+        guard let navigation = navigationController, navigation.viewControllers.contains(self) else { return }
         keepStripOffset()
         let next = ChatViewController(context: context, session: account, sessionId: id)
         next.inheritedStripOffset = tabStrip.isHidden ? nil : tabStrip.offset
         TabletRoutes.record(.session(id: id), for: next)
-        var stack = navigation.viewControllers
-        stack[index] = next
-        navigation.setViewControllers(stack, animated: false)
+        ChatOpening.begin(next, on: navigation)
+        next.open(size: view.bounds.size, safeArea: view.safeAreaInsets, traits: traitCollection) { [weak self, weak navigation] _ in
+            guard let self, let navigation, let index = navigation.viewControllers.firstIndex(of: self) else { return }
+            ChatOpening.end(next, on: navigation)
+            var stack = navigation.viewControllers
+            stack[index] = next
+            navigation.setViewControllers(stack, animated: false)
+        }
     }
 
     /// Archiving the open tab moves the screen to its neighbour first, the
@@ -1066,7 +1163,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         // Contents can change a bar's height without it coming or going.
         guard bars.map({ $0.view }) != before || !bars.isEmpty else { return }
         view.setNeedsLayout()
-        if isViewLoaded && view.window != nil {
+        if isViewLoaded && isShown {
             UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
                 self.view.layoutIfNeeded()
             }
@@ -1079,7 +1176,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// is in.
     private func dockBarMeasured() {
         view.setNeedsLayout()
-        guard isViewLoaded, view.window != nil else { return }
+        opening?.check()
+        guard isViewLoaded, isShown else { return }
         UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
             self.view.layoutIfNeeded()
         }
@@ -1211,7 +1309,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             reachesOldest = update.reachesOldest
             if let rows = update.list {
                 oldestBoundary = update.oldestBoundary
-                touched += list.apply(rows, animated: true)
+                touched += list.apply(rows, animated: rowsApplied)
+                rowsApplied = true
             }
             if windowReset {
                 // History W3: the window dropped rows it showed; it is back
@@ -1223,6 +1322,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             if facts?.isLoaded == true { historyPager?.check() }
             return touched
         }
+        opening?.check()
         return true
     }
 
@@ -1465,9 +1565,15 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     // MARK: ChatComposerDelegate
 
+    /// Inside the composer's animation when its text grew or shrank; never
+    /// animated before the screen's first frame.
     func composerDidInvalidateHeight(_ composer: any ChatComposerView) {
         view.setNeedsLayout()
-        view.layoutIfNeeded()
+        if isShown {
+            view.layoutIfNeeded()
+        } else {
+            UIView.performWithoutAnimation { view.layoutIfNeeded() }
+        }
     }
 
     func composerDidChangeFocus(_ composer: any ChatComposerView) {}
@@ -1479,6 +1585,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         guard generation == composer.restoreGeneration else { return }
         view.layoutIfNeeded()
         composerReveal.restored(generation: generation)
+        opening?.check()
     }
 
     func composer(_ composer: any ChatComposerView, didSend localId: String) {

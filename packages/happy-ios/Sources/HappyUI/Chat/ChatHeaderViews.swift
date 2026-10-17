@@ -28,6 +28,8 @@ final class ChatHeaderTitleView: UIControl {
     private let changes = ChatGitChangesView()
     private var model: ChatHeaderTitleModel?
     let measure = OffMainPlan<ChatHeaderTitleInput, ChatHeaderTitlePlan> { ChatHeaderMeasure.title($0) }
+    /// Told once a plan is taken.
+    var onPlanned: (() -> Void)?
     /// The last plan made at `maxWidth`: the size the capsule asks for.
     private var wanted: (input: ChatHeaderTitleInput, size: CGSize)?
 
@@ -129,6 +131,7 @@ final class ChatHeaderTitleView: UIControl {
             if changed { sizeChanged() }
         }
         setNeedsLayout()
+        onPlanned?()
     }
 
     /// Asks the bar for `intrinsicContentSize`. In the bar the frame is the
@@ -237,6 +240,8 @@ final class ChatPlainHeaderTitleView: UIControl {
     private let changes = ChatGitChangesView()
     private var model: ChatHeaderTitleModel?
     let measure = OffMainPlan<ChatPlainHeaderInput, ChatPlainHeaderPlan> { ChatHeaderMeasure.plain($0) }
+    /// Told once a plan is taken.
+    var onPlanned: (() -> Void)?
 
     /// The screen's text size and pixels, as `ChatHeaderTitleView.text`.
     var text: TextEnvironment? {
@@ -259,7 +264,10 @@ final class ChatPlainHeaderTitleView: UIControl {
         column.addSubview(changes)
         isAccessibilityElement = true
         accessibilityTraits = [.button, .header]
-        measure.onApply = { [weak self] in self?.setNeedsLayout() }
+        measure.onApply = { [weak self] in
+            self?.setNeedsLayout()
+            self?.onPlanned?()
+        }
         registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
             self.setNeedsLayout()
         }
