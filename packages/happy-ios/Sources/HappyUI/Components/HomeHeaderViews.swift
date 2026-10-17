@@ -10,6 +10,16 @@ final class PartialBlurView: UIVisualEffectView {
     let fraction: CGFloat
     private var animator: UIViewPropertyAnimator?
 
+    /// How much of the blur shows, 0 to 1, as a share of `fraction`: a
+    /// blur fades in by strength, as an ancestor's alpha below 1 would turn
+    /// it off (HomeDock.tsx:166).
+    var presence: CGFloat = 1 {
+        didSet {
+            guard presence != oldValue else { return }
+            animator?.fractionComplete = fraction * presence
+        }
+    }
+
     init(fraction: CGFloat) {
         self.fraction = fraction
         super.init(effect: nil)
@@ -44,7 +54,7 @@ final class PartialBlurView: UIVisualEffectView {
             self?.effect = UIBlurEffect(style: style)
         }
         animator.pausesOnCompletion = true
-        animator.fractionComplete = fraction
+        animator.fractionComplete = fraction * presence
         self.animator = animator
     }
 }
@@ -134,10 +144,24 @@ final class HeaderScrimView: UIView {
     }
 
     /// MobileHeaderScrim's `overlayOpacity`: scales the wash, never the
-    /// blur. The chat's header strengthens it once content is under it.
-    var overlayOpacity: Float {
-        get { tint.opacity }
-        set { tint.opacity = newValue }
+    /// blur. The chat's header strengthens it once content is under it,
+    /// animating it in a transaction of its own.
+    var overlayOpacity: Float = 1 {
+        didSet { tint.opacity = overlayOpacity * Float(presence) }
+    }
+
+    /// How present the scrim is, 0 to 1, set a frame at a time: the wash's
+    /// opacity and the blur's strength, never this view's alpha, which
+    /// would turn the blur off.
+    var presence: CGFloat = 1 {
+        didSet {
+            guard presence != oldValue else { return }
+            blur.presence = presence
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            tint.opacity = overlayOpacity * Float(presence)
+            CATransaction.commit()
+        }
     }
 
     override func layoutSubviews() {
