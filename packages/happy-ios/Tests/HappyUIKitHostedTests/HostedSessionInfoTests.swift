@@ -205,5 +205,160 @@ final class HostedSessionInfoTests: XCTestCase {
         XCTAssertLessThan(longest, 0.25, "the main thread was held \(longest) s")
         await controller.signOut()
     }
+
+    #if DEBUG
+    /// The groups are made a few rows a frame, out of sight, and join the
+    /// list in one frame, every label in them having drawn its text once.
+    func testItsGroupsAreMadeAFewRowsAFrameAndShownTogether() async throws {
+        let (controller, _) = try await signedIn(agentState: Self.longAgentState())
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let (window, navigation, root) = try await hosted()
+        // Once to warm up, then the open that is checked.
+        for attempt in 0..<2 {
+            root.push(.sessionInfo(id: Self.sessionId), context: context)
+            let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
+            let list = try XCTUnwrap(subviews(GroupedListView.self, in: info.view).first)
+            var shown: [Int] = []
+            let recorder = TickRecorder { _ in shown.append(list.sections.count) }
+            let opened = try await until { !self.shownGroups(info, in: window).isEmpty }
+            recorder.stop()
+            XCTAssertTrue(opened, "session info showed no groups")
+            try await Task.sleep(for: .milliseconds(100))
+            guard attempt == 1 else {
+                navigation.popToRootViewController(animated: false)
+                try await Task.sleep(for: .milliseconds(150))
+                continue
+            }
+            let groups = list.sections.count
+            XCTAssertEqual(groups, 6, "quick actions, details, metadata, agent state, activity, raw JSON")
+            // Never some of the groups: none, then all.
+            XCTAssertTrue(Set(shown).isSubset(of: [0, groups]), "\(shown)")
+            let steps = info.slices.map(\.steps).reduce(0, +)
+            let rows = list.sections.compactMap { $0 as? ItemGroupView }.map(\.rows.count).reduce(0, +)
+            // A step starts a group, makes a row or finishes a group.
+            XCTAssertGreaterThanOrEqual(steps, rows + 2 * groups, "\(info.slices)")
+            XCTAssertGreaterThan(info.slices.count, 1, "made in one frame: \(info.slices)")
+            print("SESSIONINFO-SLICES " + info.slices.map { String(format: "%.2f ms × %d", $0.seconds * 1000, $0.steps) }.joined(separator: ", "))
+            let labels = list.sections.flatMap { subviews(StyledLabel.self, in: $0) }
+            XCTAssertGreaterThan(labels.count, 50)
+            XCTAssertEqual(labels.filter { $0.renders != 1 }.map { "\($0.string): \($0.renders)" }, [])
+            // Nothing is left out of sight.
+            XCTAssertEqual(subviews(ItemGroupView.self, in: info.view).count, groups)
+        }
+        await controller.signOut()
+    }
+    #endif
+
+    /// The longest the main thread is busy at a stretch while session info
+    /// is pushed and shows its groups, against the same push of an empty
+    /// screen with its title: the turn that pushes, and the busiest turn
+    /// after it. The first open is the first in the process when the test
+    /// runs on its own. Printed, for the record.
+    func testHowLongOpeningSessionInfoHoldsTheMainThread() async throws {
+        let (controller, _) = try await signedIn(agentState: Self.longAgentState())
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let (window, navigation, root) = try await hosted()
+        var lines: [String] = []
+        var info: [Opening] = []
+        for _ in 0..<8 {
+            let watch = BusyWatch()
+            let pushed = CACurrentMediaTime()
+            root.push(.sessionInfo(id: Self.sessionId), context: context)
+            let screen = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
+            let opened = try await until { !self.shownGroups(screen, in: window).isEmpty }
+            XCTAssertTrue(opened, "session info showed no groups")
+            try await Task.sleep(for: .milliseconds(500))
+            let opening = Opening(turns: watch.stop(), pushed: pushed)
+            info.append(opening)
+            lines.append("session info: \(opening)")
+            #if DEBUG
+            lines.append("  making " + screen.slices.map { String(format: "%.2f ms × %d", $0.seconds * 1000, $0.steps) }.joined(separator: ", "))
+            #endif
+            navigation.popToRootViewController(animated: false)
+            try await Task.sleep(for: .milliseconds(150))
+        }
+        var bare: [Opening] = []
+        for _ in 0..<8 {
+            let watch = BusyWatch()
+            let pushed = CACurrentMediaTime()
+            let screen = UIViewController()
+            screen.followsTextSize()
+            screen.view.backgroundColor = UIColor(Palette.groupedBackground)
+            screen.setPlainHeaderTitle("Session info screen")
+            navigation.pushViewController(screen, animated: true)
+            try await Task.sleep(for: .milliseconds(1000))
+            let opening = Opening(turns: watch.stop(), pushed: pushed)
+            bare.append(opening)
+            lines.append("empty screen: \(opening)")
+            navigation.popToRootViewController(animated: false)
+            try await Task.sleep(for: .milliseconds(150))
+        }
+        for (name, openings) in [("session info", info), ("empty screen", bare)] {
+            lines.append("\(name): push turn \(Self.summary(openings.map(\.push))); busiest after it \(Self.summary(openings.map(\.busiestAfter)))")
+        }
+        for line in lines { print("SESSIONINFO-OPEN \(line)") }
+        await controller.signOut()
+    }
+
+    /// The main thread's turns while a screen opens, from the push.
+    private struct Opening: CustomStringConvertible {
+        var turns: [(start: CFTimeInterval, length: CFTimeInterval)]
+        var pushed: CFTimeInterval
+
+        /// The turn the push was made in, in ms.
+        var push: Double {
+            (turns.first { $0.start <= pushed && $0.start + $0.length >= pushed }?.length ?? 0) * 1000
+        }
+
+        /// The busiest turn after that one, in ms.
+        var busiestAfter: Double {
+            (turns.filter { $0.start > pushed }.map(\.length).max() ?? 0) * 1000
+        }
+
+        /// Each turn over 2 ms: when it started after the push, and how long
+        /// it ran, in ms.
+        var description: String {
+            let long = turns.filter { $0.length > 0.002 }.map {
+                String(format: "%+.0f: %.1f", ($0.start - pushed) * 1000, $0.length * 1000)
+            }
+            return String(format: "push turn %.1f ms, busiest after it %.1f ms; turns over 2 ms [%@]", push, busiestAfter, long.joined(separator: ", "))
+        }
+    }
+
+    /// First, then the median and slowest of the rest.
+    private static func summary(_ values: [Double]) -> String {
+        let rest = values.dropFirst().sorted()
+        return String(format: "first %.2f ms, then median %.2f ms, slowest %.2f ms", values.first ?? 0, rest.isEmpty ? 0 : rest[rest.count / 2], rest.last ?? 0)
+    }
+}
+
+/// How long each turn of the main run loop is busy, from waking to going to
+/// sleep again, layout and drawing included.
+@MainActor
+private final class BusyWatch {
+    private var turns: [(start: CFTimeInterval, length: CFTimeInterval)] = []
+    private var woke = CACurrentMediaTime()
+    private var observers: [CFRunLoopObserver] = []
+
+    init() {
+        let wake = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.afterWaiting.rawValue, true, Int.min) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.woke = CACurrentMediaTime() }
+        }
+        let sleep = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, true, Int.max) { [weak self] _, _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.turns.append((self.woke, CACurrentMediaTime() - self.woke))
+            }
+        }
+        observers = [wake, sleep].compactMap { $0 }
+        for observer in observers { CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes) }
+    }
+
+    /// Stops watching; every turn: when it woke, and how long it ran.
+    func stop() -> [(start: CFTimeInterval, length: CFTimeInterval)] {
+        for observer in observers { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
+        observers = []
+        return turns
+    }
 }
 #endif
