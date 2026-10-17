@@ -90,3 +90,36 @@ requirements. Their first callbacks were 142.2 / 177.0 ms (short / large-state)
 and readiness 16.1 / 80.1 ms. These are functional validation samples after
 other chat tests in the same host, with unrelated Mac work in progress;
 they are neither a cold measurement nor a production-root A/B comparison.
+
+## Bounded cold Home trial
+
+With the current fixes, the Home-root method was then run alone as the
+first test in each fresh physical iPhone host. Home's resting dock was ready
+before the first short-chat push; no preceding chat or focused Home overlay
+initialized its keyboard. The same optimized Preview build settings applied.
+
+A trial installed a hidden view constrained to Home's public keyboard
+layout guide in `viewDidAppear`, after window attachment, then laid out the
+view. It did not focus an input or show the keyboard. Two fresh hosts per
+configuration gave the following milliseconds:
+
+| Configuration / run | Home setup | Longest Home turn | First chat callback | Transition settled | Longest chat turn |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Current fixes 1 | 48.6 | 48.5 | 187.5 | 661.0 | 94.5 |
+| Current fixes 2 | 47.9 | 47.9 | 197.1 | 683.1 | 96.5 |
+| Early guide trial 1 | 47.0 | 47.0 | 184.5 | 662.8 | 90.0 |
+| Early guide trial 2 | 57.0 | 57.0 | 194.6 | 670.0 | 92.6 |
+
+All four tests passed, with no missing readiness requirements. The small
+first-callback difference does not establish a useful, repeatable gain; a
+preceding current-code pilot had already measured 174.1 ms. Home's second
+trial setup was also slower. The guide change was discarded. These samples
+do not prove whether this public setup triggers the loader seen in the older
+trace, or eliminate UIKit's first-use cost. Cold and general navigation
+latency remain open.
+
+Home setup spans construction, window attachment and the wait for a visible
+resting dock, excluding account seeding and the following 300 ms settle.
+The busy-turn recorder includes its current partial turn: synchronous Home
+setup can finish before the run loop first waits. The pilot's longest-turn
+value of zero exposed that recorder gap and is excluded from the table.
