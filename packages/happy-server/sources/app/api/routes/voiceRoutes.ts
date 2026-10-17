@@ -104,10 +104,6 @@ export function voiceRoutes(app: Fastify) {
         if (!elevenLabsApiKey) {
             return reply.code(500).send({ error: 'ELEVENLABS_API_KEY not configured' });
         }
-        if (!process.env.REVENUECAT_API_KEY) {
-            return reply.code(500).send({ error: 'REVENUECAT_API_KEY not configured' });
-        }
-
         const elevenUserId = deriveElevenUserId(userId);
 
         // Check usage from ElevenLabs directly
@@ -136,7 +132,7 @@ export function voiceRoutes(app: Fastify) {
             });
         }
 
-        // Free tier — 1 hour, then need subscription
+        // Free tier — 20 minutes, then need subscription
         if (usedSeconds >= VOICE_FREE_LIMIT_SECONDS) {
             const subscribed = await hasActiveSubscription(userId);
             log({ module: 'voice' }, `User ${userId}: subscription check = ${subscribed}`);
