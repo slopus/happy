@@ -39,7 +39,7 @@ final class ElevenLabsVoiceConnection: VoiceConnection {
             tracker.agentSpeaking(state == .speaking)
         }.store(in: &connection.observations)
         conversation.$state.sink { state in
-            if state.isEnded { disconnected() }
+            if case .ended = state { disconnected() }
         }.store(in: &connection.observations)
         conversation.$pendingToolCalls.sink { [weak connection] calls in
             guard let connection else { return }

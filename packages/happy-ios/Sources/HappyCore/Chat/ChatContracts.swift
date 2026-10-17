@@ -106,6 +106,7 @@ public struct OutgoingAttachment: Equatable, Sendable {
 public struct OutgoingMessage: Equatable, Sendable {
     public enum Source: String, Sendable {
         case chat
+        case voice
         case newSession = "new_session"
     }
 

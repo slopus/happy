@@ -15,7 +15,6 @@ accident.
 
 | What | Why | Where in happy-app |
 | --- | --- | --- |
-| Voice mode | Included by the current product request; see voice implementation below | `settings/voice.tsx`, `settings/voice/language.tsx`, `apiVoice.ts`, `realtime/` |
 | Usage page | Gated by `experiments` | `settings/usage.tsx`, `components/usage/` |
 | Rig file browser in the chat | Gated by `experiments` (`SessionView.tsx` `onFileViewerPress`) | `FilesSidebar`, `FileViewPanel` |
 | Session files browser (`/session/[id]/files`) | Gated by `experiments` | `session/[id]/files.tsx` |
@@ -25,7 +24,7 @@ accident.
 | Artifacts | No entry point in happy-app's UI (only the artifact screens link to each other) | `artifacts/*`, `apiArtifacts.ts` |
 | Recent sessions screen | No entry point on a phone | `session/recent.tsx` |
 | Web/desktop-only UI: command palette, keyboard shortcut hints, sidebar navigator, web tab bar | Not on iPhone | `CommandPalette/`, `ShortcutHints`, `SidebarNavigator`, `TabBar` |
-| RevenueCat purchases and the paywall | Not shown in the iPhone UI | `purchases.ts`, `dev/purchases.tsx` |
+| Subscription purchases and restore | Support us is available in Settings and Voice, with project links and Apple subscription management. Subscribe/Restore remain unavailable until a purchase provider is configured; subscription status is unknown and backend authorization is unchanged. | `purchases.ts`, `SettingsView.tsx`, `settings/voice.tsx` |
 | Over-the-air update banner | A native build has no over-the-air JavaScript bundle to update; the store-version check stays in scope | `UpdateBanner.tsx` (`useUpdates`) |
 | Analytics (PostHog) | Not ported yet; the `analyticsOptOut` setting is kept and synced | `track/` |
 

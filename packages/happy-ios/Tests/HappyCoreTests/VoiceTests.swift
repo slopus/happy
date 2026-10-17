@@ -114,6 +114,39 @@ final class VoiceLifecycleTests: XCTestCase {
         await Task.yield()
         XCTAssertEqual(connection.prompts, ["agent finished"])
     }
+
+    func testNewSessionWaitsForCancelledStartupAndActualAudioTeardown() async {
+        let lifetime = VoiceConnectionLifetime()
+        let startup = ConnectionGate()
+        let teardown = ConnectionGate()
+        let firstConnection = TestVoiceConnection()
+        firstConnection.endGate = teardown
+        var firstOpened = false
+        var secondOpened = false
+        let first = VoiceSession(permission: { true }, credentials: { .allowed(Self.grant) }, lifetime: lifetime, connect: { _, _, _, _ in
+            firstOpened = true
+            await startup.wait()
+            return firstConnection
+        })
+        let second = VoiceSession(permission: { true }, credentials: { .allowed(Self.grant) }, lifetime: lifetime, connect: { _, _, _, _ in
+            secondOpened = true
+            return TestVoiceConnection()
+        })
+        first.start(request)
+        await until { firstOpened }
+        first.stop()
+        second.start(request)
+        for _ in 0..<50 { await Task.yield() }
+        XCTAssertFalse(secondOpened)
+        await startup.release()
+        await until { firstConnection.ended == 1 }
+        XCTAssertFalse(secondOpened, "old SDK end still owns the audio device")
+        await teardown.release()
+        await until { secondOpened }
+        XCTAssertEqual(first.state, .idle)
+        await until { second.state == .active(activity: .listening, muted: false) }
+        second.stop()
+    }
 }
 
 @MainActor
@@ -122,7 +155,8 @@ private final class TestVoiceConnection: VoiceConnection {
     var mutes: [Bool] = []
     var contexts: [String] = []
     var prompts: [String] = []
-    func end() async { ended += 1 }
+    var endGate: ConnectionGate?
+    func end() async { ended += 1; await endGate?.wait() }
     func setMuted(_ muted: Bool) async throws { mutes.append(muted) }
     func context(_ text: String) async throws { contexts.append(text) }
     func prompt(_ text: String) async throws { prompts.append(text) }
@@ -130,8 +164,9 @@ private final class TestVoiceConnection: VoiceConnection {
 
 private actor ConnectionGate {
     var continuation: CheckedContinuation<Void, Never>?
-    func wait() async { await withCheckedContinuation { continuation = $0 } }
-    func release() { continuation?.resume(); continuation = nil }
+    var released = false
+    func wait() async { if !released { await withCheckedContinuation { continuation = $0 } } }
+    func release() { released = true; continuation?.resume(); continuation = nil }
 }
 
 final class VoiceContextTests: XCTestCase {

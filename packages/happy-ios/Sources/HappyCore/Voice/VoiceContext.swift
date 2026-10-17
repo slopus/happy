@@ -52,6 +52,8 @@ public struct VoiceContextReducer: Sendable {
 /// execution stay on this actor, never on UIKit's queue.
 public actor VoiceContext {
     private let account: AccountSession
+    private let sending: any ChatSending
+    private let actions: SessionActions
     private var homeTask: Task<Void, Never>?
     private var chatTasks: [String: Task<Void, Never>] = [:]
     private var reducers: [String: VoiceContextReducer] = [:]
@@ -61,7 +63,15 @@ public actor VoiceContext {
     private var closed = false
     private var sink: (@Sendable (VoiceContextUpdate) async -> Void)?
 
-    public init(account: AccountSession, sessionId: String) { self.account = account; focused = sessionId }
+    public init(account: AccountSession, sessionId: String) {
+        self.account = account; focused = sessionId
+        sending = account.sender; actions = account.actions
+    }
+
+    init(account: AccountSession, sessionId: String, sending: any ChatSending, actions: SessionActions) {
+        self.account = account; focused = sessionId
+        self.sending = sending; self.actions = actions
+    }
 
     public func initial() async throws -> VoiceStart {
         let home = try account.store.homeSnapshot()
@@ -168,7 +178,7 @@ extension VoiceContext {
                 let value = try JSONDecoder().decode(Parameters.self, from: parameters)
                 guard !value.sessionId.isEmpty, !value.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                       try account.store.session(id: value.sessionId) != nil else { return VoiceToolResult("error (invalid session or message)", isError: true) }
-                _ = try await account.sender.send(OutgoingMessage(text: value.message), sessionId: value.sessionId)
+                _ = try await sending.send(OutgoingMessage(text: value.message, source: .voice), sessionId: value.sessionId)
                 return VoiceToolResult("sent [DO NOT say anything else, simply say 'sent']")
             case "processPermissionRequest":
                 struct Parameters: Decodable {
@@ -176,12 +186,12 @@ extension VoiceContext {
                     let requestId: String; let decision: Decision
                 }
                 let value = try JSONDecoder().decode(Parameters.self, from: parameters)
-                let matching = try account.store.sessions().filter { $0.agentState?["requests"]?[value.requestId] != nil }
+                let matching = try account.store.sessions().filter { $0.agentState?["requests"]?[value.requestId]?.objectValue != nil }
                 guard !value.requestId.isEmpty, matching.count == 1, let session = matching.first else {
                     return VoiceToolResult("error (permission request not found)", isError: true)
                 }
-                if value.decision == .allow { try await account.actions.allow(sessionId: session.id, permissionId: value.requestId) }
-                else { try await account.actions.deny(sessionId: session.id, permissionId: value.requestId) }
+                if value.decision == .allow { try await actions.allow(sessionId: session.id, permissionId: value.requestId) }
+                else { try await actions.deny(sessionId: session.id, permissionId: value.requestId) }
                 return VoiceToolResult("done [DO NOT say anything else, simply say 'done']")
             default: return VoiceToolResult("error (unknown client tool)", isError: true)
             }

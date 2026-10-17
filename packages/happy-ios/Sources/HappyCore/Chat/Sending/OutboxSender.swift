@@ -109,7 +109,9 @@ public struct OutboxSender: ChatSending {
         // an abandoned start.
         await spawnRequests.release(sessionId: sessionId)
         // Once accepted, a cache failure must not report a failed send and invite a duplicate.
-        try? sync.rigComposer.clearAfterSend(sessionId: sessionId, expectedStamp: draftStamp)
+        if message.source != .voice {
+            try? sync.rigComposer.clearAfterSend(sessionId: sessionId, expectedStamp: draftStamp)
+        }
         return id
     }
 

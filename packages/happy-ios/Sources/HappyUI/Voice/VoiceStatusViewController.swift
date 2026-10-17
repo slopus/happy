@@ -72,6 +72,10 @@ final class VoiceStatusViewController: UIViewController {
         default: break
         }
         list.sections = [ItemGroupView(footer: Strings.Voice.callFooter, rows: [status] + rows)]
+        // Error explanations must remain readable at accessibility sizes.
+        // Groups finish configuring dividers before these measured limits.
+        for row in [status] + rows { row.titleLabel.numberOfLines = 0 }
+        list.setNeedsLayout()
     }
 }
 #endif

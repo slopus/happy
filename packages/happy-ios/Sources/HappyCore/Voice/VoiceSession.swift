@@ -40,12 +40,36 @@ public protocol VoiceConnection: AnyObject {
     func prompt(_ text: String) async throws
 }
 
+/// Several UI sessions share one audio device. A new connection waits until
+/// the preceding connection has actually stopped, including a late startup
+/// result after cancellation. A lease is released after SDK teardown.
+@MainActor
+public final class VoiceConnectionLifetime {
+    private var tail: Task<Void, Never>?
+    public init() {}
+    public final class Lease {
+        private var continuation: AsyncStream<Void>.Continuation?
+        fileprivate init(_ continuation: AsyncStream<Void>.Continuation) { self.continuation = continuation }
+        public func finish() { continuation?.finish(); continuation = nil }
+    }
+    public func acquire() async throws -> Lease {
+        let previous = tail
+        let (stream, continuation) = AsyncStream.makeStream(of: Void.self)
+        tail = Task { for await _ in stream {} }
+        await previous?.value
+        do { try Task.checkCancellation() }
+        catch { continuation.finish(); throw error }
+        return Lease(continuation)
+    }
+}
+
 @MainActor
 public final class VoiceSession {
     public typealias Connect = @MainActor (VoiceGrant?, VoiceStart, @escaping @MainActor (VoiceActivity) -> Void, @escaping @MainActor () -> Void) async throws -> any VoiceConnection
     public private(set) var state: VoiceState = .idle { didSet { if state != oldValue { onState?(state) } } }
     public var onState: (@MainActor (VoiceState) -> Void)?
     private var connection: (any VoiceConnection)?
+    private var lease: VoiceConnectionLifetime.Lease?
     private var generation = 0
     private var startTask: Task<Void, Never>?
     private var pendingPrompts: [String] = []
@@ -54,13 +78,16 @@ public final class VoiceSession {
     private let permission: @MainActor () async -> Bool
     private let credentials: @Sendable () async throws -> VoiceCredentials
     private let connect: Connect
+    private let lifetime: VoiceConnectionLifetime
 
     public init(permission: @escaping @MainActor () async -> Bool,
                 credentials: @escaping @Sendable () async throws -> VoiceCredentials,
+                lifetime: VoiceConnectionLifetime = VoiceConnectionLifetime(),
                 connect: @escaping Connect) {
         self.permission = permission
         self.credentials = credentials
         self.connect = connect
+        self.lifetime = lifetime
     }
 
     public func start(_ request: VoiceStart) {
@@ -92,7 +119,10 @@ public final class VoiceSession {
                 }
                 try Task.checkCancellation()
                 guard current == generation else { return }
-                let opened = try await connect(grant, request, { [weak self] activity in
+                let acquired = try await lifetime.acquire()
+                let opened: any VoiceConnection
+                do {
+                    opened = try await connect(grant, request, { [weak self] activity in
                     guard let self, current == self.generation else { return }
                     self.activity = activity
                     if self.connection != nil { self.state = .active(activity: activity, muted: self.muted) }
@@ -100,12 +130,15 @@ public final class VoiceSession {
                 }, { [weak self] in
                     guard let self, current == self.generation else { return }
                     self.stop()
-                })
+                    })
+                } catch { acquired.finish(); throw error }
                 guard !Task.isCancelled, current == generation else {
                     await opened.end()
+                    acquired.finish()
                     return
                 }
                 connection = opened
+                lease = acquired
                 muted = false
                 state = .active(activity: activity, muted: false)
                 flushPrompts()
@@ -126,12 +159,14 @@ public final class VoiceSession {
         startTask?.cancel()
         startTask = nil
         let old = connection
+        let oldLease = lease
         connection = nil
+        lease = nil
         pendingPrompts.removeAll()
         activity = .listening
         muted = false
         state = .idle
-        Task { await old?.end() }
+        Task { await old?.end(); oldLease?.finish() }
     }
 
     public func toggleMute() async {
@@ -170,6 +205,7 @@ public final class VoiceSession {
         pendingPrompts.removeAll()
         let current = generation
         Task {
+            guard current == generation else { return }
             do { try await connection.prompt(text) }
             catch {
                 guard current == generation else { return }

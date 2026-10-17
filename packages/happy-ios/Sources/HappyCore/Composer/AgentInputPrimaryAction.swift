@@ -43,8 +43,8 @@ public enum AgentInputPrimaryAction: String, Equatable, Sendable {
 
 /// AgentInput.tsx's wide composer (`desktopActionControls`, a window wider
 /// than 700 points): its send button is only send. Stop has its own button
-/// beside the gear, and with voice not ported the empty composer's
-/// microphone isn't there either (`onMicPress` unset).
+/// beside the gear. The compact iPhone card owns the initial microphone;
+/// an active call can also be reopened through the shared status row.
 public struct AgentInputDesktopSend: Equatable, Sendable {
     public enum Fill: Equatable, Sendable {
         /// `sendButtonLocked`: surfaceHigh in a 1pt divider ring.

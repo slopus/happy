@@ -17,6 +17,7 @@ public final class VoiceCoordinator: NSObject {
     private var context: VoiceContext?
     private var preparation: Task<Void, Never>?
     private var generation = 0
+    private let lifetime = VoiceConnectionLifetime()
     private weak var screen: VoiceStatusViewController?
     public private(set) var state: VoiceState = .idle
 
@@ -50,7 +51,7 @@ public final class VoiceCoordinator: NSObject {
                     await AVAudioApplication.requestRecordPermission()
                 }, credentials: {
                     try await api.voiceCredentials()
-                }, connect: { grant, request, activity, disconnected in
+                }, lifetime: lifetime, connect: { grant, request, activity, disconnected in
                     try await ElevenLabsVoiceConnection.connect(grant: grant, request: request, context: context,
                                                                activity: activity, disconnected: disconnected)
                 })

@@ -80,6 +80,13 @@ public final class VoiceSettingsViewController: UIViewController {
             ItemGroupView(title: Strings.Voice.languageTitle, footer: Strings.Voice.languageDescription, rows: [language]),
             ItemGroupView(title: Strings.Voice.byo, footer: Strings.Voice.byoDescription, rows: [custom, direct]),
         ]
+        for group in list.sections.compactMap({ $0 as? ItemGroupView }) {
+            for case let row as ItemRowView in group.rows {
+                row.titleLabel.numberOfLines = 0
+                row.subtitleLabel.numberOfLines = 0
+            }
+        }
+        list.setNeedsLayout()
     }
 
     private func set(_ delta: [String: JSONValue]) {
