@@ -330,8 +330,9 @@ public final class AgentInputCardView: UIView {
     private var textWaits = 0
 
     /// Whether the height change the delegate is hearing about should
-    /// animate: false for a text set with `animatesHeight: false`, whose
-    /// height may land a moment after it was set.
+    /// animate: only one the text made, and not a text set with
+    /// `animatesHeight: false`, whose height may land a moment after it
+    /// was set.
     public private(set) var animatesHeightChange = true
     /// The height the owner last laid the card out at, and at what width:
     /// what a change to the text is measured against.
@@ -471,10 +472,10 @@ public final class AgentInputCardView: UIView {
     }
 
     /// The text size moved outside a measurement: redraw, and the owner
-    /// lays the card out again.
+    /// lays the card out again, unanimated: only what is typed animates.
     private func textSizeMayHaveChanged() {
         guard syncTextSize() else { return }
-        delegate?.agentInputCardDidInvalidateHeight(self)
+        reportHeightChange(animated: false)
         setNeedsLayout()
     }
 
@@ -1084,7 +1085,10 @@ public final class AgentInputCardView: UIView {
             || previous.effort != config.effort
             || previous.zenMode != config.zenMode
             || Self.panelShape(previous.desktop) != Self.panelShape(config.desktop) {
-            delegate?.agentInputCardDidInvalidateHeight(self)
+            // Chips that come with the session's record, a picture, the
+            // panel: the card takes its new height at once. Only what is
+            // typed animates.
+            reportHeightChange(animated: false)
             setNeedsLayout()
         }
     }
