@@ -24,8 +24,8 @@ private struct NoSockets: WebSocketConnector {
 /// sessions (`SeededAccount`): pushed from a list, its worktree strip
 /// switching chats in place. Hosted, so the screens are in a window of a
 /// real scene, under a real navigation bar, and every frame of a
-/// transition is sampled: a chat is readied before it is shown
-/// (`ChatOpening`), so nothing in it moves after its first frame.
+/// transition is sampled. Navigation starts with a shell; once deferred
+/// content is ready, its geometry remains stable.
 @MainActor
 final class HostedChatNavigationTests: XCTestCase {
     func testPushInstallsOnlyTheShellBeforeReturning() async throws {
@@ -68,9 +68,10 @@ final class HostedChatNavigationTests: XCTestCase {
         root.push(.session(id: "seeded-tab-4"), context: context, animated: false)
         let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
         await controller.signOut()
+        let completedStages = chat.constructionStageSeconds.count
         try await Task.sleep(for: .milliseconds(300))
-        XCTAssertFalse(chat.contentInstalled)
-        XCTAssertNil(chat.openingReport)
+        XCTAssertEqual(chat.constructionStageSeconds.count, completedStages,
+                       "no additional views may be constructed for a signed-out account")
     }
     private func signedIn() async throws -> (AccountController, AccountSession) {
         let controller = AccountController(
@@ -144,7 +145,7 @@ final class HostedChatNavigationTests: XCTestCase {
 
     // MARK: A push
 
-    func testAPushedChatDoesNotMoveAfterItsFirstFrame() async throws {
+    func testAPushedChatDoesNotMoveAfterItsContentIsReady() async throws {
         let (controller, _) = try await signedIn()
         let context = AppContext(account: controller, variant: .development, version: "test")
         let (_, navigation, root) = try await hosted()

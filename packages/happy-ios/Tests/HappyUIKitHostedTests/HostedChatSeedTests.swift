@@ -19,9 +19,8 @@ private struct NoSockets: WebSocketConnector {
     }
 }
 
-/// A chat draws its header, avatar and tabs from the account's newest home
-/// snapshot as it is made (`ChatServices.seed`), before any observation
-/// answers, and the store's own answer, the same, changes nothing.
+/// A chat projects the newest home snapshot off main during navigation.
+/// Its observations start from that seed and an equal answer changes nothing.
 @MainActor
 final class HostedChatSeedTests: XCTestCase {
     private func signedIn() async throws -> (AccountController, AccountSession) {

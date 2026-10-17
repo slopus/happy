@@ -39,6 +39,7 @@ final class HostedHomeChatTimingTests: XCTestCase {
         let store = account.store
         try await Task.detached {
             try SeededAccount.seed(store)
+            try store.addPendingSettings(["sessionListGrouping": .string("flat")])
             if heavy {
                 let body = String(repeating: "let value = compute(input) // file content\n", count: 70)
                 let completed = Dictionary(uniqueKeysWithValues: (0..<300).map { index in
@@ -82,7 +83,7 @@ final class HostedHomeChatTimingTests: XCTestCase {
             times.append(CACurrentMediaTime())
             guard let chat = navigation.topViewController as? ChatViewController,
                   chat.isViewLoaded, chat.view.window != nil else { return }
-            let x = chat.view.layer.presentation()?.frame.minX
+            let x = chat.view.layer.presentation()?.convert(.zero, to: window.layer.presentation()).x
             if let x, x > 0.5, x < window.bounds.width - 0.5, firstMovement == nil {
                 firstMovement = CACurrentMediaTime()
             }

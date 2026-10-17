@@ -6,14 +6,11 @@ import UIKit
 /// navigation has already started and never waits for this report.
 @MainActor
 final class ChatOpening {
-    /// The longest a tap waits for a chat's rows.
+    /// Records rows as late after this interval; never delays a tap.
     static let cap: CFTimeInterval = 0.150
-    /// What may land after the first frame, once the cap is hit: the rows,
-    /// and the spinner standing in for them.
+    /// The pieces allowed beyond the short readiness interval.
     static let mayComeLate: Set<String> = ["rows", "placeholder"]
-    /// Everything else (the header, the strip, the bars, the composer) is
-    /// waited for past the cap, this long at most: the bound on a stalled
-    /// read, as the composer's restore has.
+    /// Finish the diagnostic report even when content has stalled.
     static let limit: CFTimeInterval = 0.400
 
     /// How an opening went, for the tests and the timing log.
@@ -77,62 +74,5 @@ final class ChatOpening {
         check()
     }
 
-    // MARK: One per stack
-
-    /// The chat being readied for each stack: a newer push or switch on
-    /// the stack cancels it, so a second tap never shows two.
-    private static let pending = NSMapTable<UINavigationController, ChatViewController>.weakToWeakObjects()
-
-    static func begin(_ chat: ChatViewController, on stack: UINavigationController) {
-        cancel(on: stack)
-        pending.setObject(chat, forKey: stack)
-    }
-
-    static func end(_ chat: ChatViewController, on stack: UINavigationController) {
-        if pending.object(forKey: stack) === chat { pending.removeObject(forKey: stack) }
-    }
-
-    static func cancel(on stack: UINavigationController) {
-        pending.object(forKey: stack)?.cancelOpening()
-        pending.removeObject(forKey: stack)
-    }
-
-    /// The safe area a screen pushed onto `stack` will have: the stack's,
-    /// under its bar.
-    static func safeArea(pushedOnto stack: UINavigationController) -> UIEdgeInsets {
-        var insets = stack.view.safeAreaInsets
-        if !stack.isNavigationBarHidden {
-            insets.top = max(insets.top, stack.navigationBar.frame.maxY)
-        }
-        return insets
-    }
-}
-
-extension UIViewController {
-    /// The traits a screen built before it is in a window is measured with:
-    /// those of the screen it will join, held as overrides until it has
-    /// joined it (`returnBorrowedTraits`), when they are its own anyway.
-    func borrowTraits(from traits: UITraitCollection) {
-        traitOverrides.preferredContentSizeCategory = traits.preferredContentSizeCategory
-        traitOverrides.displayScale = traits.displayScale
-        traitOverrides.userInterfaceStyle = traits.userInterfaceStyle
-        traitOverrides.horizontalSizeClass = traits.horizontalSizeClass
-        traitOverrides.verticalSizeClass = traits.verticalSizeClass
-        traitOverrides.layoutDirection = traits.layoutDirection
-        traitOverrides.legibilityWeight = traits.legibilityWeight
-        traitOverrides.userInterfaceIdiom = traits.userInterfaceIdiom
-        traitOverrides[TabletLayoutTrait.self] = traits.isTabletLayout
-        traitOverrides[ZenModeTrait.self] = traits.isZenMode
-    }
-
-    func returnBorrowedTraits() {
-        for trait: UITrait in [
-            UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self, UITraitUserInterfaceStyle.self,
-            UITraitHorizontalSizeClass.self, UITraitVerticalSizeClass.self, UITraitLayoutDirection.self,
-            UITraitLegibilityWeight.self, UITraitUserInterfaceIdiom.self, TabletLayoutTrait.self, ZenModeTrait.self,
-        ] where traitOverrides.contains(trait) {
-            traitOverrides.remove(trait)
-        }
-    }
 }
 #endif

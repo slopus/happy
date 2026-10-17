@@ -121,7 +121,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private lazy var tabStrip = ChatWorktreeTabStrip()
     /// The strip's scroll on the screen this one replaced, to start from.
     private var inheritedStripOffset: CGFloat?
-    /// Readying the screen before it is shown (`open`), and how that went.
+    /// Readiness diagnostics for content installed during the transition.
     private var opening: ChatOpening?
     private(set) var openingReport: ChatOpening.Report?
     private var construction: ChatConstruction?
@@ -136,12 +136,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private(set) var loadingSeconds: CFTimeInterval = 0
     private(set) var openingLayoutSeconds: CFTimeInterval = 0
     #endif
-    /// What the first frame waits for, each in once.
+    /// Which deferred content pieces have arrived, each in once.
     private var sessionApplied = false
     private var checkoutApplied = false
     private var rowsApplied = false
-    /// Drawn from the account's newest home snapshot before the first
-    /// frame (`seed`), for the first observations to start from.
+    /// Derived from the account's newest home snapshot during the
+    /// transition (`seed`), for the first observations to start from.
     private var seededSession: ChatSessionState?
     private var seededCheckout: WorktreeCheckout??
     /// How often the store's record changed what the screen drew: none
@@ -439,14 +439,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     // MARK: Opening
 
-    /// A newer push or switch took over: this screen is never shown.
-    func cancelOpening() {
-        opening?.cancel()
-        opening = nil
-    }
-
-    /// What the screen still waits for before its first frame, laid out
-    /// at its size first so each piece has been asked for.
+    /// What content is still missing. This never controls navigation.
     private func openingMissing() -> [String] {
         if view.window == nil {
             #if DEBUG || HAPPY_FIXTURES
@@ -492,10 +485,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         )
     }
 
-    /// The session and its checkout as the account's newest home snapshot
-    /// has them, drawn before the first frame, so the header, the avatar,
-    /// the status line and the tabs need no wait. The observations start
-    /// from it and change nothing while the store agrees.
+    /// Apply the background projection once the views exist. Observations
+    /// start from it and change nothing while the store agrees.
     private func seed(_ seed: ChatServices.Seed) {
         seededSession = seed.session
         seededCheckout = .some(seed.checkout)
@@ -978,9 +969,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         switchChat(to: id)
     }
 
-    /// The next chat is readied at this one's size, safe area and traits
-    /// (`open`) and swapped in once whole, so its first frame is final:
-    /// nothing slides to hide a late piece.
+    /// Replace the tab immediately, then prepare its content with the
+    /// same cancellable construction used by a push.
     private func switchChat(to id: String) {
         guard let navigation = navigationController, navigation.viewControllers.contains(self) else { return }
         keepStripOffset()
