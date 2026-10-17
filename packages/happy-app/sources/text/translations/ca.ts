@@ -455,6 +455,7 @@ export const ca: TranslationStructure = {
     },
 
     agentInput: {
+        sendMode: en.agentInput.sendMode,
         permissionMode: {
             title: 'MODE DE PERMISOS',
             auto: 'decideix pel seu compte, pregunta si dubta',

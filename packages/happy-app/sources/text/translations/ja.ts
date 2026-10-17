@@ -456,6 +456,7 @@ export const ja: TranslationStructure = {
     },
 
     agentInput: {
+        sendMode: en.agentInput.sendMode,
         permissionMode: {
             title: '権限モード',
             auto: '自分で判断し、迷ったら確認します',
