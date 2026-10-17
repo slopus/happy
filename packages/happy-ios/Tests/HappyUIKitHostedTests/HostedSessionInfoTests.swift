@@ -126,7 +126,7 @@ final class HostedSessionInfoTests: XCTestCase {
             guard !view.isHidden, view.alpha > 0 else { return [] }
             ancestor = view.superview
         }
-        let groups = list.sections.compactMap { $0 as? ItemGroupView }
+        let groups = list.sections.compactMap { $0 as? ItemGroupView }.filter { $0.accessibilityIdentifier != "session-info-load-status" }
         guard let first = groups.first, first.superview === list,
               first.convert(first.bounds, to: window).intersects(window.bounds) else { return [] }
         return groups
@@ -286,7 +286,8 @@ final class HostedSessionInfoTests: XCTestCase {
         let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
         let list = try XCTUnwrap(subviews(GroupedListView.self, in: info.view).first)
         let started = try await until {
-            !self.subviews(ItemGroupView.self, in: info.view).isEmpty && list.sections.isEmpty
+            self.subviews(ItemGroupView.self, in: info.view).contains { $0.accessibilityIdentifier != "session-info-load-status" }
+                && list.sections.allSatisfy { $0.accessibilityIdentifier == "session-info-load-status" }
         }
         XCTAssertTrue(started, "the initial group batch was not observed")
         let store = account.store
@@ -317,7 +318,9 @@ final class HostedSessionInfoTests: XCTestCase {
         let (window, navigation, root) = try await hosted()
         root.push(.sessionInfo(id: Self.sessionId), context: context)
         let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
-        let started = try await until { !self.subviews(ItemGroupView.self, in: info.view).isEmpty }
+        let started = try await until {
+            self.subviews(ItemGroupView.self, in: info.view).contains { $0.accessibilityIdentifier != "session-info-load-status" }
+        }
         XCTAssertTrue(started)
         let store = account.store
         var withoutMetadata = Self.session(agentState: .object([:]))
@@ -359,7 +362,7 @@ final class HostedSessionInfoTests: XCTestCase {
         let titleView = try XCTUnwrap(info.navigationItem.titleView as? NavigationTitleView)
         XCTAssertEqual(titleView.title, "Session info screen")
         XCTAssertEqual(info.title, "Session info screen")
-        XCTAssertTrue(subviews(ItemGroupView.self, in: info.view).isEmpty)
+        XCTAssertTrue(subviews(ItemGroupView.self, in: info.view).allSatisfy { $0.accessibilityIdentifier == "session-info-load-status" })
         let size = titleView.frame.size
         XCTAssertGreaterThan(size.width, 0)
         #if DEBUG
@@ -440,7 +443,9 @@ final class HostedSessionInfoTests: XCTestCase {
             let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
             let list = try XCTUnwrap(subviews(GroupedListView.self, in: info.view).first)
             var shown: [Int] = []
-            let recorder = TickRecorder { _ in shown.append(list.sections.count) }
+            let recorder = TickRecorder { _ in
+                shown.append(list.sections.filter { $0.accessibilityIdentifier != "session-info-load-status" }.count)
+            }
             let opened = try await until { !self.shownGroups(info, in: window).isEmpty }
             recorder.stop()
             XCTAssertTrue(opened, "session info showed no groups")

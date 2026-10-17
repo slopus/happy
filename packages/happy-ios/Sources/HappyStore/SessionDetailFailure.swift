@@ -17,7 +17,7 @@ public struct SessionDetailFailure: Equatable, Sendable {
     public init(_ error: any Error) {
         if let database = error as? DatabaseError {
             self.init(kind: .database, code: database.extendedResultCode.rawValue)
-        } else if error is DecodingError {
+        } else if error is DecodingError || error is RowDecodingError {
             self.init(kind: .decoding)
         } else {
             self.init(kind: .storage)

@@ -7,6 +7,7 @@ extension Strings {
         static let failed = "Unable to load session details"
         static let delayed = "Session details are taking longer than expected"
         static let copyDiagnostics = "Copy diagnostics"
+        static var actions: String { localized("session.actionsTitle", "Session") }
         static var retry: String { localized("common.retry", "Retry") }
     }
 }

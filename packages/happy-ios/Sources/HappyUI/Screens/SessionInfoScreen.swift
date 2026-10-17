@@ -147,7 +147,7 @@ final class SessionInfoViewController: UIViewController {
                 UIAction(title: Strings.SessionInfoLoading.copyDiagnostics) { [weak self] _ in self?.copyLoadingDiagnostics() },
             ])
         )
-        navigationItem.rightBarButtonItem?.accessibilityLabel = Strings.SessionInfoLoading.copyDiagnostics
+        navigationItem.rightBarButtonItem?.accessibilityLabel = Strings.SessionInfoLoading.actions
         showLoadStatus(.loading)
         beginObservation()
     }
@@ -162,8 +162,11 @@ final class SessionInfoViewController: UIViewController {
         #else
         let includesRaw = false
         #endif
+        var input = SessionInfoInput(includesRaw: includesRaw)
+        input.forking = busy.contains(.fork)
+        input.copiedResumeCommand = frame?.copiedResumeCommand ?? false
         let pipeline = ApplyPipeline<SessionInfoInput, SessionInfoFrame?, SessionInfoUpdate>(
-            input: SessionInfoInput(includesRaw: includesRaw),
+            input: input,
             state: nil,
             derive: { SessionInfoDerivation.derive($0, applied: $1) },
             apply: { [weak self] update in
@@ -429,26 +432,30 @@ final class SessionInfoViewController: UIViewController {
     /// throws away rows that the user can already read. Construction can
     /// continue behind it and removes the waiting state when it finishes.
     private func showLoadStatus(_ state: LoadState) {
-        loadState = state
-        let message: String
-        switch state {
-        case .loading: message = Strings.SessionDetail.loading
-        case .delayed: message = Strings.SessionInfoLoading.delayed
-        case .failed: message = Strings.SessionInfoLoading.failed
-        case .ready: return
+        ApplyPerf.measure(.screen) {
+            loadState = state
+            let message: String
+            switch state {
+            case .loading: message = Strings.SessionDetail.loading
+            case .delayed: message = Strings.SessionInfoLoading.delayed
+            case .failed: message = Strings.SessionInfoLoading.failed
+            case .ready: return 0
+            }
+            let messageRow = ItemRowView(title: message)
+            messageRow.showsChevron = false
+            var rows: [UIView] = [messageRow]
+            if state != .loading {
+                rows.append(ItemRowView(title: Strings.SessionInfoLoading.retry) { [weak self] in self?.retryLoading() })
+                rows.append(ItemRowView(title: Strings.SessionInfoLoading.copyDiagnostics) { [weak self] in self?.copyLoadingDiagnostics() })
+            }
+            loadStatusGroup = ItemGroupView(rows: rows)
+            loadStatusGroup?.accessibilityIdentifier = "session-info-load-status"
+            stateView?.removeFromSuperview()
+            stateView = nil
+            list.isHidden = false
+            installSections()
+            return rows.count
         }
-        let messageRow = ItemRowView(title: message)
-        messageRow.showsChevron = false
-        var rows: [UIView] = [messageRow]
-        if state != .loading {
-            rows.append(ItemRowView(title: Strings.SessionInfoLoading.retry) { [weak self] in self?.retryLoading() })
-            rows.append(ItemRowView(title: Strings.SessionInfoLoading.copyDiagnostics) { [weak self] in self?.copyLoadingDiagnostics() })
-        }
-        loadStatusGroup = ItemGroupView(rows: rows)
-        stateView?.removeFromSuperview()
-        stateView = nil
-        list.isHidden = false
-        installSections()
     }
 
     private var hasVisibleBody: Bool {
@@ -533,8 +540,15 @@ final class SessionInfoViewController: UIViewController {
         else { currentFailure = nil }
         let first = shownSections.compactMap { sectionViews[$0] }.first
         let window = view.window
+        let status: String
+        switch loadState {
+        case .loading: status = "loading"
+        case .delayed: status = "delayed"
+        case .failed: status = "failed"
+        case .ready: status = "ready"
+        }
         var result: [String: Any] = [
-            "reason": reason, "stage": stage, "content": content,
+            "reason": reason, "stage": stage, "content": content, "loadState": status, "screenVisible": isVisible,
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
             "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
             "os": UIDevice.current.systemVersion, "model": Self.deviceModel,
@@ -544,13 +558,13 @@ final class SessionInfoViewController: UIViewController {
             "accountMatches": context.account.session === session,
             "windowAttached": window != nil, "keyWindow": window?.isKeyWindow ?? false,
             "sceneState": window?.windowScene?.activationState.rawValue ?? -1,
-            "viewBounds": NSStringFromCGRect(view.bounds), "listBounds": NSStringFromCGRect(list.bounds),
+            "viewBounds": NSCoder.string(for: view.bounds), "listBounds": NSCoder.string(for: list.bounds),
             "listHidden": list.isHidden, "listAlpha": list.alpha,
-            "contentSize": NSStringFromCGSize(list.contentSize), "contentOffset": NSStringFromCGPoint(list.contentOffset),
+            "contentSize": NSCoder.string(for: list.contentSize), "contentOffset": NSCoder.string(for: list.contentOffset),
             "installedGroups": sectionViews.count, "listSections": list.sections.count,
             "queuedGroups": queue.count, "madeGroups": made.count, "making": making != nil, "displayLink": makeLink != nil,
-            "firstGroupFrame": NSStringFromCGRect(first?.frame ?? .zero),
-            "firstGroupInWindow": NSStringFromCGRect(first.flatMap { group in window.map { group.convert(group.bounds, to: $0) } } ?? .zero),
+            "firstGroupFrame": NSCoder.string(for: first?.frame ?? .zero),
+            "firstGroupInWindow": NSCoder.string(for: first.flatMap { group in window.map { group.convert(group.bounds, to: $0) } } ?? CGRect.zero),
         ]
         if let counts = pipeline?.counts {
             result["pipeline"] = ["wakeups": counts.wakeups, "derivations": counts.derivations,
