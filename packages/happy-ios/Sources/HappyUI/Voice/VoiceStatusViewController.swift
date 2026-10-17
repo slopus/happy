@@ -39,7 +39,7 @@ final class VoiceStatusViewController: UIViewController {
             }
             title = muted ? Strings.Voice.muted : activityTitle
             rows.append(ItemRowView(title: muted ? Strings.Voice.unmute : Strings.Voice.mute,
-                                    icon: ItemIcon(.ionicons(muted ? "mic-outline" : "mic-off-outline"), tint: Palette.iconBlue)) { [weak self] in
+                                    icon: ItemIcon(.ionicons(muted ? "mic-outline" : "mic"), tint: Palette.iconBlue)) { [weak self] in
                 self?.coordinator.toggleMute()
             })
         case .denied(let denial):
