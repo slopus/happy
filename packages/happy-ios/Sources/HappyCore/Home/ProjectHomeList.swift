@@ -105,8 +105,8 @@ public struct ProjectHomeData: Equatable, Sendable {
                 path: metadata?["path"]?.stringValue,
                 projectId: session.projectReference,
                 git: row.changes,
-                projectAvatar: session.isRig ? session.projectReference.flatMap { projects[$0] }.map {
-                    SessionAvatar(seed: row.avatar.seed, image: AvatarImageSource.project($0))
+                projectAvatar: session.isRig ? session.projectReference.flatMap { projects[$0] }.flatMap(AvatarImageSource.project).map {
+                    SessionAvatar(seed: row.avatar.seed, image: $0)
                 } : nil
             )
         }

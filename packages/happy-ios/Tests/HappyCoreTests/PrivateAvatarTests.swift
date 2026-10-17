@@ -42,6 +42,32 @@ final class PrivateAvatarTests: XCTestCase {
         XCTAssertEqual(ChatSessionState(changed, sessionId: "session").avatarImage?.scope, .project)
     }
 
+    func testProjectCardUsesProjectArtworkAndAvatarDeltaReconfiguresOnlyItsRow() throws {
+        let sessionArt = AvatarDescriptor(ref: "session-ref", preview: "preview", version: 1)
+        let projectArt = AvatarDescriptor(ref: "project-ref", preview: "preview", version: 1)
+        var chat = session(avatar: sessionArt)
+        chat.metadata = .object(["client": .object(["id": .string("rig")]),
+            "project": .object(["id": .string("project"), "name": .string("Project")])])
+        let snapshot = HomeSnapshot(machines: .init(synced: true, machines: []), sessions: [chat], projects: [project(projectArt)])
+        let cards = ProjectHomeData(snapshot).rows(expanded: []).compactMap { item -> ProjectHomeEntry? in
+            if case .project(let entry) = item { return entry }
+            return nil
+        }
+        XCTAssertEqual(cards.first?.avatar?.image?.descriptor, projectArt)
+        XCTAssertNil(cards.first?.avatar?.harness)
+        XCTAssertEqual(SessionList(snapshot).items.compactMap { item -> SessionRow? in
+            if case .session(let row) = item { return row }; return nil
+        }.first?.avatar.image?.descriptor, sessionArt)
+
+        var many = ApplyPerfFixtures.snapshot(50)
+        let before = try XCTUnwrap(ApplyPerfFixtures.derive(many, after: nil)).state
+        many.sessions[20].avatar = sessionArt
+        let imageUpdate = try XCTUnwrap(ApplyPerfFixtures.derive(many, after: before))
+        XCTAssertEqual(imageUpdate.output.changeset, RowChangeset(reconfigures: [20]))
+        many.sessions[20].avatarVersion = 99
+        XCTAssertNil(ApplyPerfFixtures.derive(many, after: imageUpdate.state), "unrendered revision bookkeeping does not reach main")
+    }
+
     func testDescriptorSurvivesWireAndDiskAndDeletionRejectsStaleFetchAndSocket() async throws {
         let store = try LocalStore.inMemory()
         let descriptor = AvatarDescriptor(ref: "ref", preview: "encrypted", version: 4)
@@ -236,5 +262,38 @@ final class PrivateAvatarTests: XCTestCase {
         XCTAssertEqual(loader.key(for: .init(scope: .project, id: "p", descriptor: descriptor, dataKeyCipher: nil)),
             KeyTree.deriveKey(master: keys.secret, usage: "Happy Blobs", path: ["master"]))
         XCTAssertNil(loader.key(for: .init(scope: .session, id: "s", descriptor: descriptor, dataKeyCipher: nil)))
+    }
+
+    @MainActor
+    func testFailedSessionImageUsesProjectOnlyForHappyAgent() async throws {
+        let keys = try AccountKeys(secret: Data(repeating: 1, count: 32))
+        let key = Data(repeating: 2, count: 32)
+        let wrapped = try keys.wrapDataKey(key).base64EncodedString()
+        let preview = try RecordCipher(key: key).encrypt(.object(["thumbhash": .string("hash"), "mimeType": .string("image/png")]))
+        var chat = session(avatar: .init(ref: "session-ref", preview: preview, version: 1))
+        chat.dataKeyCipher = wrapped
+        var linked = project(.init(ref: "project-ref", preview: preview, version: 1))
+        linked.dataKeyCipher = wrapped
+        let http = FakeHTTP()
+        // The session grant fails; project artwork remains available.
+        http.onRaw("POST /v1/projects/project/avatar/request-download", #"{"ref":"project-ref","downloadUrl":"https://server.test/project.enc"}"#)
+        let plaintext = Data("project-artwork".utf8)
+        let encrypted = try BlobCipher.seal(plaintext, key: BlobCipher.sessionKey(dataKey: key))
+        http.on("GET /project.enc") { _ in (200, encrypted) }
+        let cache = AvatarPictures(owner: keys.anonID, directory: nil,
+            api: HappyAPI(serverURL: URL(string: "https://server.test")!, clientID: "test", transport: http, token: "token"), keys: keys)
+        let decode: AvatarPictures.Decode = { (AvatarBytes($0), $0.count) }
+        let rigSource = try XCTUnwrap(AvatarImageSource.resolve(chat, project: linked))
+        let fallback = await cache.picture(rigSource, decode: decode)
+        XCTAssertEqual((fallback as? AvatarBytes)?.data, plaintext)
+        XCTAssertEqual(http.requests("POST /v1/sessions/session/avatar/request-download").count, 1)
+        XCTAssertEqual(http.requests("POST /v1/projects/project/avatar/request-download").count, 1)
+        chat.metadata = .object(["client": .object(["id": .string("claude")])])
+        let otherSource = try XCTUnwrap(AvatarImageSource.resolve(chat, project: linked))
+        let other = await cache.picture(otherSource, decode: decode)
+        XCTAssertNil(other)
+        XCTAssertEqual(http.requests("POST /v1/projects/project/avatar/request-download").count, 1,
+            "a non-Rig session cannot borrow private project artwork even when it is cached")
+        await cache.close()
     }
 }

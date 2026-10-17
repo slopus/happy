@@ -138,8 +138,8 @@ public struct TabletGroupedList: Equatable, Sendable {
                 path: metadata?["path"]?.stringValue,
                 projectId: session.projectReference,
                 git: shown.changes,
-                projectAvatar: session.isRig ? session.projectReference.flatMap { projects[$0] }.map {
-                    SessionAvatar(seed: shown.avatar.seed, image: AvatarImageSource.project($0))
+                projectAvatar: session.isRig ? session.projectReference.flatMap { projects[$0] }.flatMap(AvatarImageSource.project).map {
+                    SessionAvatar(seed: shown.avatar.seed, image: $0)
                 } : nil
             )
         }

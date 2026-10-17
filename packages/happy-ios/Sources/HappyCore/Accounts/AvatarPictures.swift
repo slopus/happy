@@ -18,6 +18,12 @@ public final class AvatarPictures {
     public func cached(_ source: AvatarImageSource) -> AccountPictures.Picture? { cache.cached(key: source.cacheKey) }
 
     public func picture(_ source: AvatarImageSource, decode: @escaping Decode) async -> AccountPictures.Picture? {
+        if let image = await primaryPicture(source, decode: decode) { return image }
+        guard !Task.isCancelled, let project = source.fallbackProject else { return nil }
+        return await primaryPicture(project.source, decode: decode)
+    }
+
+    private func primaryPicture(_ source: AvatarImageSource, decode: @escaping Decode) async -> AccountPictures.Picture? {
         let loader = self.loader
         // Resolve keys and decrypt preview on a detached task, even on hits.
         guard let key = await Task.detached(priority: .utility, operation: { loader.key(for: source) }).value else { return nil }
