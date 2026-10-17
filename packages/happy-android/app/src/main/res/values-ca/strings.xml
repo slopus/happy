@@ -126,6 +126,7 @@
     <string name="settings_terms_of_service">Condicions del servei</string>
     <string name="settings_eula">EULA</string>
     <string name="settings_support_us">Dona\'ns suport</string>
+    <string name="settings_support_unavailable">Les compres no estan disponibles ara mateix. Torna-ho a provar més tard.</string>
     <string name="settings_support_us_subtitle_pro">Gràcies pel teu suport!</string>
     <string name="settings_support_us_subtitle">Dona suport al desenvolupament del projecte</string>
     <string name="settings_scan_qr_code_to_authenticate">Escaneja el codi QR per autenticar-te</string>

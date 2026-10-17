@@ -138,6 +138,7 @@ export const ca: TranslationStructure = {
         termsOfService: 'Condicions del servei',
         eula: 'EULA',
         supportUs: 'Dona\'ns suport',
+        supportUnavailable: 'Les compres no estan disponibles ara mateix. Torna-ho a provar més tard.',
         supportUsSubtitlePro: 'Gràcies pel teu suport!',
         supportUsSubtitle: 'Dona suport al desenvolupament del projecte',
         scanQrCodeToAuthenticate: 'Escaneja el codi QR per autenticar-te',

@@ -47,6 +47,7 @@ object SettingsTags {
     const val NAME = "settings.name"
     const val BIO = "settings.bio"
     const val VERSION = "settings.version"
+    const val SUPPORT = "settings.support"
 }
 
 /** SettingsView.tsx, Android */
@@ -122,7 +123,7 @@ data class ConnectedAccounts(
 
 /**
  * Settings (SettingsView.tsx, native rows). Voice, Usage, the developer
- * group and Support us are not part of this app.
+ * group are not part of this app.
  *
  * Spec: the app card is inset 16 at the sides and 16 from the top, radius
  * 16, 0.5 divider border, surface colour, 24 vertical padding. With a
@@ -130,7 +131,8 @@ data class ConnectedAccounts(
  * semibold; 4 under it with a bio, else 8) and the bio (14, secondary,
  * centred, 16 side padding, 8 under it); without one, the 300x90 logotype
  * with 12 under it. Then standard [ItemGroup]s of [Item]s with 29 icons:
- * connect terminal (Scan QR, Enter URL; no chevrons), Connected Accounts
+ * connect terminal (Scan QR, Enter URL; no chevrons), Support us (29 red
+ * heart, no chevron; Pro gets the thanks subtitle and no action), Connected Accounts
  * (Claude Code, GitHub; no chevrons), Features (Account, Appearance,
  * Agents), About (What's New, GitHub, Report an Issue, Privacy Policy,
  * Terms of Service, Version with the commit as a two-line subtitle).
@@ -156,6 +158,8 @@ fun SettingsScreen(
     onGitHub: () -> Unit = {},
     onAgents: () -> Unit = {},
     onWhatsNew: () -> Unit = {},
+    isPro: Boolean = false,
+    onSupport: () -> Unit = {},
     /** A tap on Version; ten in a row toggle developer mode (useMultiClick). */
     onVersion: () -> Unit = {},
     avatar: @Composable (Profile, Dp) -> Unit = { p, size -> ProfileAvatar(p, size) },
@@ -226,6 +230,17 @@ fun SettingsScreen(
                     icon = { ItemIcon(Ionicon.LinkOutline, SettingsSpec.blue) },
                     onClick = onEnterUrl,
                     showChevron = false,
+                )
+            }
+
+            ItemGroup {
+                Item(
+                    title = stringResource(R.string.settings_support_us),
+                    subtitle = stringResource(if (isPro) R.string.settings_support_us_subtitle_pro else R.string.settings_support_us_subtitle),
+                    icon = { ItemIcon(Ionicon.Heart, SettingsSpec.red) },
+                    onClick = if (isPro) null else onSupport,
+                    showChevron = false,
+                    modifier = Modifier.testTag(SettingsTags.SUPPORT),
                 )
             }
 

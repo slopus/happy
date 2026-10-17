@@ -122,6 +122,7 @@
     <string name="settings_terms_of_service">Terms of Service</string>
     <string name="settings_eula">EULA</string>
     <string name="settings_support_us">Support us</string>
+    <string name="settings_support_unavailable">Purchases are unavailable right now. Please try again later.</string>
     <string name="settings_support_us_subtitle_pro">Thank you for your support!</string>
     <string name="settings_support_us_subtitle">Support project development</string>
     <string name="settings_scan_qr_code_to_authenticate">Scan QR code to authenticate</string>

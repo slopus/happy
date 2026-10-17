@@ -130,6 +130,7 @@
     <string name="settings_terms_of_service">Warunki użytkowania</string>
     <string name="settings_eula">EULA</string>
     <string name="settings_support_us">Wesprzyj nas</string>
+    <string name="settings_support_unavailable">Zakupy są teraz niedostępne. Spróbuj ponownie później.</string>
     <string name="settings_support_us_subtitle_pro">Dziękujemy za wsparcie!</string>
     <string name="settings_support_us_subtitle">Wesprzyj rozwój projektu</string>
     <string name="settings_scan_qr_code_to_authenticate">Zeskanuj kod QR, aby się uwierzytelnić</string>

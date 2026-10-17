@@ -118,6 +118,7 @@
     <string name="settings_terms_of_service">利用規約</string>
     <string name="settings_eula">EULA</string>
     <string name="settings_support_us">開発を支援</string>
+    <string name="settings_support_unavailable">現在、購入をご利用いただけません。しばらくしてからもう一度お試しください。</string>
     <string name="settings_support_us_subtitle_pro">ご支援ありがとうございます！</string>
     <string name="settings_support_us_subtitle">プロジェクト開発を支援</string>
     <string name="settings_scan_qr_code_to_authenticate">QRコードをスキャンして認証</string>

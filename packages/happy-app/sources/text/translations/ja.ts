@@ -140,6 +140,7 @@ export const ja: TranslationStructure = {
         termsOfService: '利用規約',
         eula: 'EULA',
         supportUs: '開発を支援',
+        supportUnavailable: '現在、購入をご利用いただけません。しばらくしてからもう一度お試しください。',
         supportUsSubtitlePro: 'ご支援ありがとうございます！',
         supportUsSubtitle: 'プロジェクト開発を支援',
         scanQrCodeToAuthenticate: 'QRコードをスキャンして認証',

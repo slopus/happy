@@ -32,6 +32,12 @@ val buildCommitSha = providers.environmentVariable("HAPPY_BUILD_COMMIT_SHA").orN
 val buildCommitTimestamp = providers.environmentVariable("HAPPY_BUILD_COMMIT_TIMESTAMP").orNull
     ?: git("show", "-s", "--format=%cI", buildCommitSha ?: "HEAD")
 
+// Same public SDK key as happy-app. Supply it at build time; local builds
+// without a key keep purchases unavailable, without configuring an anonymous user.
+val revenueCatGoogleKey = providers.environmentVariable("EXPO_PUBLIC_REVENUE_CAT_GOOGLE").orNull
+    ?.takeIf { it.isNotBlank() }
+    ?: providers.gradleProperty("happy.revenueCatGoogleKey").orNull.orEmpty()
+
 // Versions follow happy-app (app.config.js, eas.json): versionName is the
 // app's `version`, read from app.config.js so the two never drift; versionCode
 // is EAS's remote, auto-incremented build number, which a store build must
@@ -85,6 +91,7 @@ android {
         versionName = versionNameValue
 
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.cluster-fluster.com\"")
+        buildConfigField("String", "REVENUE_CAT_GOOGLE_KEY", groovy.json.JsonOutput.toJson(revenueCatGoogleKey))
         buildConfigField("String", "BUILD_COMMIT_SHA", buildCommitSha?.let { "\"$it\"" } ?: "null")
         buildConfigField("String", "BUILD_COMMIT_TIMESTAMP", buildCommitTimestamp?.let { "\"$it\"" } ?: "null")
     }
@@ -340,6 +347,8 @@ dependencies {
     implementation(libs.firebase.messaging)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.revenuecat.purchases)
+    implementation(libs.revenuecat.ui)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

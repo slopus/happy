@@ -140,6 +140,7 @@ export const zhHans: TranslationStructure = {
         termsOfService: '服务条款',
         eula: '最终用户许可协议',
         supportUs: '支持我们',
+        supportUnavailable: '目前无法购买，请稍后重试。',
         supportUsSubtitlePro: '感谢您的支持！',
         supportUsSubtitle: '支持项目开发',
         scanQrCodeToAuthenticate: '扫描二维码进行认证',
