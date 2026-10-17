@@ -8,8 +8,10 @@ class VoiceTools(
     private val permissionOwner: suspend (requestId: String) -> String?,
     private val decide: suspend (sessionId: String, requestId: String, allow: Boolean) -> Unit,
     private val sent: () -> Unit,
+    private val isCurrent: () -> Boolean = { true },
 ) {
     suspend fun execute(name: String, parameters: Map<String, Any>): String {
+        if (!isCurrent()) return "error (voice session ended)"
         fun text(key: String) = (parameters[key] as? String)?.takeIf { it.isNotEmpty() }
         return when (name) {
             "sendMessageToSession" -> {
@@ -23,6 +25,7 @@ class VoiceTools(
                 val requestId = text("requestId") ?: return INVALID
                 val decision = text("decision")?.takeIf { it == "allow" || it == "deny" } ?: return INVALID
                 val sessionId = permissionOwner(requestId) ?: return "error (permission request not found)"
+                if (!isCurrent()) return "error (voice session ended)"
                 try {
                     decide(sessionId, requestId, decision == "allow")
                     "done [DO NOT say anything else, simply say 'done']"

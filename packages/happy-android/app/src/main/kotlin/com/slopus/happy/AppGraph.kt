@@ -136,26 +136,27 @@ class AppGraph(
         },
         preferences = voicePreferences,
         contextFactory = {
-            StoreVoiceContext(store, checkNotNull(accountState.value), scope, onSessionDeleted = ::onVoiceSessionDeleted)
+            StoreVoiceContext(store, checkNotNull(accountState.value).messages.stored, scope, onSessionDeleted = ::onVoiceSessionDeleted)
         },
-        toolsFactory = { onSent ->
+        toolsFactory = { isCurrent, onSent ->
             // Capture this call's account, never a later sign-in or whichever session UI is now open.
             val bound = checkNotNull(accountState.value)
             VoiceTools(
                 send = { id, message ->
-                    check(accountState.value === bound)
-                    val result = bound.sender.send(id, message, SendOptions(source = "voice", isCurrent = { accountState.value === bound }))
+                    check(accountState.value === bound && isCurrent())
+                    val result = bound.sender.send(id, message, SendOptions(source = "voice", isCurrent = { accountState.value === bound && isCurrent() }))
                     check(result is SendResult.Accepted) { "Voice message was not queued" }
                 },
                 permissionOwner = { requestId -> withContext(Dispatchers.IO) {
-                    check(accountState.value === bound)
+                    check(accountState.value === bound && isCurrent())
                     store.sessions().firstOrNull { AgentState.parse(it.agentStateJson)?.requests?.containsKey(requestId) == true }?.id
                 } },
                 decide = { id, requestId, allow ->
-                    check(accountState.value === bound)
+                    check(accountState.value === bound && isCurrent())
                     if (allow) bound.sessionOps.allow(id, requestId) else bound.sessionOps.deny(id, requestId)
                 },
                 sent = onSent,
+                isCurrent = { accountState.value === bound && isCurrent() },
             )
         },
     )

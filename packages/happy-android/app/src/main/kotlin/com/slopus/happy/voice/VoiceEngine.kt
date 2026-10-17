@@ -37,13 +37,13 @@ class VoiceEngine(
     private val paywall: VoicePaywall,
     private val preferences: VoicePreferences,
     private val contextFactory: () -> VoiceSessionContext,
-    private val toolsFactory: (onSent: () -> Unit) -> VoiceTools,
+    private val toolsFactory: (isCurrent: () -> Boolean, onSent: () -> Unit) -> VoiceTools,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val clock: () -> Long = SystemClock::elapsedRealtime,
 ) : VoiceController {
     private val mutableState = MutableStateFlow(VoiceState())
     override val state = mutableState.asStateFlow()
-    private var generation = 0L
+    @Volatile private var generation = 0L
     private var starting: Job? = null
     private var connection: VoiceConnection? = null
     private var context: VoiceSessionContext? = null
@@ -99,7 +99,7 @@ class VoiceEngine(
                     firstMessage = VoicePrompts.first(hasPro, preferences.onboardingLoads, selected.upsell == VoiceUpsell.Onboarding),
                 )
             }
-            val tools = toolsFactory {
+            val tools = toolsFactory({ epoch == generation && state.value.status != VoiceStatus.Disconnected }) {
                 scope.launch(dispatcher) {
                     if (epoch == generation && connection != null) {
                         preferences.incrementMessages()
@@ -111,8 +111,9 @@ class VoiceEngine(
             currentCoroutineContext().ensureActive()
             if (epoch != generation) throw CancellationException("Voice call ended while connecting")
             connection = opened
-            mutableState.value = VoiceState(VoiceStatus.Connected, sessionId = sessionId, connectedAtElapsed = clock())
-            sessionContext.connected(opened, VoiceMode.Idle)
+            val observedMode = state.value.mode
+            mutableState.value = VoiceState(VoiceStatus.Connected, mode = observedMode, sessionId = sessionId, connectedAtElapsed = clock())
+            sessionContext.connected(opened, observedMode)
             if (grant != null && !hasPro && selected.upsell == VoiceUpsell.Onboarding) preferences.incrementOnboarding()
             VoiceStart.Started(grant?.conversationId ?: opened.conversationId)
         } catch (e: CancellationException) {
@@ -203,7 +204,7 @@ class VoiceEngine(
     }
 
     private fun mode(value: VoiceMode) {
-        if (state.value.status != VoiceStatus.Connected) return
+        if (state.value.status !in listOf(VoiceStatus.Connecting, VoiceStatus.Connected)) return
         mutableState.value = state.value.copy(mode = value)
         context?.mode(value)
     }

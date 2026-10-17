@@ -85,7 +85,8 @@ android {
         versionName = versionNameValue
 
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.cluster-fluster.com\"")
-        val voiceAgentId = Regex("""elevenLabsAgentId:\s*"([^"]+)"""")
+        // All three RN variants currently use productionElevenLabsAgentId.
+        val voiceAgentId = Regex("""const productionElevenLabsAgentId = ['"]([^'"]+)['"]""")
             .find(providers.fileContents(layout.projectDirectory.file("../../happy-app/app.config.js")).asText.get())
             ?.groupValues?.get(1) ?: error("app.config.js has no elevenLabsAgentId")
         buildConfigField("String", "ELEVENLABS_AGENT_ID", "\"$voiceAgentId\"")
