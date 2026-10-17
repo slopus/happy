@@ -54,6 +54,9 @@ final class SessionInfoViewController: UIViewController {
     private var making: Making?
     /// Groups made, waiting in the workshop to join the list.
     private var made: [SessionInfoSection: UIView] = [:]
+    /// Updates to a group already started belong to the next batch. The
+    /// current batch must finish even while sync keeps changing the model.
+    private var remakeAfterShowing = Set<SessionInfoSection>()
     private var makeLink: CADisplayLink?
     #if DEBUG
     /// Each frame's making: how long it took and the steps it made (tests).
@@ -194,13 +197,13 @@ final class SessionInfoViewController: UIViewController {
         if making != nil || !queue.isEmpty { scheduleMaking() } else { showMade() }
     }
 
-    /// Puts `section` in the queue again, to be made from the newest frame;
-    /// what is on screen stays until then.
+    /// Queued groups use the newest frame when they start. Once started,
+    /// finish and show them before rebuilding for a newer frame: restarting
+    /// an unfinished group on every update can hide the whole list forever.
     private func remake(_ section: SessionInfoSection) {
-        made.removeValue(forKey: section)?.removeFromSuperview()
-        if making?.section == section {
-            making?.group.removeFromSuperview()
-            making = nil
+        if making?.section == section || made[section] != nil {
+            remakeAfterShowing.insert(section)
+            return
         }
         if !queue.contains(section) { queue.append(section) }
     }
@@ -303,12 +306,17 @@ final class SessionInfoViewController: UIViewController {
             self.stateView = nil
             list.isHidden = false
         }
-        guard order != shownSections || !new.isEmpty else { return }
-        ApplyPerf.measure(.screen) {
-            shownSections = order
-            list.sections = order.compactMap { sectionViews[$0] }
-            return new.count
+        if order != shownSections || !new.isEmpty {
+            ApplyPerf.measure(.screen) {
+                shownSections = order
+                list.sections = order.compactMap { sectionViews[$0] }
+                return new.count
+            }
         }
+        let pending = remakeAfterShowing.intersection(order)
+        remakeAfterShowing = []
+        for section in pending { remake(section) }
+        if !queue.isEmpty { scheduleMaking() }
     }
 
     private func plan(_ section: SessionInfoSection, model: SessionInfoModel, frame: SessionInfoFrame) -> GroupPlan? {
@@ -327,6 +335,7 @@ final class SessionInfoViewController: UIViewController {
         setPlainHeaderTitle(title)
         stopMaking()
         queue = []
+        remakeAfterShowing = []
         making?.group.removeFromSuperview()
         making = nil
         for group in made.values { group.removeFromSuperview() }

@@ -30,7 +30,7 @@ final class HostedSessionInfoTests: XCTestCase {
     /// 2026-10-16 09:00 UTC.
     private static let base: Int64 = 1_792_141_200_000
 
-    private func signedIn(agentState: JSONValue) async throws -> (AccountController, AccountSession) {
+    private func signedIn(agentState: JSONValue, sessionRecord: SessionRecord? = nil) async throws -> (AccountController, AccountSession) {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()),
             clientID: "ios/test",
@@ -43,7 +43,7 @@ final class HostedSessionInfoTests: XCTestCase {
         try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 3, count: 32)))
         let account = try XCTUnwrap(controller.session)
         let store = account.store
-        let record = Self.session(agentState: agentState)
+        let record = sessionRecord ?? Self.session(agentState: agentState)
         try await Task.detached { try store.upsertSessions([record]) }.value
         // Home, under every chat, keeps the account's home feed read.
         let home = Task { for await _ in account.homeFeed.snapshots() {} }
@@ -119,8 +119,17 @@ final class HostedSessionInfoTests: XCTestCase {
 
     /// The groups the screen shows, once the push is over.
     private func shownGroups(_ info: SessionInfoViewController, in window: UIWindow) -> [ItemGroupView] {
-        guard info.transitionCoordinator == nil, let list = subviews(GroupedListView.self, in: info.view).first else { return [] }
-        return list.sections.compactMap { $0 as? ItemGroupView }
+        guard info.transitionCoordinator == nil, let list = subviews(GroupedListView.self, in: info.view).first,
+              list.window === window else { return [] }
+        var ancestor: UIView? = list
+        while let view = ancestor {
+            guard !view.isHidden, view.alpha > 0 else { return [] }
+            ancestor = view.superview
+        }
+        let groups = list.sections.compactMap { $0 as? ItemGroupView }
+        guard let first = groups.first, first.superview === list,
+              first.convert(first.bounds, to: window).intersects(window.bounds) else { return [] }
+        return groups
     }
 
     func testTheAvatarOpensSessionInfoWithItsGroupsOnScreen() async throws {
@@ -160,6 +169,177 @@ final class HostedSessionInfoTests: XCTestCase {
         XCTAssertTrue(screen.contains(firstFrame.origin), "\(firstFrame)")
         XCTAssertGreaterThanOrEqual(firstFrame.minY, navigation.navigationBar.frame.maxY - 1)
         XCTAssertEqual(info.title, "Session info screen")
+        await controller.signOut()
+    }
+
+    /// Sync may keep changing visible metadata while the first groups are
+    /// being made. Opening must finish before that stream becomes quiet.
+    func testLiveStoreUpdatesCannotKeepTheFirstGroupsHidden() async throws {
+        let state: JSONValue = .object(["controlledByUser": .bool(false)])
+        let (controller, account) = try await signedIn(agentState: state)
+        let context = AppContext(account: controller, variant: .preview, version: "test")
+        let (window, navigation, root) = try await hosted()
+        let store = account.store
+        let liveRecord = Self.session(agentState: state)
+        let updates = Task.detached {
+            var record = liveRecord
+            for index in 1...300 {
+                guard !Task.isCancelled else { return }
+                var metadata = record.metadata?.objectValue ?? [:]
+                metadata["host"] = .string("live-mac-\(index)")
+                record.metadata = .object(metadata)
+                record.metadataVersion += 1
+                record.updatedAt += 1
+                record.seq += 1
+                try store.upsertSessions([record])
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        defer { updates.cancel() }
+        root.push(.sessionInfo(id: Self.sessionId), context: context)
+        let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
+        let opened = try await until(seconds: 2) { !self.shownGroups(info, in: window).isEmpty }
+        print("SESSIONINFO-LIVE visible groups during writes: \(self.shownGroups(info, in: window).count)")
+        if !opened {
+            let values = Dictionary(uniqueKeysWithValues: Mirror(reflecting: info).children.compactMap { child in
+                child.label.map { ($0, child.value) }
+            })
+            let pipeline = values["pipeline"] as? ApplyPipeline<SessionInfoInput, SessionInfoFrame?, SessionInfoUpdate>
+            let frame = values["frame"] as? SessionInfoFrame
+            let queue = values["queue"] as? [SessionInfoSection]
+            let made = values["made"] as? [SessionInfoSection: UIView]
+            let list = try XCTUnwrap(subviews(GroupedListView.self, in: info.view).first)
+            print("SESSIONINFO-LIVE applies=\(String(describing: pipeline?.counts)) model=\(frame?.model != nil) queue=\(String(describing: queue)) made=\(String(describing: made?.keys)) window=\(list.window != nil) bounds=\(list.bounds) hidden=\(list.isHidden) sections=\(list.sections.count)")
+        }
+        // The navigation bar can finish its title fade after the push ends.
+        try await Task.sleep(for: .milliseconds(500))
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "Session details during live store updates"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        XCTAssertTrue(opened, "live updates kept every group hidden")
+        updates.cancel()
+        _ = try? await updates.value
+        let latest = await account.sessionDetails.current(sessionId: Self.sessionId)
+        let host = try XCTUnwrap(latest?.session?.metadata?["host"]?.stringValue)
+        let reconciled = try await until {
+            self.shownGroups(info, in: window).flatMap(\.rows).compactMap { $0 as? ItemRowView }.contains { $0.subtitle == host }
+        }
+        XCTAssertTrue(reconciled, "the group did not catch up to the last store snapshot")
+        await controller.signOut()
+    }
+
+    func testAControllerPreparedBeforeWindowAttachmentStillShowsItsGroups() async throws {
+        let (controller, account) = try await signedIn(agentState: .object([:]))
+        let context = AppContext(account: controller, variant: .preview, version: "test")
+        let info = SessionInfoViewController(context: context, session: account, sessionId: Self.sessionId)
+        info.loadViewIfNeeded()
+        info.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        info.view.layoutIfNeeded()
+        // Its first snapshot and display callback arrive while off-window.
+        try await Task.sleep(for: .milliseconds(200))
+        let (window, navigation, _) = try await hosted()
+        navigation.pushViewController(info, animated: true)
+        let opened = try await until { !self.shownGroups(info, in: window).isEmpty }
+        XCTAssertTrue(opened, "off-window preparation lost the group's display callback")
+        await controller.signOut()
+    }
+
+    func testHappyAgentAndBotDetailsShowVisibleGroups() async throws {
+        for bot in [false, true] {
+            var record = Self.session(agentState: .null)
+            var metadata = record.metadata?.objectValue ?? [:]
+            metadata["client"] = .object(["id": .string("rig"), "name": .string("Happy Agent"), "version": .string("1.0")])
+            metadata["provider"] = .object(["id": .string("openai"), "name": .string("OpenAI"), "kind": .string("codex")])
+            metadata["currentModelProviderId"] = .string("openai")
+            metadata["currentModelCode"] = .string("gpt-6.1-sol")
+            metadata["git"] = .object(["insertions": .number(12), "deletions": .number(3), "changedFiles": .number(2)])
+            metadata["activity"] = .object([
+                "subagents": .object(["running": .number(2), "queued": .number(1)]),
+                "workflows": .object(["running": .number(1)]),
+                "processes": .object(["running": .number(3)]),
+                "tasks": .object(["pending": .number(2), "inProgress": .number(1)]),
+            ])
+            if bot { metadata["bot"] = .object(["name": .string("Test bot")]) }
+            record.metadata = .object(metadata)
+            let (controller, _) = try await signedIn(agentState: .null, sessionRecord: record)
+            let context = AppContext(account: controller, variant: .preview, version: "test")
+            let (window, navigation, root) = try await hosted()
+            root.push(.sessionInfo(id: Self.sessionId), context: context)
+            let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
+            let opened = try await until { !self.shownGroups(info, in: window).isEmpty }
+            XCTAssertTrue(opened, "Happy Agent details showed no visible groups (bot: \(bot))")
+            let titles = shownGroups(info, in: window).flatMap(\.rows).compactMap { ($0 as? ItemRowView)?.title }
+            XCTAssertEqual(titles.contains(Strings.SessionDetail.deleteSession), !bot)
+            await controller.signOut()
+        }
+    }
+
+    func testDeletionCancelsUnshownGroupsAndAReplacementSnapshotCanOpenAgain() async throws {
+        let (controller, account) = try await signedIn(agentState: .object([:]))
+        let context = AppContext(account: controller, variant: .preview, version: "test")
+        let (window, navigation, root) = try await hosted()
+        root.push(.sessionInfo(id: Self.sessionId), context: context)
+        let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
+        let list = try XCTUnwrap(subviews(GroupedListView.self, in: info.view).first)
+        let started = try await until {
+            !self.subviews(ItemGroupView.self, in: info.view).isEmpty && list.sections.isEmpty
+        }
+        XCTAssertTrue(started, "the initial group batch was not observed")
+        let store = account.store
+        let id = Self.sessionId
+        let base = Self.base
+        try await Task.detached {
+            try store.setCursor(.sessionsChangedSince, base)
+            try store.deleteSession(id: id)
+        }.value
+        let deleted = try await until { info.title == Strings.SessionDetail.sessionDeleted }
+        XCTAssertTrue(deleted)
+        XCTAssertTrue(list.isHidden)
+        XCTAssertTrue(list.sections.isEmpty)
+        XCTAssertTrue(subviews(ItemGroupView.self, in: info.view).isEmpty, "cancelled groups stayed in the workshop")
+
+        let replacement = Self.session(agentState: .object([:]))
+        try await Task.detached { try store.upsertSessions([replacement]) }.value
+        let reopened = try await until { !self.shownGroups(info, in: window).isEmpty }
+        XCTAssertTrue(reopened, "the replacement snapshot did not restart group creation")
+        XCTAssertFalse(list.isHidden)
+        XCTAssertEqual(subviews(ItemGroupView.self, in: info.view).count, list.sections.count)
+        await controller.signOut()
+    }
+
+    func testASectionRemovedDuringConstructionStaysRemovedAndCanReturn() async throws {
+        let (controller, account) = try await signedIn(agentState: .object([:]))
+        let context = AppContext(account: controller, variant: .preview, version: "test")
+        let (window, navigation, root) = try await hosted()
+        root.push(.sessionInfo(id: Self.sessionId), context: context)
+        let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
+        let started = try await until { !self.subviews(ItemGroupView.self, in: info.view).isEmpty }
+        XCTAssertTrue(started)
+        let store = account.store
+        var withoutMetadata = Self.session(agentState: .object([:]))
+        withoutMetadata.metadata = nil
+        withoutMetadata.metadataVersion = 2
+        let removed = withoutMetadata
+        try await Task.detached { try store.upsertSessions([removed]) }.value
+        let opened = try await until {
+            let groups = self.shownGroups(info, in: window)
+            return !groups.isEmpty && !groups.contains { $0.title == Strings.SessionDetail.metadata }
+        }
+        XCTAssertTrue(opened)
+        XCTAssertFalse(shownGroups(info, in: window).contains { $0.title == Strings.SessionDetail.metadata })
+
+        var withMetadata = Self.session(agentState: .object([:]))
+        withMetadata.metadataVersion = 3
+        let restored = withMetadata
+        try await Task.detached { try store.upsertSessions([restored]) }.value
+        let returned = try await until {
+            self.shownGroups(info, in: window).contains { $0.title == Strings.SessionDetail.metadata }
+        }
+        XCTAssertTrue(returned)
         await controller.signOut()
     }
 
