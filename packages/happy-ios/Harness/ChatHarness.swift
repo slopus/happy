@@ -1,7 +1,6 @@
 #if canImport(UIKit)
 import Foundation
 import HappyCore
-import HappyLayout
 @testable import HappyUI
 import UIKit
 
@@ -12,10 +11,9 @@ import UIKit
 /// without an account.
 ///
 /// Launch arguments: `-fixture <name>` picks the chat (`long` by default);
-/// `-keyboard` opens the keyboard once the rows are in; `-flash` keeps the
-/// scroll indicator showing while no finger is down, so a test can press on
-/// it; `-scrollTo <fraction>` goes that far back through the history once
-/// the rows are in, for screenshots.
+/// `-keyboard` opens the keyboard once the rows are in; `-scrollTo
+/// <fraction>` goes that far back through the history once the rows are
+/// in.
 ///
 /// `ChatScrollProbe` reports the list to the tests as the accessibility value
 /// of an element named `chat-scroll-probe`.
@@ -63,13 +61,13 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         let scrollTo = arguments.firstIndex(of: "-scrollTo").flatMap { arguments.indices.contains($0 + 1) ? Double(arguments[$0 + 1]) : nil }
         Task {
             await self.open(
-                fixture: fixture, in: window, keyboard: arguments.contains("-keyboard"), flash: arguments.contains("-flash"),
+                fixture: fixture, in: window, keyboard: arguments.contains("-keyboard"),
                 scrollTo: scrollTo.map { CGFloat($0) }
             )
         }
     }
 
-    private func open(fixture: String, in window: HarnessWindow, keyboard: Bool, flash: Bool, scrollTo: CGFloat?) async {
+    private func open(fixture: String, in window: HarnessWindow, keyboard: Bool, scrollTo: CGFloat?) async {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()),
             clientID: "ios/harness",
@@ -94,7 +92,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         let navigation = UINavigationController(rootViewController: home)
         navigation.pushViewController(chat, animated: false)
         window.rootViewController = TabletShellViewController(context: context, detail: navigation)
-        let probe = ChatScrollProbe(window: window, chat: chat, flash: flash)
+        let probe = ChatScrollProbe(window: window, chat: chat)
         probe.scrollTo = scrollTo
         self.probe = probe
         if keyboard { probe.focusComposerWhenFilled() }
@@ -131,14 +129,12 @@ private final class ProbeElement: UIView {
 }
 
 /// The chat list as the UI tests read it: its offset, insets and content,
-/// UIKit's indicator and where `ChatScrollIndicatorLayout` says it must be,
 /// the keyboard and the dock, and what the last finger did, sampled every
 /// frame while it was down.
 @MainActor
 final class ChatScrollProbe: NSObject {
     private let window: HarnessWindow
     private weak var chat: UIViewController?
-    private let flash: Bool
     private let element = ProbeElement(frame: CGRect(x: 0, y: 0, width: 2, height: 2))
     /// Runs only while a finger is down.
     private var link: CADisplayLink?
@@ -158,18 +154,15 @@ final class ChatScrollProbe: NSObject {
         var contentHeight: CGFloat
         var rows: Int
         var visibleMinY: CGFloat
-        var indicator: CGRect?
         var tracking: Bool
         var dragging: Bool
-        /// Gesture recognizers on the list and its indicators that are
-        /// recognizing, by class.
+        /// Gesture recognizers on the list that are recognizing, by class.
         var active: [String]
     }
 
-    init(window: HarnessWindow, chat: UIViewController, flash: Bool) {
+    init(window: HarnessWindow, chat: UIViewController) {
         self.window = window
         self.chat = chat
-        self.flash = flash
         super.init()
         element.isAccessibilityElement = true
         element.accessibilityIdentifier = "chat-scroll-probe"
@@ -179,8 +172,7 @@ final class ChatScrollProbe: NSObject {
         window.addSubview(element)
         window.onTouch = { [weak self] touch in self?.touched(touch) }
         // Slow enough to leave the app idle in between: the composer's focus
-        // once the rows are in, and, with `-flash`, the indicator kept
-        // showing.
+        // once the rows are in.
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.idleTick() }
         }
@@ -252,9 +244,6 @@ final class ChatScrollProbe: NSObject {
             let maxDistance = collection.contentSize.height + collection.contentInset.top + collection.contentInset.bottom - collection.bounds.height
             collection.contentOffset.y = max(0, maxDistance) * min(1, max(0, share)) - collection.contentInset.top
         }
-        if flash, finger == nil {
-            list.collectionView.flashScrollIndicators()
-        }
     }
 
     private func currentReport() -> String {
@@ -262,26 +251,10 @@ final class ChatScrollProbe: NSObject {
         return report(list: list, chat: chat)
     }
 
-    /// UIKit's vertical indicator, as it shows on screen in `view`.
-    private func indicator(_ list: ChatListView, in view: UIView) -> (frame: CGRect, alpha: CGFloat)? {
-        let found = list.collectionView.subviews
-            .filter { NSStringFromClass(type(of: $0)).contains("ScrollIndicator") }
-            .first { $0.bounds.height > $0.bounds.width }
-        return found.map { (view.convert($0.bounds, from: $0), $0.alpha) }
-    }
-
     private func activeRecognizers(_ collection: UICollectionView) -> [String] {
-        var views: [UIView] = [collection]
-        for view in collection.subviews where NSStringFromClass(type(of: view)).contains("Indicator") {
-            views.append(view)
-        }
-        var names: [String] = []
-        for view in views {
-            for recognizer in view.gestureRecognizers ?? [] where recognizer.state == .began || recognizer.state == .changed {
-                names.append(NSStringFromClass(type(of: recognizer)))
-            }
-        }
-        return names
+        (collection.gestureRecognizers ?? [])
+            .filter { $0.state == .began || $0.state == .changed }
+            .map { NSStringFromClass(type(of: $0)) }
     }
 
     private func keyboardTop(_ chat: UIViewController) -> CGFloat {
@@ -294,7 +267,6 @@ final class ChatScrollProbe: NSObject {
         samples.append(Sample(
             time: CACurrentMediaTime(), fingerY: finger.y, offset: collection.contentOffset.y, keyboardTop: keyboardTop(chat),
             contentHeight: collection.contentSize.height, rows: collection.numberOfItems(inSection: 0), visibleMinY: list.visibleMinY,
-            indicator: indicator(list, in: window)?.frame,
             tracking: collection.isTracking, dragging: collection.isDragging,
             active: activeRecognizers(collection)
         ))
@@ -312,24 +284,6 @@ final class ChatScrollProbe: NSObject {
             fingerWithKeyboard += next.fingerY - previous.fingerY
             offsetWithKeyboard += next.offset - previous.offset
         }
-        var maxIndicatorGap: CGFloat = 0
-        var endIndicatorGap: CGFloat = .nan
-        if let grab = samples.first(where: { $0.indicator != nil }), let grabFrame = grab.indicator {
-            // How far the indicator strayed from the finger once it had it,
-            // until older rows joined; and at the end, the finger held still.
-            let hold = grabFrame.midY - grab.fingerY
-            for sample in samples where sample.time - grab.time > 0.7 {
-                if let frame = sample.indicator {
-                    let gap = abs(frame.midY - sample.fingerY - hold)
-                    if sample.rows == grab.rows { maxIndicatorGap = max(maxIndicatorGap, gap) }
-                    endIndicatorGap = gap
-                }
-            }
-        }
-        // Where the finger ended on the indicator: from its middle, and its
-        // length, so a test can tell whether the finger is still on it.
-        let end = samples.last(where: { $0.indicator != nil })
-        let endFingerFromIndicator = end.map { $0.fingerY - ($0.indicator?.midY ?? 0) } ?? .nan
         var recognizers = Set<String>()
         var tracking = false
         var dragging = false
@@ -350,25 +304,20 @@ final class ChatScrollProbe: NSObject {
         touch["rowsEnd"] = last.rows
         touch["contentStart"] = first.contentHeight
         touch["contentEnd"] = last.contentHeight
-        touch["maxIndicatorGap"] = maxIndicatorGap
-        touch["endIndicatorGap"] = endIndicatorGap.isNaN ? -1 : endIndicatorGap
-        touch["endFingerFromIndicator"] = endFingerFromIndicator.isNaN ? 9999 : endFingerFromIndicator
-        touch["endIndicatorLength"] = end?.indicator?.height ?? 0
         touch["tracking"] = tracking
         touch["dragging"] = dragging
         touch["recognizers"] = recognizers.sorted()
         lastTouch = touch
         var trace: [String] = []
         for sample in samples {
-            let indicator = sample.indicator.map { "\($0.minY),\($0.height)" } ?? ","
             let fields: [String] = [
                 "\(sample.time)", "\(sample.fingerY)", "\(sample.offset)", "\(sample.keyboardTop)",
-                "\(sample.contentHeight)", "\(sample.rows)", "\(sample.visibleMinY)", indicator,
+                "\(sample.contentHeight)", "\(sample.rows)", "\(sample.visibleMinY)",
             ]
             trace.append(fields.joined(separator: ","))
         }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("touch-\(touches).csv")
-        try? (["time,fingerY,offset,keyboardTop,contentHeight,rows,visibleMinY,indicatorY,indicatorHeight"] + trace)
+        try? (["time,fingerY,offset,keyboardTop,contentHeight,rows,visibleMinY"] + trace)
             .joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 
@@ -378,26 +327,17 @@ final class ChatScrollProbe: NSObject {
 
     private func report(list: ChatListView, chat: UIViewController) -> String {
         let collection = list.collectionView
-        let indicatorInsets = collection.verticalScrollIndicatorInsets
-        let model = ChatScrollIndicatorLayout(.init(
-            viewport: list.bounds.size, contentHeight: collection.contentSize.height,
-            newestInset: collection.contentInset.top, oldestInset: collection.contentInset.bottom,
-            // Flipped: the collection view's top is the screen's bottom.
-            indicatorInsets: ChatIndicatorInsets(newest: indicatorInsets.top, oldest: indicatorInsets.bottom, side: indicatorInsets.right),
-            distanceFromNewest: list.visibleMinY, scale: list.traitCollection.displayScale
-        ))
-        let actual = indicator(list, in: list)
+        let inset = collection.contentInset
         let dock = Self.subview(ChatDockView.self, in: chat.view)
         var value: [String: Any] = [:]
         value["offset"] = collection.contentOffset.y
         value["visibleMinY"] = list.visibleMinY
-        value["maxDistance"] = model.maxDistance
+        // How far back the reader can go.
+        value["maxDistance"] = max(0, collection.contentSize.height + inset.top + inset.bottom - list.bounds.height)
         value["contentHeight"] = collection.contentSize.height
         value["rows"] = collection.numberOfItems(inSection: 0)
-        value["newestInset"] = collection.contentInset.top
-        value["oldestInset"] = collection.contentInset.bottom
-        value["indicatorInsets"] = [indicatorInsets.top, indicatorInsets.bottom, indicatorInsets.right]
-        value["autoIndicatorInsets"] = collection.automaticallyAdjustsScrollIndicatorInsets
+        value["newestInset"] = inset.top
+        value["oldestInset"] = inset.bottom
         let safe = chat.view.safeAreaInsets
         value["safeArea"] = [safe.top, safe.left, safe.bottom, safe.right]
         value["list"] = rect(list.convert(list.bounds, to: window)) as Any
@@ -409,15 +349,8 @@ final class ChatScrollProbe: NSObject {
         value["dragging"] = collection.isDragging
         value["decelerating"] = collection.isDecelerating
         value["fingerDown"] = finger != nil
-        value["expected"] = rect(model.frame) as Any
         value["lastTouch"] = lastTouch
         value["events"] = window.events
-        if let actual {
-            value["actual"] = rect(actual.frame)
-            value["actualAlpha"] = actual.alpha
-            value["actualInWindow"] = rect(list.convert(actual.frame, to: window))
-            value["distanceForActual"] = model.distanceFromNewest(indicatorMinY: actual.frame.minY)
-        }
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
     }
