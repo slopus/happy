@@ -25,6 +25,18 @@ import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
 import com.slopus.happy.ui.home.NewSessionDraftStore
 import com.slopus.happy.ui.home.PrefsReviewStamps
+import com.slopus.happy.voice.ElevenLabsTransport
+import com.slopus.happy.voice.StoreVoiceContext
+import com.slopus.happy.voice.VoiceApi
+import com.slopus.happy.voice.VoiceEngine
+import com.slopus.happy.voice.VoiceOptions
+import com.slopus.happy.voice.VoicePaywall
+import com.slopus.happy.voice.VoicePreferences
+import com.slopus.happy.voice.VoiceTools
+import com.slopus.happy.voice.VoiceUpsell
+import com.slopus.happy.chat.AgentState
+import com.slopus.happy.sync.SendOptions
+import com.slopus.happy.sync.SendResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -112,6 +124,55 @@ class AppGraph(
     /** The signed-in account's sync, or null when signed out. */
     val account: StateFlow<AccountSync?> = accountState.asStateFlow()
 
+    val voicePreferences = VoicePreferences(context.getSharedPreferences(VoicePreferences.PREFS_NAME, Context.MODE_PRIVATE))
+
+    /** Installed by the purchases host; read at each gate so entitlement refreshes are immediate. */
+    var voicePaywall: VoicePaywall? = null
+
+    /** The SDK is allocated only inside connect(), never while constructing the app graph. */
+    val voice: VoiceEngine = VoiceEngine(
+        scope = scope,
+        service = VoiceApi(okHttp, clientId, { serverConfig.url.value }, { serverConfig.voiceUrl }, BuildConfig.ELEVENLABS_AGENT_ID),
+        transport = ElevenLabsTransport(appContext),
+        credentials = { (auth.state.value as? AuthState.SignedIn)?.credentials },
+        options = {
+            val values = settings.settings.value
+            val local = localSettings.values.value
+            VoiceOptions(values.voiceBypassToken, values.voiceCustomAgentId,
+                voiceLanguageCode(values.voiceAssistantLanguage),
+                VoiceUpsell.resolve(override = local.voiceUpsellOverride, overrideEnabled = BuildConfig.DEBUG || local.devModeEnabled))
+        },
+        paywall = object : VoicePaywall {
+            override fun hasPro() = voicePaywall?.hasPro() ?: false
+            override suspend fun present(flow: String) = voicePaywall?.present(flow) ?: false
+        },
+        preferences = voicePreferences,
+        contextFactory = {
+            StoreVoiceContext(store, checkNotNull(accountState.value).messages.stored, scope, onSessionDeleted = ::onVoiceSessionDeleted)
+        },
+        toolsFactory = { isCurrent, onSent ->
+            // Capture this call's account, never a later sign-in or whichever session UI is now open.
+            val bound = checkNotNull(accountState.value)
+            VoiceTools(
+                send = { id, message ->
+                    check(accountState.value === bound && isCurrent())
+                    val result = bound.sender.send(id, message, SendOptions(source = "voice", isCurrent = { accountState.value === bound && isCurrent() }))
+                    check(result is SendResult.Accepted) { "Voice message was not queued" }
+                },
+                permissionOwner = { requestId -> withContext(Dispatchers.IO) {
+                    check(accountState.value === bound && isCurrent())
+                    store.sessions().firstOrNull { AgentState.parse(it.agentStateJson)?.requests?.containsKey(requestId) == true }?.id
+                } },
+                decide = { id, requestId, allow ->
+                    check(accountState.value === bound && isCurrent())
+                    if (allow) bound.sessionOps.allow(id, requestId) else bound.sessionOps.deny(id, requestId)
+                },
+                sent = onSent,
+                isCurrent = { accountState.value === bound && isCurrent() },
+            )
+        },
+    )
+
     /** The updates socket's state; disconnected when signed out. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val connectionStatus: StateFlow<ConnectionStatus> = accountState
@@ -164,6 +225,7 @@ class AppGraph(
      */
     fun logout(): Job = scope.launch {
         accountLock.withLock {
+            voice.stop()
             (auth.state.value as? AuthState.SignedIn)?.let { signedIn -> logoutHooks.forEach { it(signedIn.credentials.token) } }
             purchases.setAccount(null)
             stopAccount()
@@ -209,9 +271,14 @@ class AppGraph(
     }
 
     private suspend fun stopAccount() {
+        voice.stop()
         val account = accountState.value ?: return
         accountState.value = null
         account.stop()
+    }
+
+    private fun onVoiceSessionDeleted(id: String) {
+        if (voice.state.value.sessionId == id) scope.launch { voice.stop() }
     }
 }
 
@@ -221,4 +288,13 @@ class AppGraph(
  * empties). The server choice, the secure store (cleared by [AuthRepository])
  * and the push token store (cleared by its own logout hook) are not here.
  */
-private val WIPED_PREFS = listOf(NewSessionDraftStore.PREFS_NAME, PrefsReviewStamps.PREFS_NAME)
+private val WIPED_PREFS = listOf(NewSessionDraftStore.PREFS_NAME, PrefsReviewStamps.PREFS_NAME, VoicePreferences.PREFS_NAME)
+
+// Languages.ts: unsupported catalog preferences omit the override (auto detection).
+private fun voiceLanguageCode(preference: String?): String? {
+    if (preference == null || preference in setOf("he-IL", "th-TH", "sl-SI", "et-EE", "lv-LV", "lt-LT")) return null
+    return when (preference) {
+        "pt-BR" -> "pt-br"
+        else -> preference.substringBefore('-').takeIf { it in setOf("en", "es", "fr", "de", "it", "pt", "pl", "ru", "ja", "zh", "ko", "ar", "hi", "nl", "sv", "da", "fi", "no", "tr", "id", "ms", "uk", "cs", "hu", "ro", "bg", "el", "hr", "sk", "ta", "vi") }
+    }
+}
