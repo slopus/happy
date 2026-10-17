@@ -447,12 +447,15 @@ export class TmuxUtilities {
             // Non-send-keys commands
             const fullCmd = [...baseCmd, ...cmd];
 
-            // Add target specification for commands that support it
+            // Add target specification for commands that support it.
+            // The target must be inserted right after the subcommand: tmux treats the
+            // first non-option argument as a shell-command and passes everything after
+            // it to that command, so appending -t at the end would never reach tmux.
             if (cmd.length > 0 && COMMANDS_SUPPORTING_TARGET.has(cmd[0])) {
                 let target = targetSession;
                 if (window) target += `:${window}`;
                 if (pane) target += `.${pane}`;
-                fullCmd.push('-t', target);
+                fullCmd.splice(baseCmd.length + 1, 0, '-t', target);
             }
 
             return this.executeCommand(fullCmd);
@@ -812,25 +815,23 @@ export class TmuxUtilities {
                         continue;
                     }
 
-                    // Escape value for shell safety
-                    // Must escape: backslashes, double quotes, dollar signs, backticks
-                    const escapedValue = value
-                        .replace(/\\/g, '\\\\')   // Backslash first!
-                        .replace(/"/g, '\\"')     // Double quotes
-                        .replace(/\$/g, '\\$')    // Dollar signs
-                        .replace(/`/g, '\\`');    // Backticks
-
-                    createWindowArgs.push('-e', `${key}="${escapedValue}"`);
+                    // tmux sets -e entries verbatim (no shell parsing is applied to
+                    // them), so pass the raw value. Quoting or shell-escaping it
+                    // would leak those characters into the environment value seen
+                    // by processes in the new window.
+                    createWindowArgs.push('-e', `${key}=${value}`);
                 }
                 logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
             }
 
-            // Add the command to run in the window (runs immediately when window is created)
-            createWindowArgs.push(fullCommand);
-
-            // Add -P flag to print the pane PID immediately
+            // Add -P flag to print the pane PID immediately. It must come before
+            // the shell-command: tmux treats the first non-option argument as the
+            // shell-command and passes everything after it to that command.
             createWindowArgs.push('-P');
             createWindowArgs.push('-F', '#{pane_pid}');
+
+            // Add the command to run in the window (runs immediately when window is created)
+            createWindowArgs.push(fullCommand);
 
             // Create window with command and get PID immediately
             const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
