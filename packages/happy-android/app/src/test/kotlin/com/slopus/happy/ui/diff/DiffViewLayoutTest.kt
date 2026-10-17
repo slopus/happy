@@ -240,6 +240,59 @@ class DiffViewLayoutTest {
         assertDp("second row slid with it", before - shift.dp, lines[1].bounds.left)
     }
 
+    private fun showLazy(f: DiffFile, layout: DiffLayoutMode) {
+        rule.setHappyContent {
+            val palette = diffPalette()
+            val metrics = rememberDiffMetrics()
+            val scope = rememberCoroutineScope()
+            val body = androidx.compose.runtime.remember { DiffFileBody(f) }
+            DisposableEffect(body) { body.start(scope); onDispose { body.stop() } }
+            LazyColumn { diffFileItems(body, palette, metrics, keyPrefix = "f", layout = layout) }
+        }
+    }
+
+    /** The changes screen's lazy rows paint their `@@` and line bands to the screen's edge however short the lines, as [DiffFileView] does. */
+    @Test
+    fun lazyScrollRowsOfShortLinesFillTheViewport() {
+        showLazy(file("a\nb\nc\n", "a\nB\nc\n"), DiffLayoutMode.Scroll)
+        val lines = rule.onAllNodesWithTag(DiffTags.LINE, useUnmergedTree = true).fetchSemanticsNodes()
+        assertEquals(4, lines.size)
+        val gutterRight = rule.node(DiffTags.HUNK).bounds.left
+        assertTrue("a gutter before the code", gutterRight > 20.dp)
+        assertBox("hunk", rule.node(DiffTags.HUNK).bounds, gutterRight, 0.dp, PHONE_WIDTH.dp - gutterRight, 18.dp)
+        rule.onAllNodesWithTag(DiffTags.LINE, useUnmergedTree = true).let { nodes ->
+            repeat(4) { i -> assertBox("line $i", nodes[i].bounds, gutterRight, (18 * (i + 1)).dp, PHONE_WIDTH.dp - gutterRight, 18.dp) }
+        }
+    }
+
+    @Test
+    fun lazyScrollRowsKeepTheLongestLinesWidth() {
+        val long = "y".repeat(300)
+        showLazy(file("$long\n", "$long!\n"), DiffLayoutMode.Scroll)
+        val line = rule.onAllNodesWithTag(DiffTags.LINE, useUnmergedTree = true)[1].bounds
+        assertTrue("wider than the screen: ${line.width}", line.width > PHONE_WIDTH.dp)
+    }
+
+    @Test
+    fun lazyWrapRowsFillTheViewport() {
+        showLazy(file("a\nb\nc\n", "a\nB\nc\n"), DiffLayoutMode.Wrap)
+        assertBox("hunk", rule.node(DiffTags.HUNK).bounds, 0.dp, 0.dp, PHONE_WIDTH.dp, 18.dp)
+        val lines = rule.onAllNodesWithTag(DiffTags.LINE, useUnmergedTree = true)
+        val count = lines.fetchSemanticsNodes().size
+        assertEquals(4, count)
+        repeat(count) { i -> assertDp("wrapped line $i reaches the edge", PHONE_WIDTH, lines[i].bounds.right) }
+    }
+
+    @Test
+    fun lazySplitRowsFillTheViewport() {
+        showLazy(file("a\nb\nc\n", "a\nB\nc\n"), DiffLayoutMode.Split)
+        assertBox("hunk", rule.node(DiffTags.HUNK).bounds, 0.dp, 0.dp, PHONE_WIDTH.dp, 18.dp)
+        val rows = rule.onAllNodesWithTag(DiffTags.SPLIT_ROW, useUnmergedTree = true)
+        val count = rows.fetchSemanticsNodes().size
+        assertEquals(3, count)
+        repeat(count) { i -> assertBox("split row $i", rows[i].bounds, 0.dp, rows[i].bounds.top, PHONE_WIDTH.dp, rows[i].bounds.height) }
+    }
+
     @Test
     fun chunkDrawsEveryFileWithoutHeaders() {
         val patch = "diff --git a/x.txt b/x.txt\n--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-a\n+b\n" +

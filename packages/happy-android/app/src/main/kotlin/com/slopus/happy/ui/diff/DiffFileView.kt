@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -152,12 +153,15 @@ fun LazyListScope.diffFileItems(
                 val row = body.rows[index]
                 Row(modifier = rowModifier.fillMaxWidth().background(palette.surface).syntaxGate(pending)) {
                     DiffRowGutter(row, palette, metrics, gutterWidth, showLineNumbers)
+                    // The viewport reaches the row as its minimum (the weight, kept by horizontalScroll),
+                    // so a file of short lines still paints its bands to the edge, as ScrollBody does.
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .horizontalScroll(body.scroll, overscrollEffect = null),
+                        propagateMinConstraints = true,
                     ) {
-                        DiffRowCode(row, palette, metrics, Modifier.width(codeWidth), onExpandContext)
+                        DiffRowCode(row, palette, metrics, Modifier.widthIn(min = codeWidth), onExpandContext)
                     }
                 }
             }
