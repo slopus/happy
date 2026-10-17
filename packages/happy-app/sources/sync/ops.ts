@@ -1169,6 +1169,17 @@ export async function sessionArchive(sessionId: string): Promise<{ success: bool
         return { success: false, message: 'Connect to the bot’s machine to archive it.' };
     }
     try {
+        const session = storage.getState().sessions[sessionId];
+        if (session?.metadata?.codexThreadId) {
+            const machineId = session.metadata.machineId;
+            if (!machineId) throw new Error('Connect to the Codex machine to archive this conversation');
+            // Stop a Happy-owned writer before asking Codex to move its rollout.
+            if (session.active) await sessionKill(sessionId);
+            const result = await apiSocket.machineRPC<{ success?: boolean; error?: string }, {
+                sessionId: string; threadId: string; archived: boolean;
+            }>(machineId, 'codex-set-archive', { sessionId, threadId: session.metadata.codexThreadId, archived: true });
+            if (!result.success) throw new Error(result.error || 'Codex archive failed');
+        }
         const response = await apiSocket.request(`/v1/sessions/${sessionId}/archive`, {
             method: 'POST'
         });
