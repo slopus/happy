@@ -8,9 +8,18 @@ import UIKit
 /// On a screen that follows the person's text size (`FollowsTextSize`) the
 /// style is drawn scaled as React Native scales it, and drawn again when the
 /// size changes; everywhere else it is drawn as designed.
+///
+/// A new label draws nothing until it is first measured, laid out, drawn,
+/// read or put on a window, so one made and set up before it joins its
+/// screen draws once, at the screen's text size, not once as designed and
+/// again when the screen's size reaches it.
 public final class StyledLabel: UILabel {
     public var string: String = "" {
-        didSet { if string != oldValue { render() } }
+        didSet {
+            guard string != oldValue else { return }
+            accessibilityLabel = string
+            render()
+        }
     }
 
     public var style: TextStyle {
@@ -34,13 +43,16 @@ public final class StyledLabel: UILabel {
     /// The person's text size, where this label follows it.
     private var textScale: TextScale?
 
+    /// Whether the label has drawn its text yet (`renderFirst`).
+    private var rendered = false
+
     public init(style: TextStyle, color: ColorToken, lines: Int = 0, alignment: NSTextAlignment = .natural) {
         self.style = style
         self.color = color
         self.alignment = alignment
         super.init(frame: .zero)
         numberOfLines = lines
-        render()
+        accessibilityLabel = string
         registerForTraitChanges(UIView.textSizeTraits, action: #selector(textSizeChanged))
     }
 
@@ -51,7 +63,8 @@ public final class StyledLabel: UILabel {
 
     /// The style as drawn: scaled where the label follows the text size.
     public var renderedStyle: TextStyle {
-        textScale.map { style.scaled($0) } ?? style
+        renderFirst()
+        return textScale.map { style.scaled($0) } ?? style
     }
 
     /// One line of this label's style, as drawn.
@@ -63,6 +76,8 @@ public final class StyledLabel: UILabel {
     /// How many times this label has measured itself (tests): a screen
     /// that measures off the main thread checks it never does.
     private(set) var measurements = 0
+    /// How many times it has drawn its text (tests).
+    private(set) var renders = 0
     #endif
 
     public override func sizeThatFits(_ size: CGSize) -> CGSize {
@@ -70,16 +85,65 @@ public final class StyledLabel: UILabel {
         measurements += 1
         #endif
         // Measured before its first trait update: measure what it will draw.
-        syncTextSize()
+        if rendered { syncTextSize() } else { renderFirst() }
         return super.sizeThatFits(size)
+    }
+
+    public override var intrinsicContentSize: CGSize {
+        renderFirst()
+        return super.intrinsicContentSize
+    }
+
+    public override func textRect(forBounds bounds: CGRect, limitedToNumberOfLines numberOfLines: Int) -> CGRect {
+        renderFirst()
+        return super.textRect(forBounds: bounds, limitedToNumberOfLines: numberOfLines)
+    }
+
+    public override func layoutSubviews() {
+        renderFirst()
+        super.layoutSubviews()
+    }
+
+    public override func drawText(in rect: CGRect) {
+        renderFirst()
+        super.drawText(in: rect)
+    }
+
+    /// Read as drawn. Set directly, it stands until the label next draws.
+    public override var attributedText: NSAttributedString? {
+        get {
+            renderFirst()
+            return super.attributedText
+        }
+        set {
+            rendered = true
+            super.attributedText = newValue
+        }
+    }
+
+    public override var text: String? {
+        get {
+            renderFirst()
+            return super.text
+        }
+        set {
+            rendered = true
+            super.text = newValue
+        }
     }
 
     public override func didMoveToWindow() {
         super.didMoveToWindow()
+        guard rendered else {
+            if window != nil { renderFirst() }
+            return
+        }
         if syncTextSize() { setNeedsLayoutUpTheTree() }
     }
 
     @objc private func textSizeChanged() {
+        // Not drawn yet: the first draw reads the size then.
+        guard rendered else { return }
         if syncTextSize() { setNeedsLayoutUpTheTree() }
     }
 
@@ -93,17 +157,36 @@ public final class StyledLabel: UILabel {
         return true
     }
 
+    /// Draws the text for the first time, at the text size here now: the
+    /// traits UIKit would hand down before the next layout, taken now, as a
+    /// label just put in its screen still has the ones it had before.
+    private func renderFirst() {
+        guard !rendered else { return }
+        updateTraitsIfNeeded()
+        rendered = true
+        textScale = traitCollection.textEnvironment?.scale
+        render()
+    }
+
     private func render() {
+        // Not drawn yet: the first draw takes everything set until then.
+        guard rendered else {
+            setNeedsLayout()
+            superview?.setNeedsLayout()
+            return
+        }
+        #if DEBUG
+        renders += 1
+        #endif
         // Limited lines truncate with an ellipsis; unlimited ones wrap.
         let lineBreak: NSLineBreakMode = numberOfLines == 0 ? .byWordWrapping : .byTruncatingTail
         let text = renderedStyle.attributedString(string, color: UIColor(color), alignment: alignment, lineBreakMode: lineBreak)
         if let decoration, let decorated = text.mutableCopy() as? NSMutableAttributedString {
             decoration(decorated)
-            attributedText = decorated
+            super.attributedText = decorated
         } else {
-            attributedText = text
+            super.attributedText = text
         }
-        accessibilityLabel = string
         setNeedsLayout()
         superview?.setNeedsLayout()
     }

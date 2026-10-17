@@ -51,9 +51,14 @@ titles (`OnboardingContent.tsx`, `TITLE_MAX_SCALE`). It sets no
 A screen follows the text size when its controller calls
 `followsTextSize()`, which sets the `FollowsTextSize` trait on its view.
 `StyledLabel` draws scaled only under that trait, and draws again when the
-size changes; everywhere else it draws as designed. A screen opts in only
-when every height on it is measured from its text as drawn, never from a
-plan made at the designed size.
+size changes; everywhere else it draws as designed. A new label draws
+nothing until it is first measured, laid out, drawn, read or put on a
+window, and then takes the traits UIKit would hand it before its next
+layout: a label made and set up off its screen and then put in it draws
+its text once, at the screen's size, where it used to draw once as
+designed and again when the screen's size reached it (`StyledLabelRenderTests`).
+A screen opts in only when every height on it is measured from its text as
+drawn, never from a plan made at the designed size.
 
 Following now:
 
