@@ -26,14 +26,21 @@ struct ChatServices {
     var sender: any ChatSending
     var controls: any ChatControls
     /// The session record and settings, kept current: derived off the main
-    /// thread, and handed over only when something the chat draws changed.
-    var observeSession: (_ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation
+    /// thread, and handed over only when something the chat draws changed
+    /// from `applied`, what the screen already shows.
+    var observeSession: (_ applied: ChatSessionState?, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation
     /// The same for another session: the one a pending chat was started
     /// beside.
     var observeOtherSession: (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation
     /// Grouped by project, the checkout a session is a tab of, kept
     /// current; nil under the flat list and for a chat in no checkout.
-    var observeCheckout: (_ id: String, _ onChange: @escaping @MainActor (WorktreeCheckout?) -> Void) -> ApplyObservation
+    /// Handed over when it differs from `applied`, if the screen shows one.
+    var observeCheckout: (_ id: String, _ applied: WorktreeCheckout??, _ onChange: @escaping @MainActor (WorktreeCheckout?) -> Void) -> ApplyObservation
+    /// The session and its checkout as the account's newest home snapshot
+    /// has them (`HomeFeed.latest`), worked out at once, so the screen's
+    /// first frame needs no wait for its own observations. Nil before the
+    /// account has read a snapshot.
+    var seed: @MainActor () -> Seed?
     /// The chats still on their way to a machine; a `pending-chat:` id is one.
     var pendingChats: PendingChats
     /// The checkout's git status for the header; nil for the fixtures.
@@ -48,6 +55,11 @@ struct ChatServices {
     var resume: @MainActor (_ session: SessionRecord, _ machine: MachineRecord?) async throws -> String? = { _, _ in nil }
     /// useAttachmentImage's download and decryption: a picture's bytes.
     var attachment: @Sendable (_ ref: String) async throws -> Data = { _ in throw URLError(.fileDoesNotExist) }
+
+    struct Seed: Sendable {
+        var session: ChatSessionState
+        var checkout: WorktreeCheckout?
+    }
 
     /// `isCurrent` says whether `account` is still the active one; once it
     /// is not, nothing derived from its store reaches the screen.
@@ -65,6 +77,7 @@ struct ChatServices {
                 observeSession: observe(feed: feed, sessionId: sessionId, record: record, isCurrent: isCurrent),
                 observeOtherSession: observeOther(feed: feed, isCurrent: isCurrent),
                 observeCheckout: observeCheckout(feed: feed, isCurrent: isCurrent),
+                seed: seed(feed: feed, sessionId: sessionId, record: record),
                 pendingChats: account.pendingChats,
                 gitStatus: nil,
                 attachment: FixtureAttachments.data
@@ -78,6 +91,7 @@ struct ChatServices {
             observeSession: observe(feed: feed, sessionId: sessionId, isCurrent: isCurrent),
             observeOtherSession: observeOther(feed: feed, isCurrent: isCurrent),
             observeCheckout: observeCheckout(feed: feed, isCurrent: isCurrent),
+            seed: seed(feed: feed, sessionId: sessionId),
             pendingChats: account.pendingChats,
             gitStatus: account.gitStatus,
             setPermissionMode: { [actions = account.actions, transport = account.realtime] mode in
@@ -115,8 +129,30 @@ struct ChatServices {
         isCurrent: @escaping @MainActor () -> Bool
     ) -> (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation {
         { id, onChange in
-            observe(feed: feed, sessionId: id, isCurrent: isCurrent)(onChange)
+            observe(feed: feed, sessionId: id, isCurrent: isCurrent)(nil, onChange)
         }
+    }
+
+    /// A pending chat has no record to seed from.
+    private static func seed(feed: HomeFeed, sessionId: String, record: SessionRecord? = nil) -> @MainActor () -> Seed? {
+        {
+            guard !PendingChats.isPendingChatId(sessionId), let snapshot = feed.latest else { return nil }
+            return seed(snapshot, sessionId: sessionId, record: record)
+        }
+    }
+
+    /// What the observations below would first hand over for `snapshot`.
+    nonisolated static func seed(_ snapshot: HomeSnapshot, sessionId: String, record: SessionRecord? = nil) -> Seed {
+        Seed(
+            session: ChatSessionState(snapshot, sessionId: sessionId, record: record),
+            checkout: checkout(sessionId, in: snapshot)
+        )
+    }
+
+    nonisolated private static func checkout(_ id: String, in snapshot: HomeSnapshot) -> WorktreeCheckout? {
+        AccountSettings(snapshot.settings).sessionListGrouping == .project
+            ? WorktreeCheckout.locate(id, in: snapshot)
+            : nil
     }
 
     /// `useProjectWorktreeSummary` and `findProjectWorktree`, through the
@@ -126,17 +162,15 @@ struct ChatServices {
     private static func observeCheckout(
         feed: HomeFeed,
         isCurrent: @escaping @MainActor () -> Bool
-    ) -> (_ id: String, _ onChange: @escaping @MainActor (WorktreeCheckout?) -> Void) -> ApplyObservation {
-        { id, onChange in
+    ) -> (_ id: String, _ applied: WorktreeCheckout??, _ onChange: @escaping @MainActor (WorktreeCheckout?) -> Void) -> ApplyObservation {
+        { id, applied, onChange in
             // The state is what was applied: nil before the first apply.
             let pipeline = ApplyPipeline<HomeSnapshot?, WorktreeCheckout??, WorktreeCheckout?>(
                 input: nil,
-                state: nil,
+                state: applied,
                 derive: { snapshot, applied in
                     guard let snapshot else { return nil }
-                    let checkout = AccountSettings(snapshot.settings).sessionListGrouping == .project
-                        ? WorktreeCheckout.locate(id, in: snapshot)
-                        : nil
+                    let checkout = checkout(id, in: snapshot)
                     return applied == .some(checkout) ? nil : (checkout, .some(checkout))
                 },
                 apply: { checkout in
@@ -160,11 +194,11 @@ struct ChatServices {
         sessionId: String,
         record: SessionRecord? = nil,
         isCurrent: @escaping @MainActor () -> Bool
-    ) -> (_ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation {
-        { onChange in
+    ) -> (_ applied: ChatSessionState?, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation {
+        { applied, onChange in
             let pipeline = ApplyPipeline<HomeSnapshot?, ChatSessionState?, ChatSessionState>(
                 input: nil,
-                state: nil,
+                state: applied,
                 derive: { snapshot, applied in
                     guard let snapshot else { return nil }
                     let state = ChatSessionState(snapshot, sessionId: sessionId, record: record)

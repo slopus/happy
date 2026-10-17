@@ -134,6 +134,11 @@ final class ChatWorktreeTabStrip: UIView {
         setNeedsLayout()
     }
 
+    /// What was asked for last is placed, its names measured.
+    var isSettled: Bool {
+        wanted.map { named && $0.items == items && $0.selectedId == selectedId } ?? true
+    }
+
     func update(items: [Item], selectedId: String) {
         let wanted = Wanted(items: items, selectedId: selectedId)
         guard wanted != self.wanted else { return }

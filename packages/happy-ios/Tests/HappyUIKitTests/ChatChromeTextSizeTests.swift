@@ -276,7 +276,9 @@ final class ChatChromeTextSizeTests: XCTestCase {
         traits(title, .accessibilityExtraExtraExtraLarge)
         title.maxWidth = 245
         title.update(title: "Fix the login", subtitle: "main", changes: SessionDetails.LineChanges(insertions: 12, deletions: 3, approximate: false))
-        XCTAssertEqual(title.intrinsicContentSize.width, 0, "nothing until its plan is in")
+        // A point until its plan is in: the bar never takes a title view
+        // that is zero wide when it goes on.
+        XCTAssertEqual(title.intrinsicContentSize.width, 1, "nothing until its plan is in")
         await title.measure.measured()
         let plan = try XCTUnwrap(title.measure.plan)
         XCTAssertEqual(title.intrinsicContentSize, plan.layout.size)

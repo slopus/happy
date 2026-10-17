@@ -54,11 +54,59 @@ final class HorizontalStackLayoutTests: XCTestCase {
 /// components/CodeView.tsx inside info.tsx's raw JSON group.
 final class CodeBlockLayoutTests: XCTestCase {
     func testInsetsAndPadding() {
-        let layout = CodeBlockLayout(width: 358, text: text(String(repeating: "x", count: 50), advance: 7, lineHeight: 18))
-        // Box 358 - 32 = 326, text 302: 43 characters a line → two lines.
+        let layout = CodeBlockLayout(width: 358, pieces: [36])
+        // Box 358 - 32 = 326, text 302.
+        XCTAssertEqual(CodeBlockLayout.textWidth(358), 302)
         assertFrame(layout.box, rect(16, 0, 326, 60))
         assertFrame(layout.text, rect(28, 12, 302, 36))
+        assertFrame(layout.pieces[0], rect(28, 12, 302, 36))
         assertSize(layout.size, CGSize(width: 358, height: 72))
+    }
+
+    func testPiecesStackWithNoGap() {
+        let layout = CodeBlockLayout(width: 358, pieces: [720, 18, 0, 1080])
+        assertFrame(layout.pieces[0], rect(28, 12, 302, 720))
+        assertFrame(layout.pieces[1], rect(28, 732, 302, 18))
+        assertFrame(layout.pieces[2], rect(28, 750, 302, 0))
+        assertFrame(layout.pieces[3], rect(28, 750, 302, 1080))
+        assertFrame(layout.text, rect(28, 12, 302, 1818))
+        assertFrame(layout.box, rect(16, 0, 326, 1842))
+        assertSize(layout.size, CGSize(width: 358, height: 1854))
+    }
+
+    func testNoPiecesIsAnEmptyBox() {
+        let layout = CodeBlockLayout(width: 358, pieces: [])
+        assertFrame(layout.text, rect(28, 12, 302, 0))
+        assertFrame(layout.box, rect(16, 0, 326, 24))
+        assertSize(layout.size, CGSize(width: 358, height: 36))
+        XCTAssertEqual(layout.pieces(from: 0, to: 1000), 0..<0)
+    }
+
+    func testNarrowerThanItsInsetsIsZeroWide() {
+        let layout = CodeBlockLayout(width: 40, pieces: [18])
+        XCTAssertEqual(CodeBlockLayout.textWidth(40), 0)
+        assertFrame(layout.box, rect(16, 0, 8, 42))
+        assertFrame(layout.pieces[0], rect(28, 12, 0, 18))
+    }
+
+    /// Pieces at 12..<732, 732..<1452, 1452..<2172, 2172..<2892.
+    func testThePiecesMeetingARange() {
+        let layout = CodeBlockLayout(width: 358, pieces: [720, 720, 720, 720])
+        XCTAssertEqual(layout.pieces(from: 0, to: 12), 0..<0)
+        XCTAssertEqual(layout.pieces(from: 0, to: 13), 0..<1)
+        XCTAssertEqual(layout.pieces(from: 731, to: 733), 0..<2)
+        XCTAssertEqual(layout.pieces(from: 732, to: 1452), 1..<2)
+        XCTAssertEqual(layout.pieces(from: 1000, to: 2500), 1..<4)
+        XCTAssertEqual(layout.pieces(from: -5000, to: 50_000), 0..<4)
+        XCTAssertEqual(layout.pieces(from: 2892, to: 3000), 4..<4)
+        XCTAssertEqual(layout.pieces(from: 900, to: 900), 0..<0)
+    }
+
+    func testAnEmptyPieceInsideTheRangeIsIncluded() {
+        let layout = CodeBlockLayout(width: 358, pieces: [100, 0, 100])
+        XCTAssertEqual(layout.pieces(from: 0, to: 1000), 0..<3)
+        // The empty piece sits at 112; a range ending there stops before it.
+        XCTAssertEqual(layout.pieces(from: 0, to: 112), 0..<1)
     }
 }
 

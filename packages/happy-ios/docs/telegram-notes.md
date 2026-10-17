@@ -266,23 +266,12 @@ rendering the resulting `file` tool rows.
   from how far back the reader is. A frame-by-frame Linux test
   (`ChatInsetChangeTests`) shows the old rule moving the conversation by the
   finger's travel plus the keyboard's.
-- UIKit's own indicator stays, rather than one drawn as Telegram's is,
-  because every row is measured before it is in the list: the content size
-  is exact, not an estimate. We keep its fading, its accessibility and its
-  long-press drag (iOS 13 and later). The list is flipped only vertically,
-  so the indicator stays on the right.
-- Its insets are separate from the content insets, as in Telegram:
-  `ChatScreenLayout.indicatorInsets` is what covers each end of the list
-  (the dock and keyboard, the header and anything hanging under it; nothing
-  where the list stops at them, on a tablet and a sideways phone), plus the
-  safe area on the indicator's side.
-  `automaticallyAdjustsScrollIndicatorInsets` is off: UIKit would add the
-  safe area a second time, and on the flipped list at the swapped ends.
-- `ChatScrollIndicatorLayout` (HappyLayout) says where the indicator must
-  be for an offset, a content height and the insets, and where a drag puts
-  the reader for an indicator position. Linux tests check its frames; hosted
-  UIKit tests and the harness's UI tests check UIKit's real indicator
-  against it.
+- No indicator, as in Telegram's newer list: `showsVerticalScrollIndicator`
+  is off on the chat list. UIKit's own one could be pressed and dragged at
+  the edge, scrubbing far through the history for a short drag, and on the
+  flipped list it needed insets of its own. happy-app's FlashList shows the
+  platform's default indicator; this is a deliberate difference
+  (docs/FEATURES.md).
 
 ## What we deliberately don't copy
 

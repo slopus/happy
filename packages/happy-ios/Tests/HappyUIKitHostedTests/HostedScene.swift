@@ -27,4 +27,26 @@ func hostedKeyWindow(in scene: UIWindowScene, root: UIViewController = UIViewCon
     window.makeKeyAndVisible()
     return window
 }
+
+/// Calls back on every display frame, so a blocked main thread shows as a gap.
+@MainActor
+final class TickRecorder: NSObject {
+    private var link: CADisplayLink?
+    private let onTick: (CFTimeInterval) -> Void
+
+    init(_ onTick: @escaping (CFTimeInterval) -> Void) {
+        self.onTick = onTick
+        super.init()
+        let link = CADisplayLink(target: self, selector: #selector(tick))
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    @objc private func tick(_ link: CADisplayLink) { onTick(link.timestamp) }
+
+    func stop() {
+        link?.invalidate()
+        link = nil
+    }
+}
 #endif

@@ -51,9 +51,14 @@ titles (`OnboardingContent.tsx`, `TITLE_MAX_SCALE`). It sets no
 A screen follows the text size when its controller calls
 `followsTextSize()`, which sets the `FollowsTextSize` trait on its view.
 `StyledLabel` draws scaled only under that trait, and draws again when the
-size changes; everywhere else it draws as designed. A screen opts in only
-when every height on it is measured from its text as drawn, never from a
-plan made at the designed size.
+size changes; everywhere else it draws as designed. A new label draws
+nothing until it is first measured, laid out, drawn, read or put on a
+window, and then takes the traits UIKit would hand it before its next
+layout: a label made and set up off its screen and then put in it draws
+its text once, at the screen's size, where it used to draw once as
+designed and again when the screen's size reached it (`StyledLabelRenderTests`).
+A screen opts in only when every height on it is measured from its text as
+drawn, never from a plan made at the designed size.
 
 Following now:
 
@@ -205,7 +210,9 @@ Following now:
   and the raw JSON blocks, Menlo 12 on an 18 line, both × the
   multiplier). Their rows are measured from their labels as drawn when
   the list lays out, as Settings' are; a size change lays the list out
-  again. The glyphs, the 29 icon squares and the 44 row minimum keep
+  again. The raw JSON blocks are the exception: they are laid out off
+  the main thread at the text size (`CodeBlockView`), and the block grows
+  when its layout lands. The glyphs, the 29 icon squares and the 44 row minimum keep
   their size. Session info's duplicate sheet (DuplicateSheet.tsx) sets
   bare font sizes, so its text is the system font at its size × the
   multiplier and the row preview's 19 line likewise; the card, its list

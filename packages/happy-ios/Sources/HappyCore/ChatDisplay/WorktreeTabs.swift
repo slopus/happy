@@ -55,15 +55,18 @@ public struct WorktreeCheckout: Equatable, Sendable {
     /// isn't in the snapshot).
     public static func locate(_ sessionId: String, in snapshot: HomeSnapshot) -> WorktreeCheckout? {
         guard let session = snapshot.sessions.first(where: { $0.id == sessionId }),
+              let key = Place.Key(session),
               let place = Place(session)
         else { return nil }
+        // Every chat is compared by its key, named only when it names the
+        // checkout: the screen asks this as it opens, on the main thread.
         // Names come from the first chat in the list's own order, as
         // `ProjectHomeData` takes them: live first, then by activity.
         let project = snapshot.sessions
-            .filter { Place($0).map { $0.projectId == place.projectId } ?? false }
-            .sorted(by: listOrder)
-        let checkout = project.filter { Place($0)?.checkoutId == place.checkoutId }
-        guard let first = project.first.flatMap(Place.init), let named = checkout.first.flatMap(Place.init) else { return nil }
+            .compactMap { record in Place.Key(record).flatMap { $0.project == key.project ? (record, $0) : nil } }
+            .sorted { listOrder($0.0, $1.0) }
+        let checkout = project.filter { $0.1.checkoutId == key.checkoutId }.map(\.0)
+        guard let first = project.first.flatMap({ Place($0.0) }), let named = checkout.first.flatMap(Place.init) else { return nil }
         let tabs = checkout.map { record in
             WorktreeTab(id: record.id, title: record.title, state: SessionState(record), unread: record.unread, createdAt: record.createdAt)
         }
@@ -89,27 +92,49 @@ public struct WorktreeCheckout: Equatable, Sendable {
         var checkoutId: String
         var checkoutName: String?
 
+        /// Which project and checkout, compared without naming either.
+        struct Key {
+            enum Project: Equatable {
+                /// `buildProjectGroups`: Happy Agent's catalog id.
+                case catalog(String)
+                /// `buildPathProjectGroups`: the machine and the repository.
+                case path(rig: Bool, machineId: String?, projectPath: Substring)
+            }
+
+            var project: Project
+            var checkoutId: Substring
+            /// Where the worktree's name starts in `checkoutId`.
+            var marker: Range<String.Index>?
+
+            init?(_ session: SessionRecord) {
+                let metadata = session.metadata
+                guard metadata?["isSideChat"]?.boolValue != true, !session.isArchived, !session.isBot else { return nil }
+                if session.isRig, let projectId = metadata?["project"]?["id"]?.stringValue {
+                    project = .catalog(projectId)
+                    checkoutId = Substring(metadata?["workspace"]?["id"]?.stringValue ?? "")
+                    return
+                }
+                let path = (metadata?["path"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                marker = path.range(of: SessionPlace.worktreeMarker)
+                project = .path(rig: session.isRig, machineId: metadata?["machineId"]?.stringValue, projectPath: marker.map { path[..<$0.lowerBound] } ?? path[...])
+                checkoutId = marker == nil ? "" : path[...]
+            }
+        }
+
         init?(_ session: SessionRecord) {
+            guard let key = Key(session) else { return nil }
             let metadata = session.metadata
-            guard metadata?["isSideChat"]?.boolValue != true, !session.isArchived, !session.isBot else { return nil }
-            if session.isRig, let projectId = metadata?["project"]?["id"]?.stringValue {
-                // `buildProjectGroups`.
-                let workspace = metadata?["workspace"]
+            checkoutId = String(key.checkoutId)
+            switch key.project {
+            case .catalog(let projectId):
                 self.projectId = projectId
                 projectName = metadata?["project"]?["name"]?.stringValue ?? ""
-                checkoutId = workspace?["id"]?.stringValue ?? ""
-                checkoutName = workspace?["name"]?.stringValue
-                return
+                checkoutName = metadata?["workspace"]?["name"]?.stringValue
+            case .path(let rig, let machineId, let projectPath):
+                projectId = "\(rig ? "rig" : "happy"):\(ProjectHomeData.jsonKey(machineId, String(projectPath)))"
+                projectName = ProjectHomeData.pathProjectName(String(projectPath), homeDir: metadata?["homeDir"]?.stringValue)
+                checkoutName = key.marker.map { String(key.checkoutId[$0.upperBound...]) }
             }
-            // `buildPathProjectGroups`.
-            let machineId = metadata?["machineId"]?.stringValue
-            let path = (metadata?["path"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let marker = path.range(of: SessionPlace.worktreeMarker)
-            let projectPath = marker.map { String(path[..<$0.lowerBound]) } ?? path
-            projectId = "\(session.isRig ? "rig" : "happy"):\(ProjectHomeData.jsonKey(machineId, projectPath))"
-            projectName = ProjectHomeData.pathProjectName(projectPath, homeDir: metadata?["homeDir"]?.stringValue)
-            checkoutId = marker == nil ? "" : path
-            checkoutName = marker.map { String(path[$0.upperBound...]) }
         }
     }
 }
