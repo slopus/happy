@@ -180,6 +180,8 @@ final class HostedChatNavigationTests: XCTestCase {
         let sampler = ChatFrameSampler(navigation: navigation)
         let chat = try await shown(after: { root.push(.session(id: "seeded-tab-4"), context: context) }, in: navigation)
         try await settled(chat, in: navigation)
+        let sampled = try await until { sampler.frames.filter { $0.chat === chat && $0.inWindow && $0.ready }.count >= 12 }
+        XCTAssertTrue(sampled, "sample the ready chat across enough display frames")
         sampler.stop()
         let report = try XCTUnwrap(chat.openingReport)
         print(String(format: "OPENING push ready after %.1f ms, missing %@", report.elapsed * 1000, report.missing.description))
@@ -207,6 +209,8 @@ final class HostedChatNavigationTests: XCTestCase {
         let strip = try XCTUnwrap(Self.subview(ChatWorktreeTabStrip.self, in: first.view))
         let switched = try await shown(after: { strip.onSelect?("seeded-tab-3") }, in: navigation)
         try await settled(switched, in: navigation)
+        let sampled = try await until { sampler.frames.filter { $0.chat === switched && $0.inWindow && $0.ready }.count >= 12 }
+        XCTAssertTrue(sampled, "sample the ready tab across enough display frames")
         sampler.stop()
         let report = try XCTUnwrap(switched.openingReport)
         print(String(format: "OPENING switch ready after %.1f ms, missing %@", report.elapsed * 1000, report.missing.description))
