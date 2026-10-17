@@ -10,8 +10,11 @@ public final class SessionDetailFeed: Sendable {
     public init(store: LocalStore) { self.store = store }
 
     /// The current snapshot first, then each distinct one.
-    public func snapshots(sessionId: String) -> AsyncStream<SessionDetailSnapshot> {
-        scope.snapshots { [store] in store.sessionDetailSnapshots(sessionId: sessionId) }
+    public func snapshots(
+        sessionId: String,
+        onError: @escaping @Sendable (SessionDetailFailure) -> Void = { _ in }
+    ) -> AsyncStream<SessionDetailSnapshot> {
+        scope.snapshots { [store] in store.sessionDetailSnapshots(sessionId: sessionId, onError: onError) }
     }
 
     /// The snapshot now, read off the main thread.

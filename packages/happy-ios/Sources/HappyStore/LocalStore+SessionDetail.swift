@@ -39,7 +39,10 @@ extension LocalStore {
     /// settings, the list cursor and its composer are read. Fields no
     /// session screen shows are left out of what is compared (`shown`), so
     /// a send accepted here wakes nothing; `sessionDetail` keeps them.
-    public func sessionDetailSnapshots(sessionId: String) -> AsyncStream<SessionDetailSnapshot> {
+    public func sessionDetailSnapshots(
+        sessionId: String,
+        onError: @escaping @Sendable (SessionDetailFailure) -> Void = { _ in }
+    ) -> AsyncStream<SessionDetailSnapshot> {
         let writer = self.writer
         let overlay = presenceOverlay
         return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
@@ -54,7 +57,7 @@ extension LocalStore {
                     in: writer,
                     scheduling: .async(onQueue: Self.detailQueue),
                     onError: { error in
-                        print("HappyStore session detail observation stopped: \(error)")
+                        onError(SessionDetailFailure(error))
                         continuation.finish()
                     },
                     onChange: { raw in

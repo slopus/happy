@@ -32,6 +32,19 @@ final class SessionInfoViewController: UIViewController {
     private var busy = Set<Action>()
     private var copiedReset: Task<Void, Never>?
     private var stateView: UIView?
+    typealias Snapshots = @Sendable (@escaping @Sendable (SessionDetailFailure) -> Void) -> AsyncStream<SessionDetailSnapshot>
+    private let snapshots: Snapshots
+    private let firstPaintTimeout: Duration
+    private var observationGeneration = 0
+    private var loadWatchdog: Task<Void, Never>?
+    private var isVisible = false
+    private var loadState = LoadState.loading
+    private var loadStatusGroup: ItemGroupView?
+    private var firstFailureDiagnostics: [String: Any]?
+
+    private enum LoadState: Equatable {
+        case loading, delayed, failed(SessionDetailFailure), ready
+    }
     /// The groups on screen, and the rows retexted in place.
     private var sectionViews: [SessionInfoSection: UIView] = [:]
     private var shownSections: [SessionInfoSection] = []
@@ -81,10 +94,14 @@ final class SessionInfoViewController: UIViewController {
 
     private enum Action: Hashable { case archive, delete, resume, fork }
 
-    init(context: AppContext, session: AccountSession, sessionId: String) {
+    init(context: AppContext, session: AccountSession, sessionId: String,
+         firstPaintTimeout: Duration = .seconds(5), snapshots: Snapshots? = nil) {
         self.context = context
         self.session = session
         self.sessionId = sessionId
+        self.firstPaintTimeout = firstPaintTimeout
+        let feed = session.sessionDetails
+        self.snapshots = snapshots ?? { feed.snapshots(sessionId: sessionId, onError: $0) }
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -96,6 +113,7 @@ final class SessionInfoViewController: UIViewController {
     deinit {
         gitTask?.cancel()
         copiedReset?.cancel()
+        loadWatchdog?.cancel()
     }
 
     override func loadView() {
@@ -122,6 +140,23 @@ final class SessionInfoViewController: UIViewController {
         if let seed = SessionInfoSeed(session.homeFeed.latest, sessionId: sessionId) {
             setPlainHeaderTitle(seed.title ?? Strings.Session.newChat)
         }
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: .icon(.ionicons("ellipsis-horizontal"), size: 22),
+            menu: UIMenu(children: [
+                UIAction(title: Strings.SessionInfoLoading.retry) { [weak self] _ in self?.retryLoading() },
+                UIAction(title: Strings.SessionInfoLoading.copyDiagnostics) { [weak self] _ in self?.copyLoadingDiagnostics() },
+            ])
+        )
+        navigationItem.rightBarButtonItem?.accessibilityLabel = Strings.SessionInfoLoading.copyDiagnostics
+        showLoadStatus(.loading)
+        beginObservation()
+    }
+
+    private func beginObservation() {
+        observation?.cancel()
+        gitTask?.cancel()
+        observationGeneration += 1
+        let generation = observationGeneration
         #if DEBUG
         let includesRaw = true
         #else
@@ -133,12 +168,20 @@ final class SessionInfoViewController: UIViewController {
             derive: { SessionInfoDerivation.derive($0, applied: $1) },
             apply: { [weak self] update in
                 // Worked out for an account that is no longer the active one.
-                guard let self, self.context.account.session === self.session else { return false }
+                guard let self, self.observationGeneration == generation,
+                      self.context.account.session === self.session else { return false }
                 self.apply(update)
                 return true
             }
         )
-        pipeline.follow(session.sessionDetails.snapshots(sessionId: sessionId)) { $0.detail = $1 }
+        pipeline.follow(snapshots { [weak self] failure in
+            Task { @MainActor [weak self] in
+                guard let self, self.observationGeneration == generation,
+                      self.context.account.session === self.session else { return }
+                self.recordFailure(reason: "store-failed", failure: failure)
+                self.showLoadStatus(.failed(failure))
+            }
+        }) { $0.detail = $1 }
         self.pipeline = pipeline
         observation = pipeline.observation
         let git = session.detailGitStatus
@@ -166,6 +209,19 @@ final class SessionInfoViewController: UIViewController {
         if making != nil || !queue.isEmpty { scheduleMaking() }
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        isVisible = true
+        startLoadWatchdog()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        isVisible = false
+        loadWatchdog?.cancel()
+        loadWatchdog = nil
+    }
+
     // MARK: Building
 
     /// Shows `update.frame`, touching only what `update.changes` names.
@@ -177,8 +233,11 @@ final class SessionInfoViewController: UIViewController {
         ApplyPerf.measure(.screen) {
             switch next.content {
             case .loading:
-                if changes.state { showState(loadingView(), title: "") }
+                if changes.state { showLoadStatus(.loading) }
             case .deleted:
+                loadState = .ready
+                loadStatusGroup = nil
+                loadWatchdog?.cancel()
                 if changes.state { showState(deletedView(), title: Strings.SessionDetail.sessionDeleted) }
             case .shown(let model):
                 if changes.title { setPlainHeaderTitle(model.title ?? Strings.Session.newChat) }
@@ -306,10 +365,18 @@ final class SessionInfoViewController: UIViewController {
             self.stateView = nil
             list.isHidden = false
         }
-        if order != shownSections || !new.isEmpty {
+        let removesStatus: Bool
+        if case .failed = loadState {
+            removesStatus = false
+        } else {
+            removesStatus = loadStatusGroup != nil
+            loadState = .ready
+            loadStatusGroup = nil
+        }
+        if order != shownSections || !new.isEmpty || removesStatus {
             ApplyPerf.measure(.screen) {
                 shownSections = order
-                list.sections = order.compactMap { sectionViews[$0] }
+                installSections()
                 return new.count
             }
         }
@@ -351,10 +418,164 @@ final class SessionInfoViewController: UIViewController {
         view.frame = self.view.bounds
     }
 
-    private func loadingView() -> UIView {
-        DetailMessageView(lead: IconView(.ionicons("hourglass-outline"), size: 48, tint: Palette.textSecondary), lines: [
-            .init(text: Strings.SessionDetail.loading, style: SecondaryTextStyles.infoLoading, color: Palette.textSecondary, spacingBefore: 16),
-        ])
+    // MARK: Loading and local diagnostics
+
+    private func installSections() {
+        let status: [UIView] = loadStatusGroup.map { [$0] } ?? []
+        list.sections = status + shownSections.compactMap { sectionViews[$0] }
+    }
+
+    /// Status is a separate group, so an observation failure or retry never
+    /// throws away rows that the user can already read. Construction can
+    /// continue behind it and removes the waiting state when it finishes.
+    private func showLoadStatus(_ state: LoadState) {
+        loadState = state
+        let message: String
+        switch state {
+        case .loading: message = Strings.SessionDetail.loading
+        case .delayed: message = Strings.SessionInfoLoading.delayed
+        case .failed: message = Strings.SessionInfoLoading.failed
+        case .ready: return
+        }
+        let messageRow = ItemRowView(title: message)
+        messageRow.showsChevron = false
+        var rows: [UIView] = [messageRow]
+        if state != .loading {
+            rows.append(ItemRowView(title: Strings.SessionInfoLoading.retry) { [weak self] in self?.retryLoading() })
+            rows.append(ItemRowView(title: Strings.SessionInfoLoading.copyDiagnostics) { [weak self] in self?.copyLoadingDiagnostics() })
+        }
+        loadStatusGroup = ItemGroupView(rows: rows)
+        stateView?.removeFromSuperview()
+        stateView = nil
+        list.isHidden = false
+        installSections()
+    }
+
+    private var hasVisibleBody: Bool {
+        guard let window = view.window, !list.isHidden, list.alpha > 0 else { return false }
+        var ancestor: UIView? = list
+        while let current = ancestor {
+            guard !current.isHidden, current.alpha > 0 else { return false }
+            ancestor = current.superview
+        }
+        return sectionViews.values.contains { group in
+            group.superview === list && !group.isHidden && group.alpha > 0
+                && group.bounds.height > 0 && group.convert(group.bounds, to: window).intersects(window.bounds)
+        }
+    }
+
+    private func startLoadWatchdog() {
+        loadWatchdog?.cancel()
+        guard isVisible else { return }
+        let timeout = firstPaintTimeout
+        loadWatchdog = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: timeout) } catch { return }
+            guard let self, self.isVisible, self.view.window != nil, !Task.isCancelled else { return }
+            if case .deleted = self.frame?.content { return }
+            guard !self.hasVisibleBody else { return }
+            if case .failed = self.loadState { return }
+            self.recordFailure(reason: "first-paint-timeout")
+            self.showLoadStatus(.delayed)
+        }
+    }
+
+    @objc private func retryLoading() {
+        stopMaking()
+        making?.group.removeFromSuperview()
+        making = nil
+        for group in made.values { group.removeFromSuperview() }
+        made = [:]
+        queue = []
+        remakeAfterShowing = []
+        showLoadStatus(.loading)
+        beginObservation()
+        startLoadWatchdog()
+    }
+
+    private func recordFailure(reason: String, failure: SessionDetailFailure? = nil) {
+        guard firstFailureDiagnostics == nil else { return }
+        firstFailureDiagnostics = diagnosticSnapshot(reason: reason, failure: failure)
+    }
+
+    @objc private func copyLoadingDiagnostics() {
+        UIPasteboard.general.string = loadingDiagnostics()
+        Alerts.show(Strings.Common.copied, "", on: self)
+    }
+
+    /// Only explicit Copy actions put this on the clipboard. The fixed
+    /// fields below never inspect session data or stringify an Error.
+    func loadingDiagnostics() -> String {
+        var report: [String: Any] = ["schema": 1, "current": diagnosticSnapshot(reason: "manual-copy")]
+        if let firstFailureDiagnostics { report["firstFailure"] = firstFailureDiagnostics }
+        guard let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else { return "Details diagnostics unavailable" }
+        return text
+    }
+
+    private func diagnosticSnapshot(reason: String, failure: SessionDetailFailure? = nil) -> [String: Any] {
+        let content: String
+        switch frame?.content {
+        case nil: content = "none"
+        case .loading: content = "loading"
+        case .deleted: content = "deleted"
+        case .shown: content = "shown"
+        }
+        let stage: String
+        if hasVisibleBody { stage = "body-visible" }
+        else if frame == nil { stage = "no-snapshot-or-apply" }
+        else if making != nil || !queue.isEmpty { stage = "building-groups" }
+        else if !made.isEmpty { stage = "groups-awaiting-install" }
+        else if !sectionViews.isEmpty { stage = "installed-groups-not-visible" }
+        else { stage = "no-installed-groups" }
+        let currentFailure: SessionDetailFailure?
+        if let failure { currentFailure = failure }
+        else if case .failed(let error) = loadState { currentFailure = error }
+        else { currentFailure = nil }
+        let first = shownSections.compactMap { sectionViews[$0] }.first
+        let window = view.window
+        var result: [String: Any] = [
+            "reason": reason, "stage": stage, "content": content,
+            "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+            "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
+            "os": UIDevice.current.systemVersion, "model": Self.deviceModel,
+            "dark": traitCollection.userInterfaceStyle == .dark,
+            "reduceMotion": UIAccessibility.isReduceMotionEnabled,
+            "contentSizeCategory": traitCollection.preferredContentSizeCategory.rawValue,
+            "accountMatches": context.account.session === session,
+            "windowAttached": window != nil, "keyWindow": window?.isKeyWindow ?? false,
+            "sceneState": window?.windowScene?.activationState.rawValue ?? -1,
+            "viewBounds": NSStringFromCGRect(view.bounds), "listBounds": NSStringFromCGRect(list.bounds),
+            "listHidden": list.isHidden, "listAlpha": list.alpha,
+            "contentSize": NSStringFromCGSize(list.contentSize), "contentOffset": NSStringFromCGPoint(list.contentOffset),
+            "installedGroups": sectionViews.count, "listSections": list.sections.count,
+            "queuedGroups": queue.count, "madeGroups": made.count, "making": making != nil, "displayLink": makeLink != nil,
+            "firstGroupFrame": NSStringFromCGRect(first?.frame ?? .zero),
+            "firstGroupInWindow": NSStringFromCGRect(first.flatMap { group in window.map { group.convert(group.bounds, to: $0) } } ?? .zero),
+        ]
+        if let counts = pipeline?.counts {
+            result["pipeline"] = ["wakeups": counts.wakeups, "derivations": counts.derivations,
+                                  "unchanged": counts.unchanged, "superseded": counts.superseded,
+                                  "applies": counts.applies, "rejected": counts.rejected]
+        }
+        if let currentFailure {
+            var error: [String: Any] = ["category": currentFailure.kind.rawValue]
+            if let code = currentFailure.code { error["code"] = code }
+            result["storeFailure"] = error
+        }
+        return result
+    }
+
+    private static var deviceModel: String {
+        #if targetEnvironment(simulator)
+        return ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] ?? "simulator"
+        #else
+        var system = utsname()
+        uname(&system)
+        let capacity = MemoryLayout.size(ofValue: system.machine)
+        return withUnsafePointer(to: &system.machine) {
+            $0.withMemoryRebound(to: CChar.self, capacity: capacity) { String(cString: $0) }
+        }
+        #endif
     }
 
     private func deletedView() -> UIView {
