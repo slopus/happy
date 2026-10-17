@@ -4,7 +4,7 @@ extension Strings {
     enum Voice {
         static var title: String { localized("settings.voiceAssistant", "Voice Assistant") }
         static var subtitle: String { "Talk to your coding agents" }
-        static var done: String { Strings.Common.close }
+        static var done: String { "Close" }
         static var connecting: String { "Connecting…" }
         static var listening: String { "Listening" }
         static var userSpeaking: String { "You’re speaking" }
