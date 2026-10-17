@@ -241,6 +241,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         showsBackTitle()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): ChatHeaderView.tsx
         navigationItem.largeTitleDisplayMode = .never
+        configureHeaderAppearance()
     }
 
     private func installList() {
@@ -307,6 +308,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         scrollButton.addTarget(self, action: #selector(scrollToNewest), for: .touchUpInside)
         view.addSubview(scrollButton)
         tabStrip.isHidden = true
+        tabStrip.glass = !isTabletLayout
         tabStrip.names = Self.tabNames(account)
         tabStrip.onSelect = { [weak self] id in self?.selectTab(id) }
         tabStrip.onLongPress = { [weak self] id in self?.sessionActions.present(sessionId: id) }
@@ -805,8 +807,22 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// title and no avatar. The back button is `dropsBackButtonOnTablet`'s.
     private func applyHeaderBranch() {
         let tablet = isTabletLayout
+        configureHeaderAppearance()
+        if sessionApplied { navigationItem.titleView = tablet ? plainTitleView : titleView }
+        var items = tablet ? [] : [avatarItem]
+        #if DEBUG
+        items.append(fixturesMenu())
+        #endif
+        navigationItem.rightBarButtonItems = items
+        if contentInstalled { tabStrip.glass = !tablet } // TabletBranches.worktreeStripGlass
+        floatingDockChanged()
+    }
+
+    /// The shell uses the chat's bar style from its first frame, before
+    /// any glass controls or text plans exist.
+    private func configureHeaderAppearance() {
         let appearance = UINavigationBarAppearance()
-        if tablet {
+        if isTabletLayout {
             appearance.configureWithOpaqueBackground()
             appearance.backgroundColor = UIColor(Palette.headerBackground)
             appearance.shadowColor = .clear
@@ -819,14 +835,6 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         navigationItem.compactAppearance = appearance
         navigationItem.compactScrollEdgeAppearance = appearance
 
-        if sessionApplied { navigationItem.titleView = tablet ? plainTitleView : titleView }
-        var items = tablet ? [] : [avatarItem]
-        #if DEBUG
-        items.append(fixturesMenu())
-        #endif
-        navigationItem.rightBarButtonItems = items
-        if contentInstalled { tabStrip.glass = !tablet } // TabletBranches.worktreeStripGlass
-        floatingDockChanged()
     }
 
     /// The header's text at the screen's text size (`ChatHeaderTitleView.text`).
