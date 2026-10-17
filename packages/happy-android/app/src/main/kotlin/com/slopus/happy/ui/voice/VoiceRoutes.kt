@@ -14,9 +14,11 @@ import com.slopus.happy.ui.components.*
 import com.slopus.happy.ui.home.copyToClipboard
 import com.slopus.happy.ui.settings.ItemIcon
 import com.slopus.happy.ui.settings.SettingsSpec
+import com.slopus.happy.ui.settings.Alerts
+import com.slopus.happy.ui.settings.errorAlert
+import com.slopus.happy.ui.settings.rememberSupportAction
 import com.slopus.happy.voice.VoiceUpsell
 import com.slopus.happy.voice.VoiceUsage
-import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 @Serializable data object VoiceSettingsRoute
@@ -25,17 +27,19 @@ import kotlinx.serialization.Serializable
 fun NavGraphBuilder.voiceRoutes(graph: AppGraph, nav: NavHostController) {
     composable<VoiceSettingsRoute> {
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
-        val scope = rememberCoroutineScope()
+        val purchases by graph.purchases.purchases.collectAsStateWithLifecycle()
+        val alerts = remember { Alerts() }
+        val support = rememberSupportAction(graph.purchases, errorAlert(alerts))
         var usage by remember { mutableStateOf<VoiceUsage?>(null) }
         var loading by remember { mutableStateOf(true) }
-        var hasPro by remember { mutableStateOf(graph.voicePaywall?.hasPro() == true) }
         LaunchedEffect(graph) {
             try { usage = graph.voice.usage() } finally { loading = false }
         }
-        VoiceSettingsScreen(settings, graph.settings::change, usage, loading, hasPro,
-            onSupport = { scope.launch { graph.voicePaywall?.present("voluntary_support"); hasPro = graph.voicePaywall?.hasPro() == true } },
+        VoiceSettingsScreen(settings, graph.settings::change, usage, loading, purchases.entitlements["pro"] == true,
+            onSupport = support::run,
             onLanguage = { nav.navigate(VoiceLanguageRoute) }, onBack = { nav.popBackStack() },
             developerContent = { VoiceDeveloperSettings(graph) })
+        alerts.Host()
     }
     composable<VoiceLanguageRoute> {
         val settings by graph.settings.settings.collectAsStateWithLifecycle()

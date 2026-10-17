@@ -29,6 +29,7 @@ import com.slopus.happy.voice.ElevenLabsTransport
 import com.slopus.happy.voice.StoreVoiceContext
 import com.slopus.happy.voice.VoiceApi
 import com.slopus.happy.voice.VoiceEngine
+import com.slopus.happy.voice.VoiceLanguages
 import com.slopus.happy.voice.VoiceOptions
 import com.slopus.happy.voice.VoicePaywall
 import com.slopus.happy.voice.VoicePreferences
@@ -126,9 +127,6 @@ class AppGraph(
 
     val voicePreferences = VoicePreferences(context.getSharedPreferences(VoicePreferences.PREFS_NAME, Context.MODE_PRIVATE))
 
-    /** Installed by the purchases host; read at each gate so entitlement refreshes are immediate. */
-    var voicePaywall: VoicePaywall? = null
-
     /** The SDK is allocated only inside connect(), never while constructing the app graph. */
     val voice: VoiceEngine = VoiceEngine(
         scope = scope,
@@ -139,12 +137,12 @@ class AppGraph(
             val values = settings.settings.value
             val local = localSettings.values.value
             VoiceOptions(values.voiceBypassToken, values.voiceCustomAgentId,
-                voiceLanguageCode(values.voiceAssistantLanguage),
+                VoiceLanguages.elevenLabsCode(values.voiceAssistantLanguage),
                 VoiceUpsell.resolve(override = local.voiceUpsellOverride, overrideEnabled = BuildConfig.DEBUG || local.devModeEnabled))
         },
         paywall = object : VoicePaywall {
-            override fun hasPro() = voicePaywall?.hasPro() ?: false
-            override suspend fun present(flow: String) = voicePaywall?.present(flow) ?: false
+            override fun hasPro() = purchases.hasPro()
+            override suspend fun present(flow: String) = purchases.present(flow).purchased
         },
         preferences = voicePreferences,
         contextFactory = {
@@ -289,12 +287,3 @@ class AppGraph(
  * and the push token store (cleared by its own logout hook) are not here.
  */
 private val WIPED_PREFS = listOf(NewSessionDraftStore.PREFS_NAME, PrefsReviewStamps.PREFS_NAME, VoicePreferences.PREFS_NAME)
-
-// Languages.ts: unsupported catalog preferences omit the override (auto detection).
-private fun voiceLanguageCode(preference: String?): String? {
-    if (preference == null || preference in setOf("he-IL", "th-TH", "sl-SI", "et-EE", "lv-LV", "lt-LT")) return null
-    return when (preference) {
-        "pt-BR" -> "pt-br"
-        else -> preference.substringBefore('-').takeIf { it in setOf("en", "es", "fr", "de", "it", "pt", "pl", "ru", "ja", "zh", "ko", "ar", "hi", "nl", "sv", "da", "fi", "no", "tr", "id", "ms", "uk", "cs", "hu", "ro", "bg", "el", "hr", "sk", "ta", "vi") }
-    }
-}
