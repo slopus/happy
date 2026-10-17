@@ -110,10 +110,10 @@ object SessionStatusColors {
 }
 
 /** What the composer's round button does (agentInputPrimaryAction.ts). */
-enum class PrimaryAction { Stop, Blocked, Send, Idle }
+enum class PrimaryAction { Stop, Blocked, Send, Voice, Idle }
 
 /**
- * `resolveAgentInputPrimaryAction` without voice: Stop wins on an empty
+ * `resolveAgentInputPrimaryAction`: Stop wins on an empty
  * composer while the agent can be stopped; a non-steerable busy agent
  * locks sending; otherwise text sends.
  */
@@ -123,10 +123,12 @@ fun resolvePrimaryAction(
     canAbort: Boolean,
     blocked: Boolean,
     disabled: Boolean = false,
+    canVoice: Boolean = false,
 ): PrimaryAction = when {
     showAbort && canAbort && !hasContent -> PrimaryAction.Stop
     blocked && hasContent -> PrimaryAction.Blocked
     !disabled && hasContent -> PrimaryAction.Send
+    !disabled && canVoice -> PrimaryAction.Voice
     else -> PrimaryAction.Idle
 }
 
@@ -145,7 +147,8 @@ fun resolvePrimaryAction(
  * button.primary.background (dark #F5F5F5) with Octicons stop 16 white
  * (dark black); locked surfaceHigh with a 1 divider border and
  * lock-closed 14 textSecondary. A spinner replaces the glyph while
- * stopping. A locked button still takes taps (to refuse them); an idle one
+ * stopping. Voice uses surfaceHighest and the bundled 24 voice glyph tinted text.
+ * A locked button still takes taps (to refuse them); an idle one
  * doesn't. [panelShake] shakes the card and [primaryShake] the button
  * (Shaker.tsx). With [showDetails] false (reading older messages under
  * the floating dock) the status row and the [bottom] row fade out in
@@ -291,13 +294,17 @@ private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () 
     val background = when (action) {
         PrimaryAction.Stop -> if (dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
         PrimaryAction.Blocked -> colors.surfaceHigh
-        PrimaryAction.Send -> colors.surfaceHighest
+        PrimaryAction.Send, PrimaryAction.Voice -> colors.surfaceHighest
         PrimaryAction.Idle -> if (dark) Color(0xFF3A3A3C) else Color(0xFFD1D1D6)
     }
     // A locked send still takes the tap, to refuse it.
     val enabled = action != PrimaryAction.Idle
     // Literal in happy-app (AgentInput.tsx accessibilityLabel).
-    val label = if (action == PrimaryAction.Stop) "Stop" else "Send"
+    val label = when (action) {
+        PrimaryAction.Stop -> "Stop"
+        PrimaryAction.Voice -> "Voice"
+        else -> "Send"
+    }
     Box(
         modifier = Modifier
             .shake(shake)
@@ -318,6 +325,12 @@ private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () 
             )
             action == PrimaryAction.Stop -> Icon(Octicon.Stop, ComposerSpec.primaryIcon, if (dark) Color.Black else Color.White)
             action == PrimaryAction.Blocked -> Icon(Ionicon.LockClosed, ComposerSpec.lockIcon, colors.textSecondary)
+            action == PrimaryAction.Voice -> androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(com.slopus.happy.R.drawable.icon_voice_white),
+                contentDescription = null,
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(colors.text),
+                modifier = Modifier.size(24.dp),
+            )
             else -> Icon(
                 Octicon.ArrowUp,
                 ComposerSpec.primaryIcon,

@@ -21,6 +21,8 @@ import com.slopus.happy.ui.settings.AppearanceRoute
 import com.slopus.happy.ui.settings.ChangelogRoute
 import com.slopus.happy.ui.settings.ConnectClaudeRoute
 import com.slopus.happy.ui.settings.LanguageRoute
+import com.slopus.happy.ui.voice.VoiceSettingsRoute
+import com.slopus.happy.ui.voice.VoiceLanguageRoute
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -87,6 +89,8 @@ class DeepLinksTest {
             "happy://settings/appearance" to screen(AppearanceRoute),
             "happy://settings/agents" to screen(AgentsRoute),
             "happy://settings/language" to screen(LanguageRoute),
+            "happy://settings/voice" to screen(VoiceSettingsRoute),
+            "happy://settings/voice/language" to screen(VoiceLanguageRoute),
             "https://app.happy.engineering/settings/connect/claude" to screen(ConnectClaudeRoute),
             "happy://server" to signedOut(ServerRoute),
             "happy://restore" to signedOut(RestoreRoute),
@@ -120,7 +124,6 @@ class DeepLinksTest {
             "happy://session/s1/files",
             "happy://session/s1/file",
             "happy://settings/usage",
-            "happy://settings/voice",
             "happy://inbox",
             "happy://friends",
             "happy://artifacts/a1",

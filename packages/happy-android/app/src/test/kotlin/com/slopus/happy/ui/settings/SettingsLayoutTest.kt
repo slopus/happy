@@ -86,6 +86,7 @@ class SettingsLayoutTest {
     fun settingsRowsAndConnectedAccounts() {
         var claude = 0
         var gitHub = 0
+        var voice = 0
         rule.setHappyContent {
             SettingsScreen(
                 versionName = "0.1.0",
@@ -95,6 +96,7 @@ class SettingsLayoutTest {
                 accounts = ConnectedAccounts(claudeConnected = true, gitHubLogin = "ada"),
                 onClaude = { claude++ },
                 onGitHub = { gitHub++ },
+                onVoice = { voice++ },
             )
         }
         rule.onAllNodesWithTag(ItemGroupTags.HEADER, useUnmergedTree = true).assertCountEquals(3)
@@ -105,6 +107,8 @@ class SettingsLayoutTest {
         rule.onNodeWithText("Connected as @ada").performScrollTo().performClick()
         assertEquals(1, claude)
         assertEquals(1, gitHub)
+        rule.onNodeWithText("Voice Assistant").performScrollTo().performClick()
+        assertEquals(1, voice)
         rule.onNodeWithText("Commit 2026-10-16 03:12 UTC / abc1234").performScrollTo().assertIsDisplayed()
     }
 

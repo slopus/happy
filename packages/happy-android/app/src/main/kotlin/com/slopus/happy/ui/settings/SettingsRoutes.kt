@@ -52,6 +52,8 @@ import com.slopus.happy.ui.connect.rememberTerminalConnect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import com.slopus.happy.ui.voice.voiceRoutes
+import com.slopus.happy.ui.voice.VoiceSettingsRoute
 
 @Serializable data object AccountRoute
 @Serializable data object AppearanceRoute
@@ -62,6 +64,7 @@ import kotlinx.serialization.Serializable
 
 /** Settings and its screens. [SettingsRoute] is the entry point. */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
+    voiceRoutes(graph, nav)
     composable<SettingsRoute> { SettingsIndex(graph, nav) }
     composable<AccountRoute> { Account(graph, nav) }
     composable<AppearanceRoute> { Appearance(graph, nav) }
@@ -264,6 +267,7 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
         onAccount = { nav.navigate(AccountRoute) },
         onAppearance = { nav.navigate(AppearanceRoute) },
         onAgents = { nav.navigate(AgentsRoute) },
+        onVoice = { nav.navigate(VoiceSettingsRoute) },
         onWhatsNew = { nav.navigate(ChangelogRoute) },
         isPro = BuildConfig.DEBUG || purchases.entitlements["pro"] == true,
         onSupport = support::run,

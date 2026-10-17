@@ -226,6 +226,7 @@ fun TabletSidebarContent(
                 ArchiveButton(hidden = state.archiveHidden, onClick = { host.callbacks.onSetArchiveHidden(!state.archiveHidden) })
             }
         }
+        com.slopus.happy.ui.voice.VoiceStatusBar(sidebar = true)
         Box(modifier = Modifier.weight(1f).fillMaxWidth().testTag(TabletSidebarTags.CONTENT)) {
             when {
                 state == null -> CircularProgressIndicator(

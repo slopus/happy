@@ -43,6 +43,7 @@ import com.slopus.happy.ui.autocomplete.rememberComposerAutocomplete
 import com.slopus.happy.ui.layout.CenteredInputWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.usage.ComposerUsageRow
+import com.slopus.happy.ui.voice.rememberVoiceAction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -140,11 +141,13 @@ private fun ChatComposerFor(
     LaunchedEffect(showAbort) { if (!showAbort) stopRequested = false }
     val canAbort = sessionState != SessionState.Disconnected && metadata.rigCanAbort() && !stopRequested
     val blocked = session.isRig && state.thinking && metadata?.capabilities?.steering != true
+    val voiceAction = if (state.session != null) rememberVoiceAction(session.id, sessionState != SessionState.Disconnected) else null
     val primary = resolvePrimaryAction(
         hasContent = draft.isNotBlank() || hasComposerImages(),
         showAbort = showAbort,
         canAbort = canAbort,
         blocked = blocked,
+        canVoice = voiceAction != null,
     )
     val autocomplete = rememberComposerAutocomplete(draft, actions.onDraftChange)
     val haptics = LocalHapticFeedback.current
@@ -193,6 +196,7 @@ private fun ChatComposerFor(
                     actions.onSend(draft)
                 }
                 PrimaryAction.Idle -> Unit
+                PrimaryAction.Voice -> { haptics.light(); voiceAction?.invoke() }
             }
         },
         modifier = modifier,

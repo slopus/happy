@@ -175,6 +175,7 @@ private fun HomeContent(
     val colors = HappyTheme.colors
     Column(modifier = Modifier.fillMaxSize().background(colors.grouped.background)) {
         HomeHeader(connectionStatus, grouping, actions)
+        com.slopus.happy.ui.voice.VoiceStatusBar()
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val showArchived = { callbacks.onSetArchiveHidden(false) }
             when {

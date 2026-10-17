@@ -122,8 +122,8 @@ data class ConnectedAccounts(
 )
 
 /**
- * Settings (SettingsView.tsx, native rows). Voice, Usage, the developer
- * group are not part of this app.
+ * Settings (SettingsView.tsx, native rows), including Support us and Voice
+ * Assistant. The experimental Usage screen and developer group are excluded.
  *
  * Spec: the app card is inset 16 at the sides and 16 from the top, radius
  * 16, 0.5 divider border, surface colour, 24 vertical padding. With a
@@ -134,7 +134,7 @@ data class ConnectedAccounts(
  * connect terminal (Scan QR, Enter URL; no chevrons), Support us (29 red
  * heart, no chevron; Pro gets the thanks subtitle and no action), Connected Accounts
  * (Claude Code, GitHub; no chevrons), Features (Account, Appearance,
- * Agents), About (What's New, GitHub, Report an Issue, Privacy Policy,
+ * Voice Assistant, Agents), About (What's New, GitHub, Report an Issue, Privacy Policy,
  * Terms of Service, Version with the commit as a two-line subtitle).
  *
  * The Version detail is "versionName (versionCode)": happy-app shows
@@ -157,6 +157,7 @@ fun SettingsScreen(
     onClaude: () -> Unit = {},
     onGitHub: () -> Unit = {},
     onAgents: () -> Unit = {},
+    onVoice: () -> Unit = {},
     onWhatsNew: () -> Unit = {},
     isPro: Boolean = false,
     onSupport: () -> Unit = {},
@@ -283,6 +284,12 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.settings_appearance_subtitle),
                     icon = { ItemIcon(Ionicon.ColorPaletteOutline, SettingsSpec.indigo) },
                     onClick = onAppearance,
+                )
+                Item(
+                    title = stringResource(R.string.settings_voice_assistant),
+                    subtitle = stringResource(R.string.settings_voice_assistant_subtitle),
+                    icon = { ItemIcon(Ionicon.MicOutline, Color(0xFF34C759)) },
+                    onClick = onVoice,
                 )
                 Item(
                     title = stringResource(R.string.settings_agents),

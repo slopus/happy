@@ -256,6 +256,7 @@ fun ChatScreen(
             },
         )
         slots.headerAccessory?.invoke()
+        if (!tablet) com.slopus.happy.ui.voice.VoiceStatusBar()
         val floating = !tablet && !LocalWindowLayout.current.isLandscape
         // A pending chat's composer runs as the chat it was opened beside.
         val composerSession = session ?: pending?.anchor

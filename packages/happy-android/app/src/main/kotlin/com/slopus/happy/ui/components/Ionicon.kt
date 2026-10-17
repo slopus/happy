@@ -70,6 +70,7 @@ enum class Ionicon(val codepoint: Int) {
     Filter(0xf301), // filter
     FingerPrintOutline(0xf308), // finger-print-outline
     FlashOutline(0xf31a), // flash-outline
+    FlaskOutline(0xf320), // flask-outline
     Folder(0xf325), // folder
     FolderOpenOutline(0xf327), // folder-open-outline
     FolderOutline(0xf329), // folder-outline
@@ -98,7 +99,10 @@ enum class Ionicon(val codepoint: Int) {
     LogOut(0xf3d0), // log-out
     LogOutOutline(0xf3d1), // log-out-outline
     LogoGithub(0xf3f3), // logo-github
+    Mic(0xf454), // mic
     MicOutline(0xf45e), // mic-outline
+    HeartOutline(0xf377), // heart-outline
+    SearchOutline(0xf563), // search-outline
     MoonOutline(0xf461), // moon-outline
     NotificationsOutline(0xf47f), // notifications-outline
     OptionsOutline(0xf48b), // options-outline
