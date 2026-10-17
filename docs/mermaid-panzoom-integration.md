@@ -43,7 +43,8 @@ Web 与 Native 是两条渲染链，不能因为最终都显示 SVG 就假设配
 - 保留 `-.->`、`==>`、`<-->`、圆点与交叉端点的语义；ELK 可能给粗线同时附加 normal/thick 两个 class，默认 1px 规则必须明确排除 thick。
 - 保留 16px 节点文字与现有裁切/滚动契约；所有宿主颜色来自当前语义主题，不复制独立 POC 的固定配色。
 - 使用 strict 安全模式与 SVG text 标签，锁定源码不能覆盖的安全/宿主配置。深色 flowchart 的显式节点填充色与主题表面进行 OKLab 混合，并恢复可读正文色；不支持 color-mix 时回退到主题表面，透明填充保持透明。浅色输出保留显式颜色。该处理不是任意作者配色的自动对比度保证。
-- Native 把工厂函数源码嵌入 WebView，不能引用模块闭包或编译器外部辅助函数。测试包含跨 realm 的 minified 工厂执行；发布构建还需核对 Metro 产物，不以源码字符串包含某字段代替执行。
+- Native 使用构建时生成的 `mermaidRuntimeSource.generated.ts` 文本 bundle 嵌入 WebView，**禁止在手机运行时调用 Function.toString 提取源码**：Hermes 返回的普通函数体是 `[bytecode]`，调用后会报 ReferenceError。修改共享 runtime 后运行 `node scripts/generate-mermaid-runtime.cjs`，单测与 `--check` 会拒绝过期 bundle。生成物在 Git 中维护，不要求新增原生依赖或调整 runtimeVersion。
+- HTML 构造位于纯模块 `mermaidNativeDocument.ts`；`node scripts/verify-mermaid-hermes.cjs /absolute/path/to/hermes` 用真实 Hermes 生成内联／全屏 HTML，再在模拟 DOM 中执行（外部库用 stub）。这是引擎边界测试，不等于真实 Android WebView、CDN 网络或手机验收。
 
 复跑入口：`sources/components/markdown/mermaidRuntime.test.ts` 与既有组件/model/SVG 测试；实际组件验收入口 `e2e/fixtures/mermaid/serve.mjs` 提供默认／`shape=steps`（用户确认的步骤折返）、`shape=tall`（含特殊形状、不折返的合成长图裁切回归）、`shape=approved`（Marmot 原始源码）、`shape=arrows`（标准连线）、`shape=compat`（并发流程/时序/类/状态图）和 `/native?theme=dark&shape=steps`（原生 HTML＋真实 CDN，非真机）。原始带环输入独立保存在 `approved.mmd`，摘要为 `0e8f8290d42246b2b54c9609f87f3f6641714f6c5004130b1ea32dd94e42c193`。
 
@@ -184,18 +185,19 @@ Native HTML 不能直接插入用户 Mermaid 源码或主题 JSON。必须通过
 | 控制按钮与图形重叠或离开视口 | 单纯放大Modal | 未给独立顶部操作区、底部缩放条和safe area预留空间 | 画布、顶部操作和底部缩放条分别布局 |
 | 全屏按钮控制了错误的画布 | ref 更新慢 | 内联和全屏共享控制器 | 两个 canvas ref、两个生命周期、各自的 toolbar target |
 | 多张图偶发覆盖或 render 冲突 | React key 问题 | Web 文档内复用了 Mermaid render id | 使用时间戳 + 单调计数器生成唯一 id |
-| Native 图表一直空白且不进入错误态 | Mermaid 语法错误 | 外部脚本在 bootstrap 之前阻塞或加载失败，`try/catch` 尚未开始 | CDN 加载策略必须有超时/回退，并在加载阶段就建立错误上报；当前主线仍需继续强化这一点 |
+| Native 报 `bytecode is not defined` | Mermaid 语法错误 | 运行时用 Function.toString 序列化 Hermes 函数，函数体被替换为 `[bytecode]` | 改用构建时生成的字面量脚本 bundle，并测试真实引擎生成的 HTML |
+| Native 图表一直空白且不进入错误态 | Mermaid 语法错误 | 前置远程脚本可阻塞 bootstrap；用户手机是否命中仍须设备证据 | 先建立 bootstrap/桥接，再异步加载，单次20秒超时与错误事件进入已有错误态；监听 WebView 加载／HTTP／进程退出错误 |
 | 内容包含 `</script>` 一类文本时 HTML 被截断 | Mermaid parser 问题 | 原始内容直接插入 inline script | 只使用 `serializeForInlineScript()` |
 | 深色主题仍出现默认暖色表面 | Mermaid 配色不全 | 绕过语义 token 或遗漏 theme variable | 统一从 `createMermaidThemeConfig()` 映射，并做深色主题断言 |
 
 ## 6. Native 当前限制
 
-当前 Native HTML 使用固定版本的远程 Mermaid/Panzoom 脚本。它有两个需要提前意识到的运行风险：
+当前 Native HTML 仍使用固定版本的远程 Mermaid/Panzoom 脚本：
 
 1. npm/Web 与 WebView CDN 版本可能漂移；升级任一侧时要同步核对两条链。
-2. 如果 `<script src>` 在 bootstrap 前阻塞，页面内的 render `try/catch` 无法捕获加载失败。
+2. bootstrap 先建立错误桥接，再异步加载脚本；每个脚本有单次20秒截止时间，加载失败／未提供预期全局对象会立即失败。卸载时取消未完成加载，晚到的加载／渲染结果不会更新文档或回调宿主。没有轮询、循环重试或离线资源。
 
-后续增强 CDN timeout、fallback 或离线资源时，不能只验证“脚本 URL 可访问”；还要覆盖首选源卡住、首选源失败、备选源成功、全部失败可见错误，以及卸载后不会继续回调。
+当前回归覆盖加载成功、失败、卡住、超时后晚到事件、文档卸载和 WebView 原生错误态。没有增加备用 CDN；若后续加入 fallback 或离线资源，仍需独立验证备选成功／全部失败，不能只验证“脚本 URL 可访问”。工程机器的 CDN 请求成功和 Hermes CLI 测试均不能替代手机真实显示结果。
 
 ## 7. 回归矩阵
 

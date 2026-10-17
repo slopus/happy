@@ -58,6 +58,7 @@ vi.mock('@/utils/imageDownload', () => ({ downloadImage: vi.fn().mockResolvedVal
 
 import { MermaidRenderer } from './MermaidRenderer';
 import { downloadImage } from '@/utils/imageDownload';
+import { createMermaidRuntime } from './mermaidRuntime';
 
 describe('MermaidRenderer native interaction contract', () => {
     let renderer: TestRenderer.ReactTestRenderer | undefined;
@@ -69,6 +70,23 @@ describe('MermaidRenderer native interaction contract', () => {
     afterEach(() => {
         act(() => renderer?.unmount());
         renderer = undefined;
+        vi.restoreAllMocks();
+    });
+
+    it('renders when the native engine cannot recover function source from bytecode', async () => {
+        // Hermes does not retain ordinary function source. The WebView must not
+        // depend on Function.toString to transport the runtime into its realm.
+        vi.spyOn(createMermaidRuntime as unknown as { toString: () => string }, 'toString').mockReturnValue('function createMermaidRuntime(a0, a1) { [bytecode] }');
+        await act(async () => { renderer = TestRenderer.create(<MermaidRenderer content="flowchart TB\nA --> B" />); });
+        const dom = new JSDOM(renderer!.root.findByType('WebView').props.source.html, { runScripts: 'outside-only' });
+        const browser = dom.window;
+        browser.mermaid = { initialize() {}, registerLayoutLoaders() {}, async render() {
+            return { svg: '<svg viewBox="0 0 100 60"><text>正文输出</text></svg>' };
+        } };
+        try {
+            browser.eval(browser.document.querySelector('script:not([src])').textContent);
+            await vi.waitFor(() => expect(browser.document.querySelector('#scene text')?.textContent).toBe('正文输出'));
+        } finally { browser.close(); }
     });
 
     it('adapts explicit light node fills in the actual WebView bootstrap without changing source text', async () => {
@@ -192,6 +210,20 @@ describe('MermaidRenderer native interaction contract', () => {
             fontWeight: 'normal',
         });
         expect(Object.assign({}, ...code.props.style.filter(Boolean)).fontFamily).toBe('MapleMonoNL-Regular');
+    });
+
+    it.each(['onError', 'onHttpError', 'onRenderProcessGone'])('shows the existing error fallback after a WebView %s', async (callback) => {
+        await act(async () => { renderer = TestRenderer.create(<MermaidRenderer content="flowchart TB\nA --> B" />); });
+        act(() => renderer!.root.findByType('WebView').props[callback]({ nativeEvent: {} }));
+        expect(renderer!.root.findAllByType('Text').some((node: any) => node.props.children === 'markdown.mermaidRenderFailed')).toBe(true);
+    });
+
+    it('allows updated source to render after a native load failure', async () => {
+        await act(async () => { renderer = TestRenderer.create(<MermaidRenderer content="flowchart TB\nA --> B" />); });
+        act(() => renderer!.root.findByType('WebView').props.onError({ nativeEvent: {} }));
+        await act(async () => { renderer!.update(<MermaidRenderer content="flowchart TB\nB --> C" />); });
+        expect(renderer!.root.findAllByType('Text').some((node: any) => node.props.children === 'markdown.mermaidRenderFailed')).toBe(false);
+        expect(renderer!.root.findAllByType('WebView')).toHaveLength(1);
     });
 
     it('runs the WebView bootstrap with an HTML panzoom target and exports complete valid SVG', async () => {

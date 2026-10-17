@@ -1,5 +1,4 @@
-// @ts-expect-error serve.mjs exposes the private builder only in this test bundle.
-import { buildNativeDocument } from '../../../sources/components/markdown/MermaidRenderer';
+import { buildNativeDocument } from '../../../sources/components/markdown/mermaidNativeDocument';
 import { createMermaidThemeConfig } from '../../../sources/components/markdown/mermaidRendererModel';
 import { theme } from './theme';
 // @ts-expect-error esbuild's text loader supplies the canonical Mermaid source.

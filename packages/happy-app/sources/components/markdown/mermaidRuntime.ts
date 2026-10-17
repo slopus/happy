@@ -16,9 +16,9 @@ export type MermaidRuntime = {
 
 /**
  * Shared Web/WebView runtime. Deliberately self-contained and ES5-shaped:
- * Native embeds this function's source, so no imported values, async helpers,
- * spread helpers or module-level closures may be referenced in its body.
- * The serialization/minified-build tests protect this cross-realm contract.
+ * Native embeds a generated bundle as literal text, never Function.toString
+ * (Hermes returns [bytecode]). After editing, regenerate that bundle with
+ * scripts/generate-mermaid-runtime.cjs; parity tests reject stale artifacts.
  */
 export function createMermaidRuntime(mermaid: MermaidEngine, loadElk: () => Promise<any[]>): MermaidRuntime {
     var layoutName = 'paws-flowchart';

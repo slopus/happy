@@ -36,11 +36,6 @@ for (const variant of process.argv.includes('--before') ? ['after', 'before', 'n
                 contents: execFileSync('git', ['show', '637e64911fb9ae2c840fac6b9d2196909fa46109:packages/happy-app/sources/components/markdown/MermaidRenderer.tsx'], { cwd: root, encoding: 'utf8' }),
                 loader: 'tsx', resolveDir: dirname(args.path),
             }));
-            // Expose the unmodified private HTML builder only in this verification bundle.
-            if (native) builder.onLoad({ filter: /\/markdown\/MermaidRenderer\.tsx$/ }, async args => ({
-                contents: await readFile(args.path, 'utf8') + '\nexport { buildNativeDocument };',
-                loader: 'tsx', resolveDir: dirname(args.path),
-            }));
         } }],
     });
 }
