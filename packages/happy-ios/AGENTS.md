@@ -575,7 +575,8 @@ Shared seams, changed only through the coordinator:
   (re-laid out through `registerForTraitChanges([TabletLayoutTrait.self])`);
   their rules are in `HappyLayout/Tablet/TabletBranches.swift`;
 - `Schema.swift`: migrations are added by the Sending workstream or the
-  coordinator. v3 can still change until the app first ships.
+  coordinator. Migrations are append-only now that Preview has shipped;
+  never change a registered migration.
 
 To keep parallel work from colliding:
 

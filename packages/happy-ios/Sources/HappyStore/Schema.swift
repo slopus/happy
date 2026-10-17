@@ -181,6 +181,16 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v6") { db in
+            // The first v3 caches predate composerState: it was added to
+            // that migration after they had already recorded v3 as applied.
+            // Add the missing table without replacing existing selections.
+            try db.create(table: "composerState", ifNotExists: true) { t in
+                t.primaryKey("sessionId", .text)
+                t.column("values", .text).notNull()
+            }
+        }
+
         return migrator
     }
 }
