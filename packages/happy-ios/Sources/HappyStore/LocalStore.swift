@@ -480,7 +480,14 @@ public final class LocalStore: Sendable {
     /// Project ids the stored sessions point at, which is the set to fetch.
     public func referencedProjectIds() throws -> [String] {
         try performRead { db in
-            try String.fetchAll(db, sql: "SELECT DISTINCT projectId FROM session WHERE projectId IS NOT NULL AND projectId != '' ORDER BY projectId")
+            try String.fetchAll(db, sql: """
+                SELECT DISTINCT linkedId FROM (
+                    SELECT COALESCE(NULLIF(TRIM(projectId), ''),
+                        CASE WHEN json_type(metadata, '$.project.id') = 'text'
+                            THEN NULLIF(TRIM(json_extract(metadata, '$.project.id')), '') END) AS linkedId
+                    FROM session
+                ) WHERE linkedId IS NOT NULL ORDER BY linkedId
+                """)
         }
     }
 

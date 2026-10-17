@@ -177,6 +177,32 @@ final class PrivateAvatarTests: XCTestCase {
         await engine.stop()
     }
 
+    func testProjectArtworkFetchIncludesOlderRigMetadataLinksWithTopLevelPrecedence() async throws {
+        let store = try LocalStore.inMemory()
+        var old = session()
+        old.id = "old"
+        old.projectId = nil
+        old.metadata = .object(["project": .object(["id": .string("  legacy-project  ")])])
+        var current = old
+        current.id = "current"
+        current.projectId = " top-project "
+        current.metadata = .object(["project": .object(["id": .string("ignored-project")])])
+        var invalid = old
+        invalid.id = "invalid"
+        invalid.metadata = .object(["project": .object(["id": .number(123)])])
+        try store.upsertSessions([old, current, invalid])
+        XCTAssertEqual(try store.referencedProjectIds(), ["legacy-project", "top-project"])
+        let http = FakeHTTP()
+        http.on("GET /v1/projects") { request in
+            XCTAssertEqual(request.query("ids"), "legacy-project,top-project")
+            return (200, Data(#"{"projects":[]}"#.utf8))
+        }
+        let engine = SyncEngine(api: testAPI(http), store: store, keys: try AccountKeys(secret: Data(repeating: 1, count: 32)))
+        try await engine.pullProjects()
+        XCTAssertEqual(http.requests("GET /v1/projects").count, 1)
+        await engine.stop()
+    }
+
     func testAvatarGrantSendsCredentialsOnlyToServerAndChecksActiveRef() async throws {
         let http = FakeHTTP()
         let api = HappyAPI(serverURL: URL(string: "https://server.test")!, clientID: "ios/test", transport: http, token: "private-token")
