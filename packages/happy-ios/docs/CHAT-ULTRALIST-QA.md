@@ -22,7 +22,7 @@ harness, and sends, permission answers and question answers go to
 | `testC5QuestionsAndSending` | Inline question answers, the question sheet, a failed send and its retry |
 | `testC6DiagramsAndGiantMessage` | Mermaid diagrams and their web views, one 350-paragraph message, and messages either side of the 4096-point tile limit |
 | `testC7HomeOpensChatsDetailsAndSetting` | Cold and warm opens from Home, header avatar to Details, worktree tabs, the renderer setting and its persistence |
-| `testN1NavigationBarOwnership` | Which screen has the navigation bar: none on Home, the bar on a chat in portrait and none in landscape, the chat with its bar after an attempted back swipe let go early, and the ordinary bar on Settings. Checked at rest only: whether the swipe began and turned back, and any bar flash during a push, need a recorded pass |
+| `testN1NavigationBarOwnership` | Which screen has the navigation bar: none on Home, the bar on a chat in portrait, in landscape none on a phone layout and the bar beside the sidebar on a window at least 768 points wide (a tablet layout, as an iPhone 12 is), the chat with its bar after an attempted back swipe let go early, and the ordinary bar on Settings. Checked at rest only: whether the swipe began and turned back, and any bar flash during a push, need a recorded pass |
 | `testC8DarkLargeTextRotationAccessibility` | Dark appearance, Accessibility XL text with an accessibility audit, rotation with the keyboard up |
 | `testC9ComposerControlsAndVoiceEntry` | The composer's chips and add menu (opened and closed, nothing chosen), and the voice button changing to Send when text is typed |
 | `testL2LegacyAndUltraScreens` | The same screens on both renderers, for pixel comparison |

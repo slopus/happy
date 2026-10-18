@@ -1258,7 +1258,10 @@ final class ChatUltraQATests: XCTestCase {
     }
 
     /// Home floats its own header with no bar, a chat has the bar in
-    /// portrait and none in landscape, and Settings has the ordinary bar.
+    /// portrait, and Settings has the ordinary bar. In landscape a chat has
+    /// no bar on a phone layout; a window at least 768 points wide is a
+    /// tablet layout (`TabletBreakpoint`), where the chat beside the sidebar
+    /// keeps its bar (`chatHidesHeaderInLandscape`).
     /// Every check is of the screen at rest. The back swipe let go early is
     /// only attempted: a swipe that never began passes the same checks, so
     /// whether it began and turned back, and any bar flashing during a
@@ -1319,7 +1322,14 @@ final class ChatUltraQATests: XCTestCase {
         landscapeRow.tap()
         Thread.sleep(forTimeInterval: 2.5)
         assertReady("open landscape")
-        require("a chat has no bar in landscape", shownBars().isEmpty, "\(shownBars().map { $0.frame })")
+        let width = app.windows.firstMatch.frame.width
+        if width >= 768 {
+            let bars = shownBars()
+            require("a chat beside the sidebar has its bar in a landscape tablet layout",
+                    bars.count == 1 && bars[0].frame.minX > 0, "window \(width) wide, \(bars.map { $0.frame })")
+        } else {
+            require("a chat has no bar in landscape", shownBars().isEmpty, "window \(width) wide, \(shownBars().map { $0.frame })")
+        }
         screenshot("07-chat-landscape")
         mark("rotate portrait")
         XCUIDevice.shared.orientation = .portrait
