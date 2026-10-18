@@ -33,7 +33,9 @@ final class ChatUltraKeyboard: NSObject {
         var finishes = false
     }
 
-    private(set) weak var list: UltraListView?
+    /// Kept until this is dropped, even past a renderer switch, so what the
+    /// list's motion carried can still be landed on it.
+    let list: UltraListView
     private weak var view: UIView?
     private var dismissal: KeyboardDismissalController?
     private let accessoryHeight: () -> CGFloat
@@ -71,7 +73,7 @@ final class ChatUltraKeyboard: NSObject {
 
     /// The screen is appearing: the library's controller starts.
     func activate() {
-        guard !isActive, let list, let view else { return }
+        guard !isActive, let view else { return }
         isActive = true
         resync = true
         let accessoryHeight = accessoryHeight
@@ -104,7 +106,7 @@ final class ChatUltraKeyboard: NSObject {
     /// only the layout guide follows the finger.
     func keyboardTop(guideTop: CGFloat) -> CGFloat {
         guard let view else { return guideTop }
-        if !isAvailable, list?.isTracking == true { return guideTop }
+        if !isAvailable, list.isTracking { return guideTop }
         return view.bounds.maxY - height
     }
 
@@ -135,7 +137,7 @@ final class ChatUltraKeyboard: NSObject {
         guard isActive else { return }
         // The finger moves the rows while it tracks; a release carries
         // them only when nothing else holds them.
-        let held = list.map { $0.isTracking || $0.isDragging } ?? false
+        let held = list.isTracking || list.isDragging
         take(CGFloat(update.height), Change(
             transition: update.transition, compensates: !held,
             finishes: update.transition.isImmediate && update.phase != .tracking
@@ -152,7 +154,7 @@ final class ChatUltraKeyboard: NSObject {
             guard let self, self.isActive, self.generation == generation, !self.isDriving else { return }
             self.take(height, change)
         }
-        if let list { list.performAfterCurrentPass(apply) } else { apply() }
+        list.performAfterCurrentPass(apply)
     }
 
     private func take(_ height: CGFloat, _ change: Change) {

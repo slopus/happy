@@ -177,6 +177,52 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         post(UIResponder.keyboardWillChangeFrameNotification, up: false, in: window)
     }
 
+    /// What rides the dock and moves on the list's keyboard motion.
+    private func riders(_ test: Chat) throws -> [UIView] {
+        [test.dock, try XCTUnwrap(subview(ChatScrollButton.self, in: test.chat.view)),
+         try XCTUnwrap(subview(ChatScrimView.self, in: test.chat.view)), try XCTUnwrap(subview(ChatPlaceholderView.self, in: test.chat.view))]
+    }
+
+    private func animating(_ views: [UIView]) -> [String] {
+        views.flatMap { view in (view.layer.animationKeys() ?? []).map { "\(type(of: view)).\($0)" } }
+    }
+
+    /// A keyboard on its way carries the dock on the list's motion. Covered
+    /// halfway, the chat lands it, and the renderer can then change under
+    /// it with nothing left moving.
+    func testACoveredChatLandsTheDockMidKeyboardAndCanSwitchRenderer() async throws {
+        let test = try await chat(.ultraList)
+        let window = try XCTUnwrap(test.chat.view.window)
+        post(UIResponder.keyboardWillChangeFrameNotification, up: true, in: window)
+        XCTAssertFalse(test.dock.layer.animationKeys()?.isEmpty ?? true, "the dock moves on the list's motion")
+
+        test.navigation.pushViewController(UIViewController(), animated: false)
+        let stopped = try await until { test.chat.ultraKeyboard?.isActive == false }
+        XCTAssertTrue(stopped)
+        XCTAssertEqual(animating(try riders(test)), [], "the covered chat landed what rode the dock")
+
+        test.controller.localSettings.chatListRenderer = .collectionView
+        test.navigation.popViewController(animated: false)
+        let switched = try await until { test.list.ultra == nil && test.chat.ultraKeyboard == nil }
+        XCTAssertTrue(switched)
+        XCTAssertEqual(animating(try riders(test)), [])
+        XCTAssertEqual(test.dock.frame.maxY, resting(test.chat), accuracy: 0.5, "the guide's dock, on the safe area")
+    }
+
+    /// The chat leaving the navigation mid-keyboard lands what rode the
+    /// dock.
+    func testAChatPoppedMidKeyboardLandsTheDock() async throws {
+        let test = try await chat(.ultraList)
+        let window = try XCTUnwrap(test.chat.view.window)
+        let riders = try riders(test)
+        post(UIResponder.keyboardWillChangeFrameNotification, up: true, in: window)
+        XCTAssertFalse(test.dock.layer.animationKeys()?.isEmpty ?? true)
+        test.navigation.popViewController(animated: false)
+        let gone = try await until { test.chat.parent == nil && test.chat.ultraKeyboard == nil }
+        XCTAssertTrue(gone)
+        XCTAssertEqual(animating(riders), [])
+    }
+
     func testTheCollectionViewRendererHasNoUltraViewKeyboard() async throws {
         let test = try await chat(.collectionView)
         XCTAssertNil(test.list.ultra)

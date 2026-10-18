@@ -446,9 +446,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         // ChatList's `active`: a chat not shown asks for no older page.
         historyPager?.isActive = false
         appeared = false
-        if ultraKeyboard?.isActive == true {
-            ultraKeyboard?.deactivate()
-            landDockRiders()
+        if let keyboard = ultraKeyboard, keyboard.isActive {
+            keyboard.deactivate()
+            landDockRiders(on: keyboard.list)
         }
     }
 
@@ -458,7 +458,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     override func didMove(toParent parent: UIViewController?) {
         super.didMove(toParent: parent)
         if parent == nil {
-            ultraKeyboard?.invalidate()
+            if let keyboard = ultraKeyboard {
+                keyboard.invalidate()
+                landDockRiders(on: keyboard.list)
+            }
             ultraKeyboard = nil
             construction?.cancel()
             opening?.cancel()
@@ -755,7 +758,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func updateUltraKeyboard() {
         let current = list.ultra?.list
         if let keyboard = ultraKeyboard, current != nil, keyboard.list === current { return }
-        ultraKeyboard?.invalidate()
+        if let old = ultraKeyboard {
+            // Its list may already be off screen: it keeps it for this.
+            old.invalidate()
+            landDockRiders(on: old.list)
+        }
         ultraKeyboard = current.map { ultraList in
             ChatUltraKeyboard(
                 list: ultraList, view: view,
@@ -798,9 +805,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         CATransaction.commit()
     }
 
-    /// The screen has gone: nothing it carried keeps moving.
-    private func landDockRiders() {
-        guard let ultraList = list.ultra?.list, contentInstalled else { return }
+    /// The screen has gone or the keyboard is done with: nothing `ultraList`'s
+    /// motion carried keeps moving.
+    private func landDockRiders(on ultraList: UltraListView) {
+        guard contentInstalled else { return }
         for view in dockRiders { ultraList.applyViewportMotion(to: view.layer, keyPath: "position.y", displacement: 0) }
         ultraList.applyViewportMotion(to: scrim.layer, keyPath: "bounds.size.height", displacement: 0)
     }
