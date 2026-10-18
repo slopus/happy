@@ -19,9 +19,10 @@ import UltraView
 /// interactive dismiss: `keyboardTracker` is pinned to the keyboard layout
 /// guide, so every keyboard frame, animated or dragged, lays the screen out
 /// again, inside the keyboard's own animation when there is one. On the
-/// UltraList renderer UltraView's keyboard integration moves the keyboard
-/// instead (`ChatUltraKeyboard`), and the dock follows what it reports.
-/// Every frame comes from `ChatScreenLayout`.
+/// UltraList renderer with the floating dock (a phone in portrait),
+/// UltraView's keyboard integration moves the keyboard instead
+/// (`ChatUltraKeyboard`), and the dock follows what it reports. Every frame
+/// comes from `ChatScreenLayout`.
 ///
 /// Messages go snapshot → display items (ChatDisplay: visibility, turns,
 /// work groups, the rendered window) → row inputs → plans → the list's
@@ -86,8 +87,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private lazy var scrollButton = ChatScrollButton()
     private lazy var copyCallout = ChatCopyCallout()
     private lazy var keyboardTracker = UIView()
-    /// The keyboard while the list renders with UltraList; nil on the
-    /// UICollectionView renderer.
+    /// The keyboard while the list renders with UltraList under a floating
+    /// dock; nil otherwise.
     private(set) var ultraKeyboard: ChatUltraKeyboard?
     /// Between appearing and having gone: only then does UltraList's
     /// keyboard work.
@@ -754,10 +755,16 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         if let strip = screen.statusBarShadow { statusBarStrip.setLayoutFrame(strip) }
     }
 
-    /// One `ChatUltraKeyboard` for the UltraList the list renders with,
-    /// none on the UICollectionView renderer.
+    /// One `ChatUltraKeyboard` for the UltraList the list renders with
+    /// under the floating dock, none otherwise.
+    ///
+    /// Docked (a tablet, a phone on its side) the list's own frame ends at
+    /// the dock and changes height with the keyboard. UltraView has no
+    /// public way yet to carry a list's frame or clip on its viewport
+    /// motion, so there the keyboard layout guide moves the screen, as on
+    /// UICollectionView.
     private func updateUltraKeyboard() {
-        let current = list.ultra?.list
+        let current = floatingDock ? list.ultra?.list : nil
         if let keyboard = ultraKeyboard, current != nil, keyboard.list === current { return }
         if let old = ultraKeyboard {
             // Its list may already be off screen: it keeps it for this.

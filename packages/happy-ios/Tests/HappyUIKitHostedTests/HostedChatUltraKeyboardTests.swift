@@ -19,9 +19,10 @@ private struct NoSockets: WebSocketConnector {
     }
 }
 
-/// The chat's keyboard on each renderer: UltraList takes it from
-/// UltraView's keyboard integration (`ChatUltraKeyboard`), and only
-/// UltraList; UICollectionView keeps following the layout guide.
+/// The chat's keyboard on each renderer: UltraList under the floating dock
+/// takes it from UltraView's keyboard integration (`ChatUltraKeyboard`);
+/// UICollectionView, and UltraList docked, keep following the layout
+/// guide.
 ///
 /// A finger driving the keyboard needs the system's keyboard host, which a
 /// test can't supply; `ChatScrollUITests` drives it on a phone. Here the
@@ -222,6 +223,38 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         let gone = try await until { test.chat.parent == nil && test.chat.ultraKeyboard == nil }
         XCTAssertTrue(gone)
         XCTAssertEqual(animating(riders), [])
+    }
+
+    /// Docked, the list's frame follows the keyboard, which UltraView
+    /// can't carry yet: UltraList keeps the layout guide there, and gets
+    /// UltraView's keyboard back once the dock floats again.
+    func testTheDockedLayoutKeepsTheLayoutGuideOnUltraList() async throws {
+        let test = try await chat(.ultraList)
+        let window = try XCTUnwrap(test.chat.view.window)
+        let floating = try XCTUnwrap(test.chat.ultraKeyboard)
+
+        test.navigation.traitOverrides.isTabletLayout = true
+        let docked = try await until {
+            test.chat.view.layoutIfNeeded()
+            return test.chat.ultraKeyboard == nil
+        }
+        XCTAssertTrue(docked, "no UltraView keyboard under a docked layout")
+        XCTAssertNotNil(test.list.ultra, "still UltraList")
+        XCTAssertFalse(floating.isActive)
+        let dock = test.dock.frame
+        post(UIResponder.keyboardWillChangeFrameNotification, up: true, in: window)
+        test.chat.view.setNeedsLayout()
+        test.chat.view.layoutIfNeeded()
+        XCTAssertEqual(test.dock.frame, dock, "a posted frame doesn't move the guide's dock")
+        post(UIResponder.keyboardWillChangeFrameNotification, up: false, in: window)
+
+        test.navigation.traitOverrides.isTabletLayout = false
+        let back = try await until {
+            test.chat.view.layoutIfNeeded()
+            return test.chat.ultraKeyboard?.isActive == true
+        }
+        XCTAssertTrue(back, "the floating dock has UltraView's keyboard again")
+        XCTAssertFalse(test.chat.ultraKeyboard === floating)
     }
 
     func testTheCollectionViewRendererHasNoUltraViewKeyboard() async throws {
