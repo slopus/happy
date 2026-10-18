@@ -125,10 +125,11 @@ Window fields:
   `pastTargetFrames` measure scheduling lateness.
 - `turnMaxMs` and `turnsOverFrame` come from the main thread's run-loop turns
   (`MainThreadMonitor`).
-- `applyMaxMs` and `applyTotalMs` give the time chat applies (`ApplyPerf`:
-  list, session, snapshot) held the main thread synchronously. UltraList's
-  asynchronous preparation and drawing don't appear here. They appear as
-  not-ready rows.
+- `applyMaxMs` is the longest time a single chat apply (`ApplyPerf`: list,
+  session, snapshot) held the main thread synchronously. `applyTotalMs` is
+  the sum of all measured chat applies in the window, not the main thread's
+  total busy time. UltraList's asynchronous preparation and drawing don't
+  appear here. They appear as not-ready rows.
 - `notReadyFrames`, `notReadyRunMax` and `notReadyMax` count rows that were
   mounted and on screen but whose bitmap wasn't drawn yet. This means "not
   drawn yet", not necessarily blank pixels. `uncoveredMax` includes the
@@ -146,9 +147,11 @@ Openings from Home (`opens` in the state) are measured from the lifted
 finger:
 
 - `mountMs`: the first frame with the list mounted.
-- `visibleMs`: the first frame with the list on screen as presented.
+- `visibleMs`: the first frame where the list's layer has been committed
+  (it has a presentation layer) and is on screen as presented.
 - `readyMs`: the first frame with every row on screen drawn.
-- `settledMs`: the first frame where the presented position equals the model.
+- `settledMs`: the first frame with no navigation transition running and
+  the presented position equal to the model's.
 
 Openings also record `notReadyVisibleFrames`, `missedFrames`, `turnMaxMs`
 and `applyMaxMs`. All of these are target times of display frames, accurate

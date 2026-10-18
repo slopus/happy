@@ -46,11 +46,17 @@ import UltraView
 /// handlers had run), and `pushStartedInDelivery`, whether a navigation
 /// transition had begun by then.
 ///
-/// `applyMs` is the time a chat apply (`ApplyPerf`: list, session,
-/// snapshot) held the main thread synchronously; the UltraList's
-/// asynchronous preparation and drawing show up as not-ready rows, and
-/// everything else on the main thread as `turn`. `memoryMB` is the
-/// process footprint, sampled every half second.
+/// `applyMs` is the longest time one chat apply (`ApplyPerf`: list,
+/// session, snapshot) held the main thread synchronously within a frame,
+/// `applySumMs` all of them together; the UltraList's asynchronous
+/// preparation and drawing show up as not-ready rows, and everything else
+/// on the main thread as `turn`. `memoryMB` is the process footprint,
+/// sampled every half second.
+///
+/// An opening is visible once the list's layer has been committed (it has
+/// a presentation layer) and shows on screen, and settled once no
+/// navigation transition is running and the presented frame equals the
+/// model's.
 ///
 /// `redacted` (the TEST account) reports counts and geometry only: no
 /// controls report.
@@ -139,6 +145,7 @@ final class ChatUltraQAProbe: NSObject {
     private var applySinceRelease = 0.0
     private var applyStarted: [ApplySite: CFTimeInterval] = [:]
     private var applyMsSinceFrame = 0.0
+    private var applySumSinceFrame = 0.0
     private var memoryMB = -1.0
     private var memoryPeakMB = -1.0
     private var memoryTick = 0
@@ -183,6 +190,7 @@ final class ChatUltraQAProbe: NSObject {
             if site == .chatList { appliedSinceFrame = true }
             let milliseconds = (CACurrentMediaTime() - started) * 1000
             applyMsSinceFrame = max(applyMsSinceFrame, milliseconds)
+            applySumSinceFrame += milliseconds
             applySinceRelease = max(applySinceRelease, milliseconds)
         }
         MainThreadMonitor.shared.onTurn = { [weak self] turn in
@@ -295,12 +303,15 @@ final class ChatUltraQAProbe: NSObject {
     private func deliveredTouch(_ touch: UITouch) {
         guard touch.phase == .ended || touch.phase == .cancelled, let window else { return }
         let handlerMs = (CACurrentMediaTime() - touch.timestamp) * 1000
-        func transitioning(_ controller: UIViewController?) -> Bool {
-            guard let controller else { return false }
-            if let navigation = controller as? UINavigationController, navigation.transitionCoordinator != nil { return true }
-            return controller.children.contains { transitioning($0) } || transitioning(controller.presentedViewController)
-        }
-        delivered = (touch.timestamp, handlerMs, transitioning(window.rootViewController))
+        delivered = (touch.timestamp, handlerMs, Self.transitioning(window.rootViewController))
+    }
+
+    /// Whether a navigation controller at or under `controller` is in a
+    /// transition.
+    private static func transitioning(_ controller: UIViewController?) -> Bool {
+        guard let controller else { return false }
+        if let navigation = controller as? UINavigationController, navigation.transitionCoordinator != nil { return true }
+        return controller.children.contains { transitioning($0) } || transitioning(controller.presentedViewController)
     }
 
     @objc private func frame(_ link: CADisplayLink) {
@@ -317,6 +328,7 @@ final class ChatUltraQAProbe: NSObject {
             }
             appliedSinceFrame = false
             applyMsSinceFrame = 0
+            applySumSinceFrame = 0
             turnSinceFrame = 0
             previousRows = [:]
             previousDockY = nil
@@ -397,7 +409,7 @@ final class ChatUltraQAProbe: NSObject {
             finger: fingerDown ? fingerY : -1, offset: offset, presented: presented, distance: Double(list.visibleMinY), dockY: dockY,
             loaded: loaded, onScreen: onScreen, ready: ready, notReady: notReady,
             uncovered: Double(max(0, listFrame.height - covered)), rigid: rigid, deviation: deviation,
-            newestGap: newestGap, touchDelta: touchDelta, turn: turnSinceFrame, applyMs: applyMsSinceFrame, memoryMB: memoryMB
+            newestGap: newestGap, touchDelta: touchDelta, turn: turnSinceFrame, applyMs: applyMsSinceFrame, applySumMs: applySumSinceFrame, memoryMB: memoryMB
         ))
         let index = frameCount
         frameCount += 1
@@ -406,6 +418,7 @@ final class ChatUltraQAProbe: NSObject {
         previousPresented = presented
         appliedSinceFrame = false
         applyMsSinceFrame = 0
+        applySumSinceFrame = 0
         turnSinceFrame = 0
 
         let active = flags & ~QAFlags.finger != 0 || fingerDown
@@ -462,7 +475,10 @@ final class ChatUltraQAProbe: NSObject {
         }
         progress.turnMaxMs = max(progress.turnMaxMs, turnSinceFrame)
         progress.applyMaxMs = max(progress.applyMaxMs, applyMsSinceFrame)
-        let shown = !listFrame.isNull && listFrame.width > 1 && listFrame.height > 1
+        // Before its first commit a layer has no presentation, and its
+        // "presented" frame is the model's.
+        let committed = list.layer.presentation() != nil
+        let shown = committed && !listFrame.isNull && listFrame.width > 1 && listFrame.height > 1
         if shown, progress.visibleMs < 0 { progress.visibleMs = since }
         let drawn = onScreen > 0 && notReady == 0 && list.isDisplayReady
         if shown, !drawn { progress.notReadyVisibleFrames += 1 }
@@ -472,7 +488,8 @@ final class ChatUltraQAProbe: NSObject {
         }
         let model = list.convert(list.bounds, to: window)
         let presented = presentedFrame(list, in: screen)
-        if shown, progress.settledMs < 0, abs(model.minX - presented.minX) < 0.5, abs(model.minY - presented.minY) < 0.5 {
+        if shown, progress.settledMs < 0, !Self.transitioning(window.rootViewController),
+           abs(model.minX - presented.minX) < 0.5, abs(model.minY - presented.minY) < 0.5 {
             progress.settledMs = since
         }
         if (progress.readyMs >= 0 && progress.settledMs >= 0) || since > 5000 {
@@ -763,6 +780,7 @@ private struct QAFrame: Sendable {
     var touchDelta: Double
     var turn: Double
     var applyMs: Double
+    var applySumMs: Double
     var memoryMB: Double
 }
 
@@ -783,7 +801,8 @@ private struct QAWindow: Encodable, Sendable {
     var pastTargetFrames: Int
     var turnMaxMs: Double
     var turnsOverFrame: Int
-    /// The longest and the total time chat applies held the main thread.
+    /// The longest one chat apply held the main thread, and all of them
+    /// together (measured chat applies only, not the main thread's total).
     var applyMaxMs: Double
     var applyTotalMs: Double
     var applies: Int
@@ -816,7 +835,7 @@ private final class QALedger: @unchecked Sendable {
     init(directory: URL?, run: String) {
         frameURL = directory?.appendingPathComponent("\(run)-frames.csv")
         windowURL = directory?.appendingPathComponent("\(run)-windows.json")
-        let header = "time,target,callback,flags,finger,offset,presented,distance,dockY,loaded,onScreen,ready,notReady,uncovered,rigid,deviation,newestGap,touchDelta,turn,applyMs,memoryMB\n"
+        let header = "time,target,callback,flags,finger,offset,presented,distance,dockY,loaded,onScreen,ready,notReady,uncovered,rigid,deviation,newestGap,touchDelta,turn,applyMs,applySumMs,memoryMB\n"
         if let frameURL { try? header.write(to: frameURL, atomically: true, encoding: .utf8) }
     }
 
@@ -883,7 +902,7 @@ private final class QALedger: @unchecked Sendable {
             callbackDelayP99Ms: Self.percentile(99, delays), callbackDelayMaxMs: delays.max() ?? 0,
             pastTargetFrames: slice.filter { $0.callback > $0.target }.count,
             turnMaxMs: slice.map(\.turn).max() ?? 0, turnsOverFrame: slice.filter { expected > 0 && $0.turn > expected * 1000 }.count,
-            applyMaxMs: slice.map(\.applyMs).max() ?? 0, applyTotalMs: slice.map(\.applyMs).reduce(0, +),
+            applyMaxMs: slice.map(\.applyMs).max() ?? 0, applyTotalMs: slice.map(\.applySumMs).reduce(0, +),
             applies: applies, touches: touches,
             notReadyFrames: slice.filter { $0.notReady > 0 }.count, notReadyRunMax: longestRun, notReadyMax: slice.map(\.notReady).max() ?? 0,
             uncoveredMax: slice.map(\.uncovered).max() ?? 0,
@@ -916,7 +935,7 @@ private final class QALedger: @unchecked Sendable {
                     String(format: "%.2f", frame.dockY), "\(frame.loaded)", "\(frame.onScreen)", "\(frame.ready)", "\(frame.notReady)",
                     String(format: "%.1f", frame.uncovered), String(format: "%.2f", frame.rigid), String(format: "%.2f", frame.deviation),
                     String(format: "%.2f", frame.newestGap), String(format: "%.2f", frame.touchDelta), String(format: "%.2f", frame.turn),
-                    String(format: "%.2f", frame.applyMs), String(format: "%.1f", frame.memoryMB),
+                    String(format: "%.2f", frame.applyMs), String(format: "%.2f", frame.applySumMs), String(format: "%.1f", frame.memoryMB),
                 ]
                 text += fields.joined(separator: ",") + "\n"
             }
