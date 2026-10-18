@@ -217,7 +217,9 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     /// under the reader's finger, as in an interactive dismiss, the
     /// conversation stays with the finger
     /// (`ChatScrollAnchor.visibleMinY(afterNewestInsetChange:…)`).
-    func setEdgeInsets(newest: CGFloat, oldest: CGFloat) {
+    /// `keyboard` is UltraList's keyboard move, which the UICollectionView
+    /// renderer never sees.
+    func setEdgeInsets(newest: CGFloat, oldest: CGFloat, keyboard: ChatUltraKeyboard.Change? = nil) {
         // On the pixels the header and the dock were snapped to, or the
         // offset lands between them.
         let scale = window?.screen.scale ?? traitCollection.displayScale
@@ -227,7 +229,7 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         let inset = UIEdgeInsets(top: newest, left: 0, bottom: oldest, right: 0)
         if let ultra {
             edgeInsets = inset
-            ultra.setViewport(size: bounds.size, insets: inset)
+            ultra.setViewport(size: bounds.size, insets: inset, keyboard: keyboard)
             return
         }
         edgeInsets = inset

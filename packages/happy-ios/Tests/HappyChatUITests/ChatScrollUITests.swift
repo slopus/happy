@@ -125,6 +125,137 @@ final class ChatScrollUITests: XCTestCase {
         XCTAssertEqual(content / finger, 1, accuracy: 0.15, "content \(content) for a finger's \(finger) while the keyboard moved")
     }
 
+    // MARK: Keyboard show, return, dismiss and hide
+
+    /// UltraList moves the keyboard with UltraView's own controller; the
+    /// same script on UICollectionView, which keeps the system's
+    /// interactive dismissal and the layout guide, is the comparison. The
+    /// keyboard shows on a tap; a drag a third of the way down, held still
+    /// and let go, returns it; a slow drag to the bottom dismisses it with
+    /// the conversation under the finger; a quick drag let go partway
+    /// dismisses it; a tap on the harness's button puts it away. The dock
+    /// sits on the keyboard all the while, and moves frame by frame after
+    /// each finger lifts.
+    func testUltraListKeyboardShowReturnDismissAndHide() throws {
+        try keyboardShowReturnDismissAndHide(ultra: true)
+    }
+
+    func testKeyboardShowReturnDismissAndHide() throws {
+        try keyboardShowReturnDismissAndHide(ultra: false)
+    }
+
+    private func keyboardShowReturnDismissAndHide(ultra: Bool) throws {
+        let app = launch(["-fixture", "long", "-hideKeyboardButton"] + (ultra ? ["-chatUltraList"] : []))
+        var state = probe(app) { self.filled($0) }
+        XCTAssertEqual(state["renderer"] as? String, ultra ? "UltraList" : "UICollectionView")
+        let window = try XCTUnwrap(state["window"] as? [NSNumber]).map { CGFloat($0.doubleValue) }
+        let width = window[0], height = window[1]
+        let resting = height - number((state["safeArea"] as? [NSNumber])?[2])
+        let x = width / 2
+        Thread.sleep(forTimeInterval: 0.5)
+
+        func touches(_ state: [String: Any]) -> Int { ((state["lastTouch"] as? [String: Any])?["index"] as? NSNumber)?.intValue ?? 0 }
+        func release(_ state: [String: Any]) -> [String: Any] { (state["lastTouch"] as? [String: Any])?["release"] as? [String: Any] ?? [:] }
+        func isUp(_ state: [String: Any]) -> Bool { number(state["keyboardTop"]) < height - 150 }
+        /// After a finger lifted: its release sampled, and a moment more.
+        func settled(after count: Int) -> [String: Any] {
+            _ = probe(app, timeout: 5) { touches($0) > count && !release($0).isEmpty }
+            Thread.sleep(forTimeInterval: 0.5)
+            return probe(app)
+        }
+        func assertDocked(_ state: [String: Any], _ label: String) {
+            XCTAssertEqual(number(state["dockMaxY"]), min(resting, number(state["keyboardTop"])), accuracy: 1, "\(label): the dock sits on the keyboard")
+        }
+        func assertDown(_ state: [String: Any], _ label: String) {
+            XCTAssertGreaterThanOrEqual(number(state["keyboardTop"]), resting - 1, "\(label): the keyboard is down")
+            XCTAssertEqual(number(state["dockMaxY"]), resting, accuracy: 1, "\(label): the dock rests on the safe area")
+        }
+        func assertDriver(_ state: [String: Any], _ label: String) {
+            XCTAssertEqual(state["keyboard"] as? String, ultra ? "controller" : "guide", "\(label): who moves the keyboard")
+        }
+        func assertAnimated(_ state: [String: Any], _ label: String) {
+            let sampled = release(state)
+            attach("\(label) release", sampled)
+            XCTAssertGreaterThanOrEqual((sampled["dockFramesMoved"] as? NSNumber)?.intValue ?? 0, 3, "\(label): the dock animates, frame by frame")
+        }
+        /// UltraView's controller owned the finger's keyboard and its
+        /// release; on UICollectionView nothing did.
+        func assertDriven(_ state: [String: Any], _ label: String) {
+            let touch = state["lastTouch"] as? [String: Any] ?? [:]
+            XCTAssertEqual(touch["keyboardDriven"] as? Bool, ultra, "\(label): the controller tracked the finger")
+            XCTAssertEqual(release(state)["driving"] as? Bool, ultra, "\(label): the controller played the release")
+        }
+        func show(_ label: String) throws -> [String: Any] {
+            let before = touches(probe(app))
+            let field = app.textViews.firstMatch.frame
+            point(app, field.midX, field.midY).tap()
+            var state = probe(app, timeout: 5) { isUp($0) }
+            guard isUp(state) else { throw XCTSkip("no software keyboard (hardware keyboard connected)") }
+            state = settled(after: before)
+            attach(label, state)
+            assertDriver(state, label)
+            assertDocked(state, label)
+            assertAnimated(state, label)
+            return state
+        }
+
+        // Show.
+        state = try show("show")
+        let shownTop = number(state["keyboardTop"])
+        var dockTop = number(state["dockMinY"])
+        let dock = shownTop - dockTop
+        // A third of the way to where the dock's bottom meets the screen's.
+        let partial = max(dockTop - 40, shownTop + (height - dock - shownTop) / 3 - dock)
+
+        // Partial drag, held still and let go: the keyboard returns.
+        var count = touches(state)
+        point(app, x, dockTop - 110).press(forDuration: 0.05, thenDragTo: point(app, x, partial), withVelocity: 300, thenHoldForDuration: 0.4)
+        state = settled(after: count)
+        attach("return", state)
+        var touch = state["lastTouch"] as? [String: Any] ?? [:]
+        XCTAssertGreaterThan(number(touch["keyboardTravel"]), 20, "return: the keyboard followed the finger down")
+        XCTAssertEqual(number(state["keyboardTop"]), shownTop, accuracy: 2, "return: the keyboard came back")
+        assertDocked(state, "return")
+        assertDriven(state, "return")
+        assertAnimated(state, "return")
+
+        // Slow drag to the bottom: dismissed, the conversation under the finger.
+        count = touches(state)
+        dockTop = number(state["dockMinY"])
+        point(app, x, dockTop - 110).press(forDuration: 0.05, thenDragTo: point(app, x, height - 4), withVelocity: 250, thenHoldForDuration: 0.3)
+        state = settled(after: count)
+        attach("dismiss", state)
+        touch = state["lastTouch"] as? [String: Any] ?? [:]
+        let finger = number(touch["fingerTravelWithKeyboard"]), content = number(touch["offsetTravelWithKeyboard"])
+        XCTAssertGreaterThan(number(touch["keyboardTravel"]), 80, "dismiss: the keyboard followed the finger")
+        XCTAssertGreaterThan(finger, 80)
+        XCTAssertEqual(content / finger, 1, accuracy: 0.15, "dismiss: content \(content) for a finger's \(finger) while the keyboard moved")
+        XCTAssertEqual(touch["keyboardDriven"] as? Bool, ultra, "dismiss: the controller tracked the finger")
+        assertDown(state, "dismiss")
+
+        // A quick drag let go partway: dismissed by its speed.
+        state = try show("show again")
+        count = touches(state)
+        dockTop = number(state["dockMinY"])
+        point(app, x, dockTop - 110).press(forDuration: 0.05, thenDragTo: point(app, x, partial), withVelocity: 1500, thenHoldForDuration: 0)
+        state = settled(after: count)
+        attach("quick dismiss", state)
+        assertDown(state, "quick dismiss")
+        assertDriven(state, "quick dismiss")
+        assertAnimated(state, "quick dismiss")
+
+        // Put away without a gesture.
+        state = try show("show a third time")
+        count = touches(state)
+        let button = app.buttons["harness-end-editing"].frame
+        point(app, button.midX, button.midY).tap()
+        state = settled(after: count)
+        attach("hide", state)
+        assertDown(state, "hide")
+        XCTAssertEqual(release(state)["driving"] as? Bool, false, "hide: an ordinary hide, nothing driven")
+        assertAnimated(state, "hide")
+    }
+
     // MARK: The edge
 
     /// The list shows no scroll indicator, so there is none to grab. A long

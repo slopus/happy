@@ -1,0 +1,195 @@
+#if canImport(UIKit)
+import Foundation
+import HappyCore
+import HappyLayout
+@testable import HappyUI
+import UIKit
+import XCTest
+
+private struct NoNetwork: HTTPTransport {
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        throw URLError(.notConnectedToInternet)
+    }
+}
+
+private struct NoSockets: WebSocketConnector {
+    func connect(to url: URL) async throws -> WebSocketConnection {
+        throw URLError(.notConnectedToInternet)
+    }
+}
+
+/// The chat's keyboard on each renderer: UltraList takes it from
+/// UltraView's keyboard integration (`ChatUltraKeyboard`), and only
+/// UltraList; UICollectionView keeps following the layout guide.
+///
+/// A finger driving the keyboard needs the system's keyboard host, which a
+/// test can't supply; `ChatScrollUITests` drives it on a phone. Here the
+/// keyboard's frame notifications are posted by hand.
+@MainActor
+final class HostedChatUltraKeyboardTests: XCTestCase {
+    private let keyboardHeight: CGFloat = 336
+
+    override func setUp() {
+        super.setUp()
+        Fonts.registerBundledFonts()
+    }
+
+    private struct Chat {
+        var controller: AccountController
+        var navigation: UINavigationController
+        var chat: ChatViewController
+        var list: ChatListView
+        var dock: ChatDockView
+    }
+
+    /// The long fixture chat on `renderer`, pushed over a root screen, with
+    /// its rows in.
+    private func chat(_ renderer: ChatListRenderer) async throws -> Chat {
+        let controller = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()),
+            clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(),
+            storeDirectory: nil,
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: NoNetwork(),
+            connector: NoSockets()
+        )
+        try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 5, count: 32)))
+        let account = try XCTUnwrap(controller.session)
+        controller.localSettings.chatListRenderer = renderer
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let scene = try await hostedActiveScene()
+        let hostWindow = scene.keyWindow
+        let chat = ChatViewController(context: context, session: account, sessionId: FixtureScenarios.prefix + FixtureScenario.long.rawValue)
+        let navigation = UINavigationController(rootViewController: UIViewController())
+        navigation.pushViewController(chat, animated: false)
+        let window = hostedKeyWindow(in: scene, root: navigation)
+        addTeardownBlock { @MainActor in
+            window.isHidden = true
+            hostWindow?.makeKey()
+        }
+        window.layoutIfNeeded()
+        let constructed = try await until { chat.contentInstalled }
+        XCTAssertTrue(constructed)
+        let list = try XCTUnwrap(subview(ChatListView.self, in: chat.view))
+        let dock = try XCTUnwrap(subview(ChatDockView.self, in: chat.view))
+        let drawn = try await until { list.plans.count > 20 && list.isDisplayReady }
+        XCTAssertTrue(drawn, "the fixture's rows never landed")
+        chat.view.layoutIfNeeded()
+        return Chat(controller: controller, navigation: navigation, chat: chat, list: list, dock: dock)
+    }
+
+    private func until(seconds: Double = 5, _ condition: () -> Bool) async throws -> Bool {
+        let deadline = ContinuousClock.now + .milliseconds(Int(seconds * 1000))
+        while !condition(), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        return condition()
+    }
+
+    private func subview<T: UIView>(_ type: T.Type, in view: UIView) -> T? {
+        for child in view.subviews {
+            if let match = child as? T { return match }
+            if let match = subview(type, in: child) { return match }
+        }
+        return nil
+    }
+
+    /// A docked keyboard `keyboardHeight` tall, coming up or going down.
+    private func post(_ name: Notification.Name, up: Bool, in window: UIWindow) {
+        let bounds = window.screen.bounds
+        let shown = CGRect(x: 0, y: bounds.maxY - keyboardHeight, width: bounds.width, height: keyboardHeight)
+        let hidden = shown.offsetBy(dx: 0, dy: keyboardHeight)
+        NotificationCenter.default.post(name: name, object: nil, userInfo: [
+            UIResponder.keyboardFrameBeginUserInfoKey: NSValue(cgRect: up ? hidden : shown),
+            UIResponder.keyboardFrameEndUserInfoKey: NSValue(cgRect: up ? shown : hidden),
+            UIResponder.keyboardAnimationDurationUserInfoKey: 0.25,
+            UIResponder.keyboardAnimationCurveUserInfoKey: 7,
+        ])
+    }
+
+    private func resting(_ chat: ChatViewController) -> CGFloat {
+        chat.view.bounds.height - chat.view.safeAreaInsets.bottom
+    }
+
+    /// Only UltraList has UltraView's keyboard, bound to the list it
+    /// renders with. Leaving UltraList drops it; coming back makes a new
+    /// one for the new list.
+    func testOnlyTheUltraListRendererHasUltraViewsKeyboard() async throws {
+        let test = try await chat(.ultraList)
+        let keyboard = try XCTUnwrap(test.chat.ultraKeyboard, "UltraList has UltraView's keyboard")
+        let firstList = try XCTUnwrap(test.list.ultra?.list)
+        XCTAssertTrue(keyboard.list === firstList)
+        XCTAssertFalse(keyboard.isDriving)
+
+        // The setting changes while another screen covers the chat.
+        test.navigation.pushViewController(UIViewController(), animated: false)
+        test.controller.localSettings.chatListRenderer = .collectionView
+        test.navigation.popViewController(animated: false)
+        test.navigation.view.layoutIfNeeded()
+        XCTAssertNil(test.list.ultra)
+        XCTAssertNil(test.chat.ultraKeyboard, "UICollectionView has no UltraView keyboard")
+
+        test.navigation.pushViewController(UIViewController(), animated: false)
+        test.controller.localSettings.chatListRenderer = .ultraList
+        test.navigation.popViewController(animated: false)
+        test.navigation.view.layoutIfNeeded()
+        let again = try XCTUnwrap(test.chat.ultraKeyboard)
+        XCTAssertFalse(again === keyboard)
+        XCTAssertTrue(again.list === test.list.ultra?.list)
+    }
+
+    func testTheCollectionViewRendererHasNoUltraViewKeyboard() async throws {
+        let test = try await chat(.collectionView)
+        XCTAssertNil(test.list.ultra)
+        XCTAssertNil(test.chat.ultraKeyboard)
+    }
+
+    /// A keyboard frame puts UltraList's dock on the keyboard, and the
+    /// list's newest inset follows on the keyboard's transition; the hide
+    /// puts both back on the safe area.
+    func testAKeyboardFrameMovesTheUltraListDockAndInset() async throws {
+        let test = try await chat(.ultraList)
+        let window = try XCTUnwrap(test.chat.view.window)
+        let ultra = try XCTUnwrap(test.list.ultra?.list)
+        let height = test.chat.view.bounds.height
+        XCTAssertEqual(test.dock.frame.maxY, resting(test.chat), accuracy: 0.5)
+
+        post(UIResponder.keyboardWillChangeFrameNotification, up: true, in: window)
+        XCTAssertEqual(test.dock.frame.maxY, height - keyboardHeight, accuracy: 0.5, "the dock sits on the keyboard")
+        XCTAssertEqual(test.list.contentInsets.top, height - test.dock.frame.minY + ChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
+        XCTAssertEqual(ultra.viewportInsets.top, Double(test.list.contentInsets.top), accuracy: 0.5)
+        // The rows are still on their way to the new inset.
+        let index = try XCTUnwrap(ultra.loadedIndexRange.first)
+        let settled = try XCTUnwrap(ultra.settledFrame(at: index))
+        let presented = try XCTUnwrap(ultra.presentedFrame(at: index))
+        XCTAssertGreaterThan(abs(presented.minY - settled.minY), 1, "the inset moves on the keyboard's transition")
+
+        // A later layout keeps the dock where the keyboard put it.
+        test.chat.view.setNeedsLayout()
+        test.chat.view.layoutIfNeeded()
+        XCTAssertEqual(test.dock.frame.maxY, height - keyboardHeight, accuracy: 0.5)
+
+        post(UIResponder.keyboardWillChangeFrameNotification, up: false, in: window)
+        post(UIResponder.keyboardDidHideNotification, up: false, in: window)
+        let down = try await until { abs(self.resting(test.chat) - test.dock.frame.maxY) < 0.5 }
+        XCTAssertTrue(down, "the dock is back on the safe area, at \(test.dock.frame.maxY)")
+        XCTAssertEqual(test.list.contentInsets.top, height - test.dock.frame.minY + ChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
+    }
+
+    /// The same notification on UICollectionView changes nothing: that
+    /// renderer reads the layout guide, which a posted frame doesn't move.
+    func testAKeyboardFrameAloneLeavesTheCollectionViewDockAlone() async throws {
+        let test = try await chat(.collectionView)
+        let window = try XCTUnwrap(test.chat.view.window)
+        let dock = test.dock.frame
+        let inset = test.list.contentInsets
+        post(UIResponder.keyboardWillChangeFrameNotification, up: true, in: window)
+        test.chat.view.setNeedsLayout()
+        test.chat.view.layoutIfNeeded()
+        XCTAssertEqual(test.dock.frame, dock)
+        XCTAssertEqual(test.list.contentInsets, inset)
+        post(UIResponder.keyboardWillChangeFrameNotification, up: false, in: window)
+    }
+}
+#endif

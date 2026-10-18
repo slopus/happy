@@ -17,8 +17,10 @@ import HappyWire
 /// safe area while the keyboard is down, and follows the keyboard during an
 /// interactive dismiss: `keyboardTracker` is pinned to the keyboard layout
 /// guide, so every keyboard frame, animated or dragged, lays the screen out
-/// again, inside the keyboard's own animation when there is one. Every frame
-/// comes from `ChatScreenLayout`.
+/// again, inside the keyboard's own animation when there is one. On the
+/// UltraList renderer UltraView's keyboard integration moves the keyboard
+/// instead (`ChatUltraKeyboard`), and the dock follows what it reports.
+/// Every frame comes from `ChatScreenLayout`.
 ///
 /// Messages go snapshot → display items (ChatDisplay: visibility, turns,
 /// work groups, the rendered window) → row inputs → plans → the list's
@@ -83,6 +85,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private lazy var scrollButton = ChatScrollButton()
     private lazy var copyCallout = ChatCopyCallout()
     private lazy var keyboardTracker = UIView()
+    /// The keyboard while the list renders with UltraList; nil on the
+    /// UICollectionView renderer.
+    private(set) var ultraKeyboard: ChatUltraKeyboard?
     /// Measures each row once per input and width, for the pipeline.
     private let planner = RowPlanner<ChatRowInput, ChatRowPlan> { ChatRowRenderer.plan($0, width: $1) }
     private var rows: ApplyPipeline<ChatRowsInput, ChatRowsApplied, ChatRowsUpdate>?
@@ -413,6 +418,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         account.spawnRequests.release(sessionId: chatId)
         if contentInstalled {
             list.setRenderer(context.account.localSettings.chatListRenderer)
+            updateUltraKeyboard()
             updateHeaderVisibility(animated: animated)
         } else {
             // The shell owns the bar from its first frame too, without
@@ -432,6 +438,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         super.viewDidDisappear(animated)
         // ChatList's `active`: a chat not shown asks for no older page.
         historyPager?.isActive = false
+        ultraKeyboard?.detach()
     }
 
     /// SessionView's unmount: a stand-in that has settled or failed is done
@@ -440,6 +447,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     override func didMove(toParent parent: UIViewController?) {
         super.didMove(toParent: parent)
         if parent == nil {
+            ultraKeyboard?.invalidate()
+            ultraKeyboard = nil
             construction?.cancel()
             opening?.cancel()
             if contentInstalled { endChat() }
@@ -655,6 +664,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         if contentInstalled { keepStripOffset() }
+        if ultraKeyboard?.isDriving == true { ultraKeyboard?.dismissImmediately() }
         // Screens pushed from here, and the one under it, have their bar.
         if hidesHeader, navigationController?.topViewController !== self {
             navigationController?.setNavigationBarHidden(false, animated: animated)
@@ -667,7 +677,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         super.viewDidLayoutSubviews()
         guard contentInstalled else { return }
         updateHeaderVisibility(animated: false)
+        updateUltraKeyboard()
+        ultraKeyboard?.prepareLayout(guideTop: keyboardTracker.frame.minY)
         layoutScreen()
+        ultraKeyboard?.refresh()
         updatePermissionListMaxHeight()
         if list.bounds.width != sentRowsView.width || list.traitCollection.textEnvironment != sentRowsView.text.environment {
             scheduleMeasure()
@@ -678,7 +691,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         ContentWidth.maxWidth // Tablet (HappyUI/Tablet): layout.ts maxWidth, was 800 by size class.
     }
 
-    private func layoutScreen() {
+    /// `keyboard` is the move UltraList's keyboard reported, for the list
+    /// to take its inset on.
+    private func layoutScreen(keyboard: ChatUltraKeyboard.Change? = nil) {
         let size = view.bounds.size
         let composerHeight = composer.composerHeight(fitting: size.width)
         // Restored while answering: it shows in this frame.
@@ -688,7 +703,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             safeArea: LayoutInsets(view.safeAreaInsets),
             // The guide's top is the safe area's bottom while the keyboard
             // is down, and the layout never goes below that.
-            keyboardTop: keyboardTracker.frame.minY,
+            keyboardTop: ultraKeyboard?.keyboardTop(guideTop: keyboardTracker.frame.minY) ?? keyboardTracker.frame.minY,
             accessories: dockBars.map { $0.inset ? .inset($0.measurable) : .fullWidth($0.measurable) },
             composerHeight: composerHeight,
             composerCardOffset: composer.cardOffset,
@@ -700,7 +715,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             headerAccessory: tabStrip.isHidden ? 0 : WorktreeTabStripLayout.Metrics.height
         ))
         list.setLayoutFrame(screen.list)
-        list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset)
+        list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset, keyboard: keyboard)
         headerScrim.setLayoutFrame(screen.headerScrim)
         if let frame = screen.headerAccessory, !tabStrip.isHidden {
             tabStrip.maxWidth = ContentWidth.headerMaxWidth
@@ -722,6 +737,25 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         scrim.setLayoutFrame(screen.scrim)
         if let back = screen.backButton { landscapeBack.setLayoutFrame(back) }
         if let strip = screen.statusBarShadow { statusBarStrip.setLayoutFrame(strip) }
+    }
+
+    /// One `ChatUltraKeyboard` for the UltraList the list renders with,
+    /// none on the UICollectionView renderer.
+    private func updateUltraKeyboard() {
+        let current = list.ultra?.list
+        if let keyboard = ultraKeyboard, current != nil, keyboard.list === current { return }
+        ultraKeyboard?.invalidate()
+        ultraKeyboard = current.map { ultraList in
+            ChatUltraKeyboard(
+                list: ultraList, view: view,
+                accessoryHeight: { [weak self] in self?.dock.bounds.height ?? 0 },
+                hasInput: { [weak self] in self?.composer.isTextFocused ?? false },
+                changed: { [weak self] change in
+                    guard let self, self.contentInstalled else { return }
+                    self.layoutScreen(keyboard: change)
+                }
+            )
+        }
     }
 
     /// TabletBranches' `chatFloatingDock`: only the portrait phone floats

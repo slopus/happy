@@ -298,14 +298,19 @@ final class ChatUltraListAdapter {
         list.items.last?.revision == submitted && !list.loadedItemViews.isEmpty && list.loadedItemViews.allSatisfy(\.isDisplayReady)
     }
 
-    func setViewport(size: CGSize, insets: UIEdgeInsets) {
+    /// `keyboard` carries the keyboard's transition and whether the rows
+    /// move with the inset (`ChatUltraKeyboard`).
+    func setViewport(size: CGSize, insets: UIEdgeInsets, keyboard: ChatUltraKeyboard.Change? = nil) {
         guard size.width > 0, size.height > 0 else { return }
         let changed = self.insets != insets || viewportSize != size
         self.insets = insets
         viewportSize = size
-        guard changed else { return }
+        guard changed else {
+            if keyboard?.finishes == true { list.finishViewportTransition() }
+            return
+        }
         list.applyChanges(newSize: size, newInsets: .init(top: insets.top, bottom: insets.bottom), anchorMode: .preserveVisibleContent,
-                          compensatesInsetChange: !list.isTracking, transition: .none)
+                          compensatesInsetChange: keyboard?.compensates ?? !list.isTracking, transition: keyboard?.transition ?? .none)
     }
 
     func apply(_ update: ChatListUpdate, target: CGFloat? = nil, animated: Bool) {

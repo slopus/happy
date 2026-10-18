@@ -31,8 +31,17 @@ preparation cannot replay an old target after a drag starts. Following near
 the newest edge and pinning an expanded tool are checked against the
 committed window and a user-motion generation. Insets compensate for dock
 and keyboard movement while idle; under a finger they preserve physical
-content movement. Interactive dismissal uses the library's public system
-keyboard broker with the keyframe engine still owning list motion.
+content movement.
+
+On UltraList the keyboard comes from UltraView's own integration
+(`ChatUltraKeyboard` over the library's `KeyboardDismissalController`). A
+finger dragging down from the list carries the keyboard, the dock and the
+newest inset together, and its release plays the library's dismissal or
+return. Keyboard frame notifications go to the controller first; the rest
+move the inset on the library's keyboard transition. Where the controller
+can't drive the keyboard, the list keeps the system's interactive
+dismissal. The UICollectionView renderer still follows the keyboard layout
+guide and never creates the controller.
 
 The dependency revision is pinned in `Package.swift` and `Package.resolved`;
 the XcodeGen project consumes that local package. Renderer settings tests
