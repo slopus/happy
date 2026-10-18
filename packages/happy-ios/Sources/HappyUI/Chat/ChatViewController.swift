@@ -557,6 +557,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         rows.follow(services.feed.snapshots(sessionId: chatId)) { $0.snapshot = $1 }
         self.rows = rows
         rowsObservation = rows.observation
+        // Layout may finish while the seed is awaited, before this pipeline exists.
+        scheduleMeasure()
         pageHistory()
     }
 
