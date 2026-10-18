@@ -177,7 +177,8 @@ fallback to the model layer. The first response is the first sample where
 one of these holds:
 
 - `kind` shell: that chat's view and every view above it are committed,
-  it intersects the window, and it isn't hidden or transparent there.
+  it intersects the window by at least 1 pt in width and in height, and it
+  isn't hidden or transparent there.
 - `kind` home: Home, still visible, is presented 0.5 pt or more from where
   it was at the release.
 

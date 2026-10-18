@@ -435,7 +435,7 @@ final class ChatUltraQAProbe: NSObject {
             shellCommitted = true
             let frame = presented.convert(presented.bounds, to: screen)
             let shown = frame.intersection(window.bounds)
-            if opacity > 0.01, !shown.isNull, shown.width >= 1, frame.width > 0, frame.height > 0 {
+            if opacity > 0.01, !shown.isNull, shown.width >= 1, shown.height >= 1, frame.width > 0, frame.height > 0 {
                 fraction = Double(shown.width * shown.height / (frame.width * frame.height))
             }
         }
