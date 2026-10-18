@@ -583,7 +583,15 @@ final class ChatUltraQATests: XCTestCase {
         // design: sending is the markdown chat's, whose agent is idle.
         launchChat("markdown", clip: "c2-send", extra: ["-keyboard"])
         assertReady("open")
+        var keyboardUp = wait(5) { number(scrollProbe()["keyboardTop"]) < size.height - 150 }
+        if !keyboardUp {
+            // The composer didn't take focus by itself: a finger gives it.
+            let field = app.textViews.firstMatch.frame
+            step("focus composer", quiet: 1.5) { tap(CGPoint(x: field.midX, y: field.midY)) }
+            keyboardUp = wait(5) { number(scrollProbe()["keyboardTop"]) < size.height - 150 }
+        }
         Thread.sleep(forTimeInterval: 1)
+        require("keyboard up to send", keyboardUp, "keyboardTop \(number(scrollProbe()["keyboardTop"]))")
         app.typeText("Walk me through the anchor with the keyboard up")
         let send = app.buttons["Send"]
         XCTAssertTrue(send.exists, "a Send button")
