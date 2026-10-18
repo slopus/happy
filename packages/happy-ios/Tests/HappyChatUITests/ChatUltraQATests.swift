@@ -1348,6 +1348,36 @@ final class ChatUltraQATests: XCTestCase {
         attach("r1-real openings", "\(state()["opens"] ?? [])")
     }
 
+    // MARK: Q0 The question chat on UltraList, opened again and again
+
+    /// Diagnostic: the question fixture on UltraList, alone and after other
+    /// chats, recording each opening that never draws.
+    func testQ0QuestionChatOpensRepeatedly() {
+        prepare()
+        defer { finish() }
+        var results: [String] = []
+        let sequence: [(String, Bool)] = [("question", true), ("question", true), ("question", false), ("question", true),
+                                          ("markdown", true), ("question", true), ("tools", true), ("question", true), ("question", true)]
+        for (index, (fixture, ultra)) in sequence.enumerated() {
+            launchChat(fixture, clip: "q0-\(index)-\(fixture)-\(ultra ? "ultra" : "legacy")", ultra: ultra)
+            let ready = wait(12) {
+                let s = state()
+                return (s["listInWindow"] as? Bool) == true && (s["displayReady"] as? Bool) == true && int(s["rows"]) > 0
+            }
+            let s = state()
+            results.append("\(index) \(fixture) \(ultra ? "ultra" : "legacy"): \(ready ? "drawn" : "NOT DRAWN") rows \(s["rows"] ?? "")")
+            if !ready {
+                screenshot("not-drawn")
+                if let data = try? JSONSerialization.data(withJSONObject: s["ultraNotReady"] ?? [:], options: [.prettyPrinted, .sortedKeys]) {
+                    attach("\(clip) UltraList not drawn", String(decoding: data, as: UTF8.self))
+                }
+                attach("\(clip) state", "\(s)")
+            }
+        }
+        attach("q0 results", results.joined(separator: "\n"))
+        XCTAssertFalse(results.contains { $0.contains("NOT DRAWN") }, results.joined(separator: "; "))
+    }
+
     // MARK: Legacy screens for pixel comparison
 
     func testL2LegacyAndUltraScreens() {
