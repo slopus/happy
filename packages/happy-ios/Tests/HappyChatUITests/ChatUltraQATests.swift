@@ -1402,6 +1402,9 @@ final class ChatUltraQATests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-qaRealChat", "-qaProbe", "-qaRun", "\(pass)-r1-real"]
         launch(app, clip: "r1-real")
+        // The account lives only in the app's memory: it ends with the app,
+        // whatever way the test ends.
+        defer { app.terminate() }
         func real() -> [String: Any] {
             let element = app.otherElements["chat-ultra-qa-real"]
             guard element.exists, let value = element.value as? String,
