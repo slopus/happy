@@ -122,6 +122,10 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         self.ultra = ultra
         ultra.list.frame = bounds
         addSubview(ultra.list)
+        // Resolve UltraView's measurement environment before its first
+        // asynchronous collection. A switch can submit content before the
+        // next normal layout turn, unlike the initial screen construction.
+        ultra.list.layoutIfNeeded()
     }
 
     func setRenderer(_ renderer: ChatListRenderer) {

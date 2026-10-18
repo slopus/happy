@@ -208,7 +208,7 @@ final class HostedChatListTests: XCTestCase {
         XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
         list.setRenderer(.ultraList)
         let switched = try await until { list.isDisplayReady && abs(list.visibleMinY - place) < 0.5 }
-        XCTAssertTrue(switched, "switching renderers preserves the reading position")
+        XCTAssertTrue(switched, "switching renderers preserves the reading position: expected \(place), actual \(list.visibleMinY), ready \(list.isDisplayReady), range \(String(describing: list.ultra?.list.loadedIndexRange)), views \(String(describing: list.ultra?.list.loadedItemViews.map { $0.isDisplayReady }))")
     }
 
     // MARK: The chat screen
