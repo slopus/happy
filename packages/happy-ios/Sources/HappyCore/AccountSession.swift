@@ -14,6 +14,7 @@ public final class AccountSession: Sendable {
     /// without a store directory (in-memory, tests) get a temporary one.
     public let filesDirectory: URL
     public let sync: SyncEngine
+    public let archiveVisibilityWriter: ArchiveVisibilityWriter
     /// The New Session draft's last height, for reopening it in this account.
     public let newSessionDraftHeight = MeasuredDraftMemo()
     /// Private render payload belongs to this account, including work that
@@ -114,6 +115,12 @@ public final class AccountSession: Sendable {
         var syncOptions = SyncEngine.Options()
         syncOptions.deliveryActivity = dependencies.deliveryActivity
         self.sync = SyncEngine(api: api, store: store, keys: keys, options: syncOptions)
+        let settingsSync = self.sync
+        self.archiveVisibilityWriter = ArchiveVisibilityWriter { hidden in
+            let baseline = try store.accountSettings()?.version ?? 0
+            try await settingsSync.updateSettings(["hideInactiveSessions": .bool(hidden)])
+            return baseline
+        }
         self.sender = OutboxSender(store: store, sync: sync, filesDirectory: self.filesDirectory, spawnRequests: spawnRequests)
         self.chatFeed = LocalChatFeed(store: store)
         self.chatHistory = ChatHistory(api: api, store: store, keys: keys)
@@ -220,6 +227,7 @@ public final class AccountSession: Sendable {
     }
 
     public func stop() async {
+        await archiveVisibilityWriter.close()
         await avatarPictures.close()
         newSessionDraftHeight.close()
         diffDocuments.close()

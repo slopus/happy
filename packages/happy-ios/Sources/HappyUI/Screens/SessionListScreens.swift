@@ -23,7 +23,7 @@ import UIKit
 /// for the person's text size, and the notices above the rows are measured
 /// off the main thread too. The list draws its text at that size
 /// (`followsTextSize`); it shows no rows until the first environment is in.
-final class SessionListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+final class SessionListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UIGestureRecognizerDelegate {
     private typealias Item = HomeListRow
 
     private let context: AppContext
@@ -37,6 +37,8 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     var onExpandedProjectsChange: (() -> Void)?
     private let tableView = UITableView(frame: .zero, style: .plain)
     private var ultraList: HomeUltraListAdapter?
+    private var archiveModels: HomeArchiveModels?
+    private var archiveReceiptTask: Task<Void, Never>?
     let rendererPreference: HomeListRenderer
     /// The table has asked for its rows once; from then on it only takes
     /// changesets.
@@ -111,6 +113,10 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
             let adapter = HomeUltraListAdapter(view: rendered, pictures: session.avatarPictures)
             adapter.onSelect = { [weak self] id in self?.select(id) }
             adapter.onLongPress = { [weak self] id in self?.hold(id) }
+            adapter.onArchivePersistenceFailure = { [weak self] in
+                guard let self, self.context.account.session === self.session else { return }
+                Alerts.show(Strings.Common.error, Strings.Home.actionUnknownError, on: self)
+            }
             adapter.onArchive = { [weak self] id in
                 guard let self, self.context.account.session === self.session,
                       case .flat(.session(let row))? = self.row(id), !row.archived else { return }
@@ -122,6 +128,13 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
                 self.createWorkspace(entry)
             }
             ultraList = adapter
+            let receipts = session.archiveVisibilityWriter.receipts()
+            archiveReceiptTask = Task { [weak self] in
+                for await receipt in receipts {
+                    guard let self, self.context.account.session === self.session else { return }
+                    self.ultraList?.receiveArchiveReceipt(receipt)
+                }
+            }
             view = rendered
             return
         }
@@ -155,6 +168,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
             tableView.register(type, forCellReuseIdentifier: identifier)
         }
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
+        longPress.delegate = self
         tableView.addGestureRecognizer(longPress)
         banners.onTroubleshoot = { [weak self] in self?.openTroubleshoot() }
         banners.onNativeUpdate = { [weak self] in self?.openStore() }
@@ -612,15 +626,26 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
 
     private func updateUltraList() {
         guard let ultraList, let environment = textEnvironment else { return }
-        ultraList.update(.init(model: model, width: view.bounds.width, environment: environment, dark: traitCollection.userInterfaceStyle == .dark, selected: selectedSessionId))
+        ultraList.update(.init(model: model, width: view.bounds.width, environment: environment, dark: traitCollection.userInterfaceStyle == .dark, selected: selectedSessionId, archiveModels: archiveModels, viewportHeight: view.bounds.height))
+    }
+
+    func setArchiveModels(_ models: HomeArchiveModels?, settings: HomeArchiveSettings?) {
+        guard rendererPreference == .ultraList else { return }
+        archiveModels = models
+        ultraList?.receiveArchiveSettings(settings)
+        updateUltraList()
     }
 
     func deactivateRenderer() {
+        archiveReceiptTask?.cancel(); archiveReceiptTask = nil
         textEnvironmentTask?.cancel(); headerTask?.cancel(); ultraList?.deactivate()
     }
 
     private func row(_ id: HomeListRow.ID) -> Item? {
-        model.ids.firstIndex(of: id).map { model.rows[$0] }
+        if let displayed = ultraList?.displayedModel {
+            return displayed.ids.firstIndex(of: id).map { displayed.rows[$0] }
+        }
+        return model.ids.firstIndex(of: id).map { model.rows[$0] }
     }
 
     private func select(_ id: HomeListRow.ID) {
@@ -631,7 +656,12 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     private func select(_ item: Item) {
         switch item {
         case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
-            session.updateSettings(["hideInactiveSessions": .bool(!hidden)])
+            if let ultraList, !traitCollection.isTabletLayout {
+                guard let intent = session.archiveVisibilityWriter.submit(hidden: !(ultraList.archiveHidden ?? hidden)) else { return }
+                ultraList.showArchiveIntent(intent)
+            } else {
+                session.updateSettings(["hideInactiveSessions": .bool(!hidden)])
+            }
         case .project(.worktreeToggle(let toggle)):
             toggleExpanded(toggle.projectId)
         default:
@@ -701,6 +731,17 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
               let item = item(at: indexPath)
         else { return }
         hold(item)
+    }
+
+    /// Only a row with a long press starts one; on any other a held finger
+    /// stays a tap, so it still opens the archive or a worktree list.
+    func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+        guard let indexPath = tableView.indexPathForRow(at: gesture.location(in: tableView)) else { return false }
+        switch item(at: indexPath) {
+        case .flat(.session)?: return true
+        case .project(.project(let entry))?: return entry.origin != nil
+        default: return false
+        }
     }
 }
 

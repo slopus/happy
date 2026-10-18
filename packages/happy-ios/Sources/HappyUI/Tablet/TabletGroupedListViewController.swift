@@ -20,7 +20,7 @@ import UIKit
 /// fixed, as in RN, with their text drawn scaled inside. The notices are
 /// home's header, measured off the main thread at that size as home's are
 /// (docs/DYNAMIC-TYPE.md).
-final class TabletGroupedListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+final class TabletGroupedListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UIGestureRecognizerDelegate {
     private typealias Row = TabletGroupedRow
 
     private let context: AppContext
@@ -122,6 +122,7 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
             tableView.register(type, forCellReuseIdentifier: identifier)
         }
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
+        longPress.delegate = self
         tableView.addGestureRecognizer(longPress)
         // Home's notices, drawn here at the person's text size.
         banners.traitOverrides.followsTextSize = true
@@ -576,6 +577,13 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
               let sessionId = row(at: indexPath)?.sessionId
         else { return }
         actions.present(sessionId: sessionId)
+    }
+
+    /// Only a chat starts a long press; on a heading or the archive toggle a
+    /// held finger stays a tap.
+    func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+        guard let indexPath = tableView.indexPathForRow(at: gesture.location(in: tableView)) else { return false }
+        return row(at: indexPath)?.sessionId != nil
     }
 }
 #endif

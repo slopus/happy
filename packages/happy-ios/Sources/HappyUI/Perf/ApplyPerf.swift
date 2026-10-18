@@ -11,6 +11,12 @@ import os
 enum ApplyPerf {
     private static let signposter = OSSignposter(subsystem: "com.slopus.happy", category: "apply")
     private static let logger = Logger(subsystem: "com.slopus.happy", category: "apply")
+    #if DEBUG || HAPPY_FIXTURES
+    /// Fixtures only (the Home harness's stage timing): hears each apply as
+    /// it ends, with its site and rows. Never in the shipped app.
+    static var onApply: ((ApplySite, Int) -> Void)?
+    static var onWillApply: ((ApplySite) -> Void)?
+    #endif
 
     /// `body` applies a precomputed change and returns how many rows it
     /// touched.
@@ -22,8 +28,14 @@ enum ApplyPerf {
         #endif
         let name = signpostName(site)
         let interval = signposter.beginInterval(name, id: signposter.makeSignpostID())
+        #if DEBUG || HAPPY_FIXTURES
+        onWillApply?(site)
+        #endif
         let rows = body()
         signposter.endInterval(name, interval)
+        #if DEBUG || HAPPY_FIXTURES
+        onApply?(site, rows)
+        #endif
         #if DEBUG
         let milliseconds = start.duration(to: .now).milliseconds
         if milliseconds > ApplyBudget.block {

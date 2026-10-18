@@ -20,6 +20,7 @@ final class HomeUltraListAdapter {
     var onLongPress: ((HomeListRow.ID) -> Void)?
     var onArchive: ((HomeListRow.ID) -> Void)?
     var onCreateWorkspace: ((HomeListRow.ID) -> Void)?
+    var onArchivePersistenceFailure: (() -> Void)?
     private weak var pictures: AvatarPictures?
     private var insets: HomeContentInsets?
     private var topInset: CGFloat = 0
@@ -28,6 +29,15 @@ final class HomeUltraListAdapter {
     private var bannerHeight: CGFloat = 0
     private var plans: Prepared?
     private var cachedRows: [HomeListRow.ID: HomeUltraRow] = [:]
+    private var cachedHiddenToggle: HomeUltraRow?
+    private var shownRows: [HomeUltraRow]?
+    private var hiddenRows: [HomeUltraRow]?
+    private var rowsGeneration: UInt64 = 0
+    private var displayedGeneration: (UInt64, Bool)?
+    private(set) var displayedModel: HomeListModel?
+    private var archiveSettings: HomeArchiveSettings?
+    private var archiveIntent: ArchiveVisibilityWriter.Intent?
+    private var archiveReceipt: ArchiveVisibilityWriter.Receipt?
     private var bannerRevision: UInt64 = 0
     private var active = true
     private var requested: Input?
@@ -42,6 +52,8 @@ final class HomeUltraListAdapter {
         var selected: String?
         var tablet: TabletGroupedList? = nil
         var language = "en"
+        var archiveModels: HomeArchiveModels? = nil
+        var viewportHeight: CGFloat = 0
 
         var ids: [HomeListRow.ID] { tablet?.ids.map(\.ultraBridgeID) ?? model.ids }
     }
@@ -51,11 +63,14 @@ final class HomeUltraListAdapter {
         var plan: HomeRowDrawing
         var revision: UInt64
         var selected: Bool
+        var usesArchiveBitmap = false
+        var bitmap: HomeArchiveBitmap? = nil
     }
     struct Prepared: Sendable {
         var input: Input
         var entries: [HomeListRow.ID: Entry]
         var revisionSequence: UInt64
+        var hiddenToggle: Entry? = nil
     }
     private lazy var pipeline = ApplyPipeline<Input?, Prepared?, Prepared>(
         input: nil,
@@ -78,14 +93,53 @@ final class HomeUltraListAdapter {
                 let result = Prepared(input: input, entries: entries, revisionSequence: revisionSequence)
                 return (result, result)
             }
-            for (id, row) in zip(input.model.ids, input.model.rows) {
+            let archiveStart = input.archiveModels?.hidden.ids.last.flatMap { input.model.ids.firstIndex(of: $0) }
+            for (index, pair) in zip(input.model.ids, input.model.rows).enumerated() {
+                let (id, row) = pair
                 let selected = input.selected != nil && row.sessionId == input.selected
                 let old = previous?.entries[id]
-                if sameEnvironment, let old, old.row == row, old.selected == selected { entries[id] = old; continue }
+                let usesBitmap: Bool
+                if let start = archiveStart {
+                    usesBitmap = index >= start
+                } else { usesBitmap = false }
+                if sameEnvironment, let old, old.row == row, old.selected == selected, old.usesArchiveBitmap == usesBitmap { entries[id] = old; continue }
                 revisionSequence += 1
-                entries[id] = Entry(row: row, plan: HomeRowDrawing.make(row, width: input.width, grouped: input.model.grouped, selected: selected, environment: input.environment, dark: input.dark, catalog: catalog), revision: revisionSequence, selected: selected)
+                entries[id] = Entry(row: row, plan: HomeRowDrawing.make(row, width: input.width, grouped: input.model.grouped, selected: selected, environment: input.environment, dark: input.dark, catalog: catalog, deferArchiveText: true), revision: revisionSequence, selected: selected, usesArchiveBitmap: usesBitmap)
             }
-            let result = Prepared(input: input, entries: entries, revisionSequence: revisionSequence)
+            var hiddenToggle: Entry?
+            if let models = input.archiveModels, let row = models.hidden.rows.last,
+               let toggleID = models.hidden.ids.last, let start = input.model.ids.firstIndex(of: toggleID) {
+                if sameEnvironment, let old = previous?.hiddenToggle, old.row == row { hiddenToggle = old }
+                else {
+                    revisionSequence += 1
+                    hiddenToggle = Entry(row: row, plan: HomeRowDrawing.make(row, width: input.width, grouped: input.model.grouped, selected: false, environment: input.environment, dark: input.dark, catalog: catalog), revision: revisionSequence, selected: false, usesArchiveBitmap: true)
+                }
+                // Only the first archive viewport, bounded independently of
+                // archive size. Later rows draw when mounted, never on tap.
+                var remaining = max(1, input.viewportHeight)
+                var warmIDs: Set<HomeListRow.ID> = []
+                for id in input.model.ids.dropFirst(start).prefix(64) {
+                    guard var entry = entries[id], remaining > 0 else { break }
+                    warmIDs.insert(id)
+                    remaining -= entry.plan.size.height
+                    if entry.bitmap == nil, let bitmap = HomeArchiveBitmap.draw(entry.plan) {
+                        revisionSequence += 1; entry.revision = revisionSequence
+                        entry.bitmap = bitmap; entries[id] = entry
+                    }
+                }
+                // Row reordering must not turn a one-viewport cache into a
+                // history of every row that ever occupied that viewport.
+                // Keep its revision: an already-mounted, correct bitmap does
+                // not need to blank or redraw merely to release cached owners.
+                for id in entries.keys where !warmIDs.contains(id) && entries[id]?.bitmap != nil {
+                    entries[id]?.bitmap = nil
+                }
+                if var entry = hiddenToggle, entry.bitmap == nil {
+                    entry.bitmap = HomeArchiveBitmap.draw(entry.plan)
+                    hiddenToggle = entry
+                }
+            }
+            let result = Prepared(input: input, entries: entries, revisionSequence: revisionSequence, hiddenToggle: hiddenToggle)
             return (result, result)
         },
         apply: { [weak self] result in
@@ -104,10 +158,51 @@ final class HomeUltraListAdapter {
 
     func update(_ input: Input) {
         var input = input; input.language = language
+        if let models = input.archiveModels, input.tablet == nil { input.model = models.shown }
         guard active, input.width > 0 else { return }
         guard requested != input else { return }
         requested = input
         pipeline.update { $0 = input }
+    }
+
+    var archiveHidden: Bool? {
+        archiveIntent?.hidden ?? archiveSettings?.hidden ?? displayedModel?.rows.compactMap { row -> Bool? in
+            switch row { case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)): hidden; default: nil }
+        }.first
+    }
+
+    var archiveBitmapCacheCount: Int {
+        cachedRows.values.filter { $0.archiveBitmap != nil }.count + (cachedHiddenToggle?.archiveBitmap == nil ? 0 : 1)
+    }
+
+    func showArchiveIntent(_ intent: ArchiveVisibilityWriter.Intent) {
+        guard active else { return }
+        archiveIntent = intent; archiveReceipt = nil
+        publishCachedRows(archiveToggle: true)
+    }
+
+    func receiveArchiveSettings(_ settings: HomeArchiveSettings?) {
+        archiveSettings = settings
+        reconcileArchiveReceipt()
+        publishCachedRows()
+    }
+
+    func receiveArchiveReceipt(_ receipt: ArchiveVisibilityWriter.Receipt) {
+        guard receipt.intent == archiveIntent else { return }
+        guard receipt.baseline != nil else {
+            archiveIntent = nil; archiveReceipt = nil
+            publishCachedRows()
+            onArchivePersistenceFailure?()
+            return
+        }
+        archiveReceipt = receipt
+        reconcileArchiveReceipt()
+    }
+
+    private func reconcileArchiveReceipt() {
+        guard let intent = archiveIntent, let receipt = archiveReceipt, let settings = archiveSettings,
+              receipt.acknowledges(intent, settings: settings) else { return }
+        archiveIntent = nil; archiveReceipt = nil
     }
 
     func setInsets(_ insets: HomeContentInsets?) {
@@ -129,13 +224,15 @@ final class HomeUltraListAdapter {
         active = false
         observation?.cancel(); observation = nil
         plans = nil; banner = nil; cachedRows = [:]
+        cachedHiddenToggle = nil; shownRows = nil; hiddenRows = nil; displayedModel = nil
+        archiveIntent = nil; archiveReceipt = nil
         func cancelImages(in view: UIView) {
             if let avatar = view as? AvatarView { avatar.content = nil; avatar.pictures = nil }
             for child in view.subviews { cancelImages(in: child) }
         }
         cancelImages(in: view)
         view.deactivate()
-        onSelect = nil; onLongPress = nil; onArchive = nil; onCreateWorkspace = nil
+        onSelect = nil; onLongPress = nil; onArchive = nil; onCreateWorkspace = nil; onArchivePersistenceFailure = nil
     }
 
     private func publish() {
@@ -151,19 +248,16 @@ final class HomeUltraListAdapter {
             plan.size = CGSize(width: prepared.input.width, height: bannerHeight)
             rows.append(HomeUltraRow(identity: "home:banner", revision: bannerRevision, plan: plan, makeOverlay: { banner }))
         }
-        for id in prepared.input.ids {
-            guard let entry = prepared.entries[id] else { continue }
-            if let cached = cachedRows[id], cached.revision == entry.revision {
-                rows.append(cached); nextRows[id] = cached; continue
-            }
-            changed += 1
+        func makeRow(_ id: HomeListRow.ID, _ entry: Entry) -> HomeUltraRow {
             let plan = entry.plan
             let overlay: @MainActor () -> UIView = { [weak self] in
                 let view = HomeUltraOverlay(plan: plan, style: model.avatarStyle, monochrome: model.avatarMonochrome, pictures: self?.pictures)
                 view.onCreateWorkspace = { [weak self] in self?.onCreateWorkspace?(id) }
                 return view
             }
-            let canHold = entry.tabletRow?.sessionId != nil || { if case .flat(.session)? = entry.row { return true }; if case .project(.project)? = entry.row { return true }; return false }()
+            // As the table's long press: a flat session, or a project card
+            // that can make a workspace.
+            let canHold = entry.tabletRow?.sessionId != nil || { if case .flat(.session)? = entry.row { return true }; if case .project(.project(let project))? = entry.row { return project.origin != nil }; return false }()
             let canSelect = entry.row?.sessionId != nil || entry.tabletRow?.sessionId != nil || {
                 switch entry.row {
                 case .flat(.archiveToggle)?, .project(.archiveToggle)?, .project(.worktreeToggle)?: return true
@@ -188,13 +282,45 @@ final class HomeUltraListAdapter {
             if canHold { hold = { [weak self] in self?.onLongPress?(id) } }
             if archives { archive = { [weak self] in self?.onArchive?(id) } }
             if plan.addFrame != nil { createWorkspace = { [weak self] in self?.onCreateWorkspace?(id) } }
-            let row = HomeUltraRow(identity: id.ultraIdentity, revision: entry.revision, plan: plan, selected: entry.selected, makeOverlay: overlay,
-                select: select, longPress: hold, archive: archive, createWorkspace: createWorkspace)
+            let selectsOnRelease: Bool
+            switch entry.row {
+            case .flat(.archiveToggle)?, .project(.archiveToggle)?: selectsOnRelease = true
+            default: selectsOnRelease = false
+            }
+            return HomeUltraRow(identity: id.ultraIdentity, revision: entry.revision, plan: plan, selected: entry.selected, makeOverlay: overlay,
+                select: select, longPress: hold, archive: archive, createWorkspace: createWorkspace,
+                usesArchiveBitmap: entry.usesArchiveBitmap, archiveBitmap: entry.bitmap, selectsOnRelease: selectsOnRelease)
+        }
+        for id in prepared.input.ids {
+            guard let entry = prepared.entries[id] else { continue }
+            let row: HomeUltraRow
+            if let cached = cachedRows[id], cached.revision == entry.revision,
+               (cached.archiveBitmap != nil) == (entry.bitmap != nil) { row = cached }
+            else { changed += 1; row = makeRow(id, entry) }
             rows.append(row); nextRows[id] = row
         }
         cachedRows = nextRows
+        shownRows = rows
+        if let models = prepared.input.archiveModels, let entry = prepared.hiddenToggle, let id = models.hidden.ids.last {
+            if cachedHiddenToggle?.revision != entry.revision { cachedHiddenToggle = makeRow(id, entry) }
+            let bannerCount = rows.count - prepared.input.ids.count
+            var hidden = Array(rows.prefix(bannerCount + models.hidden.ids.count - 1))
+            if let toggle = cachedHiddenToggle { hidden.append(toggle) }
+            hiddenRows = hidden
+        } else { hiddenRows = nil; cachedHiddenToggle = nil }
+        rowsGeneration += 1
+        publishCachedRows(changed: changed)
+    }
+
+    private func publishCachedRows(changed: Int = 0, archiveToggle: Bool = false) {
+        guard active, let prepared = plans, let shownRows else { return }
+        let hidden = archiveHidden ?? false
+        guard displayedGeneration?.0 != rowsGeneration || displayedGeneration?.1 != hidden else { return }
+        displayedGeneration = (rowsGeneration, hidden)
+        let rows = hidden ? hiddenRows ?? shownRows : shownRows
+        displayedModel = prepared.input.archiveModels?.model(hidden: hidden) ?? prepared.input.model
         ApplyPerf.measure(.homeList) {
-            view.apply(rows: rows, top: topInset, bottom: bottomInset)
+            view.apply(rows: rows, top: topInset, bottom: bottomInset, archiveToggle: archiveToggle)
             return changed
         }
     }

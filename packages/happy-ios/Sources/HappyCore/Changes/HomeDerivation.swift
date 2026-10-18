@@ -185,6 +185,8 @@ public struct HomeUpdate: Sendable {
     public var dock: HomeSnapshot?
     /// The home filter's choice, for its menu.
     public var grouping: SessionListGrouping
+    public var archiveModels: HomeArchiveModels?
+    public var archiveSettings: HomeArchiveSettings?
 }
 
 /// Home's derivation: snapshot to content to changeset, off the main thread.
@@ -205,6 +207,9 @@ public enum HomeDerivation {
         /// thread when the screen is built; a new language builds the
         /// screens again, and with them this.
         public var unknownMachine: String
+        /// Opt-in after the initial visible Home. Table and tablet consumers
+        /// retain their existing derivation and update path.
+        public var preparesArchives = false
 
         public init(
             snapshot: HomeSnapshot? = nil,
@@ -228,6 +233,8 @@ public enum HomeDerivation {
         public var content: HomeContent?
         public var dock: HomeSnapshot?
         public var grouping: SessionListGrouping?
+        public var archiveModels: HomeArchiveModels?
+        public var archiveSettings: HomeArchiveSettings?
 
         public init(content: HomeContent? = nil, dock: HomeSnapshot? = nil, grouping: SessionListGrouping? = nil) {
             self.content = content
@@ -239,12 +246,15 @@ public enum HomeDerivation {
     /// Nil when the screen already shows exactly this.
     public static func derive(_ input: Input, applied: Applied) -> (output: HomeUpdate, state: Applied)? {
         guard let snapshot = input.snapshot else { return nil }
-        let state = HomeState(snapshot, clock: input.clock ?? SessionList.Clock(), unknownMachine: input.unknownMachine)
+        let clock = input.clock ?? SessionList.Clock()
+        let state = HomeState(snapshot, clock: clock, unknownMachine: input.unknownMachine)
         let content = HomeContent(state, expandedProjects: input.expandedProjects, draftSessionIds: input.draftSessionIds)
         let dock = input.includesDock ? NewSessionSnapshot.rendered(snapshot) : nil
         let dockChanged = dock != nil && dock != applied.dock
         let grouping = AccountSettings(snapshot.settings).sessionListGrouping
-        guard content != applied.content || dockChanged || grouping != applied.grouping else { return nil }
+        let archiveModels = input.preparesArchives ? HomeArchiveModels.make(snapshot: snapshot, expandedProjects: input.expandedProjects, draftSessionIds: input.draftSessionIds, clock: clock, unknownMachine: input.unknownMachine, offline: content.list?.offline) : nil
+        let archiveSettings = input.preparesArchives ? HomeArchiveSettings(snapshot.settings) : nil
+        guard content != applied.content || dockChanged || grouping != applied.grouping || archiveModels != applied.archiveModels || archiveSettings != applied.archiveSettings else { return nil }
         let before = applied.content?.list
         let after = content.list ?? .empty
         let rows = before?.rows ?? []
@@ -257,9 +267,13 @@ public enum HomeDerivation {
             changeset: changeset,
             kindChanged: applied.content?.kind != content.kind,
             dock: dockChanged ? dock : nil,
-            grouping: grouping
+            grouping: grouping,
+            archiveModels: archiveModels,
+            archiveSettings: archiveSettings
         )
-        return (update, Applied(content: content, dock: dock ?? applied.dock, grouping: grouping))
+        var next = Applied(content: content, dock: dock ?? applied.dock, grouping: grouping)
+        next.archiveModels = archiveModels; next.archiveSettings = archiveSettings
+        return (update, next)
     }
 }
 

@@ -16,7 +16,23 @@ struct HomeRowDrawing: Sendable {
         case clip(CGRect)
     }
 
+    /// How a row answers a finger, as its table cell does.
+    enum Press: Sendable, Equatable {
+        /// No feedback: headings, and the tablet's cells.
+        case none
+        /// A fill behind the content: a flat session's selected background
+        /// (SessionRowCell), a project row's pressed one (ProjectListCell).
+        case fill(ColorToken)
+        /// The content at half strength over an unchanged background
+        /// (ArchiveToggleCell).
+        case dim
+    }
+
     var size: CGSize = .zero
+    /// The row's page colour. It is the row view's own layer, not a mark, so
+    /// the press fill sits between it and the content.
+    var background: ColorToken?
+    var press = Press.none
     var marks: [Mark] = []
     var avatar: SessionAvatar?
     var avatarFrame: CGRect = .zero
@@ -33,13 +49,28 @@ struct HomeRowDrawing: Sendable {
     var roundAdd = false
     let environment: HomeTextEnvironment
     let dark: Bool
+    /// Archived phone rows have fixed geometry for their only live overlay
+    /// (the avatar). Their exact text plan belongs to the bitmap display
+    /// queue, so opening an archive doesn't measure thousands of hidden
+    /// titles before the first visible row can appear. Owns only values.
+    private var deferredDrawing: (@Sendable () -> HomeRowDrawing)?
+    var defersText: Bool { deferredDrawing != nil }
 
+    init(environment: HomeTextEnvironment, dark: Bool) {
+        self.environment = environment; self.dark = dark
+    }
 
     nonisolated func draw(in context: CGContext) {
+        if let deferredDrawing {
+            #if DEBUG || HAPPY_FIXTURES
+            dispatchPrecondition(condition: .notOnQueue(.main))
+            #endif
+            deferredDrawing().draw(in: context); return
+        }
         UIGraphicsPushContext(context)
         defer { UIGraphicsPopContext() }
-        for (index, mark) in marks.enumerated() {
-            context.setAlpha(index == 0 ? 1 : contentAlpha)
+        context.setAlpha(contentAlpha)
+        for mark in marks {
             switch mark {
             case .clip(let frame): context.clip(to: frame)
             case .card(let frame, let radius, let top, let bottom, let selection):
@@ -81,14 +112,16 @@ struct HomeRowDrawing: Sendable {
         }
     }
 
-    nonisolated private func resolved(_ token: ColorToken) -> UIColor {
+    nonisolated func resolved(_ token: ColorToken) -> UIColor {
         UIColor(dark ? token.dark : token.light)
     }
 
-    nonisolated static func make(_ row: HomeListRow, width: CGFloat, grouped: Bool, selected: Bool, environment: HomeTextEnvironment, dark: Bool, catalog: TranslationCatalog = .english) -> HomeRowDrawing {
+    nonisolated static func make(_ row: HomeListRow, width: CGFloat, grouped: Bool, selected: Bool, environment: HomeTextEnvironment, dark: Bool, catalog: TranslationCatalog = .english, deferArchiveText: Bool = false) -> HomeRowDrawing {
         var plan = HomeRowDrawing(environment: environment, dark: dark)
+        let deferred = deferArchiveText && canDeferArchiveText(row)
         func measured(_ value: String, _ style: TextStyle) -> Measurable {
-            Measurable { HomeRowMeasurer.measure(value, style: style, in: environment.text, width: $0, maxLines: 1) }
+            if deferred { return .fixed(.zero) }
+            return Measurable { HomeRowMeasurer.measure(value, style: style, in: environment.text, width: $0, maxLines: 1) }
         }
         func text(_ value: String, _ style: TextStyle, _ color: ColorToken, _ frame: CGRect) {
             plan.marks.append(.text(value, style, color, frame))
@@ -212,9 +245,29 @@ struct HomeRowDrawing: Sendable {
             activity(toggle.activity, frame: layout.dot)
             plan.accessibilityLabel = value; plan.accessibilityValue = toggle.expanded ? "expanded" : "collapsed"
         }
-        let background = selected ? Palette.surfaceSelected : grouped ? Palette.groupedBackground : Palette.flatListBackground
-        plan.marks.insert(.fill(background, CGRect(origin: .zero, size: plan.size), round: false), at: 0)
+        switch row {
+        case .flat(.session): plan.press = .fill(Palette.surfaceSelected)
+        case .project(.project), .project(.worktree), .project(.worktreeToggle), .project(.bot), .project(.archived):
+            plan.press = .fill(Palette.surfacePressed)
+        case .flat(.archiveToggle), .project(.archiveToggle): plan.press = .dim
+        case .flat(.dayHeader), .project(.machine), .project(.section), .project(.archiveHeader): plan.press = .none
+        }
+        plan.background = selected ? Palette.surfaceSelected : grouped ? Palette.groupedBackground : Palette.flatListBackground
+        if deferred {
+            plan.marks = []
+            plan.deferredDrawing = {
+                make(row, width: width, grouped: grouped, selected: selected, environment: environment, dark: dark, catalog: catalog)
+            }
+        }
         return plan
+    }
+
+    nonisolated static func canDeferArchiveText(_ row: HomeListRow) -> Bool {
+        switch row {
+        case .flat(.session(let session)), .project(.archived(let session)):
+            session.archived && !session.shimmersTitle && session.corner == .timestamp && session.changes == nil
+        default: false
+        }
     }
 
     nonisolated static func dayTitle(_ age: SessionList.DayAge, catalog: TranslationCatalog = .english) -> String {

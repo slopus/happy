@@ -97,7 +97,7 @@ extension HomeRowDrawing {
             }
             plan.accessibilityLabel = [title, subtitle, status].joined(separator: ", ")
         }
-        plan.marks.insert(.fill(Palette.groupedBackground, CGRect(origin: .zero, size: plan.size), round: false), at: 0)
+        plan.background = Palette.groupedBackground
         return plan
     }
 
