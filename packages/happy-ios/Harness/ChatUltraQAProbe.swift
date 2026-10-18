@@ -701,7 +701,7 @@ final class ChatUltraQAProbe: NSObject {
         ]
         for child in Mirror(reflecting: ultra).children {
             switch child.label {
-            case "submitted": value["submitted"] = (child.value as? UInt64).map(Double.init) ?? -1
+            case "submitted": value["submitted"] = (child.value as? UInt64).map { Double($0) } ?? -1
             case "insets": value["insets"] = (child.value as? UIEdgeInsets).map { [$0.top, $0.bottom] } ?? []
             case "viewportSize": value["viewport"] = (child.value as? CGSize).map { [$0.width, $0.height] } ?? []
             case "settlement": value["settlementPending"] = "\(child.value)" != "nil"
