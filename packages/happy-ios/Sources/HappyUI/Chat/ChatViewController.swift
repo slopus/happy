@@ -764,7 +764,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// motion, so there the keyboard layout guide moves the screen, as on
     /// UICollectionView.
     private func updateUltraKeyboard() {
-        let current = floatingDock ? list.ultra?.list : nil
+        // A layout after the chat has left its navigation makes none.
+        let current = floatingDock && parent != nil ? list.ultra?.list : nil
         if let keyboard = ultraKeyboard, current != nil, keyboard.list === current { return }
         if let old = ultraKeyboard {
             // Its list may already be off screen: it keeps it for this.

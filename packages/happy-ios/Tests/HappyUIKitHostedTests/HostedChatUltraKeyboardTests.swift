@@ -156,6 +156,7 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         let window = try XCTUnwrap(test.chat.view.window)
         let keyboard = try XCTUnwrap(test.chat.ultraKeyboard)
         let dock = test.dock.frame
+        let height = keyboard.height
 
         test.navigation.pushViewController(UIViewController(), animated: false)
         let stopped = try await until { !keyboard.isActive }
@@ -164,7 +165,7 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         test.chat.view.setNeedsLayout()
         test.chat.view.layoutIfNeeded()
         XCTAssertFalse(keyboard.isActive, "a layout doesn't start it")
-        XCTAssertEqual(keyboard.height, 0, "a covered chat doesn't follow the keyboard")
+        XCTAssertEqual(keyboard.height, height, "a covered chat doesn't follow the keyboard")
         XCTAssertEqual(test.dock.frame, dock)
 
         test.navigation.popViewController(animated: false)
