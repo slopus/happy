@@ -131,6 +131,8 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
 /// Sees every touch before it is delivered, for the probe.
 final class HarnessWindow: UIWindow {
     var onTouch: ((UITouch) -> Void)?
+    /// Handler completion is separate from the display frame it schedules.
+    var afterTouch: ((UITouch) -> Void)?
     /// The last touch events, as "phase x,y view", for the tests to read.
     private(set) var events: [String] = []
 
@@ -143,6 +145,9 @@ final class HarnessWindow: UIWindow {
             onTouch?(touch)
         }
         super.sendEvent(event)
+        if event.type == .touches, let touch = event.allTouches?.first {
+            afterTouch?(touch)
+        }
     }
 }
 
