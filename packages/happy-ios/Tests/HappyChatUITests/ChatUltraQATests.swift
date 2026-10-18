@@ -37,6 +37,7 @@ final class ChatUltraQATests: XCTestCase {
     /// Windows already attributed to a step in the current launch.
     private var known = 0
     private var touchedLast = false
+    private var flungLast = false
     private var coverage: [[String: String]] = []
     private static var aimThroughSpringboard = true
 
@@ -237,8 +238,12 @@ final class ChatUltraQATests: XCTestCase {
         let before = known
         mark(name)
         touchedLast = false
+        flungLast = false
         action()
-        Thread.sleep(forTimeInterval: quiet)
+        // A fling coasts for about three seconds on an iPhone 12, and its
+        // window closes half a second after: a read before then would land
+        // in the window's frames.
+        Thread.sleep(forTimeInterval: flungLast ? max(quiet, 4.5) : quiet)
         let closed = wait(requireWindow ? 15 : 4, every: 1) {
             let s = state()
             return int(s["windowCount"]) > before && (s["moving"] as? Bool) == false
@@ -301,6 +306,7 @@ final class ChatUltraQATests: XCTestCase {
 
     /// A fling: back through the history (`older`) or towards the newest.
     private func fling(older: Bool, velocity: CGFloat = 3000) {
+        flungLast = true
         let x = size.width / 2
         let (from, to) = older ? (size.height * 0.3, size.height * 0.75) : (size.height * 0.7, size.height * 0.25)
         drag(CGPoint(x: x, y: from), CGPoint(x: x, y: to), velocity: velocity)
