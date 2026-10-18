@@ -20,6 +20,7 @@ enum CompositionRoot {
             storeDirectory: storeDirectory(),
             localSettings: UserDefaultsStore(suiteName: LocalSettings.storageSuite),
             accountCredentialStore: KeychainAccountCredentialStore(backend: SecurityKeychainBackend()),
+            directCredentialStore: KeychainDirectCredentialStore(backend: SecurityKeychainBackend()),
             localSettingsFactory: { UserDefaultsStore(suiteName: LocalSettings.storageSuite(accountID: $0)) },
             appState: {
                 await MainActor.run {

@@ -11,6 +11,7 @@ public final class AccountController {
     public enum State {
         case signedOut
         case signedIn(AccountSession)
+        case direct(DirectAccount)
     }
 
     public private(set) var state: State = .signedOut {
@@ -25,6 +26,7 @@ public final class AccountController {
     /// it across account transitions.
     public private(set) var localSettings: LocalSettings
     public private(set) var isAddingAccount = false
+    public let direct: DirectAccounts
 
     private let accountCredentialStore: AccountCredentialStore
     private let rnServerImport: @Sendable () -> ImportedAccountServer
@@ -69,6 +71,8 @@ public final class AccountController {
         storeDirectory: URL?,
         localSettings: KeyValueStore = InMemoryKeyValueStore(),
         accountCredentialStore: AccountCredentialStore? = nil,
+        directCredentialStore: any DirectCredentialStore = InMemoryDirectCredentialStore(),
+        directTransport: @escaping @Sendable (DirectDeviceCredentials) -> any DirectTransport = { TailcatHTTPTransport(address: $0.address, port: $0.port) },
         rnServerImport: @escaping @Sendable () -> ImportedAccountServer = { RNServerConfigImporter.readFromDocuments() },
         localSettingsFactory: ((String) -> KeyValueStore)? = nil,
         transport: HTTPTransport = URLSessionTransport(),
@@ -87,6 +91,12 @@ public final class AccountController {
         self.connector = connector
         self.appState = appState
         self.deliveryActivity = deliveryActivity
+        self.direct = DirectAccounts(credentials: directCredentialStore, directory: storeDirectory, makeTransport: directTransport)
+        self.direct.onChange = { [weak self] in
+            guard let self else { return }
+            self.notifyAccounts()
+            if case .direct = self.state, let account = self.direct.active { self.state = .direct(account) }
+        }
     }
 
     public var session: AccountSession? {
@@ -95,7 +105,7 @@ public final class AccountController {
     }
 
     public var accounts: [AccountSummary] {
-        registry.entries.sorted { $0.addedOrder < $1.addedOrder }.map { entry in
+        let legacy = registry.entries.sorted { $0.addedOrder < $1.addedOrder }.map { entry in
             let display = entry.display
             return AccountSummary(id: entry.id, serverURL: entry.serverURL,
                            name: display?.name, username: display?.username,
@@ -103,6 +113,11 @@ public final class AccountController {
                            isActive: session?.keys.anonID == entry.id,
                            usesSharedItem: entry.location == .shared,
                            serverConfirmed: entry.serverConfirmed)
+        }
+        return legacy + direct.accounts.sorted { $0.addedAt < $1.addedAt }.map { account in
+            var value = AccountSummary(id: account.id, serverURL: URL(string: "http://server.tailcat")!, name: account.name, avatarThumbhash: account.thumbhash, isActive: direct.activeID == account.id, usesSharedItem: false)
+            value.isDirect = true; value.connectionStatus = account.status.title
+            return value
         }
     }
 
@@ -217,6 +232,10 @@ public final class AccountController {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
         defer { finishOperation() }
+        if direct.accounts.contains(where: { $0.id == id }) {
+            try await activateDirect(id)
+            return
+        }
         let values = try await reconcile()
         guard let entry = registry.entries.first(where: { $0.id == id }), let value = values[id] else {
             throw AccountSwitchError.unknownAccount
@@ -227,9 +246,9 @@ public final class AccountController {
         updated.activeID = id
         updated = try await persistRegistry(updated, preservingProfilesSince: profileGeneration)
         if let next {
-            await activate(next, registry: updated)
+            try await activate(next, registry: updated)
         } else {
-            await selectUnconfirmed(registry: updated)
+            try await selectUnconfirmed(registry: updated)
         }
     }
 
@@ -250,7 +269,7 @@ public final class AccountController {
         updated = try await persistRegistry(updated, preservingProfilesSince: profileGeneration)
         registry = updated
         let next = try await makeSession(value.credentials, entry: updated.entries[index])
-        await activate(next, registry: registry)
+        try await activate(next, registry: registry)
     }
 
     public var authService: AuthService {
@@ -269,15 +288,26 @@ public final class AccountController {
         guard session == nil, !busy else { return }
         busy = true
         defer { finishOperation() }
+        _ = await prepareStorageDirectory()
+        do {
+            try await direct.restore()
+            if let active = direct.active {
+                _ = try await reconcile()
+                localSettings = settings(for: active.id)
+                state = .direct(active)
+                notifyAccounts()
+                return
+            }
+        } catch { }
         do {
             let values = try await reconcile()
             guard let id = registry.activeID,
                   let entry = registry.entries.first(where: { $0.id == id }), let value = values[id] else { return }
             if entry.serverConfirmed {
                 let next = try await makeSession(value.credentials, entry: entry)
-                await activate(next, registry: registry)
+                try await activate(next, registry: registry)
             } else {
-                await selectUnconfirmed(registry: registry)
+                try await selectUnconfirmed(registry: registry)
             }
         } catch {
             // A locked Keychain or an unreadable cache never deletes credentials.
@@ -305,12 +335,13 @@ public final class AccountController {
         updated.activeID = id
         updated = try await persistRegistry(updated, preservingProfilesSince: generation)
         isAddingAccount = false
-        await activate(next, registry: updated)
+        try await activate(next, registry: updated)
     }
 
     /// Signs out the active account only. The next account by added order
     /// becomes active. Failures leave credentials and the active UI intact.
     public func signOut() async {
+        if let id = direct.activeID { try? await signOut(accountID: id); return }
         guard let id = session?.keys.anonID else {
             if !busy { localSettings.clear() }
             return
@@ -322,13 +353,32 @@ public final class AccountController {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
         defer { finishOperation() }
+        if direct.accounts.contains(where: { $0.id == id }) {
+            let wasActive = direct.activeID == id
+            try await direct.remove(id)
+            settings(for: id).clear()
+            if wasActive {
+                if let next = direct.accounts.first { try await activateDirect(next.id) }
+                else {
+                    state = .signedOut
+                    let values = try await reconcile()
+                    if let entry = registry.entries.sorted(by: { $0.addedOrder < $1.addedOrder }).first,
+                       let value = values[entry.id], entry.serverConfirmed {
+                        let next = try await makeSession(value.credentials, entry: entry)
+                        try await activate(next, registry: registry)
+                    }
+                }
+            }
+            notifyAccounts()
+            return
+        }
         let values = try await reconcile()
         guard let entry = registry.entries.first(where: { $0.id == id }) else { throw AccountSwitchError.unknownAccount }
         await unregisterPushToken(of: entry, credentials: values[id]?.credentials)
         var updated = registry
         let generation = profileGeneration
         updated.entries.removeAll { $0.id == id }
-        let wasActive = session.map { $0.keys.anonID == id } ?? (registry.activeID == id)
+        let wasActive = session.map { $0.keys.anonID == id } ?? (direct.activeID == nil && registry.activeID == id)
         let oldSession = wasActive ? session : nil
         let following = updated.entries.sorted { $0.addedOrder < $1.addedOrder }.first
         let next: AccountSession?
@@ -403,7 +453,10 @@ public final class AccountController {
         }
         settings(for: id).clear()
         memoryStores.removeValue(forKey: id)
-        if wasActive { await next?.start() }
+        if wasActive {
+            await next?.start()
+            if next == nil, let following = direct.accounts.first { try await activateDirect(following.id) }
+        }
         if let cleanupError { throw cleanupError }
     }
 
@@ -608,6 +661,7 @@ public final class AccountController {
         }
         let directory = await task.value
         storageDirectory = directory
+        await direct.configureStorage(directory)
         return directory
     }
 
@@ -638,7 +692,9 @@ public final class AccountController {
         return next
     }
 
-    private func activate(_ next: AccountSession, registry: AccountRegistry) async {
+    private func activate(_ next: AccountSession, registry: AccountRegistry) async throws {
+        // Persist selection before releasing the old session.
+        try await direct.select(nil)
         stopProfileObservation()
         await session?.stop()
         self.registry = registry
@@ -649,7 +705,8 @@ public final class AccountController {
         await next.start()
     }
 
-    private func selectUnconfirmed(registry: AccountRegistry) async {
+    private func selectUnconfirmed(registry: AccountRegistry) async throws {
+        try await direct.select(nil)
         stopProfileObservation()
         await session?.stop()
         self.registry = registry
@@ -690,5 +747,24 @@ public final class AccountController {
         profileDirty = true
         notifyAccounts()
         scheduleProfilePersistence()
+    }
+
+    public func addDirect(_ credentials: DirectDeviceCredentials, name: String) async throws {
+        guard !busy else { throw AccountSwitchError.operationInProgress }
+        busy = true; defer { finishOperation() }
+        _ = await prepareStorageDirectory()
+        let account = try await direct.add(credentials, name: name)
+        isAddingAccount = false
+        try await activateDirect(account.id)
+    }
+
+    private func activateDirect(_ id: String) async throws {
+        try await direct.select(id)
+        stopProfileObservation()
+        await session?.stop()
+        guard let account = direct.active else { throw AccountSwitchError.unknownAccount }
+        localSettings = settings(for: id)
+        state = .direct(account)
+        notifyAccounts()
     }
 }

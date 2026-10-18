@@ -255,6 +255,7 @@ final class HomeHeaderView: UIView {
     let titleLabel = StyledLabel(style: TextStyles.headerTitle, color: Palette.headerTint, lines: 1, alignment: .center)
     let statusDot = StatusDotView()
     let statusLabel = StyledLabel(style: TextStyles.homeHeaderStatus, color: Palette.textSecondary, lines: 1, alignment: .center)
+    var showsAccountAvatar = false { didSet { setNeedsLayout() } }
 
     var status: RealtimeStatus = HomeConnectionStatus.initial {
         didSet { if status != oldValue { applyStatus() } }
@@ -312,13 +313,15 @@ final class HomeHeaderView: UIView {
     }
 
     func layout(width: CGFloat) -> HomeHeaderLayout {
-        HomeHeaderLayout(.init(
+        var input = HomeHeaderLayout.Input(
             width: width,
             safeTop: safeAreaInsets.top,
             hairline: hairline,
             title: titleLabel.measurable,
             status: showsStatus ? statusLabel.measurable : nil
-        ))
+        )
+        input.showsAccountAvatar = showsAccountAvatar
+        return HomeHeaderLayout(input)
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
@@ -331,6 +334,8 @@ final class HomeHeaderView: UIView {
         scrim.setLayoutFrame(layout.backdrop)
         logoControl.setLayoutFrame(layout.logoControl)
         logo.setLayoutFrame(layout.logo.offsetBy(dx: -layout.logoControl.minX, dy: -layout.logoControl.minY))
+        logo.clipsToBounds = showsAccountAvatar
+        logo.layer.cornerRadius = showsAccountAvatar ? layout.logo.width / 2 : 0
         actions.setLayoutFrame(layout.actions)
         let origin = layout.actions.origin
         filterButton.setLayoutFrame(layout.filterButton.offsetBy(dx: -origin.x, dy: -origin.y))

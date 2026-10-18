@@ -423,6 +423,7 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         guard !linkingDevice else { return }
         Task { @MainActor in
             guard let text = await PairingFlow.scan(.account, from: self) else { return }
+            if DirectPairingFlow.openIfDirect(text, context: context, on: self) { return }
             linkingDevice = true
             rebuild()
             let outcome = await PairingFlow.approve(text, expecting: .account, session: session)

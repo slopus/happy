@@ -18,6 +18,8 @@ public final class AppCoordinator {
     /// before the first state arrives.
     private var shownSession: ObjectIdentifier??
     private var shownServerConfirmationID: AccountSummary.ID?
+    private var shownDirectID: String?
+    private var pendingDirectLink: String?
     /// The session a tapped notification named, until a signed-in home can
     /// open it.
     private var notificationSessionID: String?
@@ -55,6 +57,7 @@ public final class AppCoordinator {
             await account.restore()
             self?.show(account.state)
             self?.accountRestored = true
+            self?.openPendingDirectLink()
             self?.openNotificationSession()
         }
     }
@@ -144,6 +147,7 @@ public final class AppCoordinator {
 
     /// Foreground/background, for the server's push suppression.
     public func appStateChanged(active: Bool) {
+        Task { await context.account.direct.setForeground(active) }
         guard let session = context.account.session else { return }
         Task { await session.sendAppState(active ? "active" : "background") }
     }
@@ -153,6 +157,13 @@ public final class AppCoordinator {
     @discardableResult
     public func open(_ url: URL) -> Bool {
         let text = url.absoluteString
+        if DirectPairingLink.isDirect(text) {
+            if accountRestored, let top = navigation.topViewController {
+                return DirectPairingFlow.openIfDirect(text, context: context, on: top)
+            }
+            pendingDirectLink = text
+            return true
+        }
         guard let link = PairingLink(text), let top = navigation.topViewController else { return false }
         guard context.account.session != nil else {
             Alerts.show(Strings.Common.error, Strings.Modals.failedToConnectTerminal, on: top)
@@ -185,10 +196,12 @@ public final class AppCoordinator {
         VoiceCoordinator.shared.accountDidChange(to: session)
         let identity = session.map(ObjectIdentifier.init)
         let pending = context.account.pendingServerConfirmation
-        if let shownSession, shownSession == identity, shownServerConfirmationID == pending?.id { return }
+        let directID = context.account.direct.activeID
+        if let shownSession, shownSession == identity, shownServerConfirmationID == pending?.id, shownDirectID == directID { return }
         let animated = shownSession != nil
         shownSession = .some(identity)
         shownServerConfirmationID = pending?.id
+        shownDirectID = directID
         requestRoot(session: session, pending: pending, animated: animated)
     }
 
@@ -244,7 +257,9 @@ public final class AppCoordinator {
 
     private func install(session: AccountSession?, pending: AccountSummary?, animated: Bool) {
         let root: UIViewController
-        if let pending {
+        if let direct = context.account.direct.active {
+            root = DirectHomeViewController(context: context, id: direct.id)
+        } else if let pending {
             root = AccountServerConfirmationViewController(context: context, account: pending)
         } else {
             root = session.map { HomeViewController(context: context, session: $0) }
@@ -253,7 +268,14 @@ public final class AppCoordinator {
         navigation.presentedViewController?.dismiss(animated: false)
         navigation.setViewControllers([root], animated: animated)
         shell.rootDidChange() // Tablet: the sidebar follows the account.
+        openPendingDirectLink()
         openNotificationSession()
+    }
+
+    private func openPendingDirectLink() {
+        guard accountRestored, let text = pendingDirectLink, let top = navigation.topViewController else { return }
+        pendingDirectLink = nil
+        _ = DirectPairingFlow.openIfDirect(text, context: context, on: top)
     }
 
     /// The title of happy-app's UIKit headers (react-native-screens 4.22.0

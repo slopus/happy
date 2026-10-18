@@ -238,7 +238,8 @@ public struct AccountSwitcherEntry: Equatable, Sendable {
             let title = name ?? username.map { "@\($0)" } ?? "\(fallbackTitle) \(account.id.prefix(8))"
             var details: [String] = []
             if name != nil, let username { details.append("@\(username)") }
-            if account.serverURL != defaultServer { details.append(displayHost(account.serverURL)) }
+            if account.isDirect { details.append("Direct computer"); if let status = account.connectionStatus { details.append(status) } }
+            else if account.serverURL != defaultServer { details.append(displayHost(account.serverURL)) }
             return AccountSwitcherEntry(
                 id: account.id,
                 title: title,

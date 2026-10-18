@@ -146,7 +146,28 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.chat-ui-tests
         TEST_TARGET_NAME: HappyChatHarness
+  HappyDirectUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/HappyDirectUITests
+    dependencies:
+      - target: Happy
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.direct-ui-tests
+        TEST_TARGET_NAME: Happy
 schemes:
+  HappyDirectUI:
+    build:
+      targets:
+        Happy: [test]
+        HappyDirectUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - HappyDirectUITests
   HappyChatUI:
     build:
       targets:

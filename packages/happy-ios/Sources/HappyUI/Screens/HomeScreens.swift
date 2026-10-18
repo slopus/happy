@@ -41,6 +41,7 @@ public final class HomeViewController: UIViewController {
     private var grouping: SessionListGrouping = .flat
     private var content: UIViewController?
     private var preparesArchives = false
+    private var accountControl: HomeAccountControl?
 
     public init(context: AppContext, session: AccountSession) {
         self.context = context
@@ -67,6 +68,7 @@ public final class HomeViewController: UIViewController {
         dockView.isHidden = true
         view.addSubview(dockView)
         view.addSubview(header)
+        accountControl = HomeAccountControl(context: context, controller: self, header: header)
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
             input: HomeDerivation.Input(
                 expandedProjects: context.account.localSettings.expandedProjects,
@@ -474,6 +476,7 @@ final class LinkComputerViewController: UIViewController {
 
     private func link(_ text: String) async {
         guard !busy else { return }
+        if DirectPairingFlow.openIfDirect(text, context: context, on: self) { return }
         linking = true
         update()
         let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)
@@ -572,6 +575,7 @@ final class OfflineChecklistViewController: UIViewController {
     private func scan() {
         Task { @MainActor in
             guard let text = await PairingFlow.scan(.terminal, from: self), !linking, !approved else { return }
+            if DirectPairingFlow.openIfDirect(text, context: context, on: self) { return }
             linking = true
             update()
             let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)

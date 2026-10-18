@@ -36,6 +36,11 @@ public final class WelcomeViewController: UIViewController {
         // Signed out, the gear leads straight to the server: self-hosters
         // set it before creating an account.
         navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openServer), label: Strings.Server.title)
+        let pairComputer = UIBarButtonItem(title: "Pair computer", primaryAction: UIAction { [weak self] _ in
+            guard let self else { return }; DirectPairingFlow.scan(context: context, on: self)
+        })
+        if navigationItem.leftBarButtonItem == nil { navigationItem.leftBarButtonItem = pairComputer }
+        else if let settings = navigationItem.rightBarButtonItem { navigationItem.rightBarButtonItems = [settings, pairComputer] }
         screen.primary.action = { [weak self] in await self?.createAccount() }
         screen.secondary.onTap = { [weak self] in self?.openRestore() }
         screen.help.onTap = { [weak self] in

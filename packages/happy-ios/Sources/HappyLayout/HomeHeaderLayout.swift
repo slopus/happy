@@ -52,6 +52,7 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         public var title: Measurable
         /// The status text, when the socket is not connected.
         public var status: Measurable?
+        public var showsAccountAvatar: Bool = false
 
         public init(width: CGFloat, safeTop: CGFloat, hairline: CGFloat, title: Measurable, status: Measurable?) {
             self.width = width
@@ -87,8 +88,9 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         backdrop = CGRect(x: 0, y: 0, width: width, height: top + rowHeight + M.backdropOverhang)
 
         logoControl = CGRect(x: M.paddingHorizontal, y: top + (rowHeight - M.controlSize) / 2, width: M.controlSize, height: M.controlSize)
-        let logoInset = M.controlBorder + (M.controlSize - 2 * M.controlBorder - M.logoBox) / 2 + (M.logoBox - M.logoSize) / 2
-        logo = CGRect(x: logoControl.minX + logoInset, y: logoControl.minY + logoInset, width: M.logoSize, height: M.logoSize)
+        let logoSize = input.showsAccountAvatar ? M.logoBox : M.logoSize
+        let logoInset = (M.controlSize - logoSize) / 2
+        logo = CGRect(x: logoControl.minX + logoInset, y: logoControl.minY + logoInset, width: logoSize, height: logoSize)
 
         let pillWidth = 2 * M.controlBorder + 2 * M.controlSize + input.hairline
         let pillHeight = 2 * M.controlBorder + M.controlSize

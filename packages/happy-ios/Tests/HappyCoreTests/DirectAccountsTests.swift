@@ -1,0 +1,187 @@
+import Foundation
+import XCTest
+@testable import HappyCore
+import HappyCrypto
+import HappyWire
+
+actor IdentityTransport: DirectTransport {
+    var name = "Verified Mac"
+    var image = Data([1, 2, 3])
+    var etag = "\"v1\""
+    var revoked = false
+    var noAvatar = false
+    var requests: [(String, [String: String])] = []
+    var closed = false
+    var failuresRemaining = 0
+    func failNext(_ count: Int) { failuresRemaining = count }
+    func configure(name: String? = nil, etag: String? = nil, noAvatar: Bool? = nil, revoked: Bool? = nil) {
+        if let name { self.name = name }; if let etag { self.etag = etag }; if let noAvatar { self.noAvatar = noAvatar }; if let revoked { self.revoked = revoked }
+    }
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+        requests.append((path, headers))
+        if failuresRemaining > 0 { failuresRemaining -= 1; throw DirectPairingError.unavailable }
+        if revoked { return DirectHTTPResponse(status: 401) }
+        switch path {
+        case "/v0/health": return DirectHTTPResponse(status: 200, body: Data(#"{"ready":true,"version":{"protocol":27}}"#.utf8))
+        case "/v0/config":
+            let avatar: Any = noAvatar ? NSNull() : ["thumbhash": "same-placeholder"]
+            return DirectHTTPResponse(status: 200, body: try JSONSerialization.data(withJSONObject: ["config": ["node": ["name": name, "avatar": avatar]]]))
+        case "/v0/node/avatar":
+            if headers["If-None-Match"] == etag { return DirectHTTPResponse(status: 304) }
+            return DirectHTTPResponse(status: 200, headers: ["content-type": "image/png", "etag": etag], body: image)
+        default: throw DirectPairingError.invalidResponse
+        }
+    }
+    func close() { closed = true }
+    func paths() -> [String] { requests.map(\.0) }
+}
+
+private actor CancelledIdentityTransport: DirectTransport {
+    var started = false
+    var closed = false
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+        if path == "/v0/health" {
+            started = true
+            // Deliver a late successful response after cancellation to prove
+            // it cannot recreate a removed account or its cached identity.
+            try? await Task.sleep(for: .seconds(30))
+            return DirectHTTPResponse(status: 200, body: Data(#"{"ready":true,"version":{"protocol":27}}"#.utf8))
+        }
+        return DirectHTTPResponse(status: 200, body: Data(#"{"config":{"node":{"name":"Late response","avatar":null}}}"#.utf8))
+    }
+    func close() { closed = true }
+}
+
+@MainActor
+final class DirectAccountsTests: XCTestCase {
+    private func value(_ id: String = "device") -> DirectDeviceCredentials {
+        DirectDeviceCredentials(address: "tcAddress", port: 24781, deviceID: id, deviceToken: CanonicalBase64URL.encode(Data(repeating: 7, count: 32)))
+    }
+    private func directory() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }; return url
+    }
+    func testSeparateKeychainRecoverySelectionAndRemoval() async throws {
+        let backend = AccountsKeychain()
+        let store = KeychainDirectCredentialStore(backend: backend)
+        let directory = try directory()
+        let manager = DirectAccounts(credentials: store, directory: directory, makeTransport: { _ in IdentityTransport() })
+        await manager.setForeground(false)
+        let first = try await manager.add(value(), name: "Untrusted QR name")
+        XCTAssertEqual(first.name, "Verified Mac")
+        XCTAssertNil(try backend.copyData(SecureStoreCredentialStore.item.writeTarget))
+        XCTAssertEqual(try backend.accounts(service: KeychainDirectCredentialStore.service), [first.id])
+        XCTAssertEqual(try store.all()[first.id], value())
+        let registry = try Data(contentsOf: directory.appendingPathComponent("direct-accounts.json"))
+        XCTAssertFalse(String(decoding: registry, as: UTF8.self).contains(value().deviceToken))
+        XCTAssertFalse(String(decoding: registry, as: UTF8.self).contains(value().address))
+        let restored = DirectAccounts(credentials: store, directory: directory)
+        await restored.setForeground(false); try await restored.restore()
+        XCTAssertEqual(restored.activeID, first.id); XCTAssertEqual(restored.accounts.first?.name, "Verified Mac")
+        try await restored.remove(first.id)
+        XCTAssertTrue(try store.all().isEmpty); XCTAssertNil(restored.activeID); XCTAssertTrue(restored.accounts.isEmpty)
+    }
+    func testIdentityETagRefreshRenameAndAvatarRemoval() async throws {
+        let transport = IdentityTransport()
+        let original = DirectAccount(id: "direct-one", name: "QR name")
+        let first = try await DirectIdentity.refresh(original, transport: transport, token: "token")
+        XCTAssertEqual(first.name, "Verified Mac"); XCTAssertEqual(first.avatar, Data([1, 2, 3]))
+        await transport.configure(name: "Renamed Mac")
+        let second = try await DirectIdentity.refresh(first, transport: transport, token: "token")
+        XCTAssertEqual(second.name, "Renamed Mac"); XCTAssertEqual(second.avatar, first.avatar)
+        await transport.configure(etag: "\"v2\"")
+        let third = try await DirectIdentity.refresh(second, transport: transport, token: "token")
+        XCTAssertEqual(third.avatarETag, "\"v2\"")
+        await transport.configure(noAvatar: true)
+        let last = try await DirectIdentity.refresh(third, transport: transport, token: "token")
+        XCTAssertNil(last.avatar); XCTAssertNil(last.avatarETag)
+    }
+    func testRevocationStopsRetryAndBackgroundPauses() async throws {
+        let transport = IdentityTransport()
+        let manager = DirectAccounts(credentials: InMemoryDirectCredentialStore(), directory: nil, makeTransport: { _ in transport })
+        manager.refreshInterval = .milliseconds(5)
+        await manager.setForeground(false)
+        let account = try await manager.add(value(), name: "Mac")
+        await transport.configure(revoked: true)
+        await manager.setForeground(true)
+        for _ in 0..<100 where manager.accounts.first?.status != .revoked { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(manager.accounts.first?.status, .revoked)
+        let count = await transport.paths().count
+        try await Task.sleep(for: .milliseconds(30))
+        let afterWait = await transport.paths().count
+        XCTAssertEqual(afterWait, count)
+        await manager.setForeground(false); await manager.setForeground(true)
+        let afterForeground = await transport.paths().count
+        XCTAssertEqual(afterForeground, count)
+        try await manager.remove(account.id)
+        XCTAssertTrue(manager.accounts.isEmpty)
+        XCTAssertEqual(DirectAccounts.retryDelay(0), 1); XCTAssertEqual(DirectAccounts.retryDelay(100), 30)
+    }
+    func testMixedLegacyDirectSelectionRestoreAndInactiveRemoval() async throws {
+        let backend = AccountsKeychain(); let directStore = KeychainDirectCredentialStore(backend: backend)
+        let directory = try directory()
+        func controller() -> AccountController {
+            AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "test", credentialStore: InMemoryCredentialStore(), storeDirectory: directory,
+                accountCredentialStore: KeychainAccountCredentialStore(backend: backend), directCredentialStore: directStore,
+                directTransport: { _ in IdentityTransport() }, rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: FakeHTTP(), connector: FakeConnector())
+        }
+        let account = controller()
+        await account.direct.setForeground(false)
+        let legacy = Credentials(token: "token", secret: Data(repeating: 4, count: 32))
+        try await account.signIn(legacy)
+        let legacyID = try XCTUnwrap(account.session?.keys.anonID)
+        try await account.addDirect(value(), name: "Mac")
+        let directID = try XCTUnwrap(account.direct.activeID)
+        XCTAssertNil(account.session); XCTAssertEqual(account.accounts.count, 2)
+        XCTAssertEqual(account.accounts.filter(\.isActive).map(\.id), [directID])
+        let restored = controller(); await restored.direct.setForeground(false); await restored.restore()
+        XCTAssertNil(restored.session); XCTAssertEqual(restored.direct.activeID, directID)
+        try await restored.switchAccount(to: legacyID)
+        XCTAssertEqual(restored.session?.keys.anonID, legacyID); XCTAssertNil(restored.direct.activeID)
+        try await restored.switchAccount(to: directID)
+        XCTAssertNil(restored.session)
+        // The old registry's active legacy ID must not make this inactive
+        // removal replace the current direct home.
+        try await restored.signOut(accountID: legacyID)
+        XCTAssertEqual(restored.direct.activeID, directID); XCTAssertNil(restored.session)
+        try await restored.signOut(accountID: directID)
+        XCTAssertTrue(restored.accounts.isEmpty); XCTAssertNil(restored.direct.activeID)
+    }
+    func testRemovalAwaitsCancellationAndDiscardsLateIdentity() async throws {
+        let store = InMemoryDirectCredentialStore()
+        try store.save(value(), id: "direct-cancel")
+        let transport = CancelledIdentityTransport()
+        let manager = DirectAccounts(credentials: store, directory: nil, makeTransport: { _ in transport })
+        try await manager.restore()
+        for _ in 0..<100 {
+            if await transport.started { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try await manager.remove("direct-cancel")
+        XCTAssertTrue(manager.accounts.isEmpty); XCTAssertTrue(try store.all().isEmpty)
+        let closed = await transport.closed
+        XCTAssertTrue(closed)
+        await manager.setForeground(false); await manager.setForeground(true)
+        XCTAssertTrue(manager.accounts.isEmpty)
+    }
+    func testFailedInstanceRetriesWithoutAffectingAnother() async throws {
+        let failing = IdentityTransport(); let healthy = IdentityTransport()
+        let manager = DirectAccounts(credentials: InMemoryDirectCredentialStore(), directory: nil, makeTransport: { $0.deviceID == "failing" ? failing : healthy })
+        await manager.setForeground(false)
+        await failing.failNext(2)
+        let first = try await manager.add(value("failing"), name: "First")
+        let second = try await manager.add(value("healthy"), name: "Second")
+        await manager.setForeground(true)
+        for _ in 0..<300 {
+            if manager.accounts.allSatisfy({ $0.status == .connected }) { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(manager.accounts.first { $0.id == first.id }?.status, .connected)
+        XCTAssertEqual(manager.accounts.first { $0.id == second.id }?.status, .connected)
+        let attempts = await failing.paths().filter { $0 == "/v0/health" }.count
+        XCTAssertGreaterThanOrEqual(attempts, 3)
+        await manager.setForeground(false)
+        XCTAssertTrue(manager.accounts.allSatisfy { $0.status == .paused })
+    }
+}

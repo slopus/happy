@@ -54,7 +54,10 @@ enum PairingFlow {
     static func scan(_ kind: Kind, from controller: UIViewController) async -> String? {
         await withCheckedContinuation { continuation in
             let scanner = QRScannerViewController()
-            scanner.accepts = { $0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(kind.prefix) }
+            scanner.accepts = {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(kind.prefix) ||
+                DirectPairingLink.isDirect($0)
+            }
             scanner.onFinish = { continuation.resume(returning: $0) }
             controller.present(scanner, animated: true)
         }
