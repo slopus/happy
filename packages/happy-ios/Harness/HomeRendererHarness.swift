@@ -34,7 +34,10 @@ final class HomeRendererHarness {
                 try await controller.signIn(Credentials(token: "home-harness", secret: Data(repeating: 19, count: 32)))
                 guard let session = controller.session else { fatalError("Home harness missing session") }
                 self.account = controller
-                if !restoreRenderer { controller.localSettings.homeListRenderer = renderer }
+                if !restoreRenderer {
+                    controller.localSettings.homeListRenderer = renderer
+                    controller.localSettings.chatListRenderer = arguments.contains("-chatUltraList") ? .ultraList : .collectionView
+                }
                 let store = session.store
                 try await Task.detached {
                     try SeededAccount.seed(store)

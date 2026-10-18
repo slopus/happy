@@ -42,5 +42,9 @@ rows and painter order. Hosted tests exercise reading anchors, keyboard and
 dock insets, older pages, renderer switching and a prepared token arriving
 after a drag starts. The chat harness selects UltraList with
 `-chatUltraList`, reports the actual renderer and waits for displayed content.
+The Home harness also accepts `-chatUltraList`; its seeded sessions open
+through the normal Home navigation and SQLite-backed chat path. Without that
+flag its fresh launch uses UICollectionView; `-renderer stored` retains both
+renderer preferences for persistence checks.
 `-fixture diagrams` exercises asynchronous Mermaid sizing and `-fixture giant`
 contains one very tall message; `long` instead contains many ordinary rows.
