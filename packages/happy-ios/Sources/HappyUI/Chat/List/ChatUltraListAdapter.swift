@@ -20,12 +20,14 @@ private struct ChatNodeDrawing: Drawing {
 
     private func drawMarks(in context: CGContext, bounds: CGRect) {
         context.translateBy(x: 0, y: -y)
+        let visible = bounds.offsetBy(dx: 0, dy: y)
         UIGraphicsPushContext(context)
         defer { UIGraphicsPopContext() }
         for item in plan.items {
             context.saveGState()
             switch item {
             case .box(let box):
+                guard box.frame.intersects(visible) else { context.restoreGState(); continue }
                 var corners: UIRectCorner = []
                 if box.corners.contains(.layerMinXMinYCorner) { corners.insert(.topLeft) }
                 if box.corners.contains(.layerMaxXMinYCorner) { corners.insert(.topRight) }
@@ -41,9 +43,11 @@ private struct ChatNodeDrawing: Drawing {
                     context.addPath(path.cgPath); context.strokePath()
                 }
             case .text(let text, let frame):
+                guard frame.intersects(visible) else { context.restoreGState(); continue }
                 context.clip(to: frame)
-                text.draw(at: frame.origin)
+                text.draw(at: frame.origin, visibleRect: visible.intersection(frame))
             case .icon(let icon, let size, let frame, let tint):
+                guard frame.intersects(visible) else { context.restoreGState(); continue }
                 if let glyph = IconCatalog.glyph(for: icon) {
                     let layout = glyph.layout(size: size, scale: scale)
                     let box = layout.frame(centeredIn: frame, scale: scale)
@@ -68,20 +72,22 @@ final class ChatUltraRow: ListRow {
     let node: NodeRow
     /// The established native canvas handles exceptionally tall messages;
     /// rasterizing an entire multi-megabyte transcript would retain too much.
-    var usesNativeDrawing: Bool { plan.size.height > 4096 }
+    let usesNativeDrawing: Bool
     weak var adapter: ChatUltraListAdapter?
     var measuresAsynchronously: Bool { true }
 
     init(identity: String, revision: UInt64, plan: ChatRowPlan, contentY: CGFloat, adapter: ChatUltraListAdapter, preparedNode: NodeRow? = nil) {
         self.identity = identity; self.revision = revision; self.plan = plan; self.contentY = contentY; self.adapter = adapter
+        usesNativeDrawing = Self.requiresNativeDrawing(plan)
         if let preparedNode { node = preparedNode; return }
+        let native = usesNativeDrawing
         let dark = adapter.list.traitCollection.userInterfaceStyle == .dark
         let scale = adapter.list.traitCollection.displayScale
-        node = NodeRow(identity: identity, revision: revision) {
+        node = NodeRow(identity: identity, revision: revision, measurer: adapter.measurer) {
             var style = Style()
             style.height = .points(plan.size.height)
             let root = UltraNode(style: style)
-            if plan.size.height > 4096 { return root }
+            if native { return root }
             // Long messages exceed a single bitmap's pixel cap. Fixed
             // vertical tiles keep them drawable at every text size.
             var y: CGFloat = 0
@@ -102,6 +108,27 @@ final class ChatUltraRow: ListRow {
     func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? { await node.prepare(width: width, environment: environment) }
     func makeView() -> ListRowView { ChatUltraRowView(row: self) }
     func apply(to view: ListRowView, transition: ListTransition) { (view as? ChatUltraRowView)?.apply(self, transition: transition) }
+
+    private static func requiresNativeDrawing(_ plan: ChatRowPlan) -> Bool {
+        guard plan.size.height <= 4096 else { return true }
+        // A single bitmap is below the live overlay. If a later static
+        // mark overlaps earlier live content, retain the original painter
+        // order using the native canvas for this row.
+        var live: [CGRect] = []
+        for item in plan.items {
+            switch item {
+            case .box(let box):
+                if live.contains(where: { $0.intersects(box.frame) }) { return true }
+            case .text(_, let frame), .icon(_, _, let frame, _):
+                if live.contains(where: { $0.intersects(frame) }) { return true }
+            case .spinner(let frame, _, _), .elapsed(_, let frame, _), .diff(_, let frame, _, _, _, _),
+                 .diffHeader(_, _, let frame), .scroller(_, let frame, _, _), .attachment(_, let frame),
+                 .webImage(_, let frame, _), .mermaid(_, let frame): live.append(frame)
+            case .pulse(let box): live.append(box.frame)
+            }
+        }
+        return false
+    }
 }
 
 @MainActor
@@ -188,6 +215,7 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
 @MainActor
 private struct ChatOlderUltraRow: ListRow {
     let identity = "chat:older-end"
+    let revision: UInt64
     let view: ChatOlderEndView
     func makeView() -> ListRowView { ChatOlderUltraView(content: view) }
 }
@@ -213,6 +241,7 @@ private final class ChatOlderUltraView: ListRowView {
 @MainActor
 final class ChatUltraListAdapter {
     let list = UltraListView(engineMode: .keyframe)
+    let measurer: any NodeRowMeasuring
     private let olderEnd: ChatOlderEndView
     private var rows: [String: ChatUltraRow] = [:]
     private var revision: UInt64 = 0
@@ -220,23 +249,38 @@ final class ChatUltraListAdapter {
     private var insets = UIEdgeInsets.zero
     private var viewportSize = CGSize.zero
     private var latest: ChatListUpdate?
+    private var submitted: UInt64 = 0
+    private var motion: UInt64 = 0
+    private struct Settlement {
+        var submission: UInt64
+        var motion: UInt64
+        var follow: Bool
+        var pin: (identity: String, end: CGFloat)?
+        var animated: Bool
+    }
+    private var settlement: Settlement?
     private(set) var isActive = true
     var onScroll: (() -> Void)?
     var onAction: ((ChatRowAction) -> Void)?
     var onLink: ((String) -> Void)?
     var onHold: ((ChatRowAction, UIView, CGRect, CGPoint) -> Void)?
 
-    init(olderEnd: ChatOlderEndView) {
+    init(olderEnd: ChatOlderEndView, measurer: any NodeRowMeasuring = NodeRowMeasurer()) {
         self.olderEnd = olderEnd
+        self.measurer = measurer
         list.contentView.transform = ChatCollectionLayout.flip
         list.keyboardDismissMode = .interactive
         list.accessibilityIdentifier = "chat.ultralist"
         list.onScroll = { [weak self] _ in self?.onScroll?() }
-        list.onVisibleWindowChanged = { [weak self] in self?.onScroll?() }
+        list.onVisibleWindowChanged = { [weak self] in
+            self?.settleCommittedUpdate()
+            self?.onScroll?()
+        }
+        list.willBeginDragging = { [weak self] in self?.motion &+= 1 }
         list.registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { [weak self] (_: UltraListView, _) in
             guard let self, let latest = self.latest else { return }
             self.rows.removeAll()
-            self.apply(latest, target: nil, animated: false)
+            self.apply(latest, animated: false)
         }
     }
 
@@ -246,6 +290,10 @@ final class ChatUltraListAdapter {
             return row.contentY - frame.minY + insets.top
         }
         return 0
+    }
+
+    var isDisplayReady: Bool {
+        list.items.last?.revision == submitted && !list.loadedItemViews.isEmpty && list.loadedItemViews.allSatisfy(\.isDisplayReady)
     }
 
     func setViewport(size: CGSize, insets: UIEdgeInsets) {
@@ -258,8 +306,19 @@ final class ChatUltraListAdapter {
                           compensatesInsetChange: !list.isTracking, transition: .none)
     }
 
-    func apply(_ update: ChatListUpdate, target: CGFloat?, animated: Bool) {
+    func apply(_ update: ChatListUpdate, target: CGFloat? = nil, animated: Bool) {
         latest = update
+        submitted &+= 1
+        let idle = !list.isTracking && !list.isDragging && !list.isDecelerating
+        let follow = idle && visibleMinY <= ChatScrollAnchor.followThreshold
+        var pin: (identity: String, end: CGFloat)?
+        if idle, visibleMinY > 0.5, let id = update.pinning {
+            let identity = "chat:message:\(id)"
+            if let index = list.items.firstIndex(where: { $0.identity == identity }), let frame = list.settledFrame(at: index) {
+                pin = (identity, frame.maxY)
+            }
+        }
+        settlement = target == nil ? Settlement(submission: submitted, motion: motion, follow: pin == nil && follow, pin: pin, animated: animated) : nil
         model = update.model
         var next: [String: ChatUltraRow] = [:]
         func descriptor(_ plan: ChatRowPlan, identity: String, y: CGFloat) -> ChatUltraRow {
@@ -278,11 +337,29 @@ final class ChatUltraListAdapter {
         for (index, plan) in update.plans.enumerated() {
             items.append(descriptor(plan, identity: "chat:message:\(plan.id)", y: update.model.frame(ofRow: index).minY))
         }
-        items.append(ChatOlderUltraRow(view: olderEnd))
+        items.append(ChatOlderUltraRow(revision: submitted, view: olderEnd))
         rows = next
         let scroll = target.map { scrollTarget($0) }
         list.applyChanges(items: items, newSize: viewportSize, newInsets: .init(top: insets.top, bottom: insets.bottom), scrollTo: scroll,
-                          anchorMode: .preserveVisibleContent, transition: animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
+                          anchorMode: follow ? .automatic : .preserveVisibleContent, transition: animated && follow && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
+    }
+
+    private func settleCommittedUpdate() {
+        guard let pending = settlement, list.items.last?.revision == pending.submission else { return }
+        settlement = nil
+        list.performAfterCurrentPass { [weak self] in
+            guard let self, isActive, submitted == pending.submission, motion == pending.motion,
+                  !list.isTracking, !list.isDragging, !list.isDecelerating else { return }
+            // These targets already belong to the committed loaded window,
+            // so no asynchronous preparation can replay them under a later
+            // drag. Routine collection mutations never carry scrollTo.
+            if let pin = pending.pin, let index = list.items.firstIndex(where: { $0.identity == pin.identity }),
+               list.loadedItemView(at: index) != nil {
+                list.scrollTo(.init(index: index, resolve: { [weak self] height, _ in pin.end - height - (self?.insets.top ?? 0) }), transition: .none)
+            } else if pending.follow, list.loadedItemView(at: 0) != nil {
+                list.scrollTo(.init(index: 0), transition: pending.animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
+            }
+        }
     }
 
     private func scrollTarget(_ distance: CGFloat) -> ListScrollTarget {
@@ -293,13 +370,14 @@ final class ChatUltraListAdapter {
         return .init(index: index + 1, pointOffset: model.frame(ofRow: index).minY - distance)
     }
 
-    func setVisibleMinY(_ distance: CGFloat) { list.scrollTo(scrollTarget(distance), transition: .none) }
-    func scrollToNewest(animated: Bool) { list.scrollTo(.init(index: 0), transition: animated ? .easeInOut(0.2) : .none) }
+    func setVisibleMinY(_ distance: CGFloat) { motion &+= 1; list.scrollTo(scrollTarget(distance), transition: .none) }
+    func scrollToNewest(animated: Bool) { motion &+= 1; list.scrollTo(.init(index: 0), transition: animated ? .easeInOut(0.2) : .none) }
 
     func deactivate() {
         isActive = false
         onScroll = nil; onAction = nil; onLink = nil; onHold = nil
         list.onScroll = nil; list.onVisibleWindowChanged = nil
+        list.willBeginDragging = nil
         list.applyChanges(items: [], transition: .none)
         list.removeFromSuperview()
         rows.removeAll()

@@ -141,6 +141,8 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
             olderEnd.transform = ChatCollectionLayout.flip
             collectionView.addSubview(footer)
             collectionView.addSubview(olderEnd)
+            collectionView.bounds = CGRect(origin: collectionView.bounds.origin, size: bounds.size)
+            collectionView.center = CGPoint(x: bounds.midX, y: bounds.midY)
             collectionView.contentInset = edgeInsets
             if let latest { install(latest) }
             collectionView.reloadData()
@@ -190,7 +192,7 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     var maximumVisibleMinY: CGFloat { maxVisibleMinY(layout.model) }
     var isDisplayReady: Bool {
         guard let ultra else { return !plans.isEmpty }
-        return !ultra.list.loadedItemViews.isEmpty && ultra.list.loadedItemViews.allSatisfy(\.isDisplayReady)
+        return ultra.isDisplayReady
     }
 
     func setVisibleMinY(_ distance: CGFloat) {
@@ -255,18 +257,11 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         complete.footer = update.footer ?? latest?.footer
         latest = complete
         if let ultra {
-            let current = visibleMinY
-            let moving = isTracking || isDecelerating
-            let pinned = update.pinning.flatMap { id in
-                update.ids.contains(id) ? ChatScrollAnchor.pinning(id, layout: layout.model, ids: ids, visibleMinY: current) : nil
-            }
-            let anchor = pinned ?? ChatScrollAnchor.capture(layout: layout.model, ids: ids, visibleMinY: current, follow: !moving)
-            let target = anchor.visibleMinY(in: update.model, ids: update.ids, current: current, maxVisibleMinY: maxVisibleMinY(update.model))
             plans = update.plans
             ids = update.ids
             layout.model = update.model
             hasContent = !plans.isEmpty
-            ultra.apply(complete, target: moving ? nil : target, animated: animated && anchor.kind == .newest)
+            ultra.apply(complete, animated: animated)
             return update.changeset.touchedRows
         }
         let model = update.model

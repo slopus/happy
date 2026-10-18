@@ -100,6 +100,7 @@ final class ChatScrollUITests: XCTestCase {
     private func interactiveDismiss(ultra: Bool) throws {
         let app = launch(["-fixture", "long", "-keyboard"] + (ultra ? ["-chatUltraList"] : []))
         var state = probe(app) { self.filled($0) && self.number($0["keyboardTop"]) < self.number(($0["window"] as? [NSNumber])?.last) - 150 }
+        XCTAssertEqual(state["renderer"] as? String, ultra ? "UltraList" : "UICollectionView")
         guard number(state["keyboardTop"]) < number((state["window"] as? [NSNumber])?.last) - 150 else {
             throw XCTSkip("no software keyboard on this simulator (hardware keyboard connected)")
         }

@@ -106,13 +106,13 @@ final class HostedChatListTests: XCTestCase {
         let list = ChatListView(frame: layout.list, renderer: renderer)
         root.addSubview(list)
         list.layoutIfNeeded()
-        let drawn = try await until { list.isDisplayReady }
-        XCTAssertTrue(drawn, "the selected renderer never drew its rows")
         list.setEdgeInsets(newest: layout.newestEdgeInset, oldest: layout.oldestEdgeInset)
         let all = messages(600)
         let derived = try XCTUnwrap(ChatRows.derive(input(all, width: layout.list.width, grows: 0), applied: ChatRowsApplied(), planner: planner))
         list.apply(try XCTUnwrap(derived.output.list), animated: false)
         list.layoutIfNeeded()
+        let drawn = try await until { list.isDisplayReady }
+        XCTAssertTrue(drawn, "the selected renderer never drew its rows")
         return ListUnderTest(window: window, root: root, list: list, applied: derived.state, messages: all)
     }
 

@@ -1,5 +1,5 @@
 {
-  "originHash" : "ab72194343c321b1279ce709f227a53339c3d8c61cddddb981035c42e408819c",
+  "originHash" : "835a419c9dfcfac7be3066717f4737ab8c1d3f6797a5b8c60cb8866740120e64",
   "pins" : [
     {
       "identity" : "client-sdk-swift",
@@ -56,12 +56,29 @@
       }
     },
     {
+      "identity" : "ultraview",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/slopus/ultraview.git",
+      "state" : {
+        "revision" : "dc33dfc78ed9601148a383cd1560d9ba73d1a7d5"
+      }
+    },
+    {
       "identity" : "webrtc-xcframework",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/livekit/webrtc-xcframework.git",
       "state" : {
         "revision" : "a41df9e9bcc7ab1d62131fda75c123ea391e5188",
         "version" : "150.7871.3"
+      }
+    },
+    {
+      "identity" : "yoga",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/facebook/yoga.git",
+      "state" : {
+        "revision" : "042f5013152eb81c1552dec945b88f7b95ca350f",
+        "version" : "3.2.1"
       }
     }
   ],

@@ -78,6 +78,10 @@ For the real-device route measurements and their limits, see
     costs nothing later.
   - `ChatListView.apply` takes the changeset as is: deletes, inserts, moves,
     and a new plan only for the changed rows that are on screen.
+  - The optional [UltraList chat renderer](CHAT-RENDERERS.md) consumes those
+    same plans and changesets. It prepares static drawing off main, keeps
+    live native row content, and anchors ordinary mutations to the committed
+    library window without queuing an absolute scroll target.
   - An update planned for another width or layout is refused and planned
     again.
   - Marking the chat read on open is a store write, done off the main thread.

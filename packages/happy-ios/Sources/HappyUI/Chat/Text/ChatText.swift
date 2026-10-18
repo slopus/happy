@@ -166,11 +166,13 @@ final class ChatTextLayout: @unchecked Sendable {
     }
 
     /// Draws into the current context with the text's top-left at `origin`.
-    func draw(at origin: CGPoint) {
+    func draw(at origin: CGPoint, visibleRect: CGRect? = nil) {
         access.lock()
         defer { access.unlock() }
         guard string.length > 0 else { return }
-        let range = manager.glyphRange(for: container)
+        let range = visibleRect.map {
+            manager.glyphRange(forBoundingRect: $0.offsetBy(dx: -origin.x, dy: -origin.y), in: container)
+        } ?? manager.glyphRange(for: container)
         manager.drawBackground(forGlyphRange: range, at: origin)
         manager.drawGlyphs(forGlyphRange: range, at: origin)
     }
