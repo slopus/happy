@@ -7,6 +7,16 @@ final class DirectPairingUITests: XCTestCase {
     func testTwoDirectComputersAndSwitcher() {
         let app = XCUIApplication()
         app.launch()
+        // This simulator contains only accounts created by this isolated
+        // interop job. Exercise removal before repeating the two-account run.
+        for _ in 0..<8 {
+            guard app.buttons["Manage accounts"].waitForExistence(timeout: 2) else { break }
+            XCTAssertTrue(app.staticTexts["Tailcat Test Mac"].exists)
+            app.buttons["Disconnect"].tap()
+            let confirmation = app.alerts.buttons["Disconnect"]
+            XCTAssertTrue(confirmation.waitForExistence(timeout: 5)); confirmation.tap()
+        }
+        print("DIRECT_UI_READY")
         let match = app.buttons["Emoji match"]
         XCTAssertTrue(waitForPairing(match, app: app))
         capture("pairing-emoji")
@@ -21,7 +31,7 @@ final class DirectPairingUITests: XCTestCase {
         let switcher = app.buttons["Switch account"]
         XCTAssertTrue(switcher.waitForExistence(timeout: 10)); switcher.tap()
         XCTAssertTrue(app.navigationBars["Accounts"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Pair a computer"].exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Pair a computer")).firstMatch.exists)
         capture("direct-account-switcher")
     }
 

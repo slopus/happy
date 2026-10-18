@@ -8,7 +8,7 @@ final class DirectIdentityView: UIView {
     let image = UIImageView()
     let heading = StyledLabel(style: TextStyles.restoreInstruction, color: Palette.text, alignment: .center)
     let body = StyledLabel(style: TextStyles.restorePath, color: Palette.textSecondary, alignment: .center)
-    let emoji = StyledLabel(style: TextStyles.restoreInstruction, color: Palette.text, alignment: .center)
+    let emoji = PairingEmojiLabel()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -28,6 +28,20 @@ final class DirectIdentityView: UIView {
         image.setLayoutFrame(layout.image); image.layer.cornerRadius = layout.image.width / 2
         heading.setLayoutFrame(layout.title); body.setLayoutFrame(layout.body); emoji.setLayoutFrame(layout.emoji)
     }
+}
+
+/// Render the comparison with the platform color emoji face at a readable
+/// size, independently of the app's bundled text styles.
+final class PairingEmojiLabel: UILabel {
+    var string: String = "" { didSet { text = string } }
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        numberOfLines = 0; textAlignment = .center
+        font = UIFont(name: "AppleColorEmoji", size: 36) ?? .systemFont(ofSize: 36)
+        adjustsFontForContentSizeCategory = true
+        textColor = UIColor(Palette.text)
+    }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 }
 
 @MainActor
@@ -91,9 +105,9 @@ final class DirectPairingViewController: UIViewController {
             do {
                 let emoji = try await service.start(deviceName: UIDevice.current.name)
                 guard let self, !Task.isCancelled else { return }
-                identity.emoji.string = emoji.joined(separator: "  ")
+                identity.emoji.string = emoji.joined(separator: " ")
                 identity.emoji.accessibilityLabel = "Verification emoji: " + emoji.joined(separator: ", ")
-                identity.body.string = "Compare these four emoji with the computer. Continue only when all four match. Confirm on both screens."
+                identity.body.string = "Name from pairing code · unverified\n\nCompare these four emoji with the computer. Continue only when all four match. Confirm on both screens."
                 screen.primary.title = "Emoji match"; screen.primary.isLoading = false; screen.primary.isEnabled = true
                 screen.secondary.title = "They don’t match"
                 ready = true; view.setNeedsLayout()
@@ -112,7 +126,7 @@ final class DirectPairingViewController: UIViewController {
     private func confirm() async {
         guard ready, !finished else { return }
         ready = false; screen.primary.title = "Waiting for computer…"; screen.primary.isLoading = true; screen.primary.isEnabled = false
-        identity.body.string = "Confirm the same emoji on your computer to finish pairing."
+        identity.body.string = "Name from pairing code · unverified\n\nConfirm the same emoji on your computer to finish pairing."
         do {
             let credentials = try await service.confirm()
             try Task.checkCancellation()
