@@ -154,10 +154,28 @@ enum FixtureScenarios {
             ```
 
             [Open Happy](https://happy.engineering)
+
+            This invalid diagram keeps its error visible:
+
+            ```mermaid
+            graph TD
+                A[Unclosed node
+            ```
+
+            This diagram exceeds the height cap and scrolls inside its box:
+
+            ```mermaid
+            flowchart TD
+            \((1...45).map { "    N\($0)[Step \($0)] --> N\($0 + 1)" }.joined(separator: "\n"))
+            ```
             """)
         case .giant:
             builder.user("Show one long reply so every section can be read while scrolling.")
-            builder.agent((1...350).map { "Section \($0). A single message remains visible through the entire conversation viewport, with selectable text and a stable reading position.\n" }.joined(separator: "\n"))
+            let arguments = ProcessInfo.processInfo.arguments
+            let count = arguments.firstIndex(of: "-giantParagraphs").flatMap { index in
+                arguments.indices.contains(index + 1) ? Int(arguments[index + 1]) : nil
+            } ?? 350
+            builder.agent((1...min(1000, max(1, count))).map { "Section \($0). A single message remains visible through the entire conversation viewport, with selectable text and a stable reading position.\n" }.joined(separator: "\n"))
         case .empty: break
         }
         return builder.messages

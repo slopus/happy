@@ -315,8 +315,15 @@ final class ChatUltraListAdapter {
         if idle, visibleMinY > 0.5, let id = update.pinning {
             let identity = "chat:message:\(id)"
             if let index = list.items.firstIndex(where: { $0.identity == identity }), let frame = list.settledFrame(at: index) {
-                pin = (identity, frame.maxY)
+                pin = (identity, frame.maxY - insets.top)
             }
+        }
+        if pin == nil, update.pinning == nil, let previous = settlement,
+           previous.motion == motion, let pendingPin = previous.pin,
+           update.plans.contains(where: { "chat:message:\($0.id)" == pendingPin.identity }) {
+            // Row planning emits a tool pin once. A newer token or syntax
+            // pass may supersede its preparation before it is committed.
+            pin = pendingPin
         }
         settlement = target == nil ? Settlement(submission: submitted, motion: motion, follow: pin == nil && follow, pin: pin, animated: animated) : nil
         model = update.model
@@ -341,7 +348,7 @@ final class ChatUltraListAdapter {
         rows = next
         let scroll = target.map { scrollTarget($0) }
         list.applyChanges(items: items, newSize: viewportSize, newInsets: .init(top: insets.top, bottom: insets.bottom), scrollTo: scroll,
-                          anchorMode: follow ? .automatic : .preserveVisibleContent, transition: animated && follow && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
+                          anchorMode: .preserveVisibleContent, transition: animated && follow && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
     }
 
     private func settleCommittedUpdate() {
@@ -355,8 +362,8 @@ final class ChatUltraListAdapter {
             // drag. Routine collection mutations never carry scrollTo.
             if let pin = pending.pin, let index = list.items.firstIndex(where: { $0.identity == pin.identity }),
                list.loadedItemView(at: index) != nil {
-                list.scrollTo(.init(index: index, resolve: { [weak self] height, _ in pin.end - height - (self?.insets.top ?? 0) }), transition: .none)
-            } else if pending.follow, list.loadedItemView(at: 0) != nil {
+                list.scrollTo(.init(index: index, resolve: { height, _ in pin.end - height }), transition: .none)
+            } else if pending.follow, abs(visibleMinY) > 0.5, list.loadedItemView(at: 0) != nil {
                 list.scrollTo(.init(index: 0), transition: pending.animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
             }
         }
