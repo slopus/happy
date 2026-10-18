@@ -348,7 +348,10 @@ final class ChatUltraListAdapter {
         }
         items.append(ChatOlderUltraRow(revision: submitted, view: olderEnd))
         rows = next
-        let scroll = target.map { scrollTarget($0) }
+        let scroll = target.map { scrollTarget($0) } ?? pin.flatMap { pin in
+            guard let index = items.firstIndex(where: { $0.identity == pin.identity }) else { return nil }
+            return ListScrollTarget(index: index, identity: pin.identity, resolve: { height, _ in pin.end - height })
+        }
         list.applyChanges(items: items, newSize: viewportSize, newInsets: .init(top: insets.top, bottom: insets.bottom), scrollTo: scroll,
                           anchorMode: .preserveVisibleContent, transition: animated && follow && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
     }
@@ -359,13 +362,9 @@ final class ChatUltraListAdapter {
         list.performAfterCurrentPass { [weak self] in
             guard let self, isActive, submitted == pending.submission, motion == pending.motion,
                   !list.isTracking, !list.isDragging, !list.isDecelerating else { return }
-            // Explicit identities keep the intended row through preparation.
-            // A later drag cancels the library's pending target.
-            // Routine collection mutations never carry scrollTo.
-            if let pin = pending.pin, let index = list.items.firstIndex(where: { $0.identity == pin.identity }),
-               list.loadedItemView(at: index) != nil {
-                list.scrollTo(.init(index: index, identity: pin.identity, resolve: { height, _ in pin.end - height }), transition: .none)
-            } else if pending.follow, abs(visibleMinY) > 0.5, list.loadedItemView(at: 0) != nil {
+            // Tool pins commit with their collection. Following the newest
+            // row is the only target settled afterward.
+            if pending.follow, abs(visibleMinY) > 0.5, list.loadedItemView(at: 0) != nil {
                 list.scrollTo(newestTarget(), transition: pending.animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
             }
         }
