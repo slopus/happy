@@ -162,12 +162,23 @@ final class DiffFileView: UIView, UIScrollViewDelegate, UIGestureRecognizerDeleg
 
     func apply(_ plan: DiffFilePlan) {
         guard plan !== self.plan else { return }
-        let keepOffset = self.plan?.file.path == plan.file.path
+        let previous = self.plan
+        let keepOffset = previous?.file.path == plan.file.path
+        let keepStyle = keepOffset && previous?.metrics == plan.metrics && previous?.options == plan.options
+            && previous?.layout.input.width == plan.layout.input.width
         self.plan = plan
         showMore.isBusy = false
         longPress.isEnabled = plan.options.selectable
         copyText = nil
-        for index in Array(codeRows.keys) { recycle(index) }
+        for index in Array(codeRows.keys) {
+            // Expanding a diff keeps its unchanged lines. Hunk/message
+            // words are localized when configured, so refresh those.
+            if keepStyle, let previous, plan.rows.indices.contains(index),
+               case .line = plan.rows[index], previous.rows[index] == plan.rows[index],
+               codeRows[index]?.frame == plan.layout.row(index),
+               gutterRows[index]?.frame == plan.layout.gutterRow(index) { continue }
+            recycle(index)
+        }
         shownRows = 0..<0
         if !keepOffset { scrollView.contentOffset = .zero }
         showMore.text = Strings.DiffDetail.showMoreLines(plan.hiddenCount)
@@ -244,23 +255,25 @@ final class DiffFileView: UIView, UIScrollViewDelegate, UIGestureRecognizerDeleg
         let code = spareCode.popLast() ?? DiffCodeRowView()
         code.configure(row, plan: plan)
         code.frame = layout.row(index)
-        canvas.addSubview(code)
+        code.isHidden = false
+        if code.superview !== canvas { canvas.addSubview(code) }
         codeRows[index] = code
 
         let gutterRow = spareGutter.popLast() ?? DiffGutterRowView()
         gutterRow.configure(row, plan: plan)
         gutterRow.frame = layout.gutterRow(index)
-        gutter.addSubview(gutterRow)
+        gutterRow.isHidden = false
+        if gutterRow.superview !== gutter { gutter.addSubview(gutterRow) }
         gutterRows[index] = gutterRow
     }
 
     private func recycle(_ index: Int) {
         if let code = codeRows.removeValue(forKey: index) {
-            code.removeFromSuperview()
+            code.isHidden = true
             spareCode.append(code)
         }
         if let gutterRow = gutterRows.removeValue(forKey: index) {
-            gutterRow.removeFromSuperview()
+            gutterRow.isHidden = true
             spareGutter.append(gutterRow)
         }
     }
