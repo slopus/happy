@@ -257,6 +257,18 @@ final class ChatUltraQAProbe: NSObject {
         }
     }
 
+    /// The chat rows Home shows on screen, top to bottom, as frames in the
+    /// window: where to tap, never what they say.
+    private func homeChatFrames(in window: UIWindow) -> [[Double]] {
+        var cells: [UITableViewCell] = []
+        Self.all(UITableViewCell.self, in: window, into: &cells)
+        return cells.filter { $0 is SessionRowCell || $0 is ProjectChatCell }
+            .map { $0.convert($0.bounds, to: window) }
+            .filter { $0.minY >= 0 && $0.maxY <= window.bounds.maxY && $0.height > 20 }
+            .sorted { $0.minY < $1.minY }
+            .map(rect)
+    }
+
     private static func find<T: UIView>(_ type: T.Type, in view: UIView) -> T? {
         for child in view.subviews {
             if let match = child as? T { return match }
@@ -654,6 +666,7 @@ final class ChatUltraQAProbe: NSObject {
             var away: [String: Any] = ["run": run, "listInWindow": false, "windowCount": windowCount, "moving": false, "frames": frameCount]
             away["opens"] = openingsObject()
             away["placeholder"] = placeholderKind(in: window)
+            away["homeChats"] = homeChatFrames(in: window)
             away["memoryMB"] = memoryMB
             away["memoryPeakMB"] = memoryPeakMB
             summaryText = "{\"state\":\(json(away)),\"windows\":\(windowsText)}"

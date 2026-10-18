@@ -175,11 +175,17 @@ its chats on UltraList through the real Home, in Home's order, up to five,
 until one draws its messages. It flings that chat, opens Details and
 returns. Never use any other account.
 
-The account also holds synthetic and empty chats. A chat that loads and
-shows its empty or failed placeholder (the probe's `placeholder`) is
-recorded and the next one is tried; it isn't a blank. Rows that never draw
-fail. If none of the five has messages, message reading is NOT COVERED,
-and Details is still opened from the last chat tried.
+The account also holds synthetic and empty chats. The probe reports what a
+chat shows instead of rows (`placeholder`) and where Home's chat rows are
+(`homeChats`), without their text. A chat is passed over, its reading not
+covered, only when it settles on "No messages yet" (`empty:noMessages`),
+Load more after five empty pages (`empty:loadMore`), deleted, or pending.
+Everything else fails at once and is not skipped: a failed read
+(`loadFailed`, `empty:error`), a chat still loading or blank after 30 s,
+rows that never draw, or a chat that never opens. The failure is attached
+with the requests the transport refused, to tell this harness's limits
+from the product's. If none of the five has messages, message reading is
+NOT COVERED, and Details is still opened from the last chat tried.
 
 - **Transport.** The harness (`Harness/ChatUltraQAReal.swift`) runs on an
   in-memory store with no socket. Its transport allows only GET and HEAD
