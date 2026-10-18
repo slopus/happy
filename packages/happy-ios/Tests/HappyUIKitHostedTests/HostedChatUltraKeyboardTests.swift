@@ -4,6 +4,7 @@ import HappyCore
 import HappyLayout
 @testable import HappyUI
 import UIKit
+import UltraView
 import XCTest
 
 private struct NoNetwork: HTTPTransport {

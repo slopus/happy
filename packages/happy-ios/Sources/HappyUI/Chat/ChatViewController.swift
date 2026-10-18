@@ -4,6 +4,7 @@ import HappyLayout
 import HappyStore
 import UIKit
 import HappyWire
+import UltraView
 
 /// The session screen: session/[id].tsx → SessionView.tsx with
 /// AgentContentView's floating dock (the phone layout).
