@@ -157,13 +157,24 @@ finger:
 - `settledMs`: the first frame with no navigation transition running and
   the presented position equal to the model's.
 
-Openings also record `notReadyVisibleFrames`, `missedFrames`, `turnMaxMs`
-and `applyMaxMs`, and, copied from the opened ChatViewController when the
-opening closes, its own timings in ms: `constructionMs` (building it before
-the push), `loadingMs` (its view load), `openingLayoutMs` (its layouts while
-opening) and `constructionStageMs` (each deferred construction step, one per
-frame after the first; fewer than all of them if it closed early). All of these are target times of display frames, accurate
-to one frame, and none of them is the start of the push animation.
+`mountMs`, `visibleMs`, `readyMs` and `settledMs` are target times of
+display frames, accurate to one frame. None of them is the start of the
+push animation.
+
+Openings also record counts and maxima over the opening:
+`notReadyVisibleFrames`, `missedFrames`, `turnMaxMs` and `applyMaxMs`. When
+the opening closes, they also copy the opened ChatViewController's own
+timings in ms:
+
+- `constructionMs`: building it before the push.
+- `loadingMs`: its view load.
+- `openingLayoutMs`: its layouts while opening.
+- `constructionStageMs`: each deferred construction step, one per frame
+  after the first.
+
+These are synchronous durations the chat already measures, not frame
+times. Any of them can be partial when the opening closes early or times
+out.
 `handlerMs` is when the window finished delivering the lifted finger, and
 `pushStartedInDelivery` records whether a navigation transition coordinator
 existed by then. Home's rows select through a tap recognizer that waits
