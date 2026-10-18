@@ -363,6 +363,9 @@ final class ChatUltraQAProbe: NSObject {
         case .ended, .cancelled:
             fingerDown = false
             lastRelease = touch.timestamp
+            // An opening's longest turn and apply count from its own finger.
+            turnSinceRelease = 0
+            applySinceRelease = 0
             if chat == nil { startFirstVisual(release: touch.timestamp) }
             // The row under the finger as it lifts: a tap that opens or
             // closes it should leave it where it is.
