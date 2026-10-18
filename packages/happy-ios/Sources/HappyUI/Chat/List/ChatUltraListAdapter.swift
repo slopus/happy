@@ -357,14 +357,14 @@ final class ChatUltraListAdapter {
         list.performAfterCurrentPass { [weak self] in
             guard let self, isActive, submitted == pending.submission, motion == pending.motion,
                   !list.isTracking, !list.isDragging, !list.isDecelerating else { return }
-            // These targets already belong to the committed loaded window,
-            // so no asynchronous preparation can replay them under a later
-            // drag. Routine collection mutations never carry scrollTo.
+            // Explicit identities keep the intended row through preparation.
+            // A later drag cancels the library's pending target.
+            // Routine collection mutations never carry scrollTo.
             if let pin = pending.pin, let index = list.items.firstIndex(where: { $0.identity == pin.identity }),
                list.loadedItemView(at: index) != nil {
-                list.scrollTo(.init(index: index, resolve: { height, _ in pin.end - height }), transition: .none)
+                list.scrollTo(.init(index: index, identity: pin.identity, resolve: { height, _ in pin.end - height }), transition: .none)
             } else if pending.follow, abs(visibleMinY) > 0.5, list.loadedItemView(at: 0) != nil {
-                list.scrollTo(.init(index: 0), transition: pending.animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
+                list.scrollTo(newestTarget(), transition: pending.animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
             }
         }
     }
@@ -377,8 +377,12 @@ final class ChatUltraListAdapter {
         return .init(index: index + 1, pointOffset: model.frame(ofRow: index).minY - distance)
     }
 
+    private func newestTarget() -> ListScrollTarget {
+        .init(index: 0, identity: list.items.first?.identity == "chat:newer-end" ? "chat:newer-end" : nil)
+    }
+
     func setVisibleMinY(_ distance: CGFloat) { motion &+= 1; list.scrollTo(scrollTarget(distance), transition: .none) }
-    func scrollToNewest(animated: Bool) { motion &+= 1; list.scrollTo(.init(index: 0), transition: animated ? .easeInOut(0.2) : .none) }
+    func scrollToNewest(animated: Bool) { motion &+= 1; list.scrollTo(newestTarget(), transition: animated ? .easeInOut(0.2) : .none) }
 
     func deactivate() {
         isActive = false

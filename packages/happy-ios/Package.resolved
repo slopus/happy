@@ -1,5 +1,5 @@
 {
-  "originHash" : "8cacc3d0f24b7f74c2c4ce210cb611df4b50641e859389e0f8d6cf6f6b597366",
+  "originHash" : "296ea54a75e4a502c3c02295c67cd6c3a250b110eca697b9a54e982a10d5d635",
   "pins" : [
     {
       "identity" : "client-sdk-swift",
@@ -60,7 +60,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/slopus/ultraview.git",
       "state" : {
-        "revision" : "02bfb321aef49aaa351d85f2d1918bb2a72a9adc"
+        "revision" : "fda45e59d90047e6c5a9c79f0a5db3a11b44ffb0"
       }
     },
     {
