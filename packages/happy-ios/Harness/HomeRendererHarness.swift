@@ -19,6 +19,7 @@ private struct HomeHarnessNoSocket: WebSocketConnector {
 final class HomeRendererHarness {
     private var account: AccountController?
     private var archiveProbe: HomeArchiveProbe?
+    private var qaProbe: ChatUltraQAProbe?
     init(window: UIWindow, arguments: [String]) {
         func option(_ name: String) -> String? {
             arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
@@ -71,6 +72,9 @@ final class HomeRendererHarness {
                 AppCoordinator.applyAppearance(to: navigation.navigationBar)
                 let shell = TabletShellViewController(context: context, detail: navigation)
                 window.rootViewController = shell
+                if arguments.contains("-qaProbe"), let window = window as? HarnessWindow {
+                    qaProbe = ChatUltraQAProbe(window: window, chat: nil)
+                }
                 shell.rootDidChange()
                 if archiveCount > 0, let window = window as? HarnessWindow {
                     archiveProbe = HomeArchiveProbe(window: window, snapshots: store.homeSnapshots())
