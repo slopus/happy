@@ -23,6 +23,10 @@ import XCTest
 ///
 /// `QA_PASS` (from `TEST_RUNNER_QA_PASS`) prefixes the probe's file names,
 /// so a recorded pass and an unrecorded timing pass keep separate files.
+///
+/// The class is main-actor isolated, as XCUIAutomation is. XCTest's own
+/// setUp and tearDown are nonisolated, so each test calls `prepare()` and
+/// defers `finish()` instead.
 @MainActor
 final class ChatUltraQATests: XCTestCase {
     private var app: XCUIApplication!
@@ -36,30 +40,25 @@ final class ChatUltraQATests: XCTestCase {
     private var coverage: [[String: String]] = []
     private static var aimThroughSpringboard = true
 
-    // XCTest calls these on the main thread, as it does the tests.
-    nonisolated override func setUp() {
-        super.setUp()
+    /// The start of every test.
+    private func prepare() {
         continueAfterFailure = true
         _ = skipsQuiescence
-        MainActor.assumeIsolated {
-            // Ahead of XCTest's own handler, which would tap a default button.
-            _ = addUIInterruptionMonitor(withDescription: "Fail on any system alert") { [weak self] alert in
-                self?.continueAfterFailure = false
-                XCTFail("A system alert appeared and was left unanswered: \(alert.label)")
-                return true
-            }
+        // Ahead of XCTest's own handler, which would tap a default button.
+        _ = addUIInterruptionMonitor(withDescription: "Fail on any system alert") { [weak self] alert in
+            self?.continueAfterFailure = false
+            XCTFail("A system alert appeared and was left unanswered: \(alert.label)")
+            return true
         }
     }
 
-    nonisolated override func tearDown() {
-        MainActor.assumeIsolated {
-            flushSteps()
-            if !coverage.isEmpty, let data = try? JSONSerialization.data(withJSONObject: coverage, options: [.prettyPrinted, .sortedKeys]) {
-                attach("\(name) coverage", String(decoding: data, as: UTF8.self))
-            }
-            XCUIDevice.shared.orientation = .portrait
+    /// Deferred by every test.
+    private func finish() {
+        flushSteps()
+        if !coverage.isEmpty, let data = try? JSONSerialization.data(withJSONObject: coverage, options: [.prettyPrinted, .sortedKeys]) {
+            attach("\(name) coverage", String(decoding: data, as: UTF8.self))
         }
-        super.tearDown()
+        XCUIDevice.shared.orientation = .portrait
     }
 
     private func flushSteps() {
@@ -421,6 +420,8 @@ final class ChatUltraQATests: XCTestCase {
     /// Device, signing and capture: the long chat on UltraList, a fling
     /// back and one forward.
     func testSmokeLongFling() {
+        prepare()
+        defer { finish() }
         launchChat("long", clip: "smoke")
         assertReady("smoke")
         screenshot("newest")
@@ -433,11 +434,15 @@ final class ChatUltraQATests: XCTestCase {
     // MARK: C1 Long history, composer and keyboard
 
     func testC1LongKeyboardAndHistory() {
+        prepare()
+        defer { finish() }
         runLong(ultra: true, clip: "c1-long")
     }
 
     /// The same clip on the default renderer, for comparison.
     func testL1LegacyLongKeyboardAndHistory() {
+        prepare()
+        defer { finish() }
         runLong(ultra: false, clip: "l1-legacy-long")
     }
 
@@ -503,6 +508,8 @@ final class ChatUltraQATests: XCTestCase {
     // MARK: C2 Streaming
 
     func testC2LiveStreamHistoryAndSend() {
+        prepare()
+        defer { finish() }
         // The reply starts 0.8 s after the chat subscribes. Nothing reads the
         // app until it has finished: a read stalls the stream's frames.
         launchChat("live", clip: "c2-live")
@@ -576,6 +583,8 @@ final class ChatUltraQATests: XCTestCase {
     // MARK: C3 Tools and permissions
 
     func testC3ToolsPermissionsDiffs() {
+        prepare()
+        defer { finish() }
         launchChat("tools", clip: "c3-tools")
         assertReady("open")
         screenshot("01-newest-pending-permissions")
@@ -659,6 +668,8 @@ final class ChatUltraQATests: XCTestCase {
     // MARK: C4 Markdown, links, copy, pictures
 
     func testC4MarkdownLinksCopyPictures() {
+        prepare()
+        defer { finish() }
         launchChat("markdown", clip: "c4-markdown")
         assertReady("open")
         screenshot("01-newest")
@@ -769,6 +780,8 @@ final class ChatUltraQATests: XCTestCase {
     // MARK: C5 Questions and sending
 
     func testC5QuestionsAndSending() {
+        prepare()
+        defer { finish() }
         launchChat("question", clip: "c5-question")
         assertReady("open")
         screenshot("01-question")
@@ -876,6 +889,8 @@ final class ChatUltraQATests: XCTestCase {
     }
 
     func testC6DiagramsAndGiantMessage() {
+        prepare()
+        defer { finish() }
         launchChat("diagrams", clip: "c6-diagrams")
         assertReady("open")
         Thread.sleep(forTimeInterval: 3)
@@ -973,6 +988,8 @@ final class ChatUltraQATests: XCTestCase {
     }
 
     func testC7HomeOpensChatsDetailsAndSetting() {
+        prepare()
+        defer { finish() }
         launchHome(clip: "c7-home")
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 20))
         Thread.sleep(forTimeInterval: 1)
@@ -1080,6 +1097,8 @@ final class ChatUltraQATests: XCTestCase {
     // MARK: C8 Appearance, text size, rotation, accessibility
 
     func testC8DarkLargeTextRotationAccessibility() {
+        prepare()
+        defer { finish() }
         launchChat("tools", clip: "c8-dark-tools", extra: ["-qaDark"])
         assertReady("open")
         screenshot("01-dark-tools")
@@ -1141,6 +1160,8 @@ final class ChatUltraQATests: XCTestCase {
     /// started: it asks for the microphone (a system prompt this suite
     /// never answers), then the server for voice credentials.
     func testC9ComposerControlsAndVoiceEntry() {
+        prepare()
+        defer { finish() }
         launchChat("markdown", clip: "c9-composer")
         assertReady("open")
         screenshot("01-composer")
@@ -1220,6 +1241,8 @@ final class ChatUltraQATests: XCTestCase {
     /// reports every request the read-only transport refused. Attaches no
     /// screenshots or text from the account: counts and timings only.
     func testR1RealAccountReadOnly() throws {
+        prepare()
+        defer { finish() }
         try XCTSkipUnless(ProcessInfo.processInfo.environment["QA_REAL"] == "1", "opt-in: needs the staged TEST secret")
         let app = XCUIApplication()
         app.launchArguments = ["-qaRealChat", "-qaProbe", "-qaRun", "\(pass)-r1-real"]
@@ -1270,6 +1293,8 @@ final class ChatUltraQATests: XCTestCase {
     // MARK: Legacy screens for pixel comparison
 
     func testL2LegacyAndUltraScreens() {
+        prepare()
+        defer { finish() }
         for fixture in ["markdown", "tools", "question", "sending"] {
             for ultra in [false, true] {
                 launchChat(fixture, clip: "l2-\(fixture)-\(ultra ? "ultra" : "legacy")", ultra: ultra)
