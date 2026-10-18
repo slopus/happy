@@ -47,9 +47,10 @@ final class ChatUltraKeyboard: NSObject {
     /// Read the layout guide at the next layout: the keyboard wasn't
     /// followed while the screen was away.
     private var resync = true
-    /// Moves when the screen goes and with every notification, so only the
-    /// latest notification queued behind the list's pass applies, and none
-    /// once the screen has gone.
+    /// Moves when the screen goes, with every notification and with every
+    /// update of the controller's, so only the latest notification queued
+    /// behind the list's pass applies, and none once the screen has gone or
+    /// the controller has moved the keyboard since.
     private var generation: UInt64 = 0
 
     private(set) var isActive = false
@@ -135,6 +136,7 @@ final class ChatUltraKeyboard: NSObject {
     /// pass.
     private func driven(_ update: KeyboardDismissalUpdate) {
         guard isActive else { return }
+        generation &+= 1
         // The finger moves the rows while it tracks; a release carries
         // them only when nothing else holds them.
         let held = list.isTracking || list.isDragging
