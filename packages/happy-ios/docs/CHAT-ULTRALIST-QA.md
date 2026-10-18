@@ -171,8 +171,15 @@ reports what it measured in the windows it recorded.
 ## The TEST account, read only
 
 `testR1RealAccountReadOnly` signs in to the shared TEST account and opens
-its newest chat on UltraList through the real Home. It flings the chat,
-opens Details and returns. Never use any other account.
+its chats on UltraList through the real Home, in Home's order, up to five,
+until one draws its messages. It flings that chat, opens Details and
+returns. Never use any other account.
+
+The account also holds synthetic and empty chats. A chat that loads and
+shows its empty or failed placeholder (the probe's `placeholder`) is
+recorded and the next one is tried; it isn't a blank. Rows that never draw
+fail. If none of the five has messages, message reading is NOT COVERED,
+and Details is still opened from the last chat tried.
 
 - **Transport.** The harness (`Harness/ChatUltraQAReal.swift`) runs on an
   in-memory store with no socket. Its transport allows only GET and HEAD

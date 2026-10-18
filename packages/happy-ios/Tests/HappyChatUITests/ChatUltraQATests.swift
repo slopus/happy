@@ -1387,15 +1387,59 @@ final class ChatUltraQATests: XCTestCase {
         guard (first["phase"] as? String) == "ready" else { return }
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 20), "Home is up")
         Thread.sleep(forTimeInterval: 3)
-        let cell = app.cells.firstMatch
-        XCTAssertTrue(cell.waitForExistence(timeout: 20), "a chat on Home")
-        let frame = cell.frame
-        mark("open newest chat")
-        tap(CGPoint(x: frame.midX, y: frame.midY))
-        Thread.sleep(forTimeInterval: 4)
-        assertReady("open")
-        for index in 1...2 { step("fling back \(index)", quiet: 2.5, expect: .scroll) { fling(older: true) } }
-        step("fling forward", quiet: 2.5, expect: .scroll) { fling(older: false) }
+        // The TEST account keeps synthetic and empty chats as well: open
+        // the chats on Home in turn, up to five, until one draws its
+        // messages. A chat that loads and says it has none is legitimate:
+        // recorded, never called a blank. Rows that never draw fail.
+        let settled: Set<String> = ["loadFailed", "empty:noMessages", "empty:error", "empty:loadMore", "deleted"]
+        var outcomes: [String] = []
+        var drawn = false, undrawn = false
+        var lastChat: Int?
+        for index in 0..<5 {
+            let cell = app.cells.element(boundBy: index)
+            guard cell.waitForExistence(timeout: 10), cell.isHittable else { break }
+            let frame = cell.frame
+            mark("open Home chat \(index + 1)")
+            tap(CGPoint(x: frame.midX, y: frame.midY))
+            var outcome = "nothing shown in 30 s"
+            _ = wait(30, every: 1) {
+                let s = state()
+                let rows = int(s["rows"])
+                drawn = rows > 0 && (s["displayReady"] as? Bool) == true
+                let shown = s["placeholder"] as? String ?? "none"
+                outcome = rows > 0 ? (drawn ? "drawn, rows \(rows)" : "rows \(rows) not drawn") : "placeholder \(shown)"
+                return drawn || (rows == 0 && settled.contains(shown))
+            }
+            let s = state()
+            let pushed = (s["listInWindow"] as? Bool) == true || (s["placeholder"] as? String ?? "none") != "none"
+            outcomes.append("\(index + 1): \(outcome)")
+            undrawn = int(s["rows"]) > 0 && !drawn
+            if drawn || undrawn { break }
+            guard pushed else {
+                // Not a chat: Home is still up, or something else is.
+                if app.buttons["Settings"].isHittable { continue } else { break }
+            }
+            lastChat = index
+            backToHome()
+        }
+        attach("r1-real chats tried", outcomes.joined(separator: "\n"))
+        if drawn || undrawn {
+            assertReady("open")
+            for index in 1...2 { step("fling back \(index)", quiet: 2.5, expect: .scroll) { fling(older: true) } }
+            step("fling forward", quiet: 2.5, expect: .scroll) { fling(older: false) }
+            covered("real chat drawn and flung", "chat \(outcomes.count) on Home")
+        } else {
+            notCovered("real chat with messages", "none among the first \(outcomes.count) chats on Home: \(outcomes.joined(separator: "; "))")
+            // Details still opens from a chat without messages.
+            guard let lastChat, app.buttons["Settings"].isHittable else {
+                XCTFail("no chat on Home opened: \(outcomes.joined(separator: "; "))")
+                return
+            }
+            let frame = app.cells.element(boundBy: lastChat).frame
+            mark("open Home chat \(lastChat + 1) again for Details")
+            tap(CGPoint(x: frame.midX, y: frame.midY))
+            Thread.sleep(forTimeInterval: 4)
+        }
         let avatar = app.descendants(matching: .any).allElementsBoundByIndex.prefix(80)
             .first { $0.elementType != .window && $0.frame.width < 70 && $0.frame.width > 30 && $0.frame.midX > size.width * 0.8 && $0.frame.midY < 100 && $0.frame.midY > 40 }
         if let avatar {

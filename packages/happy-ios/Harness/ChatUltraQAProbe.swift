@@ -243,6 +243,20 @@ final class ChatUltraQAProbe: NSObject {
         return cachedDock
     }
 
+    /// What a chat shows in place of its rows, if anything: the kind only,
+    /// never the chat's own text. "none" while no placeholder shows.
+    private func placeholderKind(in root: UIView) -> String {
+        guard let view = Self.find(ChatPlaceholderView.self, in: root), !view.isHidden, view.alpha > 0.01,
+              let content = view.content else { return "none" }
+        switch content {
+        case .loading: return "loading"
+        case .loadFailed: return "loadFailed"
+        case .empty(_, let status): return "empty:\(status)"
+        case .pendingChat: return "pendingChat"
+        case .deleted: return "deleted"
+        }
+    }
+
     private static func find<T: UIView>(_ type: T.Type, in view: UIView) -> T? {
         for child in view.subviews {
             if let match = child as? T { return match }
@@ -639,6 +653,7 @@ final class ChatUltraQAProbe: NSObject {
         guard let list, list.window != nil else {
             var away: [String: Any] = ["run": run, "listInWindow": false, "windowCount": windowCount, "moving": false, "frames": frameCount]
             away["opens"] = openingsObject()
+            away["placeholder"] = placeholderKind(in: window)
             away["memoryMB"] = memoryMB
             away["memoryPeakMB"] = memoryPeakMB
             summaryText = "{\"state\":\(json(away)),\"windows\":\(windowsText)}"
@@ -657,6 +672,7 @@ final class ChatUltraQAProbe: NSObject {
         value["collectionViews"] = collections.count
         value["rows"] = list.plans.count
         value["displayReady"] = list.isDisplayReady
+        value["placeholder"] = placeholderKind(in: window)
         value["frames"] = frameCount
         value["windowCount"] = windowCount
         value["visibleMinY"] = Double(list.visibleMinY)
