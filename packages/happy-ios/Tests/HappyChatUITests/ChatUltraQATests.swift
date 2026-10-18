@@ -1250,6 +1250,86 @@ final class ChatUltraQATests: XCTestCase {
         }
     }
 
+    // MARK: N1 Who owns the navigation bar
+
+    /// The navigation bars on screen, at rest: a hidden bar isn't one.
+    private func shownBars() -> [XCUIElement] {
+        app.navigationBars.allElementsBoundByIndex.filter { $0.exists && $0.frame.height > 20 && $0.frame.maxY > 0 }
+    }
+
+    /// Home floats its own header with no bar, a chat has the bar in
+    /// portrait and none in landscape, and Settings has the ordinary bar.
+    /// Every check is of the screen at rest. The back swipe let go early is
+    /// only attempted: a swipe that never began passes the same checks, so
+    /// whether it began and turned back, and any bar flashing during a
+    /// push, are judged from a recorded pass.
+    func testN1NavigationBarOwnership() {
+        prepare()
+        defer { finish() }
+        XCUIDevice.shared.orientation = .portrait
+        launchHome(clip: "n1-bar")
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 20))
+        Thread.sleep(forTimeInterval: 1)
+        require("Home has no navigation bar", shownBars().isEmpty, "\(shownBars().count) bars")
+        screenshot("01-home")
+
+        let target = row("Scroll indicator")
+        XCTAssertTrue(target.waitForExistence(timeout: 10))
+        let frame = target.frame
+        mark("open portrait")
+        tap(CGPoint(x: frame.midX, y: frame.midY))
+        Thread.sleep(forTimeInterval: 2.5)
+        assertReady("open portrait")
+        require("a chat has the bar in portrait", shownBars().count == 1, "\(shownBars().map { $0.frame })")
+        screenshot("02-chat-portrait")
+
+        // From the left edge, a third of the way, held still and let go:
+        // a pop that began is cancelled.
+        step("attempted back swipe let go early", quiet: 2) {
+            drag(CGPoint(x: 2, y: size.height * 0.5), CGPoint(x: size.width * 0.3, y: size.height * 0.5), velocity: 300, hold: 0.4)
+        }
+        let stayed = !app.buttons["Settings"].exists
+        require("still on the chat after an attempted cancelled back swipe", stayed, "Home \(stayed ? "not shown" : "shown")")
+        require("the chat has its bar after an attempted cancelled back swipe", shownBars().count == 1, "\(shownBars().map { $0.frame })")
+        assertReady("after the attempted cancelled swipe")
+        screenshot("03-chat-after-attempted-cancelled-swipe")
+
+        backToHome()
+        require("Home has no bar again after the chat", shownBars().isEmpty, "\(shownBars().count) bars")
+        screenshot("04-home-again")
+
+        app.buttons["Settings"].tap()
+        let settings = app.navigationBars["Settings"]
+        require("Settings has the ordinary bar", settings.waitForExistence(timeout: 10) && settings.frame.height > 20, "\(settings.frame)")
+        screenshot("05-settings")
+        settings.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 0.8)
+        require("Home has no bar after Settings", shownBars().isEmpty, "\(shownBars().count) bars")
+
+        mark("rotate landscape")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        Thread.sleep(forTimeInterval: 2.5)
+        screenshot("06-home-landscape")
+        let landscapeRow = row("Scroll indicator")
+        XCTAssertTrue(landscapeRow.waitForExistence(timeout: 10))
+        mark("open landscape")
+        landscapeRow.tap()
+        Thread.sleep(forTimeInterval: 2.5)
+        assertReady("open landscape")
+        require("a chat has no bar in landscape", shownBars().isEmpty, "\(shownBars().map { $0.frame })")
+        screenshot("07-chat-landscape")
+        mark("rotate portrait")
+        XCUIDevice.shared.orientation = .portrait
+        Thread.sleep(forTimeInterval: 2.5)
+        require("the chat has its bar back in portrait", shownBars().count == 1, "\(shownBars().map { $0.frame })")
+        screenshot("08-chat-portrait-again")
+        backToHome()
+        require("Home has no bar after the rotated chat", shownBars().isEmpty, "\(shownBars().count) bars")
+        attach("\(clip) openings", "\(state()["opens"] ?? [])")
+        attach("\(clip) first visual responses", "\(state()["firstVisuals"] ?? [])")
+    }
+
     // MARK: C8 Appearance, text size, rotation, accessibility
 
     func testC8DarkLargeTextRotationAccessibility() {
