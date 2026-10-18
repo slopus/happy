@@ -72,8 +72,8 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         XCTAssertTrue(committed, "the dock change must not strand the first prepared snapshot")
         XCTAssertEqual(list.items.count, 6)
         XCTAssertFalse(list.loadedItemViews.isEmpty)
-        XCTAssertEqual(list.viewport.insets.top, 246)
-        XCTAssertEqual(list.viewport.insets.bottom, 113)
+        XCTAssertEqual(list.viewportInsets.top, 246)
+        XCTAssertEqual(list.viewportInsets.bottom, 113)
     }
 
     func testPreparedTokenUpdateCannotHaltADragThatStartedWhileItWaited() async throws {
