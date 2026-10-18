@@ -158,7 +158,11 @@ finger:
   the presented position equal to the model's.
 
 Openings also record `notReadyVisibleFrames`, `missedFrames`, `turnMaxMs`
-and `applyMaxMs`. All of these are target times of display frames, accurate
+and `applyMaxMs`, and, copied from the opened ChatViewController when the
+opening closes, its own timings in ms: `constructionMs` (building it before
+the push), `loadingMs` (its view load), `openingLayoutMs` (its layouts while
+opening) and `constructionStageMs` (each deferred construction step, one per
+frame after the first; fewer than all of them if it closed early). All of these are target times of display frames, accurate
 to one frame, and none of them is the start of the push animation.
 `handlerMs` is when the window finished delivering the lifted finger, and
 `pushStartedInDelivery` records whether a navigation transition coordinator

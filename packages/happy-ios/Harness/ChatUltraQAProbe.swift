@@ -138,6 +138,13 @@ final class ChatUltraQAProbe: NSObject {
         var rows = 0
         var handlerMs = -1.0
         var pushStartedInDelivery = false
+        /// The opened chat's own timings, copied once the opening closes:
+        /// building it (`constructionSeconds`), its view load, its layouts
+        /// while opening, and each deferred construction step, in ms.
+        var constructionMs = -1.0
+        var loadingMs = -1.0
+        var openingLayoutMs = -1.0
+        var constructionStageMs: [Double] = []
     }
     /// One finger lifted on Home with Home on screen, and the first frame
     /// that showed it took effect: the new chat's view, committed and
@@ -710,6 +717,14 @@ final class ChatUltraQAProbe: NSObject {
             progress.settledMs = since
         }
         if (progress.readyMs >= 0 && progress.settledMs >= 0) || since > 5000 {
+            // The chat that holds this list.
+            if let chat = sequence(first: list as UIResponder, next: { $0.next }).first(where: { $0 is ChatViewController }) as? ChatViewController {
+                let ms = { (seconds: CFTimeInterval) in (seconds * 100_000).rounded() / 100 }
+                progress.constructionMs = ms(chat.constructionSeconds)
+                progress.loadingMs = ms(chat.loadingSeconds)
+                progress.openingLayoutMs = ms(chat.openingLayoutSeconds)
+                progress.constructionStageMs = chat.constructionStageSeconds.map(ms)
+            }
             openings.append(progress)
             opening = nil
         } else {
