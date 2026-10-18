@@ -153,7 +153,7 @@ final class ChatUltraKeyboard: NSObject {
     private func notified(height: CGFloat, _ change: Change) {
         generation &+= 1
         let generation = generation
-        let apply = { [weak self] in
+        let apply: @MainActor @Sendable () -> Void = { [weak self] in
             guard let self, self.isActive, self.generation == generation, !self.isDriving else { return }
             self.take(height, change)
         }
