@@ -152,14 +152,16 @@ final class ChatUltraQAProbe: NSObject {
         var kind = "none"
         /// A new chat's view committed within two seconds.
         var chat = false
-        /// Samples that couldn't see the window or Home as presented.
+        /// Samples with no change seen that couldn't see the window or
+        /// Home as presented.
         var unknownSamples = 0
         var callbackMs = -1.0, timestampMs = -1.0, targetMs = -1.0, lowerMs = -1.0
         var shellCommittedMs = -1.0
         var shellFraction = 0.0
         var homeDx = 0.0, homeDy = 0.0
         /// The first twelve samples: target ms, shell committed, its
-        /// visible fraction, Home's presented shift from its baseline.
+        /// visible fraction, Home's presented shift from its baseline, and
+        /// whether Home could be read (the shift is 0 when it couldn't).
         var samples: [[Double]] = []
     }
     private struct FirstVisualTrack {
@@ -413,19 +415,17 @@ final class ChatUltraQAProbe: NSObject {
             firstVisual = nil
             return
         }
-        // A sample that can't see the window or Home as presented is
-        // unknown: it neither shows a change nor moves `lowerMs` past it.
-        guard let screen = window.layer.presentation(), let homeView = track.home.viewIfLoaded,
-              let homePresented = homeView.layer.presentation(), let homeOpacity = Self.presentedOpacity(homeView) else {
+        // Without the window as presented nothing can be placed on screen:
+        // an unknown sample, neither a change nor past `lowerMs`.
+        guard let screen = window.layer.presentation() else {
             track.result.unknownSamples += 1
             firstVisual = track
             return
         }
-        let lower = max(0, ms(track.previousCallback))
-        track.previousCallback = callback
         // The new chat's view: committed once it and every view above it
         // have a presentation layer; shown once it also intersects the
-        // window and isn't hidden or transparent there.
+        // window and isn't hidden or transparent there. Seen whether or not
+        // Home still is.
         var shellCommitted = false
         var fraction = 0.0
         if let root = window.rootViewController,
@@ -439,20 +439,30 @@ final class ChatUltraQAProbe: NSObject {
                 fraction = Double(shown.width * shown.height / (frame.width * frame.height))
             }
         }
-        let homeFrame = homePresented.convert(homePresented.bounds, to: screen)
-        let dx = Double(homeFrame.minX - track.baseline.minX)
-        let dy = Double(homeFrame.minY - track.baseline.minY)
-        // Home's move counts only while Home is still to be seen.
-        let homeShown = homeOpacity > 0.01 && homeFrame.intersects(window.bounds)
+        // Home as presented, if it still can be read (it leaves the window
+        // once the push ends): its move counts only while it can be seen.
+        var homeKnown = false
+        var homeMoved = false
+        var dx = 0.0, dy = 0.0
+        if let homeView = track.home.viewIfLoaded, homeView.window === window,
+           let homePresented = homeView.layer.presentation(), let homeOpacity = Self.presentedOpacity(homeView) {
+            homeKnown = true
+            let homeFrame = homePresented.convert(homePresented.bounds, to: screen)
+            dx = Double(homeFrame.minX - track.baseline.minX)
+            dy = Double(homeFrame.minY - track.baseline.minY)
+            homeMoved = homeOpacity > 0.01 && homeFrame.intersects(window.bounds) && (abs(dx) >= 0.5 || abs(dy) >= 0.5)
+        }
         if shellCommitted, track.result.shellCommittedMs < 0 {
             track.result.shellCommittedMs = ms(link.targetTimestamp)
             track.result.chat = true
         }
         if track.result.samples.count < 12 {
-            track.result.samples.append([ms(link.targetTimestamp), shellCommitted ? 1 : 0, fraction, dx].map { ($0 * 100).rounded() / 100 })
+            track.result.samples.append([ms(link.targetTimestamp), shellCommitted ? 1 : 0, fraction, dx, homeKnown ? 1 : 0].map { ($0 * 100).rounded() / 100 })
         }
-        let homeMoved = homeShown && (abs(dx) >= 0.5 || abs(dy) >= 0.5)
-        if track.result.callbackMs < 0, fraction > 0 || homeMoved {
+        let changed = fraction > 0 || homeMoved
+        // `lowerMs` is the last sample that saw everything and no change.
+        let lower = max(0, ms(track.previousCallback))
+        if track.result.callbackMs < 0, changed {
             track.result.kind = fraction > 0 ? (homeMoved ? "shell+home" : "shell") : "home"
             track.result.callbackMs = ms(callback)
             track.result.timestampMs = ms(link.timestamp)
@@ -461,6 +471,12 @@ final class ChatUltraQAProbe: NSObject {
             track.result.shellFraction = fraction
             track.result.homeDx = dx
             track.result.homeDy = dy
+        } else if !changed {
+            if homeKnown {
+                track.previousCallback = callback
+            } else {
+                track.result.unknownSamples += 1
+            }
         }
         // Done once a new chat has committed, the first change is in and
         // twelve samples are: a release that only moved Home (Settings, a

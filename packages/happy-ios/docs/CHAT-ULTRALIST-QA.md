@@ -185,17 +185,22 @@ Times are ms from the release, all from that sample:
 
 - `callbackMs`, `timestampMs`, `targetMs`: the display-link callback, its
   timestamp, and its target timestamp.
-- `lowerMs`: the callback of the last earlier sample that saw no change.
-  The change happened after it.
+- `lowerMs`: the callback of the last earlier sample that read the window
+  and Home as presented and saw no change (a chat not yet committed counts
+  as not shown). The change happened after it.
 
-A sample that can't see the window or Home as presented counts in
-`unknownSamples`. It neither shows a change nor moves `lowerMs`.
+The new chat is observed on its own, whether or not Home can still be read
+(Home leaves the window once the push ends). A sample where the chat is
+shown is a response even when Home can't be read. A sample that can't read
+the window as presented, or that shows no change but can't read Home, is
+unknown and counts in `unknownSamples`. It doesn't move `lowerMs`.
 
 `targetMs` is the frame the change is bound for. It is not proof of when
 the photons appeared, and the change can lie anywhere after `lowerMs`.
 `shellCommittedMs` is the first frame with the new chat's view committed.
 `samples` lists up to the first twelve seen frames as target ms, committed,
-the chat's visible fraction, and Home's horizontal shift. `chat` is true as
+the chat's visible fraction, Home's horizontal shift, and whether Home could
+be read (the shift is 0 when it couldn't). `chat` is true as
 soon as a new chat's view commits, and stays false when none does within
 two seconds. A result is complete after a chat commit, the first response
 and twelve samples, or else at two seconds. Only the optimized timing pass
