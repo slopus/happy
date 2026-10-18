@@ -139,8 +139,10 @@ final class ChatUltraKeyboard: NSObject {
         guard isActive else { return }
         generation &+= 1
         // The finger moves the rows while it tracks; a release carries
-        // them only when nothing else holds them.
-        let held = list.isTracking || list.isDragging
+        // them only when nothing else holds them. A released finger can
+        // leave the rows coasting before its return arrives: moved against
+        // that, they'd ride up with the composer and turn back.
+        let held = list.isTracking || list.isDragging || list.isDecelerating
         take(CGFloat(update.height), Change(
             transition: update.transition, compensates: !held,
             finishes: update.transition.isImmediate && update.phase != .tracking
