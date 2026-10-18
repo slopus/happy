@@ -25,7 +25,7 @@ import XCTest
 /// so a recorded pass and an unrecorded timing pass keep separate files.
 final class ChatUltraQATests: XCTestCase {
     private var app: XCUIApplication!
-    private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    private var springboard: XCUIApplication { XCUIApplication(bundleIdentifier: "com.apple.springboard") }
     private var steps: [[String: Any]] = []
     private var clip = ""
     private var size = CGSize(width: 390, height: 844)
@@ -33,7 +33,8 @@ final class ChatUltraQATests: XCTestCase {
     private var known = 0
     private var touchedLast = false
     private var coverage: [[String: String]] = []
-    private static var aimThroughSpringboard = true
+    /// The tests run one at a time, on the main thread.
+    nonisolated(unsafe) private static var aimThroughSpringboard = true
 
     override func setUp() {
         super.setUp()
