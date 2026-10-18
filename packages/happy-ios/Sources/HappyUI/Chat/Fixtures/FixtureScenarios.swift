@@ -20,6 +20,9 @@ enum FixtureScenario: String, CaseIterable, Sendable {
     case long
     /// A reply streams in after the chat opens.
     case live
+    /// Async WebKit sizing and a single row beyond the bitmap height cap.
+    case diagrams
+    case giant
     /// Nothing yet.
     case empty
 
@@ -31,6 +34,8 @@ enum FixtureScenario: String, CaseIterable, Sendable {
         case .sending: "Pending and failed sends"
         case .long: "Very long session"
         case .live: "Streaming reply"
+        case .diagrams: "Mermaid diagrams"
+        case .giant: "One very tall message"
         case .empty: "Empty session"
         }
     }
@@ -134,6 +139,25 @@ enum FixtureScenarios {
         case .sending: sending(&builder)
         case .long: long(&builder, turns: 1500)
         case .live: live(&builder)
+        case .diagrams:
+            builder.user("Render the flow, then expand a diagram taller than the viewport.")
+            builder.agent("""
+            The list keeps its position when WebKit reports the diagram's height.
+
+            ```mermaid
+            flowchart TD
+                A[Compose] --> B[Send]
+                B --> C[Stream reply]
+                C --> D[Render markdown]
+                D --> E[Measure diagram]
+                E --> F[Keep reading position]
+            ```
+
+            [Open Happy](https://happy.engineering)
+            """)
+        case .giant:
+            builder.user("Show one long reply so every section can be read while scrolling.")
+            builder.agent((1...350).map { "Section \($0). A single message remains visible through the entire conversation viewport, with selectable text and a stable reading position.\n" }.joined(separator: "\n"))
         case .empty: break
         }
         return builder.messages

@@ -92,7 +92,7 @@ final class HostedChatListTests: XCTestCase {
 
     /// A list over the whole window with the newest page of 600 messages,
     /// at the newest message.
-    private func listInWindow() async throws -> ListUnderTest {
+    private func listInWindow(renderer: ChatListRenderer = .collectionView) async throws -> ListUnderTest {
         let scene = try await hostedActiveScene()
         let hostWindow = scene.keyWindow
         let window = hostedKeyWindow(in: scene)
@@ -103,9 +103,11 @@ final class HostedChatListTests: XCTestCase {
         let root = try XCTUnwrap(window.rootViewController?.view)
         window.layoutIfNeeded()
         let layout = screen(root)
-        let list = ChatListView(frame: layout.list)
+        let list = ChatListView(frame: layout.list, renderer: renderer)
         root.addSubview(list)
         list.layoutIfNeeded()
+        let drawn = try await until { list.isDisplayReady }
+        XCTAssertTrue(drawn, "the selected renderer never drew its rows")
         list.setEdgeInsets(newest: layout.newestEdgeInset, oldest: layout.oldestEdgeInset)
         let all = messages(600)
         let derived = try XCTUnwrap(ChatRows.derive(input(all, width: layout.list.width, grows: 0), applied: ChatRowsApplied(), planner: planner))
@@ -181,6 +183,32 @@ final class HostedChatListTests: XCTestCase {
         // Older rows join past the oldest: nothing the reader sees moves.
         XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
         assertNoIndicator(list, "after a page joined")
+    }
+
+    func testUltraListKeepsTheReaderThroughKeyboardDockAndOlderPages() async throws {
+        let test = try await listInWindow(renderer: .ultraList)
+        let list = test.list
+        XCTAssertNil(list.subviews.first { $0 is UICollectionView })
+        list.setVisibleMinY(list.maximumVisibleMinY / 3)
+        let scrolled = try await until { list.visibleMinY > list.bounds.height }
+        XCTAssertTrue(scrolled)
+        let place = list.visibleMinY
+        let typing = screen(test.root, keyboardTop: test.root.bounds.height - 336, composerHeight: 130)
+        list.setEdgeInsets(newest: typing.newestEdgeInset, oldest: typing.oldestEdgeInset)
+        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
+        let resting = screen(test.root)
+        list.setEdgeInsets(newest: resting.newestEdgeInset, oldest: resting.oldestEdgeInset)
+        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
+        let grown = try XCTUnwrap(ChatRows.derive(input(test.messages, width: list.bounds.width, grows: 1), applied: test.applied, planner: planner))
+        list.apply(try XCTUnwrap(grown.output.list), animated: false)
+        let paged = try await until { list.isDisplayReady && list.contentHeight > test.applied.model.contentHeight }
+        XCTAssertTrue(paged)
+        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
+        list.setRenderer(.collectionView)
+        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
+        list.setRenderer(.ultraList)
+        let switched = try await until { list.isDisplayReady && abs(list.visibleMinY - place) < 0.5 }
+        XCTAssertTrue(switched, "switching renderers preserves the reading position")
     }
 
     // MARK: The chat screen

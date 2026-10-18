@@ -107,6 +107,26 @@ public final class SettingsAppearanceViewController: UIViewController {
         }
         sections.append(ItemGroupView(rows: [rendererRow]))
 
+        let chatRenderer = ItemRowView(
+            title: Strings.ChatRenderer.title,
+            subtitle: Strings.ChatRenderer.description,
+            detail: context.account.localSettings.chatListRenderer.rawValue,
+            icon: ItemIcon(.ionicons("chatbubbles-outline"), tint: connecting)
+        ) { [weak self] in
+            guard let self else { return }
+            let alert = UIAlertController(title: Strings.ChatRenderer.title, message: nil, preferredStyle: .alert)
+            for choice in ChatListRenderer.allCases {
+                alert.addAction(UIAlertAction(title: choice.rawValue, style: .default) { [weak self] _ in
+                    guard let self else { return }
+                    self.context.account.localSettings.chatListRenderer = choice
+                    self.rebuild()
+                })
+            }
+            alert.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
+            self.present(alert, animated: true)
+        }
+        sections.append(ItemGroupView(rows: [chatRenderer]))
+
         sections.append(ItemGroupView(title: Strings.SettingsLanguage.title, footer: Strings.SettingsLanguage.description, rows: [
             ItemRowView(
                 title: Strings.SettingsLanguage.currentLanguage,

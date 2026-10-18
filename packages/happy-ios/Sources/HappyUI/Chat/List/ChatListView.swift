@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyCore
 import HappyLayout
 import UIKit
 
@@ -28,7 +29,17 @@ protocol ChatListViewDelegate: AnyObject {
 final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDelegate, UIGestureRecognizerDelegate {
     weak var delegate: (any ChatListViewDelegate)?
 
-    let collectionView: UICollectionView
+    private var collection: UICollectionView?
+    var collectionView: UICollectionView {
+        if let collection { return collection }
+        let view = makeCollection()
+        collection = view
+        return view
+    }
+    private(set) var renderer: ChatListRenderer
+    private(set) var ultra: ChatUltraListAdapter?
+    private var latest: ChatListUpdate?
+    private var edgeInsets = UIEdgeInsets.zero
     private let layout = ChatCollectionLayout()
     private(set) var plans: [ChatRowPlan] = []
     private var ids: [String] = []
@@ -42,9 +53,15 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     /// it (`ChatListLayout.olderEndFrame`): the inverted list's footer.
     let olderEnd = ChatOlderEndView()
 
-    override init(frame: CGRect) {
-        collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+    init(frame: CGRect = .zero, renderer: ChatListRenderer = .collectionView) {
+        self.renderer = renderer
         super.init(frame: frame)
+        if renderer == .ultraList { installUltra() }
+        else { addSubview(collectionView) }
+    }
+
+    private func makeCollection() -> UICollectionView {
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.transform = ChatCollectionLayout.flip
         collectionView.backgroundColor = .clear
         collectionView.contentInsetAdjustmentBehavior = .never
@@ -70,7 +87,6 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         collectionView.addSubview(footer)
         olderEnd.transform = ChatCollectionLayout.flip
         collectionView.addSubview(olderEnd)
-        addSubview(collectionView)
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         tap.cancelsTouchesInView = false
@@ -84,6 +100,54 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         holdRecognizer.delegate = self
         collectionView.addGestureRecognizer(holdRecognizer)
         tap.require(toFail: holdRecognizer)
+        collectionView.accessibilityIdentifier = "chat.collectionview"
+        return collectionView
+    }
+
+    private func installUltra() {
+        let ultra = ChatUltraListAdapter(olderEnd: olderEnd)
+        ultra.onScroll = { [weak self] in self?.reportScroll() }
+        ultra.onAction = { [weak self] action in
+            guard let self else { return }
+            self.delegate?.chatList(self, perform: action)
+        }
+        ultra.onLink = { [weak self] url in
+            guard let self else { return }
+            self.delegate?.chatList(self, openLink: url)
+        }
+        ultra.onHold = { [weak self] action, view, frame, point in
+            guard let self else { return }
+            self.delegate?.chatList(self, hold: action, frame: view.convert(frame, to: self), at: view.convert(point, to: self))
+        }
+        self.ultra = ultra
+        ultra.list.frame = bounds
+        addSubview(ultra.list)
+    }
+
+    func setRenderer(_ renderer: ChatListRenderer) {
+        guard renderer != self.renderer else { return }
+        let current = visibleMinY
+        self.renderer = renderer
+        ultra?.deactivate()
+        ultra = nil
+        collection?.removeFromSuperview()
+        if renderer == .ultraList {
+            installUltra()
+            ultra?.setViewport(size: bounds.size, insets: edgeInsets)
+            if let latest { ultra?.apply(latest, target: current, animated: false) }
+        } else {
+            addSubview(collectionView)
+            footer.transform = ChatCollectionLayout.flip
+            olderEnd.transform = ChatCollectionLayout.flip
+            collectionView.addSubview(footer)
+            collectionView.addSubview(olderEnd)
+            collectionView.contentInset = edgeInsets
+            if let latest { install(latest) }
+            collectionView.reloadData()
+            collectionView.layoutIfNeeded()
+            setVisibleMinY(current)
+        }
+        setNeedsLayout()
     }
 
     @available(*, unavailable)
@@ -93,6 +157,11 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if let ultra {
+            ultra.list.frame = bounds
+            ultra.setViewport(size: bounds.size, insets: edgeInsets)
+            return
+        }
         // A transformed view is placed by bounds and center, never frame.
         if collectionView.bounds.size != bounds.size {
             collectionView.bounds = CGRect(origin: collectionView.bounds.origin, size: bounds.size)
@@ -108,12 +177,30 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     /// The content y at the newest edge of the visible area; 0 when the
     /// newest message is showing.
     var visibleMinY: CGFloat {
-        collectionView.contentOffset.y + collectionView.contentInset.top
+        ultra?.visibleMinY ?? (collectionView.contentOffset.y + collectionView.contentInset.top)
+    }
+
+    var isTracking: Bool { ultra?.list.isTracking ?? collectionView.isTracking }
+    var isDragging: Bool { ultra?.list.isDragging ?? collectionView.isDragging }
+    var isDecelerating: Bool { ultra?.list.isDecelerating ?? collectionView.isDecelerating }
+    var contentInsets: UIEdgeInsets { edgeInsets }
+    var contentHeight: CGFloat { layout.model.contentHeight }
+    var scrollGestureView: UIView { ultra?.list.scrollGestureHostView ?? collectionView }
+    var scrollOffset: CGFloat { visibleMinY - edgeInsets.top }
+    var maximumVisibleMinY: CGFloat { maxVisibleMinY(layout.model) }
+    var isDisplayReady: Bool {
+        guard let ultra else { return !plans.isEmpty }
+        return !ultra.list.loadedItemViews.isEmpty && ultra.list.loadedItemViews.allSatisfy(\.isDisplayReady)
+    }
+
+    func setVisibleMinY(_ distance: CGFloat) {
+        if let ultra { ultra.setVisibleMinY(distance) }
+        else { collectionView.contentOffset.y = distance - edgeInsets.top }
     }
 
     private func maxVisibleMinY(_ model: ChatListLayout) -> CGFloat {
-        let inset = collectionView.contentInset
-        return max(0, model.contentHeight + inset.top + inset.bottom - collectionView.bounds.height)
+        let inset = edgeInsets
+        return max(0, model.contentHeight + inset.top + inset.bottom - bounds.height)
     }
 
     var distanceFromNewest: CGFloat { max(0, visibleMinY) }
@@ -132,6 +219,12 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         let oldest = PixelGrid.round(oldest, scale: scale)
         // Flipped: the collection view's top is the screen's bottom.
         let inset = UIEdgeInsets(top: newest, left: 0, bottom: oldest, right: 0)
+        if let ultra {
+            edgeInsets = inset
+            ultra.setViewport(size: bounds.size, insets: inset)
+            return
+        }
+        edgeInsets = inset
         guard collectionView.contentInset != inset else { return }
         let current = visibleMinY
         let delta = newest - collectionView.contentInset.top
@@ -145,6 +238,7 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     }
 
     func scrollToNewest(animated: Bool) {
+        if let ultra { ultra.scrollToNewest(animated: animated); return }
         collectionView.setContentOffset(CGPoint(x: 0, y: -collectionView.contentInset.top), animated: animated)
     }
 
@@ -157,6 +251,24 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     /// stays where it is on screen. Returns how many rows it touched.
     @discardableResult
     func apply(_ update: ChatListUpdate, animated: Bool) -> Int {
+        var complete = update
+        complete.footer = update.footer ?? latest?.footer
+        latest = complete
+        if let ultra {
+            let current = visibleMinY
+            let moving = isTracking || isDecelerating
+            let pinned = update.pinning.flatMap { id in
+                update.ids.contains(id) ? ChatScrollAnchor.pinning(id, layout: layout.model, ids: ids, visibleMinY: current) : nil
+            }
+            let anchor = pinned ?? ChatScrollAnchor.capture(layout: layout.model, ids: ids, visibleMinY: current, follow: !moving)
+            let target = anchor.visibleMinY(in: update.model, ids: update.ids, current: current, maxVisibleMinY: maxVisibleMinY(update.model))
+            plans = update.plans
+            ids = update.ids
+            layout.model = update.model
+            hasContent = !plans.isEmpty
+            ultra.apply(complete, target: moving ? nil : target, animated: animated && anchor.kind == .newest)
+            return update.changeset.touchedRows
+        }
         let model = update.model
         guard hasContent, !plans.isEmpty else {
             hasContent = !update.plans.isEmpty
@@ -260,6 +372,10 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     // MARK: Scrolling and taps
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        reportScroll()
+    }
+
+    private func reportScroll() {
         let remaining = maxVisibleMinY(layout.model) - visibleMinY
         delegate?.chatList(self, didScroll: distanceFromNewest, distanceFromOldest: remaining)
     }

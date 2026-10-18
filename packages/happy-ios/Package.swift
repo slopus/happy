@@ -42,9 +42,9 @@ let package = Package(
         // Official WebRTC voice transport; microphone, speaker and echo
         // cancellation use the same ElevenLabs conversation JWT as happy-app.
         .package(url: "https://github.com/elevenlabs/elevenlabs-swift-sdk.git", exact: "3.4.0"),
-        // Native Home's optional renderer. Pin the pre-1.0 API used by
+        // Native Home and chat's optional renderer. Pin the pre-1.0 API used by
         // NodeRow and the custom keyframe scroller.
-        .package(url: "https://github.com/slopus/ultraview.git", revision: "163e3f0da76c3d7d3ade45297ce5da6fc7d9a7d4"),
+        .package(url: "https://github.com/slopus/ultraview.git", revision: "dc33dfc78ed9601148a383cd1560d9ba73d1a7d5"),
     ],
     targets: [
         .target(

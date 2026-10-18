@@ -62,6 +62,11 @@ final class ChatRowCell: UICollectionViewCell {
 /// it reuses from plan to plan: a list row, the footer past the newest
 /// message, or a whole tool on the message screen.
 final class ChatPlanView: UIView {
+    /// UltraList draws these marks on its display queue; this view retains
+    /// only live native content and the plan's hit testing.
+    var drawsStaticContent = true {
+        didSet { if drawsStaticContent != oldValue { plan = nil } }
+    }
     /// Actions from views inside the plan that handle their own touches
     /// (a diff's "Show N more lines").
     var onAction: ((ChatRowAction) -> Void)?
@@ -118,16 +123,19 @@ final class ChatPlanView: UIView {
         for item in plan.items {
             switch item {
             case .box(let box):
+                guard drawsStaticContent else { continue }
                 let view = take(&boxes, &boxIndex) { UIView() }
                 style(view, box)
                 order.append(view)
             case .text(let layout, let frame):
+                guard drawsStaticContent else { continue }
                 let view = take(&texts, &textIndex) { ChatTextView() }
                 view.isAccessibilityElement = false
                 view.setLayoutFrame(frame)
                 view.layout = layout
                 order.append(view)
             case .icon(let icon, let size, let frame, let tint):
+                guard drawsStaticContent else { continue }
                 let view = take(&icons, &iconIndex) { UIImageView() }
                 view.contentMode = .center
                 view.image = .icon(icon, size: size)
@@ -303,6 +311,11 @@ final class ChatPlanView: UIView {
         for view in texts where !view.isHidden && view.frame.contains(point) {
             if let link = view.link(at: CGPoint(x: point.x - view.frame.minX, y: point.y - view.frame.minY)) {
                 return link
+            }
+        }
+        if !drawsStaticContent, let plan {
+            for case .text(let layout, let frame) in plan.items where frame.contains(point) {
+                if let link = layout.link(at: CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)) { return link }
             }
         }
         return nil

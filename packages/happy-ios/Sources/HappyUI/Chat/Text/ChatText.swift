@@ -132,6 +132,9 @@ final class ChatTextLayout: @unchecked Sendable {
     private let manager: NSLayoutManager
     private let container: NSTextContainer
     private let storage: NSTextStorage
+    // UltraList draws on its display queue while the main thread can hit
+    // test the same immutable plan. TextKit itself requires serial access.
+    private let access = NSRecursiveLock()
 
     init(_ string: NSAttributedString, width: CGFloat, maxLines: Int = 0) {
         self.string = string
@@ -164,6 +167,8 @@ final class ChatTextLayout: @unchecked Sendable {
 
     /// Draws into the current context with the text's top-left at `origin`.
     func draw(at origin: CGPoint) {
+        access.lock()
+        defer { access.unlock() }
         guard string.length > 0 else { return }
         let range = manager.glyphRange(for: container)
         manager.drawBackground(forGlyphRange: range, at: origin)
@@ -172,6 +177,8 @@ final class ChatTextLayout: @unchecked Sendable {
 
     /// The character under a point in the text's own coordinates.
     func characterIndex(at point: CGPoint) -> Int? {
+        access.lock()
+        defer { access.unlock() }
         guard string.length > 0, CGRect(origin: .zero, size: size).insetBy(dx: -4, dy: -4).contains(point) else { return nil }
         var fraction: CGFloat = 0
         let glyph = manager.glyphIndex(for: point, in: container, fractionOfDistanceThroughGlyph: &fraction)

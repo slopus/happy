@@ -103,6 +103,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         guard let account = controller.session else { fatalError("harness has no session") }
         self.controller = controller
+        controller.localSettings.chatListRenderer = ProcessInfo.processInfo.arguments.contains("-chatUltraList") ? .ultraList : .collectionView
         let context = AppContext(account: controller, variant: .development, version: "harness")
         let chat = ChatViewController(context: context, session: account, sessionId: FixtureScenarios.prefix + fixture)
         let home = UIViewController()
@@ -252,16 +253,14 @@ final class ChatScrollProbe: NSObject {
     private func idleTick() {
         guard let chat, let list else { return }
         window.bringSubviewToFront(element)
-        if focusWhenFilled, list.collectionView.numberOfItems(inSection: 0) > 20,
+        if focusWhenFilled, list.plans.count > 20, list.isDisplayReady,
            let card = Self.subview(AgentInputCardView.self, in: chat.view) {
             focusWhenFilled = false
             card.textView.becomeFirstResponder()
         }
-        if let share = scrollTo, list.collectionView.numberOfItems(inSection: 0) > 20 {
+        if let share = scrollTo, list.plans.count > 20, list.isDisplayReady {
             scrollTo = nil
-            let collection = list.collectionView
-            let maxDistance = collection.contentSize.height + collection.contentInset.top + collection.contentInset.bottom - collection.bounds.height
-            collection.contentOffset.y = max(0, maxDistance) * min(1, max(0, share)) - collection.contentInset.top
+            list.setVisibleMinY(list.maximumVisibleMinY * min(1, max(0, share)))
         }
     }
 
@@ -270,8 +269,8 @@ final class ChatScrollProbe: NSObject {
         return report(list: list, chat: chat)
     }
 
-    private func activeRecognizers(_ collection: UICollectionView) -> [String] {
-        (collection.gestureRecognizers ?? [])
+    private func activeRecognizers(_ view: UIView) -> [String] {
+        (view.gestureRecognizers ?? [])
             .filter { $0.state == .began || $0.state == .changed }
             .map { NSStringFromClass(type(of: $0)) }
     }
@@ -282,12 +281,11 @@ final class ChatScrollProbe: NSObject {
 
     private func sample() {
         guard let chat, let list, let finger else { return }
-        let collection = list.collectionView
         samples.append(Sample(
-            time: CACurrentMediaTime(), fingerY: finger.y, offset: collection.contentOffset.y, keyboardTop: keyboardTop(chat),
-            contentHeight: collection.contentSize.height, rows: collection.numberOfItems(inSection: 0), visibleMinY: list.visibleMinY,
-            tracking: collection.isTracking, dragging: collection.isDragging,
-            active: activeRecognizers(collection)
+            time: CACurrentMediaTime(), fingerY: finger.y, offset: list.scrollOffset, keyboardTop: keyboardTop(chat),
+            contentHeight: list.contentHeight, rows: list.plans.count, visibleMinY: list.visibleMinY,
+            tracking: list.isTracking, dragging: list.isDragging,
+            active: activeRecognizers(list.scrollGestureView)
         ))
     }
 
@@ -345,16 +343,16 @@ final class ChatScrollProbe: NSObject {
     }
 
     private func report(list: ChatListView, chat: UIViewController) -> String {
-        let collection = list.collectionView
-        let inset = collection.contentInset
+        let inset = list.contentInsets
         let dock = Self.subview(ChatDockView.self, in: chat.view)
         var value: [String: Any] = [:]
-        value["offset"] = collection.contentOffset.y
+        value["offset"] = list.scrollOffset
         value["visibleMinY"] = list.visibleMinY
         // How far back the reader can go.
-        value["maxDistance"] = max(0, collection.contentSize.height + inset.top + inset.bottom - list.bounds.height)
-        value["contentHeight"] = collection.contentSize.height
-        value["rows"] = collection.numberOfItems(inSection: 0)
+        value["maxDistance"] = list.maximumVisibleMinY
+        value["contentHeight"] = list.contentHeight
+        value["rows"] = list.isDisplayReady ? list.plans.count : 0
+        value["renderer"] = list.renderer.rawValue
         value["newestInset"] = inset.top
         value["oldestInset"] = inset.bottom
         let safe = chat.view.safeAreaInsets
@@ -364,9 +362,9 @@ final class ChatScrollProbe: NSObject {
         value["dockMinY"] = dock.map { $0.convert($0.bounds, to: window).minY } as Any
         value["keyboardTop"] = keyboardTop(chat)
         value["window"] = [window.bounds.width, window.bounds.height]
-        value["tracking"] = collection.isTracking
-        value["dragging"] = collection.isDragging
-        value["decelerating"] = collection.isDecelerating
+        value["tracking"] = list.isTracking
+        value["dragging"] = list.isDragging
+        value["decelerating"] = list.isDecelerating
         value["fingerDown"] = finger != nil
         value["lastTouch"] = lastTouch
         value["events"] = window.events

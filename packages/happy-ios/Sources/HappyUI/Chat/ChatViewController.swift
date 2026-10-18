@@ -38,7 +38,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private(set) var chatId: String
     private lazy var services = Self.services(account: account, context: context, sessionId: sessionId)
 
-    private lazy var list = ChatListView()
+    private lazy var list = ChatListView(renderer: context.account.localSettings.chatListRenderer)
     private lazy var scrim = ChatScrimView()
     private lazy var headerScrim = HeaderScrimView()
     private lazy var titleView = ChatHeaderTitleView()
@@ -412,6 +412,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         // longer an abandoned start, in this account.
         account.spawnRequests.release(sessionId: chatId)
         if contentInstalled {
+            list.setRenderer(context.account.localSettings.chatListRenderer)
             updateHeaderVisibility(animated: animated)
         } else {
             // The shell owns the bar from its first frame too, without

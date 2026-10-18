@@ -90,7 +90,15 @@ final class ChatScrollUITests: XCTestCase {
     /// the conversation moves as far as the finger, not as far as the finger
     /// and the keyboard together.
     func testAnInteractiveDismissKeepsTheConversationUnderTheFinger() throws {
-        let app = launch(["-fixture", "long", "-keyboard"])
+        try interactiveDismiss(ultra: false)
+    }
+
+    func testUltraListInteractiveDismissKeepsTheConversationUnderTheFinger() throws {
+        try interactiveDismiss(ultra: true)
+    }
+
+    private func interactiveDismiss(ultra: Bool) throws {
+        let app = launch(["-fixture", "long", "-keyboard"] + (ultra ? ["-chatUltraList"] : []))
         var state = probe(app) { self.filled($0) && self.number($0["keyboardTop"]) < self.number(($0["window"] as? [NSNumber])?.last) - 150 }
         guard number(state["keyboardTop"]) < number((state["window"] as? [NSNumber])?.last) - 150 else {
             throw XCTSkip("no software keyboard on this simulator (hardware keyboard connected)")
