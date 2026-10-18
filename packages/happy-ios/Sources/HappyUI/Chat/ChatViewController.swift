@@ -418,7 +418,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             // The shell owns the bar from its first frame too, without
             // constructing the landscape controls before the push.
             hidesHeader = tabletBranches.chatHidesHeaderInLandscape
-            navigationController?.setNavigationBarHidden(hidesHeader, animated: animated)
+            if let navigation = navigationController, navigation.isNavigationBarHidden != hidesHeader {
+                navigation.setNavigationBarHidden(hidesHeader, animated: animated)
+            }
         }
         historyPager?.isActive = true
     }
