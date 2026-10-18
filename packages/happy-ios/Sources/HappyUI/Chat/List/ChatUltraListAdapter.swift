@@ -217,6 +217,8 @@ private struct ChatOlderUltraRow: ListRow {
     let identity = "chat:older-end"
     let revision: UInt64
     let view: ChatOlderEndView
+    var measuresAsynchronously: Bool { true }
+    func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? { .init(height: Double(ChatOlderEndLayout.height)) }
     func makeView() -> ListRowView { ChatOlderUltraView(content: view) }
 }
 
