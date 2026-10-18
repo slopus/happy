@@ -152,6 +152,8 @@ final class ChatUltraQAProbe: NSObject {
         var kind = "none"
         /// A new chat's view committed within two seconds.
         var chat = false
+        /// Samples that couldn't see the window or Home as presented.
+        var unknownSamples = 0
         var callbackMs = -1.0, timestampMs = -1.0, targetMs = -1.0, lowerMs = -1.0
         var shellCommittedMs = -1.0
         var shellFraction = 0.0
@@ -390,7 +392,8 @@ final class ChatUltraQAProbe: NSObject {
               let home = Self.controllers(from: root).compactMap({ $0 as? HomeViewController }).first,
               let homeView = home.viewIfLoaded, homeView.window === window,
               let screen = window.layer.presentation(), let presented = homeView.layer.presentation(),
-              presented.convert(presented.bounds, to: screen).intersects(window.bounds) else { return }
+              presented.convert(presented.bounds, to: screen).intersects(window.bounds),
+              (Self.presentedOpacity(homeView) ?? 0) > 0.01 else { return }
         let chats = Self.controllers(from: root).filter { $0 is ChatViewController }
         guard !chats.contains(where: { $0.viewIfLoaded?.window === window }) else { return }
         firstVisual = FirstVisualTrack(
@@ -399,47 +402,56 @@ final class ChatUltraQAProbe: NSObject {
         )
     }
 
-    /// One display-link sample of a pending release. Every frame read is a
-    /// presentation layer's; a sample without one for Home or the window
-    /// records nothing but its time.
+    /// One display-link sample of a pending release. Every frame, opacity
+    /// and hidden flag read is a presentation layer's.
     private func sampleFirstVisual(_ link: CADisplayLink, callback: Double, in window: HarnessWindow) {
         guard var track = firstVisual else { return }
         let ms = { (time: Double) in (time - track.release) * 1000 }
-        let lower = max(0, ms(track.previousCallback))
-        track.previousCallback = callback
-        // Nothing within two seconds: kept as "none".
+        // Nothing within two seconds: kept as it stands.
         guard ms(callback) <= 2000 else {
             firstVisuals.append(track.result)
             firstVisual = nil
             return
         }
-        guard let screen = window.layer.presentation() else {
+        // A sample that can't see the window or Home as presented is
+        // unknown: it neither shows a change nor moves `lowerMs` past it.
+        guard let screen = window.layer.presentation(), let homeView = track.home.viewIfLoaded,
+              let homePresented = homeView.layer.presentation(), let homeOpacity = Self.presentedOpacity(homeView) else {
+            track.result.unknownSamples += 1
             firstVisual = track
             return
         }
+        let lower = max(0, ms(track.previousCallback))
+        track.previousCallback = callback
+        // The new chat's view: committed once it and every view above it
+        // have a presentation layer; shown once it also intersects the
+        // window and isn't hidden or transparent there.
         var shellCommitted = false
         var fraction = 0.0
         if let root = window.rootViewController,
            let shell = Self.controllers(from: root).first(where: { $0 is ChatViewController && !track.known.contains(ObjectIdentifier($0)) }),
-           let view = shell.viewIfLoaded, view.window === window, let presented = view.layer.presentation() {
+           let view = shell.viewIfLoaded, view.window === window, let presented = view.layer.presentation(),
+           let opacity = Self.presentedOpacity(view) {
             shellCommitted = true
             let frame = presented.convert(presented.bounds, to: screen)
             let shown = frame.intersection(window.bounds)
-            if !shown.isNull, shown.width >= 1, frame.width > 0, frame.height > 0 {
+            if opacity > 0.01, !shown.isNull, shown.width >= 1, frame.width > 0, frame.height > 0 {
                 fraction = Double(shown.width * shown.height / (frame.width * frame.height))
             }
         }
-        var dx = 0.0, dy = 0.0
-        if let homeView = track.home.viewIfLoaded, let presented = homeView.layer.presentation() {
-            let frame = presented.convert(presented.bounds, to: screen)
-            dx = Double(frame.minX - track.baseline.minX)
-            dy = Double(frame.minY - track.baseline.minY)
+        let homeFrame = homePresented.convert(homePresented.bounds, to: screen)
+        let dx = Double(homeFrame.minX - track.baseline.minX)
+        let dy = Double(homeFrame.minY - track.baseline.minY)
+        // Home's move counts only while Home is still to be seen.
+        let homeShown = homeOpacity > 0.01 && homeFrame.intersects(window.bounds)
+        if shellCommitted, track.result.shellCommittedMs < 0 {
+            track.result.shellCommittedMs = ms(link.targetTimestamp)
+            track.result.chat = true
         }
-        if shellCommitted, track.result.shellCommittedMs < 0 { track.result.shellCommittedMs = ms(link.targetTimestamp) }
         if track.result.samples.count < 12 {
             track.result.samples.append([ms(link.targetTimestamp), shellCommitted ? 1 : 0, fraction, dx].map { ($0 * 100).rounded() / 100 })
         }
-        let homeMoved = abs(dx) >= 0.5 || abs(dy) >= 0.5
+        let homeMoved = homeShown && (abs(dx) >= 0.5 || abs(dy) >= 0.5)
         if track.result.callbackMs < 0, fraction > 0 || homeMoved {
             track.result.kind = fraction > 0 ? (homeMoved ? "shell+home" : "shell") : "home"
             track.result.callbackMs = ms(callback)
@@ -450,16 +462,31 @@ final class ChatUltraQAProbe: NSObject {
             track.result.homeDx = dx
             track.result.homeDy = dy
         }
-        // Done once the first change and twelve samples are in, and a new
-        // chat has committed: a release that only moved Home (Settings, a
-        // project's sheet) runs to the two seconds and stays `chat` false.
-        if track.result.callbackMs >= 0, track.result.samples.count >= 12, track.result.shellCommittedMs >= 0 {
-            track.result.chat = true
+        // Done once a new chat has committed, the first change is in and
+        // twelve samples are: a release that only moved Home (Settings, a
+        // project's sheet) runs to the two seconds with `chat` false.
+        if track.result.chat, track.result.callbackMs >= 0, track.result.samples.count >= 12 {
             firstVisuals.append(track.result)
             firstVisual = nil
         } else {
             firstVisual = track
         }
+    }
+
+    /// A view's opacity as presented, times its ancestors' up to the
+    /// window: 0 if any of them is hidden, nil if any has no presentation
+    /// layer.
+    private static func presentedOpacity(_ view: UIView) -> Float? {
+        var opacity: Float = 1
+        var current: UIView? = view
+        while let next = current {
+            guard let layer = next.layer.presentation() else { return nil }
+            if layer.isHidden { return 0 }
+            opacity *= layer.opacity
+            if next is UIWindow { break }
+            current = next.superview
+        }
+        return opacity
     }
 
     /// The controllers under `root`: children and presented ones.

@@ -168,25 +168,37 @@ delivery ends: false doesn't mean the push started late, and neither value
 is a latency.
 
 The first visual response to a lift on Home is `firstVisuals` in the state.
-It is tracked only when Home is on screen at the release and no chat is
-shown over it, so tab and chat touches don't count. Each display-link
-sample reads presentation layers only (Home's, the window's, and a new
-ChatViewController's view if it is loaded; it never loads one). The first
-response is the first sample where that chat's view is committed and
-intersects the window (`kind` shell) or Home is presented 0.5 pt or more
-from where it was at the release (`kind` home). Times are ms from the
-release, all from that sample:
+It is tracked only when Home is on screen at the release, visible (not
+hidden, and with an opacity above 0.01 counting its ancestors) and with no
+chat shown over it, so tab and chat touches don't count. Each display-link
+sample reads presentation layers only (the window's, Home's, and a new
+ChatViewController's view if it is loaded; it never loads one). It has no
+fallback to the model layer. The first response is the first sample where
+one of these holds:
+
+- `kind` shell: that chat's view and every view above it are committed,
+  it intersects the window, and it isn't hidden or transparent there.
+- `kind` home: Home, still visible, is presented 0.5 pt or more from where
+  it was at the release.
+
+Times are ms from the release, all from that sample:
 
 - `callbackMs`, `timestampMs`, `targetMs`: the display-link callback, its
   timestamp, and its target timestamp.
-- `lowerMs`: the previous sample's callback. The change happened after it.
+- `lowerMs`: the callback of the last earlier sample that saw no change.
+  The change happened after it.
+
+A sample that can't see the window or Home as presented counts in
+`unknownSamples`. It neither shows a change nor moves `lowerMs`.
 
 `targetMs` is the frame the change is bound for. It is not proof of when
 the photons appeared, and the change can lie anywhere after `lowerMs`.
 `shellCommittedMs` is the first frame with the new chat's view committed.
-`samples` lists the first twelve frames as target ms, committed, the
-chat's visible fraction, and Home's horizontal shift. `chat` is false when
-no new chat committed within two seconds. Only the optimized timing pass
+`samples` lists up to the first twelve seen frames as target ms, committed,
+the chat's visible fraction, and Home's horizontal shift. `chat` is true as
+soon as a new chat's view commits, and stays false when none does within
+two seconds. A result is complete after a chat commit, the first response
+and twelve samples, or else at two seconds. Only the optimized timing pass
 is evidence for these numbers.
 
 On an iPhone 12 the display runs at 60 Hz, so no number here says anything
