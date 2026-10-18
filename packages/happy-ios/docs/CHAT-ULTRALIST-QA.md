@@ -134,7 +134,11 @@ Window fields:
   mounted and on screen but whose bitmap wasn't drawn yet. This means "not
   drawn yet", not necessarily blank pixels. `uncoveredMax` includes the
   insets and the empty space of a short chat. Use screenshots and video to
-  judge blank pixels.
+  judge blank pixels. A row counts only from the first frame after its
+  layer's first commit (`uncommitted` in the frames): before that the
+  render server doesn't have it, and its model frame can be mid-change.
+  Each not-ready row on screen is logged to `<run>-notready.jsonl` with its
+  visible rect and the NodeRow hosts it holds.
 - `restDriftMax` is how far the rows moved together while nothing should
   have moved them. `awayApplyDriftMax` is the same during an apply more than
   220 points from the newest message. `touchRowDriftMax` is how far the last

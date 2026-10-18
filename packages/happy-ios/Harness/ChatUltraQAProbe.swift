@@ -58,6 +58,10 @@ import UltraView
 /// navigation transition is running and the presented frame equals the
 /// model's.
 ///
+/// Rows count from the first frame after their layer's first commit:
+/// before it the render server doesn't have them, and their model frame
+/// can be mid-change (`uncommitted` counts them).
+///
 /// Each frame with a mounted row on screen not drawn adds a line to
 /// `<run>-notready.jsonl`: the row, its visible rect against the header
 /// and the dock, whether its layer has been committed, and what its NodeRow
@@ -383,7 +387,7 @@ final class ChatUltraQAProbe: NSObject {
 
         let listFrame = presentedFrame(list, in: screen).intersection(window.bounds)
         let newest = list.plans.first.map { "chat:message:\($0.id)" }
-        var loaded = 0, onScreen = 0, ready = 0, notReady = 0
+        var loaded = 0, onScreen = 0, ready = 0, notReady = 0, uncommitted = 0
         var covered: CGFloat = 0
         var positions: [String: CGFloat] = [:]
         var deltas: [CGFloat] = []
@@ -391,6 +395,13 @@ final class ChatUltraQAProbe: NSObject {
         var touchDelta = Double.nan
         for row in rowViews(list) {
             loaded += 1
+            // A row the render server hasn't received yet isn't on screen:
+            // its model frame can be mid-change (a rebase as momentum takes
+            // over). It counts from the first frame after its commit.
+            guard row.view.layer.presentation() != nil else {
+                uncommitted += 1
+                continue
+            }
             let frame = presentedFrame(row.view, in: screen)
             positions[row.identity] = frame.minY
             if let before = previousRows[row.identity] { deltas.append(frame.minY - before) }
@@ -420,7 +431,7 @@ final class ChatUltraQAProbe: NSObject {
         batch.append(QAFrame(
             time: link.timestamp, target: link.targetTimestamp, callback: callback, flags: flags,
             finger: fingerDown ? fingerY : -1, offset: offset, presented: presented, distance: Double(list.visibleMinY), dockY: dockY,
-            loaded: loaded, onScreen: onScreen, ready: ready, notReady: notReady,
+            loaded: loaded, uncommitted: uncommitted, onScreen: onScreen, ready: ready, notReady: notReady,
             uncovered: Double(max(0, listFrame.height - covered)), rigid: rigid, deviation: deviation,
             newestGap: newestGap, touchDelta: touchDelta, turn: turnSinceFrame, applyMs: applyMsSinceFrame, applySumMs: applySumSinceFrame, memoryMB: memoryMB
         ))
@@ -826,6 +837,7 @@ private struct QAFrame: Sendable {
     var distance: Double
     var dockY: Double
     var loaded: Int
+    var uncommitted: Int
     var onScreen: Int
     var ready: Int
     var notReady: Int
@@ -894,7 +906,7 @@ private final class QALedger: @unchecked Sendable {
         frameURL = directory?.appendingPathComponent("\(run)-frames.csv")
         windowURL = directory?.appendingPathComponent("\(run)-windows.json")
         noteURL = directory?.appendingPathComponent("\(run)-notready.jsonl")
-        let header = "time,target,callback,flags,finger,offset,presented,distance,dockY,loaded,onScreen,ready,notReady,uncovered,rigid,deviation,newestGap,touchDelta,turn,applyMs,applySumMs,memoryMB\n"
+        let header = "time,target,callback,flags,finger,offset,presented,distance,dockY,loaded,uncommitted,onScreen,ready,notReady,uncovered,rigid,deviation,newestGap,touchDelta,turn,applyMs,applySumMs,memoryMB\n"
         if let frameURL { try? header.write(to: frameURL, atomically: true, encoding: .utf8) }
     }
 
@@ -992,7 +1004,7 @@ private final class QALedger: @unchecked Sendable {
                 let fields: [String] = [
                     String(format: "%.6f", frame.time), String(format: "%.6f", frame.target), String(format: "%.6f", frame.callback),
                     "\(frame.flags)", String(format: "%.1f", frame.finger), String(format: "%.2f", frame.offset), String(format: "%.2f", frame.presented), String(format: "%.2f", frame.distance),
-                    String(format: "%.2f", frame.dockY), "\(frame.loaded)", "\(frame.onScreen)", "\(frame.ready)", "\(frame.notReady)",
+                    String(format: "%.2f", frame.dockY), "\(frame.loaded)", "\(frame.uncommitted)", "\(frame.onScreen)", "\(frame.ready)", "\(frame.notReady)",
                     String(format: "%.1f", frame.uncovered), String(format: "%.2f", frame.rigid), String(format: "%.2f", frame.deviation),
                     String(format: "%.2f", frame.newestGap), String(format: "%.2f", frame.touchDelta), String(format: "%.2f", frame.turn),
                     String(format: "%.2f", frame.applyMs), String(format: "%.2f", frame.applySumMs), String(format: "%.1f", frame.memoryMB),
