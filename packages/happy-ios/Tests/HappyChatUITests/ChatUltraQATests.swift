@@ -43,7 +43,7 @@ final class ChatUltraQATests: XCTestCase {
         _ = skipsQuiescence
         MainActor.assumeIsolated {
             // Ahead of XCTest's own handler, which would tap a default button.
-            addUIInterruptionMonitor(withDescription: "Fail on any system alert") { [weak self] alert in
+            _ = addUIInterruptionMonitor(withDescription: "Fail on any system alert") { [weak self] alert in
                 self?.continueAfterFailure = false
                 XCTFail("A system alert appeared and was left unanswered: \(alert.label)")
                 return true
@@ -639,7 +639,7 @@ final class ChatUltraQATests: XCTestCase {
             require("a diff's Show more", after > before + 1, "row height \(before) → \(after)")
         }
         toNewest()
-        if let strip = seekNative("pan a strip sideways", kind: "scroller", moves: 14) { wideStrip($0, $1) } {
+        if let strip = seekNative("pan a strip sideways", kind: "scroller", moves: 14, { wideStrip($0, $1) }) {
             let frame = strip.frame
             step("pan a strip sideways", quiet: 1.5) {
                 drag(CGPoint(x: frame.maxX - 20, y: frame.midY), CGPoint(x: frame.minX + 20, y: frame.midY), velocity: 600, hold: 0.2)
@@ -729,7 +729,7 @@ final class ChatUltraQATests: XCTestCase {
                 XCTAssertTrue(wait(5) { (state()["listInWindow"] as? Bool) == true }, "back in the chat")
             }
         }
-        if let strip = seekNative("pan code or a table sideways", kind: "scroller", moves: 6) { wideStrip($0, $1) } {
+        if let strip = seekNative("pan code or a table sideways", kind: "scroller", moves: 6, { wideStrip($0, $1) }) {
             let frame = strip.frame
             step("pan code or table sideways", quiet: 1.5) {
                 drag(CGPoint(x: frame.maxX - 20, y: frame.midY), CGPoint(x: frame.minX + 30, y: frame.midY), velocity: 700, hold: 0.2)
