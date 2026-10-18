@@ -141,12 +141,10 @@ public final class HomeViewController: UIViewController {
 
     public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        guard let navigation = navigationController, let destination = navigation.topViewController,
-              destination !== self else { return }
-        // Chat owns its bar's style and visibility during the push.
-        if case .session? = TabletRoutes.route(of: destination) { return }
-        // Other screens pushed from here have the ordinary bar.
-        navigation.setNavigationBarHidden(false, animated: animated)
+        // Screens pushed from here have the ordinary bar.
+        if navigationController?.topViewController !== self {
+            navigationController?.setNavigationBarHidden(false, animated: animated)
+        }
     }
 
     public override func viewDidLayoutSubviews() {
