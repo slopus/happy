@@ -17,6 +17,10 @@ import XCTest
 ///
 /// System alerts are never answered: one fails and stops the test.
 ///
+/// A feature a fixture is built to show must be found and acted on, or the
+/// test fails; one a clip can't reach offline is recorded as not covered,
+/// with the reason. Each test attaches its coverage.
+///
 /// `QA_PASS` (from `TEST_RUNNER_QA_PASS`) prefixes the probe's file names,
 /// so a recorded pass and an unrecorded timing pass keep separate files.
 final class ChatUltraQATests: XCTestCase {
@@ -28,6 +32,7 @@ final class ChatUltraQATests: XCTestCase {
     /// Windows already attributed to a step in the current launch.
     private var known = 0
     private var touchedLast = false
+    private var coverage: [[String: String]] = []
     private static var aimThroughSpringboard = true
 
     override func setUp() {
@@ -44,6 +49,9 @@ final class ChatUltraQATests: XCTestCase {
 
     override func tearDown() {
         flushSteps()
+        if !coverage.isEmpty, let data = try? JSONSerialization.data(withJSONObject: coverage, options: [.prettyPrinted, .sortedKeys]) {
+            attach("\(name) coverage", String(decoding: data, as: UTF8.self))
+        }
         XCUIDevice.shared.orientation = .portrait
         super.tearDown()
     }
@@ -168,11 +176,39 @@ final class ChatUltraQATests: XCTestCase {
         "seconds", "frames", "gapP50Ms", "gapP95Ms", "gapP99Ms", "gapMaxMs", "missedFrames", "hitches", "turnMaxMs", "turnsOverFrame",
         "callbackDelayP99Ms", "pastTargetFrames", "notReadyFrames", "notReadyMax", "nonRigidMax", "restDriftMax", "awayApplyDriftMax",
         "touchRowDriftMax", "newestGapMin", "newestGapMax", "dockTravel", "offsetTravel", "kinds", "touches", "applies", "start", "index",
+        "applyMaxMs", "applyTotalMs", "notReadyRunMax", "memoryMaxMB",
     ]
 
     private func compact(_ window: [String: Any]) -> [String: Any] {
         window.filter { Self.windowKeys.contains($0.key) }
     }
+
+    // MARK: Coverage
+
+    private func covered(_ feature: String, _ status: String) {
+        coverage.append(["clip": clip, "feature": feature, "status": status])
+    }
+
+    /// A feature the fixture is built to show: acted on with the expected
+    /// effect, or the test fails.
+    private func require(_ feature: String, _ ok: Bool, _ detail: @autoclosure () -> String) {
+        let text = detail()
+        XCTAssertTrue(ok, "\(clip) \(feature): \(text)")
+        covered(feature, ok ? "acted: \(text)" : "FAILED: \(text)")
+    }
+
+    /// Acted on; the effect is judged from the named screenshots.
+    private func actedVisually(_ feature: String, _ shots: String) {
+        covered(feature, "acted, judged visually: \(shots)")
+    }
+
+    /// Not exercised, and why. Never a pass.
+    private func notCovered(_ feature: String, _ reason: String) {
+        covered(feature, "NOT COVERED: \(reason)")
+        attach("\(clip) not covered", "\(feature): \(reason)")
+    }
+
+    private func kinds(_ window: [String: Any]) -> [String] { window["kinds"] as? [String] ?? [] }
 
     // MARK: Steps
 
@@ -297,19 +333,76 @@ final class ChatUltraQATests: XCTestCase {
 
     /// The first reachable hit matching `predicate`, moving through the
     /// history (held drags, no momentum) up to `moves` times to find it.
-    private func find(_ what: String, moves: Int = 8, older: Bool = true, hold: Bool? = nil, _ predicate: (Hit) -> Bool) -> Hit? {
+    /// A fixture feature missing from the screen fails the test when
+    /// `required`, and is recorded as not covered otherwise.
+    private func find(_ what: String, moves: Int = 8, older: Bool = true, hold: Bool? = nil, required: Bool = true,
+                      _ predicate: (Hit) -> Bool) -> Hit? {
         for attempt in 0...moves {
             let report = controls()
             if let hit = hits(report, hold: hold).first(where: { predicate($0) && reachable($0.frame, in: report) }) { return hit }
             guard attempt < moves else { break }
             step("seek \(what) \(attempt + 1)", quiet: 1.2, expect: .scroll) { move(older: older, by: size.height * 0.35) }
         }
-        attach("\(clip) not found", what)
+        missing(what, moves: moves, required: required)
         return nil
+    }
+
+    private func missing(_ what: String, moves: Int, required: Bool) {
+        if required {
+            require(what, false, "not found on screen in \(moves) moves")
+        } else {
+            notCovered(what, "not on screen in this fixture after \(moves) moves")
+        }
     }
 
     private func natives(_ report: [String: Any]) -> [[String: Any]] {
         report["native"] as? [[String: Any]] ?? []
+    }
+
+    /// The first reachable native view of `kind` matching `predicate`,
+    /// moving through the history to find it, like `find`.
+    private func seekNative(_ what: String, kind: String, moves: Int = 8, older: Bool = true, required: Bool = true,
+                            _ predicate: ([String: Any], CGRect) -> Bool = { _, _ in true }) -> (native: [String: Any], frame: CGRect)? {
+        for attempt in 0...moves {
+            let report = controls()
+            for native in natives(report) where (native["k"] as? String) == kind {
+                if let frame = rect(native["f"]), reachable(frame, in: report), predicate(native, frame) { return (native, frame) }
+            }
+            guard attempt < moves else { break }
+            step("seek \(what) \(attempt + 1)", quiet: 1.2, expect: .scroll) { move(older: older, by: size.height * 0.35) }
+        }
+        missing(what, moves: moves, required: required)
+        return nil
+    }
+
+    /// A horizontal strip (code, a table, a diff line) wider than its box.
+    private func wideStrip(_ native: [String: Any], _ frame: CGRect) -> Bool {
+        guard (native["vertical"] as? Bool) == false, let content = native["content"] as? [NSNumber], content.count == 2 else { return false }
+        return CGFloat(content[0].doubleValue) > frame.width + 4
+    }
+
+    private func offset(_ native: [String: Any]?) -> CGPoint {
+        guard let values = native?["offset"] as? [NSNumber], values.count == 2 else { return CGPoint(x: CGFloat.nan, y: .nan) }
+        return CGPoint(x: values[0].doubleValue, y: values[1].doubleValue)
+    }
+
+    /// The scroller of `row` now, matched by direction.
+    private func scroller(in row: Any?, vertical: Bool) -> [String: Any]? {
+        natives(controls()).first { ($0["row"] as? String) == (row as? String) && ($0["k"] as? String) == "scroller" && ($0["vertical"] as? Bool) == vertical }
+    }
+
+    /// A row's height as laid out: the plan's for UltraList, the frame's
+    /// otherwise; NaN when it isn't on screen.
+    private func rowHeight(_ id: String) -> CGFloat {
+        guard let row = (controls()["rows"] as? [[String: Any]] ?? []).first(where: { ($0["id"] as? String) == id }) else { return .nan }
+        if let height = row["h"] as? NSNumber { return CGFloat(height.doubleValue) }
+        return rect(row["f"])?.height ?? .nan
+    }
+
+    private func rowCount() -> Int { int(state()["rows"]) }
+
+    private func toNewest() {
+        for index in 1...2 { step("towards newest \(index)", quiet: 2.5, expect: .scroll) { fling(older: false, velocity: 4000) } }
     }
 
     private func newest(_ prefix: String) -> Hit? {
@@ -349,9 +442,9 @@ final class ChatUltraQATests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
         step("keyboard shown", quiet: 0.5, requireWindow: false) {}
         screenshot("01-keyboard-up")
-        XCTAssertTrue(keyboardUp, "the composer took focus and the keyboard came up")
+        require("keyboard up on open", keyboardUp, "keyboardTop \(number(scrollProbe()["keyboardTop"]))")
 
-        step("type three lines", quiet: 1.5, requireWindow: false) { app.typeText("A longer note for the agent\nwith a second line\nand a third one") }
+        step("type three lines", quiet: 1.5) { app.typeText("A longer note for the agent\nwith a second line\nand a third one") }
         screenshot("02-composer-three-lines")
 
         var probe = scrollProbe()
@@ -373,17 +466,14 @@ final class ChatUltraQATests: XCTestCase {
         let touch = probe["lastTouch"] as? [String: Any] ?? [:]
         attach("\(clip) dismiss touch", "\(touch)")
         let finger = number(touch["fingerTravelWithKeyboard"]), content = number(touch["offsetTravelWithKeyboard"])
-        if finger > 80 {
-            XCTAssertEqual(content / finger, 1, accuracy: 0.15, "content \(content) for a finger's \(finger) while the keyboard moved")
-        } else {
-            XCTFail("the keyboard did not follow the finger far enough to measure (finger \(finger) with the keyboard moving)")
-        }
+        require("interactive keyboard dismiss", finger > 80 && abs(content / finger - 1) <= 0.15,
+                "content \(content) for a finger's \(finger) while the keyboard moved (needs > 80 and a ratio within 0.15 of 1)")
         screenshot("04-keyboard-dismissed")
 
         step("pull past newest", quiet: 2, expect: .scroll) {
             drag(CGPoint(x: x, y: size.height * 0.62), CGPoint(x: x, y: size.height * 0.38), velocity: 500)
         }
-        XCTAssertEqual(number(state()["visibleMinY"]), 0, accuracy: 1, "sprang back to the newest message")
+        require("pull past newest springs back", abs(number(state()["visibleMinY"])) <= 1, "visibleMinY \(number(state()["visibleMinY"]))")
 
         for index in 1...6 {
             step("fling back \(index)", quiet: 2.5, expect: .scroll) { fling(older: true) }
@@ -397,10 +487,10 @@ final class ChatUltraQATests: XCTestCase {
         if jump.exists {
             let frame = jump.frame
             step("jump to newest", quiet: 2.5) { tap(CGPoint(x: frame.midX, y: frame.midY)) }
+            require("jump to newest", abs(number(state()["visibleMinY"])) <= 1, "visibleMinY \(number(state()["visibleMinY"]))")
         } else {
-            XCTFail("no jump-to-newest button deep in the history")
+            require("jump to newest", false, "no jump-to-newest button deep in the history")
         }
-        XCTAssertEqual(number(state()["visibleMinY"]), 0, accuracy: 1, "back at the newest message")
         screenshot("07-back-at-newest")
     }
 
@@ -422,13 +512,23 @@ final class ChatUltraQATests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.5)
         screenshot("03-history-while-streaming-2")
         Thread.sleep(forTimeInterval: 4)
-        step("stream ends away from newest", quiet: 0.5, expect: .away, requireWindow: false) {}
+        let streamed = step("stream ends away from newest", quiet: 0.5, expect: .away) {}
+        // The drag and the fling ran while the reply streamed in: windows
+        // with touches and applies, and momentum, must be there.
+        let touched = streamed.filter { int($0["touches"]) > 0 }
+        require("read history while a reply streams",
+                touched.contains { kinds($0).contains("apply") } && touched.contains { kinds($0).contains("momentum") },
+                "windows \(streamed.map { "\(int($0["index"])): \(kinds($0)) touches \(int($0["touches"])) applies \(int($0["applies"]))" })")
         assertReady("after stream")
         screenshot("04-after-stream-in-history")
 
-        if app.buttons["Scroll to bottom"].exists {
-            let frame = app.buttons["Scroll to bottom"].frame
+        let jump = app.buttons["Scroll to bottom"]
+        if jump.exists {
+            let frame = jump.frame
             step("jump to newest", quiet: 2) { tap(CGPoint(x: frame.midX, y: frame.midY)) }
+            require("jump to newest", abs(number(state()["visibleMinY"])) <= 1, "visibleMinY \(number(state()["visibleMinY"]))")
+        } else {
+            require("jump to newest", false, "no jump-to-newest button in the history")
         }
         screenshot("05-finished-reply")
 
@@ -439,12 +539,15 @@ final class ChatUltraQATests: XCTestCase {
         let send = app.buttons["Send"]
         XCTAssertTrue(send.exists, "a Send button")
         let sendFrame = send.frame
+        let before = rowCount()
         mark("send")
         tap(CGPoint(x: sendFrame.midX, y: sendFrame.midY))
         Thread.sleep(forTimeInterval: 2.4)
         screenshot("06-sent-tool-running")
         Thread.sleep(forTimeInterval: 5)
-        step("reply streamed at newest with the keyboard up", quiet: 0.5, requireWindow: false) {}
+        let reply = step("reply streamed at newest with the keyboard up", quiet: 0.5) {}
+        require("send and stream a reply at newest", rowCount() > before + 1 && reply.contains { kinds($0).contains("apply") },
+                "rows \(before) → \(rowCount()), windows \(reply.map { kinds($0) })")
         screenshot("07-reply-with-keyboard")
 
         step("dismiss keyboard", quiet: 2) {
@@ -457,9 +560,10 @@ final class ChatUltraQATests: XCTestCase {
             screenshot("08-copy-tick")
             Thread.sleep(forTimeInterval: 1.8)
             screenshot("09-copy-reset")
-            step("copy settles", quiet: 0.3, requireWindow: false) {}
+            step("copy settles", quiet: 0.3) {}
+            actedVisually("copy the streamed reply", "08-copy-tick, 09-copy-reset")
         } else {
-            XCTFail("no copy button on the newest reply")
+            require("copy the streamed reply", false, "no copy button on the newest reply")
         }
     }
 
@@ -470,58 +574,73 @@ final class ChatUltraQATests: XCTestCase {
         assertReady("open")
         screenshot("01-newest-pending-permissions")
 
-        if let allow = find("allow perm-edit", moves: 3, { $0.action == "permission:perm-edit:allow" }) {
+        if let allow = find("allow a permission", moves: 3, { $0.action == "permission:perm-edit:allow" }) {
             step("allow the edit", quiet: 1.5, expect: .pin) { tap(allow.center) }
             screenshot("02-edit-allowed")
+            let left = hits(controls()).filter { $0.action.hasPrefix("permission:perm-edit:") }.count
+            require("allow a permission", left == 0, "\(left) of the edit's permission buttons left after Allow")
         }
-        if let deny = find("deny perm-bash", moves: 3, older: false, { $0.action == "permission:perm-bash:deny" }) {
+        if let deny = find("deny a permission", moves: 3, older: false, { $0.action == "permission:perm-bash:deny" }) {
             step("deny the bash", quiet: 1.5, expect: .pin) { tap(deny.center) }
             screenshot("03-bash-denied")
+            let left = hits(controls()).filter { $0.action.hasPrefix("permission:perm-bash:") }.count
+            require("deny a permission", left == 0, "\(left) of the bash's permission buttons left after Deny")
         }
-        var report = controls()
-        let vertical = natives(report).first { ($0["k"] as? String) == "scroller" && ($0["vertical"] as? Bool) == true }
-        if let vertical, let frame = rect(vertical["f"]), let content = vertical["content"] as? [NSNumber],
-           content.count == 2, CGFloat(content[1].doubleValue) > frame.height + 4 {
+        if let list = seekNative("a permission list taller than its box", kind: "scroller", moves: 0, required: false, { native, frame in
+            guard (native["vertical"] as? Bool) == true, let content = native["content"] as? [NSNumber], content.count == 2 else { return false }
+            return CGFloat(content[1].doubleValue) > frame.height + 4
+        }) {
+            let frame = list.frame
             step("scroll a permission list", quiet: 1.5) {
                 drag(CGPoint(x: frame.midX, y: frame.maxY - 10), CGPoint(x: frame.midX, y: frame.minY + 10), velocity: 600, hold: 0.2)
             }
-            attach("\(clip) permission list", "before \(vertical["offset"] ?? "") after \(natives(controls()).filter { ($0["row"] as? String) == (vertical["row"] as? String) })")
+            let after = offset(scroller(in: list.native["row"], vertical: true)).y
+            require("scroll a permission list", after > offset(list.native).y + 10, "offset \(offset(list.native).y) → \(after)")
             screenshot("04-permission-list-scrolled")
-        } else {
-            attach("\(clip) vertical", "no permission list taller than its box on screen")
         }
 
-        if let group = find("a tool group", moves: 10, { $0.action.hasPrefix("group:") }) {
+        if let group = find("open a tool group", moves: 10, { $0.action.hasPrefix("group:") }) {
+            let before = rowCount()
             step("open a group", quiet: 1.5, expect: .pin) { tap(group.center) }
             screenshot("05-group-open")
+            let after = rowCount()
+            require("open a tool group", after > before, "rows \(before) → \(after)")
         }
-        if let tool = find("an expandable tool", moves: 6, { $0.action.hasPrefix("tool:") }) {
+        if let tool = find("open a tool", moves: 6, { $0.action.hasPrefix("tool:") }) {
+            let before = rowHeight(tool.row)
             step("open a tool mid-history", quiet: 1.5, expect: .pin) { tap(tool.center) }
             screenshot("06-tool-open")
-            report = controls()
+            let opened = rowHeight(tool.row)
+            require("open a tool", abs(opened - before) > 1, "row height \(before) → \(opened)")
+            let report = controls()
             if let same = hits(report).first(where: { $0.action == tool.action && reachable($0.frame, in: report) }) {
                 step("close the tool", quiet: 1.5, expect: .pin) { tap(same.center) }
                 screenshot("07-tool-closed")
+                let closed = rowHeight(tool.row)
+                require("close a tool", abs(closed - before) <= 1, "row height \(before) → \(opened) → \(closed)")
+            } else {
+                require("close a tool", false, "its toggle went out of reach once open")
             }
         }
-        report = controls()
-        if let showMore = natives(report).first(where: { ($0["k"] as? String) == "showMore" }).flatMap({ rect($0["f"]) }), reachable(showMore, in: report) {
-            step("show more diff lines", quiet: 1.5) { tap(CGPoint(x: showMore.midX, y: showMore.midY)) }
+
+        toNewest()
+        if let bar = seekNative("a diff's Show more", kind: "showMore", moves: 14) {
+            let row = bar.native["row"] as? String ?? ""
+            let before = rowHeight(row)
+            step("show more diff lines", quiet: 1.5) { tap(CGPoint(x: bar.frame.midX, y: bar.frame.midY)) }
             screenshot("08-diff-show-more")
-        } else {
-            attach("\(clip) show more", "no Show more bar on screen")
+            let after = rowHeight(row)
+            require("a diff's Show more", after > before + 1, "row height \(before) → \(after)")
         }
-        report = controls()
-        let horizontal = natives(report).first { ($0["k"] as? String) == "scroller" && ($0["vertical"] as? Bool) == false && rect($0["f"]).map { reachable($0, in: report) } == true }
-        if let horizontal, let frame = rect(horizontal["f"]) {
+        toNewest()
+        if let strip = seekNative("pan a strip sideways", kind: "scroller", moves: 14, wideStrip) {
+            let frame = strip.frame
             step("pan a strip sideways", quiet: 1.5) {
                 drag(CGPoint(x: frame.maxX - 20, y: frame.midY), CGPoint(x: frame.minX + 20, y: frame.midY), velocity: 600, hold: 0.2)
             }
-            let after = natives(controls()).first { ($0["row"] as? String) == (horizontal["row"] as? String) && ($0["k"] as? String) == "scroller" }
-            attach("\(clip) sideways", "before \(horizontal["offset"] ?? "") after \(after?["offset"] ?? "")")
+            let after = offset(scroller(in: strip.native["row"], vertical: false)).x
+            require("pan a strip sideways", after > offset(strip.native).x + 10, "offset \(offset(strip.native).x) → \(after)")
             screenshot("09-strip-panned")
-        } else {
-            attach("\(clip) sideways", "no sideways strip on screen")
         }
         step("fling back", quiet: 2.5, expect: .scroll) { fling(older: true) }
         step("catch momentum and pan sideways", quiet: 2) {
@@ -545,15 +664,21 @@ final class ChatUltraQATests: XCTestCase {
             screenshot("02-copy-tick")
             Thread.sleep(forTimeInterval: 1.8)
             screenshot("03-copy-reset")
-            step("copy settles", quiet: 0.3, requireWindow: false) {}
+            step("copy settles", quiet: 0.3) {}
+            actedVisually("copy a reply", "02-copy-tick, 03-copy-reset (the pasteboard isn't read: that would raise the paste prompt)")
+        } else {
+            require("copy a reply", false, "no copy button on the newest reply")
         }
-        if let held = find("a long-press target", moves: 3, hold: true, { $0.action == "markdownSelectable" || $0.action == "copyMenu" }) {
-            step("long press \(held.action)", quiet: 1.2, requireWindow: false) { hold(held.center) }
+        if let held = find("long-press a message", moves: 3, hold: true, { $0.action == "markdownSelectable" || $0.action == "copyMenu" }) {
+            step("long press \(held.action)", quiet: 1.2) { hold(held.center) }
             screenshot("04-long-press-menu")
             let copy = app.descendants(matching: .any)["Copy"].firstMatch
-            if copy.exists {
+            let menu = copy.exists
+            let selection = (state()["listInWindow"] as? Bool) == false
+            require("long-press a message", menu || selection, menu ? "a Copy menu" : selection ? "the text selection screen" : "neither a menu nor the selection screen")
+            if menu {
                 copy.tap()
-            } else {
+            } else if !selection {
                 tap(CGPoint(x: size.width / 2, y: 150))
             }
             Thread.sleep(forTimeInterval: 1)
@@ -561,49 +686,57 @@ final class ChatUltraQATests: XCTestCase {
             if (state()["listInWindow"] as? Bool) == false {
                 // Markdown Copy v2 opens the text selection screen.
                 back()
-                Thread.sleep(forTimeInterval: 1.2)
+                XCTAssertTrue(wait(5) { (state()["listInWindow"] as? Bool) == true }, "back in the chat from the selection screen")
             }
         }
-        if let option = find("an option", moves: 4, { $0.action.hasPrefix("option:") }) {
+        if let option = find("choose an option", moves: 4, { $0.action.hasPrefix("option:") }) {
             screenshot("06-options")
+            let before = rowCount()
             mark("choose \(option.action)")
             tap(option.center)
             Thread.sleep(forTimeInterval: 1.5)
             screenshot("07-option-sent")
             Thread.sleep(forTimeInterval: 5)
             screenshot("08-option-reply")
-            step("option reply settles", quiet: 0.5, requireWindow: false) {}
+            step("option reply settles", quiet: 0.5) {}
+            let after = rowCount()
+            require("choose an option", after > before, "rows \(before) → \(after)")
         }
 
-        if let picture = find("a picture", moves: 6, { $0.action.hasPrefix("open:") || $0.action.hasPrefix("openFile:") || $0.action.hasPrefix("file:") }) {
-            screenshot("09-pictures")
-            step("open \(picture.action)", quiet: 1.5, requireWindow: false) { tap(picture.center) }
-            screenshot("10-opened-screen")
-            if (state()["listInWindow"] as? Bool) == false {
+        // Pictures draw natively over the row: an attached file (its
+        // thumbhash, then the picture) and a Markdown image from the web.
+        if seekNative("an attached picture", kind: "attachment", moves: 6) != nil {
+            screenshot("09-attached-pictures")
+            actedVisually("an attached picture", "09-attached-pictures")
+        }
+        if seekNative("a Markdown web image", kind: "webImage", moves: 6) != nil {
+            screenshot("10-web-image")
+            actedVisually("a Markdown web image", "10-web-image (loaded from the network: a blank box is a load failure, not a pass)")
+        }
+        if let opener = find("open a message's own screen", moves: 0, required: false, { $0.action.hasPrefix("open:") || $0.action.hasPrefix("openFile:") }) {
+            step("open \(opener.action)", quiet: 1.5) { tap(opener.center) }
+            let opened = (state()["listInWindow"] as? Bool) == false
+            screenshot("11-opened-screen")
+            require("open a message's own screen", opened, opened ? "its screen opened" : "the chat stayed on screen")
+            if opened {
                 back()
                 XCTAssertTrue(wait(5) { (state()["listInWindow"] as? Bool) == true }, "back in the chat")
             }
-            screenshot("11-back-in-chat")
         }
-        var panned = false
-        for index in 1...5 where !panned {
-            let report = controls()
-            if let strip = natives(report).first(where: { ($0["k"] as? String) == "scroller" && ($0["vertical"] as? Bool) == false && rect($0["f"]).map { reachable($0, in: report) } == true }),
-               let frame = rect(strip["f"]) {
-                step("pan code or table sideways", quiet: 1.5) {
-                    drag(CGPoint(x: frame.maxX - 20, y: frame.midY), CGPoint(x: frame.minX + 30, y: frame.midY), velocity: 700, hold: 0.2)
-                }
-                attach("\(clip) strip", "before \(strip["offset"] ?? "") after \(natives(controls()).filter { ($0["row"] as? String) == (strip["row"] as? String) })")
-                screenshot("12-strip-panned")
-                panned = true
-            } else {
-                step("seek a strip \(index)", quiet: 1.2, expect: .scroll) { move(older: true, by: size.height * 0.35) }
+        if let strip = seekNative("pan code or a table sideways", kind: "scroller", moves: 6, wideStrip) {
+            let frame = strip.frame
+            step("pan code or table sideways", quiet: 1.5) {
+                drag(CGPoint(x: frame.maxX - 20, y: frame.midY), CGPoint(x: frame.minX + 30, y: frame.midY), velocity: 700, hold: 0.2)
             }
+            let after = offset(scroller(in: strip.native["row"], vertical: false)).x
+            require("pan code or a table sideways", after > offset(strip.native).x + 10, "offset \(offset(strip.native).x) → \(after)")
+            screenshot("12-strip-panned")
         }
         step("fling away", quiet: 2.5, expect: .scroll) { fling(older: false) }
         step("fling back", quiet: 2.5, expect: .scroll) { fling(older: true) }
         screenshot("13-after-reuse")
-        for index in 1...4 {
+        var opened = false
+        for index in 0...4 where !opened {
             let report = controls()
             if let link = (report["links"] as? [[String: Any]])?.first(where: {
                 guard let point = $0["p"] as? [NSNumber], point.count == 2 else { return false }
@@ -611,15 +744,19 @@ final class ChatUltraQATests: XCTestCase {
             }), let point = link["p"] as? [NSNumber] {
                 mark("link \(link["url"] ?? "")")
                 tap(CGPoint(x: point[0].doubleValue, y: point[1].doubleValue))
-                let left = app.wait(for: .runningBackground, timeout: 6)
-                XCTAssertTrue(left, "a link opens outside the app")
+                opened = app.wait(for: .runningBackground, timeout: 6)
+                require("open a link", opened, opened ? "\(link["url"] ?? "") opened outside the app" : "the app stayed in front")
                 screenshot("14-link-opened")
                 app.activate()
                 Thread.sleep(forTimeInterval: 1.5)
                 screenshot("15-returned")
                 break
             }
-            step("seek a link \(index)", quiet: 1.2, expect: .scroll) { move(older: true, by: size.height * 0.35) }
+            if index < 4 {
+                step("seek a link \(index + 1)", quiet: 1.2, expect: .scroll) { move(older: true, by: size.height * 0.35) }
+            } else {
+                require("open a link", false, "no link on screen in 4 moves")
+            }
         }
     }
 
@@ -629,19 +766,20 @@ final class ChatUltraQATests: XCTestCase {
         launchChat("question", clip: "c5-question")
         assertReady("open")
         screenshot("01-question")
-        if let first = find("an inline question option", moves: 3, { $0.action.hasPrefix("question:") }) {
-            step("choose an inline option", quiet: 1, requireWindow: false) { tap(first.center) }
+        if let first = find("answer an inline question", moves: 3, { $0.action.hasPrefix("question:") }) {
+            step("choose an inline option", quiet: 1) { tap(first.center) }
             let report = controls()
             if let second = hits(report).first(where: { $0.action.hasPrefix("question:") && $0.action.hasSuffix(":2") && reachable($0.frame, in: report) }) {
-                step("choose another option", quiet: 1, requireWindow: false) { tap(second.center) }
+                step("choose another option", quiet: 1) { tap(second.center) }
             }
             screenshot("02-inline-chosen")
             let after = controls()
             if let submit = hits(after).first(where: { $0.action.hasPrefix("submit:") && reachable($0.frame, in: after) }) {
-                step("submit inline answers", quiet: 1.5, requireWindow: false) { tap(submit.center) }
+                step("submit inline answers", quiet: 1.5) { tap(submit.center) }
                 screenshot("03-inline-submitted")
+                actedVisually("answer an inline question", "02-inline-chosen, 03-inline-submitted")
             } else {
-                XCTFail("no enabled submit for the inline question")
+                require("answer an inline question", false, "no enabled submit once options were chosen")
             }
         }
         let banner = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Platform")).firstMatch
@@ -657,16 +795,20 @@ final class ChatUltraQATests: XCTestCase {
             if own.exists {
                 own.tap()
                 app.typeText("Also the iPad mini")
+            } else {
+                notCovered("write an own answer in the sheet", "no 'Write an answer instead' field")
             }
             Thread.sleep(forTimeInterval: 0.8)
             screenshot("05-sheet-answer-above-keyboard")
             let submit = app.buttons["Send answer"]
-            XCTAssertTrue(submit.exists, "the sheet's Send answer")
-            if submit.exists { submit.tap() }
+            let sent = submit.exists
+            if sent { submit.tap() }
             Thread.sleep(forTimeInterval: 1.5)
             screenshot("06-sheet-sent")
+            let closed = !app.buttons["Send answer"].exists
+            require("answer in the question sheet", sent && closed, sent ? (closed ? "sent and the sheet closed" : "the sheet stayed open") : "no Send answer")
         } else {
-            XCTFail("no question banner in the dock")
+            require("answer in the question sheet", false, "no question banner in the dock")
         }
 
         launchChat("sending", clip: "c5-sending")
@@ -677,23 +819,55 @@ final class ChatUltraQATests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
         app.typeText("This one should fail first")
         let send = app.buttons["Send"].frame
-        step("send a message that fails", quiet: 2.5, requireWindow: false) { tap(CGPoint(x: send.midX, y: send.midY)) }
+        let before = rowCount()
+        step("send a message that fails", quiet: 2.5) { tap(CGPoint(x: send.midX, y: send.midY)) }
         screenshot("08-failed")
-        step("dismiss keyboard", quiet: 1.5, requireWindow: false) {
+        require("send a message", rowCount() > before, "rows \(before) → \(rowCount())")
+        step("dismiss keyboard", quiet: 1.5) {
             drag(CGPoint(x: size.width / 2, y: size.height * 0.3), CGPoint(x: size.width / 2, y: size.height - 4), velocity: 1500)
         }
-        if let retry = find("retry", moves: 2, { $0.action.hasPrefix("retry:local-") }) {
-            step("retry", quiet: 3, requireWindow: false) { tap(retry.center) }
+        if let retry = find("retry a failed send", moves: 2, { $0.action.hasPrefix("retry:local-") }) {
+            step("retry", quiet: 3) { tap(retry.center) }
             screenshot("09-retried")
             Thread.sleep(forTimeInterval: 5)
             screenshot("10-reply")
             step("reply settles", quiet: 0.5, requireWindow: false) {}
-        } else {
-            XCTFail("no retry on the failed message")
+            let left = hits(controls()).filter { $0.action == retry.action }.count
+            require("retry a failed send", left == 0, left == 0 ? "the retry is gone" : "the retry is still there")
         }
     }
 
     // MARK: C6 Diagrams and one giant message
+
+    /// The rows with diagrams drawn in WebKit: the row view and its web
+    /// views, by row.
+    private func diagrams() -> [String: (view: String, webViews: [String])] {
+        let report = controls()
+        var views: [String: String] = [:]
+        for row in report["rows"] as? [[String: Any]] ?? [] {
+            if let id = row["id"] as? String, let object = row["object"] as? String { views[id] = object }
+        }
+        var found: [String: (view: String, webViews: [String])] = [:]
+        for native in natives(report) where (native["k"] as? String) == "webView" {
+            guard let row = native["row"] as? String, let object = native["object"] as? String else { continue }
+            found[row, default: (views[row] ?? "", [])].webViews.append(object)
+        }
+        return found
+    }
+
+    /// The tallest row on screen: its plan height and whether it draws on
+    /// the native canvas instead of tiles.
+    private func tallest() -> (height: Double, native: Bool)? {
+        (controls()["rows"] as? [[String: Any]] ?? []).compactMap { row -> (height: Double, native: Bool)? in
+            guard let height = (row["h"] as? NSNumber)?.doubleValue else { return nil }
+            return (height, (row["native"] as? Bool) ?? false)
+        }.max { $0.height < $1.height }
+    }
+
+    private func memory() -> String {
+        let s = state()
+        return "\(s["memoryMB"] ?? -1) MB now, \(s["memoryPeakMB"] ?? -1) MB peak"
+    }
 
     func testC6DiagramsAndGiantMessage() {
         launchChat("diagrams", clip: "c6-diagrams")
@@ -701,53 +875,82 @@ final class ChatUltraQATests: XCTestCase {
         Thread.sleep(forTimeInterval: 3)
         step("diagrams measured", quiet: 0.5, requireWindow: false) {}
         screenshot("01-diagrams")
-        func webViews() -> [String] { natives(controls()).filter { ($0["k"] as? String) == "webView" }.compactMap { $0["object"] as? String } }
-        let first = webViews()
+        let first = diagrams()
+        require("diagrams draw in WebKit", !first.isEmpty, "\(first.count) rows with a web view")
+        step("nudge the diagrams", quiet: 1.5, expect: .scroll) { move(older: true, by: 120) }
+        let nudged = diagrams()
+        let kept = first.filter { nudged[$0.key]?.view == $0.value.view }
+        let same = kept.filter { nudged[$0.key]?.webViews == $0.value.webViews }
+        require("a diagram keeps its web view while its row stays", !kept.isEmpty && same.count == kept.count,
+                "rows kept on screen \(kept.count), with the same web views \(same.count)")
         for index in 1...3 {
             step("through the diagrams \(index)", quiet: 1.5, expect: .scroll) { move(older: true, by: size.height * 0.4) }
             screenshot("02-diagrams-\(index)")
         }
-        let report = controls()
-        if let mermaid = natives(report).compactMap({ ($0["k"] as? String) == "mermaid" ? rect($0["f"]) : nil }).max(by: { $0.height < $1.height }), mermaid.height > 160 {
-            let top = max(mermaid.minY, 160) + 20, bottom = min(mermaid.maxY, size.height - 200) - 20
+        actedVisually("invalid and over-cap diagrams", "01-diagrams, 02-diagrams-1…3")
+        if let mermaid = seekNative("drag inside a diagram", kind: "mermaid", moves: 4, older: false, { _, frame in frame.height > 160 }) {
+            let frame = mermaid.frame
+            let top = max(frame.minY, 160) + 20, bottom = min(frame.maxY, size.height - 200) - 20
             if bottom - top > 80 {
-                step("drag inside a diagram", quiet: 1.5) {
-                    drag(CGPoint(x: mermaid.midX, y: bottom), CGPoint(x: mermaid.midX, y: top), velocity: 600, hold: 0.2)
+                step("drag inside a diagram", quiet: 1.5, expect: .scroll) {
+                    drag(CGPoint(x: frame.midX, y: bottom), CGPoint(x: frame.midX, y: top), velocity: 600, hold: 0.2)
                 }
                 screenshot("03-inside-diagram")
+                actedVisually("drag inside a diagram", "03-inside-diagram, and the step's offsetTravel")
+            } else {
+                notCovered("drag inside a diagram", "the diagram on screen is too short to drag inside")
             }
         }
         step("back to newest", quiet: 2, expect: .scroll) { fling(older: false) }
-        let again = webViews()
-        attach("\(clip) web views", "first \(first) after \(again)")
-        XCTAssertFalse(first.isEmpty, "diagrams drew in WebKit")
+        attach("\(clip) web views", "first \(first) nudged \(nudged) back \(diagrams())")
+        covered("diagram memory", memory())
 
         launchChat("giant", clip: "c6-giant-350", extra: ["-giantParagraphs", "350"])
         assertReady("open")
-        let rows = controls()["rows"] as? [[String: Any]] ?? []
-        attach("\(clip) rows", "\(rows)")
+        let opened = memory()
+        if let giant = tallest() {
+            require("a message far over 4096 pt draws natively", giant.height > 4096 && giant.native, "height \(giant.height), native \(giant.native)")
+        } else {
+            require("a message far over 4096 pt draws natively", false, "no row on screen")
+        }
+        attach("\(clip) rows", "\(controls()["rows"] ?? [])")
         screenshot("04-giant-newest")
         for index in 1...4 { step("fling through giant \(index)", quiet: 2.5, expect: .scroll) { fling(older: true, velocity: 4000) } }
         screenshot("05-giant-deep")
         for index in 1...2 { step("fling back \(index)", quiet: 2.5, expect: .scroll) { fling(older: false, velocity: 4000) } }
         screenshot("06-giant-after")
+        covered("giant message memory", "350 paragraphs: on open \(opened); after six flings \(memory())")
 
         // Rows either side of the 4096-point line where drawing moves from
         // tiles to the native canvas.
         launchChat("giant", clip: "c6-giant-40", extra: ["-giantParagraphs", "40"])
         assertReady("open")
-        let tallest = (controls()["rows"] as? [[String: Any]] ?? []).compactMap { ($0["h"] as? NSNumber)?.doubleValue }.max() ?? 0
-        let perParagraph = max(20, tallest / 40)
-        for target in [3950.0, 4250.0] {
-            let count = max(1, Int((target / perParagraph).rounded()))
-            launchChat("giant", clip: "c6-giant-\(count)", extra: ["-giantParagraphs", "\(count)"])
-            assertReady("open")
-            let row = (controls()["rows"] as? [[String: Any]] ?? []).max { (($0["h"] as? NSNumber)?.doubleValue ?? 0) < (($1["h"] as? NSNumber)?.doubleValue ?? 0) }
-            attach("\(clip) near-threshold row", "\(row ?? [:])")
+        let perParagraph = max(20, (tallest()?.height ?? 0) / 40)
+        for (target, over) in [(3950.0, false), (4250.0, true)] {
+            let feature = over ? "a message just over 4096 pt draws natively" : "a message just under 4096 pt draws in tiles"
+            var count = max(1, Int((target / perParagraph).rounded()))
+            var landed: (height: Double, native: Bool)?
+            for _ in 0..<4 {
+                launchChat("giant", clip: "c6-giant-\(count)", extra: ["-giantParagraphs", "\(count)"])
+                assertReady("open")
+                guard let row = tallest() else { break }
+                if (row.height > 4096) == over {
+                    landed = row
+                    break
+                }
+                let paragraphs = max(1, Int((abs(row.height - 4096) / perParagraph).rounded(.up)))
+                count = max(1, count + (over ? paragraphs : -paragraphs))
+            }
+            guard let landed else {
+                require(feature, false, "no paragraph count landed on that side")
+                continue
+            }
+            require(feature, landed.native == over, "height \(landed.height), native \(landed.native), \(count) paragraphs")
             screenshot("07-near-threshold")
             for index in 1...2 { step("fling \(index)", quiet: 2.5, expect: .scroll) { fling(older: true, velocity: 3500) } }
             step("fling forward", quiet: 2.5, expect: .scroll) { fling(older: false, velocity: 3500) }
             screenshot("08-near-threshold-after")
+            covered("memory near the threshold", "\(count) paragraphs: \(memory())")
         }
     }
 
@@ -781,8 +984,10 @@ final class ChatUltraQATests: XCTestCase {
                     step("fling the opened chat", quiet: 2.5, expect: .scroll) { fling(older: true) }
                 }
                 if label == "short", pass == "warm" {
+                    // The header's avatar, labelled with the chat's title; a
+                    // worktree tab below the header can carry the same label.
                     let avatar = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", title)).allElementsBoundByIndex
-                        .first { $0.frame.midX > size.width * 0.75 && $0.frame.midY < 140 }
+                        .first { $0.frame.midX > size.width * 0.75 && $0.frame.midY < 100 && $0.frame.width < 70 }
                     if let avatar {
                         let spot = avatar.frame
                         tap(CGPoint(x: spot.midX, y: spot.midY))
@@ -790,11 +995,11 @@ final class ChatUltraQATests: XCTestCase {
                         screenshot("details")
                         let texts = app.staticTexts.allElementsBoundByIndex.prefix(40).map(\.label).filter { !$0.isEmpty }
                         attach("\(clip) details texts", "\(texts)")
-                        XCTAssertGreaterThanOrEqual(texts.count, 4, "Details shows its content")
+                        require("header avatar opens Details with content", texts.count >= 4, "\(texts.count) texts")
                         back()
                         Thread.sleep(forTimeInterval: 1.2)
                     } else {
-                        XCTFail("no header avatar to open Details")
+                        require("header avatar opens Details with content", false, "no header avatar")
                     }
                 }
                 backToHome()
@@ -802,7 +1007,31 @@ final class ChatUltraQATests: XCTestCase {
         }
         let opens = state()["opens"] as? [[String: Any]] ?? []
         attach("\(clip) openings", "\(opens)")
-        XCTAssertEqual(opens.count, 4, "every opening reached a drawn chat")
+        require("open chats from Home on UltraList", opens.count == 4 && opens.allSatisfy { ($0["renderer"] as? String) == "UltraList" && number($0["readyMs"]) > 0 },
+                "\(opens.count) openings: \(opens.map { "\($0["renderer"] ?? "") mount \($0["mountMs"] ?? "") visible \($0["visibleMs"] ?? "") ready \($0["readyMs"] ?? "") settled \($0["settledMs"] ?? "")" })")
+
+        // Worktree tabs: the short chat's worktree has four.
+        let short = row("Scroll indicator")
+        XCTAssertTrue(short.waitForExistence(timeout: 10))
+        let shortFrame = short.frame
+        tap(CGPoint(x: shortFrame.midX, y: shortFrame.midY))
+        Thread.sleep(forTimeInterval: 2.5)
+        assertReady("worktree chat")
+        for (tab, shot) in [("Opening a chat", "tab-opening-a-chat"), ("Scroll indicator", "tab-scroll-indicator")] {
+            let button = app.buttons.matching(NSPredicate(format: "label == %@", tab)).allElementsBoundByIndex
+                .first { $0.frame.midY > 90 && $0.frame.midY < 200 }
+            guard let button else {
+                require("switch worktree tabs", false, "no \(tab) tab under the header")
+                break
+            }
+            let frame = button.frame
+            step("tab \(tab)", quiet: 2.5) { tap(CGPoint(x: frame.midX, y: frame.midY)) }
+            assertReady("tab \(tab)")
+            screenshot(shot)
+            let selected = app.buttons.matching(NSPredicate(format: "label == %@", tab)).allElementsBoundByIndex.contains { $0.isSelected }
+            require("switch worktree tabs", selected, "\(tab) selected \(selected)")
+        }
+        backToHome()
 
         func choose(_ renderer: String) {
             app.buttons["Settings"].tap()
@@ -865,7 +1094,10 @@ final class ChatUltraQATests: XCTestCase {
         } catch {
             issues.append("audit failed: \(error)")
         }
-        attach("\(clip) accessibility audit", issues.isEmpty ? "no issues" : issues.joined(separator: "\n"))
+        // Every issue is kept, not failed: they are evidence to review
+        // against the screenshots, and this is no accessibility pass.
+        attach("\(clip) accessibility audit issues (evidence, not a pass)", issues.isEmpty ? "none reported" : issues.joined(separator: "\n"))
+        covered("accessibility audit at AX XL text", "\(issues.count) issues listed for review; VoiceOver itself not driven")
         let labels = app.descendants(matching: .any).matching(NSPredicate(format: "label != ''")).allElementsBoundByIndex.prefix(40)
             .map { "\($0.elementType.rawValue) \($0.frame.minY.rounded()) \($0.label.prefix(80))" }
         attach("\(clip) accessibility order", labels.joined(separator: "\n"))
@@ -885,10 +1117,93 @@ final class ChatUltraQATests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         Thread.sleep(forTimeInterval: 2.5)
         screenshot("07-portrait-again")
-        step("rotations settled", quiet: 0.5, requireWindow: false) {}
+        step("rotations settled", quiet: 0.5) {}
         let after = state()
         attach("\(clip) reading position", "before \(place) after \(after["visibleMinY"] ?? "")")
         XCTAssertEqual(after["displayReady"] as? Bool, true, "rows drawn after rotating")
+    }
+
+    // MARK: C9 Composer controls and the voice entry
+
+    private let voiceLabel = "Voice Assistant"
+
+    private func menuElements() -> Int { app.buttons.count + app.menuItems.count }
+
+    /// The composer's chips and its add menu open and close, and the
+    /// primary button offers voice when empty and Send with text. Nothing
+    /// is chosen: a choice would change the session's modes. Voice isn't
+    /// started: it asks for the microphone (a system prompt this suite
+    /// never answers), then the server for voice credentials.
+    func testC9ComposerControlsAndVoiceEntry() {
+        launchChat("markdown", clip: "c9-composer")
+        assertReady("open")
+        screenshot("01-composer")
+        let voice = app.buttons[voiceLabel]
+        require("voice entry offered on an empty composer", voice.exists, voice.exists ? "\(voiceLabel) at \(voice.frame)" : "no \(voiceLabel) button")
+        notCovered("start and close voice", "starting voice asks for the microphone (a system prompt) and the server for voice credentials")
+
+        for chip in ["MODEL", "PERMISSION MODE", "EFFORT"] {
+            let button = app.buttons[chip]
+            guard button.exists else {
+                notCovered("\(chip) menu", "no \(chip) chip in this fixture's composer")
+                continue
+            }
+            let before = menuElements()
+            let frame = button.frame
+            step("open \(chip)", quiet: 1.2) { tap(CGPoint(x: frame.midX, y: frame.midY)) }
+            let opened = menuElements()
+            screenshot("02-\(chip.lowercased().replacingOccurrences(of: " ", with: "-"))-menu")
+            guard opened > before else {
+                covered("\(chip) menu", "the chip opened no menu (no choices in this fixture): elements \(before) → \(opened)")
+                continue
+            }
+            // Outside the menu, over the header's title: dismisses it
+            // without choosing.
+            tap(CGPoint(x: size.width / 2, y: 69))
+            Thread.sleep(forTimeInterval: 1)
+            let closed = menuElements()
+            let stayed = (state()["listInWindow"] as? Bool) == true
+            require("\(chip) menu opens and closes", closed <= before && stayed, "elements \(before) → \(opened) → \(closed), chat on screen \(stayed)")
+            if !stayed {
+                back()
+                Thread.sleep(forTimeInterval: 1.2)
+            }
+        }
+
+        let add = app.buttons["Add photo"]
+        if add.exists {
+            let frame = add.frame
+            step("open the add menu", quiet: 1.2) { tap(CGPoint(x: frame.midX, y: frame.midY)) }
+            let alert = app.alerts.firstMatch
+            let shown = alert.waitForExistence(timeout: 3)
+            screenshot("03-add-menu")
+            if shown {
+                // Never "Paste from Clipboard": that raises the paste prompt.
+                alert.buttons["Cancel"].tap()
+                Thread.sleep(forTimeInterval: 0.8)
+            }
+            require("add menu opens and cancels", shown && !app.alerts.firstMatch.exists, shown ? "offered and cancelled" : "no add menu")
+        } else {
+            notCovered("add menu", "no Add photo button in this fixture's composer")
+        }
+
+        let field = app.textViews.firstMatch.frame
+        step("focus composer", quiet: 1.5) { tap(CGPoint(x: field.midX, y: field.midY)) }
+        app.typeText("Draft")
+        Thread.sleep(forTimeInterval: 0.6)
+        let sendShown = app.buttons["Send"].exists
+        let voiceGone = !app.buttons[voiceLabel].exists
+        screenshot("04-send-with-text")
+        app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5))
+        Thread.sleep(forTimeInterval: 0.6)
+        let voiceBack = app.buttons[voiceLabel].exists
+        screenshot("05-voice-again")
+        require("primary button: voice when empty, Send with text", sendShown && voiceGone && voiceBack,
+                "Send with text \(sendShown), voice hidden \(voiceGone), voice back once empty \(voiceBack)")
+        step("dismiss keyboard", quiet: 1.5) {
+            drag(CGPoint(x: size.width / 2, y: size.height * 0.3), CGPoint(x: size.width / 2, y: size.height - 4), velocity: 1500)
+        }
+        screenshot("06-closed")
     }
 
     // MARK: R1 The TEST account, read only
@@ -926,7 +1241,7 @@ final class ChatUltraQATests: XCTestCase {
         for index in 1...2 { step("fling back \(index)", quiet: 2.5, expect: .scroll) { fling(older: true) } }
         step("fling forward", quiet: 2.5, expect: .scroll) { fling(older: false) }
         let avatar = app.descendants(matching: .any).allElementsBoundByIndex.prefix(80)
-            .first { $0.elementType != .window && $0.frame.width < 70 && $0.frame.width > 30 && $0.frame.midX > size.width * 0.8 && $0.frame.midY < 140 && $0.frame.midY > 40 }
+            .first { $0.elementType != .window && $0.frame.width < 70 && $0.frame.width > 30 && $0.frame.midX > size.width * 0.8 && $0.frame.midY < 100 && $0.frame.midY > 40 }
         if let avatar {
             let spot = avatar.frame
             mark("open Details")

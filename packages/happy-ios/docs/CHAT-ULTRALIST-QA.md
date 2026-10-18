@@ -1,0 +1,186 @@
+# UltraList chat device QA
+
+`Tests/HappyChatUITests/ChatUltraQATests.swift` drives the UltraList chat
+on a physical device through `HappyChatHarness`. It records screenshots,
+an optional screen recording, and per-frame numbers from the harness's
+probe (`Harness/ChatUltraQAProbe.swift`). It is QA tooling and is not part
+of the CI suite. Every chat it opens is a fixture or seeded chat in the
+harness, and sends, permission answers and question answers go to
+`FixtureChatControls`, so nothing reaches a server. The single exception is
+`testR1RealAccountReadOnly`, described below.
+
+## Tests
+
+| Test | Covers |
+| --- | --- |
+| `testSmokeLongFling` | Device, signing and capture work: a 1500-turn chat, one fling each way |
+| `testC1LongKeyboardAndHistory` | The keyboard up on open, three typed lines, a partial and an interactive keyboard dismiss, pulling past the newest message, six flings back, jump to newest |
+| `testL1LegacyLongKeyboardAndHistory` | C1 on UICollectionView, for comparison |
+| `testC2LiveStreamHistoryAndSend` | Dragging and flinging while a reply streams, jump to newest, sending with the keyboard up, copying the reply |
+| `testC3ToolsPermissionsDiffs` | Allowing and denying permissions, opening a tool group, opening and closing a tool, a diff's Show more, panning a strip sideways, catching momentum |
+| `testC4MarkdownLinksCopyPictures` | Copying, the long-press menu or selection screen, options, attached and web pictures, panning code or a table, links |
+| `testC5QuestionsAndSending` | Inline question answers, the question sheet, a failed send and its retry |
+| `testC6DiagramsAndGiantMessage` | Mermaid diagrams and their web views, one 350-paragraph message, and messages either side of the 4096-point tile limit |
+| `testC7HomeOpensChatsDetailsAndSetting` | Cold and warm opens from Home, header avatar to Details, worktree tabs, the renderer setting and its persistence |
+| `testC8DarkLargeTextRotationAccessibility` | Dark appearance, Accessibility XL text with an accessibility audit, rotation with the keyboard up |
+| `testC9ComposerControlsAndVoiceEntry` | The composer's chips and add menu (opened and closed, nothing chosen), and the voice button changing to Send when text is typed |
+| `testL2LegacyAndUltraScreens` | The same screens on both renderers, for pixel comparison |
+| `testR1RealAccountReadOnly` | Opt-in: the TEST account, read only (below) |
+
+When a fixture contains a feature, the test must find it, act on it and
+check the result. If any of those steps fails, the test fails. When a
+feature can't be exercised offline, the test records it as `NOT COVERED`
+together with the reason, and that record never counts as a pass. Each
+test attaches a `coverage` list. Starting voice is never covered, because
+it asks for the microphone and fetches voice credentials from the server.
+
+## Harness flags
+
+- `-fixture <name> -chatUltraList`: opens a fixture chat on UltraList.
+  Leave out `-chatUltraList` to use UICollectionView.
+- `-screen home -renderer UITableView -grouping flat -sessionCount 0
+  -archiveCount 0 -chatUltraList`: opens the seeded Home, which pushes
+  chats through normal navigation. `-renderer stored` keeps the stored
+  renderer choices.
+- `-qaProbe`: installs the probe. `-qaRun <name>` names its files, and
+  `-qaDark` shows the window in dark appearance.
+- `-giantParagraphs N` (1…1000): sets the size of the `giant` fixture's message.
+- `-keyboard`: opens the chat with the composer focused.
+- `-qaRealChat`: the read-only TEST account (below).
+
+## Running
+
+Build for testing once, then run the suite in separate passes. For the
+iPhone 12 and the Mac mini, see the repository's agent instructions.
+
+```
+xcodebuild build-for-testing -project Happy.xcodeproj -scheme HappyChatUI \
+  -configuration Debug -destination id=<UDID> -derivedDataPath <dd> \
+  DEVELOPMENT_TEAM=<team> CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates
+```
+
+Use `-configuration Preview` together with `ENABLE_TESTABILITY=YES
+'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) HAPPY_FIXTURES'` to get an
+optimized build that still contains the fixtures. Make frame claims from
+that build and functional claims from Debug. The probe's state reports
+which build it is running in (`build`).
+
+Copy the generated `.xctestrun` and edit the copy for each pass:
+
+- **Video**: `PreferredScreenCaptureFormat = screenRecording` and
+  `SystemAttachmentLifetime = keepAlways`. XCTest records the screen for
+  each test. The recording is variable frame rate and holds at most about
+  30 fps while the screen moves, so use it to look at the run, not to count
+  frames.
+- **Timing**: `PreferredScreenCaptureFormat = screenshots` and
+  `SystemAttachmentLifetime = deleteOnSuccess`. Remove `DYLD_INSERT_LIBRARIES`
+  (the Main Thread Checker) from `TestingEnvironmentVariables`. Take frame
+  numbers from this pass, never from a video pass.
+- **Animation Hitches**: start `xcrun xctrace record --template 'Animation
+  Hitches' --device <UDID> --all-processes` around a timing pass. The trace
+  is the authority on composited frames.
+
+Set `UserAttachmentLifetime = keepAlways` in every pass and run with
+`-parallel-testing-enabled NO`. `TEST_RUNNER_QA_PASS=<name>` prefixes the
+probe's file names, so passes don't overwrite one another. Export
+attachments with `xcrun xcresulttool export attachments`. The probe's files
+are in the harness's container under `Documents/qa`
+(`xcrun devicectl device copy from --domain-type appDataContainer
+--domain-identifier com.slopus.happy.chat-harness --source Documents/qa`).
+
+### Rules the tests keep
+
+- **Nothing reads the app while it moves.** Every accessibility read makes
+  the app serialize its view tree on the main thread, which takes 125–200 ms
+  on an iPhone 12 and shows up as missed frames. Gestures are aimed through
+  SpringBoard's coordinate space. A step performs its action, waits a fixed
+  time without reading, and only then reads the windows the action
+  produced. Quiescence waits are turned off. If you add a step, keep the
+  reads outside the period of motion, deceleration and settling.
+- **Every step must produce windows.** When a step that should produce
+  action windows produces none, it fails instead of passing silently.
+- **System alerts are never answered.** An interruption monitor fails the
+  test and returns without tapping anything. Before running, clear any
+  pending permission prompt by hand.
+- **Device settings are left alone.** Text size and appearance are set
+  through launch arguments. VoiceOver is not turned on: the audit and the
+  label order are evidence to review, not a VoiceOver pass.
+
+## What the probe measures
+
+The probe samples every display frame with a `CADisplayLink`. It writes
+`<run>-frames.csv` (one row per frame) and `<run>-windows.json`, and serves
+summaries to the tests through two accessibility elements whose contents
+are refreshed only at rest. An **action window** opens on a touch, on list
+motion, on a chat apply or when the dock moves. It closes after half a
+second with none of those, or after 20 seconds. A finger that lands during
+an apply-only window (a stream, an opening) starts a new window.
+
+Window fields:
+
+- `gapP50/P95/P99/MaxMs`, `missedFrames` and `hitches` are gaps between
+  display-link callbacks, which run on the main thread. A gap means the
+  main thread missed a frame. It doesn't prove the render server missed one,
+  because UltraList momentum runs in the render server. `callbackDelay` and
+  `pastTargetFrames` measure scheduling lateness.
+- `turnMaxMs` and `turnsOverFrame` come from the main thread's run-loop turns
+  (`MainThreadMonitor`).
+- `applyMaxMs` and `applyTotalMs` give the time chat applies (`ApplyPerf`:
+  list, session, snapshot) held the main thread synchronously. UltraList's
+  asynchronous preparation and drawing don't appear here. They appear as
+  not-ready rows.
+- `notReadyFrames`, `notReadyRunMax` and `notReadyMax` count rows that were
+  mounted and on screen but whose bitmap wasn't drawn yet. This means "not
+  drawn yet", not necessarily blank pixels. `uncoveredMax` includes the
+  insets and the empty space of a short chat. Use screenshots and video to
+  judge blank pixels.
+- `restDriftMax` is how far the rows moved together while nothing should
+  have moved them. `awayApplyDriftMax` is the same during an apply more than
+  220 points from the newest message. `touchRowDriftMax` is how far the last
+  tapped row moved. Legitimate animations also show up in these numbers, so
+  read each value against what its action should do. The tests check only
+  the one that matches each step.
+- `memoryMaxMB` is the process footprint, sampled every half second.
+
+Openings from Home (`opens` in the state) are measured from the lifted
+finger:
+
+- `mountMs`: the first frame with the list mounted.
+- `visibleMs`: the first frame with the list on screen as presented.
+- `readyMs`: the first frame with every row on screen drawn.
+- `settledMs`: the first frame where the presented position equals the model.
+
+Openings also record `notReadyVisibleFrames`, `missedFrames`, `turnMaxMs`
+and `applyMaxMs`. All of these are target times of display frames, accurate
+to one frame, and none of them is the start of the push animation.
+`handlerMs` is when the window finished delivering the lifted finger, and
+`pushStartedInDelivery` records whether a navigation transition had begun
+by then.
+
+On an iPhone 12 the display runs at 60 Hz, so no number here says anything
+about 120 Hz devices. No run proves that frames are never lost. A run
+reports what it measured in the windows it recorded.
+
+## The TEST account, read only
+
+`testR1RealAccountReadOnly` signs in to the shared TEST account and opens
+its newest chat on UltraList through the real Home. It flings the chat,
+opens Details and returns. Never use any other account.
+
+- **Transport.** The harness (`Harness/ChatUltraQAReal.swift`) runs on an
+  in-memory store with no socket. Its transport allows only GET and HEAD
+  requests, `POST /v1/auth`, and the avatar and attachment download grants.
+  It refuses every other request and counts the refusals, which the test
+  attaches.
+- **Secret.** Stage the recovery secret as a one-use file named
+  `Documents/qa-real-secret` in the harness container. Pass it on stdin to a
+  private temporary file, copy that file with `devicectl ... copy to`, and
+  delete it. The harness reads the file and deletes it before signing in.
+  Never put the secret in launch arguments, environment variables, logs or
+  the `.xctestrun`. Afterwards, check the container's `Documents` to confirm
+  the file is gone.
+- **No pixels.** Run with `TEST_RUNNER_QA_REAL=1` in a timing pass that sets
+  `SystemAttachmentLifetime = deleteAlways`. The test attaches only counts
+  and timings, and the probe runs redacted, so it publishes no controls
+  report. Delete any image or video found in the export, together with the
+  result bundle. Report counts and geometry only.

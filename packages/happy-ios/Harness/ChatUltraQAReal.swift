@@ -118,7 +118,7 @@ final class ChatUltraQAReal {
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
             let shell = TabletShellViewController(context: context, detail: navigation)
             window.rootViewController = shell
-            probe = ChatUltraQAProbe(window: window, chat: nil)
+            probe = ChatUltraQAProbe(window: window, chat: nil, redacted: true)
             shell.rootDidChange()
             window.bringSubviewToFront(state)
             phase = "ready"
