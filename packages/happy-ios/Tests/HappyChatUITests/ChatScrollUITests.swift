@@ -144,9 +144,16 @@ final class ChatScrollUITests: XCTestCase {
         try keyboardShowReturnDismissAndHide(ultra: false)
     }
 
-    private func keyboardShowReturnDismissAndHide(ultra: Bool) throws {
-        let app = launch(["-fixture", "long", "-hideKeyboardButton"] + (ultra ? ["-chatUltraList"] : []))
-        var state = probe(app) { self.filled($0) }
+    /// An empty chat has no rows to move: the dock and the placeholder
+    /// still ride the keyboard on the list's inset motion.
+    func testUltraListEmptyChatKeyboardShowReturnDismissAndHide() throws {
+        try keyboardShowReturnDismissAndHide(ultra: true, empty: true)
+    }
+
+    private func keyboardShowReturnDismissAndHide(ultra: Bool, empty: Bool = false) throws {
+        let app = launch(["-fixture", empty ? "empty" : "long", "-hideKeyboardButton"] + (ultra ? ["-chatUltraList"] : []))
+        var state = probe(app) { empty ? $0["renderer"] != nil : self.filled($0) }
+        XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 10), "the composer is there")
         XCTAssertEqual(state["renderer"] as? String, ultra ? "UltraList" : "UICollectionView")
         let window = try XCTUnwrap(state["window"] as? [NSNumber]).map { CGFloat($0.doubleValue) }
         let width = window[0], height = window[1]
@@ -229,7 +236,9 @@ final class ChatScrollUITests: XCTestCase {
         let finger = number(touch["fingerTravelWithKeyboard"]), content = number(touch["offsetTravelWithKeyboard"])
         XCTAssertGreaterThan(number(touch["keyboardTravel"]), 80, "dismiss: the keyboard followed the finger")
         XCTAssertGreaterThan(finger, 80)
-        XCTAssertEqual(content / finger, 1, accuracy: 0.15, "dismiss: content \(content) for a finger's \(finger) while the keyboard moved")
+        if !empty {
+            XCTAssertEqual(content / finger, 1, accuracy: 0.15, "dismiss: content \(content) for a finger's \(finger) while the keyboard moved")
+        }
         XCTAssertEqual(touch["keyboardDriven"] as? Bool, ultra, "dismiss: the controller tracked the finger")
         assertDown(state, "dismiss")
 
