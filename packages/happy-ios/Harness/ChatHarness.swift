@@ -52,6 +52,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     #if DEBUG || HAPPY_FIXTURES
     private var homeRenderer: HomeRendererHarness?
     private var realArchive: RealArchiveHarness?
+    private var qaProbe: ChatUltraQAProbe?
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -115,6 +116,9 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         let probe = ChatScrollProbe(window: window, chat: chat)
         probe.scrollTo = scrollTo
         self.probe = probe
+        #if DEBUG || HAPPY_FIXTURES
+        if ProcessInfo.processInfo.arguments.contains("-qaProbe") { qaProbe = ChatUltraQAProbe(window: window, chat: chat) }
+        #endif
         if keyboard { probe.focusComposerWhenFilled() }
     }
 }

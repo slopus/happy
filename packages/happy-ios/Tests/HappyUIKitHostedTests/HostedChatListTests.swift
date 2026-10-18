@@ -25,6 +25,7 @@ private struct NoSockets: WebSocketConnector {
 /// older rows join.
 @MainActor
 final class HostedChatListTests: XCTestCase {
+    private let renderServices = RenderServices.isolated()
     override func setUp() {
         super.setUp()
         Fonts.registerBundledFonts()
@@ -67,7 +68,7 @@ final class HostedChatListTests: XCTestCase {
             snapshot: ChatSnapshot(sessionId: "s", messages: messages, isLoaded: true, hasMoreOlder: false, olderBoundary: nil, windowEpoch: 0),
             session: ChatSessionState(record: nil, settings: AccountSettings()),
             view: view,
-            render: .isolated()
+            render: renderServices
         )
     }
 
@@ -209,6 +210,37 @@ final class HostedChatListTests: XCTestCase {
         list.setRenderer(.ultraList)
         let switched = try await until { list.isDisplayReady && abs(list.visibleMinY - place) < 0.5 }
         XCTAssertTrue(switched, "switching renderers preserves the reading position: expected \(place), actual \(list.visibleMinY), ready \(list.isDisplayReady), range \(String(describing: list.ultra?.list.loadedIndexRange)), views \(String(describing: list.ultra?.list.loadedItemViews.map { $0.isDisplayReady }))")
+    }
+
+    func testUltraListFollowsAStreamWithinTheExisting200PointThreshold() async throws {
+        let test = try await listInWindow(renderer: .ultraList)
+        let list = test.list
+        list.setVisibleMinY(190)
+        let positioned = try await until { abs(list.visibleMinY - 190) < 0.5 }
+        XCTAssertTrue(positioned)
+        var messages = test.messages
+        guard case .agentText(var last) = messages.removeLast() else { return XCTFail("expected an agent reply") }
+        last.text += "\n\nThe next streamed paragraph grows the newest reply."
+        messages.append(.agentText(last))
+        let streamed = try XCTUnwrap(ChatRows.derive(input(messages, width: list.bounds.width, grows: 0), applied: test.applied, planner: planner))
+        let update = try XCTUnwrap(streamed.output.list)
+        XCTAssertEqual(update.changeset.reconfigures.count, 1)
+        list.apply(update, animated: true)
+        let followed = try await until { list.isDisplayReady && abs(list.visibleMinY) < 0.5 }
+        XCTAssertTrue(followed, "an idle reader 190 points from newest follows the stream")
+    }
+
+    func testUltraListKeepsDisplayedRowsThroughAppearanceChanges() async throws {
+        let test = try await listInWindow(renderer: .ultraList)
+        let list = test.list
+        for style in [UIUserInterfaceStyle.dark, .light] {
+            let revision = list.ultra?.list.items.first?.revision
+            list.overrideUserInterfaceStyle = style
+            list.setNeedsLayout()
+            list.layoutIfNeeded()
+            let drawn = try await until { list.isDisplayReady && list.ultra?.list.items.first?.revision != revision }
+            XCTAssertTrue(drawn, "unchanged rows must redraw after appearance changes")
+        }
     }
 
     // MARK: The chat screen
