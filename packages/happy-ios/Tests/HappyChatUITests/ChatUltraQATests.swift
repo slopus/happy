@@ -23,6 +23,7 @@ import XCTest
 ///
 /// `QA_PASS` (from `TEST_RUNNER_QA_PASS`) prefixes the probe's file names,
 /// so a recorded pass and an unrecorded timing pass keep separate files.
+@MainActor
 final class ChatUltraQATests: XCTestCase {
     private var app: XCUIApplication!
     private var springboard: XCUIApplication { XCUIApplication(bundleIdentifier: "com.apple.springboard") }
@@ -33,27 +34,31 @@ final class ChatUltraQATests: XCTestCase {
     private var known = 0
     private var touchedLast = false
     private var coverage: [[String: String]] = []
-    /// The tests run one at a time, on the main thread.
-    nonisolated(unsafe) private static var aimThroughSpringboard = true
+    private static var aimThroughSpringboard = true
 
-    override func setUp() {
+    // XCTest calls these on the main thread, as it does the tests.
+    nonisolated override func setUp() {
         super.setUp()
         continueAfterFailure = true
         _ = skipsQuiescence
-        // Ahead of XCTest's own handler, which would tap a default button.
-        addUIInterruptionMonitor(withDescription: "Fail on any system alert") { [weak self] alert in
-            self?.continueAfterFailure = false
-            XCTFail("A system alert appeared and was left unanswered: \(alert.label)")
-            return true
+        MainActor.assumeIsolated {
+            // Ahead of XCTest's own handler, which would tap a default button.
+            addUIInterruptionMonitor(withDescription: "Fail on any system alert") { [weak self] alert in
+                self?.continueAfterFailure = false
+                XCTFail("A system alert appeared and was left unanswered: \(alert.label)")
+                return true
+            }
         }
     }
 
-    override func tearDown() {
-        flushSteps()
-        if !coverage.isEmpty, let data = try? JSONSerialization.data(withJSONObject: coverage, options: [.prettyPrinted, .sortedKeys]) {
-            attach("\(name) coverage", String(decoding: data, as: UTF8.self))
+    nonisolated override func tearDown() {
+        MainActor.assumeIsolated {
+            flushSteps()
+            if !coverage.isEmpty, let data = try? JSONSerialization.data(withJSONObject: coverage, options: [.prettyPrinted, .sortedKeys]) {
+                attach("\(name) coverage", String(decoding: data, as: UTF8.self))
+            }
+            XCUIDevice.shared.orientation = .portrait
         }
-        XCUIDevice.shared.orientation = .portrait
         super.tearDown()
     }
 
@@ -634,7 +639,7 @@ final class ChatUltraQATests: XCTestCase {
             require("a diff's Show more", after > before + 1, "row height \(before) → \(after)")
         }
         toNewest()
-        if let strip = seekNative("pan a strip sideways", kind: "scroller", moves: 14, wideStrip) {
+        if let strip = seekNative("pan a strip sideways", kind: "scroller", moves: 14) { wideStrip($0, $1) } {
             let frame = strip.frame
             step("pan a strip sideways", quiet: 1.5) {
                 drag(CGPoint(x: frame.maxX - 20, y: frame.midY), CGPoint(x: frame.minX + 20, y: frame.midY), velocity: 600, hold: 0.2)
@@ -724,7 +729,7 @@ final class ChatUltraQATests: XCTestCase {
                 XCTAssertTrue(wait(5) { (state()["listInWindow"] as? Bool) == true }, "back in the chat")
             }
         }
-        if let strip = seekNative("pan code or a table sideways", kind: "scroller", moves: 6, wideStrip) {
+        if let strip = seekNative("pan code or a table sideways", kind: "scroller", moves: 6) { wideStrip($0, $1) } {
             let frame = strip.frame
             step("pan code or table sideways", quiet: 1.5) {
                 drag(CGPoint(x: frame.maxX - 20, y: frame.midY), CGPoint(x: frame.minX + 30, y: frame.midY), velocity: 700, hold: 0.2)
@@ -994,7 +999,7 @@ final class ChatUltraQATests: XCTestCase {
                         tap(CGPoint(x: spot.midX, y: spot.midY))
                         Thread.sleep(forTimeInterval: 1.5)
                         screenshot("details")
-                        let texts = app.staticTexts.allElementsBoundByIndex.prefix(40).map(\.label).filter { !$0.isEmpty }
+                        let texts = app.staticTexts.allElementsBoundByIndex.prefix(40).map { $0.label }.filter { !$0.isEmpty }
                         attach("\(clip) details texts", "\(texts)")
                         require("header avatar opens Details with content", texts.count >= 4, "\(texts.count) texts")
                         back()
