@@ -17,7 +17,8 @@ harness, and sends, permission answers and question answers go to
 | `testC1LongKeyboardAndHistory` | The keyboard up on open, three typed lines, a partial and an interactive keyboard dismiss, pulling past the newest message, six flings back, jump to newest |
 | `testL1LegacyLongKeyboardAndHistory` | C1 on UICollectionView, for comparison |
 | `testC2LiveStreamHistoryAndSend` | Dragging and flinging while a reply streams, jump to newest, sending with the keyboard up, copying the reply |
-| `testC3ToolsPermissionsDiffs` | Allowing and denying permissions, opening a tool group, opening and closing each tool on screen where it opened, a diff's Show more (the tool opened again and followed down to the bar), panning a strip (a diff's lines count) sideways, catching momentum |
+| `testC3ToolsPermissionsDiffs` | Allowing and denying permissions, opening a tool group, opening and closing each tool on screen where it opened, a diff's Show more when one of its diffs holds lines back (the tool opened again and followed down to the bar; no diff in this fixture does, so it is recorded as not covered and left to C10), panning a strip (a diff's lines count) sideways, catching momentum |
+| `testC10DiffShowMore` | The `showMore` fixture: a newest Write of 301 added lines, 280 shown and 21 held back. Opening it, tapping Show more, the row growing with nothing held back, and the reader's place kept: the newest edge at the newest message, the tapped row's top away from it. Records whether the row draws on the native canvas |
 | `testC4MarkdownLinksCopyPictures` | Copying, the long-press menu or selection screen, options, attached and web pictures, panning code or a table, links |
 | `testC5QuestionsAndSending` | Inline question answers, the question sheet, a failed send and its retry |
 | `testC6DiagramsAndGiantMessage` | Mermaid diagrams and their web views, one 350-paragraph message, and messages either side of the 4096-point tile limit |

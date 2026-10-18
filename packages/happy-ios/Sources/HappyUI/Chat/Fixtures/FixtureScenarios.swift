@@ -23,6 +23,8 @@ enum FixtureScenario: String, CaseIterable, Sendable {
     /// Async WebKit sizing and a single row beyond the bitmap height cap.
     case diagrams
     case giant
+    /// The newest message is a Write whose diff ends in Show more.
+    case showMore
     /// Nothing yet.
     case empty
 
@@ -36,6 +38,7 @@ enum FixtureScenario: String, CaseIterable, Sendable {
         case .live: "Streaming reply"
         case .diagrams: "Mermaid diagrams"
         case .giant: "One very tall message"
+        case .showMore: "A diff past its first lines"
         case .empty: "Empty session"
         }
     }
@@ -176,6 +179,7 @@ enum FixtureScenarios {
                 arguments.indices.contains(index + 1) ? Int(arguments[index + 1]) : nil
             } ?? 350
             builder.agent((1...min(1000, max(1, count))).map { "Section \($0). A single message remains visible through the entire conversation viewport, with selectable text and a stable reading position.\n" }.joined(separator: "\n"))
+        case .showMore: showMore(&builder)
         case .empty: break
         }
         return builder.messages
@@ -339,6 +343,16 @@ enum FixtureScenarios {
         ], state: .running, permission: ToolPermission(id: "perm-edit", status: .pending))
         b.tool("Bash", ["command": "rm -rf .build && swift build", "description": "Clean build"], state: .running,
                description: "Clean build", permission: ToolPermission(id: "perm-bash", status: .pending))
+    }
+
+    /// 301 added lines: the cut after 80 moves to the end of the change
+    /// block, at most 200 on, so the diff shows 280 and holds back 21.
+    static func showMore(_ b: inout Builder) {
+        b.user("Write the chat notes out in full.")
+        b.tool("Write", [
+            "file_path": "/Users/fixture/happy/packages/happy-ios/docs/CHAT-NOTES.md",
+            "content": (1...301).map { "Line \($0) of the full chat notes: every row is measured before it is shown." }.joined(separator: "\n"),
+        ], result: "File created successfully.")
     }
 
     static func question(_ b: inout Builder) {

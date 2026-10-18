@@ -419,6 +419,21 @@ final class ChatUltraQATests: XCTestCase {
             .compactMap { rect($0["f"]) }.first { reachable($0, in: report) }
     }
 
+    /// The rows each of `row`'s diffs holds back behind Show more, as the
+    /// probe reads them from the diff's plan.
+    private func hiddenRows(in report: [String: Any], row: String) -> [Int] {
+        natives(report).filter { ($0["k"] as? String) == "diffFile" && ($0["row"] as? String) == row }.map { int($0["hiddenRows"]) }
+    }
+
+    /// `row` as the probe reports it: its frame in the window, its plan's
+    /// height, and whether it draws natively (taller than 4096 points, or
+    /// live views under later marks).
+    private func rowEntry(_ id: String, in report: [String: Any]) -> (frame: CGRect, height: CGFloat, native: Bool)? {
+        guard let row = (report["rows"] as? [[String: Any]] ?? []).first(where: { ($0["id"] as? String) == id }),
+              let frame = rect(row["f"]) else { return nil }
+        return (frame, number(row["h"]), (row["native"] as? Bool) ?? false)
+    }
+
     /// Whether `row` goes on below the top of the dock.
     private func rowEndsBelowDock(_ id: String) -> Bool {
         let report = controls()
@@ -715,6 +730,8 @@ final class ChatUltraQATests: XCTestCase {
         // opens again and the list follows it down to the bar.
         var showMoreDone = false, stripDone = false
         var tried = Set<String>()
+        // Every opened diff's held-back rows, by tool.
+        var held: [String: [Int]] = [:]
         for _ in 0..<12 where !(showMoreDone && stripDone) {
             let report = controls()
             guard let tool = hits(report).first(where: { $0.action.hasPrefix("tool:") && !tried.contains($0.action) && reachable($0.frame, in: report) }) else {
@@ -724,6 +741,8 @@ final class ChatUltraQATests: XCTestCase {
             tried.insert(tool.action)
             step("open \(tool.action)", quiet: 1.5) { tap(tool.center) }
             let opened = controls()
+            let hidden = hiddenRows(in: opened, row: tool.row)
+            if !hidden.isEmpty { held[tool.action] = hidden }
             let strips = natives(opened).compactMap { native -> (native: [String: Any], frame: CGRect, part: CGRect)? in
                 guard native["k"] as? String == "scroller", let frame = rect(native["f"]), wideStrip(native, frame),
                       let part = reachablePart(frame, in: opened) else { return nil }
@@ -769,7 +788,16 @@ final class ChatUltraQATests: XCTestCase {
             }
             if isOpen { closeTool(tool.action, backUp: followed > 0 ? followed + 2 : 0) }
         }
-        if !showMoreDone { require("a diff's Show more", false, "no Show more in \(tried.count) opened tools") }
+        // Every diff here shows all its lines (the Write's 120 added lines
+        // are one change block, and the cut moves to its end): Show more
+        // is C10's. A diff that held lines back and never showed its bar
+        // still fails.
+        let summary = held.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")
+        if !showMoreDone, !held.isEmpty, held.values.allSatisfy({ $0.allSatisfy { $0 == 0 } }) {
+            notCovered("a diff's Show more", "no hidden lines: every diff in \(tried.count) opened tools shows all its rows (\(summary)); covered by C10")
+        } else if !showMoreDone {
+            require("a diff's Show more", false, "no Show more in \(tried.count) opened tools; held back: \(summary.isEmpty ? "no diffs read" : summary)")
+        }
         if !stripDone { require("pan a strip sideways", false, "no strip wider than its box in \(tried.count) opened tools") }
         step("fling back", quiet: 2.5, expect: .scroll) { fling(older: true) }
         step("catch momentum and pan sideways", quiet: 2) {
@@ -794,6 +822,65 @@ final class ChatUltraQATests: XCTestCase {
         guard let toggle = hits(report).first(where: { $0.action == action && reachable($0.frame, in: report) }) else { return false }
         step("close \(action)", quiet: 1.5) { tap(toggle.center) }
         return true
+    }
+
+    // MARK: C10 A diff's Show more
+
+    /// The newest message is a Write of 301 added lines: its diff shows 280
+    /// and holds back 21. At the newest message the list keeps the newest
+    /// edge, so the open tool grows upwards and its bar ends just above the
+    /// composer. After Show more the reader's place is the newest edge (the
+    /// row's bottom stays put) or, away from it, the tapped row's top.
+    func testC10DiffShowMore() {
+        prepare()
+        defer { finish() }
+        launchChat("showMore", clip: "c10-show-more")
+        assertReady("open")
+        screenshot("01-newest-write")
+        guard let tool = find("open the Write", moves: 2, { $0.action.hasPrefix("tool:") }) else { return }
+        step("open the Write", quiet: 2) { tap(tool.center) }
+        screenshot("02-write-open")
+        var report = controls()
+        let hidden = hiddenRows(in: report, row: tool.row)
+        require("a diff holds lines back", hidden.contains { $0 > 0 }, "held back \(hidden)")
+        guard let opened = rowEntry(tool.row, in: report) else {
+            require("a diff's Show more", false, "the Write's row went off screen once open")
+            return
+        }
+        covered("the open Write's drawing", "\(opened.native ? "native canvas" : "tiled bitmaps"), plan \(opened.height) pt")
+        var bar = showMoreBar(in: report, row: tool.row)
+        var followed = 0
+        while bar == nil, followed < 4, rowEndsBelowDock(tool.row) {
+            followed += 1
+            step("follow the Write down \(followed)", quiet: 1.2, expect: .scroll) { move(older: false, by: size.height * 0.35) }
+            report = controls()
+            bar = showMoreBar(in: report, row: tool.row)
+        }
+        guard let bar, let before = rowEntry(tool.row, in: report) else {
+            let row = rowEntry(tool.row, in: report)
+            require("a diff's Show more", false, "no reachable bar after \(followed) moves: row \(row.map { "\($0.frame)" } ?? "off screen"), dock \(rect(report["dock"]).map { "\($0)" } ?? "none")")
+            return
+        }
+        let atNewest = number(state()["visibleMinY"]) <= 0.5
+        step("show more diff lines", quiet: 2, expect: atNewest ? .none : .pin) { tap(CGPoint(x: bar.midX, y: bar.midY)) }
+        screenshot("03-diff-shown-more")
+        report = controls()
+        let hiddenAfter = hiddenRows(in: report, row: tool.row)
+        guard let after = rowEntry(tool.row, in: report) else {
+            require("a diff's Show more", false, "the Write's row went off screen after Show more")
+            return
+        }
+        require("a diff's Show more", after.height > before.height + 1 && !hiddenAfter.isEmpty && hiddenAfter.allSatisfy { $0 == 0 },
+                "plan \(before.height) → \(after.height) pt, held back \(hidden) → \(hiddenAfter), bar at \(bar)")
+        covered("the expanded Write's drawing", "\(after.native ? "native canvas" : "tiled bitmaps"), plan \(after.height) pt")
+        if atNewest {
+            let distance = number(state()["visibleMinY"])
+            require("Show more keeps the newest edge", abs(after.frame.maxY - before.frame.maxY) <= 1 && distance <= 0.5,
+                    "row bottom \(before.frame.maxY) → \(after.frame.maxY), distance from newest \(distance)")
+        } else {
+            require("Show more keeps the tapped row's top", abs(after.frame.minY - before.frame.minY) <= 1,
+                    "row top \(before.frame.minY) → \(after.frame.minY) after \(followed) moves")
+        }
     }
 
     // MARK: C4 Markdown, links, copy, pictures

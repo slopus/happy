@@ -1002,6 +1002,11 @@ final class ChatUltraQAProbe: NSObject {
                     native["diff"] = true
                     native["content"] = [Double(strip.contentSize.width), Double(strip.contentSize.height)]
                     native["offset"] = [Double(strip.contentOffset.x), Double(strip.contentOffset.y)]
+                case let file as DiffFileView:
+                    // A diff's rows after the collapse, and those Show more holds back.
+                    native["k"] = "diffFile"
+                    native["shownRows"] = file.plan?.rows.count ?? -1
+                    native["hiddenRows"] = file.plan?.hiddenCount ?? -1
                 case is DiffShowMoreBar: native["k"] = "showMore"
                 case is ChatMermaidView: native["k"] = "mermaid"
                 case is ChatAttachmentView: native["k"] = "attachment"
