@@ -99,6 +99,7 @@ final class ChatUltraQAProbe: NSObject {
     private var openings: [Opening] = []
     private var seenLists: Set<ObjectIdentifier> = []
     private var searchSkip = 0
+    private var ticksAway = 0
 
     init(window: HarnessWindow, chat: UIViewController?) {
         self.window = window
@@ -234,7 +235,19 @@ final class ChatUltraQAProbe: NSObject {
 
     @objc private func frame(_ link: CADisplayLink) {
         let callback = CACurrentMediaTime()
-        guard let window, let list else { return }
+        guard let window else { return }
+        // Another screen covers the chat (Home, a pushed message): close the
+        // open window and keep the reports saying so.
+        guard let list, list.window != nil else {
+            if let start = windowStart {
+                close(from: start, to: frameCount - 1)
+                windowStart = nil
+            }
+            ticksAway += 1
+            if ticksAway % 30 == 1 { refreshReports() }
+            return
+        }
+        ticksAway = 0
         let identity = ObjectIdentifier(list)
         if !seenLists.contains(identity) {
             seenLists.insert(identity)
@@ -388,13 +401,21 @@ final class ChatUltraQAProbe: NSObject {
 
     /// Rebuilds both reports. Only while no window is open.
     private func refreshReports() {
-        guard let list, let window else { return }
+        guard let window else { return }
+        guard let list, list.window != nil else {
+            var away: [String: Any] = ["run": run, "listInWindow": false, "windowCount": windowCount, "moving": false, "frames": frameCount]
+            away["opens"] = openingsObject()
+            summaryText = "{\"state\":\(json(away)),\"windows\":\(windowsText)}"
+            controlsText = "{}"
+            return
+        }
         window.bringSubviewToFront(summary)
         window.bringSubviewToFront(controls)
         var collections: [UICollectionView] = []
         Self.all(UICollectionView.self, in: list, into: &collections)
         var value: [String: Any] = [:]
         value["run"] = run
+        value["listInWindow"] = true
         value["renderer"] = list.renderer.rawValue
         value["ultraMounted"] = list.ultra.map { $0.list.window != nil && $0.list.isDescendant(of: list) && $0.list.accessibilityIdentifier == "chat.ultralist" } ?? false
         value["collectionViews"] = collections.count
@@ -406,9 +427,7 @@ final class ChatUltraQAProbe: NSObject {
         value["maxVisibleMinY"] = Double(list.maximumVisibleMinY)
         value["moving"] = list.isTracking || list.isDragging || list.isDecelerating || (list.ultra?.list.isScrollFlightActive ?? false)
         value["files"] = ["qa/\(run)-frames.csv", "qa/\(run)-windows.json"]
-        if let data = try? JSONEncoder().encode(openings), let object = try? JSONSerialization.jsonObject(with: data) {
-            value["opens"] = object
-        }
+        value["opens"] = openingsObject()
         // The probe's clock (frame times) against the wall clock (the test's
         // marks and its screen recording).
         value["clock"] = [CACurrentMediaTime(), Date().timeIntervalSince1970]
@@ -426,6 +445,11 @@ final class ChatUltraQAProbe: NSObject {
         #endif
         summaryText = "{\"state\":\(json(value)),\"windows\":\(windowsText)}"
         controlsText = controlsReport(list, in: window)
+    }
+
+    private func openingsObject() -> Any {
+        guard let data = try? JSONEncoder().encode(openings), let object = try? JSONSerialization.jsonObject(with: data) else { return [] as [Any] }
+        return object
     }
 
     /// The rows on screen, their tap and long-press targets, links and the
@@ -455,9 +479,7 @@ final class ChatUltraQAProbe: NSObject {
                 for hit in plan.hits {
                     let target = canvas.convert(hit.frame, to: window).intersection(clip)
                     guard !target.isNull, target.width > 1, target.height > 1 else { continue }
-                    var action = String(describing: hit.action).replacingOccurrences(of: "HappyUI.", with: "")
-                    if action.count > 160 { action = String(action.prefix(160)) }
-                    hits.append(["row": row.identity, "a": action, "hold": hit.hold, "f": rect(target)])
+                    hits.append(["row": row.identity, "a": Self.describe(hit.action), "hold": hit.hold, "f": rect(target)])
                 }
                 for (url, point) in self.links(in: plan) {
                     let shown = canvas.convert(point, to: window)
@@ -499,6 +521,29 @@ final class ChatUltraQAProbe: NSObject {
         value["native"] = natives
         value["links"] = links
         return json(value)
+    }
+
+    /// A row action as the tests match it: its kind and the ids it carries,
+    /// never message text.
+    private static func describe(_ action: ChatRowAction) -> String {
+        switch action {
+        case .copyMessage(let id, _): "copy:\(id)"
+        case .toggleGroup(let id): "group:\(id)"
+        case .toggleTool(let id): "tool:\(id)"
+        case .openMessage(let id): "open:\(id)"
+        case .openMessageFile(let id, let file): "openFile:\(id):\(file.suffix(60))"
+        case .openFile(let path): "file:\(path.suffix(60))"
+        case .option(let title): "option:\(title.prefix(60))"
+        case .retry(let localId): "retry:\(localId)"
+        case .permission(let tap): "permission:\(tap.permissionId):\(tap.kind)"
+        case .questionOption(let toolId, let questionId, let option): "question:\(toolId):\(questionId):\(option)"
+        case .questionSubmit(let toolId): "submit:\(toolId)"
+        case .diffShowMore(let toolId, let chunk, let file): "showMore:\(toolId):\(chunk):\(file)"
+        case .mermaidHeight(let row, let index, _): "mermaidHeight:\(row):\(index)"
+        case .copyMenu: "copyMenu"
+        case .selectable: "selectable"
+        case .markdownSelectable: "markdownSelectable"
+        }
     }
 
     /// A point on each link in a plan's text, in the plan's coordinates,
