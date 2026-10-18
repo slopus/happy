@@ -678,6 +678,7 @@ final class ChatUltraQAProbe: NSObject {
         value["memoryPeakMB"] = memoryPeakMB
         value["redacted"] = redacted
         value["notReadyLast"] = lastNotes
+        if let ultra = list.ultra, !list.isDisplayReady { value["ultraNotReady"] = ultraState(ultra) }
         #if DEBUG
         value["build"] = "Debug"
         #else
@@ -685,6 +686,40 @@ final class ChatUltraQAProbe: NSObject {
         #endif
         summaryText = "{\"state\":\(json(value)),\"windows\":\(windowsText)}"
         controlsText = redacted ? "{}" : controlsReport(list, in: window)
+    }
+
+    /// An UltraList chat that isn't drawn: what the list holds, what it has
+    /// mounted, and the adapter's own submission count (by reflection).
+    private func ultraState(_ ultra: ChatUltraListAdapter) -> [String: Any] {
+        let list = ultra.list
+        var value: [String: Any] = [
+            "bounds": rect(list.bounds), "items": list.items.count,
+            "loadedRange": [list.loadedIndexRange.lowerBound, list.loadedIndexRange.upperBound],
+            "loadedViews": list.loadedItemViews.count, "readyViews": list.loadedItemViews.filter(\.isDisplayReady).count,
+            "lastRevision": list.items.last.map { Double($0.revision) } ?? -1,
+            "tracking": list.isTracking, "flight": list.isScrollFlightActive,
+        ]
+        for child in Mirror(reflecting: ultra).children {
+            switch child.label {
+            case "submitted": value["submitted"] = (child.value as? UInt64).map(Double.init) ?? -1
+            case "insets": value["insets"] = (child.value as? UIEdgeInsets).map { [$0.top, $0.bottom] } ?? []
+            case "viewportSize": value["viewport"] = (child.value as? CGSize).map { [$0.width, $0.height] } ?? []
+            case "settlement": value["settlementPending"] = "\(child.value)" != "nil"
+            default: break
+            }
+        }
+        value["rows"] = list.items.prefix(16).enumerated().map { index, item -> [String: Any] in
+            var row: [String: Any] = ["i": index, "revision": Double(item.revision), "loaded": list.loadedItemView(at: index) != nil]
+            if !redacted { row["id"] = item.identity }
+            if let chat = item as? ChatUltraRow {
+                row["h"] = Double(chat.plan.size.height)
+                row["w"] = Double(chat.plan.size.width)
+                row["native"] = chat.usesNativeDrawing
+            }
+            if let frame = list.settledFrame(at: index) { row["settled"] = rect(frame) }
+            return row
+        }
+        return value
     }
 
     private func openingsObject() -> Any {
@@ -945,6 +980,7 @@ private final class QALedger: @unchecked Sendable {
         var restDrift = 0.0, awayDrift = 0.0, nonRigid = 0.0, touchDrift = 0.0
         var newestGaps: [Double] = []
         var run = 0, longestRun = 0
+        let first = slice[lower]
         for frame in slice {
             run = frame.notReady > 0 ? run + 1 : 0
             longestRun = max(longestRun, run)
@@ -963,9 +999,10 @@ private final class QALedger: @unchecked Sendable {
                 awayDrift = max(awayDrift, abs(frame.rigid))
             }
             if !frame.newestGap.isNaN { newestGaps.append(frame.newestGap) }
-            if !frame.touchDelta.isNaN { touchDrift = max(touchDrift, abs(frame.touchDelta)) }
+            // The lead-in frame still follows the previous touch's row.
+            if frame.time > first.time, !frame.touchDelta.isNaN { touchDrift = max(touchDrift, abs(frame.touchDelta)) }
         }
-        let first = slice[lower], last = slice[upper]
+        let last = slice[upper]
         windows.append(QAWindow(
             index: windows.count, start: first.time, seconds: last.time - first.time, frames: slice.count,
             expectedMs: expected * 1000,
