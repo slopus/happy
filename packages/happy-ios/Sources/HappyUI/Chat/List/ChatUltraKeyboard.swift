@@ -45,8 +45,9 @@ final class ChatUltraKeyboard: NSObject {
     /// Read the layout guide at the next layout: the keyboard wasn't
     /// followed while the screen was away.
     private var resync = true
-    /// Moves when the screen goes, so a notification queued behind the
-    /// list's pass applies nothing after.
+    /// Moves when the screen goes and with every notification, so only the
+    /// latest notification queued behind the list's pass applies, and none
+    /// once the screen has gone.
     private var generation: UInt64 = 0
 
     private(set) var isActive = false
@@ -142,11 +143,13 @@ final class ChatUltraKeyboard: NSObject {
     }
 
     /// A notification's keyboard, once the list's current pass is done, so
-    /// the dock joins the list's own transaction.
+    /// the dock joins the list's own transaction. A finger or a release
+    /// that took the keyboard meanwhile keeps it.
     private func notified(height: CGFloat, _ change: Change) {
+        generation &+= 1
         let generation = generation
         let apply = { [weak self] in
-            guard let self, self.isActive, self.generation == generation else { return }
+            guard let self, self.isActive, self.generation == generation, !self.isDriving else { return }
             self.take(height, change)
         }
         if let list { list.performAfterCurrentPass(apply) } else { apply() }

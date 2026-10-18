@@ -436,6 +436,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        // In its window now, which a later layout may not follow.
+        ultraKeyboard?.refresh()
         VoiceCoordinator.shared.focus(account: account, sessionId: chatId)
     }
 
@@ -444,7 +446,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         // ChatList's `active`: a chat not shown asks for no older page.
         historyPager?.isActive = false
         appeared = false
-        ultraKeyboard?.deactivate()
+        if ultraKeyboard?.isActive == true {
+            ultraKeyboard?.deactivate()
+            landDockRiders()
+        }
     }
 
     /// SessionView's unmount: a stand-in that has settled or failed is done
@@ -758,11 +763,46 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 hasInput: { [weak self] in self?.composer.isTextFocused ?? false },
                 changed: { [weak self] change in
                     guard let self, self.contentInstalled else { return }
-                    self.layoutScreen(keyboard: change)
+                    self.followUltraKeyboard(change)
                 }
             )
         }
         if appeared { ultraKeyboard?.activate() }
+    }
+
+    /// What rides the dock: placed by the keyboard, so carried with it.
+    private var dockRiders: [UIView] { [dock, scrollButton, scrim, placeholder] }
+
+    /// UltraList's keyboard moved: the screen takes its new layout at once,
+    /// and what rides the dock is carried there from where it is drawn now,
+    /// on the motion the list's inset just started (UltraView's
+    /// `applyViewportMotion`). The scrim reaches from the dock to the
+    /// bottom, so its height moves too; the placeholder only moves, so its
+    /// centred content glides.
+    private func followUltraKeyboard(_ change: ChatUltraKeyboard.Change) {
+        guard let ultraList = list.ultra?.list else { return layoutScreen(keyboard: change) }
+        let riders = dockRiders
+        let drawn = riders.map { $0.layer.presentation()?.frame ?? $0.frame }
+        let scrimHeight = scrim.layer.presentation()?.bounds.height ?? scrim.bounds.height
+        let insets = list.contentInsets, size = list.bounds.size
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        UIView.performWithoutAnimation { layoutScreen(keyboard: change) }
+        let moved = list.contentInsets != insets || list.bounds.size != size
+        if moved || change.finishes {
+            for (view, old) in zip(riders, drawn) {
+                ultraList.applyViewportMotion(to: view.layer, keyPath: "position.y", displacement: moved ? Double(old.midY - view.frame.midY) : 0)
+            }
+            ultraList.applyViewportMotion(to: scrim.layer, keyPath: "bounds.size.height", displacement: moved ? Double(scrimHeight - scrim.bounds.height) : 0)
+        }
+        CATransaction.commit()
+    }
+
+    /// The screen has gone: nothing it carried keeps moving.
+    private func landDockRiders() {
+        guard let ultraList = list.ultra?.list, contentInstalled else { return }
+        for view in dockRiders { ultraList.applyViewportMotion(to: view.layer, keyPath: "position.y", displacement: 0) }
+        ultraList.applyViewportMotion(to: scrim.layer, keyPath: "bounds.size.height", displacement: 0)
     }
 
     /// TabletBranches' `chatFloatingDock`: only the portrait phone floats
