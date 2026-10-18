@@ -1266,6 +1266,8 @@ final class ChatUltraQATests: XCTestCase {
     func testN1NavigationBarOwnership() {
         prepare()
         defer { finish() }
+        // Back to portrait however the test ends, even failing in landscape.
+        defer { XCUIDevice.shared.orientation = .portrait }
         XCUIDevice.shared.orientation = .portrait
         launchHome(clip: "n1-bar")
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 20))
