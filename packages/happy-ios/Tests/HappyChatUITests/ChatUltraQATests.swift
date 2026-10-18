@@ -1356,15 +1356,10 @@ final class ChatUltraQATests: XCTestCase {
         prepare()
         defer { finish() }
         var results: [String] = []
-        // With QA_PREP_TRACE=1, one traced opening of the question chat.
-        let traced = ProcessInfo.processInfo.environment["QA_PREP_TRACE"] == "1"
-        let sequence: [(String, Bool)] = traced ? [("question", true)] : [
-            ("question", true), ("question", true), ("question", false), ("question", true),
-            ("markdown", true), ("question", true), ("tools", true), ("question", true), ("question", true),
-        ]
+        let sequence: [(String, Bool)] = [("question", true), ("question", true), ("question", false), ("question", true),
+                                          ("markdown", true), ("question", true), ("tools", true), ("question", true), ("question", true)]
         for (index, (fixture, ultra)) in sequence.enumerated() {
-            launchChat(fixture, clip: "q0-\(index)-\(fixture)-\(ultra ? "ultra" : "legacy")", ultra: ultra,
-                       extra: traced ? ["-chatUltraPreparationTrace"] : [])
+            launchChat(fixture, clip: "q0-\(index)-\(fixture)-\(ultra ? "ultra" : "legacy")", ultra: ultra)
             let ready = wait(12) {
                 let s = state()
                 return (s["listInWindow"] as? Bool) == true && (s["displayReady"] as? Bool) == true && int(s["rows"]) > 0
