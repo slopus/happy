@@ -299,17 +299,20 @@ final class ChatUltraListAdapter {
     }
 
     /// `keyboard` carries the keyboard's transition and whether the rows
-    /// move with the inset (`ChatUltraKeyboard`).
+    /// move with the inset (`ChatUltraKeyboard`). An unchanged size leaves
+    /// the list its inset-only pass, which keeps a transition's viewport
+    /// curve.
     func setViewport(size: CGSize, insets: UIEdgeInsets, keyboard: ChatUltraKeyboard.Change? = nil) {
         guard size.width > 0, size.height > 0 else { return }
-        let changed = self.insets != insets || viewportSize != size
+        let sizeChanged = viewportSize != size
+        let changed = self.insets != insets || sizeChanged
         self.insets = insets
         viewportSize = size
         guard changed else {
             if keyboard?.finishes == true { list.finishViewportTransition() }
             return
         }
-        list.applyChanges(newSize: size, newInsets: .init(top: insets.top, bottom: insets.bottom), anchorMode: .preserveVisibleContent,
+        list.applyChanges(newSize: sizeChanged ? size : nil, newInsets: .init(top: insets.top, bottom: insets.bottom), anchorMode: .preserveVisibleContent,
                           compensatesInsetChange: keyboard?.compensates ?? !list.isTracking, transition: keyboard?.transition ?? .none)
     }
 

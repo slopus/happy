@@ -88,6 +88,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// The keyboard while the list renders with UltraList; nil on the
     /// UICollectionView renderer.
     private(set) var ultraKeyboard: ChatUltraKeyboard?
+    /// Between appearing and having gone: only then does UltraList's
+    /// keyboard work.
+    private var appeared = false
     /// Measures each row once per input and width, for the pipeline.
     private let planner = RowPlanner<ChatRowInput, ChatRowPlan> { ChatRowRenderer.plan($0, width: $1) }
     private var rows: ApplyPipeline<ChatRowsInput, ChatRowsApplied, ChatRowsUpdate>?
@@ -408,6 +411,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        appeared = true
         startConstruction()
         // A store write: never on the main thread.
         let actions = account.actions
@@ -419,6 +423,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         if contentInstalled {
             list.setRenderer(context.account.localSettings.chatListRenderer)
             updateUltraKeyboard()
+            ultraKeyboard?.activate()
             updateHeaderVisibility(animated: animated)
         } else {
             // The shell owns the bar from its first frame too, without
@@ -438,7 +443,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         super.viewDidDisappear(animated)
         // ChatList's `active`: a chat not shown asks for no older page.
         historyPager?.isActive = false
-        ultraKeyboard?.detach()
+        appeared = false
+        ultraKeyboard?.deactivate()
     }
 
     /// SessionView's unmount: a stand-in that has settled or failed is done
@@ -756,6 +762,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 }
             )
         }
+        if appeared { ultraKeyboard?.activate() }
     }
 
     /// TabletBranches' `chatFloatingDock`: only the portrait phone floats

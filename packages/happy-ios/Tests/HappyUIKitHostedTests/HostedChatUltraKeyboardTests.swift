@@ -24,10 +24,11 @@ private struct NoSockets: WebSocketConnector {
 ///
 /// A finger driving the keyboard needs the system's keyboard host, which a
 /// test can't supply; `ChatScrollUITests` drives it on a phone. Here the
-/// keyboard's frame notifications are posted by hand.
+/// keyboard's frame notifications are posted by hand, outside any list
+/// pass, so they apply at once.
 @MainActor
 final class HostedChatUltraKeyboardTests: XCTestCase {
-    private let keyboardHeight: CGFloat = 336
+    private let keyboardHeight: CGFloat = 320
 
     override func setUp() {
         super.setUp()
@@ -120,23 +121,60 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         let keyboard = try XCTUnwrap(test.chat.ultraKeyboard, "UltraList has UltraView's keyboard")
         let firstList = try XCTUnwrap(test.list.ultra?.list)
         XCTAssertTrue(keyboard.list === firstList)
+        XCTAssertTrue(keyboard.isActive, "the shown chat's keyboard works")
         XCTAssertFalse(keyboard.isDriving)
 
         // The setting changes while another screen covers the chat.
         test.navigation.pushViewController(UIViewController(), animated: false)
         test.controller.localSettings.chatListRenderer = .collectionView
+        _ = try await until { !keyboard.isActive }
         test.navigation.popViewController(animated: false)
-        test.navigation.view.layoutIfNeeded()
+        _ = try await until { test.chat.ultraKeyboard == nil }
         XCTAssertNil(test.list.ultra)
         XCTAssertNil(test.chat.ultraKeyboard, "UICollectionView has no UltraView keyboard")
 
-        test.navigation.pushViewController(UIViewController(), animated: false)
+        let cover = UIViewController()
+        test.navigation.pushViewController(cover, animated: false)
         test.controller.localSettings.chatListRenderer = .ultraList
+        _ = try await until { test.navigation.topViewController === cover && test.chat.view.window == nil }
         test.navigation.popViewController(animated: false)
-        test.navigation.view.layoutIfNeeded()
+        _ = try await until { test.chat.ultraKeyboard?.isActive == true }
         let again = try XCTUnwrap(test.chat.ultraKeyboard)
         XCTAssertFalse(again === keyboard)
         XCTAssertTrue(again.list === test.list.ultra?.list)
+        XCTAssertTrue(again.isActive)
+        XCTAssertFalse(keyboard.isActive, "the dropped keyboard stays stopped")
+    }
+
+    /// A covered chat's keyboard is stopped: layouts and keyboard frames
+    /// while it is covered change nothing, and only its appearance starts
+    /// it again, reading the keyboard afresh.
+    func testACoveredChatIgnoresTheKeyboardUntilItAppearsAgain() async throws {
+        let test = try await chat(.ultraList)
+        let window = try XCTUnwrap(test.chat.view.window)
+        let keyboard = try XCTUnwrap(test.chat.ultraKeyboard)
+        let dock = test.dock.frame
+
+        test.navigation.pushViewController(UIViewController(), animated: false)
+        let stopped = try await until { !keyboard.isActive }
+        XCTAssertTrue(stopped, "the covered chat's keyboard stopped")
+        post(UIResponder.keyboardWillChangeFrameNotification, up: true, in: window)
+        test.chat.view.setNeedsLayout()
+        test.chat.view.layoutIfNeeded()
+        XCTAssertFalse(keyboard.isActive, "a layout doesn't start it")
+        XCTAssertEqual(keyboard.height, 0, "a covered chat doesn't follow the keyboard")
+        XCTAssertEqual(test.dock.frame, dock)
+
+        test.navigation.popViewController(animated: false)
+        let started = try await until { keyboard.isActive }
+        XCTAssertTrue(test.chat.ultraKeyboard === keyboard)
+        XCTAssertTrue(started, "appearing starts it again")
+        test.chat.view.layoutIfNeeded()
+        // No software keyboard came up in the test: the guide says down.
+        XCTAssertEqual(test.dock.frame.maxY, resting(test.chat), accuracy: 0.5)
+        post(UIResponder.keyboardWillChangeFrameNotification, up: true, in: window)
+        XCTAssertEqual(test.dock.frame.maxY, test.chat.view.bounds.height - keyboardHeight, accuracy: 0.5, "the shown chat follows the keyboard again")
+        post(UIResponder.keyboardWillChangeFrameNotification, up: false, in: window)
     }
 
     func testTheCollectionViewRendererHasNoUltraViewKeyboard() async throws {
@@ -154,9 +192,13 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         let ultra = try XCTUnwrap(test.list.ultra?.list)
         let height = test.chat.view.bounds.height
         XCTAssertEqual(test.dock.frame.maxY, resting(test.chat), accuracy: 0.5)
+        let passes = ultra.appliedPassCount
 
         post(UIResponder.keyboardWillChangeFrameNotification, up: true, in: window)
         XCTAssertEqual(test.dock.frame.maxY, height - keyboardHeight, accuracy: 0.5, "the dock sits on the keyboard")
+        // The library's inset-only pass, which keeps a viewport curve, not
+        // a full pass.
+        XCTAssertEqual(ultra.appliedPassCount, passes, "the keyboard moved the inset without a full list pass")
         XCTAssertEqual(test.list.contentInsets.top, height - test.dock.frame.minY + ChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
         XCTAssertEqual(ultra.viewportInsets.top, Double(test.list.contentInsets.top), accuracy: 0.5)
         // The rows are still on their way to the new inset.

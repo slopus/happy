@@ -14,6 +14,10 @@ import UltraView
 /// controller can't drive this keyboard (not a phone, a floating keyboard),
 /// the list keeps the system's interactive dismissal.
 ///
+/// It works only while the screen is shown: `activate()` on appearance
+/// makes the library's controller, `deactivate()` once the screen has gone
+/// drops it, so nothing a covered screen lays out or hears brings it back.
+///
 /// Only the UltraList renderer makes one. The UICollectionView renderer
 /// follows the keyboard layout guide as it always has.
 @MainActor
@@ -32,12 +36,20 @@ final class ChatUltraKeyboard: NSObject {
     private(set) weak var list: UltraListView?
     private weak var view: UIView?
     private var dismissal: KeyboardDismissalController?
+    private let accessoryHeight: () -> CGFloat
+    private let hasInput: () -> Bool
     private let changed: (Change) -> Void
     /// How far the keyboard covers the bottom of `view`. Under the
     /// controller it drops below the resting edge as it leaves.
     private(set) var height: CGFloat = 0
-    private var attached = false
+    /// Read the layout guide at the next layout: the keyboard wasn't
+    /// followed while the screen was away.
+    private var resync = true
+    /// Moves when the screen goes, so a notification queued behind the
+    /// list's pass applies nothing after.
+    private var generation: UInt64 = 0
 
+    private(set) var isActive = false
     /// The controller found a keyboard it can drive.
     var isAvailable: Bool { dismissal?.isAvailable ?? false }
     /// A finger or a release owns the keyboard.
@@ -47,27 +59,44 @@ final class ChatUltraKeyboard: NSObject {
          hasInput: @escaping () -> Bool, changed: @escaping (Change) -> Void) {
         self.list = list
         self.view = view
+        self.accessoryHeight = accessoryHeight
+        self.hasInput = hasInput
         self.changed = changed
         super.init()
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        center.addObserver(self, selector: #selector(keyboardDidHide(_:)), name: UIResponder.keyboardDidHideNotification, object: nil)
+    }
+
+    /// The screen is appearing: the library's controller starts.
+    func activate() {
+        guard !isActive, let list, let view else { return }
+        isActive = true
+        resync = true
+        let accessoryHeight = accessoryHeight
         dismissal = KeyboardDismissalController(
             scrollView: list, coordinateView: view,
             accessoryHeight: { Double(accessoryHeight()) },
             restingHeight: { [weak view] in Double(view?.safeAreaInsets.bottom ?? 0) },
             hasInput: hasInput,
-            update: { [weak self] update in
-                guard let self else { return }
-                // The finger moves the rows while it tracks; a release
-                // carries them only when nothing else holds them.
-                let held = self.list.map { $0.isTracking || $0.isDragging } ?? false
-                self.apply(height: CGFloat(update.height), Change(
-                    transition: update.transition, compensates: !held,
-                    finishes: update.transition.isImmediate && update.phase != .tracking
-                ))
-            }
+            update: { [weak self] update in self?.driven(update) }
         )
-        let center = NotificationCenter.default
-        center.addObserver(self, selector: #selector(keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
-        center.addObserver(self, selector: #selector(keyboardDidHide(_:)), name: UIResponder.keyboardDidHideNotification, object: nil)
+    }
+
+    /// The screen has gone: the controller lets go of the keyboard, the
+    /// window and the list, and is dropped.
+    func deactivate() {
+        guard isActive else { return }
+        isActive = false
+        generation &+= 1
+        dismissal?.invalidate()
+        dismissal = nil
+    }
+
+    /// The renderer changed or the screen is done with.
+    func invalidate() {
+        NotificationCenter.default.removeObserver(self)
+        deactivate()
     }
 
     /// The keyboard's top in `view`. In the system's interactive dismissal
@@ -78,25 +107,18 @@ final class ChatUltraKeyboard: NSObject {
         return view.bounds.maxY - height
     }
 
-    /// Before the screen's layout. Back in a window, the keyboard is read
-    /// from the layout guide: what it did meanwhile wasn't followed.
+    /// Before the screen's layout.
     func prepareLayout(guideTop: CGFloat) {
-        guard let view else { return }
-        let inWindow = view.window != nil
-        if inWindow, !attached, !isDriving { height = max(0, view.bounds.maxY - guideTop) }
-        attached = inWindow
+        guard isActive, resync, let view, view.window != nil, !isDriving else { return }
+        resync = false
+        height = max(0, view.bounds.maxY - guideTop)
     }
 
     /// After the screen's layout: the controller finds the keyboard and
     /// the window again.
     func refresh() {
+        guard isActive else { return }
         dismissal?.refresh()
-    }
-
-    /// The screen left its window.
-    func detach() {
-        attached = false
-        dismissal?.invalidate()
     }
 
     /// A navigation away while a finger or a release owns the keyboard:
@@ -105,41 +127,52 @@ final class ChatUltraKeyboard: NSObject {
         dismissal?.dismissImmediately()
     }
 
-    /// The renderer changed or the screen is done with.
-    func invalidate() {
-        NotificationCenter.default.removeObserver(self)
-        attached = false
-        dismissal?.invalidate()
-        dismissal = nil
+    /// The controller's update, applied before it returns, as its
+    /// contract asks: the controller has already waited out the list's
+    /// pass.
+    private func driven(_ update: KeyboardDismissalUpdate) {
+        guard isActive else { return }
+        // The finger moves the rows while it tracks; a release carries
+        // them only when nothing else holds them.
+        let held = list.map { $0.isTracking || $0.isDragging } ?? false
+        take(CGFloat(update.height), Change(
+            transition: update.transition, compensates: !held,
+            finishes: update.transition.isImmediate && update.phase != .tracking
+        ))
     }
 
-    /// Takes the keyboard's new cover once the list's current pass is
-    /// done, so the dock joins the list's own transaction.
-    private func apply(height: CGFloat, _ change: Change) {
+    /// A notification's keyboard, once the list's current pass is done, so
+    /// the dock joins the list's own transaction.
+    private func notified(height: CGFloat, _ change: Change) {
+        let generation = generation
         let apply = { [weak self] in
-            guard let self else { return }
-            guard abs(height - self.height) > 0.01 || change.finishes else { return }
-            self.height = height
-            self.changed(change)
+            guard let self, self.isActive, self.generation == generation else { return }
+            self.take(height, change)
         }
         if let list { list.performAfterCurrentPass(apply) } else { apply() }
     }
 
+    private func take(_ height: CGFloat, _ change: Change) {
+        guard abs(height - self.height) > 0.01 || change.finishes else { return }
+        self.height = height
+        changed(change)
+    }
+
     @objc private func keyboardWillChangeFrame(_ notification: Notification) {
-        guard dismissal?.handle(notification) != true, let view, view.window != nil,
+        guard isActive, dismissal?.handle(notification) != true, let view, view.window != nil,
               let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         let local = dismissal?.resolvedKeyboardFrame(frame) ?? view.convert(frame, from: nil)
         let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0
         // An undocked keyboard covers nothing, as the layout guide reads it
         // with `followsUndockedKeyboard` off.
         let docked = local.maxY >= view.bounds.maxY - 1
-        apply(height: docked ? max(0, view.bounds.maxY - local.minY) : 0,
-              Change(transition: duration > 0 ? .keyboard(duration) : .immediate))
+        notified(height: docked ? max(0, view.bounds.maxY - local.minY) : 0,
+                 Change(transition: duration > 0 ? .keyboard(duration) : .immediate))
     }
 
     @objc private func keyboardDidHide(_ notification: Notification) {
-        guard dismissal?.handle(notification) != true, view?.window != nil else { return }
-        apply(height: 0, Change(transition: .immediate, finishes: true))
+        guard isActive, dismissal?.handle(notification) != true, view?.window != nil else { return }
+        notified(height: 0, Change(transition: .immediate, finishes: true))
     }
 }
 #endif
