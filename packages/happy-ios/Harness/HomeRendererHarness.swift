@@ -169,7 +169,7 @@ final class HomeArchiveProbe: NSObject {
         idleElement.isAccessibilityElement = true
         idleElement.accessibilityIdentifier = "home.archive-scroll-idle"
         idleElement.read = { [weak window] in
-            func find(_ view: UIView) -> UltraListView? {
+            @MainActor func find(_ view: UIView) -> UltraListView? {
                 if let list = view as? UltraListView { return list }
                 for child in view.subviews { if let list = find(child) { return list } }
                 return nil
