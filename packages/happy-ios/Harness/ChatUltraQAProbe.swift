@@ -774,6 +774,13 @@ final class ChatUltraQAProbe: NSObject {
                     native["vertical"] = scroller.vertical
                     native["content"] = [Double(scroller.contentSize.width), Double(scroller.contentSize.height)]
                     native["offset"] = [Double(scroller.contentOffset.x), Double(scroller.contentOffset.y)]
+                case let strip as UIScrollView where strip.superview is DiffFileView:
+                    // A diff's lines scroll sideways in the diff's own view.
+                    native["k"] = "scroller"
+                    native["vertical"] = false
+                    native["diff"] = true
+                    native["content"] = [Double(strip.contentSize.width), Double(strip.contentSize.height)]
+                    native["offset"] = [Double(strip.contentOffset.x), Double(strip.contentOffset.y)]
                 case is DiffShowMoreBar: native["k"] = "showMore"
                 case is ChatMermaidView: native["k"] = "mermaid"
                 case is ChatAttachmentView: native["k"] = "attachment"

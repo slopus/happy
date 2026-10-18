@@ -17,7 +17,7 @@ harness, and sends, permission answers and question answers go to
 | `testC1LongKeyboardAndHistory` | The keyboard up on open, three typed lines, a partial and an interactive keyboard dismiss, pulling past the newest message, six flings back, jump to newest |
 | `testL1LegacyLongKeyboardAndHistory` | C1 on UICollectionView, for comparison |
 | `testC2LiveStreamHistoryAndSend` | Dragging and flinging while a reply streams, jump to newest, sending with the keyboard up, copying the reply |
-| `testC3ToolsPermissionsDiffs` | Allowing and denying permissions, opening a tool group, opening and closing a tool, a diff's Show more, panning a strip sideways, catching momentum |
+| `testC3ToolsPermissionsDiffs` | Allowing and denying permissions, opening a tool group, opening and closing each tool on screen where it opened, a diff's Show more (the tool opened again and followed down to the bar), panning a strip (a diff's lines count) sideways, catching momentum |
 | `testC4MarkdownLinksCopyPictures` | Copying, the long-press menu or selection screen, options, attached and web pictures, panning code or a table, links |
 | `testC5QuestionsAndSending` | Inline question answers, the question sheet, a failed send and its retry |
 | `testC6DiagramsAndGiantMessage` | Mermaid diagrams and their web views, one 350-paragraph message, and messages either side of the 4096-point tile limit |

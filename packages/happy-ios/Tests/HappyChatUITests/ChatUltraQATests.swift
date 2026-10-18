@@ -398,6 +398,30 @@ final class ChatUltraQATests: XCTestCase {
         return CGFloat(content[0].doubleValue) > frame.width + 4
     }
 
+    /// The part of `frame` a finger can reach, as `reachable` judges a
+    /// target: below the header and above the dock; nil when too little.
+    private func reachablePart(_ frame: CGRect, in report: [String: Any]) -> CGRect? {
+        let list = rect(report["list"]) ?? CGRect(origin: .zero, size: size)
+        let top = list.minY + 110
+        let bottom = min(list.maxY, rect(report["dock"])?.minY ?? list.maxY) - 20
+        let part = frame.intersection(CGRect(x: list.minX, y: top, width: list.width, height: max(0, bottom - top)))
+        return part.isNull || part.height < 24 ? nil : part
+    }
+
+    /// A reachable Show more bar in `row`'s diff.
+    private func showMoreBar(in report: [String: Any], row: String) -> CGRect? {
+        natives(report).filter { ($0["k"] as? String) == "showMore" && ($0["row"] as? String) == row }
+            .compactMap { rect($0["f"]) }.first { reachable($0, in: report) }
+    }
+
+    /// Whether `row` goes on below the top of the dock.
+    private func rowEndsBelowDock(_ id: String) -> Bool {
+        let report = controls()
+        guard let row = (report["rows"] as? [[String: Any]] ?? []).first(where: { ($0["id"] as? String) == id }),
+              let frame = rect(row["f"]) else { return false }
+        return frame.maxY > (rect(report["dock"])?.minY ?? size.height) - 20
+    }
+
     private func offset(_ native: [String: Any]?) -> CGPoint {
         guard let values = native?["offset"] as? [NSNumber], values.count == 2 else { return CGPoint(x: CGFloat.nan, y: .nan) }
         return CGPoint(x: values[0].doubleValue, y: values[1].doubleValue)
@@ -680,7 +704,10 @@ final class ChatUltraQATests: XCTestCase {
         }
 
         // A diff's Show more and its sideways lines are inside a tool:
-        // open the tools on screen one at a time until both have shown.
+        // open the tools on screen one at a time, and close each where it
+        // opened, until both have shown. A diff past its first lines ends
+        // in Show more, below the screen when the diff is tall: that tool
+        // opens again and the list follows it down to the bar.
         var showMoreDone = false, stripDone = false
         var tried = Set<String>()
         for _ in 0..<12 where !(showMoreDone && stripDone) {
@@ -692,33 +719,50 @@ final class ChatUltraQATests: XCTestCase {
             tried.insert(tool.action)
             step("open \(tool.action)", quiet: 1.5) { tap(tool.center) }
             let opened = controls()
-            if !showMoreDone, let bar = natives(opened).first(where: { ($0["k"] as? String) == "showMore" && rect($0["f"]).map { reachable($0, in: opened) } == true }),
-               let frame = rect(bar["f"]) {
-                let row = bar["row"] as? String ?? ""
-                let before = rowHeight(row)
-                step("show more diff lines", quiet: 1.5) { tap(CGPoint(x: frame.midX, y: frame.midY)) }
-                screenshot("08-diff-show-more")
-                let after = rowHeight(row)
-                require("a diff's Show more", after > before + 1, "row height \(before) → \(after)")
-                showMoreDone = true
+            let strips = natives(opened).compactMap { native -> (native: [String: Any], frame: CGRect, part: CGRect)? in
+                guard native["k"] as? String == "scroller", let frame = rect(native["f"]), wideStrip(native, frame),
+                      let part = reachablePart(frame, in: opened) else { return nil }
+                return (native, frame, part)
             }
-            let now = controls()
-            if !stripDone, let strip = natives(now).first(where: { native in
-                guard native["k"] as? String == "scroller", let frame = rect(native["f"]) else { return false }
-                return reachable(frame, in: now) && wideStrip(native, frame)
-            }), let frame = rect(strip["f"]) {
+            if !stripDone, let found = strips.first {
+                let strip = found.native, frame = found.frame, part = found.part
                 step("pan a strip sideways", quiet: 1.5) {
-                    drag(CGPoint(x: frame.maxX - 20, y: frame.midY), CGPoint(x: frame.minX + 20, y: frame.midY), velocity: 600, hold: 0.2)
+                    drag(CGPoint(x: part.maxX - 20, y: part.midY), CGPoint(x: part.minX + 20, y: part.midY), velocity: 600, hold: 0.2)
                 }
                 let after = offset(scroller(near: frame, in: strip["row"])).x
-                require("pan a strip sideways", after > offset(strip).x + 10, "offset \(offset(strip).x) → \(after)")
+                require("pan a strip sideways", after > offset(strip).x + 10, "offset \(offset(strip).x) → \(after)\(strip["diff"] != nil ? " (a diff's lines)" : "")")
                 screenshot("09-strip-panned")
                 stripDone = true
             }
-            let closing = controls()
-            if let same = hits(closing).first(where: { $0.action == tool.action && reachable($0.frame, in: closing) }) {
-                step("close \(tool.action)", quiet: 1.5) { tap(same.center) }
+            var bar = showMoreBar(in: controls(), row: tool.row)
+            let tallDiff = bar == nil && rowEndsBelowDock(tool.row)
+                && natives(opened).contains { ($0["row"] as? String) == tool.row && $0["diff"] != nil }
+            var isOpen = true
+            if !showMoreDone, tallDiff {
+                isOpen = !closeTool(tool.action)
+                let again = controls()
+                if !isOpen, let toggle = hits(again).first(where: { $0.action == tool.action && reachable($0.frame, in: again) }) {
+                    step("open \(tool.action) again", quiet: 1.5) { tap(toggle.center) }
+                    isOpen = true
+                }
             }
+            var followed = 0
+            if !showMoreDone, isOpen {
+                while bar == nil, tallDiff, followed < 6, rowEndsBelowDock(tool.row) {
+                    followed += 1
+                    step("follow \(tool.action) down \(followed)", quiet: 1.2, expect: .scroll) { move(older: false, by: size.height * 0.35) }
+                    bar = showMoreBar(in: controls(), row: tool.row)
+                }
+                if let bar {
+                    let before = rowHeight(tool.row)
+                    step("show more diff lines", quiet: 1.5) { tap(CGPoint(x: bar.midX, y: bar.midY)) }
+                    screenshot("08-diff-show-more")
+                    let after = rowHeight(tool.row)
+                    require("a diff's Show more", after > before + 1, "row height \(before) → \(after)")
+                    showMoreDone = true
+                }
+            }
+            if isOpen { closeTool(tool.action, backUp: followed > 0 ? followed + 2 : 0) }
         }
         if !showMoreDone { require("a diff's Show more", false, "no Show more in \(tried.count) opened tools") }
         if !stripDone { require("pan a strip sideways", false, "no strip wider than its box in \(tried.count) opened tools") }
@@ -728,6 +772,23 @@ final class ChatUltraQATests: XCTestCase {
             drag(CGPoint(x: size.width * 0.8, y: size.height * 0.45), CGPoint(x: size.width * 0.2, y: size.height * 0.45), velocity: 800, hold: 0.1)
         }
         screenshot("10-after-catch")
+    }
+
+    /// Closes an open tool by its toggle, first backing up toward older
+    /// messages up to `backUp` times when the list followed the tool down;
+    /// false when the toggle stayed out of reach.
+    @discardableResult
+    private func closeTool(_ action: String, backUp: Int = 0) -> Bool {
+        var report = controls()
+        var moves = 0
+        while moves < backUp, !hits(report).contains(where: { $0.action == action && reachable($0.frame, in: report) }) {
+            moves += 1
+            step("back up to \(action) \(moves)", quiet: 1.2, expect: .scroll) { move(older: true, by: size.height * 0.35) }
+            report = controls()
+        }
+        guard let toggle = hits(report).first(where: { $0.action == action && reachable($0.frame, in: report) }) else { return false }
+        step("close \(action)", quiet: 1.5) { tap(toggle.center) }
+        return true
     }
 
     // MARK: C4 Markdown, links, copy, pictures
