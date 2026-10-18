@@ -4,6 +4,43 @@ import HappyLayout
 import UIKit
 import UltraView
 
+#if DEBUG
+private final class ChatUltraPreparationTrace: @unchecked Sendable {
+    static let shared = ChatUltraPreparationTrace()
+    private let lock = NSLock()
+    private let enabled = ProcessInfo.processInfo.arguments.contains("-chatUltraPreparationTrace")
+
+    func write(_ stage: String, identity: String, width: Double? = nil, height: Double? = nil, native: Bool? = nil) {
+        guard enabled else { return }
+        var entry: [String: Any] = ["stage": stage, "id": identity, "time": CACurrentMediaTime(), "main": Thread.isMainThread]
+        if let width { entry["width"] = width.isFinite ? width : String(describing: width) }
+        if let height { entry["height"] = height.isFinite ? height : String(describing: height) }
+        if let native { entry["native"] = native }
+        guard var data = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else { return }
+        data.append(10)
+        lock.lock()
+        defer { lock.unlock() }
+        let url = URL.documentsDirectory.appendingPathComponent("chat-ultra-preparation.jsonl")
+        if !FileManager.default.fileExists(atPath: url.path) { _ = FileManager.default.createFile(atPath: url.path, contents: nil) }
+        guard let file = try? FileHandle(forWritingTo: url) else { return }
+        defer { try? file.close() }
+        _ = try? file.seekToEnd()
+        try? file.write(contentsOf: data)
+    }
+}
+
+private struct TracingChatUltraMeasurer: NodeRowMeasuring {
+    let identity: String
+    let base: any NodeRowMeasuring
+    func measure(_ root: UltraNode, width: CGFloat, environment: RenderEnvironment) async -> CGSize {
+        ChatUltraPreparationTrace.shared.write("measure-start", identity: identity, width: width)
+        let size = await base.measure(root, width: width, environment: environment)
+        ChatUltraPreparationTrace.shared.write("measure-end", identity: identity, width: width, height: size.height)
+        return size
+    }
+}
+#endif
+
 /// The existing row plans are immutable and measured off main. UltraView
 /// rasterizes their static marks only for its prepared, bounded window.
 private struct ChatNodeDrawing: Drawing {
@@ -83,7 +120,14 @@ final class ChatUltraRow: ListRow {
         let native = usesNativeDrawing
         let dark = adapter.list.traitCollection.userInterfaceStyle == .dark
         let scale = adapter.list.traitCollection.displayScale
-        node = NodeRow(identity: identity, revision: revision, measurer: adapter.measurer) {
+        var measurer = adapter.measurer
+#if DEBUG
+        measurer = TracingChatUltraMeasurer(identity: identity, base: measurer)
+#endif
+        node = NodeRow(identity: identity, revision: revision, measurer: measurer) {
+#if DEBUG
+            ChatUltraPreparationTrace.shared.write("factory", identity: identity, width: plan.size.width, height: plan.size.height, native: native)
+#endif
             var style = Style()
             style.height = .points(plan.size.height)
             let root = UltraNode(style: style)
@@ -105,7 +149,16 @@ final class ChatUltraRow: ListRow {
         }
     }
 
-    func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? { await node.prepare(width: width, environment: environment) }
+    func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? {
+#if DEBUG
+        ChatUltraPreparationTrace.shared.write("prepare-start", identity: identity, width: width, height: plan.size.height, native: usesNativeDrawing)
+#endif
+        let result = await node.prepare(width: width, environment: environment)
+#if DEBUG
+        ChatUltraPreparationTrace.shared.write(result == nil ? "prepare-nil" : "prepare-end", identity: identity, width: width, height: result?.height)
+#endif
+        return result
+    }
     func makeView() -> ListRowView { ChatUltraRowView(row: self) }
     func apply(to view: ListRowView, transition: ListTransition) { (view as? ChatUltraRowView)?.apply(self, transition: transition) }
 
