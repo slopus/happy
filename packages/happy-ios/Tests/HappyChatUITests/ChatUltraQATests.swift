@@ -78,9 +78,9 @@ final class ChatUltraQATests: XCTestCase {
         launch(app, clip: clip)
     }
 
-    private func launchHome(clip: String, renderer: String = "UITableView", ultra: Bool = true) {
+    private func launchHome(clip: String, renderer: String = "UITableView", grouping: String = "flat", ultra: Bool = true) {
         let app = XCUIApplication()
-        app.launchArguments = ["-screen", "home", "-renderer", renderer, "-grouping", "flat", "-sessionCount", "0", "-archiveCount", "0",
+        app.launchArguments = ["-screen", "home", "-renderer", renderer, "-grouping", grouping, "-sessionCount", "0", "-archiveCount", "0",
                                "-qaProbe", "-qaRun", "\(pass)-\(clip)"] + (ultra ? ["-chatUltraList"] : [])
         launch(app, clip: clip)
     }
@@ -247,9 +247,14 @@ final class ChatUltraQATests: XCTestCase {
         // window closes half a second after: a read before then would land
         // in the window's frames.
         Thread.sleep(forTimeInterval: flungLast ? max(quiet, 4.5) : quiet)
+        // A window that closed just before the action (motion the last
+        // step left behind) doesn't close a touch's step: that waits for a
+        // window with the touch in it.
+        let touched = touchedLast
         let closed = wait(requireWindow ? 15 : 4, every: 1) {
             let s = state()
-            return int(s["windowCount"]) > before && (s["moving"] as? Bool) == false
+            guard int(s["windowCount"]) > before, (s["moving"] as? Bool) == false else { return false }
+            return !touched || windows().dropFirst(before).contains { int($0["touches"]) > 0 }
         }
         let all = windows()
         let added = Array(all.dropFirst(before))
@@ -937,10 +942,18 @@ final class ChatUltraQATests: XCTestCase {
                 let option = app.descendants(matching: .any)[label].firstMatch
                 if option.exists { option.tap() }
             }
-            let own = app.textViews.matching(NSPredicate(format: "placeholderValue == %@ OR label == %@", "Write an answer instead", "Write an answer instead")).firstMatch
-            if own.exists {
+            // The own-answer field is a plain text view under its own
+            // placeholder label: the sheet's topmost text view above the
+            // keyboard, the first question's (the required Release name).
+            let keyboardTop = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame.minY : size.height
+            let own = app.textViews.allElementsBoundByIndex
+                .filter { $0.isHittable && $0.frame.minY > 100 && $0.frame.maxY < keyboardTop }
+                .min { $0.frame.minY < $1.frame.minY }
+            if let own {
                 own.tap()
                 app.typeText("Also the iPad mini")
+                let typed = (own.value as? String ?? "").contains("Also the iPad mini")
+                require("write an own answer in the sheet", typed, "field value \(typed ? "has" : "lacks") the typed answer")
             } else {
                 notCovered("write an own answer in the sheet", "no 'Write an answer instead' field")
             }
@@ -972,7 +985,9 @@ final class ChatUltraQATests: XCTestCase {
         step("dismiss keyboard", quiet: 1.5) {
             drag(CGPoint(x: size.width / 2, y: size.height * 0.3), CGPoint(x: size.width / 2, y: size.height - 4), velocity: 1500)
         }
-        if let retry = find("retry a failed send", moves: 2, { $0.action.hasPrefix("retry:") }) {
+        // The dismissing drag carries the list back into the history: the
+        // failed send is at the newest end.
+        if let retry = find("retry a failed send", moves: 4, older: false, { $0.action.hasPrefix("retry:") }) {
             step("retry", quiet: 3) { tap(retry.center) }
             screenshot("09-retried")
             Thread.sleep(forTimeInterval: 5)
@@ -1160,29 +1175,6 @@ final class ChatUltraQATests: XCTestCase {
         require("open chats from Home on UltraList", opens.count == 4 && opens.allSatisfy { ($0["renderer"] as? String) == "UltraList" && number($0["readyMs"]) > 0 },
                 "\(opens.count) openings: \(opens.map { "\($0["renderer"] ?? "") mount \($0["mountMs"] ?? "") visible \($0["visibleMs"] ?? "") ready \($0["readyMs"] ?? "") settled \($0["settledMs"] ?? "")" })")
 
-        // Worktree tabs: the short chat's worktree has four.
-        let short = row("Scroll indicator")
-        XCTAssertTrue(short.waitForExistence(timeout: 10))
-        let shortFrame = short.frame
-        tap(CGPoint(x: shortFrame.midX, y: shortFrame.midY))
-        Thread.sleep(forTimeInterval: 2.5)
-        assertReady("worktree chat")
-        for (tab, shot) in [("Opening a chat", "tab-opening-a-chat"), ("Scroll indicator", "tab-scroll-indicator")] {
-            let button = app.buttons.matching(NSPredicate(format: "label == %@", tab)).allElementsBoundByIndex
-                .first { $0.frame.midY > 90 && $0.frame.midY < 200 }
-            guard let button else {
-                require("switch worktree tabs", false, "no \(tab) tab under the header")
-                break
-            }
-            let frame = button.frame
-            step("tab \(tab)", quiet: 2.5) { tap(CGPoint(x: frame.midX, y: frame.midY)) }
-            assertReady("tab \(tab)")
-            screenshot(shot)
-            let selected = app.buttons.matching(NSPredicate(format: "label == %@", tab)).allElementsBoundByIndex.contains { $0.isSelected }
-            require("switch worktree tabs", selected, "\(tab) selected \(selected)")
-        }
-        backToHome()
-
         func choose(_ renderer: String) {
             app.buttons["Settings"].tap()
             XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
@@ -1219,6 +1211,42 @@ final class ChatUltraQATests: XCTestCase {
         Thread.sleep(forTimeInterval: 2.5)
         assertReady("relaunch keeps UltraList")
         screenshot("relaunch-ultralist")
+        app.terminate()
+
+        // Worktree tabs: a chat shows its checkout's tabs only while Home is
+        // grouped by project (`ChatServices.checkout`); the seeded worktree
+        // chat-nav has four. Its row on Home opens its newest chat.
+        launchHome(clip: "c7-tabs", grouping: "project")
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 20))
+        let worktree = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "chat-nav", "Scroll indicator")).firstMatch
+        for _ in 0..<5 where !(worktree.exists && worktree.isHittable) {
+            drag(CGPoint(x: size.width / 2, y: size.height * 0.7), CGPoint(x: size.width / 2, y: size.height * 0.35), velocity: 800, hold: 0.2)
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+        guard worktree.exists, worktree.isHittable else {
+            require("switch worktree tabs", false, "no chat-nav worktree on the project-grouped Home")
+            return
+        }
+        let worktreeFrame = worktree.frame
+        mark("open the worktree")
+        tap(CGPoint(x: worktreeFrame.midX, y: worktreeFrame.midY))
+        Thread.sleep(forTimeInterval: 2.5)
+        assertReady("worktree chat")
+        screenshot("worktree-tabs")
+        for (tab, shot) in [("Opening a chat", "tab-opening-a-chat"), ("Scroll indicator", "tab-scroll-indicator")] {
+            let button = app.buttons.matching(NSPredicate(format: "label == %@", tab)).allElementsBoundByIndex
+                .first { $0.frame.midY > 90 && $0.frame.midY < 200 }
+            guard let button else {
+                require("switch worktree tabs", false, "no \(tab) tab under the header")
+                break
+            }
+            let frame = button.frame
+            step("tab \(tab)", quiet: 2.5) { tap(CGPoint(x: frame.midX, y: frame.midY)) }
+            assertReady("tab \(tab)")
+            screenshot(shot)
+            let selected = app.buttons.matching(NSPredicate(format: "label == %@", tab)).allElementsBoundByIndex.contains { $0.isSelected }
+            require("switch worktree tabs", selected, "\(tab) selected \(selected)")
+        }
     }
 
     // MARK: C8 Appearance, text size, rotation, accessibility
