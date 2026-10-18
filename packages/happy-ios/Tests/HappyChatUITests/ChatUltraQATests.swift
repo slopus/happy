@@ -254,6 +254,7 @@ final class ChatUltraQATests: XCTestCase {
         // judged here.
         for window in added where int(window["index"]) > 0 {
             XCTAssertEqual(int(window["notReadyMax"]), 0, "\(clip) \(name): a mounted row on screen was not drawn in \(int(window["notReadyFrames"])) frames")
+            if int(window["notReadyMax"]) > 0 { attach("\(clip) \(name) not-ready rows", "\(state()["notReadyLast"] ?? [])") }
             switch expect {
             case .scroll: XCTAssertLessThanOrEqual(number(window["restDriftMax"]), 0.5, "\(clip) \(name): rows moved at rest")
             case .away: XCTAssertLessThanOrEqual(number(window["awayApplyDriftMax"]), 0.5, "\(clip) \(name): the reader's rows moved on an update")
@@ -271,7 +272,9 @@ final class ChatUltraQATests: XCTestCase {
     // MARK: Touches
 
     private func at(_ point: CGPoint) -> XCUICoordinate {
-        let root: XCUIElement = Self.aimThroughSpringboard && XCUIDevice.shared.orientation == .portrait ? springboard : app
+        // Face up or unknown counts as portrait: only a rotation this suite
+        // made moves the app's frame off SpringBoard's.
+        let root: XCUIElement = Self.aimThroughSpringboard && !XCUIDevice.shared.orientation.isLandscape ? springboard : app
         return root.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: point.x, dy: point.y))
     }
 

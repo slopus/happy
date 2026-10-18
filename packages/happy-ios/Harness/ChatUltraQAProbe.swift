@@ -58,8 +58,14 @@ import UltraView
 /// navigation transition is running and the presented frame equals the
 /// model's.
 ///
+/// Each frame with a mounted row on screen not drawn adds a line to
+/// `<run>-notready.jsonl`: the row, its visible rect against the header
+/// and the dock, whether its layer has been committed, and what its NodeRow
+/// view holds (shown, pending and released hosts, read by reflection), to
+/// tell a fresh row from retained pixels or an occluded one.
+///
 /// `redacted` (the TEST account) reports counts and geometry only: no
-/// controls report.
+/// controls report, no row identities.
 ///
 /// What the numbers are and aren't:
 /// - Display-link callbacks run on the main thread: a gap is a frame the
@@ -149,6 +155,8 @@ final class ChatUltraQAProbe: NSObject {
     private var memoryMB = -1.0
     private var memoryPeakMB = -1.0
     private var memoryTick = 0
+    private var notes: [String] = []
+    private var lastNotes: [String] = []
 
     init(window: HarnessWindow, chat: UIViewController?, redacted: Bool = false) {
         self.window = window
@@ -392,7 +400,12 @@ final class ChatUltraQAProbe: NSObject {
             guard !visible.isNull, visible.height > 0.5 else { continue }
             onScreen += 1
             covered += visible.height
-            if row.ready { ready += 1 } else { notReady += 1 }
+            if row.ready {
+                ready += 1
+            } else {
+                notReady += 1
+                note(row.view, identity: row.identity, visible: visible, dockY: dockY, link: link, flags: flags)
+            }
         }
         if let open = opening, open.list == identity {
             track(open, link: link, list: list, listFrame: listFrame, screen: screen, onScreen: onScreen, notReady: notReady)
@@ -518,12 +531,54 @@ final class ChatUltraQAProbe: NSObject {
     }
 
     /// Gives the frames sampled so far to the writer queue.
+    /// Why a mounted row on screen isn't drawn, for `<run>-notready.jsonl`.
+    private func note(_ view: UIView, identity: String, visible: CGRect, dockY: Double, link: CADisplayLink, flags: Int) {
+        var entry: [String: Any] = [
+            "frame": frameCount, "time": link.timestamp, "flags": flags,
+            "id": redacted ? "row" : identity, "class": NSStringFromClass(type(of: view)),
+            "visible": rect(visible), "committed": view.layer.presentation() != nil,
+            "hidden": view.isHidden, "alpha": Double(view.alpha),
+        ]
+        if let window {
+            // ChatHeaderLayout.Metrics.height under the safe area.
+            entry["underHeader"] = visible.maxY <= window.safeAreaInsets.top + 44
+            entry["underDock"] = dockY >= 0 && visible.minY >= dockY
+        }
+        if let ultra = view as? ChatUltraRowView {
+            entry["native"] = ultra.row.usesNativeDrawing
+            entry["planHeight"] = Double(ultra.row.plan.size.height)
+            if let drawing = Mirror(reflecting: ultra).children.first(where: { $0.label == "drawing" })?.value as? UIView {
+                entry["drawing"] = NSStringFromClass(type(of: drawing))
+                if let rowView = drawing as? ListRowView { entry["drawingReady"] = rowView.isDisplayReady }
+                entry["drawingCommitted"] = drawing.layer.presentation() != nil
+                for child in Mirror(reflecting: drawing).children {
+                    guard let label = child.label, ["displayedHost", "pendingHost", "releasedSnapshot"].contains(label) else { continue }
+                    if let held = child.value as? UIView {
+                        entry[label] = ["class": NSStringFromClass(type(of: held)), "hidden": held.isHidden, "frame": rect(held.frame),
+                                        "committed": held.layer.presentation() != nil]
+                    } else {
+                        entry[label] = "nil"
+                    }
+                }
+                entry["subviews"] = drawing.subviews.map { "\(NSStringFromClass(type(of: $0)))\($0.isHidden ? " hidden" : "") \(rect($0.frame))" }
+            } else {
+                entry["drawing"] = "unknown"
+            }
+        }
+        let line = json(entry)
+        notes.append(line)
+        lastNotes.append(line)
+        if lastNotes.count > 6 { lastNotes.removeFirst(lastNotes.count - 6) }
+    }
+
     private func handOff() {
         guard !batch.isEmpty else { return }
         let frames = batch
         batch.removeAll(keepingCapacity: true)
         let ledger = self.ledger
-        writer.async { ledger.append(frames) }
+        let lines = notes
+        notes.removeAll()
+        writer.async { ledger.append(frames, notes: lines) }
     }
 
     @objc private func resigned() {
@@ -611,6 +666,7 @@ final class ChatUltraQAProbe: NSObject {
         value["memoryMB"] = memoryMB
         value["memoryPeakMB"] = memoryPeakMB
         value["redacted"] = redacted
+        value["notReadyLast"] = lastNotes
         #if DEBUG
         value["build"] = "Debug"
         #else
@@ -831,16 +887,20 @@ private final class QALedger: @unchecked Sendable {
     private var windows: [QAWindow] = []
     private let frameURL: URL?
     private let windowURL: URL?
+    private let noteURL: URL?
+    private var notes: [String] = []
 
     init(directory: URL?, run: String) {
         frameURL = directory?.appendingPathComponent("\(run)-frames.csv")
         windowURL = directory?.appendingPathComponent("\(run)-windows.json")
+        noteURL = directory?.appendingPathComponent("\(run)-notready.jsonl")
         let header = "time,target,callback,flags,finger,offset,presented,distance,dockY,loaded,onScreen,ready,notReady,uncovered,rigid,deviation,newestGap,touchDelta,turn,applyMs,applySumMs,memoryMB\n"
         if let frameURL { try? header.write(to: frameURL, atomically: true, encoding: .utf8) }
     }
 
-    func append(_ batch: [QAFrame]) {
+    func append(_ batch: [QAFrame], notes lines: [String] = []) {
         frames.append(contentsOf: batch)
+        notes.append(contentsOf: lines)
     }
 
     private static func percentile(_ percent: Double, _ values: [Double]) -> Double {
@@ -947,6 +1007,16 @@ private final class QALedger: @unchecked Sendable {
             }
         }
         if let windowURL { try? Data(encoded().utf8).write(to: windowURL) }
+        if let noteURL, !notes.isEmpty {
+            let text = notes.joined(separator: "\n") + "\n"
+            notes.removeAll()
+            if !FileManager.default.fileExists(atPath: noteURL.path) { FileManager.default.createFile(atPath: noteURL.path, contents: nil) }
+            if let handle = try? FileHandle(forWritingTo: noteURL) {
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: Data(text.utf8))
+                try? handle.close()
+            }
+        }
     }
 }
 #endif
