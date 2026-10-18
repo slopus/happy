@@ -1172,6 +1172,7 @@ final class ChatUltraQATests: XCTestCase {
         }
         let opens = state()["opens"] as? [[String: Any]] ?? []
         attach("\(clip) openings", "\(opens)")
+        attach("\(clip) first visual responses", "\(state()["firstVisuals"] ?? [])")
         require("open chats from Home on UltraList", opens.count == 4 && opens.allSatisfy { ($0["renderer"] as? String) == "UltraList" && number($0["readyMs"]) > 0 },
                 "\(opens.count) openings: \(opens.map { "\($0["renderer"] ?? "") mount \($0["mountMs"] ?? "") visible \($0["visibleMs"] ?? "") ready \($0["readyMs"] ?? "") settled \($0["settledMs"] ?? "")" })")
 
@@ -1517,6 +1518,7 @@ final class ChatUltraQATests: XCTestCase {
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 10), "back on Home")
         attach("r1-real refused requests", "\(real()["blocked"] ?? [:])")
         attach("r1-real openings", "\(state()["opens"] ?? [])")
+        attach("r1-real first visual responses", "\(state()["firstVisuals"] ?? [])")
     }
 
     // MARK: Q0 The question chat on UltraList, opened again and again

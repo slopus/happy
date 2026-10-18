@@ -139,10 +139,44 @@ final class ChatUltraQAProbe: NSObject {
         var handlerMs = -1.0
         var pushStartedInDelivery = false
     }
+    /// One finger lifted on Home with Home on screen, and the first frame
+    /// that showed it took effect: the new chat's view, committed and
+    /// intersecting the window, or Home presented away from where it was at
+    /// the release. Times in ms from the release (`UITouch.timestamp`, the
+    /// display-link clock), per sample: its callback, its link timestamp,
+    /// its target, and the previous sample's callback. The change happened
+    /// after the previous sample: `lowerMs` is that sample's callback, and
+    /// `targetMs` the frame it is bound for, a frame bound and no proof of
+    /// photons.
+    private struct FirstVisual: Encodable {
+        var kind = "none"
+        /// A new chat's view committed within two seconds.
+        var chat = false
+        var callbackMs = -1.0, timestampMs = -1.0, targetMs = -1.0, lowerMs = -1.0
+        var shellCommittedMs = -1.0
+        var shellFraction = 0.0
+        var homeDx = 0.0, homeDy = 0.0
+        /// The first twelve samples: target ms, shell committed, its
+        /// visible fraction, Home's presented shift from its baseline.
+        var samples: [[Double]] = []
+    }
+    private struct FirstVisualTrack {
+        var release: Double
+        var home: HomeViewController
+        var baseline: CGRect
+        var known: Set<ObjectIdentifier>
+        var previousCallback: Double
+        var result = FirstVisual()
+    }
+
     /// The last lifted finger's delivery: its timestamp, when delivery
     /// ended, and whether a push had begun by then.
     private var delivered: (release: Double, handlerMs: Double, pushing: Bool)?
     private var lastRelease = -1.0
+    /// The first visual response to a finger lifted on Home: pending from
+    /// the release until a new chat's view or Home itself shows a change.
+    private var firstVisual: FirstVisualTrack?
+    private var firstVisuals: [FirstVisual] = []
     private var opening: (list: ObjectIdentifier, release: Double, progress: Opening, lastTime: Double)?
     private var openings: [Opening] = []
     private var seenLists: Set<ObjectIdentifier> = []
@@ -318,6 +352,7 @@ final class ChatUltraQAProbe: NSObject {
         case .ended, .cancelled:
             fingerDown = false
             lastRelease = touch.timestamp
+            if chat == nil { startFirstVisual(release: touch.timestamp) }
             // The row under the finger as it lifts: a tap that opens or
             // closes it should leave it where it is.
             guard let window, let list else { return }
@@ -344,6 +379,94 @@ final class ChatUltraQAProbe: NSObject {
         delivered = (touch.timestamp, handlerMs, Self.transitioning(window.rootViewController))
     }
 
+    // MARK: First visual response
+
+    /// Starts watching a release on Home: only while Home is in the window,
+    /// presented, and no chat is shown over it (a tab or a chat's own touch
+    /// isn't an opening from Home). Home's presented frame now is the
+    /// baseline, and the chats that exist now aren't new.
+    private func startFirstVisual(release: Double) {
+        guard let window, let root = window.rootViewController,
+              let home = Self.controllers(from: root).compactMap({ $0 as? HomeViewController }).first,
+              let homeView = home.viewIfLoaded, homeView.window === window,
+              let screen = window.layer.presentation(), let presented = homeView.layer.presentation(),
+              presented.convert(presented.bounds, to: screen).intersects(window.bounds) else { return }
+        let chats = Self.controllers(from: root).filter { $0 is ChatViewController }
+        guard !chats.contains(where: { $0.viewIfLoaded?.window === window }) else { return }
+        firstVisual = FirstVisualTrack(
+            release: release, home: home, baseline: presented.convert(presented.bounds, to: screen),
+            known: Set(chats.map(ObjectIdentifier.init)), previousCallback: CACurrentMediaTime()
+        )
+    }
+
+    /// One display-link sample of a pending release. Every frame read is a
+    /// presentation layer's; a sample without one for Home or the window
+    /// records nothing but its time.
+    private func sampleFirstVisual(_ link: CADisplayLink, callback: Double, in window: HarnessWindow) {
+        guard var track = firstVisual else { return }
+        let ms = { (time: Double) in (time - track.release) * 1000 }
+        let lower = max(0, ms(track.previousCallback))
+        track.previousCallback = callback
+        // Nothing within two seconds: kept as "none".
+        guard ms(callback) <= 2000 else {
+            firstVisuals.append(track.result)
+            firstVisual = nil
+            return
+        }
+        guard let screen = window.layer.presentation() else {
+            firstVisual = track
+            return
+        }
+        var shellCommitted = false
+        var fraction = 0.0
+        if let root = window.rootViewController,
+           let shell = Self.controllers(from: root).first(where: { $0 is ChatViewController && !track.known.contains(ObjectIdentifier($0)) }),
+           let view = shell.viewIfLoaded, view.window === window, let presented = view.layer.presentation() {
+            shellCommitted = true
+            let frame = presented.convert(presented.bounds, to: screen)
+            let shown = frame.intersection(window.bounds)
+            if !shown.isNull, shown.width >= 1, frame.width > 0, frame.height > 0 {
+                fraction = Double(shown.width * shown.height / (frame.width * frame.height))
+            }
+        }
+        var dx = 0.0, dy = 0.0
+        if let homeView = track.home.viewIfLoaded, let presented = homeView.layer.presentation() {
+            let frame = presented.convert(presented.bounds, to: screen)
+            dx = Double(frame.minX - track.baseline.minX)
+            dy = Double(frame.minY - track.baseline.minY)
+        }
+        if shellCommitted, track.result.shellCommittedMs < 0 { track.result.shellCommittedMs = ms(link.targetTimestamp) }
+        if track.result.samples.count < 12 {
+            track.result.samples.append([ms(link.targetTimestamp), shellCommitted ? 1 : 0, fraction, dx].map { ($0 * 100).rounded() / 100 })
+        }
+        let homeMoved = abs(dx) >= 0.5 || abs(dy) >= 0.5
+        if track.result.callbackMs < 0, fraction > 0 || homeMoved {
+            track.result.kind = fraction > 0 ? (homeMoved ? "shell+home" : "shell") : "home"
+            track.result.callbackMs = ms(callback)
+            track.result.timestampMs = ms(link.timestamp)
+            track.result.targetMs = ms(link.targetTimestamp)
+            track.result.lowerMs = lower
+            track.result.shellFraction = fraction
+            track.result.homeDx = dx
+            track.result.homeDy = dy
+        }
+        // Done once the first change and twelve samples are in, and a new
+        // chat has committed: a release that only moved Home (Settings, a
+        // project's sheet) runs to the two seconds and stays `chat` false.
+        if track.result.callbackMs >= 0, track.result.samples.count >= 12, track.result.shellCommittedMs >= 0 {
+            track.result.chat = true
+            firstVisuals.append(track.result)
+            firstVisual = nil
+        } else {
+            firstVisual = track
+        }
+    }
+
+    /// The controllers under `root`: children and presented ones.
+    private static func controllers(from root: UIViewController) -> [UIViewController] {
+        [root] + root.children.flatMap(controllers) + (root.presentedViewController.map(controllers) ?? [])
+    }
+
     /// Whether a navigation controller at or under `controller` is in a
     /// transition.
     private static func transitioning(_ controller: UIViewController?) -> Bool {
@@ -356,6 +479,7 @@ final class ChatUltraQAProbe: NSObject {
         let callback = CACurrentMediaTime()
         guard let window else { return }
         sampleMemory()
+        if firstVisual != nil { sampleFirstVisual(link, callback: callback, in: window) }
         // Another screen covers the chat (Home, a pushed message): close the
         // open window and keep the reports saying so. What happened while
         // away isn't the next frame's.
@@ -665,6 +789,7 @@ final class ChatUltraQAProbe: NSObject {
         guard let list, list.window != nil else {
             var away: [String: Any] = ["run": run, "listInWindow": false, "windowCount": windowCount, "moving": false, "frames": frameCount]
             away["opens"] = openingsObject()
+            away["firstVisuals"] = firstVisualsObject()
             away["placeholder"] = placeholderKind(in: window)
             away["homeChats"] = homeChatFrames(in: window)
             away["memoryMB"] = memoryMB
@@ -693,6 +818,7 @@ final class ChatUltraQAProbe: NSObject {
         value["moving"] = list.isTracking || list.isDragging || list.isDecelerating || (list.ultra?.list.isScrollFlightActive ?? false)
         value["files"] = ["qa/\(run)-frames.csv", "qa/\(run)-windows.json"]
         value["opens"] = openingsObject()
+        value["firstVisuals"] = firstVisualsObject()
         // The probe's clock (frame times) against the wall clock (the test's
         // marks and its screen recording).
         value["clock"] = [CACurrentMediaTime(), Date().timeIntervalSince1970]
@@ -749,6 +875,11 @@ final class ChatUltraQAProbe: NSObject {
             return row
         }
         return value
+    }
+
+    private func firstVisualsObject() -> Any {
+        guard let data = try? JSONEncoder().encode(firstVisuals), let object = try? JSONSerialization.jsonObject(with: data) else { return [] as [Any] }
+        return object
     }
 
     private func openingsObject() -> Any {

@@ -161,8 +161,33 @@ Openings also record `notReadyVisibleFrames`, `missedFrames`, `turnMaxMs`
 and `applyMaxMs`. All of these are target times of display frames, accurate
 to one frame, and none of them is the start of the push animation.
 `handlerMs` is when the window finished delivering the lifted finger, and
-`pushStartedInDelivery` records whether a navigation transition had begun
-by then.
+`pushStartedInDelivery` records whether a navigation transition coordinator
+existed by then. Home's rows select through a tap recognizer that waits
+for the long press to fail, so selection and the push can run after
+delivery ends: false doesn't mean the push started late, and neither value
+is a latency.
+
+The first visual response to a lift on Home is `firstVisuals` in the state.
+It is tracked only when Home is on screen at the release and no chat is
+shown over it, so tab and chat touches don't count. Each display-link
+sample reads presentation layers only (Home's, the window's, and a new
+ChatViewController's view if it is loaded; it never loads one). The first
+response is the first sample where that chat's view is committed and
+intersects the window (`kind` shell) or Home is presented 0.5 pt or more
+from where it was at the release (`kind` home). Times are ms from the
+release, all from that sample:
+
+- `callbackMs`, `timestampMs`, `targetMs`: the display-link callback, its
+  timestamp, and its target timestamp.
+- `lowerMs`: the previous sample's callback. The change happened after it.
+
+`targetMs` is the frame the change is bound for. It is not proof of when
+the photons appeared, and the change can lie anywhere after `lowerMs`.
+`shellCommittedMs` is the first frame with the new chat's view committed.
+`samples` lists the first twelve frames as target ms, committed, the
+chat's visible fraction, and Home's horizontal shift. `chat` is false when
+no new chat committed within two seconds. Only the optimized timing pass
+is evidence for these numbers.
 
 On an iPhone 12 the display runs at 60 Hz, so no number here says anything
 about 120 Hz devices. No run proves that frames are never lost. A run
