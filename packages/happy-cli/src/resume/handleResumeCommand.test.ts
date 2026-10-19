@@ -181,6 +181,20 @@ describe('buildResumeLaunch', () => {
                 happyToolsDir: '/tmp/happy/tools',
             },
         })).toThrow('Happy session session-3 uses unsupported flavor "gemini".');
+
+        expect(() => buildResumeLaunch({
+            id: 'session-copilot',
+            active: false,
+            metadata: {
+                path: '/tmp/repo',
+                flavor: 'copilot',
+                host: 'localhost',
+                homeDir: '/tmp',
+                happyHomeDir: '/tmp/.happy',
+                happyLibDir: '/tmp/happy',
+                happyToolsDir: '/tmp/happy/tools',
+            },
+        })).toThrow('Happy session session-copilot uses unsupported flavor "copilot".');
     });
 });
 

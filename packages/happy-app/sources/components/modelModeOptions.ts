@@ -242,6 +242,14 @@ export function getGeminiModelModes(): ModelMode[] {
 // openclaw does. Both are kept so an existing session's saved mode still has a
 // row to select, but the descriptions say plainly that the choice is inert.
 export function getOpenClawPermissionModes(translate: Translate): PermissionMode[] {
+    return buildDefaultPermissionModes(translate);
+}
+
+export function getCopilotPermissionModes(translate: Translate): PermissionMode[] {
+    return buildDefaultPermissionModes(translate);
+}
+
+function buildDefaultPermissionModes(translate: Translate): PermissionMode[] {
     return [
         { key: 'bypassPermissions', name: 'Yolo', description: translate('agentInput.permissionMode.openclawInert') },
         { key: 'default', name: 'Default', description: translate('agentInput.permissionMode.openclawInert') },
@@ -345,10 +353,21 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'agy') {
         return getAgyPermissionModes(translate);
     }
+    if (flavor === 'copilot') {
+        return getCopilotPermissionModes(translate);
+    }
     return getClaudePermissionModes(translate);
 }
 
 export function getOpenClawModelModes(): ModelMode[] {
+    return buildDefaultModelModes();
+}
+
+export function getCopilotModelModes(): ModelMode[] {
+    return buildDefaultModelModes();
+}
+
+function buildDefaultModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'Default model', description: null },
     ];
@@ -378,6 +397,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     }
     if (flavor === 'agy') {
         return getAgyModelModes();
+    }
+    if (flavor === 'copilot') {
+        return getCopilotModelModes();
     }
     return getClaudeModelModes();
 }
