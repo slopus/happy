@@ -18,6 +18,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    messageAnnotations: {
+        add: '会話に追加',
+        edit: '注釈を編集',
+        remove: '注釈を削除',
+        count: ({ count }: { count: number }) => `注釈 ${count} 件`,
+        number: ({ number }: { number: number }) => `注釈 ${number}`,
+        editNumber: ({ number }: { number: number }) => `注釈 ${number} を編集`,
+        removeNumber: ({ number }: { number: number }) => `注釈 ${number} を削除`,
+        list: '送信待ちの注釈',
+        selectedText: '選択したテキスト',
+        yourComment: 'あなたのコメント',
+        comment: 'コメント（任意）',
+        noComment: 'コメントなし',
+        placeholder: 'この箇所について、どのようなことを質問したいですか？',
+        saveError: 'この注釈を保存できませんでした。保存済みのコメントは保持されています。もう一度お試しください。',
+        submitted: '送信済み',
+        cleanupError: 'メッセージは送信されましたが、ローカルの注釈を削除できませんでした。ページを再読み込みすると注釈が再表示される場合があります。再送信しないでください。',
+        promptIntro: '以下の各注釈について、それぞれの選択箇所を文脈として使い、順に回答してください。',
+        annotation: '注釈',
+        explain: 'この箇所を説明してください。',
+        additional: '追加の指示',
+    },
+
     directoryPicker: {
         locations: '場所',
         home: 'ホームフォルダー',

@@ -15,6 +15,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const pt: TranslationStructure = {
+    messageAnnotations: {
+        add: 'Adicionar à conversa',
+        edit: 'Editar anotação',
+        remove: 'Excluir anotação',
+        count: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'anotação', plural: 'anotações' })}`,
+        number: ({ number }: { number: number }) => `Anotação ${number}`,
+        editNumber: ({ number }: { number: number }) => `Editar anotação ${number}`,
+        removeNumber: ({ number }: { number: number }) => `Excluir anotação ${number}`,
+        list: 'Anotações pendentes de envio',
+        selectedText: 'Texto selecionado',
+        yourComment: 'Seu comentário',
+        comment: 'Seu comentário (opcional)',
+        noComment: 'Sem comentário',
+        placeholder: 'O que você gostaria de perguntar sobre este trecho?',
+        saveError: 'Não foi possível salvar esta anotação. Seu comentário salvo foi mantido. Tente novamente.',
+        submitted: 'Enviado',
+        cleanupError: 'Sua mensagem foi enviada, mas não foi possível limpar as anotações locais. Elas podem reaparecer ao atualizar a página; não as envie novamente.',
+        promptIntro: 'Responda a cada anotação abaixo usando o respectivo trecho selecionado como contexto.',
+        annotation: 'Anotação',
+        explain: 'Explique este trecho, por favor.',
+        additional: 'Instruções adicionais',
+    },
+
     directoryPicker: {
         locations: 'Locais',
         home: 'Pasta pessoal',

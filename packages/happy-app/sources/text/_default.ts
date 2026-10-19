@@ -15,6 +15,21 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    messageAnnotations: {
+        add: 'Add to conversation', edit: 'Edit annotation', remove: 'Delete annotation',
+        count: ({ count }: { count: number }) => `${count} annotation${count === 1 ? '' : 's'}`,
+        number: ({ number }: { number: number }) => `Annotation ${number}`,
+        editNumber: ({ number }: { number: number }) => `Edit annotation ${number}`,
+        removeNumber: ({ number }: { number: number }) => `Delete annotation ${number}`,
+        list: 'Pending annotations', selectedText: 'Selected text', yourComment: 'Your comment',
+        comment: 'Your comment (optional)', noComment: 'No comment', placeholder: 'What would you like to ask about this passage?',
+        saveError: 'Could not save this annotation. Your saved comment has been kept. Please try again.',
+        submitted: 'Submitted',
+        cleanupError: 'Your message was submitted, but local annotations could not be cleared. They may reappear after a refresh; do not submit them again.',
+        promptIntro: 'Please answer each annotation below using its selected passage as context.',
+        annotation: 'Annotation', explain: 'Please explain this passage.', additional: 'Additional instructions',
+    },
+
     directoryPicker: {
         locations: 'Locations',
         home: 'Home folder',

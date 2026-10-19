@@ -17,6 +17,21 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    messageAnnotations: {
+        add: '添加到对话', edit: '编辑批注', remove: '删除批注',
+        count: ({ count }: { count: number }) => `${count} 条批注`,
+        number: ({ number }: { number: number }) => `批注 ${number}`,
+        editNumber: ({ number }: { number: number }) => `编辑批注 ${number}`,
+        removeNumber: ({ number }: { number: number }) => `删除批注 ${number}`,
+        list: '待发送批注', selectedText: '所选文本', yourComment: '用户评论',
+        comment: '你的评论（可选）', noComment: '未添加评论', placeholder: '这里哪里没有看懂？',
+        saveError: '批注保存失败，已保存的评论仍保留，请重试。',
+        submitted: '已提交',
+        cleanupError: '消息已提交，但本地批注清理失败。刷新后这些批注可能再次出现，请勿重复提交。',
+        promptIntro: '请结合各条所选原文，逐条回答下面的批注。',
+        annotation: '批注', explain: '请解释这段内容。', additional: '补充说明',
+    },
+
     directoryPicker: {
         locations: '位置',
         home: '主目录',

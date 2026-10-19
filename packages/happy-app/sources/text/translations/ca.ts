@@ -15,6 +15,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const ca: TranslationStructure = {
+    messageAnnotations: {
+        add: 'Afegeix a la conversa',
+        edit: 'Edita l’anotació',
+        remove: 'Elimina l’anotació',
+        count: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'anotació', plural: 'anotacions' })}`,
+        number: ({ number }: { number: number }) => `Anotació ${number}`,
+        editNumber: ({ number }: { number: number }) => `Edita l’anotació ${number}`,
+        removeNumber: ({ number }: { number: number }) => `Elimina l’anotació ${number}`,
+        list: 'Anotacions pendents d’enviar',
+        selectedText: 'Text seleccionat',
+        yourComment: 'El teu comentari',
+        comment: 'El teu comentari (opcional)',
+        noComment: 'Sense comentari',
+        placeholder: 'Què t’agradaria preguntar sobre aquest fragment?',
+        saveError: 'No s’ha pogut desar aquesta anotació. S’ha conservat el comentari desat. Torna-ho a provar.',
+        submitted: 'Enviat',
+        cleanupError: 'El missatge s’ha enviat, però no s’han pogut esborrar les anotacions locals. Poden tornar a aparèixer en actualitzar la pàgina; no les tornis a enviar.',
+        promptIntro: 'Respon a cadascuna de les anotacions següents fent servir el fragment seleccionat corresponent com a context.',
+        annotation: 'Anotació',
+        explain: 'Explica aquest fragment, si us plau.',
+        additional: 'Instruccions addicionals',
+    },
+
     directoryPicker: {
         locations: 'Ubicacions',
         home: 'Carpeta personal',

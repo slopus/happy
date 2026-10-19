@@ -1,5 +1,6 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { MessageComposer } from '@/components/MessageComposer';
+import { AnnotationComposer, useMessageAnnotations, prepareAnnotatedMessage } from '@/components/annotations/MessageAnnotations';
 import { MessageStagingQueueView } from '@/components/MessageStagingQueueView';
 import { messageStagingQueue, stageSessionMessage } from '@/sync/messageStagingQueueRuntime';
 import type { SessionComposerDirectorySelectorConfig } from '@/components/SessionComposerDirectorySelector';
@@ -1561,6 +1562,7 @@ function SessionViewLoaded({
     const deviceType = useDeviceType();
     const isTablet = useIsTablet();
     const { messages, isLoaded, isAtLatest, hasMoreNewer, newerError } = useSessionMessages(sessionId);
+    const annotations = useMessageAnnotations(sessionId);
     const [followLatestRequest, setFollowLatestRequest] = React.useState(0);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
     const zenMode = useLocalSetting('zenMode');
@@ -1693,20 +1695,28 @@ function SessionViewLoaded({
         if (sendInFlight.current) return;
         const composer = composerHandleRef.current;
         const liveMessage = composer?.getMessage() ?? '';
-        if (liveMessage.trim() || selectedImages.length > 0) {
+        const annotated = prepareAnnotatedMessage(sessionId, liveMessage);
+        if (annotated.text.trim() || selectedImages.length > 0) {
             const attachments = selectedImages.length > 0 ? selectedImages : undefined;
             sendInFlight.current = true;
             void (async () => {
                 try {
                     // CLI slash commands are handled between turns, rather
                     // than inserted literally into the model's current turn.
-                    await stageSessionMessage(sessionId, liveMessage, attachments, liveMessage.trimStart().startsWith('/') ? 'queue' : delivery);
+                    try {
+                        await stageSessionMessage(sessionId, annotated.text, attachments, annotated.text.trimStart().startsWith('/') ? 'queue' : delivery);
+                    } catch {
+                        Modal.alert(t('common.error'), t('common.retry'));
+                        return;
+                    }
+                    let cleanupFailed = false;
+                    try { annotated.commit(); } catch { cleanupFailed = true; }
                     if (Platform.OS === 'web') setFollowLatestRequest(value => value + 1);
-                    if (composerHandleRef.current !== composer) return;
-                    if (composer?.getMessage() === liveMessage) composer.clearMessage();
-                    for (const attachment of attachments ?? []) removeImage(attachment.id);
-                } catch {
-                    Modal.alert(t('common.error'), t('common.retry'));
+                    if (composerHandleRef.current === composer) {
+                        if (composer?.getMessage() === liveMessage) composer.clearMessage();
+                        for (const attachment of attachments ?? []) removeImage(attachment.id);
+                    }
+                    if (cleanupFailed) Modal.alert(t('messageAnnotations.submitted'), t('messageAnnotations.cleanupError'));
                 } finally { sendInFlight.current = false; }
             })();
         }
@@ -1846,6 +1856,8 @@ function SessionViewLoaded({
             sessionId={sessionId}
             connectionStatus={connectionStatus}
             blockSend={false}
+            hasContext={annotations.length > 0}
+            contextContent={<AnnotationComposer sessionId={sessionId} />}
             onSend={handleSend}
             onQueue={isTaskRunning ? handleSend : undefined}
             sendLabel={isTaskRunning ? t('messageQueue.enqueueSend') : undefined}

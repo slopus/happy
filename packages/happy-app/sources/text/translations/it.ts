@@ -15,6 +15,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const it: TranslationStructure = {
+    messageAnnotations: {
+        add: 'Aggiungi alla conversazione',
+        edit: 'Modifica annotazione',
+        remove: 'Elimina annotazione',
+        count: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'annotazione', plural: 'annotazioni' })}`,
+        number: ({ number }: { number: number }) => `Annotazione ${number}`,
+        editNumber: ({ number }: { number: number }) => `Modifica annotazione ${number}`,
+        removeNumber: ({ number }: { number: number }) => `Elimina annotazione ${number}`,
+        list: 'Annotazioni da inviare',
+        selectedText: 'Testo selezionato',
+        yourComment: 'Il tuo commento',
+        comment: 'Il tuo commento (facoltativo)',
+        noComment: 'Nessun commento',
+        placeholder: 'Cosa vorresti chiedere su questo passaggio?',
+        saveError: 'Impossibile salvare questa annotazione. Il commento salvato è stato conservato. Riprova.',
+        submitted: 'Inviato',
+        cleanupError: 'Il messaggio è stato inviato, ma non è stato possibile cancellare le annotazioni locali. Potrebbero riapparire dopo aver aggiornato la pagina; non inviarle di nuovo.',
+        promptIntro: 'Rispondi a ciascuna annotazione qui sotto usando il relativo passaggio selezionato come contesto.',
+        annotation: 'Annotazione',
+        explain: 'Spiega questo passaggio, per favore.',
+        additional: 'Istruzioni aggiuntive',
+    },
+
     directoryPicker: {
         locations: 'Posizioni',
         home: 'Cartella personale',

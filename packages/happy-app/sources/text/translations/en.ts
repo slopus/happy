@@ -30,6 +30,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * - New translation keys must be added to ALL language files
  */
 export const en: TranslationStructure = {
+    messageAnnotations: baseEn.messageAnnotations,
+
     directoryPicker: {
         locations: 'Locations',
         home: 'Home folder',

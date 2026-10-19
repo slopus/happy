@@ -26,6 +26,29 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const ru: TranslationStructure = {
+    messageAnnotations: {
+        add: 'Добавить в беседу',
+        edit: 'Редактировать пометку',
+        remove: 'Удалить пометку',
+        count: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'пометка', few: 'пометки', many: 'пометок' })}`,
+        number: ({ number }: { number: number }) => `Пометка ${number}`,
+        editNumber: ({ number }: { number: number }) => `Редактировать пометку ${number}`,
+        removeNumber: ({ number }: { number: number }) => `Удалить пометку ${number}`,
+        list: 'Пометки к отправке',
+        selectedText: 'Выделенный текст',
+        yourComment: 'Ваш комментарий',
+        comment: 'Ваш комментарий (необязательно)',
+        noComment: 'Без комментария',
+        placeholder: 'Что вы хотите спросить об этом фрагменте?',
+        saveError: 'Не удалось сохранить эту пометку. Сохранённый комментарий оставлен без изменений. Попробуйте ещё раз.',
+        submitted: 'Отправлено',
+        cleanupError: 'Ваше сообщение отправлено, но не удалось удалить локальные пометки. Они могут появиться снова после обновления страницы. Не отправляйте их повторно.',
+        promptIntro: 'Ответьте на каждую пометку ниже с учётом соответствующего выделенного фрагмента.',
+        annotation: 'Пометка',
+        explain: 'Пожалуйста, объясните этот фрагмент.',
+        additional: 'Дополнительные инструкции',
+    },
+
     directoryPicker: {
         locations: 'Расположения',
         home: 'Домашняя папка',

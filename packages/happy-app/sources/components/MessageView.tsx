@@ -5,6 +5,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { MarkdownView } from "./markdown/MarkdownView";
+import { AnnotatableMessage } from "./annotations/MessageAnnotations";
 import { t } from '@/text';
 import { Modal } from '@/modal';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage, ModeSwitchMessage } from "@/sync/typesMessage";
@@ -515,7 +516,9 @@ function AgentTextBlock(props: {
         onMouseLeave: () => setIsHovered(false),
       } as any) : {})}
     >
-      <MarkdownView readOnly={restrictedContent} markdown={props.message.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
+      <AnnotatableMessage sessionId={props.sessionId} messageId={props.message.id} enabled={!readOnly && !restrictedContent}>
+        <MarkdownView readOnly={restrictedContent} markdown={props.message.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
+      </AnnotatableMessage>
       {showActions && (
         <View
           testID={`message-agent-actions-${props.message.id}`}

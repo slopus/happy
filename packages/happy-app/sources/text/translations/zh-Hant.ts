@@ -17,6 +17,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    messageAnnotations: {
+        add: '新增至對話',
+        edit: '編輯批註',
+        remove: '刪除批註',
+        count: ({ count }: { count: number }) => `${count} 則批註`,
+        number: ({ number }: { number: number }) => `批註 ${number}`,
+        editNumber: ({ number }: { number: number }) => `編輯批註 ${number}`,
+        removeNumber: ({ number }: { number: number }) => `刪除批註 ${number}`,
+        list: '待傳送批註',
+        selectedText: '所選文字',
+        yourComment: '你的評論',
+        comment: '你的評論（選填）',
+        noComment: '未新增評論',
+        placeholder: '這裡哪裡沒有看懂？',
+        saveError: '無法儲存這則批註，已儲存的評論仍保留，請重試。',
+        submitted: '已提交',
+        cleanupError: '訊息已提交，但本機批註清除失敗。重新整理後，這些批註可能再次出現，請勿重複提交。',
+        promptIntro: '請結合各則所選原文，逐則回答下方的批註。',
+        annotation: '批註',
+        explain: '請解釋這段內容。',
+        additional: '補充說明',
+    },
+
     directoryPicker: {
         locations: '位置',
         home: '個人目錄',

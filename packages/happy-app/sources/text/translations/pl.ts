@@ -26,6 +26,29 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
+    messageAnnotations: {
+        add: 'Dodaj do rozmowy',
+        edit: 'Edytuj adnotację',
+        remove: 'Usuń adnotację',
+        count: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'adnotacja', few: 'adnotacje', many: 'adnotacji' })}`,
+        number: ({ number }: { number: number }) => `Adnotacja ${number}`,
+        editNumber: ({ number }: { number: number }) => `Edytuj adnotację ${number}`,
+        removeNumber: ({ number }: { number: number }) => `Usuń adnotację ${number}`,
+        list: 'Adnotacje do wysłania',
+        selectedText: 'Zaznaczony tekst',
+        yourComment: 'Twój komentarz',
+        comment: 'Twój komentarz (opcjonalnie)',
+        noComment: 'Brak komentarza',
+        placeholder: 'O co chcesz zapytać w związku z tym fragmentem?',
+        saveError: 'Nie udało się zapisać tej adnotacji. Zapisany komentarz został zachowany. Spróbuj ponownie.',
+        submitted: 'Wysłano',
+        cleanupError: 'Wiadomość została wysłana, ale nie udało się usunąć lokalnych adnotacji. Mogą pojawić się ponownie po odświeżeniu strony. Nie wysyłaj ich ponownie.',
+        promptIntro: 'Odpowiedz na każdą z poniższych adnotacji, używając zaznaczonego w niej fragmentu jako kontekstu.',
+        annotation: 'Adnotacja',
+        explain: 'Wyjaśnij ten fragment.',
+        additional: 'Dodatkowe instrukcje',
+    },
+
     directoryPicker: {
         locations: 'Lokalizacje',
         home: 'Folder domowy',

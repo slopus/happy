@@ -97,6 +97,9 @@ interface MessageComposerProps {
     zenMode?: boolean;
     /** Optional controls rendered at the leading edge of the composer's footer. */
     leadingControls?: React.ReactNode;
+    /** Pending contextual content, such as selected-passage annotations. */
+    hasContext?: boolean;
+    contextContent?: React.ReactNode;
     /** Running-session model/effort controls. Picks affect future messages only. */
     modeSelector?: SessionComposerModeSelectorConfig;
     /** Friendly per-turn permission controls. Picks affect future messages only. */
@@ -478,7 +481,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     // never blocks the next character from landing in the textarea.
     const [hasText, setHasText] = React.useState(() => props.initialValue.trim().length > 0);
     const hasImages = (props.selectedImages?.length ?? 0) > 0;
-    const hasPayload = hasText || hasImages;
+    const hasPayload = hasText || hasImages || !!props.hasContext;
     const primaryAction = resolveComposerPrimaryAction({
         mode: props.mode,
         showAbortButton: props.showAbortButton ?? false,
@@ -679,10 +682,10 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     });
 
     const handleBlockedSendAttempt = React.useCallback(() => {
-        if (!isSendBlocked || !hasText || props.isSending) return;
+        if (!isSendBlocked || (!hasText && !props.hasContext) || props.isSending) return;
         hapticsError();
         sendBlockShakerRef.current?.shake();
-    }, [hasText, isSendBlocked, props.isSending]);
+    }, [hasText, props.hasContext, isSendBlocked, props.isSending]);
 
     const handleSendPress = React.useCallback(() => {
         if (isSendBlocked) {
@@ -694,10 +697,10 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         hapticsLight();
         // Live read avoids stalling behind the transitioned `hasText`.
         const liveHasText = (inputRef.current?.getText() ?? '').trim().length > 0;
-        if (liveHasText || hasImages) {
+        if (liveHasText || hasImages || props.hasContext) {
             props.onSend();
         }
-    }, [handleBlockedSendAttempt, hasImages, isSendBlocked, props.isSendDisabled, props.isSending, props.onSend]);
+    }, [handleBlockedSendAttempt, hasImages, props.hasContext, isSendBlocked, props.isSendDisabled, props.isSending, props.onSend]);
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -746,7 +749,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             // to avoid false positives on Windows touch-screen laptops with keyboards.
             const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
             if (event.key === 'Tab' && !event.shiftKey && props.onQueue && !isTouchDevice
-                && (inputRef.current?.getText().trim() || hasImages)) {
+                && (inputRef.current?.getText().trim() || hasImages || props.hasContext)) {
                 if (!isSendBlocked && !props.isSendDisabled && !props.isSending) props.onQueue();
                 return true;
             }
@@ -754,10 +757,10 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                 // Read live text from the textarea — `hasText` is debounced via
                 // startTransition and would lag behind a quick type-then-Enter.
                 const liveText = inputRef.current?.getText() ?? '';
-                if (liveText.trim()) {
+                if (liveText.trim() || props.hasContext) {
                     if (isSendBlocked) {
                         handleBlockedSendAttempt();
-                    } else if (!props.isSendDisabled) {
+                    } else if (!props.isSendDisabled && !props.isSending) {
                         props.onSend();
                     }
                     return true; // Key was handled
@@ -765,7 +768,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             }
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, props.hasContext, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
 
 
 
@@ -816,6 +819,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                 {/* Box 2: Action Area (Input + Send) */}
                 <Shaker ref={sendBlockShakerRef}>
                 <View style={styles.unifiedPanel}>
+                    {props.contextContent}
                     {/* Attachment preview strip */}
                     {props.selectedImages && props.selectedImages.length > 0 && (
                         <AgentInputAttachmentStrip
