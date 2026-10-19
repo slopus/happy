@@ -93,7 +93,7 @@ final class SessionInfoViewController: UIViewController {
         var next = 0
     }
 
-    private enum Action: Hashable { case archive, delete, resume, fork }
+    private enum Action: Hashable { case archive, delete, resume, fork, leave }
 
     init(context: AppContext, session: AccountSession, sessionId: String,
          firstPaintTimeout: Duration = .seconds(5), snapshots: Snapshots? = nil) {
@@ -680,19 +680,30 @@ final class SessionInfoViewController: UIViewController {
                 }
             }
         }
-        rows.append { [unowned self] in
-            ItemRowView(title: S.archiveSession, subtitle: S.archiveSessionSubtitle, icon: icon("archive-outline", SecondaryPalette.red)) { [weak self] in
-                self?.archive()
+        if model.canLeaveTask {
+            // Out of this person's list; the task runs on for the rest.
+            rows.append { [unowned self] in
+                ItemRowView(title: Strings.Tasks.leave, icon: icon("exit-outline", SecondaryPalette.red)) { [weak self] in
+                    self?.leaveTask()
+                }
             }
         }
-        if !model.isBot {
+        // A task is archived only by its owner or the team's.
+        if model.canArchive {
+            rows.append { [unowned self] in
+                ItemRowView(title: model.isTask ? Strings.Tasks.archive : S.archiveSession, subtitle: model.isTask ? nil : S.archiveSessionSubtitle, icon: icon("archive-outline", SecondaryPalette.red)) { [weak self] in
+                    self?.archive()
+                }
+            }
+        }
+        if !model.keepsConversation {
             rows.append { [unowned self] in
                 ItemRowView(title: S.deleteSession, subtitle: S.deleteSessionSubtitle, icon: icon("trash-outline", SecondaryPalette.red)) { [weak self] in
                     self?.confirmDelete()
                 }
             }
         }
-        return GroupPlan(title: S.quickActions, rows: rows) { $0.keepsLastDivider(model.isBot) }
+        return GroupPlan(title: S.quickActions, rows: rows) { $0.keepsLastDivider(model.keepsConversation) }
     }
 
     private func cliWarning() -> GroupPlan {
@@ -968,6 +979,16 @@ final class SessionInfoViewController: UIViewController {
         }
     }
 
+    private func leaveTask() {
+        let actions = session.detailActions
+        perform(.leave, on: { [weak self] in self?.navigationController ?? self }) { [weak self] in
+            guard let record = await self?.current()?.session else { return }
+            try await actions.leaveTask(record)
+            // It is no longer in this account: leave the screen and the chat.
+            self?.leaveSession()
+        }
+    }
+
     private func confirmDelete() {
         typealias S = Strings.SessionDetail
         let alert = UIAlertController(title: S.deleteSession, message: S.deleteSessionWarning, preferredStyle: .alert)
@@ -983,6 +1004,7 @@ final class SessionInfoViewController: UIViewController {
         perform(.delete, on: { navigation }) { [weak self] in
             guard let record = await self?.current()?.session else { return }
             if record.isBot { throw SessionDetailActions.Failure(SessionDetailActions.botDeleteMessage) }
+            if record.isTask { throw SessionDetailActions.Failure(SessionDetailActions.taskDeleteMessage) }
             // happy-app asks about the worktree, then leaves before deleting.
             await actions.maybeCleanupWorktree(
                 sessionId: record.id,

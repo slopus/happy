@@ -113,7 +113,7 @@ enum TabletGroupedHeights {
     /// where `TabletGroupedListViewController.configure` sets them.
     nonisolated static func heading(_ row: TabletGroupedRow) -> TabletHeading? {
         switch row {
-        case .botsHeader, .archiveHeader:
+        case .botsHeader, .tasksHeader, .archiveHeader:
             .section
         case .machine(_, let name):
             .machine(name: name)
@@ -121,7 +121,7 @@ enum TabletGroupedHeights {
             .workspace(title: header.projectName, branch: header.branch, changes: changes(header.changes))
         case .archiveToggle:
             .archiveToggle
-        case .bot(let session):
+        case .bot(let session), .task(let session):
             .bot(workspace: session.workspaceName != nil, changes: session.changes != nil)
         case .chat, .archived:
             nil

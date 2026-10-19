@@ -76,6 +76,7 @@ actor NewSessionChoiceDeriver {
                     row.metadata.map { metadata in
                         .object([
                             "bot": .bool(metadata["bot"] != nil && metadata["bot"] != .null),
+                            "task": .bool(metadata["task"] != nil && metadata["task"] != .null),
                             "archived": .bool(metadata["lifecycleState"]?.stringValue == "archived"),
                             "path": metadata["path"]?.stringValue.map(JSONValue.string) ?? .null,
                             "machineId": metadata["machineId"]?.stringValue.map(JSONValue.string) ?? .null,
@@ -122,7 +123,7 @@ actor NewSessionChoiceDeriver {
     }
 
     func launch(snapshot: HomeSnapshot, revision: UInt64, draft: NewSessionDraft,
-                bot: (name: String, faceSeed: String)? = nil, prompt: String,
+                bot: (name: String, faceSeed: String)? = nil, createsTask: Bool = false, prompt: String,
                 attachments: [OutgoingAttachment]) -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
         ThreadRules.assertOffMain()
         let rows: [SessionRecord]
@@ -132,7 +133,7 @@ actor NewSessionChoiceDeriver {
             canonicalPoolBuildCount += 1
             rows = Self.canonicalPool(snapshot.sessions)
         }
-        return NewSessionLaunch.resolve(draft: draft, pickedAgent: draft.pickedAgentType, bot: bot,
+        return NewSessionLaunch.resolve(draft: draft, pickedAgent: draft.pickedAgentType, bot: bot, createsTask: createsTask,
                                         machines: snapshot.machines.machines, sessions: rows,
                                         agentDefaultOverrides: AccountSettings(snapshot.settings).agentDefaultOverrides,
                                         prompt: prompt, attachments: attachments)

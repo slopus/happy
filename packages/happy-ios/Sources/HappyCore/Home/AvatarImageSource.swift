@@ -42,6 +42,9 @@ public struct AvatarImageSource: Hashable, Sendable {
     /// RN resolveSessionAvatar: session artwork wins. Only Happy Agent can
     /// inherit private project artwork; bots use the same precedence.
     public static func resolve(_ session: SessionRecord, project: ProjectRecord?) -> Self? {
+        // A task wears its glyph alone: never its owner's photo, nor its
+        // project's.
+        if session.isTask { return nil }
         if let avatar = session.avatar {
             var source = Self(scope: .session, id: session.id, descriptor: avatar, dataKeyCipher: session.dataKeyCipher)
             if session.isRig, let project, let descriptor = project.avatar {

@@ -9,6 +9,9 @@ extension HomeRowDrawing {
         if case .bot(let session) = row {
             return make(.flat(.session(session)), width: width, grouped: false, selected: selected, environment: environment, dark: dark, catalog: catalog)
         }
+        if case .task(let session) = row {
+            return make(.flat(.session(session)), width: width, grouped: false, selected: selected, environment: environment, dark: dark, catalog: catalog)
+        }
         if case .archiveToggle(let hidden) = row {
             return make(.project(.archiveToggle(hidden: hidden)), width: width, grouped: true, selected: false, environment: environment, dark: dark, catalog: catalog)
         }
@@ -24,10 +27,13 @@ extension HomeRowDrawing {
             else { plan.marks.append(.fill(color, frame, round: true)) }
         }
         switch row {
-        case .bot, .archiveToggle: preconditionFailure("handled above")
-        case .botsHeader, .archiveHeader:
-            let label: String
-            if case .archiveHeader(let age) = row { label = dayTitle(age, catalog: catalog) } else { label = catalog("sidebar.bots") }
+        case .bot, .task, .archiveToggle: preconditionFailure("handled above")
+        case .botsHeader, .tasksHeader, .archiveHeader:
+            let label = switch row {
+            case .archiveHeader(let age): dayTitle(age, catalog: catalog)
+            case .tasksHeader: Strings.Tasks.heading
+            default: catalog("sidebar.bots")
+            }
             let layout = TabletSectionHeaderLayout(width: width, label: measured(label, TextStyles.sessionDayHeader))
             plan.size = layout.size; text(label, TextStyles.sessionDayHeader, Palette.groupedSectionTitle, layout.label)
             plan.accessibilityLabel = label; plan.isHeading = true

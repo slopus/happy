@@ -78,11 +78,13 @@ public final class AvatarView: UIView {
         photo.setLayoutFrame(disc.bounds)
         pixels.setLayoutFrame(disc.bounds)
         if let content {
-            if content.avatar.isBot {
+            if content.avatar.isBot || content.avatar.isTask {
                 // Avatar.tsx: hardware-chip-outline at round(size * 0.55),
                 // centred in the disc. Drawn here, where the size is known.
+                // A task wears a checkbox the same way.
                 let iconSize = GeneratedAvatar.botGlyphFrame(avatarSize: size).width
-                glyph.image = .icon(.ionicons("hardware-chip-outline"), size: iconSize)
+                let name = content.avatar.isTask ? "checkbox-outline" : "hardware-chip-outline"
+                glyph.image = .icon(.ionicons(name), size: iconSize)
                 glyph.setLayoutFrame(disc.bounds)
             } else if content.style == .brutalist {
                 glyph.setLayoutFrame(GeneratedAvatar.brutalistGlyphFrame(avatarSize: size))
@@ -109,7 +111,7 @@ public final class AvatarView: UIView {
         let seed = content.avatar.seed
         pixels.isHidden = true
         glyph.isHidden = false
-        if content.avatar.isBot {
+        if content.avatar.isBot || content.avatar.isTask {
             disc.backgroundColor = UIColor(Palette.surface)
             glyph.image = nil
             glyph.contentMode = .center
@@ -135,7 +137,7 @@ public final class AvatarView: UIView {
                 pixels.colors = GeneratedAvatar.pixels(seed: seed, monochrome: content.monochrome).map { UIColor($0) }
             }
         }
-        badge.isHidden = content.avatar.harness == nil || (content.avatar.isBot && photo.image == nil)
+        badge.isHidden = content.avatar.harness == nil || ((content.avatar.isBot || content.avatar.isTask) && photo.image == nil)
         if let harness = content.avatar.harness {
             let image = AvatarImages.harness(harness)
             // Codex's and Happy Agent's marks are black; they follow the text

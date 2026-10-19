@@ -13,6 +13,8 @@ public struct SessionQuickActions: Equatable, Sendable {
         case duplicate
         case copyMetadata = "copy-metadata"
         case copyMetadataAndLogs = "copy-metadata-and-logs"
+        /// A task: out of the person's own list (Happy Desktop's row control).
+        case leaveTask = "leave-task"
         case archive
     }
 
@@ -94,7 +96,13 @@ public struct SessionQuickActions: Equatable, Sendable {
         if resume.canShowResume { items.append(.resume) }
         if canFork { items.append(contentsOf: [.fork, .duplicate]) }
         if devModeEnabled { items.append(contentsOf: [.copyMetadata, .copyMetadataAndLogs]) }
-        items.append(.archive)
+        if session.isTask {
+            // Anyone in it may leave; only its owner or the team's may archive.
+            if session.canLeaveTask { items.append(.leaveTask) }
+            if session.taskCanArchive { items.append(.archive) }
+        } else {
+            items.append(.archive)
+        }
         self.items = items
     }
 

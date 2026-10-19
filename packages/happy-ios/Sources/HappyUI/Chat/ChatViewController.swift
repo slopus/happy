@@ -992,6 +992,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 avatar: SessionAvatar(
                     seed: record.avatarSeed,
                     isBot: record.isBot,
+                    isTask: record.isTask,
                     harness: settings.bool("showHarnessIconInSessionHeader")
                         ? SessionAvatar.harness(flavor: metadata?["flavor"]?.stringValue, clientId: metadata?["client"]?["id"]?.stringValue)
                         : nil,

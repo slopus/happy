@@ -8,6 +8,8 @@ import HappyWire
 /// shows SessionsList's own hierarchy (its `data` memo), not home's
 /// project cards:
 ///   - the bots under "Bots", as flat rows;
+///   - the tasks under "Tasks", drawn as the bots are (happy-app has no
+///     tasks; Happy Desktop lists them under its bots);
 ///   - each computer's rule (`MachineHeader`), then its projects by name,
 ///     each checkout a heading (ProjectGroup.tsx `WorkspaceSection`) over
 ///     a card of its chats (`CompactSessionRow`);
@@ -82,14 +84,17 @@ public struct TabletGroupedList: Equatable, Sendable {
         var rigPathSessions: [SessionRecord] = []
         var happySessions: [SessionRecord] = []
         var botSessions: [SessionRecord] = []
+        var taskSessions: [SessionRecord] = []
         var archivedSessions: [SessionRecord] = []
         // storage.ts `buildSessionListViewData`.
-        for session in snapshot.sessions where session.metadata?["isSideChat"]?.boolValue != true {
+        for session in snapshot.sessions where session.metadata?["isSideChat"]?.boolValue != true && !session.isRetiredTask {
             records[session.id] = session
             if session.isArchived {
                 archivedSessions.append(session)
             } else if session.isBot {
                 botSessions.append(session)
+            } else if session.isTask {
+                taskSessions.append(session)
             } else if session.isRig {
                 if session.metadata?["project"]?["id"]?.stringValue?.isEmpty == false {
                     rigProjectSessions.append(session)
@@ -119,6 +124,7 @@ public struct TabletGroupedList: Equatable, Sendable {
             if keyA != keyB { return keyA < keyB }
             return Collation.precedes(a.id, b.id)
         }
+        taskSessions.sort(by: ProjectHomeData.taskPrecedes)
         archivedSessions.sort { a, b in
             if a.lastActivityAt != b.lastActivityAt { return a.lastActivityAt > b.lastActivityAt }
             return a.id < b.id
@@ -161,6 +167,13 @@ public struct TabletGroupedList: Equatable, Sendable {
             append(.botsHeader, .botsHeader)
             for (index, session) in botSessions.enumerated() {
                 append(.bot(session.id), .bot(row(session, archived: false, divider: index < botSessions.count - 1)))
+            }
+        }
+        // The tasks under the bots, as Happy Desktop's sidebar lists them.
+        if !taskSessions.isEmpty {
+            append(.tasksHeader, .tasksHeader)
+            for (index, session) in taskSessions.enumerated() {
+                append(.task(session.id), .task(row(session, archived: false, divider: index < taskSessions.count - 1)))
             }
         }
         for group in groups {
@@ -318,6 +331,10 @@ public enum TabletGroupedRow: Equatable, Sendable {
     case botsHeader
     /// A bot as home's flat row; every one but the last keeps its hairline.
     case bot(SessionRow)
+    /// "Tasks" over the tasks, after the bots.
+    case tasksHeader
+    /// A task, drawn as a bot is.
+    case task(SessionRow)
     /// ── 🖥 name ── (`MachineHeader`). With an id a tap opens the computer.
     case machine(id: String?, name: String)
     case workspace(TabletWorkspaceHeader)
@@ -333,6 +350,8 @@ public enum TabletGroupedRow: Equatable, Sendable {
     public enum ID: Hashable, Sendable {
         case botsHeader
         case bot(String)
+        case tasksHeader
+        case task(String)
         case machine(String?)
         /// `TabletWorkspaceHeader.id`.
         case workspace(String)
@@ -347,6 +366,7 @@ public enum TabletGroupedRow: Equatable, Sendable {
     public var sessionId: String? {
         switch self {
         case .bot(let row): row.id
+        case .task(let row): row.id
         case .chat(let row): row.id
         case .archived(let row): row.id
         default: nil

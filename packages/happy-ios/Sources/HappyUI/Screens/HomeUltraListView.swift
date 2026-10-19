@@ -21,6 +21,8 @@ final class HomeUltraRow: ListRow {
     let select: (@MainActor () -> Void)?
     let longPress: (@MainActor () -> Void)?
     let archive: (@MainActor () -> Void)?
+    /// The swipe leaves a task rather than archiving a session.
+    let leaves: Bool
     let createWorkspace: (@MainActor () -> Void)?
     let archiveBitmap: HomeArchiveBitmap?
     let usesArchiveBitmap: Bool
@@ -28,17 +30,20 @@ final class HomeUltraRow: ListRow {
     var measuresAsynchronously: Bool { !usesArchiveBitmap }
     var trailingSwipeActions: [ListSwipeAction] {
         guard let archive else { return [] }
+        if leaves {
+            return [ListSwipeAction(title: Strings.Tasks.leave, image: .icon(.ionicons("exit-outline"), size: 20), isDestructive: true) { archive() }]
+        }
         return [ListSwipeAction(title: Strings.SessionInfo.archiveSession, image: .icon(.ionicons("archive-outline"), size: 20), isDestructive: true) { archive() }]
     }
 
     init(identity: String, revision: UInt64, plan: HomeRowDrawing, selected: Bool = false,
          makeOverlay: @escaping @MainActor () -> UIView,
          select: (@MainActor () -> Void)? = nil, longPress: (@MainActor () -> Void)? = nil,
-         archive: (@MainActor () -> Void)? = nil, createWorkspace: (@MainActor () -> Void)? = nil,
+         archive: (@MainActor () -> Void)? = nil, leaves: Bool = false, createWorkspace: (@MainActor () -> Void)? = nil,
          usesArchiveBitmap: Bool = false, archiveBitmap: HomeArchiveBitmap? = nil, selectsOnRelease: Bool = false) {
         self.identity = identity; self.revision = revision; self.plan = plan; self.selected = selected
         self.makeOverlay = makeOverlay; self.select = select; self.longPress = longPress
-        self.archive = archive; self.createWorkspace = createWorkspace
+        self.archive = archive; self.leaves = leaves; self.createWorkspace = createWorkspace
         self.usesArchiveBitmap = usesArchiveBitmap; self.archiveBitmap = archiveBitmap
         self.selectsOnRelease = selectsOnRelease
         let content = HomeNodeDrawing(plan: plan)

@@ -208,8 +208,10 @@ public final class NewSessionComposer {
     /// Whether the composer still asks for the session a start began with
     /// (`isCurrentTarget`): false once any of its pickers moved, or the bot
     /// it makes changed.
-    public func isCurrentTarget(_ started: NewSessionDraft, bot: NewSessionBotDraft) -> Bool {
-        drafts.draft.sameTarget(as: started) && drafts.bot == bot
+    /// `createsTask` is what the start made; nil for a screen that makes no
+    /// tasks, which a task picked in the dock never stops.
+    public func isCurrentTarget(_ started: NewSessionDraft, bot: NewSessionBotDraft, createsTask: Bool? = nil) -> Bool {
+        drafts.draft.sameTarget(as: started) && drafts.bot == bot && (createsTask.map { $0 == drafts.createsTask } ?? true)
     }
 
     /// Waits for current catalog corrections, then resolves off main from
@@ -218,6 +220,14 @@ public final class NewSessionComposer {
         await waitForIdle()
         return await deriver.launch(snapshot: snapshot, revision: snapshotRevision, draft: drafts.draft,
                                     prompt: prompt, attachments: attachments)
+    }
+
+    /// A task on the chosen computer, with the composer's text as its first
+    /// message: the daemon names the task from it.
+    public func launchTaskPrepared(prompt: String, attachments: [OutgoingAttachment]) async -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
+        await waitForIdle()
+        return await deriver.launch(snapshot: snapshot, revision: snapshotRevision, draft: drafts.draft,
+                                    createsTask: true, prompt: prompt, attachments: attachments)
     }
 
     public func launchBotPrepared() async -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
@@ -289,6 +299,9 @@ public final class NewSessionComposer {
         }
         if drafts.createsBot && !choices.supportsBots {
             drafts.setCreatesBot(false)
+        }
+        if drafts.createsTask && !choices.supportsTasks {
+            drafts.setCreatesTask(false)
         }
         if !choices.supportsWorktree && !choices.picksWorkspaces && draft.sessionType == .worktree {
             drafts.setSessionType(.simple)

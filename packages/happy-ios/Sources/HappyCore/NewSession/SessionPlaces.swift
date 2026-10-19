@@ -48,7 +48,10 @@ public enum SessionPlaces {
         }
         if let selected = nonempty(selectedPath) { remember(NewSessionPlace(key: selected, name: selected, path: selected), named: false) }
         for session in sessions {
+            // A task's folder is its own, as a bot's is: never a place to
+            // start another session in (happy-app has no tasks to skip).
             guard let metadata = session.metadata, metadata["bot"] == nil || metadata["bot"] == .null,
+                  metadata["task"] == nil || metadata["task"] == .null,
                   metadata["lifecycleState"]?.stringValue != "archived",
                   let path = nonempty(metadata["path"]?.stringValue) else { continue }
             if let machine = metadata["machineId"]?.stringValue, !machines.contains(machine) { continue }

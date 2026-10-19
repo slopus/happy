@@ -1260,10 +1260,12 @@ final class NewSessionChoicesTests: XCTestCase {
         )
     }
 
-    private func rigMachine(_ id: String, sibling: String?, bots: Bool = false, worktrees: Bool = false) -> MachineRecord {
+    private func rigMachine(_ id: String, sibling: String?, bots: Bool = false, tasks: Bool? = nil, worktrees: Bool = false) -> MachineRecord {
         var metadata = RigSessionCreationTests.rigMachine.objectValue ?? [:]
         metadata["homeDir"] = .string("/Users/steve")
-        metadata["capabilities"] = .object(["newSession": .bool(true), "bots": .bool(bots), "worktrees": .bool(worktrees)])
+        var capabilities: [String: JSONValue] = ["newSession": .bool(true), "bots": .bool(bots), "worktrees": .bool(worktrees)]
+        if let tasks { capabilities["tasks"] = .bool(tasks) }
+        metadata["capabilities"] = .object(capabilities)
         if let sibling { metadata["siblingMachineId"] = .string(sibling) }
         return machine(id, createdAt: 2, metadata: metadata)
     }
@@ -1828,5 +1830,134 @@ extension NewSessionChoicesTests {
         XCTAssertEqual(drafts.draft.selectedProjectId, "p1")
         XCTAssertNil(drafts.draft.selectedPath)
         XCTAssertEqual(drafts.draft.pickedAgentType, .rig)
+    }
+}
+
+// MARK: Tasks
+
+extension NewSessionChoicesTests {
+    private func taskLaunch(_ machines: [MachineRecord], prompt: String = "  Fix the login redirect \n") -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
+        NewSessionLaunch.resolve(
+            draft: NewSessionDraft(selectedMachineId: "m1", selectedPath: "/Users/steve/happy", agentType: .claude),
+            pickedAgent: .claude, createsTask: true, machines: machines, sessions: [],
+            agentDefaultOverrides: [:], prompt: prompt, attachments: []
+        )
+    }
+
+    /// Only a Happy Agent that says `capabilities.tasks: true` is asked to
+    /// make one; an older one, or one that doesn't say, refuses here.
+    func testATaskIsMadeOnlyByAHappyAgentThatSaysItCan() {
+        func refusal(_ machines: [MachineRecord]) -> NewSessionLaunch.Refusal? {
+            if case .failure(let refusal) = taskLaunch(machines) { return refusal }
+            return nil
+        }
+        XCTAssertEqual(refusal([machine("m1"), rigMachine("rig1", sibling: "m1")]), .cannotCreateTasks)
+        XCTAssertEqual(refusal([machine("m1"), rigMachine("rig1", sibling: "m1", bots: true, tasks: false)]), .cannotCreateTasks)
+        XCTAssertNil(refusal([machine("m1"), rigMachine("rig1", sibling: "m1", tasks: true)]))
+        XCTAssertEqual(NewSessionLaunch.Refusal.cannotCreateTasks.errorDescription, "Happy Agent on this computer cannot create tasks yet. Update it and try again.")
+
+        XCTAssertFalse(NewSessionChoices(.init(draft: NewSessionDraft(selectedMachineId: "m1"), createsBot: false, machines: [machine("m1"), rigMachine("rig1", sibling: "m1", bots: true)], sessions: [])).supportsTasks)
+        XCTAssertTrue(NewSessionChoices(.init(draft: NewSessionDraft(selectedMachineId: "m1"), createsBot: false, machines: [machine("m1"), rigMachine("rig1", sibling: "m1", tasks: true)], sessions: [])).supportsTasks)
+        XCTAssertEqual(HomeDockKind.offered(supportsBots: false, supportsTasks: false), [.session])
+        XCTAssertEqual(HomeDockKind.offered(supportsBots: true, supportsTasks: false), [.session, .bot])
+        XCTAssertEqual(HomeDockKind.offered(supportsBots: false, supportsTasks: true), [.session, .task])
+        XCTAssertEqual(HomeDockKind.offered(supportsBots: true, supportsTasks: true), [.session, .bot, .task])
+    }
+
+    /// A task is always Happy Agent's, sent as `{kind: "task"}` alone: no
+    /// id (the daemon makes it from the request id), no name (the daemon
+    /// names it from the first message), no project or directory pick.
+    func testATaskIsSentAsItsKindAlone() throws {
+        let launch = try taskLaunch([machine("m1"), rigMachine("rig1", sibling: "m1", tasks: true)]).get()
+        XCTAssertEqual(launch.machineId, "rig1")
+        XCTAssertEqual(launch.agent, .rig)
+        XCTAssertEqual(launch.target, .task(name: nil))
+        XCTAssertEqual(launch.prompt, "Fix the login redirect", "the first message, sent as any other")
+        XCTAssertNil(launch.bot)
+        XCTAssertEqual(launch.signature.place, NewSessionLaunch.taskPlace)
+
+        XCTAssertEqual(HappyAgentSpawnTarget.task(name: nil).json, .object(["kind": .string("task")]))
+        XCTAssertEqual(HappyAgentSpawnTarget.task(name: "Launch").json, .object(["kind": .string("task"), "name": .string("Launch")]))
+
+        let config = try RigSpawnConfiguration(
+            metadata: RigSessionCreationTests.rigMachine, directory: "/Users/rig", clientRequestId: "task-request-1",
+            modelKey: "claude:shared-model", permissionMode: nil, effort: nil
+        )
+        let payload = try MachineActions.spawnPayload(config.options(machineId: "rig1", target: .task(name: nil)))
+        XCTAssertEqual(payload["type"], .string("happy-agent-spawn"))
+        XCTAssertEqual(payload["clientRequestId"], .string("task-request-1"))
+        XCTAssertEqual(payload["target"], .object(["kind": .string("task")]))
+        XCTAssertEqual(payload.objectValue.map { Set($0.keys) }, ["type", "clientRequestId", "target", "agentConfiguration"])
+        XCTAssertNil(payload["agentConfiguration"]?["directory"])
+    }
+
+    /// Pressing Create again for the same task reuses its request id, so
+    /// the daemon makes one task; once it has opened the next one is new.
+    /// A task and a session on the same computer are different requests.
+    @MainActor
+    func testRetryingATaskKeepsItsRequestId() throws {
+        var count = 0
+        let requests = SpawnRequests(makeId: { count += 1; return "request-\(count)" })
+        let machines = [machine("m1"), rigMachine("rig1", sibling: "m1", tasks: true)]
+        let task = try taskLaunch(machines).get().signature
+        let again = try taskLaunch(machines, prompt: "Something else").get().signature
+        XCTAssertEqual(requests.requestId(for: task), "request-1")
+        XCTAssertEqual(requests.requestId(for: again), "request-1", "a retry, whatever the text")
+        requests.complete()
+        XCTAssertEqual(requests.requestId(for: task), "request-2", "a fresh task")
+
+        let session = try NewSessionLaunch.resolve(
+            draft: NewSessionDraft(selectedMachineId: "m1", selectedPath: "/Users/steve/happy", agentType: .rig),
+            pickedAgent: .rig, machines: machines, sessions: [], agentDefaultOverrides: [:], prompt: "x", attachments: []
+        ).get().signature
+        XCTAssertNotEqual(session, task)
+        XCTAssertEqual(requests.requestId(for: session), "request-3")
+    }
+
+    /// A task made but left before its first message (the person switched
+    /// to a session) is put down, and coming back to Task makes a new one:
+    /// its key never points at the task that was archived.
+    @MainActor
+    func testAnAbandonedTaskIsNeverRetried() throws {
+        var count = 0
+        let requests = SpawnRequests(makeId: { count += 1; return "request-\(count)" })
+        let machines = [machine("m1"), rigMachine("rig1", sibling: "m1", tasks: true)]
+        let task = try taskLaunch(machines).get().signature
+        let session = try NewSessionLaunch.resolve(
+            draft: NewSessionDraft(selectedMachineId: "m1", selectedPath: "/Users/steve/happy", agentType: .rig),
+            pickedAgent: .rig, machines: machines, sessions: [], agentDefaultOverrides: [:], prompt: "x", attachments: []
+        ).get().signature
+        let first = requests.requestId(for: task)
+        var abandoned: [String] = []
+        requests.remember(first, sessionId: "task-session", abandon: { abandoned.append("task-session") })
+        _ = requests.requestId(for: session)
+        XCTAssertEqual(abandoned, ["task-session"], "put down, as a bot is")
+        let again = requests.requestId(for: task)
+        XCTAssertNotEqual(again, first)
+        XCTAssertNil(requests.spawnedSessionId(again))
+    }
+
+    @MainActor
+    func testTheComposerDropsATaskTheComputerCantMake() async throws {
+        let able = await composer(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1", tasks: true)])
+        able.drafts.setCreatesTask(true)
+        await able.waitForIdle()
+        XCTAssertTrue(able.drafts.createsTask)
+        XCTAssertEqual(HomeDockKind.current(createsBot: able.drafts.createsBot, createsTask: able.drafts.createsTask), .task)
+        let launch = try await able.launchTaskPrepared(prompt: "Ship it", attachments: []).get()
+        XCTAssertEqual(launch.target, .task(name: nil))
+        XCTAssertEqual(launch.prompt, "Ship it")
+        let started = able.drafts.draft
+        let bot = able.drafts.bot
+        XCTAssertTrue(able.isCurrentTarget(started, bot: bot, createsTask: true))
+        XCTAssertFalse(able.isCurrentTarget(started, bot: bot, createsTask: false), "a session start is not this task's")
+        able.drafts.setCreatesBot(true)
+        XCTAssertFalse(able.drafts.createsTask, "a bot or a task, never both")
+
+        let unable = await composer(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1", bots: true)])
+        unable.drafts.setCreatesTask(true)
+        unable.update(snapshot: unable.snapshot)
+        await unable.waitForIdle()
+        XCTAssertFalse(unable.drafts.createsTask)
     }
 }

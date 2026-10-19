@@ -38,6 +38,8 @@ public struct RigSessionCreation: Equatable, Sendable {
     public var supportsWorktrees: Bool
     /// The machine can make a new bot from a `bot` spawn target.
     public var supportsBots: Bool
+    /// The machine can make a new task from a `task` spawn target.
+    public var supportsTasks: Bool
     /// The backoff the machine publishes for polling a `pending` result.
     public var pendingRetryAfterMs: Int?
 
@@ -101,6 +103,7 @@ public struct RigSessionCreation: Equatable, Sendable {
         let capabilities = metadata["capabilities"]
         supportsWorktrees = capabilities?["worktrees"]?.boolValue == true
         supportsBots = capabilities?["bots"]?.boolValue == true
+        supportsTasks = capabilities?["tasks"]?.boolValue == true
         pendingRetryAfterMs = metadata["sessionCreation"]?["pendingRetryAfterMs"]?.numberValue.flatMap(Self.finite)
     }
 
@@ -238,6 +241,9 @@ public enum HappyAgentSpawnTarget: Equatable, Sendable {
     case newWorkspace(projectId: String)
     /// A new bot, always named here: the daemon never invents a name.
     case bot(name: String)
+    /// A new task. Unnamed, the daemon calls it "New Task" and names it
+    /// from its first message, as Happy Desktop's blank name does.
+    case task(name: String?)
 
     public enum Failure: Error, Equatable, LocalizedError {
         case workspaceUnavailable
@@ -270,6 +276,8 @@ public enum HappyAgentSpawnTarget: Equatable, Sendable {
         case .workspace(let id): .object(["kind": .string("workspace"), "id": .string(id)])
         case .newWorkspace(let projectId): .object(["kind": .string("newWorkspace"), "projectId": .string(projectId)])
         case .bot(let name): .object(["kind": .string("bot"), "name": .string(name)])
+        case .task(let name?): .object(["kind": .string("task"), "name": .string(name)])
+        case .task(nil): .object(["kind": .string("task")])
         }
     }
 }

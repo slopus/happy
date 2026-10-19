@@ -25,7 +25,7 @@ public enum HomeListRow: Equatable, Sendable {
     /// The chat a tap on the row opens, if any.
     public var sessionId: String? {
         switch self {
-        case .flat(.session(let row)), .project(.bot(let row)), .project(.archived(let row)): row.id
+        case .flat(.session(let row)), .project(.bot(let row)), .project(.task(let row)), .project(.archived(let row)): row.id
         case .project(.project(let entry)): entry.sessionId
         case .project(.worktree(let worktree, _)): worktree.sessionId
         default: nil
@@ -105,8 +105,8 @@ public struct HomeListModel: Equatable, Sendable {
         )
     }
 
-    /// A bot's or an archived chat's row (ProjectHomeList.tsx `ChatRow`)
-    /// draws no line changes either.
+    /// A bot's, a task's or an archived chat's row (ProjectHomeList.tsx
+    /// `ChatRow`) draws no line changes either.
     private static func rendered(_ row: ProjectHomeRow) -> ProjectHomeRow {
         switch row {
         case .bot(var session):
@@ -114,6 +114,11 @@ public struct HomeListModel: Equatable, Sendable {
             session.changes = nil
             session.hasDraft = false
             return .bot(session)
+        case .task(var session):
+            session.lastActivityAt = 0
+            session.changes = nil
+            session.hasDraft = false
+            return .task(session)
         case .archived(var session):
             session.lastActivityAt = 0
             session.changes = nil

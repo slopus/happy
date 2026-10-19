@@ -528,7 +528,11 @@ public final class SessionStarter {
     }
 
     /// Puts down a session nobody is waiting for any more. Happy Agent's
-    /// session is killed through its own RPC, which also retires a bot;
+    /// session is killed through its own RPC, which also retires a bot, and
+    /// archives a task its maker owns.
+    /// Every path here has already let the request's key go (a changed
+    /// request, a cancel, or `complete`), so the next start is a new task,
+    /// never a retry of the archived one;
     /// Happy CLI's daemon is asked first, then the session, then the
     /// server's archive, so nothing is left as debris in the list.
     private func stopAbandoned(_ sessionId: String, launch: NewSessionLaunch, run: Run) async {

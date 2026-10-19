@@ -17,6 +17,26 @@ extension SessionRecord {
         metadata?["bot"]?.objectValue != nil
     }
 
+    /// A task: one continuous conversation for one piece of work, with a
+    /// folder of its own (`metadata.task`). It lives like a bot (one
+    /// conversation for its whole life, stopped only by its machine, never
+    /// deleted) but has no face. A session naming both is a bot.
+    public var isTask: Bool {
+        !isBot && metadata?["task"]?.objectValue != nil
+    }
+
+    /// The paired person may archive this task (its owner, or the team's
+    /// owner). Absent, as from a daemon that doesn't say, means no.
+    public var taskCanArchive: Bool {
+        isTask && metadata?["task"]?["canArchive"]?.boolValue == true
+    }
+
+    /// The task's machine takes `leaveTask`, which drops it from the paired
+    /// person's own list and leaves it running for everyone else.
+    public var canLeaveTask: Bool {
+        isTask && (metadata?["capabilities"]?["rpcMethods"]?.arrayValue ?? []).contains(.string("leaveTask"))
+    }
+
     /// A Happy Agent session (`metadata.client.id == "rig"`). These stay in
     /// the live list while disconnected; only their lifecycle archives them.
     public var isRig: Bool {
@@ -44,6 +64,13 @@ extension SessionRecord {
     /// Archived, or being archived from this device.
     public var isArchived: Bool {
         archiving || isArchivedOnServer
+    }
+
+    /// A task archived by its owner or left by the paired person (its machine
+    /// archives a left task's session for them alone). Lists drop these
+    /// rather than archive them: there is no way back to a task yet.
+    public var isRetiredTask: Bool {
+        isTask && isArchived
     }
 }
 

@@ -50,11 +50,11 @@ public struct SessionDetailActions: Sendable {
 
     // MARK: Session
 
-    /// info.tsx `performArchive`: worktree prompt (not for bots), then stop
-    /// the agent, falling back to archiving on the server.
+    /// info.tsx `performArchive`: worktree prompt (not for bots or tasks),
+    /// then stop the agent, falling back to archiving on the server.
     public func archive(_ session: SessionRecord, confirmWorktreeCleanup: ConfirmWorktreeCleanup) async throws {
         let metadata = session.metadata
-        if !session.isBot {
+        if !session.isBot && !session.isTask {
             await maybeCleanupWorktree(
                 sessionId: session.id,
                 path: metadata?["path"]?.stringValue,
@@ -66,10 +66,24 @@ public struct SessionDetailActions: Sendable {
             try await sessions.archive(sessionId: session.id)
         } catch SessionActionError.botNeedsMachine {
             throw Failure(Self.botArchiveMessage)
+        } catch SessionActionError.taskNeedsMachine {
+            throw Failure(Self.taskArchiveMessage)
         } catch SessionActionError.unknownSession {
             throw Failure(Self.failedToArchiveSession)
         } catch let error as SessionActionError {
             throw Failure(Self.message(error) ?? Self.failedToArchiveSession)
+        }
+    }
+
+    /// Leaves a task: out of the paired person's list; it runs on for
+    /// everyone else in it.
+    public func leaveTask(_ session: SessionRecord) async throws {
+        do {
+            try await sessions.leaveTask(sessionId: session.id)
+        } catch SessionActionError.taskNeedsMachine {
+            throw Failure(Self.taskLeaveMessage)
+        } catch let error as SessionActionError {
+            throw Failure(Self.message(error) ?? Self.failedToLeaveTask)
         }
     }
 
@@ -78,6 +92,7 @@ public struct SessionDetailActions: Sendable {
     /// delete. Bots can't be deleted.
     public func delete(_ session: SessionRecord) async throws {
         if session.isBot { throw Failure(Self.botDeleteMessage) }
+        if session.isTask { throw Failure(Self.taskDeleteMessage) }
         if session.active {
             _ = try? await sessions.sessionKill(sessionId: session.id)
         }
@@ -181,6 +196,11 @@ public struct SessionDetailActions: Sendable {
     /// Hard-coded in useSessionQuickActions.ts / info.tsx, not in en.ts.
     public static let botArchiveMessage = "Connect to the bot’s machine to archive it."
     public static let botDeleteMessage = "Archive the bot instead of deleting its conversation."
+    /// happy-app has no tasks: the bot's words, for a task.
+    public static let taskArchiveMessage = "Connect to the task’s machine to archive it."
+    public static let taskLeaveMessage = "Connect to the task’s machine to leave it."
+    public static let taskDeleteMessage = "A task’s conversation can’t be deleted. Leave the task instead."
+    static let failedToLeaveTask = "Failed to leave task"
     static let failedToArchiveSession = "Failed to archive session"
     static let failedToDeleteSession = "Failed to delete session"
 

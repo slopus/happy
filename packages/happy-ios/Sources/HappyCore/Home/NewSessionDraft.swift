@@ -177,6 +177,9 @@ public final class NewSessionDraftStore {
     /// Making a bot rather than a session. Not persisted: a restarted app
     /// offers a session.
     public private(set) var createsBot = false
+    /// Making a task: Happy Agent on the chosen computer, named by the
+    /// daemon from the first message. Not persisted either. Never both.
+    public private(set) var createsTask = false
     public private(set) var botName = ""
     /// The four faces on offer, as seeds; `botFaceSlot` says which one the
     /// bot gets.
@@ -303,6 +306,13 @@ public final class NewSessionDraftStore {
 
     public func setCreatesBot(_ value: Bool) {
         createsBot = value
+        if value { createsTask = false }
+        notify()
+    }
+
+    public func setCreatesTask(_ value: Bool) {
+        createsTask = value
+        if value { createsBot = false }
         notify()
     }
 

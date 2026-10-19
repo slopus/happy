@@ -56,6 +56,8 @@ public struct ProjectHomeData: Equatable, Sendable {
         public var name: String
         public var rig: Bool
         public var bots: [SessionRow]
+        /// In the person's own task order, then newest first.
+        public var tasks: [SessionRow] = []
         /// By name, as `buildSessionProjectDisplayGroups` sorts them.
         public var projects: [Project]
         public var lastActivityAt: Int64
@@ -115,12 +117,15 @@ public struct ProjectHomeData: Equatable, Sendable {
         var rigPathSessions: [SessionRecord] = []
         var happySessions: [SessionRecord] = []
         var botSessions: [SessionRecord] = []
+        var taskSessions: [SessionRecord] = []
         var archivedSessions: [SessionRecord] = []
-        for session in snapshot.sessions where session.metadata?["isSideChat"]?.boolValue != true {
+        for session in snapshot.sessions where session.metadata?["isSideChat"]?.boolValue != true && !session.isRetiredTask {
             if session.isArchived {
                 archivedSessions.append(session)
             } else if session.isBot {
                 botSessions.append(session)
+            } else if session.isTask {
+                taskSessions.append(session)
             } else if session.isRig {
                 if session.metadata?["project"]?["id"]?.stringValue != nil {
                     rigProjectSessions.append(session)
@@ -151,6 +156,7 @@ public struct ProjectHomeData: Equatable, Sendable {
             if keyA != keyB { return keyA < keyB }
             return Collation.precedes(a.id, b.id)
         }
+        taskSessions.sort(by: Self.taskPrecedes)
 
         let allProjects = Self.catalogProjects(rigProjectSessions, member: { member($0, archived: false) })
             + Self.pathProjects(rigPathSessions, prefix: "rig", member: { member($0, archived: false) })
@@ -181,6 +187,14 @@ public struct ProjectHomeData: Equatable, Sendable {
             var entry = section(machineId)
             let built = member(session, archived: false)
             entry.bots.append(built.row)
+            entry.lastActivityAt = max(entry.lastActivityAt, built.row.lastActivityAt)
+            byMachine[machineId] = entry
+        }
+        for session in taskSessions {
+            let machineId = session.metadata?["machineId"]?.stringValue
+            var entry = section(machineId)
+            let built = member(session, archived: false)
+            entry.tasks.append(built.row)
             entry.lastActivityAt = max(entry.lastActivityAt, built.row.lastActivityAt)
             byMachine[machineId] = entry
         }
@@ -235,6 +249,26 @@ public struct ProjectHomeData: Equatable, Sendable {
     /// `status.unknown` in English, in `<unknown>` for a chat that names no
     /// computer; the screens pass their own language's.
     public static let unknownMachineText = "unknown"
+
+    /// A computer's tasks in the paired person's own order (`task.orderKey`,
+    /// their membership's key, compared as strings as API.md says), then
+    /// the ones they haven't joined, newest first.
+    static func taskPrecedes(_ a: SessionRecord, _ b: SessionRecord) -> Bool {
+        let machineA = a.metadata?["machineId"]?.stringValue ?? ""
+        let machineB = b.metadata?["machineId"]?.stringValue ?? ""
+        if machineA != machineB { return Collation.precedes(machineA, machineB) }
+        let keyA = a.metadata?["task"]?["orderKey"]?.stringValue
+        let keyB = b.metadata?["task"]?["orderKey"]?.stringValue
+        switch (keyA, keyB) {
+        // Plain string order, as the keys are made: "45" before "5".
+        case let (keyA?, keyB?): return keyA != keyB ? keyA < keyB : a.id < b.id
+        case (.some, nil): return true
+        case (nil, .some): return false
+        case (nil, nil):
+            if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
+            return a.id < b.id
+        }
+    }
 
     private static func rank(_ section: MachineSection) -> Int {
         if section.machineId == nil { return 2 }
@@ -332,12 +366,17 @@ public struct ProjectHomeData: Equatable, Sendable {
         var rows: [ProjectHomeRow] = []
         for section in sections {
             let projectRows = section.projects.flatMap { Self.projectRows($0, expanded: expanded.contains($0.id)) }
-            guard !section.bots.isEmpty || !projectRows.isEmpty else { continue }
+            guard !section.bots.isEmpty || !section.tasks.isEmpty || !projectRows.isEmpty else { continue }
             let key = section.machineId ?? "unknown"
             rows.append(.machine(id: section.machineId, name: section.name))
             if !section.bots.isEmpty {
                 rows.append(.section(id: "bots:\(key)", label: .bots))
                 rows.append(contentsOf: section.bots.map(ProjectHomeRow.bot))
+            }
+            // Under the bots, as Happy Desktop's sidebar lists them.
+            if !section.tasks.isEmpty {
+                rows.append(.section(id: "tasks:\(key)", label: .tasks))
+                rows.append(contentsOf: section.tasks.map(ProjectHomeRow.task))
             }
             if !projectRows.isEmpty {
                 rows.append(.section(id: "projects:\(key)", label: .projects))
@@ -545,12 +584,16 @@ public struct WorktreeToggle: Equatable, Sendable {
 public enum ProjectHomeRow: Equatable, Sendable {
     public enum SectionLabel: Equatable, Sendable {
         case bots
+        case tasks
         case projects
     }
 
     case machine(id: String?, name: String)
     case section(id: String, label: SectionLabel)
     case bot(SessionRow)
+    /// A task: drawn as a bot is, with a checkbox glyph for a face; left, or
+    /// archived by its owner, from its own row.
+    case task(SessionRow)
     case project(ProjectHomeEntry)
     /// `last` closes the tree line.
     case worktree(ProjectWorktree, last: Bool)
@@ -565,6 +608,7 @@ public enum ProjectHomeRow: Equatable, Sendable {
         case .machine(let id, _): "machine-\(id ?? "unknown")"
         case .section(let id, _): "section-\(id)"
         case .bot(let row): "bot-\(row.id)"
+        case .task(let row): "task-\(row.id)"
         case .project(let entry): "project-\(entry.id)"
         case .worktree(let worktree, _): "worktree-\(worktree.id)"
         case .worktreeToggle(let toggle): "worktree-toggle-\(toggle.projectId)"

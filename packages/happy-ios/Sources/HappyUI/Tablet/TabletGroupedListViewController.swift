@@ -90,7 +90,11 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
             }
             adapter.onArchive = { [weak self] id in
                 guard let self, self.context.account.session === self.session, let row = self.ultraRow(id), let sessionID = row.sessionId else { return }
-                if case .chat = row { self.kill(sessionID) } else { self.actions.archive(sessionID) }
+                switch row {
+                case .chat: self.kill(sessionID)
+                case .task(let task): if task.leaves { self.actions.leave(sessionID) }
+                default: self.actions.archive(sessionID)
+                }
             }
             adapter.onCreateWorkspace = { [weak self] id in
                 guard let self, self.context.account.session === self.session, case .workspace(let header)? = self.ultraRow(id) else { return }
@@ -237,8 +241,10 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
     private func botsTakingLines(from previous: TabletHeadingMetrics?) -> [IndexPath] {
         guard headings.metrics?.sessionLines != previous?.sessionLines else { return [] }
         return model.rows.indices.compactMap { index in
-            if case .bot = model.rows[index] { return IndexPath(row: index, section: 0) }
-            return nil
+            switch model.rows[index] {
+            case .bot, .task: return IndexPath(row: index, section: 0)
+            default: return nil
+            }
         }
     }
 
@@ -280,8 +286,8 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
 
     private static func reuseIdentifier(_ row: Row) -> String {
         switch row {
-        case .botsHeader, .archiveHeader: TabletSectionHeaderCell.reuseIdentifier
-        case .bot: SessionRowCell.reuseIdentifier
+        case .botsHeader, .tasksHeader, .archiveHeader: TabletSectionHeaderCell.reuseIdentifier
+        case .bot, .task: SessionRowCell.reuseIdentifier
         case .machine: TabletMachineRuleCell.reuseIdentifier
         case .workspace: TabletWorkspaceHeaderCell.reuseIdentifier
         case .chat: TabletChatCell.reuseIdentifier
@@ -298,9 +304,11 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         switch row {
         case .botsHeader:
             (cell as? TabletSectionHeaderCell)?.configure(Strings.Tablet.bots)
+        case .tasksHeader:
+            (cell as? TabletSectionHeaderCell)?.configure(Strings.Tasks.heading)
         case .archiveHeader(let age):
             (cell as? TabletSectionHeaderCell)?.configure(SessionListViewController.dayTitle(age))
-        case .bot(let session):
+        case .bot(let session), .task(let session):
             guard let cell = cell as? SessionRowCell else { return }
             // Home's row, drawn here at the person's text size, with the
             // lines its height was measured with.
@@ -530,17 +538,19 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         guard let row = row(at: indexPath), let sessionId = row.sessionId else { return nil }
         let kills: Bool
         switch row {
-        case .bot: kills = false
+        case .task(let task) where !task.leaves: return nil
+        case .bot, .task: kills = false
         case .chat: kills = true
         default: return nil
         }
         if kills, killing.contains(sessionId) { return nil }
-        let action = UIContextualAction(style: .destructive, title: Strings.SessionInfo.archiveSession) { [weak self] _, _, done in
+        let leaves = if case .task = row { true } else { false }
+        let action = UIContextualAction(style: .destructive, title: leaves ? Strings.Tasks.leave : Strings.SessionInfo.archiveSession) { [weak self] _, _, done in
             // The swipe closes first (`swipeableRef.current?.close()`).
             done(true)
-            if kills { self?.kill(sessionId) } else { self?.actions.archive(sessionId) }
+            if kills { self?.kill(sessionId) } else if leaves { self?.actions.leave(sessionId) } else { self?.actions.archive(sessionId) }
         }
-        action.image = .icon(.ionicons("archive-outline"), size: 20)
+        action.image = .icon(.ionicons(leaves ? "exit-outline" : "archive-outline"), size: 20)
         action.backgroundColor = UIColor(Palette.statusError)
         let configuration = UISwipeActionsConfiguration(actions: [action])
         configuration.performsFirstActionWithFullSwipe = false

@@ -187,7 +187,7 @@ struct HomeRowDrawing: Sendable {
         }
         switch row {
         case .flat(.session(let row)): session(row, archived: false)
-        case .project(.bot(let row)): session(row, archived: false)
+        case .project(.bot(let row)), .project(.task(let row)): session(row, archived: false)
         case .project(.archived(let row)): session(row, archived: true)
         case .flat(.dayHeader(let age)), .project(.archiveHeader(let age)):
             let value = dayTitle(age, catalog: catalog)
@@ -215,7 +215,11 @@ struct HomeRowDrawing: Sendable {
             fill(Palette.textSecondary, layout.rule)
             plan.accessibilityLabel = name; plan.isHeading = true
         case .project(.section(_, let section)):
-            let value = catalog(section == .bots ? "sidebar.bots" : "sidebar.projects")
+            let value = switch section {
+            case .bots: catalog("sidebar.bots")
+            case .tasks: Strings.Tasks.heading
+            case .projects: catalog("sidebar.projects")
+            }
             let layout = ProjectSectionLayout(width: width, label: measured(value, TextStyles.projectSection))
             plan.size = layout.size
             text(value, TextStyles.projectSection, Palette.groupedSectionTitle, layout.label)
@@ -247,7 +251,7 @@ struct HomeRowDrawing: Sendable {
         }
         switch row {
         case .flat(.session): plan.press = .fill(Palette.surfaceSelected)
-        case .project(.project), .project(.worktree), .project(.worktreeToggle), .project(.bot), .project(.archived):
+        case .project(.project), .project(.worktree), .project(.worktreeToggle), .project(.bot), .project(.task), .project(.archived):
             plan.press = .fill(Palette.surfacePressed)
         case .flat(.archiveToggle), .project(.archiveToggle): plan.press = .dim
         case .flat(.dayHeader), .project(.machine), .project(.section), .project(.archiveHeader): plan.press = .none

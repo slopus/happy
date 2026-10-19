@@ -104,6 +104,8 @@ public struct NewSessionChoices: Equatable, Sendable {
 
     /// Happy Agent on this computer can make bots.
     public var supportsBots: Bool
+    /// Happy Agent on this computer can make tasks.
+    public var supportsTasks: Bool
     public var supportsWorktree: Bool
     public var canCreateWorktree: Bool
     public var worktreeOptions: [Option]
@@ -196,6 +198,7 @@ public struct NewSessionChoices: Equatable, Sendable {
         let agent = draft.agentType
         let rigCreation = agent == .rig ? rigSelectionCreation : nil
         supportsBots = rigSelectionCreation?.supportsBots == true
+        supportsTasks = rigSelectionCreation?.supportsTasks == true
         let supportsWorktree = rigCreation?.supportsWorktrees ?? (agent == .rig ? false : Self.supportsWorktree(agent))
         self.supportsWorktree = supportsWorktree
         worktreeSelection = draft.worktreeSelection
@@ -414,6 +417,7 @@ extension NewSessionLaunch {
         case happyCLIOffline
         case cannotStartHappyAgent
         case cannotCreateBots
+        case cannotCreateTasks
         case configurationUnavailable
         case projectNeedsHappyAgent
         case workspace(String)
@@ -429,12 +433,17 @@ extension NewSessionLaunch {
             case .happyCLIOffline: "Happy CLI is offline on your computer. Run `happy daemon start` on your computer, then try again."
             case .cannotStartHappyAgent: "This machine cannot start Happy agent sessions"
             case .cannotCreateBots: "Happy Agent on this computer cannot create bots yet. Update it and try again."
+            // The bot's words, for a task (happy-app has none).
+            case .cannotCreateTasks: "Happy Agent on this computer cannot create tasks yet. Update it and try again."
             case .configurationUnavailable: "The selected agent configuration is unavailable"
             case .projectNeedsHappyAgent: "Only Happy Agent knows where this project is, so no other harness can open it. Switch the harness back to Happy Agent, or pick the project’s folder."
             case .workspace(let message): message
             }
         }
     }
+
+    /// The spawn signature's place for a new task, which no path can be.
+    static let taskPlace = "\u{0}task"
 
     /// useStartSessionFromDraft.ts up to `beginRun`: the draft resolved
     /// again at the moment Start is pressed, so a stale choice can't spawn
@@ -447,6 +456,7 @@ extension NewSessionLaunch {
         draft: NewSessionDraft,
         pickedAgent: NewSessionDraft.Agent?,
         bot: (name: String, faceSeed: String)? = nil,
+        createsTask: Bool = false,
         machines: [MachineRecord],
         sessions: [SessionRecord],
         agentDefaultOverrides: [String: JSONValue],
@@ -462,7 +472,9 @@ extension NewSessionLaunch {
         if let botName, let problem = BotName.problem(botName) {
             return .failure(.botName(problem))
         }
-        let agent: NewSessionDraft.Agent = bot != nil
+        // A bot or a task is always Happy Agent's: only it makes them.
+        let createsTask = createsTask && bot == nil
+        let agent: NewSessionDraft.Agent = bot != nil || createsTask
             ? .rig
             : NewSessionDraft.Agent(rawValue: choice.resolveNewSessionAgent(stored: draft.agentType.rawValue, picked: pickedAgent?.rawValue)) ?? draft.agentType
         let agentChanged = agent != draft.agentType
@@ -475,6 +487,7 @@ extension NewSessionLaunch {
         let rig = agent == .rig ? RigSessionCreation(metadata: machine.metadata) : nil
         if agent == .rig && rig == nil { return .failure(.cannotStartHappyAgent) }
         if bot != nil && rig?.supportsBots != true { return .failure(.cannotCreateBots) }
+        if createsTask && rig?.supportsTasks != true { return .failure(.cannotCreateTasks) }
 
         let cliVersion = machine.metadata?["happyCliVersion"]?.stringValue
         // A harness the computer switched to starts on its own defaults.
@@ -499,6 +512,9 @@ extension NewSessionLaunch {
         let target: HappyAgentSpawnTarget?
         if let botName {
             target = .bot(name: botName)
+        } else if createsTask {
+            // Unnamed: the daemon names it from the first message.
+            target = .task(name: nil)
         } else if rig != nil {
             if let targetOverride {
                 target = targetOverride
@@ -544,8 +560,9 @@ extension NewSessionLaunch {
             signature: SpawnRequests.Signature(
                 machineId: machine.id,
                 agent: agent.rawValue,
-                // Two catalog projects share an empty path; the project tells them apart.
-                place: projectId.map(SessionPlaces.projectKey) ?? selectedPath,
+                // Two catalog projects share an empty path; the project tells
+                // them apart. A task has no place but its computer.
+                place: createsTask ? Self.taskPlace : projectId.map(SessionPlaces.projectKey) ?? selectedPath,
                 worktree: worktree,
                 modelKey: model.key,
                 permissionMode: permission.key,

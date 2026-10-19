@@ -30,6 +30,8 @@ public enum SessionActionError: Error, Equatable, Sendable {
     case noAnswer
     /// A bot is one continuous conversation: only its machine can stop it.
     case botNeedsMachine
+    /// A task lives like a bot: only its machine can stop it.
+    case taskNeedsMachine
     case failed(String)
 }
 
@@ -60,14 +62,17 @@ public struct SessionActions: Sendable {
     /// comes back if the archive fails:
     ///   1. ask the session's CLI to stop (`killSession`);
     ///   2. if it can't be reached, mark the session inactive on the server.
-    /// A bot can only be stopped by its machine, so step 2 is skipped for it.
+    /// A bot or a task can only be stopped by its machine, so step 2 is
+    /// skipped for it.
     public func archive(sessionId: String) async throws {
         guard let session = try store.session(id: sessionId) else { throw SessionActionError.unknownSession }
         try store.setSessionArchiving(id: sessionId, true)
         do {
-            let killed = await kill(sessionId: sessionId)
+            // A task's machine may refuse its archive (only its owner may);
+            // the refusal is shown as it says it.
+            let killed = try await kill(sessionId: sessionId, reportsRefusal: session.isTask)
             if !killed {
-                if session.isBot { throw SessionActionError.botNeedsMachine }
+                if let refusal = Self.needsMachine(session) { throw refusal }
                 try await api.archiveSession(id: sessionId)
                 // The server tells every client with an `activity`
                 // ephemeral; apply it here too in case the socket is down.
@@ -82,9 +87,17 @@ public struct SessionActions: Sendable {
     /// Deletes a session and its messages for good.
     public func delete(sessionId: String) async throws {
         guard let session = try store.session(id: sessionId) else { throw SessionActionError.unknownSession }
-        if session.isBot { throw SessionActionError.botNeedsMachine }
+        if let refusal = Self.needsMachine(session) { throw refusal }
         try await api.deleteSession(id: sessionId)
         try await sync.presence.deleteSession(sessionId)
+    }
+
+    /// A bot or a task is one conversation for life: the server may neither
+    /// mark it inactive nor delete it; only its machine archives it.
+    static func needsMachine(_ session: SessionRecord) -> SessionActionError? {
+        if session.isBot { return .botNeedsMachine }
+        if session.isTask { return .taskNeedsMachine }
+        return nil
     }
 
     public func markRead(sessionId: String) {
@@ -166,14 +179,59 @@ public struct SessionActions: Sendable {
     }
 
     /// True when the CLI confirmed it stopped.
-    private func kill(sessionId: String) async -> Bool {
+    /// `reportsRefusal`: a machine that answered no throws its reason
+    /// (`{ error }`, as Happy Agent answers a handler that threw) instead of
+    /// reading as unreachable. The relay's own failures (`ok: false`: no
+    /// such method registered, target gone, timeout) still mean the machine
+    /// can't be reached.
+    private func kill(sessionId: String, reportsRefusal: Bool = false) async throws -> Bool {
+        let answer: JSONValue?
         do {
-            let answer = try await call(sessionId: sessionId, method: "killSession", params: .object([:]))
-            return answer?["success"]?.boolValue ?? false
+            answer = try await call(sessionId: sessionId, method: "killSession", params: .object([:]))
         } catch {
             return false
         }
+        if answer?["success"]?.boolValue == true { return true }
+        if reportsRefusal, let refusal = Self.refusal(answer) { throw SessionActionError.failed(refusal) }
+        return false
     }
+
+    /// What Happy Agent said when it refused: `error`, else `message`.
+    static func refusal(_ answer: JSONValue?) -> String? {
+        for key in ["error", "message"] {
+            if let text = answer?[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
+        }
+        return nil
+    }
+
+    /// Leaves a task: it goes from the paired person's list and their Happy
+    /// Agent retires its session from this account; the task runs on for
+    /// everyone else. Only `leaveTask`: never an archive or a delete. The
+    /// row leaves at once and comes back on any failure.
+    public func leaveTask(sessionId: String) async throws {
+        guard let session = try store.session(id: sessionId), session.isTask else { throw SessionActionError.unknownSession }
+        try store.setSessionArchiving(id: sessionId, true)
+        do {
+            let answer: JSONValue?
+            do {
+                answer = try await call(sessionId: sessionId, method: "leaveTask", params: .object([:]))
+            } catch SessionActionError.notDecryptable {
+                throw SessionActionError.notDecryptable
+            } catch {
+                throw SessionActionError.taskNeedsMachine
+            }
+            guard answer?["success"]?.boolValue == true else {
+                let refusal = Self.refusal(answer)
+                // An older Happy Agent that has no such method.
+                throw SessionActionError.failed(refusal == "Method not found" ? Self.cannotLeaveTasks : refusal ?? "")
+            }
+        } catch {
+            try? store.setSessionArchiving(id: sessionId, false)
+            throw error
+        }
+    }
+
+    static let cannotLeaveTasks = "Happy Agent on this computer cannot leave tasks yet. Update it and try again."
 
     /// A session RPC: params and result are sealed with the session's key.
     func call(sessionId: String, method: String, params: JSONValue) async throws -> JSONValue? {

@@ -29,6 +29,9 @@ public struct SessionAvatar: Equatable, Sendable {
     /// sessionUtils.ts `getSessionAvatarId`.
     public var seed: String
     public var isBot: Bool
+    /// A task has no face of its own: a glyph on the bot's disc, never a
+    /// generated avatar.
+    public var isTask: Bool
     /// The harness badge, when the setting asks for it.
     public var harness: Harness?
     public var image: AvatarImageSource?
@@ -40,9 +43,10 @@ public struct SessionAvatar: Equatable, Sendable {
         case rig
     }
 
-    public init(seed: String, isBot: Bool = false, harness: Harness? = nil, image: AvatarImageSource? = nil) {
+    public init(seed: String, isBot: Bool = false, isTask: Bool = false, harness: Harness? = nil, image: AvatarImageSource? = nil) {
         self.seed = seed
         self.isBot = isBot
+        self.isTask = isTask && !isBot
         self.harness = harness
         self.image = image
     }
@@ -93,6 +97,9 @@ public struct SessionRow: Equatable, Sendable {
     public var archived: Bool
     public var isBot: Bool
     public var showsDivider: Bool
+    /// A task whose machine takes `leaveTask`: its swipe leaves it. A task
+    /// without it doesn't swipe.
+    public var leaves: Bool = false
     /// Unsent text exists in this account's draft store.
     public var hasDraft: Bool = false
 }
@@ -157,7 +164,7 @@ public struct SessionList: Equatable, Sendable {
 
         var live: [SessionRecord] = []
         var archived: [SessionRecord] = []
-        for session in snapshot.sessions where session.metadata?["isSideChat"]?.boolValue != true {
+        for session in snapshot.sessions where session.metadata?["isSideChat"]?.boolValue != true && !session.isRetiredTask {
             if session.isArchived {
                 archived.append(session)
             } else {
@@ -266,6 +273,7 @@ public struct SessionList: Equatable, Sendable {
             avatar: SessionAvatar(
                 seed: session.avatarSeed,
                 isBot: session.isBot,
+                isTask: session.isTask,
                 harness: showFlavorIcons
                     ? SessionAvatar.harness(flavor: metadata?["flavor"]?.stringValue, clientId: metadata?["client"]?["id"]?.stringValue)
                     : nil,
@@ -279,7 +287,8 @@ public struct SessionList: Equatable, Sendable {
             faded: faded,
             archived: archived,
             isBot: session.isBot,
-            showsDivider: showsDivider
+            showsDivider: showsDivider,
+            leaves: session.canLeaveTask
         )
     }
 }
@@ -297,6 +306,13 @@ struct SessionPlace: Equatable {
         let metadata = session.metadata
         if session.isBot {
             projectName = "@" + (metadata?["bot"]?["username"]?.stringValue ?? "")
+            workspaceName = nil
+            return
+        }
+        if session.isTask {
+            // Happy Desktop's `displayPath` for a task: its folder under Tasks.
+            let folder = metadata?["task"]?["folderName"]?.stringValue
+            projectName = folder.map { "~/Tasks/" + $0 } ?? "~/Tasks"
             workspaceName = nil
             return
         }
@@ -366,6 +382,7 @@ extension SessionRecord {
     /// sessionUtils.ts `getSessionName`; nil reads "New chat".
     public var title: String? {
         if let name = metadata?["bot"]?["name"]?.stringValue { return name }
+        if isTask, let name = metadata?["task"]?["name"]?.stringValue { return name }
         if let summary = metadata?["summary"]?["text"]?.stringValue { return summary }
         return nil
     }
@@ -383,6 +400,11 @@ extension SessionRecord {
         let machineId = metadata?["machineId"]?.stringValue
         if let botId = metadata?["bot"]?["id"]?.stringValue {
             return "\(machineId ?? ""):bot:\(botId)"
+        }
+        // A task draws a glyph, not a face; this keeps its identity (and
+        // any picture its machine publishes) when its folder would move it.
+        if isTask, let taskId = metadata?["task"]?["id"]?.stringValue {
+            return "\(machineId ?? ""):task:\(taskId)"
         }
         if let machineId, let path = metadata?["path"]?.stringValue {
             return "\(machineId):\(path)"

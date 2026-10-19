@@ -257,7 +257,7 @@ final class HomeUltraListAdapter {
             }
             // As the table's long press: a flat session, or a project card
             // that can make a workspace.
-            let canHold = entry.tabletRow?.sessionId != nil || { if case .flat(.session)? = entry.row { return true }; if case .project(.project(let project))? = entry.row { return project.origin != nil }; return false }()
+            let canHold = entry.tabletRow?.sessionId != nil || { if case .flat(.session)? = entry.row { return true }; if case .project(.task)? = entry.row { return true }; if case .project(.project(let project))? = entry.row { return project.origin != nil }; return false }()
             let canSelect = entry.row?.sessionId != nil || entry.tabletRow?.sessionId != nil || {
                 switch entry.row {
                 case .flat(.archiveToggle)?, .project(.archiveToggle)?, .project(.worktreeToggle)?: return true
@@ -270,8 +270,12 @@ final class HomeUltraListAdapter {
                 }
             }()
             let archives: Bool
-            if case .flat(.session(let row))? = entry.row { archives = !row.archived }
+            // A task's swipe leaves it, as Happy Desktop's row control does.
+            var leaves = false
+            if case .flat(.session(let row))? = entry.row { leaves = row.avatar.isTask; archives = !row.archived && (!leaves || row.leaves) }
+            else if case .project(.task(let row))? = entry.row { archives = row.leaves; leaves = true }
             else if case .bot? = entry.tabletRow { archives = true }
+            else if case .task(let row)? = entry.tabletRow { archives = row.leaves; leaves = true }
             else if case .chat? = entry.tabletRow { archives = true }
             else { archives = false }
             var select: (@MainActor () -> Void)?
@@ -288,7 +292,7 @@ final class HomeUltraListAdapter {
             default: selectsOnRelease = false
             }
             return HomeUltraRow(identity: id.ultraIdentity, revision: entry.revision, plan: plan, selected: entry.selected, makeOverlay: overlay,
-                select: select, longPress: hold, archive: archive, createWorkspace: createWorkspace,
+                select: select, longPress: hold, archive: archive, leaves: leaves, createWorkspace: createWorkspace,
                 usesArchiveBitmap: entry.usesArchiveBitmap, archiveBitmap: entry.bitmap, selectsOnRelease: selectsOnRelease)
         }
         for id in prepared.input.ids {

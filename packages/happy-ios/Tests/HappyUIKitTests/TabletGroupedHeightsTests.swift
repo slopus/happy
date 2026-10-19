@@ -61,6 +61,8 @@ final class TabletGroupedHeightsTests: XCTestCase {
                     let section = TabletSectionHeaderCell(style: .default, reuseIdentifier: nil)
                     section.configure(Strings.Tablet.bots)
                     try check(section, .botsHeader)
+                    section.configure(Strings.Tasks.heading)
+                    try check(section, .tasksHeader)
                     section.configure(SessionListViewController.dayTitle(.daysAgo(3)))
                     try check(section, .archiveHeader(.daysAgo(3)))
 

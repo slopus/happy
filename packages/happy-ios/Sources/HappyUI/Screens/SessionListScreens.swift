@@ -118,9 +118,15 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
                 Alerts.show(Strings.Common.error, Strings.Home.actionUnknownError, on: self)
             }
             adapter.onArchive = { [weak self] id in
-                guard let self, self.context.account.session === self.session,
-                      case .flat(.session(let row))? = self.row(id), !row.archived else { return }
-                self.actions.archive(row.id)
+                guard let self, self.context.account.session === self.session else { return }
+                switch self.row(id) {
+                case .flat(.session(let row))? where !row.archived:
+                    if !row.avatar.isTask { self.actions.archive(row.id) } else if row.leaves { self.actions.leave(row.id) }
+                case .project(.task(let row))? where row.leaves:
+                    self.actions.leave(row.id)
+                default:
+                    break
+                }
             }
             adapter.onCreateWorkspace = { [weak self] id in
                 guard let self, self.context.account.session === self.session,
@@ -313,7 +319,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         switch item {
         case .project(.project): HomeRowHeights.projectCard(width: width)
         case .project(.worktree), .project(.worktreeToggle): HomeRowHeights.worktree(width: width)
-        case .project(.bot), .project(.archived): HomeRowHeights.projectChat(width: width)
+        case .project(.bot), .project(.task), .project(.archived): HomeRowHeights.projectChat(width: width)
         default: nil
         }
     }
@@ -342,10 +348,10 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         case .project(.machine(_, let name)):
             .machineHeader(name: name)
         case .project(.section(_, let label)):
-            .section(label: label == .bots ? Strings.Home.bots : Strings.Home.projects)
+            .section(label: Strings.Home.section(label))
         case .project(.archiveHeader(let age)):
             .section(label: dayTitle(age))
-        case .project(.project), .project(.worktree), .project(.worktreeToggle), .project(.bot), .project(.archived):
+        case .project(.project), .project(.worktree), .project(.worktreeToggle), .project(.bot), .project(.task), .project(.archived):
             nil
         }
     }
@@ -438,7 +444,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         case .project(.section), .project(.archiveHeader): ProjectSectionCell.reuseIdentifier
         case .project(.project): ProjectCardCell.reuseIdentifier
         case .project(.worktree), .project(.worktreeToggle): WorktreeCell.reuseIdentifier
-        case .project(.bot), .project(.archived): ProjectChatCell.reuseIdentifier
+        case .project(.bot), .project(.task), .project(.archived): ProjectChatCell.reuseIdentifier
         }
     }
 
@@ -462,7 +468,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         case .project(.machine(_, let name)):
             (cell as? ProjectMachineHeaderCell)?.configure(name: name)
         case .project(.section(_, let label)):
-            (cell as? ProjectSectionCell)?.configure(label == .bots ? Strings.Home.bots : Strings.Home.projects)
+            (cell as? ProjectSectionCell)?.configure(Strings.Home.section(label))
         case .project(.archiveHeader(let age)):
             (cell as? ProjectSectionCell)?.configure(Self.dayTitle(age))
         case .project(.project(let entry)):
@@ -473,7 +479,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
             (cell as? WorktreeCell)?.configure(worktree, last: last)
         case .project(.worktreeToggle(let toggle)):
             (cell as? WorktreeCell)?.configure(toggle)
-        case .project(.bot(let row)):
+        case .project(.bot(let row)), .project(.task(let row)):
             (cell as? ProjectChatCell)?.configure(row, archived: false, style: model.avatarStyle, monochrome: model.avatarMonochrome)
         case .project(.archived(let row)):
             (cell as? ProjectChatCell)?.configure(row, archived: true, style: model.avatarStyle, monochrome: model.avatarMonochrome)
@@ -678,7 +684,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
 
     private func hold(_ item: Item) {
         switch item {
-        case .flat(.session(let row)): actions.present(sessionId: row.id)
+        case .flat(.session(let row)), .project(.task(let row)): actions.present(sessionId: row.id)
         case .project(.project(let entry)): showProjectActions(entry)
         default: break
         }
@@ -706,16 +712,23 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     }
 
     /// FlatSessionRow.tsx's swipe: "Archive Session" on red. Only the flat
-    /// rows swipe.
+    /// rows swipe, and a task's rows, which leave it (Happy Desktop's row
+    /// control): archiving a task waits in its menu.
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        guard case .flat(.session(let row))? = item(at: indexPath),
-              !row.archived
-        else { return nil }
-        let action = UIContextualAction(style: .destructive, title: Strings.SessionInfo.archiveSession) { [weak self] _, _, done in
-            done(true)
-            self?.actions.archive(row.id)
+        let row: SessionRow
+        switch item(at: indexPath) {
+        case .flat(.session(let flat))? where !flat.archived: row = flat
+        case .project(.task(let task))?: row = task
+        default: return nil
         }
-        action.image = .icon(.ionicons("archive-outline"), size: 20)
+        let leaves = row.avatar.isTask
+        // A task whose machine can't take a leave doesn't swipe.
+        if leaves && !row.leaves { return nil }
+        let action = UIContextualAction(style: .destructive, title: leaves ? Strings.Tasks.leave : Strings.SessionInfo.archiveSession) { [weak self] _, _, done in
+            done(true)
+            if leaves { self?.actions.leave(row.id) } else { self?.actions.archive(row.id) }
+        }
+        action.image = .icon(.ionicons(leaves ? "exit-outline" : "archive-outline"), size: 20)
         action.backgroundColor = UIColor(Palette.statusError)
         let configuration = UISwipeActionsConfiguration(actions: [action])
         configuration.performsFirstActionWithFullSwipe = false
@@ -738,7 +751,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
         guard let indexPath = tableView.indexPathForRow(at: gesture.location(in: tableView)) else { return false }
         switch item(at: indexPath) {
-        case .flat(.session)?: return true
+        case .flat(.session)?, .project(.task)?: return true
         case .project(.project(let entry))?: return entry.origin != nil
         default: return false
         }

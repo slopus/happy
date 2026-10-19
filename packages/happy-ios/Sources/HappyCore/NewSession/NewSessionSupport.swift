@@ -20,13 +20,14 @@ public enum NewSessionPrimaryAction: String, Sendable {
 /// Pure labels and button states used while starting a session.
 public enum NewSessionProgress {
     /// Ports newSessionProgress.resolveNewSessionProgressLabel.
-    public static func label(phase: NewSessionStartPhase?, agentName: String, picksWorkspaces: Bool, createsBot: Bool = false) -> String? {
+    /// A task's words follow the bot's (happy-app has no tasks).
+    public static func label(phase: NewSessionStartPhase?, agentName: String, picksWorkspaces: Bool, createsBot: Bool = false, createsTask: Bool = false) -> String? {
         switch phase {
         case nil: return nil
         case .worktree: return picksWorkspaces ? "Creating workspace…" : "Creating worktree…"
-        case .spawning: return createsBot ? "Creating bot…" : "Starting \(agentName)…"
+        case .spawning: return createsBot ? "Creating bot…" : createsTask ? "Creating task…" : "Starting \(agentName)…"
         case .avatar: return "Putting on a face…"
-        case .opening: return createsBot ? "Opening bot…" : "Opening session…"
+        case .opening: return createsBot ? "Opening bot…" : createsTask ? "Opening task…" : "Opening session…"
         }
     }
 

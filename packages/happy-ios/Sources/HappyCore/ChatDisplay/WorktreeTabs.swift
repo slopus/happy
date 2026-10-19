@@ -108,7 +108,7 @@ public struct WorktreeCheckout: Equatable, Sendable {
 
             init?(_ session: SessionRecord) {
                 let metadata = session.metadata
-                guard metadata?["isSideChat"]?.boolValue != true, !session.isArchived, !session.isBot else { return nil }
+                guard metadata?["isSideChat"]?.boolValue != true, !session.isArchived, !session.isBot, !session.isTask else { return nil }
                 if session.isRig, let projectId = metadata?["project"]?["id"]?.stringValue {
                     project = .catalog(projectId)
                     checkoutId = Substring(metadata?["workspace"]?["id"]?.stringValue ?? "")

@@ -207,7 +207,8 @@ public enum SessionInfoDerivation {
             case .quickActions:
                 if before.git != after.git || before.machineId != after.machineId || before.resume != after.resume
                     || before.canFork != after.canFork || before.parentSessionId != after.parentSessionId
-                    || before.isBot != after.isBot || old.forking != new.forking {
+                    || before.keepsConversation != after.keepsConversation || before.canArchive != after.canArchive
+                    || before.canLeaveTask != after.canLeaveTask || old.forking != new.forking {
                     changes.rebuilt.insert(section)
                 }
             case .cliWarning:

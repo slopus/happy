@@ -10,6 +10,13 @@ public struct SessionInfoModel: Equatable, Sendable {
     public var title: String?
     public var isConnected: Bool
     public var isBot: Bool
+    public var isTask: Bool
+    /// A task the paired person may archive; every other session may be.
+    public var canArchive: Bool
+    /// A task the paired person may leave.
+    public var canLeaveTask: Bool
+    /// A bot or a task: archived, never deleted.
+    public var keepsConversation: Bool { isBot || isTask }
 
     // Quick Actions
     public var git: SessionDetails.GitPresentation
@@ -74,6 +81,9 @@ public struct SessionInfoModel: Equatable, Sendable {
         title = session.title
         isConnected = SessionState(session) != .disconnected
         isBot = session.isBot
+        isTask = session.isTask
+        canArchive = !session.isTask || session.taskCanArchive
+        canLeaveTask = session.canLeaveTask
 
         git = SessionDetails.gitPresentation(metadata, status: gitStatus)
         machineId = SessionDetails.truthy(metadata?["machineId"])

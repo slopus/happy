@@ -59,8 +59,9 @@ final class HomeSessionActions {
         )
         let alert = UIAlertController(title: Strings.Session.actionsTitle, message: nil, preferredStyle: .alert)
         for item in actions.items {
-            let style: UIAlertAction.Style = item == .archive ? .destructive : .default
-            alert.addAction(UIAlertAction(title: Self.title(item), style: style) { [weak self] _ in
+            let style: UIAlertAction.Style = item == .archive || item == .leaveTask ? .destructive : .default
+            let title = item == .archive && record.isTask ? Strings.Tasks.archive : Self.title(item)
+            alert.addAction(UIAlertAction(title: title, style: style) { [weak self] _ in
                 self?.run(item, record: record, actions: actions, settings: settings)
             })
         }
@@ -76,6 +77,7 @@ final class HomeSessionActions {
         case .duplicate: Strings.Home.duplicateAction
         case .copyMetadata: Strings.Home.copyMetadata
         case .copyMetadataAndLogs: Strings.Home.copyMetadataAndLogs
+        case .leaveTask: Strings.Tasks.leave
         case .archive: Strings.Session.archiveAction
         }
     }
@@ -99,6 +101,10 @@ final class HomeSessionActions {
             copy(SessionQuickActions.metadataText(record))
         case .copyMetadataAndLogs:
             copy(SessionQuickActions.metadataAndLogsText(record))
+        case .leaveTask:
+            let window = host?.view.window
+            onBeforeArchive?(record.id)
+            leave(record.id, in: window)
         case .archive:
             // Taken before the hook, which may swap this screen out.
             let window = host?.view.window
@@ -203,9 +209,34 @@ final class HomeSessionActions {
                 try await actions.archive(sessionId: sessionId)
             } catch {
                 guard let account, context.account.session === account, let front = Self.front(of: window) else { return }
-                let message = (error as? SessionActionError) == .botNeedsMachine
-                    ? Strings.SessionInfo.botNeedsMachine
-                    : Strings.SessionInfo.failedToArchiveSession
+                let message = switch error as? SessionActionError {
+                case .botNeedsMachine: Strings.SessionInfo.botNeedsMachine
+                case .taskNeedsMachine: Strings.Tasks.needsMachine
+                // A task's machine says why it won't (only its owner may).
+                case .failed(let reason) where !reason.isEmpty: reason
+                default: Strings.SessionInfo.failedToArchiveSession
+                }
+                Alerts.show(Strings.Common.error, message, on: front)
+            }
+        }
+    }
+
+    /// Leaves a task: out of this person's list, running on for the rest.
+    /// Shown as archive's failures are.
+    func leave(_ sessionId: String, in window: UIWindow? = nil) {
+        let actions = session.actions
+        let context = context
+        let window = window ?? host?.view.window
+        Task { @MainActor [weak window, weak account = self.session] in
+            do {
+                try await actions.leaveTask(sessionId: sessionId)
+            } catch {
+                guard let account, context.account.session === account, let front = Self.front(of: window) else { return }
+                let message = switch error as? SessionActionError {
+                case .taskNeedsMachine: Strings.Tasks.leaveNeedsMachine
+                case .failed(let reason) where !reason.isEmpty: reason
+                default: Strings.Tasks.failedToLeave
+                }
                 Alerts.show(Strings.Common.error, message, on: front)
             }
         }

@@ -196,7 +196,14 @@ final class HomeDockController: NSObject {
         let started = drafts.draft
         let composer = composer
         let attachments = picked.map(\.attachment)
-        guard let sessionId = await start({ await composer.launchPrepared(prompt: text, attachments: attachments) }) else { return false }
+        // A task takes the prompt as its first message, which names it; the
+        // composer goes back to offering a session once it is open.
+        let createsTask = drafts.createsTask
+        let launch = createsTask
+            ? { await composer.launchTaskPrepared(prompt: text, attachments: attachments) }
+            : { await composer.launchPrepared(prompt: text, attachments: attachments) }
+        guard let sessionId = await start(launch) else { return false }
+        if createsTask { drafts.setCreatesTask(false) }
         // Only what was sent is cleared: edits made while it ran stay. The
         // outbox holds its own copies of the pictures by now.
         if drafts.draft.input == started.input { drafts.setInput("") }
@@ -215,11 +222,12 @@ final class HomeDockController: NSObject {
         let composer = composer
         let started = composer.drafts.draft
         let bot = composer.drafts.bot
+        let createsTask = composer.drafts.createsTask
         launching = true
         render()
         let resolved = await resolve()
         launching = false
-        guard composer.isCurrentTarget(started, bot: bot) else {
+        guard composer.isCurrentTarget(started, bot: bot, createsTask: createsTask) else {
             render()
             return nil
         }
@@ -233,7 +241,7 @@ final class HomeDockController: NSObject {
             return nil
         }
         render()
-        guard let sessionId = await starter.start(launch, isCurrentTarget: { composer.isCurrentTarget(started, bot: bot) }) else {
+        guard let sessionId = await starter.start(launch, isCurrentTarget: { composer.isCurrentTarget(started, bot: bot, createsTask: createsTask) }) else {
             render()
             return nil
         }
@@ -247,10 +255,16 @@ final class HomeDockController: NSObject {
 
     // MARK: Bots
 
-    /// Session | Bot.
-    func setCreatesBot(_ value: Bool) {
+    /// Session | Bot | Task.
+    func setKind(_ kind: HomeDockKind) {
         guard !starter.isStarting else { return }
-        composer.drafts.setCreatesBot(value)
+        switch kind {
+        case .session:
+            composer.drafts.setCreatesBot(false)
+            composer.drafts.setCreatesTask(false)
+        case .bot: composer.drafts.setCreatesBot(true)
+        case .task: composer.drafts.setCreatesTask(true)
+        }
     }
 
     /// The name field, as typed: a pasted line break becomes a space and
@@ -352,9 +366,12 @@ final class HomeDockFocusViewController: UIViewController {
     private let backdrop = HomeDockBackdropView()
     private let dock = PassthroughView()
     private let rows = Row.allCases.map { _ in HomeDockRowView() }
-    /// Session | Bot, at the top over the backdrop, with the bot's lede.
+    /// Session | Bot | Task, at the top over the backdrop, with the bot's
+    /// lede.
     private let header = HomeDockRevealLineView(passesThrough: true)
     private let kindControl = UISegmentedControl(items: [Strings.Home.composerSession, Strings.Home.composerBot])
+    /// The segments `kindControl` holds, for the computer's Happy Agent.
+    private var offeredKinds: [HomeDockKind] = [.session, .bot]
     private let lede = StyledLabel(style: TextStyles.homeDockLede, color: Palette.textSecondary, lines: 0, alignment: .center)
     private let facesLine = HomeDockRevealLineView(passesThrough: false)
     private let facePicker = BotFacePickerView()
@@ -430,8 +447,8 @@ final class HomeDockFocusViewController: UIViewController {
 
         kindControl.accessibilityLabel = Strings.Home.composerKindLabel
         kindControl.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            self.controller?.setCreatesBot(self.kindControl.selectedSegmentIndex == 1)
+            guard let self, self.offeredKinds.indices.contains(self.kindControl.selectedSegmentIndex) else { return }
+            self.controller?.setKind(self.offeredKinds[self.kindControl.selectedSegmentIndex])
         }, for: .valueChanged)
         lede.string = Strings.Home.botLede
         header.addSubview(kindControl)
@@ -569,12 +586,21 @@ final class HomeDockFocusViewController: UIViewController {
         let choices = controller.composer.choices
         let drafts = controller.composer.drafts
         let createsBot = drafts.createsBot
+        let createsTask = drafts.createsTask
         let phase = controller.starter.phase
         let starting = phase != nil
 
-        header.isHidden = !choices.supportsBots
+        let kinds = HomeDockKind.offered(supportsBots: choices.supportsBots, supportsTasks: choices.supportsTasks)
+        if kinds != offeredKinds {
+            offeredKinds = kinds
+            kindControl.removeAllSegments()
+            for (index, kind) in kinds.enumerated() {
+                kindControl.insertSegment(withTitle: Strings.Home.composerKind(kind), at: index, animated: false)
+            }
+        }
+        header.isHidden = kinds.count < 2
         header.refusing = starting
-        kindControl.selectedSegmentIndex = createsBot ? 1 : 0
+        kindControl.selectedSegmentIndex = kinds.firstIndex(of: HomeDockKind.current(createsBot: createsBot, createsTask: createsTask)) ?? 0
         lede.isHidden = !createsBot
         facesLine.isHidden = !createsBot
         facesLine.refusing = starting
@@ -613,8 +639,9 @@ final class HomeDockFocusViewController: UIViewController {
         ]
         for row in Row.allCases {
             let view = rows[row.rawValue]
-            // A bot lives on a computer and nowhere else.
-            view.isHidden = createsBot && row != .machine
+            // A bot or a task lives on a computer and nowhere else; Happy
+            // Agent runs it.
+            view.isHidden = (createsBot || createsTask) && row != .machine
             view.value = values[row] ?? ""
             view.iconView.icon = .ionicons(icons[row] ?? "")
             view.refusing = starting
@@ -637,7 +664,8 @@ final class HomeDockFocusViewController: UIViewController {
             phase: phase,
             agentName: choices.currentAgent.name,
             picksWorkspaces: choices.picksWorkspaces,
-            createsBot: createsBot
+            createsBot: createsBot,
+            createsTask: createsTask
         )
         let primary = NewSessionProgress.primaryAction(canSubmit: controller.canSubmit, phase: phase, canCancel: true)
         progressLabel.string = label ?? ""
@@ -647,6 +675,8 @@ final class HomeDockFocusViewController: UIViewController {
 
         card.configuration = createsBot
             ? botCardConfiguration(choices, primary: primary, starting: starting)
+            : createsTask
+            ? taskCardConfiguration(primary: primary, starting: starting)
             : cardConfiguration(choices, primary: primary, starting: starting)
         textBlocker.isHidden = !starting
         view.setNeedsLayout()
@@ -726,6 +756,24 @@ final class HomeDockFocusViewController: UIViewController {
             primaryAccessibilityLabel: primary == .stop ? Strings.Composer.stop : Strings.Home.createBot,
             autocapitalization: .words,
             returnKey: .done,
+            primaryStyle: .newSession,
+            refusesControls: starting
+        )
+    }
+
+    /// The card for a task: its first message and pictures, which the
+    /// daemon names the task from. Happy Agent's own defaults run it, so
+    /// no modes show (the session's picks stay for the next session).
+    private func taskCardConfiguration(primary: NewSessionPrimaryAction, starting: Bool) -> AgentInputCardConfiguration {
+        let attachments = controller?.images.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) } ?? []
+        return AgentInputCardConfiguration(
+            placeholder: Strings.Tasks.placeholder,
+            showsAdd: true,
+            addAccessibilityLabel: Strings.Home.addImage,
+            attachments: attachments,
+            primaryAction: Self.action(primary),
+            isPrimaryBusy: primary == .busy,
+            primaryAccessibilityLabel: primary == .stop ? Strings.Composer.stop : Strings.Tasks.create,
             primaryStyle: .newSession,
             refusesControls: starting
         )
