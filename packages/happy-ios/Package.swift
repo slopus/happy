@@ -44,7 +44,7 @@ let package = Package(
         .package(url: "https://github.com/elevenlabs/elevenlabs-swift-sdk.git", exact: "3.4.0"),
         // Native Home and chat's optional renderer. Pin the pre-1.0 API used by
         // NodeRow and the custom keyframe scroller.
-        .package(url: "https://github.com/slopus/ultraview.git", revision: "d956de067d49022dcb9bca521c8d114df4aaae4c"),
+        .package(url: "https://github.com/slopus/ultraview.git", revision: "007316544874a8fec514e48261b5b19abfd087f2"),
         .package(url: "https://github.com/slopus/tailcat-swift.git", revision: "70a66d473b32e5c8217cf8652237d9848af4ce3e"),
     ],
     targets: [
