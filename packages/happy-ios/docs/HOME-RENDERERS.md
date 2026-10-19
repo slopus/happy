@@ -2,7 +2,7 @@
 
 The native app requires iOS 26. `Package.swift` and
 `project.yml` declare that minimum. UltraView is a direct, iOS-only SwiftPM
-dependency pinned to `38f14a2e230c333c5d26377ddb019697b5e48f41`; its pre-1.0
+dependency pinned to `d956de067d49022dcb9bca521c8d114df4aaae4c`; its pre-1.0
 API changes frequently. Portable core and layout code still supports Linux.
 The same dependency also powers the optional [chat renderer](CHAT-RENDERERS.md).
 
