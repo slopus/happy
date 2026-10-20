@@ -143,6 +143,18 @@ async function serve() {
     // Block until shutdown so the process stays alive.
     const { awaitShutdown } = await import("./utils/shutdown");
     await awaitShutdown();
+    // HARN-341: Prisma's PGlite adapter dispose() is a no-op, so nothing else ever closes
+    // PGlite - close it here (checkpoint + clean shutdown) after all handlers have drained.
+    // Bounded and guarded: a hang or throw in close() must never block the exit.
+    const { getPGlite } = await import("./storage/db");
+    try {
+        await Promise.race([
+            getPGlite()?.close(),
+            new Promise((resolve) => setTimeout(resolve, 5000)),
+        ]);
+    } catch (e) {
+        console.error("PGlite close failed:", e);
+    }
     process.exit(0);
 }
 
