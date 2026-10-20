@@ -233,6 +233,15 @@ export const zhHant: TranslationStructure = {
         enterToSend: 'Enter 鍵傳送',
         enterToSendEnabled: '按 Enter 傳送（Shift+Enter 換行）',
         enterToSendDisabled: 'Enter 鍵插入換行',
+        followUpBehavior: '後續訊息行為',
+        followUpBehaviorOptions: {
+            steer: 'Enter 引導，⌘↵ 排隊',
+            queue: 'Enter 排隊，⌘↵ 引導',
+            steerTouch: '傳送即引導，長按排隊',
+            queueTouch: '傳送即排隊，長按引導',
+            alwaysSteer: '一律引導',
+            alwaysQueue: '一律排隊',
+        },
         commandPalette: '命令面板',
         commandPaletteEnabled: '按 ⌘K 開啟',
         commandPaletteDisabled: '快速命令存取已停用',
@@ -456,6 +465,15 @@ export const zhHant: TranslationStructure = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: '引導',
+            queue: '排隊',
+            steerHint: ({ chord }: { chord: string }) => `引導 · ${chord} 排隊`,
+            queueHint: ({ chord }: { chord: string }) => `排隊 · ${chord} 引導`,
+            sendAsSteer: '以引導傳送',
+            sendAsQueue: '加入佇列傳送',
+        },
         permissionMode: {
             title: '權限模式',
             auto: '自行判斷，不確定時詢問',
@@ -946,6 +964,8 @@ export const zhHant: TranslationStructure = {
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         sentAsGoal: 'Sent as goal',
         sendsAfterThisTurn: 'Sends after this turn',
+        queued: '已排隊',
+        steering: '引導中',
         sending: 'Sending…',
         sendFailed: ({ reason }: { reason: string }) => `未傳送：${reason}`,
         unknownTime: '未知時間',

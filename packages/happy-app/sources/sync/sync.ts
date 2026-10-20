@@ -63,6 +63,7 @@ import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveControlHandoffDirection } from './controlHandoff';
 import { resolveMessageDeliveryMeta, resolveMessageModeMeta, UnsupportedPermissionModeError } from './messageMeta';
+import { resolveFollowUpDelivery, type FollowUpDelivery } from './followUpBehavior';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { encryptBlob } from '@/encryption/blob';
@@ -121,6 +122,8 @@ type SendMessageOptions = {
     onAccepted?: () => void;
     /** Re-check the composer's destination after asynchronous preparation. */
     isCurrent?: () => boolean;
+    /** A one-off Steer or Queue; otherwise the followUpBehavior setting's plain send. */
+    delivery?: FollowUpDelivery;
 };
 
 function sameBytes(a: Uint8Array | null | undefined, b: Uint8Array | null): boolean {
@@ -887,7 +890,12 @@ class Sync {
             },
             meta: {
                 sentFrom,
-                ...resolveMessageDeliveryMeta(sendingSession, source === 'new_session', hasPendingUserMessage),
+                ...resolveMessageDeliveryMeta(
+                    sendingSession,
+                    source === 'new_session',
+                    hasPendingUserMessage,
+                    options?.delivery ?? resolveFollowUpDelivery(storage.getState().settings.followUpBehavior, 'plain'),
+                ),
                 appendSystemPrompt: systemPrompt,
                 ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
                 ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),

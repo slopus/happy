@@ -218,6 +218,15 @@ export const ru: TranslationStructure = {
         enterToSend: 'Enter для отправки',
         enterToSendEnabled: 'Нажмите Enter для отправки (Shift+Enter для новой строки)',
         enterToSendDisabled: 'Enter вставляет новую строку',
+        followUpBehavior: 'Поведение уточнений',
+        followUpBehaviorOptions: {
+            steer: 'Enter направляет, ⌘↵ ставит в очередь',
+            queue: 'Enter ставит в очередь, ⌘↵ направляет',
+            steerTouch: '«Отправить» направляет, долгое нажатие — в очередь',
+            queueTouch: '«Отправить» ставит в очередь, долгое нажатие — направляет',
+            alwaysSteer: 'Всегда направлять',
+            alwaysQueue: 'Всегда в очередь',
+        },
         commandPalette: 'Command Palette',
         commandPaletteEnabled: 'Нажмите ⌘K для открытия',
         commandPaletteDisabled: 'Быстрый доступ к командам отключён',
@@ -472,6 +481,15 @@ export const ru: TranslationStructure = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: 'Направить',
+            queue: 'В очередь',
+            steerHint: ({ chord }: { chord: string }) => `Направить · ${chord} — в очередь`,
+            queueHint: ({ chord }: { chord: string }) => `В очередь · ${chord} — направить`,
+            sendAsSteer: 'Отправить как направление',
+            sendAsQueue: 'Отправить в очередь',
+        },
         permissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
             auto: 'решает сам, спрашивает при сомнении',
@@ -952,6 +970,8 @@ export const ru: TranslationStructure = {
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
         sentAsGoal: 'Отправлено в качестве цели',
         sendsAfterThisTurn: 'Будет отправлено после текущего ответа',
+        queued: 'В очереди',
+        steering: 'Направляется',
         sending: 'Отправка…',
         sendFailed: ({ reason }: { reason: string }) => `Не отправлено: ${reason}`,
         unknownTime: 'неизвестное время',

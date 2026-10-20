@@ -231,6 +231,15 @@ export const en = {
         enterToSend: 'Enter to Send',
         enterToSendEnabled: 'Press Enter to send (Shift+Enter for a new line)',
         enterToSendDisabled: 'Enter inserts a new line',
+        followUpBehavior: 'Follow-up behavior',
+        followUpBehaviorOptions: {
+            steer: 'Enter steers, ⌘↵ queues',
+            queue: 'Enter queues, ⌘↵ steers',
+            steerTouch: 'Send steers, long-press to queue',
+            queueTouch: 'Send queues, long-press to steer',
+            alwaysSteer: 'Always steer',
+            alwaysQueue: 'Always queue',
+        },
         commandPalette: 'Command Palette',
         commandPaletteEnabled: 'Press ⌘K to open',
         commandPaletteDisabled: 'Quick command access disabled',
@@ -479,6 +488,15 @@ export const en = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: 'Steer',
+            queue: 'Queue',
+            steerHint: ({ chord }: { chord: string }) => `Steer · ${chord} to queue`,
+            queueHint: ({ chord }: { chord: string }) => `Queue · ${chord} to steer`,
+            sendAsSteer: 'Send as Steer',
+            sendAsQueue: 'Send as Queue',
+        },
         permissionMode: {
             // Modes are named with one untranslated word so they fit the
             // composer chip; these strings describe them under that name.
@@ -1063,6 +1081,8 @@ export const en = {
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         sentAsGoal: 'Sent as goal',
         sendsAfterThisTurn: 'Sends after this turn',
+        queued: 'Queued',
+        steering: 'Steering',
         sending: 'Sending…',
         sendFailed: ({ reason }: { reason: string }) => `Not sent: ${reason}`,
         unknownTime: 'unknown time',

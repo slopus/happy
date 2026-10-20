@@ -234,6 +234,15 @@ export const zhHans: TranslationStructure = {
         enterToSend: '回车发送',
         enterToSendEnabled: '按回车发送（Shift+回车换行）',
         enterToSendDisabled: '回车换行',
+        followUpBehavior: '后续消息行为',
+        followUpBehaviorOptions: {
+            steer: 'Enter 引导，⌘↵ 排队',
+            queue: 'Enter 排队，⌘↵ 引导',
+            steerTouch: '发送即引导，长按排队',
+            queueTouch: '发送即排队，长按引导',
+            alwaysSteer: '始终引导',
+            alwaysQueue: '始终排队',
+        },
         commandPalette: '命令面板',
         commandPaletteEnabled: '按 ⌘K 打开',
         commandPaletteDisabled: '快速命令访问已禁用',
@@ -457,6 +466,15 @@ export const zhHans: TranslationStructure = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: '引导',
+            queue: '排队',
+            steerHint: ({ chord }: { chord: string }) => `引导 · ${chord} 排队`,
+            queueHint: ({ chord }: { chord: string }) => `排队 · ${chord} 引导`,
+            sendAsSteer: '作为引导发送',
+            sendAsQueue: '加入队列发送',
+        },
         permissionMode: {
             title: '权限模式',
             auto: '自行判断，不确定时询问',
@@ -947,6 +965,8 @@ export const zhHans: TranslationStructure = {
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         sentAsGoal: 'Sent as goal',
         sendsAfterThisTurn: 'Sends after this turn',
+        queued: '已排队',
+        steering: '引导中',
         sending: 'Sending…',
         sendFailed: ({ reason }: { reason: string }) => `未发送：${reason}`,
         unknownTime: '未知时间',

@@ -77,6 +77,7 @@ import {
     rigCanUseAttachments,
     rigCanUseShell,
 } from '@/sync/rig';
+import { resolveFollowUpDeliveries, rigSupportsFollowUpQueueing, type FollowUpDelivery } from '@/sync/followUpBehavior';
 import { RigActivityBar } from '@/components/RigActivityBar';
 import { AnimatedFade } from '@/components/AnimatedOverlay';
 
@@ -875,6 +876,14 @@ export function SessionViewLoaded({
     const sessionUsage = useSessionUsage(sessionId ?? '');
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
+    const followUpBehavior = useSetting('followUpBehavior');
+    // Only a running agent has a turn to steer into or wait behind, and only a
+    // daemon that reads the delivery should be offered the choice.
+    const followUpDeliveries = React.useMemo(() => (
+        session?.thinking && rigSupportsFollowUpQueueing(session.metadata)
+            ? resolveFollowUpDeliveries(followUpBehavior)
+            : undefined
+    ), [session?.thinking, session?.metadata, followUpBehavior]);
     const { canResume, resumeSession, resumingSession } = useSessionQuickActions(sessionOrMissing);
     const isDisconnected = !sessionStatus.isConnected;
     const resumeCommandBlock = session ? getResumeCommandBlock(session) : null;
@@ -948,7 +957,7 @@ export function SessionViewLoaded({
 
     // handleSend reads the live message via the composer ref, so it doesn't
     // need to re-create on every keystroke.
-    const handleSend = React.useCallback(() => {
+    const handleSend = React.useCallback((delivery?: FollowUpDelivery) => {
         const composer = composerHandleRef.current;
         if (!sessionId) {
             // Send, on a chat with nothing to send to yet. The text leaves the
@@ -977,6 +986,7 @@ export function SessionViewLoaded({
                     const accepted = await sync.sendMessage(sessionId, liveMessage, {
                         source: 'chat',
                         attachments,
+                        delivery,
                         awaitDelivery: communicationsToDismiss.length > 0,
                         onAccepted: () => {
                             if (currentSessionIdRef.current === sessionId) {
@@ -1184,6 +1194,7 @@ export function SessionViewLoaded({
                 connectionStatus={session ? connectionStatus : undefined}
                 blockSend={isRig && session?.thinking && session.metadata?.capabilities?.steering !== true}
                 onSend={handleSend}
+                followUpDeliveries={followUpDeliveries}
                 onMicPress={(embedded || isDisconnected) ? undefined : micButtonState.onMicPress}
                 isMicActive={(embedded || isDisconnected) ? false : micButtonState.isMicActive}
                 onAbort={!session || isDisconnected || !rigCanAbort(session.metadata) ? undefined : handleAbort}
