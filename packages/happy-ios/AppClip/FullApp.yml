@@ -4,6 +4,9 @@ include:
   - path: ../project.yml
     relativePaths: true
 name: HappyWithBotClip
+packages:
+  HappyIOS:
+    path: .
 targets:
   Happy:
     dependencies:
