@@ -343,6 +343,11 @@ export const SettingsView = React.memo(function SettingsView({
                     icon={<Ionicons name="options-outline" size={29} color="#5AC8FA" />}
                     onPress={() => router.push('/settings/agents' as any)}
                 />
+                <Item
+                    title={t('settingsProxy.title')}
+                    icon={<Ionicons name="globe-outline" size={29} color="#8E8E93" />}
+                    onPress={() => router.push('/settings/proxy' as any)}
+                />
                 {experiments && (
                     <Item
                         title={t('settings.usage')}

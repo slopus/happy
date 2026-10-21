@@ -176,6 +176,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="settings/proxy"
+                options={{
+                    headerTitle: t('settingsProxy.title'),
+                }}
+            />
+            <Stack.Screen
                 name="terminal/connect"
                 options={{
                     headerTitle: t('navigation.connectTerminal'),
