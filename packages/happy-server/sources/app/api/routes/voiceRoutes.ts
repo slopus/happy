@@ -32,11 +32,11 @@ async function getVoiceUsage(
     elevenLabsApiKey: string,
     elevenUserId: string,
 ): Promise<{ usedSeconds: number; conversationCount: number }> {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400 * 1000).toISOString();
+    const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 86400;
 
     // Query across all agents — usage is per-user, not per-agent
     const res = await fetch(
-        `${ELEVEN_LABS_API}/conversations?user_id=${elevenUserId}&created_after=${thirtyDaysAgo}&page_size=100`,
+        `${ELEVEN_LABS_API}/conversations?user_id=${elevenUserId}&call_start_after_unix=${thirtyDaysAgo}&page_size=100`,
         { headers: { "xi-api-key": elevenLabsApiKey } }
     );
 

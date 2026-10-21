@@ -92,9 +92,11 @@ describe("voiceRoutes", () => {
         expect(usageUrl.pathname).toBe("/v1/convai/conversations");
         expect(usageUrl.searchParams.get("user_id")).toBe(elevenUserId);
         expect(usageUrl.searchParams.get("page_size")).toBe("100");
-        const windowStart = Date.parse(usageUrl.searchParams.get("created_after")!);
-        expect(windowStart).toBeGreaterThanOrEqual(requestStartedAt - 30 * 86400 * 1000);
-        expect(windowStart).toBeLessThanOrEqual(Date.now() - 30 * 86400 * 1000);
+        expect(usageUrl.searchParams.has("created_after")).toBe(false);
+        const windowStart = Number(usageUrl.searchParams.get("call_start_after_unix"));
+        expect(Number.isInteger(windowStart)).toBe(true);
+        expect(windowStart).toBeGreaterThanOrEqual(Math.floor(requestStartedAt / 1000) - 30 * 86400);
+        expect(windowStart).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) - 30 * 86400);
         expect(fetchMock).toHaveBeenNthCalledWith(2,
             `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${agentId}&participant_name=${elevenUserId}`,
             { headers: { "xi-api-key": "test-elevenlabs-key" } },
@@ -232,5 +234,51 @@ describe("voiceRoutes", () => {
             elevenUserId,
         });
         expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("excludes expired conversations from both usage and eligibility", async () => {
+        const now = Date.now();
+        vi.spyOn(Date, "now").mockReturnValue(now);
+        const windowStart = Math.floor(now / 1000) - 30 * 86400;
+        // Emulate the provider's documented date filter. Unknown query parameters
+        // (including the old created_after) leave the expired history included.
+        const history = Array.from({ length: 100 }, () => ({
+            start_time_unix_secs: windowStart - 1,
+            call_duration_secs: 300,
+        }));
+        history.push({ start_time_unix_secs: windowStart + 1, call_duration_secs: 60 });
+        fetchMock.mockImplementation(async (input) => {
+            const url = new URL(String(input));
+            if (url.pathname === "/v1/convai/conversation/token") {
+                return Response.json({ token: conversationToken });
+            }
+            const after = Number(url.searchParams.get("call_start_after_unix") ?? 0);
+            return Response.json({
+                conversations: history.filter(c => c.start_time_unix_secs > after).slice(0, 100),
+            });
+        });
+
+        try {
+            const usage = await app.inject({
+                method: "GET",
+                url: "/v1/voice/usage",
+                headers: { "x-user-id": userId },
+            });
+            expect(usage.statusCode).toBe(200);
+            expect(VoiceUsageResponseSchema.parse(usage.json())).toMatchObject({
+                usedSeconds: 60,
+                conversationCount: 1,
+            });
+
+            const response = await requestConversation();
+            expect(response.statusCode).toBe(200);
+            expect(VoiceConversationResponseSchema.parse(response.json())).toMatchObject({
+                allowed: true,
+                usedSeconds: 60,
+                conversationToken,
+            });
+        } finally {
+            vi.restoreAllMocks();
+        }
     });
 });
