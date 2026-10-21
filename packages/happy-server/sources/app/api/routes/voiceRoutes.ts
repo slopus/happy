@@ -6,7 +6,7 @@ import { log } from "@/utils/log";
 
 const VOICE_FREE_LIMIT_SECONDS = 1200;  // 20 minutes free tier per 30 days (~$0.76 cost)
 const VOICE_HARD_LIMIT_SECONDS = 18000; // 5 hours absolute cap per 30 days (even with subscription)
-const VOICE_MAX_CONVERSATIONS = 100;    // Max conversations trackable per 30 days (ElevenLabs page_size limit)
+const VOICE_USAGE_PAGE_SIZE = 100;     // ElevenLabs maximum page size, not a conversation quota
 const ELEVEN_LABS_API = "https://api.elevenlabs.io/v1/convai";
 
 function deriveElevenUserId(happyUserId: string): string {
@@ -26,7 +26,8 @@ function deriveElevenUserId(happyUserId: string): string {
  * Queries ElevenLabs directly by user_id (set via participant_name on token mint).
  * ElevenLabs is the source of truth — no local DB needed.
  *
- * Returns { usedSeconds, conversationCount }.
+ * Returns { usedSeconds, conversationCount }, stopping once the hard duration
+ * quota is reached. Above that quota, these are lower bounds on monthly usage.
  */
 async function getVoiceUsage(
     elevenLabsApiKey: string,
@@ -34,27 +35,57 @@ async function getVoiceUsage(
 ): Promise<{ usedSeconds: number; conversationCount: number }> {
     const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 86400;
 
-    // Query across all agents — usage is per-user, not per-agent
-    const res = await fetch(
-        `${ELEVEN_LABS_API}/conversations?user_id=${elevenUserId}&call_start_after_unix=${thirtyDaysAgo}&page_size=100`,
-        { headers: { "xi-api-key": elevenLabsApiKey } }
-    );
-
-    if (!res.ok) {
-        log({ module: 'voice' }, `ElevenLabs conversations query failed: ${res.status}`);
-        return { usedSeconds: 0, conversationCount: 0 };
-    }
-
-    const data = (await res.json()) as {
-        conversations?: Array<{ call_duration_secs: number }>;
-    };
-
-    const conversations = data.conversations || [];
     let usedSeconds = 0;
-    for (const c of conversations) {
-        usedSeconds += c.call_duration_secs ?? 0;
-    }
-    return { usedSeconds, conversationCount: conversations.length };
+    let conversationCount = 0;
+    let cursor: string | undefined;
+    const seenCursors = new Set<string>();
+    const signal = AbortSignal.timeout(15_000);
+
+    do {
+        // Query across all agents — usage is per-user, not per-agent.
+        const query = new URLSearchParams({
+            user_id: elevenUserId,
+            call_start_after_unix: String(thirtyDaysAgo),
+            page_size: String(VOICE_USAGE_PAGE_SIZE),
+        });
+        if (cursor) query.set("cursor", cursor);
+        const res = await fetch(`${ELEVEN_LABS_API}/conversations?${query}`, {
+            headers: { "xi-api-key": elevenLabsApiKey },
+            // Bridge the conflicting Node 20/undici AbortSignal declarations,
+            // as in pushSend; at runtime these refer to the same native signal.
+            signal: signal as unknown as RequestInit['signal'],
+        });
+        if (!res.ok) {
+            throw new Error(`ElevenLabs conversations query failed: ${res.status}`);
+        }
+
+        const data = (await res.json()) as {
+            conversations?: Array<{ call_duration_secs?: number | null }>;
+            has_more?: boolean;
+            next_cursor?: string | null;
+        };
+        if (!Array.isArray(data.conversations) || typeof data.has_more !== "boolean") {
+            throw new Error("Invalid ElevenLabs conversation history");
+        }
+        for (const conversation of data.conversations) {
+            const duration = conversation.call_duration_secs ?? 0;
+            if (!Number.isFinite(duration) || duration < 0) {
+                throw new Error("Invalid ElevenLabs conversation duration");
+            }
+            usedSeconds += duration;
+        }
+        conversationCount += data.conversations.length;
+
+        // Once the actual duration quota is reached, further history cannot allow voice.
+        if (usedSeconds >= VOICE_HARD_LIMIT_SECONDS || !data.has_more) break;
+        if (!data.next_cursor || typeof data.next_cursor !== "string" || seenCursors.has(data.next_cursor)) {
+            throw new Error("Invalid ElevenLabs conversation history cursor");
+        }
+        seenCursors.add(data.next_cursor);
+        cursor = data.next_cursor;
+    } while (cursor);
+
+    return { usedSeconds, conversationCount };
 }
 
 async function hasActiveSubscription(userId: string): Promise<boolean> {
@@ -107,19 +138,15 @@ export function voiceRoutes(app: Fastify) {
         const elevenUserId = deriveElevenUserId(userId);
 
         // Check usage from ElevenLabs directly
-        const { usedSeconds, conversationCount } = await getVoiceUsage(elevenLabsApiKey, elevenUserId);
-        log({ module: 'voice' }, `User ${userId}: ${usedSeconds}s used, ${conversationCount} convos (free=${VOICE_FREE_LIMIT_SECONDS}s, hard=${VOICE_HARD_LIMIT_SECONDS}s)`);
-
-        // Conversation count cap — we can only track 100 per query (ElevenLabs page_size limit)
-        if (conversationCount >= VOICE_MAX_CONVERSATIONS) {
-            return reply.send({
-                allowed: false as const,
-                reason: 'voice_conversation_limit_reached' as const,
-                usedSeconds,
-                limitSeconds: VOICE_HARD_LIMIT_SECONDS,
-                agentId,
-            });
+        let usage: Awaited<ReturnType<typeof getVoiceUsage>>;
+        try {
+            usage = await getVoiceUsage(elevenLabsApiKey, elevenUserId);
+        } catch (error) {
+            log({ module: 'voice' }, `Failed to get voice usage for user ${userId}: ${error}`);
+            return reply.code(500).send({ error: 'Failed to get voice usage' });
         }
+        const { usedSeconds, conversationCount } = usage;
+        log({ module: 'voice' }, `User ${userId}: ${usedSeconds}s used, ${conversationCount} convos (free=${VOICE_FREE_LIMIT_SECONDS}s, hard=${VOICE_HARD_LIMIT_SECONDS}s)`);
 
         // Hard cap — 5 hours, no exceptions
         if (usedSeconds >= VOICE_HARD_LIMIT_SECONDS) {
@@ -217,7 +244,8 @@ export function voiceRoutes(app: Fastify) {
                 usedSeconds,
                 limitSeconds: subscribed ? VOICE_HARD_LIMIT_SECONDS : VOICE_FREE_LIMIT_SECONDS,
                 conversationCount,
-                conversationLimit: VOICE_MAX_CONVERSATIONS,
+                // Legacy display field required by shipped clients; page size no longer gates voice.
+                conversationLimit: VOICE_USAGE_PAGE_SIZE,
                 elevenUserId,
             });
         } catch (error) {

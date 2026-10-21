@@ -50,9 +50,11 @@ describe("voiceRoutes", () => {
         vi.unstubAllEnvs();
     });
 
-    function mockUsage(durations: number[]) {
+    function mockUsage(durations: number[], nextCursor?: string) {
         fetchMock.mockResolvedValueOnce(Response.json({
             conversations: durations.map(call_duration_secs => ({ call_duration_secs })),
+            has_more: nextCursor !== undefined,
+            next_cursor: nextCursor ?? null,
         }));
     }
 
@@ -153,21 +155,24 @@ describe("voiceRoutes", () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it.each([undefined, "test-revenuecat-key"])("enforces the conversation cap with RevenueCat key %s", async (key) => {
+    it.each([undefined, "test-revenuecat-key"])("allows a full history page below the free limit with RevenueCat key %s", async (key) => {
         vi.stubEnv("REVENUECAT_API_KEY", key);
         mockUsage(Array.from({ length: 100 }, () => 1));
+        mockToken();
 
         const response = await requestConversation();
 
         expect(response.statusCode).toBe(200);
         expect(VoiceConversationResponseSchema.parse(response.json())).toEqual({
-            allowed: false,
-            reason: "voice_conversation_limit_reached",
+            allowed: true,
+            conversationToken,
+            conversationId: "conv_test123",
+            elevenUserId,
             usedSeconds: 100,
-            limitSeconds: 18000,
+            limitSeconds: 1200,
             agentId,
         });
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     it("allows an active subscription above the free limit when RevenueCat is configured", async () => {
@@ -255,6 +260,7 @@ describe("voiceRoutes", () => {
             const after = Number(url.searchParams.get("call_start_after_unix") ?? 0);
             return Response.json({
                 conversations: history.filter(c => c.start_time_unix_secs > after).slice(0, 100),
+                has_more: false,
             });
         });
 
@@ -280,5 +286,124 @@ describe("voiceRoutes", () => {
         } finally {
             vi.restoreAllMocks();
         }
+    });
+
+    it.each([true, false])("accounts for 101 recent conversations before checking subscription (active=%s)", async (subscribed) => {
+        vi.stubEnv("REVENUECAT_API_KEY", "test-revenuecat-key");
+        mockUsage(Array.from({ length: 100 }, () => 88), "page+/2=");
+        mockUsage([2]);
+        fetchMock.mockResolvedValueOnce(Response.json({ items: subscribed ? [{ entitlement_id: "voice" }] : [] }));
+        if (subscribed) mockToken();
+
+        const response = await requestConversation();
+
+        expect(response.statusCode).toBe(200);
+        expect(VoiceConversationResponseSchema.parse(response.json())).toMatchObject({
+            allowed: subscribed,
+            usedSeconds: 8802,
+            limitSeconds: subscribed ? 18000 : 1200,
+            ...(subscribed ? { conversationToken } : { reason: "subscription_required" }),
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(subscribed ? 4 : 3);
+        const firstPage = new URL(String(fetchMock.mock.calls[0][0]));
+        const secondPage = new URL(String(fetchMock.mock.calls[1][0]));
+        expect(firstPage.searchParams.has("cursor")).toBe(false);
+        expect(secondPage.searchParams.get("cursor")).toBe("page+/2=");
+        for (const key of ["user_id", "call_start_after_unix", "page_size"]) {
+            expect(secondPage.searchParams.get(key)).toBe(firstPage.searchParams.get(key));
+        }
+        expect(fetchMock.mock.calls[1][1]?.signal).toBe(fetchMock.mock.calls[0][1]?.signal);
+        expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it("reports total duration and conversation count across history pages", async () => {
+        mockUsage(Array.from({ length: 100 }, () => 1), "page-2");
+        mockUsage([10, 20], "page-3");
+        mockUsage([30]);
+
+        const response = await app.inject({
+            method: "GET",
+            url: "/v1/voice/usage",
+            headers: { "x-user-id": userId },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(VoiceUsageResponseSchema.parse(response.json())).toMatchObject({
+            usedSeconds: 160,
+            conversationCount: 103,
+            conversationLimit: 100, // Legacy display compatibility; never gates voice.
+        });
+        expect(new URL(String(fetchMock.mock.calls[2][0])).searchParams.get("cursor")).toBe("page-3");
+    });
+
+    it("stops fetching history once a later page reaches the actual hard duration limit", async () => {
+        vi.stubEnv("REVENUECAT_API_KEY", "test-revenuecat-key");
+        mockUsage([17900], "page-2");
+        mockUsage([100], "page-3");
+
+        const response = await requestConversation();
+
+        expect(response.statusCode).toBe(200);
+        expect(VoiceConversationResponseSchema.parse(response.json())).toMatchObject({
+            allowed: false,
+            reason: "voice_hard_limit_reached",
+            usedSeconds: 18000,
+            limitSeconds: 18000,
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(2); // No further page, subscription request, or token.
+    });
+
+    it.each([false, true])("fails safely when a provider history request fails (later page=%s)", async (laterPage) => {
+        if (laterPage) mockUsage([60], "page-2");
+        fetchMock.mockResolvedValueOnce(Response.json({}, { status: 503 }));
+
+        const response = await requestConversation();
+
+        expect(response.statusCode).toBe(500);
+        expect(response.json()).toEqual({ error: "Failed to get voice usage" });
+        expect(fetchMock).toHaveBeenCalledTimes(laterPage ? 2 : 1);
+    });
+
+    it.each([
+        { conversations: [], has_more: true },
+        { conversations: [], has_more: true, next_cursor: "" },
+        { conversations: [], has_more: true, next_cursor: 42 },
+        { conversations: [] },
+        { has_more: false },
+        { conversations: [{ call_duration_secs: -1 }], has_more: false },
+    ])("fails safely on malformed provider history: %j", async (body) => {
+        fetchMock.mockResolvedValueOnce(Response.json(body));
+
+        const response = await requestConversation();
+
+        expect(response.statusCode).toBe(500);
+        expect(response.json()).toEqual({ error: "Failed to get voice usage" });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects a repeating cursor without issuing a token or looping", async () => {
+        mockUsage([60], "repeat");
+        mockUsage([60], "repeat");
+
+        const response = await requestConversation();
+
+        expect(response.statusCode).toBe(500);
+        expect(response.json()).toEqual({ error: "Failed to get voice usage" });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not report partial usage after a later provider timeout", async () => {
+        mockUsage([60], "page-2");
+        fetchMock.mockRejectedValueOnce(new DOMException("History request timed out", "TimeoutError"));
+
+        const response = await app.inject({
+            method: "GET",
+            url: "/v1/voice/usage",
+            headers: { "x-user-id": userId },
+        });
+
+        expect(response.statusCode).toBe(500);
+        expect(response.json()).toEqual({ error: "Failed to get voice usage" });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 });
