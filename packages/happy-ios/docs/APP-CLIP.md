@@ -2,7 +2,7 @@
 
 The guest screen is UIKit shared by the App Clip and the installed native app.
 It has no owner authentication, account store, file access, tool approval, or
-owner RPC client. The Clip compiles only the guest sources and one pure layout;
+owner RPC client. The Clip compiles only the guest sources and one pure layout.
 It links only Apple frameworks, including AppClip, Foundation, UIKit, Security,
 and CryptoKit.
 
@@ -34,7 +34,9 @@ App IDs and profiles; a wildcard profile cannot sign a Clip. The Clip's domain
 service is `appclips:app.happy.engineering`, and the parent's is
 `applinks:app.happy.engineering`. No App Group or credential migration is
 configured. A session redeemed in the Clip does not migrate to the newly
-installed parent in v1; reusing that invitation in the parent can return 409.
+installed parent in v1. Opening that invitation and joining in the installed
+app takes a second seat because its Keychain is separate. Owners should size
+the link's member limit with that in mind.
 
 ## Invocation and guest capabilities
 
@@ -45,6 +47,18 @@ Cold and warm browsing-web `NSUserActivity` delivery use the same parser.
 Reopening the same invitation resumes its stored session without re-redeeming.
 The debug `_XCAppClipURL` fallback runs only when no actual invocation arrived.
 
+A new guest sees one screen: "Join a Happy bot", "Your name", and Join. There
+is no public preview endpoint; opening this screen does not claim a seat. The
+same shared screen runs in the installed app. Existing sessions and pending
+joins skip name entry. The composer shows "Message as <name>" after joining.
+
+Names normalize to NFC, collapse spaces, and trim, then require 1–40 grapheme
+clusters. Allowed characters are Unicode letters, marks and numbers, spaces,
+`. ' - _` and the right curly apostrophe U+2019. Control/format/private/
+unassigned characters, line/paragraph separators, leading combining marks,
+and more than four combining marks per grapheme are rejected. A clear error
+keeps the guest on name entry. Names are never logged by guest code.
+
 All credentials use the app's default Keychain access group, service
 `happy-ios:bot-guest`, account `scoped-sessions`, with
 `AfterFirstUnlockThisDeviceOnly` accessibility. They never use the owner's
@@ -54,12 +68,14 @@ active invitation. It also securely stores a pending message and its stable
 localId until acknowledgment.
 
 Before the first redeem reaches the network, the Keychain stores the pending
-invitation and a 32-byte random base64url nonce. One actor-owned task per
+invitation, chosen name, and a 32-byte random base64url nonce. One actor-owned task per
 invitation completes the handshake even if its presenting view is dismissed
 or backgrounded. Repeated requests with the same nonce recover the session
 after a lost response. The returned credentials replace the pending invitation
 and nonce atomically. Launch without an invocation restores either the scoped
 session or the pending handshake. No guest capability is logged by this code.
+The saved name stays fixed during recovery. Only a bridge `400 invalid_name`,
+guaranteed to precede any seat claim, allows correction with the same nonce.
 Expiration, revocation, and Leave remove the current guest's stored session.
 Sessions more than 24 hours beyond their expiry are pruned from the registry.
 
@@ -67,8 +83,9 @@ Sessions more than 24 hours beyond their expiry are pruned from the registry.
 
 The invocation HTTPS origin must host or reverse-proxy the invitation bridge:
 
-- `POST /v1/bot-invites/redeem` with `{token, redeemNonce}` returns
-  `{sessionId, sessionToken, botName, expiresAt, readOnly}`. Timestamps are Unix
+- `POST /v1/bot-invites/redeem` with `{token, redeemNonce, displayName}` returns
+  `{sessionId, sessionToken, botName, expiresAt, readOnly, displayName, memberId}`.
+  Timestamps are Unix
   milliseconds. A nonce is 43 base64url characters from 32 random bytes.
 - `GET /v1/bot-guest/sessions/<sessionId>/messages?wait=25&after=<cursor>` uses
   the scoped bearer token. It returns `{messages, cursor, status}`, where each
@@ -83,7 +100,12 @@ The invocation HTTPS origin must host or reverse-proxy the invitation bridge:
   Leave; Leave wipes locally after the block succeeds.
 
 401/404 end unavailable or revoked access; 410 ends expired access; 409 on
-redeem means another nonce already used the invite. 403 on send makes the
+redeem retains legacy already-used handling. `410 invite_full` is a distinct
+terminal "no free seats" state; other 410 responses mean expired. Full,
+expired and revoked redemption remove the saved pending capability. A link
+admits its configured number of distinct nonces, each with a private session;
+the same nonce recovers its existing member even when all seats are occupied.
+403 on send makes the
 screen read only while preserving its transcript and polling. 429 and 503 are
 retryable and respect Retry-After. Ordinary network failures retry with capped
 exponential backoff. There is one client poll at a time; request timeout is 35
@@ -130,6 +152,11 @@ access-control change. Invoke the Clip with a real invitation and local bridge
 origin, then run `HappyBotClipLive` for an actual model reply, keyboard clearance,
 and process-relaunch restore. `HappyBotClipReadOnly` checks a separately invoked
 read-only invitation. Neither live scheme contains an invitation credential.
+The live scheme also has `testNamedMemberAda`, `testNamedMemberGrace`, and
+`testInviteHasNoFreeSeats`. Run them individually on three isolated simulators
+invoked with one two-seat link. They cover name entry, separate actual model
+replies, restore without onboarding, and the third member's full state. Named
+live tests use the debug bridge origin `http://127.0.0.1:17892`.
 
 ## Distribution and remaining work
 

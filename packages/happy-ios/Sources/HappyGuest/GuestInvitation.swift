@@ -32,6 +32,7 @@ public struct GuestSession: Codable, Sendable {
     public let sessionId: String
     public let sessionToken: String
     public let botName: String
+    public let displayName: String?
     /// Unix milliseconds, matching the Happy API.
     public let expiresAt: Double
     public let readOnly: Bool
@@ -53,6 +54,35 @@ public struct GuestMessages: Decodable, Sendable {
 }
 
 public enum GuestError: Error, Equatable, Sendable {
-    case expired, revoked, alreadyRedeemed, readOnly, unavailable, invalidResponse
+    case expired, revoked, alreadyRedeemed, inviteFull, invalidName, readOnly, unavailable, invalidResponse
     case retryAfter(Double)
+}
+
+public enum GuestDisplayName {
+    public static func normalized(_ value: String) -> String? {
+        let normalized = value.precomposedStringWithCanonicalMapping
+        for scalar in normalized.unicodeScalars {
+            switch scalar.properties.generalCategory {
+            case .control, .format, .surrogate, .privateUse, .unassigned, .lineSeparator, .paragraphSeparator: return nil
+            default: break
+            }
+        }
+        let name = normalized.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        guard (1...40).contains(name.count) else { return nil }
+        for character in name {
+            var marks = 0
+            for (index, scalar) in character.unicodeScalars.enumerated() {
+                switch scalar.properties.generalCategory {
+                case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
+                     .decimalNumber, .letterNumber, .otherNumber: break
+                case .nonspacingMark, .spacingMark, .enclosingMark:
+                    marks += 1
+                    if index == 0 || marks > 4 { return nil }
+                default:
+                    guard " .'-_’".unicodeScalars.contains(scalar) else { return nil }
+                }
+            }
+        }
+        return name
+    }
 }

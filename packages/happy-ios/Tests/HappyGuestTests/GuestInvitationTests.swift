@@ -4,6 +4,21 @@ import XCTest
 #endif
 
 final class GuestInvitationTests: XCTestCase {
+    func testDisplayNameNormalizationAndValidation() {
+        let examples: [(String, String?)] = [
+            ("Ada Lovelace", "Ada Lovelace"), ("Zoë", "Zoë"), ("Zoe\u{0308}", "Zoë"),
+            ("  Ada   Lovelace  ", "Ada Lovelace"), ("O’Connor", "O’Connor"),
+            ("Jean-Luc_2.", "Jean-Luc_2."), ("李 明", "李 明"),
+            ("", nil), ("   ", nil), (String(repeating: "a", count: 41), nil),
+            ("Ada\nLovelace", nil), ("Ada\u{202E}", nil), ("Ada\u{200B}", nil),
+            ("Ada\u{E0041}", nil), ("Ada\u{2028}Lovelace", nil),
+            ("<Ada>", nil), ("Ada🙂", nil), ("\u{0301}Ada", nil),
+            ("a\u{0301}\u{0302}\u{0303}\u{0304}\u{0305}\u{0306}", nil),
+        ]
+        for (input, expected) in examples { XCTAssertEqual(GuestDisplayName.normalized(input), expected) }
+        XCTAssertEqual(GuestDisplayName.normalized(String(repeating: "Zoë", count: 13))?.count, 39)
+    }
+
     func testOnlyTrustedHTTPSInvitationCapabilitiesAreAccepted() throws {
         let token = "abcdefghijklmnop_123-456"
         let invitation = try XCTUnwrap(GuestInvitation(url: URL(string: "https://app.happy.engineering/bot/invite/\(token)")!))

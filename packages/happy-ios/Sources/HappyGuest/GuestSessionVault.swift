@@ -10,13 +10,15 @@ public struct StoredGuestSession: Codable, Sendable {
     public let origin: URL
     public let invitationID: String
     public let session: GuestSession
+    public let displayName: String?
     public var pending: GuestPendingMessage?
     public var readOnlyOverride: Bool?
 
-    public init(origin: URL, invitationID: String, session: GuestSession, pending: GuestPendingMessage? = nil) {
+    public init(origin: URL, invitationID: String, session: GuestSession, pending: GuestPendingMessage? = nil, displayName: String? = nil) {
         self.origin = origin
         self.invitationID = invitationID
         self.session = session
+        self.displayName = displayName
         self.pending = pending
         self.readOnlyOverride = nil
     }
@@ -26,6 +28,8 @@ public struct PendingGuestRedemption: Codable, Sendable {
     public let invitationURL: URL
     public let origin: URL
     public let redeemNonce: String
+    public let displayName: String?
+    public var nameRejected: Bool? = nil
 }
 
 public protocol GuestSecretStorage: Sendable {
@@ -57,9 +61,9 @@ public actor GuestSessionVault {
         return registry.sessions[id]
     }
 
-    public func pendingRedemption() throws -> PendingGuestRedemption? {
+    public func pendingRedemption(invitationID: String? = nil) throws -> PendingGuestRedemption? {
         let registry = try read()
-        guard let id = registry.activeID else { return nil }
+        guard let id = invitationID ?? registry.activeID else { return nil }
         return registry.redemptions[id]
     }
 
@@ -74,37 +78,55 @@ public actor GuestSessionVault {
 
     /// An unstructured task completes the durable handshake even if a view is
     /// dismissed or backgrounded. All callers for one invite await that task.
-    public func redeem(_ invitation: GuestInvitation, origin: URL) async throws -> StoredGuestSession {
+    public func redeem(_ invitation: GuestInvitation, origin: URL, displayName: String) async throws -> StoredGuestSession {
         let id = invitation.identifier
         if let stored = try restore(invitationID: id), stored.origin == origin { return stored }
         if let existing = inFlight[id] { return try await existing.value }
+        guard let name = GuestDisplayName.normalized(displayName) else { throw GuestError.invalidName }
         var registry = try read()
         let pending: PendingGuestRedemption
         if let saved = registry.redemptions[id] {
             guard saved.origin == origin else { throw GuestError.invalidResponse }
-            pending = saved
+            pending = PendingGuestRedemption(invitationURL: saved.invitationURL, origin: saved.origin,
+                                              redeemNonce: saved.redeemNonce, displayName: saved.nameRejected == true ? name : saved.displayName ?? name)
         } else {
             var random = SystemRandomNumberGenerator()
             let bytes = (0..<32).map { _ in UInt8.random(in: .min ... .max, using: &random) }
             let nonce = Data(bytes).base64EncodedString().replacingOccurrences(of: "+", with: "-")
                 .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-            pending = PendingGuestRedemption(invitationURL: invitation.url, origin: origin, redeemNonce: nonce)
+            pending = PendingGuestRedemption(invitationURL: invitation.url, origin: origin, redeemNonce: nonce, displayName: name)
             registry.redemptions[id] = pending
             registry.activeID = id
-            // The nonce is durable BEFORE any redeem can reach the server.
-            try storage.write(JSONEncoder().encode(registry))
         }
+        registry.redemptions[id] = pending
+        // The name and nonce are durable BEFORE any redeem can reach the server.
+        try storage.write(JSONEncoder().encode(registry))
         let task = Task {
             let client = makeClient(origin)
-            let session = try await client.redeem(invitation, redeemNonce: pending.redeemNonce)
+            let session = try await client.redeem(invitation, redeemNonce: pending.redeemNonce, displayName: pending.displayName ?? name)
             guard !invalidatedIDs.contains(id) else { throw GuestError.revoked }
-            let stored = StoredGuestSession(origin: origin, invitationID: id, session: session)
+            let stored = StoredGuestSession(origin: origin, invitationID: id, session: session, displayName: session.displayName ?? pending.displayName ?? name)
             try self.save(stored, select: false)
             return stored
         }
         inFlight[id] = task
         defer { inFlight[id] = nil }
-        return try await task.value
+        do { return try await task.value }
+        catch {
+            if let failure = error as? GuestError {
+                switch failure {
+                case .inviteFull, .expired, .revoked: try remove(invitationID: id)
+                case .invalidName:
+                    // The bridge guarantees invalid_name is returned before a
+                    // seat transaction. A corrected name may reuse this nonce.
+                    var registry = try read()
+                    registry.redemptions[id]?.nameRejected = true
+                    try storage.write(JSONEncoder().encode(registry))
+                default: break
+                }
+            }
+            throw error
+        }
     }
 
     public func remove(invitationID: String) throws {

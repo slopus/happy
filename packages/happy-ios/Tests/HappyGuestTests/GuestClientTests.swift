@@ -14,13 +14,13 @@ import FoundationNetworking
         let client = GuestClient(origin: URL(string: "https://app.happy.engineering")!, transport: URLSession(configuration: configuration))
         let invitation = try XCTUnwrap(GuestInvitation(url: URL(string: "https://app.happy.engineering/bot/invite/abcdefghijklmnop")!))
         GuestHTTPStub.state.configure(status: 200, body: #"{"sessionId":"guest-session","sessionToken":"scoped-test-token","botName":"Helper","expiresAt":9999999999999,"readOnly":false}"#)
-        let session = try await client.redeem(invitation, redeemNonce: "test-nonce")
+        let session = try await client.redeem(invitation, redeemNonce: "test-nonce", displayName: "Ada Lovelace")
         var requests = GuestHTTPStub.state.requests()
         XCTAssertEqual(requests.count, 1)
         XCTAssertEqual(requests[0].url?.path, "/v1/bot-invites/redeem")
         XCTAssertNil(requests[0].value(forHTTPHeaderField: "Authorization"))
         let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(requests[0].httpBody)) as? [String: String])
-        XCTAssertEqual(body, ["token": "abcdefghijklmnop", "redeemNonce": "test-nonce"])
+        XCTAssertEqual(body, ["token": "abcdefghijklmnop", "redeemNonce": "test-nonce", "displayName": "Ada Lovelace"])
 
         GuestHTTPStub.state.configure(status: 204, body: "")
         try await client.send(session: session, localId: "stable-id", text: "Hello")
@@ -43,7 +43,7 @@ import FoundationNetworking
         for (status, expected) in [(410, GuestError.expired), (401, .revoked), (403, .readOnly)] {
             GuestHTTPStub.state.configure(status: status, body: "{}")
             do {
-                _ = try await client.redeem(invitation, redeemNonce: "test-nonce")
+                _ = try await client.redeem(invitation, redeemNonce: "test-nonce", displayName: "Ada Lovelace")
                 XCTFail("Capability error \(status) must not grant a session")
             } catch { XCTAssertEqual(error as? GuestError, expected) }
         }
@@ -77,23 +77,30 @@ import FoundationNetworking
         let vault = GuestSessionVault(storage: storage, makeClient: factory)
         let invitation = try XCTUnwrap(GuestInvitation(url: URL(string: "https://app.happy.engineering/bot/invite/abcdefghijklmnop")!))
         GuestHTTPStub.state.configure(status: 503, body: "{}")
-        do { _ = try await vault.redeem(invitation, origin: invitation.origin); XCTFail("Expected retryable response loss") }
+        do { _ = try await vault.redeem(invitation, origin: invitation.origin, displayName: "  Ada  Lovelace  "); XCTFail("Expected retryable response loss") }
         catch { XCTAssertEqual(error as? GuestError, .retryAfter(1)) }
         let pendingValue = try await vault.pendingRedemption()
         let pending = try XCTUnwrap(pendingValue)
         XCTAssertEqual(pending.redeemNonce.count, 43)
+        XCTAssertEqual(pending.displayName, "Ada Lovelace")
 
         GuestHTTPStub.state.configure(status: 200, body: #"{"sessionId":"guest-session","sessionToken":"recovered-token","botName":"Helper","expiresAt":9999999999999,"readOnly":false}"#)
         let restarted = GuestSessionVault(storage: storage, makeClient: factory)
-        let stored = try await restarted.redeem(invitation, origin: invitation.origin)
+        let stored = try await restarted.redeem(invitation, origin: invitation.origin, displayName: "Grace Hopper")
         XCTAssertEqual(stored.session.sessionToken, "recovered-token")
         let request = try XCTUnwrap(GuestHTTPStub.state.requests().first)
         let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: String])
         XCTAssertEqual(body["redeemNonce"], pending.redeemNonce)
+        XCTAssertEqual(body["displayName"], "Ada Lovelace")
+        XCTAssertEqual(stored.displayName, "Ada Lovelace")
         let cleared = try await restarted.pendingRedemption()
         XCTAssertNil(cleared)
         let resumed = try await restarted.restore()
         XCTAssertEqual(resumed?.session.sessionToken, "recovered-token")
+        XCTAssertEqual(resumed?.displayName, "Ada Lovelace")
+        let count = GuestHTTPStub.state.requests().count
+        _ = try await restarted.redeem(invitation, origin: invitation.origin, displayName: "Another Name")
+        XCTAssertEqual(GuestHTTPStub.state.requests().count, count)
     }
 
     func testConcurrentRedeemsShareOneHTTPRequest() async throws {
@@ -103,13 +110,17 @@ import FoundationNetworking
         let gate = DispatchSemaphore(value: 0)
         defer { gate.signal() }
         GuestHTTPStub.state.configure(status: 200, body: sessionReply, gate: gate)
-        let first = Task { try await vault.redeem(invitation, origin: invitation.origin) }
-        let second = Task { try await vault.redeem(invitation, origin: invitation.origin) }
+        let first = Task { try await vault.redeem(invitation, origin: invitation.origin, displayName: "Ada Lovelace") }
+        let second = Task { try await vault.redeem(invitation, origin: invitation.origin, displayName: "Grace Hopper") }
         try await waitForRequest()
+        let durable = try await vault.pendingRedemption()
+        XCTAssertEqual(durable?.redeemNonce.count, 43)
+        XCTAssertTrue(["Ada Lovelace", "Grace Hopper"].contains(durable?.displayName ?? ""))
         gate.signal()
         let one = try await first.value
         let two = try await second.value
         XCTAssertEqual(one.session.sessionToken, two.session.sessionToken)
+        XCTAssertEqual(one.displayName, two.displayName)
         XCTAssertEqual(GuestHTTPStub.state.requests().count, 1)
     }
 
@@ -120,7 +131,7 @@ import FoundationNetworking
         let gate = DispatchSemaphore(value: 0)
         defer { gate.signal() }
         GuestHTTPStub.state.configure(status: 200, body: sessionReply, gate: gate)
-        let request = Task { try await vault.redeem(invitation, origin: invitation.origin) }
+        let request = Task { try await vault.redeem(invitation, origin: invitation.origin, displayName: "Ada Lovelace") }
         try await waitForRequest()
         try await vault.remove(invitationID: invitation.identifier)
         gate.signal()
@@ -143,6 +154,50 @@ import FoundationNetworking
 
     private var sessionReply: String {
         #"{"sessionId":"guest-session","sessionToken":"scoped-test-token","botName":"Helper","expiresAt":9999999999999,"readOnly":false}"#
+    }
+
+    func testFullInviteIsDistinctFromExpiryAndRemovesPendingCredentials() async throws {
+        let storage = GuestMemoryStorage()
+        let vault = makeVault(storage)
+        let invitation = try XCTUnwrap(GuestInvitation(url: URL(string: "https://app.happy.engineering/bot/invite/abcdefghijklmnop")!))
+        GuestHTTPStub.state.configure(status: 410, body: #"{"code":"invite_full"}"#)
+        do { _ = try await vault.redeem(invitation, origin: invitation.origin, displayName: "Ada"); XCTFail("Expected full invite") }
+        catch { XCTAssertEqual(error as? GuestError, .inviteFull) }
+        let restored = try await vault.restore()
+        let pending = try await vault.pendingRedemption()
+        XCTAssertNil(restored)
+        XCTAssertNil(pending)
+        XCTAssertNil(try storage.read())
+    }
+
+    func testInvalidLocalNameDoesNotCreateNonceOrReachTheBridge() async throws {
+        let storage = GuestMemoryStorage()
+        let vault = makeVault(storage)
+        let invitation = try XCTUnwrap(GuestInvitation(url: URL(string: "https://app.happy.engineering/bot/invite/abcdefghijklmnop")!))
+        GuestHTTPStub.state.configure(status: 200, body: sessionReply)
+        do { _ = try await vault.redeem(invitation, origin: invitation.origin, displayName: "Ada\u{202E}"); XCTFail("Invalid name must be rejected") }
+        catch { XCTAssertEqual(error as? GuestError, .invalidName) }
+        XCTAssertNil(try storage.read())
+        XCTAssertTrue(GuestHTTPStub.state.requests().isEmpty)
+    }
+
+    func testRejectedNameMayBeCorrectedWithTheSameDurableNonce() async throws {
+        let storage = GuestMemoryStorage()
+        let vault = makeVault(storage)
+        let invitation = try XCTUnwrap(GuestInvitation(url: URL(string: "https://app.happy.engineering/bot/invite/abcdefghijklmnop")!))
+        GuestHTTPStub.state.configure(status: 400, body: #"{"code":"invalid_name"}"#)
+        do { _ = try await vault.redeem(invitation, origin: invitation.origin, displayName: "Ada"); XCTFail("Expected name rejection") }
+        catch { XCTAssertEqual(error as? GuestError, .invalidName) }
+        let rejected = try await vault.pendingRedemption()
+        XCTAssertEqual(rejected?.nameRejected, true)
+        GuestHTTPStub.state.configure(status: 200, body: sessionReply)
+        let restarted = makeVault(storage)
+        let stored = try await restarted.redeem(invitation, origin: invitation.origin, displayName: "Grace Hopper")
+        let request = try XCTUnwrap(GuestHTTPStub.state.requests().first)
+        let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: String])
+        XCTAssertEqual(body["redeemNonce"], rejected?.redeemNonce)
+        XCTAssertEqual(body["displayName"], "Grace Hopper")
+        XCTAssertEqual(stored.displayName, "Grace Hopper")
     }
 
     private func makeVault(_ storage: GuestMemoryStorage) -> GuestSessionVault {

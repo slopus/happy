@@ -27,9 +27,10 @@ public actor GuestClient {
 
     deinit { transport.invalidateAndCancel() }
 
-    public func redeem(_ invitation: GuestInvitation, redeemNonce: String) async throws -> GuestSession {
-        struct Request: Encodable { let token: String; let redeemNonce: String }
-        let session: GuestSession = try await request(path: ["v1", "bot-invites", "redeem"], body: JSONEncoder().encode(Request(token: invitation.token, redeemNonce: redeemNonce)))
+    public func redeem(_ invitation: GuestInvitation, redeemNonce: String, displayName: String) async throws -> GuestSession {
+        guard let displayName = GuestDisplayName.normalized(displayName) else { throw GuestError.invalidName }
+        struct Request: Encodable { let token: String; let redeemNonce: String; let displayName: String }
+        let session: GuestSession = try await request(path: ["v1", "bot-invites", "redeem"], body: JSONEncoder().encode(Request(token: invitation.token, redeemNonce: redeemNonce, displayName: displayName)))
         guard Self.validSessionID(session.sessionId), !session.sessionToken.isEmpty else { throw GuestError.invalidResponse }
         return session
     }
@@ -93,10 +94,13 @@ public actor GuestClient {
         switch response.statusCode {
         case 200..<300: break
         case let status where sending && [400, 409, 413, 422].contains(status): throw GuestSendRejection.invalidMessage
+        case 400 where !sending && (try? JSONDecoder().decode(ErrorBody.self, from: data).code) == "invalid_name": throw GuestError.invalidName
         case 409: throw GuestError.alreadyRedeemed
         case 401, 404: throw GuestError.revoked
         case 403: throw GuestError.readOnly
-        case 410: throw GuestError.expired
+        case 410:
+            if (try? JSONDecoder().decode(ErrorBody.self, from: data).code) == "invite_full" { throw GuestError.inviteFull }
+            throw GuestError.expired
         case 429, 503:
             if sending, (try? JSONDecoder().decode(ErrorBody.self, from: data).code) == "limit_reached" {
                 throw GuestSendRejection.limitReached
