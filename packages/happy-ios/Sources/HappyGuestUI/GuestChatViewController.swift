@@ -22,6 +22,7 @@ import HappyLayout
     private let moreButton = UIButton(type: .system)
     private let nameInput = UITextField()
     private let joinButton = UIButton(type: .system)
+    private let joinNotice = UILabel()
     private var onboardingInvitation: GuestInvitation?
     private var redemptionName: String?
     private let vault = GuestServices.vault
@@ -66,6 +67,10 @@ import HappyLayout
         joinButton.setTitle("Join", for: .normal)
         joinButton.accessibilityIdentifier = "guest.join"
         joinButton.addTarget(self, action: #selector(join), for: .touchUpInside)
+        joinNotice.text = "Everyone who joins this link can see this chat, including earlier messages.\nNames are chosen by members and aren’t verified."
+        joinNotice.font = .systemFont(ofSize: 13)
+        joinNotice.textColor = .secondaryLabel
+        joinNotice.numberOfLines = 4
         sendButton.setTitle("Send", for: .normal)
         sendButton.accessibilityIdentifier = "guest.send"
         sendButton.addTarget(self, action: #selector(send), for: .touchUpInside)
@@ -78,7 +83,7 @@ import HappyLayout
             UIAction(title: "Report conversation") { [weak self] _ in self?.report() },
             UIAction(title: "Leave conversation", attributes: .destructive) { [weak self] _ in self?.leave() },
         ])
-        for child in [titleLabel, statusLabel, transcript, input, sendButton, retryButton, moreButton, nameInput, joinButton] { view.addSubview(child) }
+        for child in [titleLabel, statusLabel, transcript, input, sendButton, retryButton, moreButton, nameInput, joinButton, joinNotice] { view.addSubview(child) }
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged),
                                                name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         updateComposer()
@@ -97,6 +102,7 @@ import HappyLayout
         transcript.frame = layout.messages; input.frame = layout.input
         sendButton.frame = layout.send; retryButton.frame = layout.retry; moreButton.frame = layout.more
         nameInput.frame = layout.name; joinButton.frame = layout.join
+        joinNotice.frame = layout.joinNotice
     }
 
     public func open(_ url: URL) {
@@ -241,7 +247,8 @@ import HappyLayout
 
     private static func allowedStoredOrigin(_ origin: URL) -> Bool {
         let trusted = URL(string: "https://app.happy.engineering")!
-        return origin == trusted || origin == apiOrigin(for: trusted)
+        let preview = URL(string: "https://" + GuestInvitation.previewHost)!
+        return origin == trusted || (GuestInvitation.previewEnabled && origin == preview) || origin == apiOrigin(for: trusted)
     }
 
     private func apply(_ stored: StoredGuestSession) {
@@ -360,6 +367,7 @@ import HappyLayout
     private func updateComposer() {
         let onboarding = onboardingInvitation != nil && !terminal
         nameInput.isHidden = !onboarding; joinButton.isHidden = !onboarding
+        joinNotice.isHidden = !onboarding
         nameInput.isEnabled = opening == nil && redemptionName == nil; joinButton.isEnabled = opening == nil
         transcript.isHidden = record == nil
         input.isHidden = isReadOnly || record == nil; sendButton.isHidden = isReadOnly || record == nil

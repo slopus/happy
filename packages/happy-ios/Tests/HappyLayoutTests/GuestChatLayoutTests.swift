@@ -10,6 +10,7 @@ final class GuestChatLayoutTests: XCTestCase {
         XCTAssertEqual(normal.status, CGRect(x: 20, y: 105, width: 350, height: 52))
         XCTAssertEqual(normal.name, CGRect(x: 20, y: 181, width: 350, height: 48))
         XCTAssertEqual(normal.join, CGRect(x: 20, y: 241, width: 350, height: 48))
+        XCTAssertEqual(normal.joinNotice, CGRect(x: 20, y: 301, width: 350, height: 76))
         XCTAssertEqual(normal.input, CGRect(x: 20, y: 750, width: 274, height: 44))
         XCTAssertEqual(normal.send, CGRect(x: 302, y: 750, width: 68, height: 44))
         XCTAssertEqual(normal.messages, CGRect(x: 20, y: 205, width: 350, height: 533))

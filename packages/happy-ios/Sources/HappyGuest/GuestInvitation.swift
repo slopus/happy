@@ -7,15 +7,17 @@ import Crypto
 
 /// Opaque guest capability. Owner credentials never participate in this flow.
 public struct GuestInvitation: Equatable, Sendable {
+    public static let previewHost = "securities-feels-twin-texture.trycloudflare.com"
+    public static var previewEnabled: Bool { Bundle.main.object(forInfoDictionaryKey: "HappyGuestPreviewInvites") as? Bool == true }
     public let token: String
     public let origin: URL
     public var url: URL { origin.appendingPathComponent("bot/invite/" + token) }
     public var identifier: String { SHA256.hash(data: Data((origin.absoluteString + "/" + token).utf8)).map { String(format: "%02x", $0) }.joined() }
 
-    public init?(url: URL) {
+    public init?(url: URL, previewEnabled: Bool = GuestInvitation.previewEnabled) {
         guard url.scheme == "https", url.user == nil, url.password == nil,
               url.port == nil, let host = url.host,
-              host == "app.happy.engineering",
+              (host == "app.happy.engineering" || (previewEnabled && host == Self.previewHost)),
               url.query == nil, url.fragment == nil else { return nil }
         let parts = url.path.split(separator: "/", omittingEmptySubsequences: false)
         guard parts.count == 4, parts[0].isEmpty, parts[1] == "bot", parts[2] == "invite" else { return nil }
@@ -44,6 +46,13 @@ public struct GuestMessage: Codable, Equatable, Sendable {
     public let role: Role
     public let text: String
     public let createdAt: Double
+    public let senderName: String?
+    public let isMine: Bool?
+
+    public init(id: String, role: Role, text: String, createdAt: Double, senderName: String? = nil, isMine: Bool? = nil) {
+        self.id = id; self.role = role; self.text = text; self.createdAt = createdAt
+        self.senderName = senderName; self.isMine = isMine
+    }
 }
 
 public struct GuestMessages: Decodable, Sendable {

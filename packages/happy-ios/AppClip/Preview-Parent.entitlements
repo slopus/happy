@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>aps-environment</key><string>development</string>
+    <key>com.apple.developer.associated-appclip-app-identifiers</key>
+    <array><string>$(AppIdentifierPrefix)com.slopus.happy.preview.Clip</string></array>
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>applinks:app.happy.engineering</string>
+        <string>applinks:securities-feels-twin-texture.trycloudflare.com</string>
+        <string>appclips:securities-feels-twin-texture.trycloudflare.com</string>
+    </array>
+</dict></plist>

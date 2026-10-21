@@ -40,7 +40,12 @@ the link's member limit with that in mind.
 
 ## Invocation and guest capabilities
 
-Only `https://app.happy.engineering/bot/invite/<opaque-token>` is accepted.
+`https://app.happy.engineering/bot/invite/<opaque-token>` is accepted in every
+variant. Preview additionally accepts
+`https://securities-feels-twin-texture.trycloudflare.com/bot/invite/<opaque-token>`.
+Only Preview app/Clip Info plists enable this extra host; Development and
+Production retain the first-party-only parser. The API uses the link's HTTPS
+origin, with no sign-in.
 The exact path has a 16–512-character ASCII base64url token. User info, a custom
 port, a query, a fragment, extra segments, and untrusted hosts are rejected.
 Cold and warm browsing-web `NSUserActivity` delivery use the same parser.
@@ -51,6 +56,8 @@ A new guest sees one screen: "Join a Happy bot", "Your name", and Join. There
 is no public preview endpoint; opening this screen does not claim a seat. The
 same shared screen runs in the installed app. Existing sessions and pending
 joins skip name entry. The composer shows "Message as <name>" after joining.
+The screen also explains that everyone joining the link can see the chat,
+including earlier messages, and that member names are unverified.
 
 Names normalize to NFC, collapse spaces, and trim, then require 1–40 grapheme
 clusters. Allowed characters are Unicode letters, marks and numbers, spaces,
@@ -89,7 +96,7 @@ The invocation HTTPS origin must host or reverse-proxy the invitation bridge:
   milliseconds. A nonce is 43 base64url characters from 32 random bytes.
 - `GET /v1/bot-guest/sessions/<sessionId>/messages?wait=25&after=<cursor>` uses
   the scoped bearer token. It returns `{messages, cursor, status}`, where each
-  message is `{id, role: "user" | "assistant", text, createdAt}`, the cursor is
+  message is `{id, role: "user" | "assistant", text, createdAt, senderName, isMine}`, the cursor is
   a nullable numeric string, and status is `online` or `offline`.
 - `POST` to that messages endpoint sends `{localId, text}` with the scoped
   bearer. The server deduplicates localId. The native limit is 4,000 UTF-16 code
@@ -103,8 +110,15 @@ The invocation HTTPS origin must host or reverse-proxy the invitation bridge:
 redeem retains legacy already-used handling. `410 invite_full` is a distinct
 terminal "no free seats" state; other 410 responses mean expired. Full,
 expired and revoked redemption remove the saved pending capability. A link
-admits its configured number of distinct nonces, each with a private session;
-the same nonce recovers its existing member even when all seats are occupied.
+admits its configured number of distinct nonces, each with its own scoped
+session but ONE shared invitation conversation. The same nonce recovers its
+existing member even when all seats are occupied. Late joiners see the entire
+history. The backend supplies `senderName` and `isMine` for every message;
+the client labels your own messages "You", other members with their server
+name, and bot replies with the server bot name. Names inside message bodies
+remain plain body text. Legacy messages lacking these fields keep the old
+private-session presentation. Leaving or revoking one member ends only that
+member's access and does not erase shared history or end the group.
 403 on send makes the
 screen read only while preserving its transcript and polling. 429 and 503 are
 retryable and respect Retry-After. Ordinary network failures retry with capped

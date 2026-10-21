@@ -6,6 +6,24 @@ import XCTest
 final class GuestLiveUITests: XCTestCase {
     @MainActor func testNamedMemberAda() throws { try joinAndChat(name: "Ada Lovelace") }
     @MainActor func testNamedMemberGrace() throws { try joinAndChat(name: "Grace Hopper") }
+    @MainActor func testGroupMemberAda() throws { try joinAndChat(name: "Ada Lovelace", apiOrigin: nil) }
+    @MainActor func testGroupMemberGraceSeesEarlierHistory() throws {
+        try joinAndChat(name: "Grace Hopper", apiOrigin: nil, earlierMember: "Ada Lovelace")
+    }
+    @MainActor func testGroupAdaSeesGraceAsAnotherMember() throws {
+        continueAfterFailure = false
+        let clip = XCUIApplication(bundleIdentifier: "com.slopus.happy.botclip.dev.Clip")
+        clip.activate()
+        XCTAssertTrue(clip.textFields["guest.message"].waitForExistence(timeout: 15))
+        XCTAssertEqual(clip.textFields["guest.message"].placeholderValue, "Message as Ada Lovelace")
+        let other = NSPredicate(format: "value CONTAINS %@", "Grace Hopper\nReply with exactly: Hello Grace Hopper.")
+        expectation(for: other, evaluatedWith: clip.textViews.firstMatch)
+        waitForExpectations(timeout: 35)
+        let mine = NSPredicate(format: "value CONTAINS %@", "You\nReply with exactly: Hello Ada Lovelace.")
+        expectation(for: mine, evaluatedWith: clip.textViews.firstMatch)
+        waitForExpectations(timeout: 10)
+        attach(clip, name: "Actual App Clip · Preview · shared group with another member's name")
+    }
 
     @MainActor func testExistingAdaSkipsOnboardingOnReopenAndRestart() throws {
         continueAfterFailure = false
@@ -43,7 +61,7 @@ final class GuestLiveUITests: XCTestCase {
         attach(clip, name: "Actual App Clip · simulator · invitation has no free seats")
     }
 
-    @MainActor private func joinAndChat(name: String) throws {
+    @MainActor private func joinAndChat(name: String, apiOrigin: String? = "http://127.0.0.1:17892", earlierMember: String? = nil) throws {
         continueAfterFailure = false
         let clip = XCUIApplication(bundleIdentifier: "com.slopus.happy.botclip.dev.Clip")
         clip.activate()
@@ -58,6 +76,11 @@ final class GuestLiveUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 30))
         XCTAssertEqual(field.placeholderValue, "Message as \(name)")
         XCTAssertFalse(nameField.exists)
+        if let earlierMember {
+            let earlier = NSPredicate(format: "value CONTAINS %@", earlierMember + "\nReply with exactly: Hello " + earlierMember + ".")
+            expectation(for: earlier, evaluatedWith: clip.textViews.firstMatch)
+            waitForExpectations(timeout: 35)
+        }
         field.tap()
         let replyText = "Hello \(name). \(UUID().uuidString.prefix(8))"
         field.typeText("Reply with exactly: \(replyText)")
@@ -71,7 +94,7 @@ final class GuestLiveUITests: XCTestCase {
         waitForExpectations(timeout: 120)
         attach(clip, name: "Actual App Clip · simulator · \(name) private real bot reply")
         clip.terminate()
-        clip.launchEnvironment = ["HAPPY_GUEST_API_ORIGIN": "http://127.0.0.1:17892"]
+        clip.launchEnvironment = apiOrigin.map { ["HAPPY_GUEST_API_ORIGIN": $0] } ?? [:]
         clip.launch()
         XCTAssertTrue(field.waitForExistence(timeout: 15))
         XCTAssertEqual(field.placeholderValue, "Message as \(name)")

@@ -4,6 +4,13 @@ import XCTest
 #endif
 
 final class GuestInvitationTests: XCTestCase {
+    func testTemporaryHostIsAcceptedOnlyWhenPreviewIsEnabled() throws {
+        let url = URL(string: "https://securities-feels-twin-texture.trycloudflare.com/bot/invite/abcdefghijklmnop")!
+        XCTAssertNil(GuestInvitation(url: url, previewEnabled: false))
+        let invitation = try XCTUnwrap(GuestInvitation(url: url, previewEnabled: true))
+        XCTAssertEqual(invitation.origin.absoluteString, "https://securities-feels-twin-texture.trycloudflare.com")
+        XCTAssertNil(GuestInvitation(url: URL(string: "https://another.trycloudflare.com/bot/invite/abcdefghijklmnop")!, previewEnabled: true))
+    }
     func testDisplayNameNormalizationAndValidation() {
         let examples: [(String, String?)] = [
             ("Ada Lovelace", "Ada Lovelace"), ("Zoë", "Zoë"), ("Zoe\u{0308}", "Zoë"),

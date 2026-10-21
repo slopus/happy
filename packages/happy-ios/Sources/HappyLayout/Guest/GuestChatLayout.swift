@@ -10,6 +10,7 @@ public struct GuestChatLayout {
     public let more: CGRect
     public let name: CGRect
     public let join: CGRect
+    public let joinNotice: CGRect
 
     public init(size: CGSize, safeTop: CGFloat, bottom: CGFloat, showsComposer: Bool = true) {
         let width = max(0, size.width - 40)
@@ -18,6 +19,7 @@ public struct GuestChatLayout {
         status = CGRect(x: 20, y: title.maxY + 8, width: width, height: 52)
         name = CGRect(x: 20, y: status.maxY + 24, width: width, height: 48)
         join = CGRect(x: 20, y: name.maxY + 12, width: width, height: 48)
+        joinNotice = CGRect(x: 20, y: join.maxY + 12, width: width, height: 76)
         let composerY = max(status.maxY, size.height - bottom - 60)
         input = CGRect(x: 20, y: composerY, width: max(0, width - 76), height: 44)
         send = CGRect(x: input.maxX + 8, y: composerY, width: 68, height: 44)

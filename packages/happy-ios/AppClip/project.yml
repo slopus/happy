@@ -3,6 +3,10 @@ name: HappyBotDevelopment
 options:
   deploymentTarget:
     iOS: "26.0"
+configs:
+  Debug: debug
+  Preview: release
+  Release: release
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -46,6 +50,8 @@ targets:
       configs:
         Debug:
           INFOPLIST_FILE: Info-Debug.plist
+        Preview:
+          INFOPLIST_FILE: Info-Preview.plist
   HappyGuestTests:
     type: bundle.unit-test
     platform: iOS

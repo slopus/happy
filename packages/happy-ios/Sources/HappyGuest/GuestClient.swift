@@ -68,7 +68,12 @@ public actor GuestClient {
     public func append(_ messages: [GuestMessage], botName: String) -> String {
         messages.compactMap { message -> String? in
             guard seenMessageIDs.insert(message.id).inserted else { return nil }
-            return (message.role == .user ? "You" : botName) + "\n" + message.text
+            let sender: String
+            switch message.role {
+            case .assistant: sender = botName
+            case .user: sender = message.isMine == false ? (message.senderName ?? "Member") : "You"
+            }
+            return sender + "\n" + message.text
         }.joined(separator: "\n\n")
     }
 
