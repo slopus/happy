@@ -25,6 +25,7 @@ final class AppConfigurationTests: XCTestCase {
         for variant in AppVariant.allCases {
             let info = try plist(variant)
             XCTAssertEqual(info["HappyAppVariant"] as? String, variant.rawValue)
+            XCTAssertEqual(info["HappyGuestPreviewInvites"] as? Bool ?? false, variant == .preview)
             XCTAssertEqual(info["CFBundleDisplayName"] as? String, variant.displayName)
             XCTAssertEqual(
                 info["NSCameraUsageDescription"] as? String,
@@ -41,6 +42,7 @@ final class AppConfigurationTests: XCTestCase {
         let variantKeys: Set<String> = [
             "HappyAppVariant", "CFBundleDisplayName", "NSCameraUsageDescription",
             "NSLocalNetworkUsageDescription", "NSAppTransportSecurity",
+            "HappyGuestPreviewInvites",
         ]
         func shared(_ info: [String: Any]) throws -> Data {
             let filtered = info.filter { !variantKeys.contains($0.key) }

@@ -12,6 +12,10 @@ Normal `project.yml` builds keep their existing entitlements and do not embed
 an unprovisioned Clip. They link the shared guest screen and route existing
 `app.happy.engineering` browsing-web activities to it. When the full app is
 already presenting a modal, the guest screen opens from the topmost modal.
+Without a valid invitation link, launch, authentication, root navigation and
+the existing URL-context handling follow the original app flow. The guest
+screen and its Keychain vault are created only when an invitation is opened.
+Non-invitation browsing-web activities are ignored as before.
 
 `AppClip/project.yml` creates the isolated development parent
 `com.slopus.happy.botclip.dev` and embedded `com.slopus.happy.botclip.dev.Clip`.
@@ -46,6 +50,11 @@ variant. Preview additionally accepts
 Only Preview app/Clip Info plists enable this extra host; Development and
 Production retain the first-party-only parser. The API uses the link's HTTPS
 origin, with no sign-in.
+`HappyGuestPreviewInvites` is the Preview-only Info setting; the exact host is
+`GuestInvitation.previewHost`. This trycloudflare hostname is an ephemeral
+demo host, not the stable deployment domain. Replace it before a durable
+release. Default app entitlements do not add this domain; the parent/Clip
+association stays opt-in in `AppClip/FullApp.yml`.
 The exact path has a 16–512-character ASCII base64url token. User info, a custom
 port, a query, a fragment, extra segments, and untrusted hosts are rejected.
 Cold and warm browsing-web `NSUserActivity` delivery use the same parser.
@@ -192,3 +201,69 @@ owner/contact information, and the chatbot/content/age review requirements that
 apply to this product. Report and Leave controls alone do not establish App
 Store compliance. Native distribution must follow the repository release skill
 from a fresh, clean `main`; no EAS App Clip distribution is wired by this change.
+
+## Status and next actions
+
+Preview 25 (`2026.10.1`, build `25`) is archived and verified on the designated
+Mac mini in `~/happy-work/testflight-preview25-appclip-y1sar`. Its source is
+`f35b9d32d0cb4732874932d4704403e555b5cc88`; the frozen archive predates the
+subsequent main-integration audit, tests and documentation updates. Both parent
+and Clip have matching dSYMs, and the parent's signed entitlements preserve
+Preview 24's capabilities. The Clip is about 1.73 MB, uses only system
+frameworks, and has no ATS exception or debug connection overrides.
+
+Upload is blocked: Xcode currently has no App Store Connect account for team
+`466DQWDR8C`. Supply an App Store Connect API key with Admin access, or sign in
+to the authorized Apple account in Xcode. Then the release operator can export
+and upload the preserved archive with:
+
+```sh
+cd ~/happy-work/testflight-preview25-appclip-y1sar
+xcodebuild -exportArchive \
+  -archivePath Happy-preview-25.xcarchive \
+  -exportOptionsPlist ExportOptions-preview.plist \
+  -exportPath export-preview25 \
+  -allowProvisioningUpdates > upload-preview25.log 2>&1
+```
+
+For API-key authentication, additionally pass `-authenticationKeyPath`,
+`-authenticationKeyID`, and `-authenticationKeyIssuerID` using the operator's
+registered key. Keep the private key outside the repository. Export must obtain
+explicit parent/Clip distribution profiles with the associated domains and
+App Clip capabilities and set APNs to `production`. Verify processing in App
+Store Connect after upload. Future binaries must follow the release skill from
+fresh, clean main and include changes made after the frozen archive's source.
+
+Remaining work:
+
+- Resolve the existing native test baseline separately: the full suite ran
+  2,357 tests (two skipped) with 12 assertion failures. The identical filtered
+  command on clean `origin/main` and this change reproduces the same 11
+  message fixture-byte assertions in `SendingDeliveryMetaTests` and one voice
+  translation-catalog assertion in `TranslationCatalogTests`. Guest, layout
+  and app-configuration checks pass (19 tests).
+- In App Store Connect, add the App Clip invocation URL to Preview build 25's
+  TestFlight configuration. Verify launch from TestFlight. A Safari or Messages
+  link can open the installed Preview parent; it does not establish a public
+  App Clip experience by itself.
+- Replace the ephemeral demo host with a stable domain, such as a named tunnel
+  or the production host. Parameterize the Preview host instead of the current
+  fixed constant, update the parent/Clip domains and AASA together, and rebuild.
+- Implement Clip-to-parent session migration through an approved shared
+  credential scope. Until then, joining in the installed app takes another
+  seat; owner credentials must remain separate from guest credentials.
+- Add opt-in App Clip push notifications with the eight-hour ephemeral
+  notification authorization window, scoped device-token registration, and
+  appropriate expiry and revocation. The current Clip does not request it.
+- Complete App Store 1.2/4.7 moderation, content filtering, report handling,
+  contact details and age-rating requirements. Configure and verify a production
+  App Clip experience on the production domain before public distribution.
+- Provide Android and web fallbacks for invitation links, with a browser guest
+  conversation or an appropriate app/store destination and name-only joining.
+- Verify on a real iPhone: ordinary launch and owner login, cold/warm invitation
+  opening in the installed Preview app, TestFlight Clip invocation, two-member
+  shared history and labels, keyboard clearance, process-restart recovery, full
+  invites, expiry, revocation and leaving only the current member. Current
+  physical development builds are blocked by missing Xcode accounts and
+  explicit App Clip-capable profiles; simulator developer invocation is the
+  evidence available so far.
