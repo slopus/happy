@@ -1,0 +1,13 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+captures/
+.idea/
+*.iml
+.externalNativeBuild/
+.cxx/
+tools/testvectors/node_modules/
+keystore.properties
+*.jks
+*.keystore

@@ -1,0 +1,6 @@
+version: 1
+bundleID: com.slopus.happy.dev
+product: HappyApp
+infoPath: App/Info-Development.plist
+iconPath: App/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+entitlementsPath: App/Happy.entitlements

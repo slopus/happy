@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Home strings with no happy-app catalog key (literals in its source), in
+  English only. strings.xml is generated from the catalogs; this file is not.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- EmptyMainScreen.tsx -->
+    <string name="home_no_sessions_title">No sessions yet</string>
+    <string name="home_no_sessions_description">Start one on a connected machine.</string>
+    <string name="home_start_new_session">Start New Session</string>
+    <!-- sync/ops.ts sessionKill / sessionArchive for a bot -->
+    <string name="home_bot_archive_offline">Connect to the bot’s machine to archive it.</string>
+    <!-- ProjectHomeList.tsx -->
+    <string name="home_create_workspace">Create workspace</string>
+    <string name="home_create_workspace_in">Create workspace in %1$s</string>
+    <!-- machine/[id].tsx -->
+    <string name="machine_not_found">Machine not found</string>
+    <string name="machine_unknown">unknown machine</string>
+    <string name="machine_stop_daemon_confirm_title">Stop Daemon?</string>
+    <string name="machine_stop_daemon_confirm_message">You will not be able to spawn new sessions on this machine until you restart the daemon on your computer again. Your current sessions will stay alive.</string>
+    <string name="machine_daemon_stopped">Daemon Stopped</string>
+    <string name="machine_stop_daemon_failed">Failed to stop daemon. It may not be running.</string>
+    <string name="machine_rename_title">Rename Machine</string>
+    <string name="machine_rename_message">Give this machine a custom name. Leave empty to use the default hostname.</string>
+    <string name="machine_rename_placeholder">Enter machine name</string>
+    <string name="machine_renamed">Machine renamed successfully</string>
+    <string name="machine_rename_failed">Failed to rename machine</string>
+    <!-- session/[id]/info.tsx -->
+    <string name="home_info_resume_command">Resume Command</string>
+    <string name="home_info_client">Client</string>
+    <string name="home_info_model">Model</string>
+    <string name="home_info_sandbox">Sandbox</string>
+    <string name="home_info_skip_permissions">Dangerously Skip Permissions</string>
+    <string name="home_info_enabled">Enabled</string>
+    <string name="home_info_disabled">Disabled</string>
+    <string name="home_info_unknown">Unknown</string>
+    <string name="home_info_subagents">Subagents</string>
+    <string name="home_info_subagents_detail">%1$s running · %2$s queued</string>
+    <string name="home_info_workflows">Workflows</string>
+    <string name="home_info_processes">Background processes</string>
+    <string name="home_info_running">%1$s running</string>
+    <string name="home_info_tasks">Tasks</string>
+    <string name="home_info_tasks_detail">%1$s in progress · %2$s pending</string>
+    <string name="home_info_raw_json">Raw JSON (Dev Mode)</string>
+    <string name="home_info_raw_agent_state">Agent State</string>
+    <string name="home_info_raw_metadata">Metadata</string>
+    <string name="home_info_raw_status">Session Status</string>
+    <string name="home_info_raw_session">Full Session Object</string>
+    <!-- HomeDock.tsx, homeDockInteraction.ts, newSessionProgress.ts -->
+    <string name="home_dock_placeholder">Plan, ask, build…</string>
+    <string name="home_dock_ask">Ask %1$s</string>
+    <string name="home_dock_send">Send</string>
+    <string name="home_dock_add_image">Add image</string>
+    <string name="home_dock_stop">Stop</string>
+    <string name="home_dock_interrupt_hint">To interrupt press stop</string>
+    <string name="home_dock_row_machine">MACHINE</string>
+    <string name="home_dock_row_project">PROJECT</string>
+    <string name="home_dock_row_worktree">WORKTREE</string>
+    <string name="home_dock_row_workspace">WORKSPACE</string>
+    <string name="home_dock_row_harness">HARNESS</string>
+    <string name="home_dock_harness_help">Help</string>
+    <!-- new/index.tsx offlineHelp for Happy Agent (English only upstream). -->
+    <string name="home_dock_happy_agent_offline">Happy Agent is offline on this computer</string>
+    <string name="home_dock_harness_help_label">Harness setup help</string>
+    <string name="home_dock_picker_machine">Machine</string>
+    <string name="home_dock_picker_project">Project</string>
+    <string name="home_dock_picker_projects">Projects</string>
+    <string name="home_dock_picker_worktree">Worktree</string>
+    <string name="home_dock_picker_workspace">Workspace</string>
+    <string name="home_dock_picker_harness">Harness</string>
+    <string name="home_dock_select_machine">Select machine</string>
+    <string name="home_dock_no_worktree">No worktree</string>
+    <string name="home_dock_main">Main</string>
+    <string name="home_dock_create_workspace">Create New Workspace</string>
+    <string name="home_dock_create_worktree">Create New Worktree</string>
+    <string name="home_dock_not_supported_by">Not supported by %1$s</string>
+    <string name="home_dock_custom_path_placeholder">~/path/to/project</string>
+    <string name="home_dock_creating_workspace">Creating workspace…</string>
+    <string name="home_dock_creating_worktree">Creating worktree…</string>
+    <string name="home_dock_starting">Starting %1$s…</string>
+    <string name="home_dock_opening">Opening session…</string>
+    <!-- useStartSessionFromDraft.ts -->
+    <string name="home_create_directory_title">Create Directory?</string>
+    <string name="home_create_directory_message">The directory \'%1$s\' does not exist. Would you like to create it?</string>
+    <string name="home_dock_kind_session">Session</string>
+    <string name="home_dock_kind_bot">Bot</string>
+    <string name="home_dock_bot_kind">What to create</string>
+    <string name="home_dock_bot_lede">Bots are virtual colleagues great for recurring work like releases, competitor analysis, or to own a large feature across several projects and worktrees</string>
+    <string name="home_dock_bot_name_placeholder">Name your bot</string>
+    <string name="home_dock_create_bot">Create bot</string>
+    <string name="home_dock_bot_avatar">Avatar</string>
+    <string name="home_dock_bot_face">Face %1$d</string>
+    <string name="home_dock_bot_roll">Roll four new faces</string>
+    <string name="home_dock_bot_art_by">Art by</string>
+    <string name="home_dock_creating_bot">Creating bot…</string>
+    <string name="home_dock_bot_avatar_progress">Putting on a face…</string>
+    <string name="home_dock_opening_bot">Opening bot…</string>
+    <string name="home_dock_bot_face_failed_title">Picture not set</string>
+    <string name="home_dock_bot_face_upload_failed">%1$s is ready, but its picture couldn’t be uploaded. You can try again without creating another bot.</string>
+    <string name="home_dock_bot_face_failed">%1$s is ready, but its picture couldn\'t be set. Try again.</string>
+    <string name="home_dock_bot_not_now">Not now</string>
+    <string name="home_dock_bot_try_again">Try again</string>
+</resources>

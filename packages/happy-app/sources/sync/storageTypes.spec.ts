@@ -11,6 +11,17 @@ describe('MetadataSchema', () => {
         expect(MetadataSchema.parse(rigMetadataFixture).bot).toBeUndefined();
     });
 
+    it('reads the task depth and drops a bad one without losing the metadata', () => {
+        expect(MetadataSchema.parse({ ...rigMetadataFixture, depth: 1 }).depth).toBe(1);
+        expect(MetadataSchema.parse(rigMetadataFixture).depth).toBeUndefined();
+        for (const depth of [-1, 1.5, '2', null]) {
+            const parsed = MetadataSchema.safeParse({ ...rigMetadataFixture, depth });
+            expect(parsed.success).toBe(true);
+            expect(parsed.data?.depth).toBeUndefined();
+            expect(parsed.data?.path).toBe(rigMetadataFixture.path);
+        }
+    });
+
     it('preserves archive lifecycle metadata', () => {
         const metadata = MetadataSchema.parse({
             path: '/tmp/project',

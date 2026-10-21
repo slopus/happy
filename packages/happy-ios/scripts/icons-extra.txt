@@ -1,0 +1,22 @@
+# Icons generate-icons.py can't find by scanning happy-app, kept by hand.
+#
+#   <Family> <name>               an icon whose name only exists at runtime
+#   reviewed <file> <expression>  a call site whose name the scan can't follow,
+#                                 read and found covered; the report skips it
+#
+# Paths are relative to packages/happy-app/sources. Say where each name
+# comes from, so it can be dropped when the code that needs it goes.
+
+# Permission mode icons: PermissionStyle.icon from utils/newSessionModeSelection.ts
+# ('play-forward' | 'pause'), which the `icon:` scan reads, or 'shield-outline'.
+reviewed app/(app)/new/index.tsx permissionStyle?.icon ?? 'shield-outline'
+reviewed app/(app)/dev/session-composer.tsx permissionStyle?.icon ?? 'shield-outline'
+# composerSettingsItems in the same file: the permission icon above,
+# 'cube-outline' and 'speedometer-outline'.
+reviewed app/(app)/new/index.tsx item.icon
+# Command palette items come from CommandPalette/CommandPaletteProvider.tsx,
+# whose `icon:` literals the scan reads.
+reviewed components/CommandPalette/CommandPaletteItem.tsx command.icon as any
+# Session row actions come from hooks/useSessionQuickActions.ts, whose
+# `icon:` literals the scan reads.
+reviewed components/SessionActionsPopover.tsx action.icon as keyof typeof Ionicons.glyphMap

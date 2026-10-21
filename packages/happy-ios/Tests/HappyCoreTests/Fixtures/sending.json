@@ -1,0 +1,317 @@
+[
+  {
+    "name": "plain",
+    "metadata": {},
+    "composer": {},
+    "text": "hello",
+    "displayText": "",
+    "canonical": "{\"content\":{\"text\":\"hello\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"hello\"},\"meta\":{\"sentFrom\":\"ios\",\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\"}}"
+  },
+  {
+    "name": "codex-default",
+    "metadata": {
+      "flavor": "codex",
+      "version": "1.2.6"
+    },
+    "composer": {},
+    "text": "fix",
+    "canonical": "{\"content\":{\"text\":\"fix\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"effort\":\"medium\",\"model\":\"gpt-6.1-sol\",\"permissionMode\":\"auto\",\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"fix\"},\"meta\":{\"sentFrom\":\"ios\",\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"permissionMode\":\"auto\",\"model\":\"gpt-6.1-sol\",\"effort\":\"medium\"}}"
+  },
+  {
+    "name": "codex-old",
+    "metadata": {
+      "flavor": "codex",
+      "version": "1.2.1-beta.1"
+    },
+    "composer": {},
+    "text": "old",
+    "canonical": "{\"content\":{\"text\":\"old\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"effort\":\"medium\",\"model\":\"gpt-6.1-sol\",\"permissionMode\":\"default\",\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"old\"},\"meta\":{\"sentFrom\":\"ios\",\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"permissionMode\":\"default\",\"model\":\"gpt-6.1-sol\",\"effort\":\"medium\"}}"
+  },
+  {
+    "name": "agy",
+    "metadata": {
+      "flavor": "agy"
+    },
+    "composer": {},
+    "text": "do",
+    "canonical": "{\"content\":{\"text\":\"do\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"effort\":\"medium\",\"model\":\"Gemini 3.8 Flash\",\"permissionMode\":\"default\",\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"do\"},\"meta\":{\"sentFrom\":\"ios\",\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"permissionMode\":\"default\",\"model\":\"Gemini 3.8 Flash\",\"effort\":\"medium\"}}"
+  },
+  {
+    "name": "null-model-retired",
+    "metadata": {
+      "flavor": "claude",
+      "version": "1.2.6"
+    },
+    "composer": {
+      "permissionMode": "dontAsk",
+      "modelMode": "default",
+      "effortLevel": "high"
+    },
+    "text": "\"\n☀️",
+    "displayText": "shown",
+    "sentFrom": "mac",
+    "canonical": "{\"content\":{\"text\":\"\\\"\\n☀️\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"displayText\":\"shown\",\"effort\":\"high\",\"model\":null,\"permissionMode\":\"acceptEdits\",\"sentFrom\":\"mac\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"\\\"\\n☀️\"},\"meta\":{\"sentFrom\":\"mac\",\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"permissionMode\":\"acceptEdits\",\"model\":null,\"effort\":\"high\",\"displayText\":\"shown\"}}"
+  },
+  {
+    "name": "overrides",
+    "metadata": {},
+    "composer": {},
+    "settings": {
+      "agentDefaultOverrides": {
+        "claude": {
+          "permissionMode": "auto",
+          "modelMode": "claude-opus-5-5[1m]",
+          "effortLevel": "max"
+        }
+      }
+    },
+    "text": "default",
+    "canonical": "{\"content\":{\"text\":\"default\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"effort\":\"max\",\"model\":\"claude-opus-5-5\",\"permissionMode\":\"auto\",\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"default\"},\"meta\":{\"sentFrom\":\"ios\",\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"permissionMode\":\"auto\",\"model\":\"claude-opus-5-5\",\"effort\":\"max\"}}"
+  },
+  {
+    "name": "rig-busy",
+    "metadata": {
+      "client": {
+        "id": "rig"
+      },
+      "rigMetadataVersion": 1,
+      "capabilities": {
+        "messageReceipts": true
+      },
+      "lastMode": {
+        "providerId": "p",
+        "modelId": "m",
+        "permissionMode": "ask",
+        "effort": "high",
+        "serviceTier": null
+      },
+      "models": [
+        {
+          "id": "m",
+          "providerId": "p",
+          "thinkingLevels": [
+            "low",
+            "high"
+          ],
+          "defaultThinkingLevel": "low"
+        }
+      ]
+    },
+    "composer": {
+      "effortLevel": "invalid"
+    },
+    "thinking": true,
+    "text": "continue",
+    "canonical": "{\"content\":{\"text\":\"continue\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"effort\":\"high\",\"expectsAcceptance\":true,\"model\":\"m\",\"modelProviderId\":\"p\",\"permissionMode\":\"ask\",\"queuedWhileBusy\":true,\"sentFrom\":\"ios\",\"serviceTier\":null},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"continue\"},\"meta\":{\"sentFrom\":\"ios\",\"expectsAcceptance\":true,\"queuedWhileBusy\":true,\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"permissionMode\":\"ask\",\"model\":\"m\",\"modelProviderId\":\"p\",\"effort\":\"high\",\"serviceTier\":null}}"
+  },
+  {
+    "name": "rig-question",
+    "metadata": {
+      "client": {
+        "id": "rig"
+      },
+      "rigMetadataVersion": 1,
+      "capabilities": {
+        "messageReceipts": true
+      },
+      "model": {
+        "providerId": "q",
+        "id": "missing"
+      }
+    },
+    "composer": {
+      "serviceTier": null
+    },
+    "thinking": true,
+    "agentState": {
+      "communications": {
+        "question": {
+          "kind": "unknown"
+        }
+      }
+    },
+    "text": "answer",
+    "canonical": "{\"content\":{\"text\":\"answer\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"expectsAcceptance\":true,\"model\":\"missing\",\"modelProviderId\":\"q\",\"queuedWhileBusy\":false,\"sentFrom\":\"ios\",\"serviceTier\":null},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"answer\"},\"meta\":{\"sentFrom\":\"ios\",\"expectsAcceptance\":true,\"queuedWhileBusy\":false,\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"model\":\"missing\",\"modelProviderId\":\"q\",\"serviceTier\":null}}"
+  },
+  {
+    "name": "rig-pending",
+    "metadata": {
+      "client": {
+        "id": "rig"
+      },
+      "rigMetadataVersion": 1,
+      "capabilities": {
+        "messageReceipts": true
+      }
+    },
+    "composer": {
+      "modelMode": "provider:model:variant"
+    },
+    "pending": true,
+    "text": "next",
+    "canonical": "{\"content\":{\"text\":\"next\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"expectsAcceptance\":true,\"model\":\"model:variant\",\"modelProviderId\":\"provider\",\"queuedWhileBusy\":true,\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"next\"},\"meta\":{\"sentFrom\":\"ios\",\"expectsAcceptance\":true,\"queuedWhileBusy\":true,\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"model\":\"model:variant\",\"modelProviderId\":\"provider\"}}"
+  },
+  {
+    "name": "rig-startup",
+    "metadata": {
+      "client": {
+        "id": "rig"
+      },
+      "rigMetadataVersion": 1,
+      "capabilities": {
+        "messageReceipts": true
+      }
+    },
+    "composer": {},
+    "pending": true,
+    "thinking": true,
+    "source": "new_session",
+    "text": "start",
+    "canonical": "{\"content\":{\"text\":\"start\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"expectsAcceptance\":true,\"queuedWhileBusy\":false,\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"start\"},\"meta\":{\"sentFrom\":\"ios\",\"expectsAcceptance\":true,\"queuedWhileBusy\":false,\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\"}}"
+  },
+  {
+    "name": "rig-idle",
+    "metadata": {
+      "client": {
+        "id": "rig"
+      },
+      "rigMetadataVersion": 1,
+      "capabilities": {
+        "messageReceipts": true
+      }
+    },
+    "composer": {},
+    "text": "idle",
+    "canonical": "{\"content\":{\"text\":\"idle\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"expectsAcceptance\":true,\"queuedWhileBusy\":false,\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"idle\"},\"meta\":{\"sentFrom\":\"ios\",\"expectsAcceptance\":true,\"queuedWhileBusy\":false,\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\"}}"
+  },
+  {
+    "name": "rig-idle-pending",
+    "metadata": {
+      "client": {
+        "id": "rig"
+      },
+      "rigMetadataVersion": 1,
+      "capabilities": {
+        "messageReceipts": true
+      }
+    },
+    "composer": {},
+    "pending": true,
+    "text": "idle",
+    "canonical": "{\"content\":{\"text\":\"idle\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"expectsAcceptance\":true,\"queuedWhileBusy\":true,\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"idle\"},\"meta\":{\"sentFrom\":\"ios\",\"expectsAcceptance\":true,\"queuedWhileBusy\":true,\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\"}}"
+  },
+  {
+    "name": "rig-permission",
+    "metadata": {
+      "client": {
+        "id": "rig"
+      },
+      "rigMetadataVersion": 1,
+      "capabilities": {
+        "messageReceipts": true
+      }
+    },
+    "composer": {},
+    "agentState": {
+      "requests": {
+        "permission": {
+          "tool": "Bash",
+          "arguments": {}
+        }
+      }
+    },
+    "text": "blocked",
+    "canonical": "{\"content\":{\"text\":\"blocked\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"expectsAcceptance\":true,\"queuedWhileBusy\":true,\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"blocked\"},\"meta\":{\"sentFrom\":\"ios\",\"expectsAcceptance\":true,\"queuedWhileBusy\":true,\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\"}}"
+  },
+  {
+    "name": "rig-question-pending",
+    "metadata": {
+      "client": {
+        "id": "rig"
+      },
+      "rigMetadataVersion": 1,
+      "capabilities": {
+        "messageReceipts": true
+      }
+    },
+    "composer": {},
+    "thinking": true,
+    "pending": true,
+    "agentState": {
+      "requests": {},
+      "communications": {
+        "question": {
+          "kind": "form",
+          "form": {
+            "questions": [
+              {
+                "id": "choice",
+                "header": "Choice",
+                "question": "Pick one",
+                "options": [
+                  {
+                    "label": "One"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    "text": "answer",
+    "canonical": "{\"content\":{\"text\":\"answer\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"expectsAcceptance\":true,\"queuedWhileBusy\":true,\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"answer\"},\"meta\":{\"sentFrom\":\"ios\",\"expectsAcceptance\":true,\"queuedWhileBusy\":true,\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\"}}"
+  },
+  {
+    "name": "rig-no-receipts",
+    "metadata": {
+      "client": {
+        "id": "rig"
+      },
+      "rigMetadataVersion": 1
+    },
+    "composer": {},
+    "thinking": true,
+    "pending": true,
+    "text": "plain",
+    "canonical": "{\"content\":{\"text\":\"plain\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"plain\"},\"meta\":{\"sentFrom\":\"ios\",\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\"}}"
+  },
+  {
+    "name": "refuse-auto",
+    "metadata": {
+      "flavor": "claude",
+      "version": "1.2.1-beta.1"
+    },
+    "composer": {
+      "permissionMode": "auto"
+    },
+    "text": "refuse",
+    "error": "This session's Happy CLI (v1.2.1-beta.1) does not support the 'auto' permission mode. Pick a different mode for this session, or update the Happy CLI on that machine."
+  },
+  {
+    "name": "build-version",
+    "metadata": {
+      "flavor": "codex",
+      "version": "1.2.1-beta.2+abc"
+    },
+    "composer": {},
+    "text": "build",
+    "canonical": "{\"content\":{\"text\":\"build\",\"type\":\"text\"},\"meta\":{\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"effort\":\"medium\",\"model\":\"gpt-6.1-sol\",\"permissionMode\":\"auto\",\"sentFrom\":\"ios\"},\"role\":\"user\"}",
+    "wire": "{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"build\"},\"meta\":{\"sentFrom\":\"ios\",\"appendSystemPrompt\":\"# Options\\n\\nYou have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:\\n\\n<options>\\n    <option>Option 1</option>\\n    ...\\n    <option>Option N</option>\\n</options>\\n\\nYou must output this in the very end of your response, not inside of any other text. Do not wrap it into a codeblock. Always dedicate \\\"<options>\\\" and \\\"</options>\\\" to a dedicated line. Never output anything like \\\"custom\\\", user always have an option to send a custom message. Do not enumerate options in both text and options block.\\nAlways prefer to use the options mode to the text mode. Try to keep options minimal, better to clarify in a next steps.\\n\\n# Plan mode with options\\n\\nWhen you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.\",\"permissionMode\":\"auto\",\"model\":\"gpt-6.1-sol\",\"effort\":\"medium\"}}"
+  }
+]

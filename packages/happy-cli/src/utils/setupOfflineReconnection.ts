@@ -11,7 +11,7 @@ import type { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentState, Metadata, Session } from '@/api/types';
 import { configuration } from '@/configuration';
-import { createOfflineSessionStub } from '@/utils/offlineSessionStub';
+import { createOfflineSessionStub, transferOfflineRegistrations } from '@/utils/offlineSessionStub';
 import { startOfflineReconnection } from '@/utils/serverConnectionErrors';
 
 /**
@@ -92,6 +92,7 @@ export function setupOfflineReconnection(opts: SetupOfflineReconnectionOptions):
                 const resp = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
                 if (!resp) throw new Error('Server unavailable');
                 const realSession = api.sessionSyncClient(resp);
+                transferOfflineRegistrations(session, realSession);
                 // Notify caller to swap the session reference
                 onSessionSwap(realSession);
                 return realSession;

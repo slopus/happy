@@ -3,7 +3,7 @@ import { hackModes } from '@/sync/modeHacks';
 import { sortPermissionModes } from '@/utils/permissionModeLabels';
 import { sortRigModelsForPicker } from '@/utils/rigModelPickerOrder';
 import { compareVersionsWithPrerelease, isWellFormedVersion } from '@/utils/versionUtils';
-import { CLI_VERSION_WITH_AUTO, getCodeAgentDefaults } from '@/sync/agentDefaults';
+import { CLI_VERSION_WITH_AUTO, getCodeAgentDefaults, normalizeAgentKey, retireModelMode } from '@/sync/agentDefaults';
 export { CLI_VERSION_WITH_AUTO } from '@/sync/agentDefaults';
 import {
     getRigCurrentModel,
@@ -162,48 +162,74 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 // do not all mean what the row says. `sonnet` still resolves to Sonnet 4.6 in
 // the CLI's alias table, and `opus-5` is not in that table at all (`claude
 // --model opus-5` errors on 2.1.199). Full IDs pass straight through to the
-// API, so they say exactly which model is meant. The `[1m]` suffix is part of
-// the model ID Claude Code accepts (`claude --model 'claude-opus-5[1m]'`) and
-// selects the 1M-context variant; unknown bracket models are rejected, so the
-// suffix is honored rather than silently dropped (#1721).
+// API, so they say exactly which model is meant.
+//
+// One row per model, with no `[1m]` twins. Every model here is 1M-native in
+// Claude Code's own model table (`context.native_1m`), so the plain ID already
+// gets the 1M window, and the suffix only adds the context-1m beta header —
+// which gateways, Bedrock, Vertex and Foundry can refuse. Saved `[1m]` keys are
+// mapped onto these rows by retireModelMode.
+//
+// Sonnet 5.5 and Haiku 5.5 are in that table from Claude Code 2.1.287 and
+// 2.1.293. happy-cli now requires Agent SDK 0.3.295 (2.1.295), but an older
+// install can still carry 0.3.283 (2.1.283), which runs them as unknown
+// models: at 200K, compacting early.
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'claude-fable-5-1', name: 'Fable 5.1', description: '1M context', providerId: 'anthropic', providerName: 'Anthropic' },
         { key: 'claude-fable-5', name: 'Fable 5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
+        { key: 'claude-opus-5-5', name: 'Opus 5.5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
         { key: 'claude-opus-5', name: 'Opus 5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
-        { key: 'claude-opus-5[1m]', name: 'Opus 5 [1M]', description: '1M context', providerId: 'anthropic', providerName: 'Anthropic' },
-        { key: 'claude-sonnet-5', name: 'Sonnet 5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
+        { key: 'claude-sonnet-5-5', name: 'Sonnet 5.5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
+        { key: 'claude-haiku-5-5', name: 'Haiku 5.5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
     ];
 }
+
+// Display names for Claude models that left the list but can still be saved,
+// so their saved row reads like the rest instead of as a raw model ID.
+const UNLISTED_CLAUDE_MODEL_NAMES: Record<string, string> = {
+    'claude-sonnet-5': 'Sonnet 5',
+};
 
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'gpt-6-astra', name: 'GPT-6 Astra', description: 'most capable', providerId: 'openai', providerName: 'OpenAI' },
+        { key: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', description: null, providerId: 'openai', providerName: 'OpenAI' },
+        { key: 'gpt-6-sol', name: 'GPT-6 Sol', description: null, providerId: 'openai', providerName: 'OpenAI' },
+        { key: 'gpt-6-luna', name: 'GPT-6 Luna', description: null, providerId: 'openai', providerName: 'OpenAI' },
         { key: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', description: null, providerId: 'openai', providerName: 'OpenAI' },
         { key: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', description: null, providerId: 'openai', providerName: 'OpenAI' },
         { key: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', description: null, providerId: 'openai', providerName: 'OpenAI' },
     ];
 }
 
+/**
+ * Appends the saved model when the list does not offer it, so a pick that left
+ * the catalog still shows as itself instead of the picker landing on whatever
+ * leads the list. For Claude that is a model that was retired from the picker
+ * but still runs (Sonnet 5); a saved `[1m]` key is first mapped onto its row.
+ */
 export function includeConfiguredModel(
     flavor: AgentFlavor,
     models: ModelMode[],
     configuredModelKey: string | null | undefined,
 ): ModelMode[] {
+    const isClaude = flavor !== 'rig' && normalizeAgentKey(flavor) === 'claude';
+    const key = retireModelMode(flavor, configuredModelKey);
     if (
-        (flavor !== 'codex' && flavor !== 'agy')
-        || !configuredModelKey
-        || configuredModelKey === 'default'
-        || models.some((model) => model.key === configuredModelKey)
+        (flavor !== 'codex' && flavor !== 'agy' && !isClaude)
+        || !key
+        || key === 'default'
+        || models.some((model) => model.key === key)
     ) {
         return models;
     }
     return [
         ...models,
         {
-            key: configuredModelKey,
-            name: configuredModelKey,
-            description: flavor === 'agy' ? 'saved model' : 'custom model',
+            key,
+            name: (isClaude ? UNLISTED_CLAUDE_MODEL_NAMES[key] : undefined) ?? key,
+            description: flavor === 'codex' ? 'custom model' : 'saved model',
         },
     ];
 }
@@ -490,8 +516,8 @@ export function resolveCurrentOption<T extends ModeOption>(
     return null;
 }
 
-export function getDefaultModelKey(flavor: AgentFlavor): string {
-    return getCodeAgentDefaults(flavor).modelMode;
+export function getDefaultModelKey(flavor: AgentFlavor, cliVersion?: string | null): string {
+    return getCodeAgentDefaults(flavor, cliVersion).modelMode;
 }
 
 export function getDefaultPermissionModeKey(flavor: AgentFlavor): string {
@@ -535,6 +561,9 @@ const AGY_EFFORTS_BY_MODEL: Record<string, readonly string[]> = {
 // offers it rather than deciding for you.
 const CODEX_EFFORTS_BY_MODEL: Record<string, readonly string[]> = {
     'gpt-6-astra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    'gpt-6.1-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    'gpt-6-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    'gpt-6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],
     'gpt-5.6-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     'gpt-5.6-terra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     'gpt-5.6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],

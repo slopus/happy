@@ -8,8 +8,8 @@ import { decodeBase64, encodeBase64, libsodiumEncryptForPublicKey } from './encr
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(__dirname, '..');
 const repoRoot = resolve(packageDir, '..', '..');
-const environmentsDir = join(repoRoot, 'environments', 'data', 'envs');
-const currentEnvironmentPath = join(repoRoot, 'environments', 'data', 'current.json');
+const environmentsDir = join(repoRoot, 'packages', 'dev-environments', 'data', 'envs');
+const currentEnvironmentPath = join(repoRoot, 'packages', 'dev-environments', 'data', 'current.json');
 const binPath = resolve(packageDir, 'bin', 'happy-agent.mjs');
 const keepIntegrationEnv = ['1', 'true', 'yes'].includes((process.env.HAPPY_AGENT_KEEP_ENV ?? '').toLowerCase());
 

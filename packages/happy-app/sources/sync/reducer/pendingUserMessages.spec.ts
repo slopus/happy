@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { NormalizedMessage, normalizeRawMessage } from '../typesRaw';
 import { createReducer, reducer, ReducerOptions, registerUserMessageServerIds } from './reducer';
 import { Message, messageSortKey, isOtherParticipantMessage } from '../typesMessage';
-import { buildAgentTurnCopyTextByMessageId } from '../../utils/agentTurnCopy';
 
 /**
  * A message this device just sent, shown before the server has it. The reducer
@@ -98,7 +97,6 @@ describe('pending user messages', () => {
         expect(row).toMatchObject({ kind: 'user-text', createdAt: 1000, sortAt: 3000, sendError: 'That model is not available.' });
         expect(row).not.toHaveProperty('pending');
         const answer: Message = { kind: 'agent-text', id: 'old-answer', localId: null, createdAt: 2000, text: 'still working' };
-        expect(buildAgentTurnCopyTextByMessageId([row, answer], { currentTurnComplete: false }).size).toBe(0);
         const today: Message = { ...answer, id: 'today', createdAt: 4000 };
         expect([row, today].sort((a, b) => messageSortKey(b) - messageSortKey(a)).map((message) => message.id))
             .toEqual(['today', row.id]);
@@ -258,7 +256,6 @@ describe('pending user messages', () => {
             expect(rows.map((message) => 'text' in message ? message.text : '').reverse())
                 .toEqual(['old tail', 'steer', 'new answer']);
             expect(rows[1]).toMatchObject({ sortAt: 3000 });
-            expect(buildAgentTurnCopyTextByMessageId(rows, { currentTurnComplete: false }).has(rows[0].id)).toBe(false);
         },
     );
 

@@ -299,6 +299,8 @@ export function useImagePicker(): UseImagePickerResult {
      *
      * The web composer already takes a paste and a drop on its own, and there
      * is no cache to paste into there, so on web this stays the button it was.
+     * A true native long-press image Paste action is not exposed by React
+     * Native and would require a custom native text-input module.
      */
     const attachImages = useCallback(async () => {
         if (Platform.OS === 'web') {

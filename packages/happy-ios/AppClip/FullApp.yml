@@ -1,0 +1,55 @@
+# Opt-in only, after explicit parent/Clip App IDs and profiles exist.
+# Generate with: xcodegen --spec AppClip/FullApp.yml --project .
+include:
+  - path: ../project.yml
+    relativePaths: true
+name: HappyWithBotClip
+packages:
+  HappyIOS:
+    path: .
+targets:
+  Happy:
+    dependencies:
+      - target: HappyBotClip
+        embed: true
+    settings:
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: AppClip/FullApp.entitlements
+        Preview:
+          CODE_SIGN_ENTITLEMENTS: AppClip/Preview-Parent.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: AppClip/FullApp.entitlements
+  HappyBotClip:
+    type: application.on-demand-install-capable
+    platform: iOS
+    sources:
+      - Sources
+      - ../Sources/HappyGuest
+      - ../Sources/HappyGuestUI
+      - ../Sources/HappyLayout/Guest
+      - ../App/Assets.xcassets
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: AppClip/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AppClip/Clip.entitlements
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_DEBUG_DYLIB: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        OTHER_SWIFT_FLAGS: "$(inherited) -D HAPPY_GUEST_STANDALONE"
+        SKIP_INSTALL: YES
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.dev.Clip
+          HAPPY_PARENT_BUNDLE_ID: com.slopus.happy.dev
+          INFOPLIST_FILE: AppClip/Info-Debug.plist
+        Preview:
+          PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.preview.Clip
+          HAPPY_PARENT_BUNDLE_ID: com.slopus.happy.preview
+          INFOPLIST_FILE: AppClip/Info-Preview.plist
+          CODE_SIGN_ENTITLEMENTS: AppClip/Preview-Clip.entitlements
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: com.ex3ndr.happy.Clip
+          HAPPY_PARENT_BUNDLE_ID: com.ex3ndr.happy

@@ -67,10 +67,29 @@
       }
     },
     "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft",
+        "changesNotSentForReview": true
+      },
       "ios": {
         "appleId": "steve@bulkovo.com",
         "ascAppId": "6748571505",
         "appleTeamId": "466DQWDR8C"
+      }
+    },
+    "production-google-play-draft": {
+      "android": {
+        "track": "production",
+        "releaseStatus": "draft",
+        "changesNotSentForReview": true
+      }
+    },
+    "production-google-play": {
+      "android": {
+        "track": "production",
+        "releaseStatus": "completed",
+        "changesNotSentForReview": false
       }
     }
   }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tablet strings with no happy-app catalog key (literals in its source), in
+  English only. strings.xml is generated from the catalogs; this file is not.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- EmptySessionsTablet.tsx -->
+    <string name="tablet_no_sessions_title">No sessions yet</string>
+    <string name="tablet_machine_unreachable">%1$s is unreachable</string>
+    <string name="tablet_no_machines_reachable">No machines are reachable</string>
+    <string name="tablet_start_description">Start a new session on any of your connected machines.</string>
+    <string name="tablet_start_new_session">Start New Session</string>
+    <string name="tablet_offline_description">Bring a machine online to start a session.</string>
+    <string name="tablet_troubleshoot">Troubleshoot</string>
+    <string name="tablet_install_description">Install and run Happy on your computer to connect it.</string>
+</resources>

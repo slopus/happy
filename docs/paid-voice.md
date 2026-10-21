@@ -10,7 +10,7 @@ User taps mic
 │
 ├─ POST /v1/voice/conversations { agentId }
 │   │
-│   ├─ GET /v1/convai/conversations?agent_id=X&user_id=Y&created_after=<30d>&page_size=100
+│   ├─ GET /v1/convai/conversations?user_id=Y&call_start_after_unix=<30d ago, Unix seconds>&page_size=100
 │   │   └─ Sum call_duration_secs → usedSeconds (~108ms)
 │   │
 │   ├─ conversations == 100?          → { allowed: false, reason: "voice_conversation_limit_reached" }
@@ -52,7 +52,7 @@ Cost: ~$0.01/min ($1600 / 171K min measured).
 ElevenLabs is the source of truth. No local DB.
 
 - `participant_name` on token mint → sets `user_id` on conversation record
-- Usage: `GET /conversations?user_id=Y&created_after=<30d>&page_size=100` → sum durations
+- Usage: `GET /conversations?user_id=Y&call_start_after_unix=<30d ago, Unix seconds>&page_size=100` → sum durations
 - `user_id` = HMAC-SHA256 of Happy user ID (deterministic, one-way)
 - Max page_size is 100 → at 100 conversations we block (can't track more without pagination)
 

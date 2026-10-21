@@ -1,0 +1,97 @@
+{
+    "version": 1,
+    "target": "android-tablet-10",
+    "startState": "Native Happy home with the session sidebar at its top, Zen mode off, no selected conversation or modal, dark mode, Expo Tools button disabled through its normal menu. Dedicated 1920x1080 AVD at 216 dpi. Keep voice on the active session must have its +32 public-file fixture; Make the release ready must be the single active, heartbeat-held multiplayer fixture. The companion card expands the real Changes file; the source card uses the normal Zen mode control for a distinct focused view, then restores the sidebar. Auto permissions remain unchanged throughout.",
+    "scenes": [
+        {
+            "id": "sessions",
+            "steps": [
+                { "type": "wait", "selector": { "field": "text", "value": "New session" } },
+                {
+                    "type": "route",
+                    "path": "session/cmuckup1z0002ceqes4npn29g"
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "Maya" } },
+                { "type": "back" },
+                {
+                    "type": "route",
+                    "path": "session/cmuaqym3i0015cetyfazs8194"
+                },
+                {
+                    "type": "wait",
+                    "selector": {
+                        "field": "text",
+                        "value": "Check how voice follows the session I’m looking at."
+                    }
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "online" } },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "models",
+            "steps": [
+                { "type": "point", "point": "695,995" },
+                { "type": "wait", "selector": { "field": "text", "value": "Auto" } },
+                { "type": "swipe", "from": "1050,800", "to": "1050,400" },
+                { "type": "settle" },
+                { "type": "swipe", "from": "1050,500", "to": "1050,530" },
+                { "type": "wait", "selector": { "field": "text", "value": "Grok 4.6" } },
+                { "type": "wait", "selector": { "field": "text", "value": "online" } },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "companion",
+            "steps": [
+                { "type": "point", "point": "1800,240" },
+                {
+                    "type": "tap",
+                    "selector": {
+                        "field": "description",
+                        "value": "Keep voice on the active session, voice-routing, +32"
+                    }
+                },
+                { "type": "tap", "selector": { "field": "text", "value": "Changes" } },
+                {
+                    "type": "wait",
+                    "selector": { "field": "text", "value": "sessionListTimestamp.ts" }
+                },
+                {
+                    "type": "tap",
+                    "selector": { "field": "text", "value": "sessionListTimestamp.ts" }
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "@@ -0,0 +1,32 @@" } },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "source",
+            "steps": [
+                {
+                    "type": "tap",
+                    "selector": { "field": "description", "value": "Zen mode" }
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "@@ -0,0 +1,32 @@" } },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "multiplayer",
+            "steps": [
+                {
+                    "type": "tap",
+                    "selector": { "field": "description", "value": "Zen mode" }
+                },
+                {
+                    "type": "route",
+                    "path": "session/cmuckup1z0002ceqes4npn29g"
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "Maya" } },
+                { "type": "wait", "selector": { "field": "text", "value": "Jamie" } },
+                { "type": "wait", "selector": { "field": "text", "value": "online" } },
+                { "type": "settle" }
+            ]
+        }
+    ]
+}

@@ -603,6 +603,10 @@ export function SessionsList({
                     windowSize={5}
                     maxToRenderPerBatch={8}
                     initialNumToRender={12}
+                    // FlatList defaults this on for Android only. Virtualization
+                    // already unmounts offscreen rows; detaching the rest too
+                    // only gives Android a second, divergent layout path.
+                    removeClippedSubviews={false}
                     onScroll={onScroll}
                     scrollEventThrottle={16}
                 />

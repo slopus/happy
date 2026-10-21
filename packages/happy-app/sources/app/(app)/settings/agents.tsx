@@ -72,6 +72,11 @@ export default function AgentsSettingsScreen() {
             || right.activeAt - left.activeAt
         ))
     ), [machines]);
+    // Code defaults depend on the CLI that will run them (Opus 5.5 needs a new
+    // enough one). Describe them for the machine listed first: online, then
+    // most recently active, which is where a new session most likely starts.
+    const defaultsCliVersion = machineChoices.find((choice) => choice.happyMachine)
+        ?.happyMachine?.metadata?.happyCliVersion;
 
     const updateOverride = React.useCallback((
         agent: AgentKey,
@@ -118,7 +123,7 @@ export default function AgentsSettingsScreen() {
     );
 
     const renderField = (agent: AgentKey, config: FieldConfig) => {
-        const effectiveDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, agent);
+        const effectiveDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, agent, defaultsCliVersion);
         const effectiveValue = effectiveDefaults[config.field];
         const overrideValue = getAgentDefaultOverrideValue(agentDefaultOverrides, agent, config.field);
         const hasOverride = hasAgentDefaultOverride(agentDefaultOverrides, agent, config.field);
@@ -233,8 +238,8 @@ export default function AgentsSettingsScreen() {
             </ItemGroup>
 
             {configurableAgentKeys.map((agent) => {
-                const codeDefaults = getCodeAgentDefaults(agent);
-                const effectiveDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, agent);
+                const codeDefaults = getCodeAgentDefaults(agent, defaultsCliVersion);
+                const effectiveDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, agent, defaultsCliVersion);
                 const permissionOptions = getHardcodedPermissionModes(agent, t);
                 const modelOptions = includeConfiguredModel(
                     agent,

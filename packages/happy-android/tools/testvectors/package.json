@@ -1,0 +1,14 @@
+{
+  "name": "happy-android-testvectors",
+  "private": true,
+  "type": "module",
+  "description": "Generates test vectors for happy-android by running happy-app's TypeScript sources.",
+  "scripts": {
+    "generate": "node generate.mjs",
+    "generate:send": "node send.mjs"
+  },
+  "dependencies": {
+    "@stablelib/hex": "2.0.1",
+    "libsodium-wrappers": "0.8.2"
+  }
+}

@@ -55,7 +55,7 @@ CLAUDE.md
 
 # Local dev environments
 .environments/
-environments/data/
+packages/dev-environments/data/
 
 # Development planning notes (keep local, don't commit)
 notes/

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<!--
+  MermaidRenderer.tsx's page for iOS and Android, with mermaid loaded from
+  the app (mermaid.min.js beside this file) instead of a CDN. The diagram
+  and the theme arrive as values through `render`, never pasted into the
+  page; each finished render reports the page's height to the app.
+-->
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Nothing a diagram says reaches the network. -->
+    <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; img-src data:; font-src data:; media-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'">
+    <script src="mermaid.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 16px;
+        }
+        #mermaid-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+        }
+        #mermaid-container svg {
+            max-width: 100%;
+            height: auto;
+        }
+        .error {
+            color: #ff6b6b;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div id="mermaid-container"></div>
+    <script>
+        let current = 0;
+
+        function reportHeight(token) {
+            if (token !== current) return;
+            const height = Math.max(
+                document.body.scrollHeight,
+                document.documentElement.scrollHeight
+            );
+            window.webkit.messageHandlers.mermaid.postMessage({ token: token, height: height });
+        }
+
+        async function render(content, theme, background, token) {
+            current = token;
+            document.body.style.backgroundColor = background;
+            const container = document.getElementById('mermaid-container');
+            try {
+                mermaid.initialize({
+                    startOnLoad: false,
+                    theme: theme
+                });
+                const { svg } = await mermaid.render('mermaid-diagram-' + token, content);
+                if (token !== current) return;
+                container.innerHTML = svg;
+            } catch (error) {
+                if (token !== current) return;
+                const message = document.createElement('div');
+                message.className = 'error';
+                message.textContent = 'Diagram error: ' + ((error && error.message) || String(error));
+                container.replaceChildren(message);
+            }
+
+            // SVG sizing can settle asynchronously, so report again after a delay
+            requestAnimationFrame(() => {
+                reportHeight(token);
+                setTimeout(() => reportHeight(token), 200);
+            });
+        }
+    </script>
+</body>
+</html>

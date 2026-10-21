@@ -1,6 +1,6 @@
 # Privacy Policy for Happy Coder
 
-**Last Updated: July 23, 2026**
+**Last Updated: October 8, 2026**
 
 ## Overview
 
@@ -20,15 +20,22 @@ Happy Coder is committed to protecting your privacy. This policy explains how we
 - **Push Notification Tokens**: Device tokens for sending push notifications via Expo's push notification service
 
 ### Analytics (PostHog)
-- **Anonymous Events**: We collect basic app usage events through PostHog to improve the app experience
-- **Privacy by Design**: All analytics events use an anonymized ID derived from a secret key - we cannot match this back to any user or account
-- **No Content Tracking**: We only track basic app usage events, never any message content, code, or personal information
-- **Opt-Out Available**: You can disable analytics collection at any time in the app settings
+The Happy app sends usage events to PostHog so we can see which features people use and where the app breaks. This is standard product analytics.
+
+- **Pseudonymous ID**: Events are tied to an ID derived from your account's secret key, so one person's events can be linked to each other. We cannot match it back to your Happy account, email, or any other identity.
+- **What events contain**:
+  - Which screens you open, and app lifecycle events (installed, updated, opened, backgrounded)
+  - When you send a message: which app sent it (iOS, Android, web, or desktop); whether it went to a regular session, a bot, or the Chief of Staff, and a built-in bot's internal key such as `chief_of_staff`; how deep the session is (a top-level session or a subtask); whether the session runs on Happy Agent or the Happy CLI, and which CLI agent (for example Claude Code or Codex); the model, the provider type (for example `claude` or `codex`), and the effort level; a short hash that tells your provider accounts apart without naming them; the operating system family of the computer running the agent (macOS, Windows, or Linux); and the Happy app, Happy Agent, and Happy CLI versions
+- **What PostHog receives automatically**: your device model, operating system and version, app version and build, language, time zone, and screen size, and the IP address the events come from. PostHog uses that IP address to estimate an approximate location (country and city).
+- **What we never send**: message content, prompts, code, file names or paths, project, bot, or account names, provider account IDs, or your email.
+- **Opt-Out Available**: You can turn analytics off at any time in Settings. When it is off, the app sends no analytics events.
+- **Desktop app**: Happy's desktop app sends similar usage events, tied to a random ID created when it is installed. It has its own switch in Settings → Privacy. PostHog receives the IP address of those requests too; the desktop app does not use it for location.
+- **Happy Agent**: Happy Agent itself, the program that runs agents on your computer, sends no analytics.
 
 ### Subscription Management (Revenue Cat)
 - **Account ID**: Revenue Cat uses your account ID to manage subscriptions and enable premium features
 - **Backend Integration**: This ID allows us to provide additional features from our backend while maintaining end-to-end encryption for your content
-- **Data Separation**: Purchase analytics sent to PostHog use the anonymized ID instead - we cannot match Revenue Cat data with PostHog analytics
+- **Data Separation**: Purchase analytics sent to PostHog use the pseudonymous analytics ID instead - we cannot match Revenue Cat data with PostHog analytics
 
 ### Voice (Optional)
 When you turn on voice, your device connects to ElevenLabs to provide the voice agent. Native apps use the ElevenLabs SDK with a LiveKit/WebRTC media connection; the web client uses the ElevenLabs web SDK over WebSocket.
@@ -42,8 +49,7 @@ When you turn on voice, your device connects to ElevenLabs to provide the voice 
 ## What We Don't Collect
 - Your actual code or conversation content sent through Happy's encrypted synchronization service (we can't decrypt it). This does not include voice audio or context you choose to send directly to ElevenLabs during an active voice session.
 - Personal information contained in encrypted messages, because we cannot decrypt those messages. If you use voice, ElevenLabs may receive personal information that you include in voice audio or context.
-- Device information beyond anonymous IDs
-- Location data
+- Your precise location. The approximate location PostHog estimates from your IP address is described under "Analytics" above.
 
 ## How We Use Data
 
@@ -95,7 +101,7 @@ You have the right to:
 We share data with service providers only as needed to provide the features described in this policy:
 
 - **Expo**: push notification delivery
-- **PostHog**: the anonymous analytics described above
+- **PostHog**: the usage analytics described above
 - **RevenueCat**: subscription management
 - **ElevenLabs**: the optional voice-agent service and voice-usage measurement. On native apps, voice media uses ElevenLabs' LiveKit/WebRTC transport; the web client uses ElevenLabs' WebSocket-based SDK.
 

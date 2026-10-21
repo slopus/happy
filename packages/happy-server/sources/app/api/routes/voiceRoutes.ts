@@ -32,11 +32,11 @@ async function getVoiceUsage(
     elevenLabsApiKey: string,
     elevenUserId: string,
 ): Promise<{ usedSeconds: number; conversationCount: number }> {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400 * 1000).toISOString();
+    const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 86400;
 
     // Query across all agents — usage is per-user, not per-agent
     const res = await fetch(
-        `${ELEVEN_LABS_API}/conversations?user_id=${elevenUserId}&created_after=${thirtyDaysAgo}&page_size=100`,
+        `${ELEVEN_LABS_API}/conversations?user_id=${elevenUserId}&call_start_after_unix=${thirtyDaysAgo}&page_size=100`,
         { headers: { "xi-api-key": elevenLabsApiKey } }
     );
 
@@ -104,10 +104,6 @@ export function voiceRoutes(app: Fastify) {
         if (!elevenLabsApiKey) {
             return reply.code(500).send({ error: 'ELEVENLABS_API_KEY not configured' });
         }
-        if (!process.env.REVENUECAT_API_KEY) {
-            return reply.code(500).send({ error: 'REVENUECAT_API_KEY not configured' });
-        }
-
         const elevenUserId = deriveElevenUserId(userId);
 
         // Check usage from ElevenLabs directly
@@ -136,7 +132,7 @@ export function voiceRoutes(app: Fastify) {
             });
         }
 
-        // Free tier — 1 hour, then need subscription
+        // Free tier — 20 minutes, then need subscription
         if (usedSeconds >= VOICE_FREE_LIMIT_SECONDS) {
             const subscribed = await hasActiveSubscription(userId);
             log({ module: 'voice' }, `User ${userId}: subscription check = ${subscribed}`);

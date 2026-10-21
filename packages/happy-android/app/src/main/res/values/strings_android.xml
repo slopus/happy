@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings with no happy-app catalog key, in English only. strings.xml is
+  generated from the catalogs (tools/translations); this file is not.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- serverConfig.ts validateServerUrl -->
+    <string name="server_url_empty">Server URL cannot be empty</string>
+    <string name="server_url_protocol">Server URL must use HTTP or HTTPS protocol</string>
+    <string name="server_url_invalid">Invalid URL format</string>
+
+    <!-- literals in happy-app: SettingsView.tsx, hooks/useHappyAction.ts -->
+    <string name="settings_agents">Agents</string>
+    <string name="settings_agents_subtitle">Connected machines and agent defaults</string>
+    <string name="happy_action_unknown_error">Unknown error</string>
+    <!-- literals in settings/appearance.tsx -->
+    <string name="settings_appearance_file_diffs_sidebar">File Diffs Sidebar</string>
+    <string name="settings_appearance_file_diffs_sidebar_description">Show git changes next to the chat on desktop</string>
+    <!-- ChatList.tsx's scroll-to-bottom button, unnamed there -->
+    <string name="chat_scroll_to_bottom">Scroll to bottom</string>
+    <!-- Accessibility label for the unlabeled close-circle in settings/voice/language.tsx. -->
+    <string name="voice_clear_search">Clear search</string>
+</resources>

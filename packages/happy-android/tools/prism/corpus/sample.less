@@ -1,0 +1,5 @@
+@primary: #428bca;
+.mixin(@a; @b: 2) { width: (@a * @b); }
+// line comment
+.box { .mixin(10px); color: fade(@primary, 50%); &:extend(.base all); }
+@media (min-width: 768px) { .box { margin: ~"calc(100% - 10px)"; } }

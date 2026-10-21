@@ -1,0 +1,90 @@
+{
+    "version": 1,
+    "target": "android-tablet-7",
+    "startState": "Native Happy in landscape with the session sidebar at its top, Zen mode off, keyboard closed, no modal, dark mode, and Expo Tools disabled through its normal menu. Dedicated 1920x1080 AVD at 288 dpi. Keep voice on the active session must have its +32 public-file fixture; Make the release ready must be the single active, heartbeat-held multiplayer fixture. The plan reads that fixture normally before showing a populated voice conversation beside the sidebar. The companion card expands the real Changes file; the source card uses normal Zen mode and a lower-code scroll, then restores the sidebar. Auto permissions remain unchanged throughout.",
+    "scenes": [
+        {
+            "id": "sessions",
+            "steps": [
+                { "type": "route", "path": "session/cmuckup1z0002ceqes4npn29g" },
+                { "type": "wait", "selector": { "field": "text", "value": "Maya" } },
+                { "type": "route", "path": "session/cmuaqym3i0015cetyfazs8194" },
+                { "type": "wait", "selector": { "field": "text", "value": "New session" } },
+                {
+                    "type": "wait",
+                    "selector": {
+                        "field": "description",
+                        "value": "Keep voice on the active session, voice-routing, +32"
+                    }
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "Type a message ..." } },
+                { "type": "wait", "selector": { "field": "text", "value": "online" } },
+                {
+                    "type": "wait",
+                    "selector": { "field": "text", "value": "Make the release ready" }
+                },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "models",
+            "steps": [
+                { "type": "route", "path": "session/cmuaqym3i0015cetyfazs8194" },
+                { "type": "wait", "selector": { "field": "text", "value": "Type a message ..." } },
+                { "type": "wait", "selector": { "field": "text", "value": "online" } },
+                { "type": "tap", "selector": { "field": "description", "value": "" } },
+                { "type": "wait", "selector": { "field": "text", "value": "Auto" } },
+                { "type": "swipe", "from": "1000,700", "to": "1000,250" },
+                { "type": "wait", "selector": { "field": "text", "value": "Grok 4.6" } },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "companion",
+            "steps": [
+                { "type": "tap", "selector": { "field": "description", "value": "" } },
+                {
+                    "type": "tap",
+                    "selector": {
+                        "field": "description",
+                        "value": "Keep voice on the active session, voice-routing, +32"
+                    }
+                },
+                { "type": "tap", "selector": { "field": "text", "value": "Changes" } },
+                { "type": "wait", "selector": { "field": "text", "value": "View changes" } },
+                {
+                    "type": "tap",
+                    "selector": { "field": "text", "value": "sessionListTimestamp.ts" }
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "@@ -0,0 +1,32 @@" } },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "source",
+            "steps": [
+                { "type": "tap", "selector": { "field": "description", "value": "Zen mode" } },
+                { "type": "wait", "selector": { "field": "text", "value": "@@ -0,0 +1,32 @@" } },
+                { "type": "swipe", "from": "1000,900", "to": "1000,570" },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "multiplayer",
+            "steps": [
+                { "type": "tap", "selector": { "field": "description", "value": "Zen mode" } },
+                { "type": "route", "path": "session/cmuckup1z0002ceqes4npn29g" },
+                {
+                    "type": "wait",
+                    "selector": {
+                        "field": "text",
+                        "value": "Shortcuts stay as they are. The updated copy is ready for your review."
+                    }
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "online" } },
+                { "type": "swipe", "from": "1200,350", "to": "1200,395" },
+                { "type": "settle" }
+            ]
+        }
+    ]
+}

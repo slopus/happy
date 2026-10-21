@@ -367,6 +367,43 @@ describe('resolveMessageModeMeta', () => {
         expect(meta).toEqual({ model: null });
     });
 
+    it('never sends the claude code-default model to a session with no pick', () => {
+        // The code default seeds new sessions only. Sending it here would move
+        // every running session onto whatever model the default names next.
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any, { agentDefaultOverrides: {} });
+
+        expect(meta).toEqual({});
+    });
+
+    it('keeps sending a claude session the retired model key it was started with', () => {
+        // The composer shows the row that runs the same model, but a running
+        // session is never re-modeled behind the user's back.
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: 'claude-sonnet-5-5[1m]',
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any, { agentDefaultOverrides: {} });
+
+        expect(meta).toEqual({ model: 'claude-sonnet-5-5[1m]' });
+    });
+
+    it('sends a saved claude [1m] default as the row it now maps to', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any, { agentDefaultOverrides: { claude: { modelMode: 'claude-opus-5[1m]' } } });
+
+        expect(meta).toEqual({ model: 'claude-opus-5' });
+    });
+
     it('sends canonical Rig selection metadata using mode code rather than semantic kind', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: 'auto',

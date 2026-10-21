@@ -92,7 +92,6 @@ export const SessionsListWrapper = React.memo(({
                 <View style={styles.emptyStateContainer}>
                     <View style={[styles.emptyStateContentContainer, { paddingTop: topContentInset, paddingBottom: bottomContentInset }]}>
                         <LinkComputerChecklist
-                            variant="offline"
                             onShowArchived={hasArchivedSessions ? () => setHideArchivedSessions(false) : undefined}
                         />
                     </View>

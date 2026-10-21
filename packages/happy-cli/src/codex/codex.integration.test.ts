@@ -6,7 +6,7 @@
  * were impossible with the legacy MCP tools.
  *
  * Requirements:
- *   - `codex` CLI installed and on PATH (>= 0.100)
+ *   - `codex` CLI installed and on PATH (>= 0.153.0)
  *   - OPENAI_API_KEY (or equivalent) configured
  *
  * Run:
@@ -43,7 +43,7 @@ async function isCodexAppServerAvailable(): Promise<boolean> {
         const match = version.match(/codex-cli\s+(\d+\.\d+\.\d+)/);
         if (!match) return false;
         const [major, minor] = match[1].split(".").map(Number);
-        return major > 0 || minor >= 100;
+        return major > 0 || minor >= 153;
     } catch {
         return false;
     }

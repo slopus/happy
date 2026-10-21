@@ -1,0 +1,64 @@
+{
+    "version": 1,
+    "target": "android-phone",
+    "startState": "Native Sessions home at the top of its list, no dialog or keyboard, dark mode, Expo Tools disabled through its normal menu. Dedicated 1080x1920 AVD at 420 dpi. Preserve scroll while messages arrive uses Auto permissions. The source session must contain the +32 public-file fixture and the collaboration producer must remain active. Replace the two explicit route IDs with the corresponding sessions in a new gym database.",
+    "scenes": [
+        {
+            "id": "sessions",
+            "steps": [
+                { "type": "wait", "selector": { "field": "text", "value": "Sessions" } },
+                {
+                    "type": "wait",
+                    "selector": { "field": "text", "value": "Make the release ready" }
+                },
+                {
+                    "type": "tap",
+                    "selector": { "field": "text", "value": "Make the release ready" }
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "Maya" } },
+                { "type": "point", "point": "105,148" },
+                { "type": "wait", "selector": { "field": "text", "value": "Sessions" } },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "models",
+            "steps": [
+                {
+                    "type": "tap",
+                    "selector": {
+                        "field": "text",
+                        "value": "Preserve scroll while messages arrive"
+                    }
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "Auto" } },
+                { "type": "tap", "selector": { "field": "description", "value": "MODEL" } },
+                { "type": "wait", "selector": { "field": "text", "value": "Grok 4.6" } },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "source",
+            "steps": [
+                { "type": "point", "point": "1050,800" },
+                { "type": "route", "path": "session/cmuaqym3i0015cetyfazs8194/changes" },
+                { "type": "wait", "selector": { "field": "text", "value": "View changes" } },
+                {
+                    "type": "tap",
+                    "selector": { "field": "text", "value": "sessionListTimestamp.ts" }
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "@@ -0,0 +1,32 @@" } },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "multiplayer",
+            "steps": [
+                { "type": "route", "path": "session/cmucf7uwi0002ceaocak8ev3j" },
+                { "type": "wait", "selector": { "field": "text", "value": "Maya" } },
+                { "type": "wait", "selector": { "field": "text", "value": "Jamie" } },
+                { "type": "settle" }
+            ]
+        }
+    ]
+}

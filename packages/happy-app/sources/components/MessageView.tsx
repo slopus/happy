@@ -24,7 +24,6 @@ export const MessageView = React.memo((props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
-  copyText?: string;
 }) => {
   return (
     <View
@@ -37,7 +36,6 @@ export const MessageView = React.memo((props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
-          copyText={props.copyText}
         />
       </View>
     </View>
@@ -50,7 +48,6 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
-  copyText?: string;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -63,7 +60,7 @@ function RenderBlock(props: {
       );
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} copyText={props.copyText} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -109,7 +106,14 @@ function UserMessageFrame(props: {
   // that exists in one state only, or a different component type — makes React
   // remount the bubble and its markdown, which shows up as a relayout flash at
   // the exact moment the message should simply stop looking dimmed. Only style
-  // values and the trailing status line may differ.
+  // values and the status text may differ. The status line is always mounted at
+  // a fixed single-line height, so a row never changes height once it is in the
+  // transcript and the chat does not jump when a status appears or clears.
+  const statusText = props.sendError !== undefined
+    ? t('message.sendFailed', { reason: props.sendError })
+    : showPendingStatus
+      ? (props.queuedWhileBusy === true ? t('message.sendsAfterThisTurn') : t('message.sending'))
+      : '';
   return (
     <View style={[styles.userMessageContainer, fromOther && styles.userMessageContainerOther]}>
       {fromOther ? <Text numberOfLines={1} style={styles.userMessageAuthorText}>{props.author!.name}</Text> : null}
@@ -126,14 +130,9 @@ function UserMessageFrame(props: {
       >
         {props.children}
       </View>
-      {showPendingStatus ? (
-        <Text style={styles.pendingStatusText}>
-          {props.queuedWhileBusy === true ? t('message.sendsAfterThisTurn') : t('message.sending')}
-        </Text>
-      ) : null}
-      {props.sendError !== undefined ? (
-        <Text style={[styles.pendingStatusText, styles.sendErrorText]}>{t('message.sendFailed', { reason: props.sendError })}</Text>
-      ) : null}
+      <Text numberOfLines={1} style={[styles.pendingStatusText, props.sendError !== undefined && styles.sendErrorText]}>
+        {statusText}
+      </Text>
     </View>
   );
 }
@@ -142,7 +141,7 @@ function UserMessageFrame(props: {
 // genuinely taking time, surface that after a short grace period instead of
 // leaving a pending message with no explanation. Use createdAt so remounting an
 // already-stale row shows its state immediately rather than restarting the wait.
-const PENDING_STATUS_GRACE_MS = 1_000;
+const PENDING_STATUS_GRACE_MS = 2_000;
 
 function usePendingStatusVisible(pending: boolean | undefined, queuedWhileBusy: boolean | undefined, createdAt: number) {
   const shouldDelay = pending === true && queuedWhileBusy !== true;
@@ -260,7 +259,6 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
-  copyText?: string;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
@@ -274,7 +272,7 @@ function AgentTextBlock(props: {
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-      {props.copyText ? <MessageCopyButton text={props.copyText} /> : null}
+      <MessageCopyButton text={props.message.text} />
     </View>
   );
 }
@@ -410,6 +408,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
     paddingHorizontal: 16,
+    paddingTop: 6,
   },
   userMessageBubble: {
     backgroundColor: theme.colors.userMessageBackground,
@@ -517,6 +516,9 @@ const styles = StyleSheet.create((theme) => ({
     // Matches the status line above the composer, the app's other place for
     // saying what the session is doing right now.
     fontSize: 11,
+    // Fixed so an empty line and a long error take the same space.
+    lineHeight: 14,
+    height: 14,
     marginBottom: 4,
     marginTop: 2,
     ...Typography.default(),

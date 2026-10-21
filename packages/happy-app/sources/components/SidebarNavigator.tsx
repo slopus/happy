@@ -1,9 +1,9 @@
 import { useAuth } from '@/auth/AuthContext';
 import * as React from 'react';
 import { Drawer } from 'expo-router/drawer';
-import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
+import { useIsTablet, useHeaderHeight, useLayoutDimensions } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
-import { useWindowDimensions, View, Pressable, Platform } from 'react-native';
+import { View, Pressable, Platform } from 'react-native';
 import { useAllMachines, useIsDataReady, useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
@@ -50,7 +50,7 @@ export const SidebarNavigator = React.memo(() => {
     });
     const isDesktopLayout = auth.isAuthenticated && isTablet && !suppressTabletShell;
     const showSidebar = isDesktopLayout && !zenMode;
-    const { width: windowWidth } = useWindowDimensions();
+    const { width: windowWidth } = useLayoutDimensions();
 
     // Calculate target drawer width
     const fullDrawerWidth = React.useMemo(() => {

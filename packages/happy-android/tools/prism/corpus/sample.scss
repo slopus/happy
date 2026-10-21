@@ -1,0 +1,7 @@
+@use 'sass:math';
+$base: 16px !default;
+@mixin card($pad: 2) { padding: math.div($base, $pad); }
+.card {
+  &:hover { color: darken(#336699, 10%); }
+  .title { @include card(4); font: bold #{$base}/1.5 "Inter", sans-serif; }
+}

@@ -1,6 +1,7 @@
 import { Platform, Alert } from 'react-native';
 import { t } from '@/text';
 import { AlertButton, ModalConfig, CustomModalConfig, IModal } from './types';
+import { getAlertDismissal } from './alertPolicy';
 
 class ModalManagerClass implements IModal {
     private showModalFn: ((config: Omit<ModalConfig, 'id'>) => string) | null = null;
@@ -38,8 +39,10 @@ class ModalManagerClass implements IModal {
                 buttons: buttons || [{ text: t('common.ok') }]
             } as Omit<ModalConfig, 'id'>);
         } else {
-            // Use native alert
-            Alert.alert(title, message, buttons);
+            // Use native alert. Android ignores outside taps and Back unless
+            // told otherwise; iOS has neither, so the options only matter there.
+            const { dismissible, onDismiss } = getAlertDismissal(buttons);
+            Alert.alert(title, message, buttons, { cancelable: dismissible, onDismiss });
         }
     }
 

@@ -1,0 +1,9 @@
+{
+  "name": "happy-android-translations",
+  "private": true,
+  "type": "module",
+  "description": "Generates happy-android's string resources from happy-app's translation catalogs.",
+  "scripts": {
+    "generate": "node --no-warnings generate.mjs"
+  }
+}

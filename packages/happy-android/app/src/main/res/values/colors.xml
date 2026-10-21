@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- android.adaptiveIcon.backgroundColor in packages/happy-app/app.config.js -->
+    <color name="ic_launcher_background">#000000</color>
+    <!-- theme.colors.groupped.background (Android), light and dark -->
+    <color name="window_background">#F5F5F5</color>
+</resources>

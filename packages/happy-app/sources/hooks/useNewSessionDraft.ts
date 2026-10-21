@@ -27,6 +27,14 @@ interface NewSessionDraftState {
      */
     selectedProjectId: string | null;
     agentType: NewSessionAgentType;
+    /**
+     * The harness the person last picked in the composer, persisted and kept across sessions and
+     * restarts until they pick another. Separate from `agentType`, which follows what the selected
+     * computer can run: a computer without the picked harness moves `agentType` to one it has and
+     * leaves this alone, so the pick comes back on a computer that has it. Without a pick, a
+     * computer with Happy Agent starts Happy whatever `agentType` says.
+     */
+    pickedAgentType: NewSessionAgentType | null;
     permissionMode: PermissionModeKey | null;
     modelMode: string | null;
     effortLevel: string | null;
@@ -59,6 +67,8 @@ interface NewSessionDraftState {
     /** Names a catalog project as the place, in place of whatever directory was chosen before. */
     setProjectId: (id: string | null) => void;
     setAgentType: (agent: NewSessionAgentType) => void;
+    /** The person's own harness choice in the composer; see `pickedAgentType`. */
+    pickAgentType: (agent: NewSessionAgentType) => void;
     setPermissionMode: (mode: PermissionModeKey) => void;
     setModelMode: (mode: string) => void;
     setEffortLevel: (level: string) => void;
@@ -79,6 +89,7 @@ function persist(state: NewSessionDraftState) {
         selectedPath: state.selectedPath,
         selectedProjectId: state.selectedProjectId,
         agentType: state.agentType,
+        pickedAgentType: state.pickedAgentType,
         permissionMode: state.permissionMode,
         modelMode: state.modelMode,
         effortLevel: state.effortLevel,
@@ -99,6 +110,7 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     selectedPath: initial?.selectedPath ?? null,
     selectedProjectId: initial?.selectedProjectId ?? null,
     agentType: initial?.agentType ?? 'claude',
+    pickedAgentType: initial?.pickedAgentType ?? null,
     permissionMode: initial?.permissionMode ?? null,
     modelMode: initial?.modelMode ?? null,
     effortLevel: initial?.effortLevel ?? null,
@@ -116,6 +128,7 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     setPath: (path) => { set({ selectedPath: path, selectedProjectId: null, worktreeKey: null }); persist(get()); },
     setProjectId: (id) => { set({ selectedProjectId: id, selectedPath: null, worktreeKey: null }); persist(get()); },
     setAgentType: (agent) => { set({ agentType: agent }); persist(get()); },
+    pickAgentType: (agent) => { set({ agentType: agent, pickedAgentType: agent }); persist(get()); },
     setPermissionMode: (mode) => { set({ permissionMode: mode }); persist(get()); },
     setModelMode: (mode) => { set({ modelMode: mode }); persist(get()); },
     setEffortLevel: (level) => { set({ effortLevel: level }); persist(get()); },
