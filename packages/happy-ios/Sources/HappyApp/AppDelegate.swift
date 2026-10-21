@@ -1,6 +1,8 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyUI
+import HappyGuest
+import HappyGuestUI
 import UIKit
 
 /// The app's entry point. It lives in a library target because xtool builds
@@ -62,23 +64,58 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             PushNotifications.shared.handle(response)
         }
         for context in connectionOptions.urlContexts {
-            coordinator.open(context.url)
+            open(context.url)
         }
+        for activity in connectionOptions.userActivities { open(activity) }
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         for context in URLContexts {
-            coordinator?.open(context.url)
+            open(context.url)
         }
+    }
+
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) { open(userActivity) }
+
+    private func open(_ activity: NSUserActivity) {
+        guard activity.activityType == NSUserActivityTypeBrowsingWeb, let url = activity.webpageURL else { return }
+        open(url)
+    }
+
+    private func open(_ url: URL) {
+        guard GuestInvitation(url: url) != nil, let root = window?.rootViewController else {
+            coordinator?.open(url)
+            return
+        }
+        let chat: GuestChatViewController
+        var presenter = root
+        while let presented = presenter.presentedViewController { presenter = presented }
+        if let existing = presenter as? GuestChatViewController { chat = existing }
+        else {
+            chat = GuestChatViewController()
+            presenter.present(chat, animated: true)
+        }
+        chat.open(url)
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         coordinator?.appStateChanged(active: true)
+        activeGuest?.setActive(true)
         PushNotifications.shared.appBecameActive()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
         coordinator?.appStateChanged(active: false)
+        activeGuest?.setActive(false)
+    }
+
+    private var activeGuest: GuestChatViewController? {
+        var controller = window?.rootViewController
+        while let current = controller {
+            if let guest = current as? GuestChatViewController { return guest }
+            controller = current.presentedViewController
+        }
+        return nil
     }
 }
 #endif

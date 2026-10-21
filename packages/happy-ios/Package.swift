@@ -35,6 +35,7 @@ let package = Package(
         .library(name: "HappyApp", targets: ["HappyApp"]),
         // Everything the app is built from, for the XcodeGen app target.
         .library(name: "HappyKit", targets: ["HappyCrypto", "HappyWire", "HappyStore", "HappyCore", "HappyLayout", "HappyIcons", "HappyUI"]),
+        .library(name: "HappyGuestKit", targets: ["HappyGuest", "HappyGuestUI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
@@ -48,6 +49,9 @@ let package = Package(
         .package(url: "https://github.com/slopus/tailcat-swift.git", revision: "70a66d473b32e5c8217cf8652237d9848af4ce3e"),
     ],
     targets: [
+        .target(name: "HappyGuest", dependencies: [cryptoBackend]),
+        .target(name: "HappyGuestUI", dependencies: ["HappyGuest", "HappyLayout"]),
+        .testTarget(name: "HappyGuestTests", dependencies: ["HappyGuest"]),
         .target(
             name: "HappyCrypto",
             dependencies: [cryptoBackend]
@@ -94,7 +98,7 @@ let package = Package(
         ),
         .target(
             name: "HappyApp",
-            dependencies: ["HappyCore", "HappyStore", "HappyUI"]
+            dependencies: ["HappyCore", "HappyStore", "HappyUI", "HappyGuestUI", "HappyGuest"]
         ),
         .testTarget(
             name: "HappyCryptoTests",

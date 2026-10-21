@@ -38,6 +38,8 @@ targets:
     dependencies:
       - package: HappyIOS
         product: HappyKit
+      - package: HappyIOS
+        product: HappyGuestKit
     settings:
       base:
         PRODUCT_NAME: Happy
