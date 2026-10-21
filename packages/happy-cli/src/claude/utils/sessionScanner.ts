@@ -1,11 +1,11 @@
 import { InvalidateSync } from "@/utils/sync";
 import { RawJSONLines, RawJSONLinesSchema } from "../types";
 import { parseClaudeGoalStatusTranscriptEvent, type ClaudeGoalStatusTranscriptEvent } from "../claudeGoalStatus";
-import { join } from "node:path";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { logger } from "@/ui/logger";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
-import { getProjectPath } from "./path";
+import { resolveSessionFile } from "./path";
 
 /**
  * Known internal Claude Code event types that should be silently skipped.
@@ -36,14 +36,27 @@ export async function createSessionScanner(opts: {
     missingFileTimeoutMs?: number
 }) {
 
-    // Resolve project directory
-    const projectDir = getProjectPath(opts.workingDirectory);
+    // Transcript path per session. Re-resolved whenever the file is missing,
+    // because EnterWorktree moves a live transcript to another project dir.
+    const sessionFiles = new Map<string, string>();
+    const locateSession = (sessionId: string): string => {
+        const known = sessionFiles.get(sessionId);
+        if (known && existsSync(known)) {
+            return known;
+        }
+        const file = resolveSessionFile(opts.workingDirectory, sessionId);
+        if (known && known !== file) {
+            logger.debug(`[SESSION_SCANNER] Session ${sessionId} transcript moved: ${known} -> ${file}`);
+        }
+        sessionFiles.set(sessionId, file);
+        return file;
+    };
 
     // Finished, pending finishing and current session
     let finishedSessions = new Set<string>();
     let pendingSessions = new Set<string>();
     let currentSessionId: string | null = null;
-    let watchers = new Map<string, (() => void)>();
+    let watchers = new Map<string, { file: string, stop: () => void }>();
     let processedEntryKeys = new Set<string>();
     // Sessions whose project directory stayed unwatchable. Their watcher gave
     // up, so do not keep re-creating it on every sync. A merely absent file is
@@ -52,7 +65,7 @@ export async function createSessionScanner(opts: {
 
     // Mark existing entries as processed and start watching the initial session
     if (opts.sessionId) {
-        let entries = await readSessionEntries(projectDir, opts.sessionId);
+        let entries = await readSessionEntries(locateSession(opts.sessionId));
         logger.debug(`[SESSION_SCANNER] Marking ${entries.length} existing entries as processed from session ${opts.sessionId}`);
         for (let entry of entries) {
             processedEntryKeys.add(entry.key);
@@ -86,7 +99,7 @@ export async function createSessionScanner(opts: {
 
         // Process sessions
         for (let session of sessions) {
-            const sessionEntries = await readSessionEntries(projectDir, session);
+            const sessionEntries = await readSessionEntries(locateSession(session));
             let skipped = 0;
             let sentMessages = 0;
             let sentTranscriptEvents = 0;
@@ -121,10 +134,21 @@ export async function createSessionScanner(opts: {
 
         // Update watchers for all sessions
         for (let p of sessions) {
-            if (!watchers.has(p) && !deadSessions.has(p)) {
+            if (deadSessions.has(p)) {
+                continue;
+            }
+            const file = locateSession(p);
+            const existing = watchers.get(p);
+            if (existing && existing.file !== file) {
+                // The transcript moved; the old watcher would wait forever
+                // for the file to come back at its old path.
+                existing.stop();
+                watchers.delete(p);
+            }
+            if (!watchers.has(p)) {
                 logger.debug(`[SESSION_SCANNER] Starting watcher for session: ${p}`);
-                watchers.set(p, startFileWatcher(
-                    join(projectDir, `${p}.jsonl`),
+                watchers.set(p, { file, stop: startFileWatcher(
+                    file,
                     () => { sync.invalidate(); },
                     {
                         missingFileTimeoutMs: opts.missingFileTimeoutMs,
@@ -133,13 +157,13 @@ export async function createSessionScanner(opts: {
                             // down and blacklist the session so the collection
                             // loop does not resurrect the failed watcher.
                             logger.debug(`[SESSION_SCANNER] Session ${p} transcript unreachable (directory unwatchable) — dropping it`);
-                            watchers.get(p)?.();
+                            watchers.get(p)?.stop();
                             watchers.delete(p);
                             deadSessions.add(p);
                             pendingSessions.delete(p);
                         },
                     },
-                ));
+                ) });
             }
         }
     });
@@ -158,7 +182,7 @@ export async function createSessionScanner(opts: {
             await sync.invalidateAndAwait();
             sync.stop();
             for (let w of watchers.values()) {
-                w();
+                w.stop();
             }
             watchers.clear();
         },
@@ -194,7 +218,7 @@ export async function createSessionScanner(opts: {
             // file as fresh user prompts. Without this, every previous
             // user message re-appears in the chat after reconnect.
             if (options?.treatExistingAsProcessed) {
-                const existing = await readSessionEntries(projectDir, sessionId);
+                const existing = await readSessionEntries(locateSession(sessionId));
                 logger.debug(`[SESSION_SCANNER] Pre-marking ${existing.length} existing entries as processed for new session ${sessionId}`);
                 for (const entry of existing) {
                     processedEntryKeys.add(entry.key);
@@ -240,8 +264,7 @@ function transcriptEventKey(event: ScannerTranscriptEvent): string {
  * Returns only valid conversation messages and recognized side-channel events,
  * silently skipping internal events.
  */
-async function readSessionEntries(projectDir: string, sessionId: string): Promise<SessionLogEntry[]> {
-    const expectedSessionFile = join(projectDir, `${sessionId}.jsonl`);
+async function readSessionEntries(expectedSessionFile: string): Promise<SessionLogEntry[]> {
     logger.debug(`[SESSION_SCANNER] Reading session file: ${expectedSessionFile}`);
     let file: string;
     try {

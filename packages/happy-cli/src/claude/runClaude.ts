@@ -35,9 +35,8 @@ import { Session } from './session';
 import { applySandboxPermissionPolicy, normalizeRemotePermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
-import { getProjectPath } from './utils/path';
+import { resolveSessionFile } from './utils/path';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
 
 /** JavaScript runtime to use for spawning Claude Code */
@@ -317,7 +316,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // history into the UI — a side chat starts empty from the moment it
         // was opened, so the user only sees the aside they began.
         if (!isSideChat) {
-            const jsonlPath = join(getProjectPath(workingDirectory), `${forkClaudeSessionId}.jsonl`);
+            const jsonlPath = resolveSessionFile(workingDirectory, forkClaudeSessionId);
             try {
                 const file = await readFile(jsonlPath, 'utf-8');
                 const lines = file.split('\n');
