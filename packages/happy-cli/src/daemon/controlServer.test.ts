@@ -79,4 +79,22 @@ describe('startDaemonControlServer', () => {
       effort: 'low',
     }));
   });
+  it('validates and dispatches an independent task with its parent context', async () => {
+    const launchIndependentSession = vi.fn(async () => ({ success: true, sessionId: 'child', title: 'Task' }));
+    const { port, stop } = await startDaemonControlServer({
+      getChildren: () => [], stopSession: () => false, spawnSession: vi.fn(),
+      launchIndependentSession, requestShutdown: () => {}, onHappySessionWebhook: () => {},
+    });
+    stopServer = stop;
+    const task = { requestId: 'id', title: 'Task', prompt: 'Read files' };
+    const context = { permissionMode: 'read-only', appendSystemPrompt: 'User custom instructions' };
+    const post = (body: unknown) => fetch(`http://127.0.0.1:${port}/independent-session`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    expect(await (await post({ parentSessionId: 'parent', ...task, context })).json()).toEqual({ success: true, sessionId: 'child', title: 'Task' });
+    expect(launchIndependentSession).toHaveBeenCalledWith('parent', task, context);
+    expect((await post({ parentSessionId: 'parent', ...task, prompt: '' })).status).toBe(400);
+    expect(launchIndependentSession).toHaveBeenCalledTimes(1);
+  });
+
 });

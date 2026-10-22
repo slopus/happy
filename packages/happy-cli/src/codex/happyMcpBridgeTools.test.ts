@@ -35,6 +35,18 @@ function createServerMock(): { server: McpServer; registrations: ToolRegistratio
 }
 
 describe('registerHappyBridgeTools', () => {
+    it('exposes and forwards independent tasks through the actual Codex bridge registration', async () => {
+        const { server, registrations } = createServerMock();
+        const callTool = vi.fn(async () => ({ content: [{ type: 'text' as const, text: '<happy-session>child</happy-session>' }] }));
+        registerHappyBridgeTools(server, async () => ({ callTool }) as unknown as Client);
+        const args = { requestId: 'task-a', title: 'Audit', prompt: 'Read source', directory: '/project' };
+        const tool = registrations.find(item => item.name === 'start_session');
+        expect(HAPPY_MCP_BRIDGE_TOOL_NAMES).toContain('start_session');
+        expect(tool?.config.inputSchema).toHaveProperty('requestId');
+        await tool!.handler(args);
+        expect(callTool).toHaveBeenCalledWith({ name: 'start_session', arguments: args });
+    });
+
     it('preserves an explicit Cloudflare channel across the Codex bridge', async () => {
         const { server, registrations } = createServerMock();
         const callTool = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'published' }] }));

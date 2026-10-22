@@ -1,3 +1,4 @@
+import { IndependentSessionCard } from '@/components/IndependentSessionCard';
 import { MarkdownSpan, parseMarkdown, parseReadOnlyMarkdown } from './parseMarkdown';
 import * as React from 'react';
 import { Image, Pressable, View, Platform, TextInput } from 'react-native';
@@ -123,6 +124,8 @@ export const MarkdownView = React.memo((props: {
                         return <RenderImageBlock url={block.url} alt={block.alt} key={index} first={index === 0} last={index === blocks.length - 1} />;
                     } else if (block.type === 'ota-preview') {
                         return <RenderOtaPreviewBlock preview={block.preview} key={index} first={index === 0} last={index === blocks.length - 1} />;
+                    } else if (block.type === 'session-link') {
+                        return <IndependentSessionCard link={block.link} key={index} />;
                     } else if (block.type === 'finance-chart') {
                         return <RenderFinanceChartBlock chart={block.chart} key={index} first={index === 0} last={index === blocks.length - 1} />;
                     } else {

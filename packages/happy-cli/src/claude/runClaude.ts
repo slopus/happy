@@ -398,6 +398,7 @@ export async function runClaude(
 
     // Start Happy MCP server
     const happyServer = await startHappyServer(session, {
+        delegationContext: () => ({ permissionMode: currentPermissionMode ?? 'read-only', appendSystemPrompt: currentAppendSystemPrompt }),
         archiveSession: async (reason?: string) => {
             if (!archiveCurrentSession) {
                 return { success: false, error: 'Archive handler is not ready' };

@@ -24,6 +24,7 @@ import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquire
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
+import { createIndependentSessionLauncher, independentTaskMessage } from './independentSessions';
 import { startDaemonControlServer } from './controlServer';
 import { statSync } from 'fs';
 import { join } from 'path';
@@ -34,7 +35,7 @@ import { initialMachineMetadata } from './machineMetadata';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { isUnusedCodexSession } from './emptyCodexSession';
 import { stopDetachedCodexWorker } from './stopDetachedCodexWorker';
-import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
+import { encodeBase64, decodeBase64, decrypt, encrypt } from '@/api/encryption';
 import { CODEX_ACCOUNT_UNSET_ENV, withCodexAccountLaunch, type CodexAccountLaunch } from './codexAccountLaunch';
 import { refreshCodexAccountQuota } from './codexQuotaProbe';
 import { collectCodexUsageSnapshot, codexUsageSignature, mergeRecentCodexUsageSnapshot } from '@/codex/codexUsage';
@@ -705,7 +706,7 @@ export async function startDaemon(): Promise<void> {
       }, {
         sourceSessionId: options.parentSessionId, sourceThreadId: options.resumeCodexThreadId,
         inheritConfiguration: !options.nativeApplicationPolicy,
-        sourceProfileId: options.nativeApplicationPolicy?.binding.engine === 'codex' ? options.nativeApplicationPolicy.binding.accountRef.id : undefined,
+        sourceProfileId: options.nativeApplicationPolicy?.binding.engine === 'codex' ? options.nativeApplicationPolicy.binding.accountRef.id : options.expectedCodexAccountProfileId,
         // Only a new session created from a native fork may use the selected
         // account. Resuming an existing session retains its original identity.
         allowCrossAccountFork: !!(options.parentSessionId && options.resumeCodexThreadId),
@@ -1125,6 +1126,25 @@ export async function startDaemon(): Promise<void> {
 
     // Start control server
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
+      launchIndependentSession: createIndependentSessionLauncher({
+        findSession: findTrackedSessionById,
+        readMetadata: async parent => {
+          const encryption = parent.encryption;
+          if (!encryption || !parent.happySessionId) return null;
+          return (await fetchServerSessionSnapshot(parent.happySessionId, encryption.encryptionKey, encryption.encryptionVariant))?.metadata ?? null;
+        },
+        // Source-session grants are resume-only: the relay pins their launch to
+        // that same session ID. A fresh child needs a new machine grant;
+        // withCodexAccountLaunch checks the parent's account audit before spawn.
+        grant: async () => (await api.createCodexSessionGrant({ machineId })).grant,
+        spawn: spawnSession,
+        send: async (child, prompt, localId, permissionMode, appendSystemPrompt) => {
+          const encryption = child.encryption!;
+          const content = encodeBase64(encrypt(encryption.encryptionKey, encryption.encryptionVariant, independentTaskMessage(prompt, permissionMode, appendSystemPrompt)));
+          await axios.post(`${configuration.serverUrl}/v3/sessions/${encodeURIComponent(child.happySessionId!)}/messages`,
+            { messages: [{ localId, content }] }, { headers: { Authorization: `Bearer ${credentials.token}` }, timeout: 15000 });
+        },
+      }),
       getChildren: getCurrentChildren,
       stopSession,
       spawnSession,

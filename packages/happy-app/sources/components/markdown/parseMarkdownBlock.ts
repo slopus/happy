@@ -1,3 +1,4 @@
+import { parseSessionLink } from '@/utils/sessionLinks';
 import type { MarkdownBlock, MarkdownSpan } from "./parseMarkdown";
 import { parseMarkdownSpans } from "./parseMarkdownSpans";
 import {
@@ -99,6 +100,7 @@ function isMarkdownBlockStart(lines: string[], index: number): boolean {
     if (isHappyOtaPreviewBlock(trimmed)) {
         return true;
     }
+    if (trimmed === '<happy-session>') return true;
     if (isHappyFinanceChartBlock(trimmed)) {
         return true;
     }
@@ -208,6 +210,20 @@ export function parseMarkdownBlock(markdown: string) {
             if (preview) {
                 blocks.push({ type: 'ota-preview', preview });
             }
+            continue;
+        }
+
+        if (trimmed === '<happy-session>') {
+            const content: string[] = [];
+            let closed = false;
+            while (index < lines.length) {
+                const next = lines[index++];
+                if (next.trim() === '</happy-session>') { closed = true; break; }
+                content.push(next);
+            }
+            const link = closed ? parseSessionLink(content.join('\n')) : null;
+            if (link) blocks.push({ type: 'session-link', link });
+            else blocks.push({ type: 'text', content: parseMarkdownSpans([line, ...content, ...(closed ? ['</happy-session>'] : [])].join('\n'), false) });
             continue;
         }
 

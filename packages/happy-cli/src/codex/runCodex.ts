@@ -1192,6 +1192,7 @@ export async function runCodex(opts: {
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
     const happyServer = await startHappyServer(session, {
+        delegationContext: () => ({ permissionMode: currentPermissionMode ?? 'read-only', appendSystemPrompt: currentAppendSystemPrompt }),
         archiveSession: async (reason?: string) => {
             setTimeout(() => {
                 void handleKillSession(reason || 'Requested by user');
@@ -1207,7 +1208,12 @@ export async function runCodex(opts: {
     const mcpServers = applicationPolicy ? {} : {
         happy: {
             command: process.execPath,
-            args: ['--no-warnings', '--no-deprecation', bridgeEntrypoint, '--url', happyServer.url]
+            args: ['--no-warnings', '--no-deprecation', bridgeEntrypoint, '--url', happyServer.url],
+            // These first-party control-plane operations must remain callable
+            // when the native filesystem sandbox is read-only / approval=never.
+            // Keep approval scoped to these exact tools; do not relax sandbox policy.
+            tools: { start_session: { approval_mode: 'approve' }, change_title: { approval_mode: 'approve' } },
+            tool_timeout_sec: 150
         }
     } as const;
     let first = true;

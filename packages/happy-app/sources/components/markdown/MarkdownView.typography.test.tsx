@@ -47,6 +47,7 @@ vi.mock('@/sync/persistence', () => ({ storeTempText: vi.fn() }));
 vi.mock('@/sync/imageViewer', () => ({ imageViewer: { open: vi.fn() } }));
 vi.mock('@/components/OtaPreviewCard', () => ({ OtaPreviewCard: 'OtaPreviewCard' }));
 vi.mock('@/components/FinanceChartCard', () => ({ FinanceChartCard: 'FinanceChartCard' }));
+vi.mock('@/components/IndependentSessionCard', () => ({ IndependentSessionCard: 'IndependentSessionCard' }));
 vi.mock('expo-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('expo-web-browser', () => ({}));
 vi.mock('./MermaidRenderer', () => ({ MermaidRenderer: 'MermaidRenderer' }));

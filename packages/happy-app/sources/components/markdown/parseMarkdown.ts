@@ -2,7 +2,7 @@ import { parseMarkdownBlock } from "./parseMarkdownBlock"
 import type { SessionOtaPreview } from '@/utils/sessionOtaPreviews';
 import type { SessionFinanceChart } from '@/utils/sessionFinanceCharts';
 
-export type MarkdownBlock = {
+export type MarkdownBlock = { type: 'session-link'; link: import('@/utils/sessionLinks').SessionLink } | {
     type: 'text'
     content: MarkdownSpan[]
 } | {
@@ -63,6 +63,7 @@ export function parseReadOnlyMarkdown(markdown: string): MarkdownBlock[] {
             case 'mermaid': return { type: 'code-block', language: 'mermaid', content: block.content };
             case 'options': return { type: 'text', content: [{ text: block.items.join('\n'), styles: [], url: null }] };
             case 'ota-preview': return { type: 'code-block', language: null, content: JSON.stringify(block.preview, null, 2) };
+            case 'session-link': return { type: 'code-block', language: null, content: JSON.stringify(block.link, null, 2) };
             case 'finance-chart': return { type: 'code-block', language: null, content: JSON.stringify(block.chart, null, 2) };
         }
     });

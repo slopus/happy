@@ -12,16 +12,20 @@ import { decodeBase64 } from '@/api/encryption';
 import { TrackedSession, SessionEncryptionData } from './types';
 import type { CodexEffort, SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 
+import { independentTaskSchema, delegationContextSchema, type DelegationContext, type IndependentTask, type IndependentTaskResult } from './independentSessions';
+
 const codexEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 
 export function startDaemonControlServer({
   getChildren,
+  launchIndependentSession,
   stopSession,
   spawnSession,
   requestShutdown,
   onHappySessionWebhook
 }: {
   getChildren: () => TrackedSession[];
+  launchIndependentSession?: (parentSessionId: string, task: IndependentTask, context?: DelegationContext) => Promise<IndependentTaskResult>;
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
@@ -123,6 +127,14 @@ export function startDaemonControlServer({
       logger.debug(`[CONTROL SERVER] Stop session request: ${sessionId}`);
       const success = stopSession(sessionId);
       return { success };
+    });
+
+    typed.post('/independent-session', {
+      schema: { body: independentTaskSchema.extend({ parentSessionId: z.string().min(1), context: delegationContextSchema.optional() }) }
+    }, async (request) => {
+      if (!launchIndependentSession) return { success: false, error: 'Independent sessions unavailable' };
+      const { parentSessionId, context, ...task } = request.body;
+      return launchIndependentSession(parentSessionId, task, context);
     });
 
     // Spawn new session

@@ -151,6 +151,8 @@ export interface SpawnSessionOptions {
      * When absent, the daemon uses this machine's own local Codex login.
      */
     codexSessionGrant?: string;
+    /** Trusted parent metadata constrains a fresh child grant to the same account. */
+    expectedCodexAccountProfileId?: string;
     /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
      * Happy session continues from an existing Claude conversation file.

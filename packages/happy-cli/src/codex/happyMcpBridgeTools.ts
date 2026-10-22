@@ -10,9 +10,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
+import { independentTaskSchema } from '@/daemon/independentSessions';
 import { BROWSER_STEP_TOOL_DESCRIPTION } from '@/browser/browserStepReportingPrompt';
 
-export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['change_title', 'send_image', 'send_file', 'report_browser_step', 'archive_session', 'finance_chart', 'create_preview', 'publish_preview', 'list_previews', 'close_preview'] as const;
+export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['start_session', 'change_title', 'send_image', 'send_file', 'report_browser_step', 'archive_session', 'finance_chart', 'create_preview', 'publish_preview', 'list_previews', 'close_preview'] as const;
 
 type HappyMcpBridgeToolName = typeof HAPPY_MCP_BRIDGE_TOOL_NAMES[number];
 
@@ -39,6 +40,12 @@ export function registerHappyBridgeTools(
   server: McpServer,
   ensureHttpClient: () => Promise<Client>
 ): void {
+  server.registerTool('start_session', {
+    title: 'Start Independent Session',
+    description: 'Start a real independent Paws session on this machine and send its initial task. Use once per task when the user asks for separate sessions; calls may run in parallel. Include the full task context in prompt. Supply a stable requestId for retries. Children share the filesystem; use separate worktrees for concurrent edits. Include the returned <happy-session> block in your reply so the user can open the child. Retry failures with the same requestId, never create a replacement task ID automatically.',
+    inputSchema: independentTaskSchema.shape,
+  }, async args => forwardHappyToolCall('start_session', args, ensureHttpClient, 'Failed to start independent session'));
+
   server.registerTool(
     'change_title',
     {

@@ -26,7 +26,11 @@ import { PreviewWorkspaceRegistry } from "@/previews/previewWorkspace";
 import { startCloudflarePreview } from '@/previews/cloudflarePreview';
 import { SessionPreviewSlots, type SessionPreviewStatus } from '@/previews/sessionPreviewSlots';
 
+import { launchIndependentDaemonSession } from '@/daemon/controlClient';
+import { independentTaskSchema, type DelegationContext, type IndependentTask, type IndependentTaskResult } from '@/daemon/independentSessions';
+
 type HappyMcpHandlers = {
+    startSession: (task: IndependentTask) => Promise<IndependentTaskResult>;
     browserSessionId: string;
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
     sendImage: (input: SendImageInput) => Promise<{ success: boolean; error?: string }>;
@@ -134,6 +138,16 @@ function createMcpServer(handlers: HappyMcpHandlers): McpServer {
     const mcp = new McpServer({
         name: "Happy MCP",
         version: "1.0.0",
+    });
+
+    mcp.registerTool('start_session', {
+        title: 'Start Independent Session',
+        description: 'Start a real independent Paws session on this machine and send its initial task. Use once per task when the user asks to delegate work into separate sessions; calls may run in parallel. Supply a stable unique requestId for retries. Child has separate history; include all necessary context in prompt. Sessions share the filesystem: use separate worktrees for concurrent edits. Return the supplied happy-session block in your reply so the user can open the child. A failed result with sessionId means the child exists but its task delivery was not confirmed; retry with the same requestId to resend safely; do not create another task ID.',
+        inputSchema: independentTaskSchema.shape,
+    }, async task => {
+        const result = await handlers.startSession(task);
+        return { isError: !result.success, content: [{ type: 'text', text: JSON.stringify(result) +
+            (result.sessionId ? '\n<happy-session>\n' + JSON.stringify({ sessionId: result.sessionId, title: result.title }) + '\n</happy-session>' : '') }] };
     });
 
     mcp.registerTool('change_title', {
@@ -352,6 +366,7 @@ function createMcpServer(handlers: HappyMcpHandlers): McpServer {
 export async function startHappyServer(
     client: ApiSessionClient,
     options?: {
+        delegationContext?: () => DelegationContext;
         archiveSession?: (reason?: string) => Promise<{ success: boolean; error?: string }>;
     },
 ) {
@@ -369,6 +384,7 @@ export async function startHappyServer(
     };
 
     const handlers: HappyMcpHandlers = {
+        startSession: task => launchIndependentDaemonSession(client.sessionId, task, options?.delegationContext?.()),
         changeTitle: async (title: string) => {
             logger.debug('[happyMCP] Changing title to:', title);
             try {
@@ -533,6 +549,7 @@ export async function startHappyServer(
     return {
         url: baseUrl.toString(),
         toolNames: [
+            'start_session',
             'change_title',
             'send_image',
             'send_file',

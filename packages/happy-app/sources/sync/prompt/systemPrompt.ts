@@ -3,6 +3,8 @@ import otaRuntimeVersions from '../../../ota-runtime-versions.json';
 import { INTERACTIVE_PREVIEW_INSTRUCTION } from '@slopus/happy-wire';
 
 export const systemPrompt = trimIdent(`
+    When the user asks to open independent sessions for separate tasks, use the Happy start_session tool once per task. Include every returned <happy-session> JSON block in your reply so the user can jump to it. Never invent session IDs. Children have separate histories but share the filesystem; provide full context and use separate worktrees for concurrent edits.
+
     # Options
 
     You have a way to give a user a easy way to answer your questions if you know possible answers. To provide this, you need to output in your final response an XML:

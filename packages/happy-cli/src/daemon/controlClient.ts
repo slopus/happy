@@ -20,7 +20,7 @@ export type SpawnDaemonSessionOptions = {
   resumeCodexThreadId?: string;
 };
 
-async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
+async function daemonPost(path: string, body?: any, requestTimeout?: number): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
   if (!state?.httpPort) {
     const errorMessage = 'No daemon running, no state file found';
@@ -41,7 +41,7 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
   }
 
   try {
-    const timeout = process.env.HAPPY_DAEMON_HTTP_TIMEOUT ? parseInt(process.env.HAPPY_DAEMON_HTTP_TIMEOUT) : 10_000;
+    const timeout = requestTimeout ?? (process.env.HAPPY_DAEMON_HTTP_TIMEOUT ? parseInt(process.env.HAPPY_DAEMON_HTTP_TIMEOUT) : 10_000);
     const response = await fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -291,4 +291,8 @@ async function waitForProcessDeath(pid: number, timeout: number): Promise<void> 
     }
   }
   throw new Error('Process did not die within timeout');
+}
+
+export async function launchIndependentDaemonSession(parentSessionId: string, task: import('./independentSessions').IndependentTask, context?: import('./independentSessions').DelegationContext) {
+  return daemonPost('/independent-session', { parentSessionId, ...task, context }, 150_000);
 }

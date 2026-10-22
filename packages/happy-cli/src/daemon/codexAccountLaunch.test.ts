@@ -213,6 +213,16 @@ describe('Codex account launch lifecycle', () => {
     expect(spawn).not.toHaveBeenCalled();
     expect(a.createCodexSessionGrant).not.toHaveBeenCalled();
   });
+  it('rejects a child grant for another account even when the parent audit is absent', async () => {
+    const a = api();
+    const historyRoot = await home();
+    const spawn = vi.fn(async () => ({ type: 'success' as const, sessionId: 'child' }));
+    const result = await withCodexAccountLaunch({ agent: 'codex', codexSessionGrant: 'g'.repeat(43) }, a, 'machine-1', spawn, {
+      sourceHome: await home(), historyRoot, sourceSessionId: 'parent-without-audit', sourceProfileId: 'parent-account',
+    });
+    expect(result).toMatchObject({ type: 'error', errorMessage: expect.stringContaining('different account') });
+    expect(spawn).not.toHaveBeenCalled();
+  });
   it('waits for an in-flight attachment before deleting its home and never resurrects its timer', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const a = api(); const launch = await CodexAccountLaunch.prepare(a, 'machine-1', 'g'.repeat(43), { sourceHome: await home() });
