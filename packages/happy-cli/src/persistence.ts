@@ -46,6 +46,7 @@ interface Settings {
   sandboxConfig?: SandboxConfig
   serverUrl?: string
   webappUrl?: string
+  codexHistorySync?: boolean
 }
 
 const defaultSettings: Settings = {
@@ -435,6 +436,8 @@ export type PersistedSession = {
    * expires a session on its 14th birthday no matter how heavily it is used.
    */
   lastAliveAt?: number;
+  /** Imported native history stays resumable until explicitly deleted. */
+  codexHistory?: { updatedAt: number; turns: string[]; deleted?: boolean; attached?: boolean };
 };
 
 type SessionsFile = {
@@ -470,7 +473,7 @@ function isSessionProcessRunning(session: PersistedSession): boolean {
   }
 }
 
-export function readPersistedSessions(): Record<string, PersistedSession> {
+export function readPersistedSessions(includeExpired = false): Record<string, PersistedSession> {
   try {
     if (!existsSync(configuration.sessionsFile)) return {};
     const data = JSON.parse(readFileSync(configuration.sessionsFile, 'utf-8')) as SessionsFile;
@@ -487,7 +490,7 @@ export function readPersistedSessions(): Record<string, PersistedSession> {
         sessions[id] = session;
         continue;
       }
-      if (now - lastAliveAt(session) < SESSION_MAX_AGE_MS) {
+      if (includeExpired || session.codexHistory || typeof session.metadata?.codexArchived === 'boolean' || now - lastAliveAt(session) < SESSION_MAX_AGE_MS) {
         sessions[id] = session;
       }
     }
@@ -517,13 +520,21 @@ export function markSessionStopped(sessionId: string): void {
 
 function writeSessionsFile(sessions: Record<string, PersistedSession>): void {
   const tmpFile = configuration.sessionsFile + '.tmp';
-  writeFileSync(tmpFile, JSON.stringify({ sessions }, null, 2), 'utf-8');
+  writeFileSync(tmpFile, JSON.stringify({ sessions }, null, 2), { encoding: 'utf-8', mode: 0o600 });
   renameSync(tmpFile, configuration.sessionsFile);
 }
 
 export function persistSession(sessionId: string, session: PersistedSession): void {
   try {
     const existing = readPersistedSessions();
+    const history = existing[sessionId]?.codexHistory;
+    if (history && !session.codexHistory) {
+      session = {
+        ...session,
+        metadata: { ...session.metadata, codexThreadId: session.metadata.codexThreadId ?? existing[sessionId].metadata.codexThreadId },
+        codexHistory: { ...history, attached: history.attached || !!session.metadata.hostPid },
+      };
+    }
     existing[sessionId] = session;
     writeSessionsFile(existing);
   } catch (error) {
