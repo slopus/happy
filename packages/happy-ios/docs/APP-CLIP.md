@@ -204,35 +204,41 @@ from a fresh, clean `main`; no EAS App Clip distribution is wired by this change
 
 ## Status and next actions
 
-Preview 25 (`2026.10.1`, build `25`) is archived and verified on the designated
-Mac mini in `~/happy-work/testflight-preview25-appclip-y1sar`. Its source is
-`f35b9d32d0cb4732874932d4704403e555b5cc88`; the frozen archive predates the
-subsequent main-integration audit, tests and documentation updates. Both parent
-and Clip have matching dSYMs, and the parent's signed entitlements preserve
-Preview 24's capabilities. The Clip is about 1.73 MB, uses only system
-frameworks, and has no ATS exception or debug connection overrides.
+Preview build 26 (`2026.10.1`, build `26`) is uploaded to App Store Connect
+for internal TestFlight testing only (delivery
+`0779a414-c721-498d-8250-3f209782695c`). It was archived on 2026-10-23 on
+MacBook-Pro-7 with Xcode 26.6 (iOS 26.5 SDK) from local commit `f6b3f8b9` on
+branch `app-clip-native-chat`. That commit is `origin/main` `d6b85a0d` plus the
+Preview host move and the Clip orientation keys. It was off-main and unpushed at
+upload time. The project came from `AppClip/FullApp.yml` (scheme
+`Happy (preview)`), was signed automatically with the Xcode account, and was
+exported with `manageAppVersionAndBuildNumber`. App Store Connect assigned
+build 26. The Clip is 1.7 MB. Preview 25's frozen Mac mini archive was never
+uploaded and is superseded.
 
-Upload is blocked: Xcode currently has no App Store Connect account for team
-`466DQWDR8C`. Supply an App Store Connect API key with Admin access, or sign in
-to the authorized Apple account in Xcode. Then the release operator can export
-and upload the preserved archive with:
+Its Preview invite host is the quick tunnel
+`replication-combat-drink-britain.trycloudflare.com`. That tunnel is served by
+the isolated invite gateway on the same Mac and lasts only as long as its
+`cloudflared` process. Its AASA lists `466DQWDR8C.com.slopus.happy.preview.Clip`
+under `appclips` and `466DQWDR8C.com.slopus.happy.preview` for
+`/bot/invite/*`.
 
-```sh
-cd ~/happy-work/testflight-preview25-appclip-y1sar
-xcodebuild -exportArchive \
-  -archivePath Happy-preview-25.xcarchive \
-  -exportOptionsPlist ExportOptions-preview.plist \
-  -exportPath export-preview25 \
-  -allowProvisioningUpdates > upload-preview25.log 2>&1
+The first upload was rejected with ITMS-90474 because the Clip had no
+`UISupportedInterfaceOrientations`. The Clip plists now carry the parent's sets.
+
+**Local dependency patch.** At its pinned revision `0073165`, UltraView does not
+compile with Xcode 26.6. The error is `sending 'layer' risks causing data races`
+at `Sources/UltraCore/UIKit/NodeTransitionAnimator.swift:201`. Build 26 was built
+from a SwiftPM checkout patched locally as follows. The patch is in no
+repository:
+
+```diff
+-            let shown = presented ? (layer.presentation() ?? layer) : layer
++            let shown: CALayer
++            if presented, let presentation = layer.presentation() { shown = presentation } else { shown = layer }
 ```
 
-For API-key authentication, additionally pass `-authenticationKeyPath`,
-`-authenticationKeyID`, and `-authenticationKeyIssuerID` using the operator's
-registered key. Keep the private key outside the repository. Export must obtain
-explicit parent/Clip distribution profiles with the associated domains and
-App Clip capabilities and set APNs to `production`. Verify processing in App
-Store Connect after upload. Future binaries must follow the release skill from
-fresh, clean main and include changes made after the frozen archive's source.
+Land that fix in slopus/ultraview and bump the pin before the next binary.
 
 Remaining work:
 
@@ -242,8 +248,9 @@ Remaining work:
   message fixture-byte assertions in `SendingDeliveryMetaTests` and one voice
   translation-catalog assertion in `TranslationCatalogTests`. Guest, layout
   and app-configuration checks pass (19 tests).
-- In App Store Connect, add the App Clip invocation URL to Preview build 25's
-  TestFlight configuration. Verify launch from TestFlight. A Safari or Messages
+- In App Store Connect, add the App Clip invocation URL to Preview build 26's
+  TestFlight configuration. This needs an App Store Connect API key or the web
+  UI; the Xcode sign-in alone does not provide it. Verify launch from TestFlight. A Safari or Messages
   link can open the installed Preview parent; it does not establish a public
   App Clip experience by itself.
 - Replace the ephemeral demo host with a stable domain, such as a named tunnel
