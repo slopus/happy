@@ -11,6 +11,7 @@ import {
     getCodexModelModes,
     getCodexPermissionModes,
     getClaudeModelModes,
+    getClaudeEffortLevels,
     getClaudePermissionModes,
     getGeminiPermissionModes,
     getDefaultEffortKey,
@@ -238,10 +239,12 @@ describe('modelModeOptions', () => {
 
     it('offers claude the SDK effort union for every model', () => {
         // Claude's scale belongs to the SDK, not the model: an unreachable level
-        // is silently downgraded, so every model gets the same list.
+        // is silently downgraded, so every model gets the same list. 'auto' leads
+        // it because it pins no level: the CLI leaves the SDK `effort` option out
+        // and Claude Code applies its own effort.
         for (const model of ['claude-fable-5-1', 'claude-fable-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5', 'claude-haiku-5-5']) {
             const keys = getEffortLevelsForModel('claude', model).map((level) => level.key);
-            expect(keys).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+            expect(keys).toEqual(['auto', 'low', 'medium', 'high', 'xhigh', 'max']);
             // Claude's floor is `low`; there is no off.
             expect(keys).not.toContain('off');
         }
@@ -258,6 +261,12 @@ describe('modelModeOptions', () => {
         expect(getDefaultPermissionModeKey('agy')).toBe('default');
         expect(getDefaultModelKey('agy')).toBe('Gemini 3.8 Flash');
         expect(getDefaultEffortKey('agy')).toBe('medium');
+    });
+
+    it('exposes the auto effort level first for claude', () => {
+        const levels = getClaudeEffortLevels();
+        expect(levels.map((level) => level.key)).toEqual(['auto', 'low', 'medium', 'high', 'xhigh', 'max']);
+        expect(levels[0]).toEqual({ key: 'auto', name: 'Auto', description: 'let Claude decide' });
     });
 
     it('prefers metadata models over hardcoded fallbacks', () => {
