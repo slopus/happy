@@ -962,8 +962,19 @@ export function SessionViewLoaded({
         }
         if (sendingSessionsRef.current.has(sessionId)) return;
         const liveMessage = composer?.getMessage() ?? '';
+        // !-prefix bash mode: a message starting with `!` runs as a one-off
+        // shell command in the session's cwd instead of being sent to the agent.
+        const trimmed = liveMessage.trim();
+        if (trimmed.startsWith('!')) {
+            const command = trimmed.slice(1).trim();
+            if (command) {
+                composer?.clearMessage();
+                sync.runBashCommand(sessionId, command);
+                return;
+            }
+        }
         const draftUpdatedAt = storage.getState().sessions[sessionId]?.draftUpdatedAt;
-        if (liveMessage.trim() || selectedImages.length > 0) {
+        if (trimmed || selectedImages.length > 0) {
             const attachments = selectedImages.length > 0 ? selectedImages : undefined;
             const communicationsToDismiss = [...pendingCommunications];
             sendingSessionsRef.current.add(sessionId);
