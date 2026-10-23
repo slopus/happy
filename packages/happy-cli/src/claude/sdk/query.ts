@@ -44,7 +44,10 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         settings: opts?.settingsPath,
         strictMcpConfig: opts?.strictMcpConfig,
         sessionId: undefined,
-        effort: opts?.effort,
+        // The SDK passes this on to Claude Code as `--effort` without checking
+        // it. Its EffortLevel type stops at 'max', but Claude Code also takes
+        // 'ultracode' there.
+        effort: opts?.effort as Options['effort'],
     }
 
     // Map abort signal -> AbortController
