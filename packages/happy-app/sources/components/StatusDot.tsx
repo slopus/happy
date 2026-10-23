@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { ViewStyle } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, { cancelAnimation, useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
 
 export interface StatusDotProps {
     color: string;
@@ -22,6 +22,13 @@ export const StatusDot = React.memo(({ color, isPulsing, size = 6, style }: Stat
         } else {
             opacity.value = withTiming(1, { duration: 200 });
         }
+        // Stop the infinite repeat when the dot stops pulsing or unmounts.
+        // Without this, an unmounted (or no-longer-pulsing) dot keeps a live
+        // animation driver running — on web that pins the CPU, and one leaks
+        // per rendered session row, growing with every mounted StatusDot.
+        return () => {
+            cancelAnimation(opacity);
+        };
     }, [isPulsing]);
 
     const animatedStyle = useAnimatedStyle(() => {
