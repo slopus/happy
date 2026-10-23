@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { Update, UpdateMachineBody } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
 import type { SandboxConfig } from '@/persistence'
+import type { SessionActivity } from '@/claude/utils/backgroundActivity'
 
 export {
   SessionMessageContentSchema,
@@ -344,6 +345,13 @@ export type Metadata = {
    * inside the parent session's sidebar panel.
    */
   isSideChat?: boolean
+  /**
+   * In-flight background work for this session (background shells, subagents,
+   * workflows), refreshed from Claude Code's Stop hook. Lets the app show that
+   * a session is idle-but-still-busy, which `thinking` cannot express because
+   * it only describes the current turn.
+   */
+  activity?: SessionActivity
 };
 
 export type UsageLimitWindowStatus = 'allowed' | 'allowed_warning' | 'rejected'
