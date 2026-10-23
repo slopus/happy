@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiSessionClient } from './apiSession';
 import { decodeBase64, decrypt, decryptBlob, encodeBase64, encrypt } from './encryption';
-import type { Update } from './types';
+import { UserMessageSchema, type Update } from './types';
 import { logger } from '@/ui/logger';
 
 const {
@@ -144,6 +144,14 @@ async function waitForCheck(check: () => void, timeoutMs = 2000) {
     }
     throw lastError;
 }
+
+it('keeps a user message with an unknown future send mode as Queue', () => {
+    const parsed = UserMessageSchema.parse({
+        role: 'user', content: { type: 'text', text: 'keep this' }, meta: { sendMode: 'future-mode' },
+    });
+    expect(parsed.content.text).toBe('keep this');
+    expect(parsed.meta?.sendMode).toBe('queue');
+});
 
 describe('ApiSessionClient v3 messages API migration', () => {
     let socketHandlers: SocketHandlers;

@@ -282,6 +282,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Create realtime session
     const session = api.sessionSyncClient(response);
+    session.updateMetadata((meta) => ({ ...meta, supportsSteering: true }));
 
     // On reconnect, un-archive the session and skip replaying old messages.
     if (reconnectSessionId) {
@@ -831,7 +832,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
 
         // Push with resolved permission mode, model, system prompts, and tools
-        messageQueue.push(message.content.text, currentEnhancedMode(), attachmentsForThisMessage);
+        messageQueue.push(message.content.text, currentEnhancedMode(), attachmentsForThisMessage, message.meta?.sendMode);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 

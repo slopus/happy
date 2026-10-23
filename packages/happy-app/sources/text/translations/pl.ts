@@ -472,6 +472,7 @@ export const pl: TranslationStructure = {
     },
 
     agentInput: {
+        sendMode: en.agentInput.sendMode,
         permissionMode: {
             title: 'TRYB UPRAWNIEŃ',
             auto: 'decyduje samodzielnie, pyta w razie wątpliwości',

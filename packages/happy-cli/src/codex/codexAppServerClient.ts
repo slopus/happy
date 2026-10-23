@@ -210,6 +210,13 @@ function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | unde
     return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
+class CodexRpcError extends Error {
+    constructor(method: string, message: string, readonly code: number) {
+        super(`${method}: ${message} (code=${code})`);
+        this.name = 'CodexRpcError';
+    }
+}
+
 export class CodexAppServerClient {
     private process: ChildProcess | null = null;
     private readline: ReadlineInterface | null = null;
@@ -1147,6 +1154,7 @@ export class CodexAppServerClient {
         sandbox?: SandboxMode;
         effort?: ReasoningEffort;
         extraInputItems?: InputItem[];
+        onTurnStarted?: () => void;
     }): Promise<{ aborted: boolean }> {
         // Wait for any in-flight interruptTurn() to complete before starting a new
         // turn. Otherwise the stale turn/interrupt RPC can reach Codex after our
@@ -1168,6 +1176,7 @@ export class CodexAppServerClient {
 
         try {
             await this.sendTurn(prompt, opts);
+            opts?.onTurnStarted?.();
         } catch (err) {
             this.pendingTurnCompletion = null;
             throw err;
@@ -1175,6 +1184,30 @@ export class CodexAppServerClient {
 
         const aborted = await completion;
         return { aborted };
+    }
+
+    /** False means the server did not accept this input; transport errors throw. */
+    async steerTurn(prompt: string, extraInputItems: InputItem[] = []): Promise<boolean> {
+        if (this.pendingInterrupt) await this.pendingInterrupt;
+        const threadId = this._threadId;
+        const expectedTurnId = this._turnId;
+        if (!threadId || !expectedTurnId) return false;
+        const input: InputItem[] = [];
+        if (prompt.length > 0 || extraInputItems.length === 0) input.push({ type: 'text', text: prompt });
+        input.push(...extraInputItems);
+        try {
+            const result = await this.request('turn/steer', { threadId, expectedTurnId, input }) as { turnId: string };
+            if (result.turnId !== expectedTurnId) throw new Error('Codex did not confirm the expected steering turn');
+            return true;
+        } catch (error) {
+            // A JSON-RPC rejection is a definite non-delivery. A disconnect or
+            // timeout is ambiguous and must not automatically replay input.
+            if (error instanceof CodexRpcError) {
+                logger.debug('[CodexAppServer] Steering rejected', { code: error.code });
+                return false;
+            }
+            throw error;
+        }
     }
 
     async interruptTurn(opts?: { timeoutMs?: number }): Promise<void> {
@@ -1291,7 +1324,7 @@ export class CodexAppServerClient {
                 }
                 this.pending.delete(msg.id);
                 if (msg.error) {
-                    pending.reject(new Error(`${pending.method}: ${msg.error.message} (code=${msg.error.code})`));
+                    pending.reject(new CodexRpcError(pending.method, msg.error.message, msg.error.code));
                 } else {
                     pending.resolve(msg.result);
                 }
