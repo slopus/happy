@@ -2,7 +2,7 @@ import { InvalidateSync } from "@/utils/sync";
 import { RawJSONLines, RawJSONLinesSchema } from "../types";
 import { parseClaudeGoalStatusTranscriptEvent, type ClaudeGoalStatusTranscriptEvent } from "../claudeGoalStatus";
 import { join } from "node:path";
-import { readFile } from "node:fs/promises";
+import { open, stat } from "node:fs/promises";
 import { logger } from "@/ui/logger";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
 import { getProjectPath } from "./path";
@@ -23,6 +23,21 @@ export type ScannerTranscriptEvent = ClaudeGoalStatusTranscriptEvent;
 type SessionLogEntry =
     | { kind: 'message'; key: string; message: RawJSONLines }
     | { kind: 'transcript-event'; key: string; event: ScannerTranscriptEvent };
+
+/**
+ * Where the previous scan of a transcript stopped. Transcripts are append-only,
+ * so the next scan only has to read what lies past `offset`.
+ */
+type TranscriptCursor = {
+    dev: number;
+    ino: number;
+    /** Bytes of the file already read, including `tail`. */
+    offset: number;
+    /** Bytes after the last newline read so far: an unfinished line. */
+    tail: Buffer;
+};
+
+const NEWLINE = 0x0a;
 
 export async function createSessionScanner(opts: {
     sessionId: string | null,
@@ -49,14 +64,18 @@ export async function createSessionScanner(opts: {
     // up, so do not keep re-creating it on every sync. A merely absent file is
     // watched through its parent directory and never enters this set.
     let deadSessions = new Set<string>();
+    // Read position per transcript file. Owned by this scanner, not shared:
+    // a process may run several scanners and each must see every line.
+    let cursors = new Map<string, TranscriptCursor>();
 
     // Mark existing entries as processed and start watching the initial session
     if (opts.sessionId) {
-        let entries = await readSessionEntries(projectDir, opts.sessionId);
+        let { entries, commit } = await readSessionEntries(projectDir, opts.sessionId, cursors);
         logger.debug(`[SESSION_SCANNER] Marking ${entries.length} existing entries as processed from session ${opts.sessionId}`);
         for (let entry of entries) {
             processedEntryKeys.add(entry.key);
         }
+        commit();
         // IMPORTANT: Also start watching the initial session file because Claude Code
         // may continue writing to it even after creating a new session with --resume
         // (agent tasks and other updates can still write to the original session file)
@@ -86,7 +105,7 @@ export async function createSessionScanner(opts: {
 
         // Process sessions
         for (let session of sessions) {
-            const sessionEntries = await readSessionEntries(projectDir, session);
+            const { entries: sessionEntries, commit } = await readSessionEntries(projectDir, session, cursors);
             let skipped = 0;
             let sentMessages = 0;
             let sentTranscriptEvents = 0;
@@ -106,6 +125,9 @@ export async function createSessionScanner(opts: {
                     sentTranscriptEvents++;
                 }
             }
+            // Advance only once every entry was handled, so a throwing
+            // callback makes the retried sync read these lines again.
+            commit();
             if (sessionEntries.length > 0) {
                 logger.debug(`[SESSION_SCANNER] Session ${session}: found=${sessionEntries.length}, skipped=${skipped}, sentMessages=${sentMessages}, sentTranscriptEvents=${sentTranscriptEvents}`);
             }
@@ -194,11 +216,12 @@ export async function createSessionScanner(opts: {
             // file as fresh user prompts. Without this, every previous
             // user message re-appears in the chat after reconnect.
             if (options?.treatExistingAsProcessed) {
-                const existing = await readSessionEntries(projectDir, sessionId);
+                const { entries: existing, commit } = await readSessionEntries(projectDir, sessionId, cursors);
                 logger.debug(`[SESSION_SCANNER] Pre-marking ${existing.length} existing entries as processed for new session ${sessionId}`);
                 for (const entry of existing) {
                     processedEntryKeys.add(entry.key);
                 }
+                commit();
             }
             if (currentSessionId) {
                 pendingSessions.add(currentSessionId);
@@ -236,21 +259,73 @@ function transcriptEventKey(event: ScannerTranscriptEvent): string {
 }
 
 /**
- * Read and parse session log file
+ * Read and parse the lines appended to a session log file since the last
+ * committed read.
  * Returns only valid conversation messages and recognized side-channel events,
  * silently skipping internal events.
+ *
+ * The cursor is restarted from byte 0 when the file was replaced (different
+ * device/inode), shrank, or no longer has a newline where the last read ended
+ * (rewritten in place). A trailing line without its newline is kept back until
+ * the newline arrives. Entries before the cursor were already handed to the
+ * caller, so `commit` records the new position once the caller has handled the
+ * returned entries; without it the next call returns them again.
  */
-async function readSessionEntries(projectDir: string, sessionId: string): Promise<SessionLogEntry[]> {
+async function readSessionEntries(
+    projectDir: string,
+    sessionId: string,
+    cursors: Map<string, TranscriptCursor>,
+): Promise<{ entries: SessionLogEntry[]; commit: () => void }> {
     const expectedSessionFile = join(projectDir, `${sessionId}.jsonl`);
     logger.debug(`[SESSION_SCANNER] Reading session file: ${expectedSessionFile}`);
-    let file: string;
+    const cursor = cursors.get(expectedSessionFile);
+    let data: Buffer;
+    let next: TranscriptCursor;
     try {
-        file = await readFile(expectedSessionFile, 'utf-8');
+        const probe = await stat(expectedSessionFile);
+        if (cursor && probe.dev === cursor.dev && probe.ino === cursor.ino && probe.size === cursor.offset) {
+            return { entries: [], commit: () => {} };
+        }
+        const handle = await open(expectedSessionFile, 'r');
+        try {
+            const { dev, ino, size } = await handle.stat();
+            // Resume only if this is the same file, it has not shrunk, and the
+            // last complete line still ends in a newline at the same place.
+            let resumeFrom = cursor?.dev === dev && cursor.ino === ino && cursor.offset <= size ? cursor : undefined;
+            const lineStart = resumeFrom ? resumeFrom.offset - resumeFrom.tail.length : 0;
+            if (resumeFrom && lineStart > 0) {
+                const previous = Buffer.alloc(1);
+                const { bytesRead } = await handle.read(previous, 0, 1, lineStart - 1);
+                if (bytesRead !== 1 || previous[0] !== NEWLINE) {
+                    resumeFrom = undefined;
+                }
+            }
+            const start = resumeFrom?.offset ?? 0;
+            const fresh = Buffer.alloc(size - start);
+            let filled = 0;
+            while (filled < fresh.length) {
+                const { bytesRead } = await handle.read(fresh, filled, fresh.length - filled, start + filled);
+                if (bytesRead === 0) {
+                    break;
+                }
+                filled += bytesRead;
+            }
+            data = resumeFrom && resumeFrom.tail.length > 0
+                ? Buffer.concat([resumeFrom.tail, fresh.subarray(0, filled)])
+                : fresh.subarray(0, filled);
+            next = { dev, ino, offset: start + filled, tail: Buffer.alloc(0) };
+        } finally {
+            await handle.close();
+        }
     } catch (error) {
         logger.debug(`[SESSION_SCANNER] Session file not found: ${expectedSessionFile}`);
-        return [];
+        return { entries: [], commit: () => {} };
     }
-    let lines = file.split('\n');
+    // Splitting on the newline byte cannot cut a multi-byte UTF-8 character,
+    // so the complete lines decode cleanly and the unfinished one waits.
+    const completeEnd = data.lastIndexOf(NEWLINE) + 1;
+    next.tail = Buffer.from(data.subarray(completeEnd));
+    let lines = data.toString('utf-8', 0, completeEnd).split('\n');
     let entries: SessionLogEntry[] = [];
     for (let l of lines) {
         try {
@@ -290,5 +365,5 @@ async function readSessionEntries(projectDir: string, sessionId: string): Promis
             continue;
         }
     }
-    return entries;
+    return { entries, commit: () => { cursors.set(expectedSessionFile, next); } };
 }
