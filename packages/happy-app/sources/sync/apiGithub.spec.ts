@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { disconnectGitHub } from './apiGithub';
+import { disconnectGitHub, getGitHubOAuthParams } from './apiGithub';
 import { AuthCredentials } from '@/auth/tokenStorage';
+import { HappyError } from '@/utils/errors';
 
 // Mock the serverConfig
 vi.mock('./serverConfig', () => ({
@@ -12,9 +13,18 @@ vi.mock('./apiSocket', () => ({
     getHappyClientId: () => 'test-client'
 }));
 
-// Mock backoff utility
+// Mock backoff utility: retry while the callback throws, like the real one,
+// but without delays and giving up after 3 attempts.
 vi.mock('@/utils/time', () => ({
-    backoff: vi.fn((fn) => fn())
+    backoff: vi.fn(async (fn) => {
+        for (let attempt = 1; ; attempt++) {
+            try {
+                return await fn();
+            } catch (e) {
+                if (attempt >= 3) throw e;
+            }
+        }
+    })
 }));
 
 describe('apiGithub', () => {
@@ -83,16 +93,57 @@ describe('apiGithub', () => {
         });
 
         it('should throw generic error for other HTTP errors', async () => {
-            // Mock 500 response
+            // Mock 401 response
             const mockResponse = {
                 ok: false,
-                status: 500,
-                json: vi.fn().mockResolvedValue({ error: 'Internal server error' })
+                status: 401,
+                json: vi.fn().mockResolvedValue({ error: 'Unauthorized' })
             };
             global.fetch = vi.fn().mockResolvedValue(mockResponse);
 
             await expect(disconnectGitHub(mockCredentials))
-                .rejects.toThrow('Failed to disconnect GitHub: 500');
+                .rejects.toThrow('Failed to disconnect GitHub: 401');
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('getGitHubOAuthParams', () => {
+        it('should return the OAuth params', async () => {
+            const mockResponse = {
+                ok: true,
+                status: 200,
+                json: vi.fn().mockResolvedValue({ url: 'https://github.com/login/oauth/authorize?x=1' })
+            };
+            global.fetch = vi.fn().mockResolvedValue(mockResponse);
+
+            await expect(getGitHubOAuthParams(mockCredentials))
+                .resolves.toEqual({ url: 'https://github.com/login/oauth/authorize?x=1' });
+        });
+
+        it('should not retry when the server has no GitHub OAuth configured', async () => {
+            // Mock the 400 a server without GITHUB_CLIENT_ID answers
+            const mockResponse = {
+                ok: false,
+                status: 400,
+                json: vi.fn().mockResolvedValue({ error: 'GitHub OAuth not configured' })
+            };
+            global.fetch = vi.fn().mockResolvedValue(mockResponse);
+
+            const error = await getGitHubOAuthParams(mockCredentials).catch((e) => e);
+            expect(error).toBeInstanceOf(HappyError);
+            expect(error.message).toBe('GitHub OAuth not configured');
+            expect(error.canTryAgain).toBe(false);
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+        });
+
+        it('should retry server errors until the request succeeds', async () => {
+            global.fetch = vi.fn()
+                .mockResolvedValueOnce({ ok: false, status: 503, json: vi.fn() })
+                .mockResolvedValueOnce({ ok: true, status: 200, json: vi.fn().mockResolvedValue({ url: 'https://github.com/x' }) });
+
+            await expect(getGitHubOAuthParams(mockCredentials))
+                .resolves.toEqual({ url: 'https://github.com/x' });
+            expect(global.fetch).toHaveBeenCalledTimes(2);
         });
     });
 });
