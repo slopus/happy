@@ -19,6 +19,27 @@ describe('SDKToLogConverter', () => {
         converter = new SDKToLogConverter(context)
     })
 
+    describe('uuid', () => {
+        it('keeps the SDK uuid, which is the entry uuid in the Claude JSONL', () => {
+            const sdkMessage = {
+                type: 'assistant',
+                uuid: '50ee533f-f7c0-4823-91ac-5ce43f9dec3e',
+                parent_tool_use_id: null,
+                message: { role: 'assistant', content: [{ type: 'text', text: 'Hi' }] },
+            } as unknown as SDKAssistantMessage
+            expect(converter.convert(sdkMessage)?.uuid).toBe('50ee533f-f7c0-4823-91ac-5ce43f9dec3e')
+        })
+
+        it('generates one when the SDK message has none', () => {
+            const sdkMessage = {
+                type: 'assistant',
+                parent_tool_use_id: null,
+                message: { role: 'assistant', content: [{ type: 'text', text: 'Hi' }] },
+            } as unknown as SDKAssistantMessage
+            expect(converter.convert(sdkMessage)?.uuid).toMatch(/^[0-9a-f-]{36}$/)
+        })
+    })
+
     describe('User messages', () => {
         it('should convert SDK user message to log format', () => {
             const sdkMessage: SDKUserMessage = {
