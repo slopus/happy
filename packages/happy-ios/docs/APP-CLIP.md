@@ -46,7 +46,7 @@ the link's member limit with that in mind.
 
 `https://app.happy.engineering/bot/invite/<opaque-token>` is accepted in every
 variant. Preview additionally accepts
-`https://securities-feels-twin-texture.trycloudflare.com/bot/invite/<opaque-token>`.
+`https://replication-combat-drink-britain.trycloudflare.com/bot/invite/<opaque-token>`.
 Only Preview app/Clip Info plists enable this extra host; Development and
 Production retain the first-party-only parser. The API uses the link's HTTPS
 origin, with no sign-in.

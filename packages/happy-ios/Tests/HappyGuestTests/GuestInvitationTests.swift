@@ -5,10 +5,10 @@ import XCTest
 
 final class GuestInvitationTests: XCTestCase {
     func testTemporaryHostIsAcceptedOnlyWhenPreviewIsEnabled() throws {
-        let url = URL(string: "https://securities-feels-twin-texture.trycloudflare.com/bot/invite/abcdefghijklmnop")!
+        let url = URL(string: "https://replication-combat-drink-britain.trycloudflare.com/bot/invite/abcdefghijklmnop")!
         XCTAssertNil(GuestInvitation(url: url, previewEnabled: false))
         let invitation = try XCTUnwrap(GuestInvitation(url: url, previewEnabled: true))
-        XCTAssertEqual(invitation.origin.absoluteString, "https://securities-feels-twin-texture.trycloudflare.com")
+        XCTAssertEqual(invitation.origin.absoluteString, "https://replication-combat-drink-britain.trycloudflare.com")
         XCTAssertNil(GuestInvitation(url: URL(string: "https://another.trycloudflare.com/bot/invite/abcdefghijklmnop")!, previewEnabled: true))
     }
     func testDisplayNameNormalizationAndValidation() {

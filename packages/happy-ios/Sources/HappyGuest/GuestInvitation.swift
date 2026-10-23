@@ -7,7 +7,7 @@ import Crypto
 
 /// Opaque guest capability. Owner credentials never participate in this flow.
 public struct GuestInvitation: Equatable, Sendable {
-    public static let previewHost = "securities-feels-twin-texture.trycloudflare.com"
+    public static let previewHost = "replication-combat-drink-britain.trycloudflare.com"
     public static var previewEnabled: Bool { Bundle.main.object(forInfoDictionaryKey: "HappyGuestPreviewInvites") as? Bool == true }
     public let token: String
     public let origin: URL
