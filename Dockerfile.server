@@ -1,5 +1,5 @@
 # Stage 1: install dependencies with workspace context
-FROM node:20 AS deps
+FROM node:24 AS deps
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential && rm -rf /var/lib/apt/lists/*
@@ -36,7 +36,7 @@ RUN pnpm --filter @slopus/happy-wire --fail-if-no-match build
 RUN pnpm --filter happy-server --fail-if-no-match build
 
 # Stage 3: runtime
-FROM node:20 AS runner
+FROM node:24 AS runner
 
 WORKDIR /repo
 

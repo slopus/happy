@@ -47,7 +47,7 @@ export async function sendPushNotifications(messages: PushMessage[]): Promise<Pu
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(batch),
-                // @types/node 20 ships two conflicting AbortSignal declarations
+                // @types/node ships two conflicting AbortSignal declarations
                 // (its own web-globals one, which has .timeout(), and undici's,
                 // which RequestInit refers to). The cast bridges them; at
                 // runtime there is only one AbortSignal.

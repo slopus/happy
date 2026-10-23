@@ -51,7 +51,7 @@ async function getVoiceUsage(
         if (cursor) query.set("cursor", cursor);
         const res = await fetch(`${ELEVEN_LABS_API}/conversations?${query}`, {
             headers: { "xi-api-key": elevenLabsApiKey },
-            // Bridge the conflicting Node 20/undici AbortSignal declarations,
+            // Bridge the conflicting Node/undici AbortSignal declarations,
             // as in pushSend; at runtime these refer to the same native signal.
             signal: signal as unknown as RequestInit['signal'],
         });

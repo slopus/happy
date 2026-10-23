@@ -8,12 +8,12 @@ This document contains the development guidelines and instructions for the Happy
 **Repository**: https://github.com/slopus/happy-server.git  
 **License**: MIT  
 **Language**: TypeScript  
-**Runtime**: Node.js 20  
+**Runtime**: Node.js 24  
 **Framework**: Fastify with opinionated architecture  
 
 ## Core Technology Stack
 
-- **Runtime**: Node.js 20
+- **Runtime**: Node.js 24
 - **Language**: TypeScript (strict mode enabled)
 - **Web Framework**: Fastify 5
 - **Database**: PostgreSQL with Prisma ORM

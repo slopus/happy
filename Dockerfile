@@ -2,7 +2,7 @@
 # Uses PGlite (embedded Postgres), local filesystem storage, no Redis
 
 # Stage 1: install dependencies
-FROM node:20 AS deps
+FROM node:24 AS deps
 
 RUN apt-get update && apt-get install -y python3 make g++ build-essential && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
@@ -39,7 +39,7 @@ RUN pnpm --filter @slopus/happy-wire --fail-if-no-match build
 RUN pnpm --filter happy-server --fail-if-no-match build
 
 # Stage 3: runtime
-FROM node:20-slim AS runner
+FROM node:24-slim AS runner
 
 WORKDIR /repo
 
