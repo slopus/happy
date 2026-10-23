@@ -75,7 +75,7 @@ public final class IconView: UIView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    package required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
     }
 
@@ -112,24 +112,24 @@ public final class IconView: UIView {
 extension UIView {
     /// Device pixels per point for this view: its screen's once it is on
     /// one, the main screen's before.
-    var layoutScale: CGFloat {
+    package var layoutScale: CGFloat {
         let scale = window?.screen.scale ?? traitCollection.displayScale
         return scale > 0 ? scale : UIGraphicsImageRendererFormat.preferred().scale
     }
 }
 
 private final class IconImageKey: NSObject {
-    let icon: Icon
-    let size: CGFloat
-    let scale: CGFloat
+    package let icon: Icon
+    package let size: CGFloat
+    package let scale: CGFloat
 
-    init(icon: Icon, size: CGFloat, scale: CGFloat) {
+    package init(icon: Icon, size: CGFloat, scale: CGFloat) {
         self.icon = icon
         self.size = size
         self.scale = scale
     }
 
-    override var hash: Int {
+    package override var hash: Int {
         var hasher = Hasher()
         hasher.combine(icon)
         hasher.combine(size)
@@ -137,7 +137,7 @@ private final class IconImageKey: NSObject {
         return hasher.finalize()
     }
 
-    override func isEqual(_ object: Any?) -> Bool {
+    package override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? IconImageKey else { return false }
         return other.icon == icon && other.size == size && other.scale == scale
     }
@@ -146,4 +146,20 @@ private final class IconImageKey: NSObject {
 private enum IconImageCache {
     nonisolated(unsafe) static let shared = NSCache<IconImageKey, UIImage>()
 }
+extension VectorPath {
+    package var cgPath: CGPath {
+        let path = CGMutablePath()
+        for element in elements {
+            switch element {
+            case .move(let point): path.move(to: point)
+            case .line(let point): path.addLine(to: point)
+            case .quadCurve(let to, let control): path.addQuadCurve(to: to, control: control)
+            case .curve(let to, let control1, let control2): path.addCurve(to: to, control1: control1, control2: control2)
+            case .close: path.closeSubpath()
+            }
+        }
+        return path
+    }
+}
+
 #endif

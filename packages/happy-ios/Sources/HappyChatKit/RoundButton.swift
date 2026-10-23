@@ -31,20 +31,20 @@ public final class RoundButton: UIControl {
     /// nothing. Nil: the label is measured here, as it is drawn. It is the
     /// title's size, so it is only for a button whose title stays and that
     /// never shows `loadingTitle`.
-    var measuredLabelSize: CGSize? {
+    package var measuredLabelSize: CGSize? {
         didSet { if measuredLabelSize != oldValue { setNeedsLayout() } }
     }
 
     /// The label's style, lines and alignment for a button of `size` and
     /// `display`, for whoever measures it elsewhere.
-    nonisolated static func labelText(_ size: RoundButtonSize, display: RoundButtonDisplay) -> (style: TextStyle, lines: Int, alignment: NSTextAlignment) {
+    package nonisolated static func labelText(_ size: RoundButtonSize, display: RoundButtonDisplay) -> (style: TextStyle, lines: Int, alignment: NSTextAlignment) {
         // Filled pills keep one line; text actions may wrap.
         (TextStyles.roundButton(size, display: display), display == .filled ? 1 : 0, .center)
     }
 
-    let background = UIView()
-    let label: StyledLabel
-    let spinner = UIActivityIndicatorView(style: .medium)
+    package let background = UIView()
+    package let label: StyledLabel
+    package let spinner = UIActivityIndicatorView(style: .medium)
 
     public init(title: String, size: RoundButtonSize = .large, display: RoundButtonDisplay = .filled) {
         self.title = title
@@ -73,7 +73,7 @@ public final class RoundButton: UIControl {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    package required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
     }
 

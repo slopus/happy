@@ -35,6 +35,8 @@ let package = Package(
         .library(name: "HappyApp", targets: ["HappyApp"]),
         // Everything the app is built from, for the XcodeGen app target.
         .library(name: "HappyKit", targets: ["HappyCrypto", "HappyWire", "HappyStore", "HappyCore", "HappyLayout", "HappyIcons", "HappyUI"]),
+        // The App Clip's whole dependency set. None of these targets reaches
+        // HappyCore, HappyStore, HappyUI or any owner credential.
         .library(name: "HappyGuestKit", targets: ["HappyGuest", "HappyGuestUI"]),
     ],
     dependencies: [
@@ -50,7 +52,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "HappyGuest", dependencies: [cryptoBackend]),
-        .target(name: "HappyGuestUI", dependencies: ["HappyGuest", "HappyLayout"]),
+        .target(name: "HappyGuestUI", dependencies: ["HappyGuest", "HappyLayout", "HappyIcons", "HappyMarkdown", "HappyChatKit"]),
         .testTarget(name: "HappyGuestTests", dependencies: ["HappyGuest"]),
         .target(
             name: "HappyCrypto",
@@ -67,9 +69,14 @@ let package = Package(
             ]
         ),
         .target(
+            // Foundation only: the markdown parser and the code tokenizer,
+            // shared by HappyCore and the App Clip.
+            name: "HappyMarkdown"
+        ),
+        .target(
             name: "HappyCore",
             dependencies: [
-                "HappyCrypto", "HappyWire", "HappyStore",
+                "HappyCrypto", "HappyWire", "HappyStore", "HappyMarkdown",
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "Tailcat", package: "tailcat-swift"),
             ]
@@ -86,9 +93,17 @@ let package = Package(
             exclude: ["LICENSES.md"]
         ),
         .target(
+            // The chat's account-free drawing: theme, fonts, text layout.
+            // UIKit, Foundation and the pure layouts only, so the App Clip
+            // draws exactly as the app does.
+            name: "HappyChatKit",
+            dependencies: ["HappyLayout", "HappyIcons", "HappyMarkdown"],
+            resources: [.process("Resources")]
+        ),
+        .target(
             name: "HappyUI",
             dependencies: [
-                "HappyCore", "HappyCrypto", "HappyWire", "HappyStore", "HappyLayout", "HappyIcons",
+                "HappyCore", "HappyCrypto", "HappyWire", "HappyStore", "HappyLayout", "HappyIcons", "HappyChatKit",
                 .product(name: "ElevenLabs", package: "elevenlabs-swift-sdk", condition: .when(platforms: [.iOS])),
                 .product(name: "UltraView", package: "ultraview", condition: .when(platforms: [.iOS])),
             ],
@@ -115,7 +130,7 @@ let package = Package(
         ),
         .testTarget(
             name: "HappyCoreTests",
-            dependencies: ["HappyCore", "HappyCrypto"],
+            dependencies: ["HappyCore", "HappyCrypto", "HappyMarkdown"],
             resources: [.copy("Fixtures")]
         ),
         .testTarget(

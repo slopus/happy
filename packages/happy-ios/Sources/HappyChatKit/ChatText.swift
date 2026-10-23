@@ -1,10 +1,10 @@
 #if canImport(UIKit)
-import HappyCore
+import HappyMarkdown
 import HappyLayout
 import UIKit
 
 extension ChatWeight {
-    var uiWeight: UIFont.Weight {
+    package var uiWeight: UIFont.Weight {
         switch self {
         case .regular: .regular
         case .medium: .medium
@@ -15,7 +15,7 @@ extension ChatWeight {
 }
 
 extension ChatTextStyle {
-    var font: UIFont {
+    package var font: UIFont {
         switch face {
         case .plex(let face): Fonts.font(face, size: size)
         case .system(let weight): .systemFont(ofSize: size, weight: weight.uiWeight)
@@ -27,13 +27,13 @@ extension ChatTextStyle {
     }
 
     /// One line of this style.
-    var lineHeightValue: CGFloat {
+    package var lineHeightValue: CGFloat {
         lineHeight ?? font.lineHeight.rounded(.up)
     }
 
     /// `font` where text is drawn in `environment`: at its text size, or
     /// as designed where there is none. Safe off main.
-    func font(in environment: TextEnvironment?) -> UIFont {
+    package func font(in environment: TextEnvironment?) -> UIFont {
         environment.map { font(in: $0) } ?? font
     }
 
@@ -42,7 +42,7 @@ extension ChatTextStyle {
     /// the line height grow by RN's multiplier and the kern stays as given
     /// (`scaled(_:)`); `font` is then the caller's font at that size, and the
     /// text carries its screen's pixels (`chatDisplayScale`).
-    func attributes(
+    package func attributes(
         color: UIColor, font: UIFont? = nil, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping,
         in environment: TextEnvironment? = nil
     ) -> [NSAttributedString.Key: Any] {
@@ -62,7 +62,7 @@ extension ChatTextStyle {
         return attributes
     }
 
-    func string(
+    package func string(
         _ text: String, color: ColorToken, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping,
         in environment: TextEnvironment? = nil
     ) -> NSAttributedString {
@@ -77,8 +77,8 @@ extension ChatTextStyle {
 /// italic swap the face, inline code takes the mono style, links are
 /// underlined and carry their URL (`RenderSpans`). In an `environment`,
 /// every face is at its text size.
-enum ChatSpans {
-    static func string(_ spans: [MarkdownSpan], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?) -> NSAttributedString {
+package enum ChatSpans {
+    package static func string(_ spans: [MarkdownSpan], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let uiColor = UIColor(color)
         for span in spans {
@@ -105,11 +105,11 @@ enum ChatSpans {
 extension NSAttributedString.Key {
     /// A tappable http(s) link's URL. Not `.link`: that one makes TextKit
     /// recolour the run.
-    static let chatLink = NSAttributedString.Key("HappyChatLink")
+    package static let chatLink = NSAttributedString.Key("HappyChatLink")
     /// The pixels per point of the screen text made at a text size is drawn
     /// on (`TextEnvironment.displayScale`), so `ChatTextLayout` rounds its
     /// box up to that screen's pixels. TextKit ignores it.
-    static let chatDisplayScale = NSAttributedString.Key("HappyChatDisplayScale")
+    package static let chatDisplayScale = NSAttributedString.Key("HappyChatDisplayScale")
 }
 
 /// Text laid out once at one width and then only drawn.
@@ -117,18 +117,18 @@ extension NSAttributedString.Key {
 /// TextKit objects may be used from any thread, one thread at a time. This
 /// one is built and fully laid out on the measuring queue, then handed to
 /// the main thread, which only reads it; nothing mutates it after `init`.
-final class ChatTextLayout: @unchecked Sendable {
+package final class ChatTextLayout: @unchecked Sendable {
     /// The width the text was wrapped at.
-    let width: CGFloat
-    let maxLines: Int
+    package let width: CGFloat
+    package let maxLines: Int
     /// The used size, rounded up to the screen's pixels as React Native
     /// rounds a Text's box, or to whole points for text made at the
     /// designed size, which says no screen (`chatDisplayScale`).
-    let size: CGSize
+    package let size: CGSize
     /// How far in from the wrapping width's left edge the text starts: 0
     /// unless it is centred or set from the right in a width wider than it.
-    let leading: CGFloat
-    let string: NSAttributedString
+    package let leading: CGFloat
+    package let string: NSAttributedString
     private let manager: NSLayoutManager
     private let container: NSTextContainer
     private let storage: NSTextStorage
@@ -136,7 +136,7 @@ final class ChatTextLayout: @unchecked Sendable {
     // test the same immutable plan. TextKit itself requires serial access.
     private let access = NSRecursiveLock()
 
-    init(_ string: NSAttributedString, width: CGFloat, maxLines: Int = 0) {
+    package init(_ string: NSAttributedString, width: CGFloat, maxLines: Int = 0) {
         self.string = string
         self.width = width
         self.maxLines = maxLines
@@ -161,12 +161,12 @@ final class ChatTextLayout: @unchecked Sendable {
     }
 
     /// Unwrapped: one line per source line, as wide as the longest.
-    convenience init(unwrapped string: NSAttributedString) {
+    package convenience init(unwrapped string: NSAttributedString) {
         self.init(string, width: 100_000)
     }
 
     /// Draws into the current context with the text's top-left at `origin`.
-    func draw(at origin: CGPoint, visibleRect: CGRect? = nil) {
+    package func draw(at origin: CGPoint, visibleRect: CGRect? = nil) {
         access.lock()
         defer { access.unlock() }
         guard string.length > 0 else { return }
@@ -178,7 +178,7 @@ final class ChatTextLayout: @unchecked Sendable {
     }
 
     /// The character under a point in the text's own coordinates.
-    func characterIndex(at point: CGPoint) -> Int? {
+    package func characterIndex(at point: CGPoint) -> Int? {
         access.lock()
         defer { access.unlock() }
         guard string.length > 0, CGRect(origin: .zero, size: size).insetBy(dx: -4, dy: -4).contains(point) else { return nil }
@@ -189,7 +189,7 @@ final class ChatTextLayout: @unchecked Sendable {
         return manager.characterIndexForGlyph(at: glyph)
     }
 
-    func link(at point: CGPoint) -> String? {
+    package func link(at point: CGPoint) -> String? {
         guard let index = characterIndex(at: point), index < string.length else { return nil }
         return string.attribute(.chatLink, at: index, effectiveRange: nil) as? String
     }
@@ -198,21 +198,21 @@ final class ChatTextLayout: @unchecked Sendable {
 /// One piece of text measured at whatever widths a layout asks for. The
 /// layout that ends up placed is picked afterwards by its frame, so the
 /// text that is drawn is exactly the text that was measured.
-final class MeasuredText {
-    let string: NSAttributedString
-    let maxLines: Int
+package final class MeasuredText {
+    package let string: NSAttributedString
+    package let maxLines: Int
     private var layouts: [ChatTextLayout] = []
 
-    init(_ string: NSAttributedString, maxLines: Int = 0) {
+    package init(_ string: NSAttributedString, maxLines: Int = 0) {
         self.string = string
         self.maxLines = maxLines
     }
 
-    var measurable: Measurable {
+    package var measurable: Measurable {
         Measurable { [self] width in layout(width: width).size }
     }
 
-    func layout(width: CGFloat) -> ChatTextLayout {
+    package func layout(width: CGFloat) -> ChatTextLayout {
         if let cached = layouts.first(where: { $0.width == width }) { return cached }
         let layout = ChatTextLayout(string, width: width, maxLines: maxLines)
         layouts.append(layout)
@@ -224,7 +224,7 @@ final class MeasuredText {
     /// hugging its text) and starts at its left. Centred text measured
     /// wider sits in the middle of that width, so a frame hugging it is
     /// laid out again at its own width.
-    func layout(for frame: CGRect) -> ChatTextLayout {
+    package func layout(for frame: CGRect) -> ChatTextLayout {
         if let exact = layouts.first(where: { $0.width == frame.width }) { return exact }
         if let fitting = layouts.first(where: { $0.size.height == frame.height && $0.size.width <= frame.width + 0.5 && $0.leading < 0.5 }) {
             return fitting
@@ -234,8 +234,8 @@ final class MeasuredText {
 }
 
 /// Draws a `ChatTextLayout`. Nothing is measured here.
-final class ChatTextView: UIView {
-    var layout: ChatTextLayout? {
+package final class ChatTextView: UIView {
+    package var layout: ChatTextLayout? {
         didSet {
             guard layout !== oldValue else { return }
             setNeedsDisplay()
@@ -243,7 +243,7 @@ final class ChatTextView: UIView {
         }
     }
 
-    override init(frame: CGRect) {
+    package override init(frame: CGRect) {
         super.init(frame: frame)
         isOpaque = false
         backgroundColor = .clear
@@ -260,21 +260,21 @@ final class ChatTextView: UIView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    package required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
     }
 
-    override var frame: CGRect {
+    package override var frame: CGRect {
         // Content stays top-left while the frame animates; a new size only
         // needs a redraw.
         didSet { if frame.size != oldValue.size { setNeedsDisplay() } }
     }
 
-    override func draw(_ rect: CGRect) {
+    package override func draw(_ rect: CGRect) {
         layout?.draw(at: .zero)
     }
 
-    func link(at point: CGPoint) -> String? {
+    package func link(at point: CGPoint) -> String? {
         layout?.link(at: point)
     }
 }

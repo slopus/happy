@@ -2,9 +2,19 @@
 
 The guest screen is UIKit shared by the App Clip and the installed native app.
 It has no owner authentication, account store, file access, tool approval, or
-owner RPC client. The Clip compiles only the guest sources and one pure layout.
-It links only Apple frameworks, including AppClip, Foundation, UIKit, Security,
-and CryptoKit.
+owner RPC client. The Clip links one SwiftPM product, `HappyGuestKit`, made of
+`HappyGuest` (transport and Keychain), `HappyGuestUI` (the screen),
+`HappyChatKit`, `HappyMarkdown`, `HappyLayout` and `HappyIcons`. It contains no
+`HappyCore`, `HappyStore`, `HappyUI`, `HappyWire`, `HappyCrypto` or third-party
+code. Apart from those modules it links only Apple frameworks.
+
+`HappyChatKit` holds the account-free chat display pieces both apps use: the
+palette and fonts (`Theme`, the bundled font files), text measurement and
+drawing (`ChatText`, `TextEnvironment`), icon images, `StyledLabel`,
+`RoundButton` and the glass views (`PartialBlurView`, `HeaderGlassView`,
+`StatusDotView`). `HappyMarkdown` holds the Markdown parser and syntax
+highlighter. `HappyUI` and `HappyCore` re-export them, so the main app's code
+and behaviour are unchanged by the split.
 
 ## Targets and provisioning
 
@@ -67,6 +77,15 @@ same shared screen runs in the installed app. Existing sessions and pending
 joins skip name entry. The composer shows "Message as <name>" after joining.
 The screen also explains that everyone joining the link can see the chat,
 including earlier messages, and that member names are unverified.
+
+The screen uses the main app's chat look. The header is a glass capsule with
+the bot name and "Guest · <name>", plus a More button. Rows are laid out by the
+main app's `UserMessageLayout` and `AgentTextLayout`. Your messages are bubbles.
+Other members' bubbles carry their name. Bot replies are Markdown with a copy
+button. The composer is the frosted card with a send button and a connection
+status row. Onboarding uses the same fonts, palette and glass field. Frames
+come from `GuestChatLayout` and `GuestTranscriptLayout` in `HappyLayout`. Rows
+are planned off the main actor and cached per message and width.
 
 Names normalize to NFC, collapse spaces, and trim, then require 1–40 grapheme
 clusters. Allowed characters are Unicode letters, marks and numbers, spaces,
@@ -141,10 +160,13 @@ A `limit_reached` error stops further sends while keeping the transcript.
 
 The dedicated ephemeral URLSession has no cookie or credential storage, cache,
 or owner Authorization injection and refuses redirects. It invalidates when
-discarded. Server session IDs are validated before path construction. Text is
-plain UITextView content, with data detectors disabled; no HTML or Markdown is
-interpreted. Message derivation and deduplication run off the main actor; UIKit
-appends only new text. Read-only conversations hide the composer.
+discarded. Server session IDs are validated before path construction. Bot
+replies render through `HappyMarkdown`; guest and member messages stay plain
+text. No HTML is interpreted and no data detectors run. Images are never
+fetched: an image shows only its caption. Code blocks and Mermaid source show as
+code. Option buttons send their text as a message. Only `http` and `https` links
+open. Message deduplication and row planning run off the main actor. Read-only
+conversations hide the composer.
 
 ## Development and checks
 
@@ -165,8 +187,8 @@ Debug builds accept a process environment `HAPPY_GUEST_API_ORIGIN` (for example
 `http://127.0.0.1:17891` behind an SSH reverse forward). It never comes from an
 invitation parameter and is compiled out of distribution builds. Only the
 debug Clip plist permits local networking; distribution has no ATS exception.
-The standalone compiler flag prevents importing the full app's package modules
-even if they happen to be available during a combined parent/Clip build.
+The Clip targets depend only on the `HappyGuestKit` product, so the full app's
+package modules are not available to them.
 
 For live simulator checks, use normal ad-hoc simulator signing
 (`CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES`); an unsigned simulator app can
@@ -239,6 +261,12 @@ repository:
 ```
 
 Land that fix in slopus/ultraview and bump the pin before the next binary.
+
+**Chat look, not yet uploaded.** Build 26 has the earlier plain-text guest
+screen. The main-app chat look (branch `app-clip-chat-look`) is the candidate
+for build 27. Built the same way (Preview, generic iOS, unsigned), the Clip
+grows from 1,992 KB to 7,120 KB. Its binary grows from 670 KB to 4.7 MB, and
+the bundled fonts add 1.2 MB. That is far below Apple's 100 MB App Clip limit.
 
 Remaining work:
 

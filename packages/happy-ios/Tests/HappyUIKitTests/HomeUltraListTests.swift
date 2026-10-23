@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+@testable import HappyChatKit
 @testable import HappyCore
 import HappyLayout
 import HappyStore

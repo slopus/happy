@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+@testable import HappyChatKit
 import HappyCore
 import HappyCrypto
 import HappyWire

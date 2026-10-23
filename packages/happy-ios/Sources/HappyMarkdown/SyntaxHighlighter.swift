@@ -152,21 +152,21 @@ public enum SyntaxHighlighter {
         return Line(tokens: tokens, stack: after)
     }
 
-    struct Pattern {
+    package struct Pattern {
         var regex: NSRegularExpression
         var kind: SyntaxToken.Kind
         var captureGroup: Int?
     }
 
     /// The four grammars' patterns, built once.
-    enum Compiled {
+    package enum Compiled {
         nonisolated(unsafe) static let base = patterns(for: .base)
         nonisolated(unsafe) static let python = patterns(for: .python)
         nonisolated(unsafe) static let typescript = patterns(for: .typescript)
         nonisolated(unsafe) static let java = patterns(for: .java)
     }
 
-    static func patterns(for grammar: Grammar) -> [Pattern] {
+    package static func patterns(for grammar: Grammar) -> [Pattern] {
         let controlFlow = ["if", "else", "elif", "for", "while", "do", "switch", "case", "break", "continue", "return", "yield", "try", "catch", "finally", "throw", "with"]
         var keywords = ["function", "const", "let", "var", "def", "class", "interface", "enum", "struct", "union", "namespace", "module"]
         var types = ["int", "string", "bool", "float", "double", "char", "void", "any", "unknown", "never", "object", "array", "number", "boolean"]
@@ -221,7 +221,7 @@ public enum SyntaxHighlighter {
         ]
     }
 
-    enum Fixed {
+    package enum Fixed {
         nonisolated(unsafe) static let blockComment = Patterns.regex(#"(/\*[\s\S]*?\*/)"#)
         nonisolated(unsafe) static let lineComment = Patterns.regex(#"(//.*$)"#, options: .anchorsMatchLines)
         nonisolated(unsafe) static let hashComment = Patterns.regex(#"(#.*$)"#, options: .anchorsMatchLines)
@@ -246,7 +246,7 @@ public enum SyntaxHighlighter {
     /// Depth of each matched bracket in `line`, by UTF-16 offset, given the
     /// brackets open before it, and the ones open after. A closer pops
     /// whatever is innermost, and has a depth only if it matches.
-    static func bracketNesting(_ line: String, from start: BracketStack) -> (levels: [Int: Int], stack: BracketStack) {
+    package static func bracketNesting(_ line: String, from start: BracketStack) -> (levels: [Int: Int], stack: BracketStack) {
         let pairs: [UInt16: UInt16] = [40: 41, 91: 93, 123: 125, 60: 62]
         let closers = Set(pairs.values)
         var map: [Int: Int] = [:]

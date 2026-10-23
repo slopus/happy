@@ -63,18 +63,16 @@ public actor GuestClient {
         }
     }
 
-    /// Deduplication and text derivation stay off the UI actor. The view appends
-    /// only this delta rather than replacing the transcript every poll.
+    /// The messages not seen before, in page order. Deduplication stays off
+    /// the UI actor; the view appends only this delta rather than replacing
+    /// the transcript every poll.
+    public func accept(_ messages: [GuestMessage]) -> [GuestMessage] {
+        messages.filter { seenMessageIDs.insert($0.id).inserted }
+    }
+
+    /// `accept`, as the plain-text transcript the screen reads to VoiceOver.
     public func append(_ messages: [GuestMessage], botName: String) -> String {
-        messages.compactMap { message -> String? in
-            guard seenMessageIDs.insert(message.id).inserted else { return nil }
-            let sender: String
-            switch message.role {
-            case .assistant: sender = botName
-            case .user: sender = message.isMine == false ? (message.senderName ?? "Member") : "You"
-            }
-            return sender + "\n" + message.text
-        }.joined(separator: "\n\n")
+        GuestTranscript.text(accept(messages), botName: botName)
     }
 
     private struct EmptyReply: Decodable {}
@@ -126,5 +124,21 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate, Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
         completionHandler(nil)
+    }
+}
+
+/// The transcript as plain text: each message under its sender's label.
+public enum GuestTranscript {
+    /// Your own messages are "You", other members' carry their server name,
+    /// the bot's its name. Names inside message bodies stay body text.
+    public static func sender(_ message: GuestMessage, botName: String) -> String {
+        switch message.role {
+        case .assistant: botName
+        case .user: message.isMine == false ? (message.senderName ?? "Member") : "You"
+        }
+    }
+
+    public static func text(_ messages: [GuestMessage], botName: String) -> String {
+        messages.map { sender($0, botName: botName) + "\n" + $0.text }.joined(separator: "\n\n")
     }
 }

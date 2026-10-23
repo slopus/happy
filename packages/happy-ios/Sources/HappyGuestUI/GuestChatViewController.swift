@@ -1,28 +1,37 @@
 #if canImport(UIKit)
-import UIKit
-#if canImport(HappyGuest) && !HAPPY_GUEST_STANDALONE
+import HappyChatKit
 import HappyGuest
-#endif
-#if canImport(HappyLayout) && !HAPPY_GUEST_STANDALONE
 import HappyLayout
-#endif
+import UIKit
 
 @MainActor private enum GuestServices {
     static let vault = GuestSessionVault(storage: GuestKeychainStorage())
 }
 
 /// Shared by the Clip and the installed parent; never uses owner credentials.
+///
+/// Drawn as the session screen is: the glass title capsule, the chat's rows
+/// (`GuestRowRenderer`) and the composer card (`GuestComposerView`), in
+/// HappyChatKit's fonts and the app's palette. Rows are measured off the
+/// main thread; the main thread only applies them.
 @MainActor public final class GuestChatViewController: UIViewController {
+    private let capsule = HeaderGlassView()
     private let titleLabel = UILabel()
-    private let statusLabel = UILabel()
-    private let transcript = UITextView()
-    private let input = UITextField()
-    private let sendButton = UIButton(type: .system)
-    private let retryButton = UIButton(type: .system)
+    private let subtitleLabel = UILabel()
+    private let moreGlass = HeaderGlassView()
     private let moreButton = UIButton(type: .system)
-    private let nameInput = UITextField()
-    private let joinButton = UIButton(type: .system)
-    private let joinNotice = UILabel()
+    private let transcript = GuestTranscriptView()
+    private let composer = GuestComposerView()
+    private let retryButton = RoundButton(title: "Reconnect", size: .small)
+    private let messageLabel = StyledLabel(style: TextStyles.onboardingProp, color: Palette.textSecondary, alignment: .center)
+    private let onboardingTitle = StyledLabel(style: TextStyles.onboardingTitle, color: Palette.text, alignment: .center)
+    private let onboardingSubtitle = StyledLabel(style: TextStyles.onboardingProp, color: Palette.textSecondary, alignment: .center)
+    private let nameField = GuestNameField()
+    private let joinButton = RoundButton(title: "Join")
+    private let joinNotice = StyledLabel(style: TextStyles.promptHint, color: Palette.textSecondary, alignment: .center)
+    private var nameInput: UITextField { nameField.field }
+    private var botTitle = "Happy" { didSet { applyHeader() } }
+    private var statusText = "Open a bot invitation to start chatting." { didSet { applyStatus() } }
     private var onboardingInvitation: GuestInvitation?
     private var redemptionName: String?
     private let vault = GuestServices.vault
@@ -39,85 +48,148 @@ import HappyLayout
     private var terminal = false
     private var forcedReadOnly = false
     private var noticeUntil: Date?
+    /// The conversation, oldest first, and its rows as last planned.
+    private var messages: [GuestMessage] = []
+    private var rows: [String: PlannedRow] = [:]
+    private var planning: Task<Void, Never>?
+    private var planGeneration = 0
+    private var plannedWidth: CGFloat = 0
+    private var plannedText: TextEnvironment?
+    private var copiedMessageID: String?
+    private var copiedReset: Task<Void, Never>?
 
-    deinit { opening?.cancel(); polling?.cancel(); sending?.cancel() }
+    private struct PlannedRow: Sendable {
+        var input: GuestRowInput
+        var width: CGFloat
+        var text: TextEnvironment?
+        var plan: GuestRowPlan
+    }
+
+    deinit { opening?.cancel(); polling?.cancel(); sending?.cancel(); planning?.cancel(); copiedReset?.cancel() }
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
-        titleLabel.text = "Happy"
-        titleLabel.font = .systemFont(ofSize: 28, weight: .bold)
-        statusLabel.text = "Open a bot invitation to start chatting."
-        statusLabel.font = .systemFont(ofSize: 15)
-        statusLabel.textColor = .secondaryLabel
-        statusLabel.numberOfLines = 2
-        transcript.isEditable = false
-        transcript.dataDetectorTypes = []
-        transcript.backgroundColor = .secondarySystemBackground
-        transcript.layer.cornerRadius = 16
-        input.placeholder = "Message"
-        input.borderStyle = .roundedRect
-        input.accessibilityIdentifier = "guest.message"
-        nameInput.placeholder = "Your name"
-        nameInput.borderStyle = .roundedRect
-        nameInput.textContentType = .name
-        nameInput.autocapitalizationType = .words
-        nameInput.autocorrectionType = .no
-        nameInput.accessibilityIdentifier = "guest.name"
-        joinButton.setTitle("Join", for: .normal)
-        joinButton.accessibilityIdentifier = "guest.join"
-        joinButton.addTarget(self, action: #selector(join), for: .touchUpInside)
-        joinNotice.text = "Everyone who joins this link can see this chat, including earlier messages.\nNames are chosen by members and aren’t verified."
-        joinNotice.font = .systemFont(ofSize: 13)
-        joinNotice.textColor = .secondaryLabel
-        joinNotice.numberOfLines = 4
-        sendButton.setTitle("Send", for: .normal)
-        sendButton.accessibilityIdentifier = "guest.send"
-        sendButton.addTarget(self, action: #selector(send), for: .touchUpInside)
-        retryButton.setTitle("Reconnect", for: .normal)
-        retryButton.addTarget(self, action: #selector(reconnect), for: .touchUpInside)
-        retryButton.isHidden = true
-        moreButton.setTitle("More", for: .normal)
+        Fonts.registerBundledFonts()
+        followsTextSize()
+        view.backgroundColor = UIColor(Palette.surface)
+
+        transcript.onAction = { [weak self] action in self?.perform(action) }
+        // Bot text is someone else's content: only web links open.
+        transcript.onLink = { [weak self] url in
+            guard ["http", "https"].contains(url.scheme?.lowercased()), url.host != nil else { return }
+            self?.view.window?.windowScene?.open(url, options: nil)
+        }
+        view.addSubview(transcript)
+
+        titleLabel.numberOfLines = 1
+        subtitleLabel.numberOfLines = 1
+        view.addSubview(capsule)
+        view.addSubview(titleLabel)
+        view.addSubview(subtitleLabel)
+        moreButton.setImage(UIImage.symbol("ellipsis", pointSize: 17, weight: .semibold), for: .normal)
+        moreButton.tintColor = UIColor(Palette.text)
+        moreButton.accessibilityLabel = "More"
         moreButton.showsMenuAsPrimaryAction = true
         moreButton.menu = UIMenu(children: [
-            UIAction(title: "Report conversation") { [weak self] _ in self?.report() },
-            UIAction(title: "Leave conversation", attributes: .destructive) { [weak self] _ in self?.leave() },
+            UIAction(title: "Report conversation", image: UIImage(systemName: "flag")) { [weak self] _ in self?.report() },
+            UIAction(title: "Leave conversation", image: UIImage(systemName: "rectangle.portrait.and.arrow.right"), attributes: .destructive) { [weak self] _ in self?.leave() },
         ])
-        for child in [titleLabel, statusLabel, transcript, input, sendButton, retryButton, moreButton, nameInput, joinButton, joinNotice] { view.addSubview(child) }
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged),
+        moreGlass.addSubview(moreButton)
+        view.addSubview(moreGlass)
+
+        messageLabel.numberOfLines = 0
+        view.addSubview(messageLabel)
+        onboardingTitle.string = "Join a Happy bot"
+        onboardingSubtitle.numberOfLines = 0
+        joinNotice.numberOfLines = 0
+        joinNotice.string = "Everyone who joins this link can see this chat, including earlier messages.\nNames are chosen by members and aren’t verified."
+        joinButton.accessibilityIdentifier = "guest.join"
+        joinButton.onTap = { [weak self] in self?.join() }
+        nameInput.addTarget(self, action: #selector(join), for: .editingDidEndOnExit)
+        for child in [onboardingTitle, onboardingSubtitle, nameField, joinButton, joinNotice] as [UIView] { view.addSubview(child) }
+
+        composer.onSend = { [weak self] in self?.send() }
+        composer.onHeightChange = { [weak self] in self?.view.setNeedsLayout() }
+        view.addSubview(composer)
+        retryButton.onTap = { [weak self] in self?.reconnect() }
+        retryButton.isHidden = true
+        view.addSubview(retryButton)
+
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
                                                name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in self.view.setNeedsLayout() }
+        applyHeader()
+        applyStatus()
         updateComposer()
     }
 
     public override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); setActive(true) }
     public override func viewDidDisappear(_ animated: Bool) { super.viewDidDisappear(animated); setActive(false) }
-    @objc private func keyboardChanged() { view.setNeedsLayout() }
+
+    @objc private func keyboardChanged(_ notification: Notification) {
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+        view.setNeedsLayout()
+        UIView.animate(withDuration: duration, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+            self.view.layoutIfNeeded()
+        }
+    }
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let layout = GuestChatLayout(size: view.bounds.size, safeTop: view.safeAreaInsets.top,
-                                     bottom: view.bounds.maxY - view.keyboardLayoutGuide.layoutFrame.minY,
-                                     showsComposer: !isReadOnly)
-        titleLabel.frame = layout.title; statusLabel.frame = layout.status
-        transcript.frame = layout.messages; input.frame = layout.input
-        sendButton.frame = layout.send; retryButton.frame = layout.retry; moreButton.frame = layout.more
-        nameInput.frame = layout.name; joinButton.frame = layout.join
-        joinNotice.frame = layout.joinNotice
+        let size = view.bounds.size
+        let unbounded = CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        let onboarding = onboardingInvitation != nil && !terminal
+        let showsMessage = record == nil && !onboarding
+        let layout = GuestChatLayout(.init(
+            size: size,
+            safeArea: LayoutInsets(view.safeAreaInsets),
+            keyboardTop: view.keyboardLayoutGuide.layoutFrame.minY,
+            title: titleLabel.sizeThatFits(unbounded),
+            subtitle: subtitleLabel.isHidden ? nil : subtitleLabel.sizeThatFits(unbounded),
+            composerHeight: record == nil ? nil : composer.composerHeight(fitting: size.width),
+            retry: retryButton.isHidden ? nil : retryButton.sizeThatFits(unbounded),
+            onboarding: onboarding ? GuestChatLayout.Onboarding(
+                title: onboardingTitle.measurable, subtitle: onboardingSubtitle.measurable,
+                joinHeight: joinButton.sizeThatFits(CGSize(width: size.width, height: .greatestFiniteMagnitude)).height,
+                notice: joinNotice.measurable
+            ) : nil,
+            message: showsMessage ? messageLabel.measurable : nil
+        ))
+        capsule.setLayoutFrame(layout.capsule)
+        titleLabel.setLayoutFrame(layout.title)
+        if let frame = layout.subtitle { subtitleLabel.setLayoutFrame(frame) }
+        moreGlass.setLayoutFrame(layout.more)
+        moreButton.frame = moreGlass.bounds
+        transcript.setLayoutFrame(layout.list)
+        transcript.setInsets(oldest: layout.oldestInset, newest: layout.newestInset)
+        if let frame = layout.composer { composer.setLayoutFrame(frame) }
+        if let frame = layout.retry { retryButton.setLayoutFrame(frame) }
+        if let frame = layout.message { messageLabel.setLayoutFrame(frame) }
+        if let form = layout.onboarding {
+            onboardingTitle.setLayoutFrame(form.title)
+            onboardingSubtitle.setLayoutFrame(form.subtitle)
+            nameField.setLayoutFrame(form.field)
+            joinButton.setLayoutFrame(form.join)
+            joinNotice.setLayoutFrame(form.notice)
+        }
+        if transcript.bounds.width != plannedWidth || transcript.traitCollection.textEnvironment != plannedText { replan() }
     }
+
+    // MARK: Opening
 
     public func open(_ url: URL) {
         loadViewIfNeeded()
         guard let invitation = GuestInvitation(url: url) else {
             reset()
             terminal = true
-            statusLabel.text = "This invitation link is invalid."
+            statusText = "This invitation link is invalid."
             updateComposer()
             return
         }
         if invitationID == invitation.identifier, !terminal { setActive(true); return }
         reset()
         invitationID = invitation.identifier
-        statusLabel.text = "Opening invitation…"
+        statusText = "Opening invitation…"
         let generation = self.generation
         let origin = Self.apiOrigin(for: invitation.origin)
         let vault = self.vault
@@ -138,15 +210,15 @@ import HappyLayout
                     guard self?.generation == generation else { return }
                     self?.opening = nil
                     self?.onboardingInvitation = invitation
-                    self?.titleLabel.text = "Join a Happy bot"
-                    self?.statusLabel.text = "Enter your name to start chatting."
+                    self?.statusText = "Enter your name to start chatting."
                     self?.updateComposer()
                 }
             } catch {
                 guard self?.generation == generation else { return }
                 self?.opening = nil
-                self?.statusLabel.text = "Couldn't open the secure guest session. Try again."
+                self?.statusText = "Couldn't open the secure guest session. Try again."
                 self?.retryButton.isHidden = false
+                self?.view.setNeedsLayout()
             }
         }
     }
@@ -154,7 +226,7 @@ import HappyLayout
     @objc private func join() {
         guard opening == nil, let invitation = onboardingInvitation else { return }
         guard let name = GuestDisplayName.normalized(nameInput.text ?? "") else {
-            statusLabel.text = "Use 1–40 letters or numbers. Spaces and . ' - _ are allowed."
+            statusText = "Use 1–40 letters or numbers. Spaces and . ' - _ are allowed."
             return
         }
         nameInput.text = name
@@ -167,7 +239,7 @@ import HappyLayout
         let origin = Self.apiOrigin(for: invitation.origin)
         let vault = self.vault
         redemptionName = displayName
-        statusLabel.text = "Joining…"
+        statusText = "Joining…"
         opening = Task { [weak self] in
             var backoff: Double = 1
             while !Task.isCancelled {
@@ -210,7 +282,7 @@ import HappyLayout
                     guard self?.generation == generation else { return }
                     guard Self.allowedStoredOrigin(stored.origin) else {
                         self?.opening = nil
-                        self?.statusLabel.text = "Open an invitation for this server."
+                        self?.statusText = "Open an invitation for this server."
                         return
                     }
                     self?.opening = nil
@@ -220,7 +292,7 @@ import HappyLayout
                     guard self?.generation == generation else { return }
                     guard Self.allowedStoredOrigin(pending.origin) else {
                         self?.opening = nil
-                        self?.statusLabel.text = "Open an invitation for this server."
+                        self?.statusText = "Open an invitation for this server."
                         return
                     }
                     self?.opening = nil
@@ -229,7 +301,7 @@ import HappyLayout
             } catch {
                 if self?.generation == generation {
                     self?.opening = nil
-                    self?.statusLabel.text = "Couldn't restore the secure guest session."
+                    self?.statusText = "Couldn't restore the secure guest session."
                 }
             }
         }
@@ -255,10 +327,10 @@ import HappyLayout
         record = stored
         onboardingInvitation = nil
         client = GuestClient(origin: stored.origin)
-        titleLabel.text = stored.session.botName
-        input.placeholder = stored.displayName.map { "Message as \($0)" } ?? "Message"
-        input.text = stored.pending?.text
-        statusLabel.text = isReadOnly ? "Read only · You can view this conversation." : "Connecting…"
+        botTitle = stored.session.botName
+        composer.placeholder = stored.displayName.map { "Message as \($0)" } ?? "Message"
+        composer.text = stored.pending?.text ?? ""
+        statusText = isReadOnly ? "Read only · You can view this conversation." : "Connecting…"
         updateComposer()
         connect()
     }
@@ -285,13 +357,13 @@ import HappyLayout
                     let page = try await client.messages(session: session, after: self?.cursor)
                     try Task.checkCancellation()
                     guard self?.generation == generation, self?.terminal == false else { return }
-                    let addition = await client.append(page.messages, botName: session.botName)
+                    let addition = await client.accept(page.messages)
                     guard self?.generation == generation, self?.terminal == false else { return }
                     self?.cursor = page.cursor
                     if !addition.isEmpty { self?.appendMessages(addition) }
                     if Task.isCancelled { return }
                     if self?.noticeUntil.map({ $0 > Date() }) != true {
-                        self?.statusLabel.text = self?.isReadOnly == true ? "Read only · You can view this conversation." :
+                        self?.statusText = self?.isReadOnly == true ? "Read only · You can view this conversation." :
                             self?.record?.pending != nil ? "Message not confirmed. Reconnect to retry." :
                             page.status == .offline ? "Bot is offline. Reconnecting…" : "Guest conversation · Invitation access only"
                     }
@@ -321,9 +393,9 @@ import HappyLayout
         connect()
     }
 
-    @objc private func send() {
+    private func send(_ option: String? = nil) {
         guard sending == nil, active, !terminal, !isReadOnly, let client, var stored = record else { return }
-        let text = input.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let text = (option ?? composer.text).trimmingCharacters(in: .whitespacesAndNewlines)
         guard stored.pending != nil || !text.isEmpty else { return }
         guard text.utf16.count <= 4_000 else { showNotice("Use 4,000 characters or fewer."); return }
         if stored.pending == nil { stored.pending = GuestPendingMessage(localId: UUID().uuidString, text: text) }
@@ -331,6 +403,7 @@ import HappyLayout
         record = stored
         let generation = self.generation
         let vault = self.vault
+        let sentFromComposer = option == nil
         sending = Task { [weak self] in
             defer { if self?.generation == generation { self?.sending = nil; self?.updateComposer() } }
             do {
@@ -342,7 +415,7 @@ import HappyLayout
                 try await vault.save(acknowledged, select: false)
                 guard self?.generation == generation, self?.terminal == false else { return }
                 self?.record = acknowledged
-                self?.input.text = ""
+                if sentFromComposer { self?.composer.text = "" }
                 self?.retryButton.isHidden = true
                 self?.connect()
             } catch {
@@ -358,34 +431,117 @@ import HappyLayout
                 } else { _ = await self?.handle(error) }
             }
         }
-        statusLabel.text = "Sending…"
+        statusText = "Sending…"
         updateComposer()
     }
 
     private var isReadOnly: Bool { forcedReadOnly || record?.readOnlyOverride == true || record?.session.readOnly == true }
 
+    // MARK: Drawing
+
     private func updateComposer() {
         let onboarding = onboardingInvitation != nil && !terminal
-        nameInput.isHidden = !onboarding; joinButton.isHidden = !onboarding
-        joinNotice.isHidden = !onboarding
-        nameInput.isEnabled = opening == nil && redemptionName == nil; joinButton.isEnabled = opening == nil
+        for form in [onboardingTitle, onboardingSubtitle, nameField, joinButton, joinNotice] as [UIView] { form.isHidden = !onboarding }
+        nameInput.isEnabled = opening == nil && redemptionName == nil
+        joinButton.isEnabled = opening == nil
         transcript.isHidden = record == nil
-        input.isHidden = isReadOnly || record == nil; sendButton.isHidden = isReadOnly || record == nil
+        composer.isHidden = record == nil
+        composer.showsCard = !isReadOnly
         let enabled = record != nil && !isReadOnly && !terminal && sending == nil
-        input.isEnabled = enabled && record?.pending == nil
-        sendButton.isEnabled = enabled
-        moreButton.isEnabled = record != nil && !terminal
-        moreButton.isHidden = record == nil
+        composer.isEditable = enabled && record?.pending == nil
+        composer.canSend = enabled
+        moreGlass.isHidden = record == nil || terminal
+        applyHeader()
+        applyStatus()
         view.setNeedsLayout()
     }
 
-    private func appendMessages(_ text: String) {
-        let addition = (transcript.textStorage.length == 0 ? "" : "\n\n") + text
-        transcript.textStorage.append(NSAttributedString(string: addition, attributes: [
-            .font: UIFont.systemFont(ofSize: 17), .foregroundColor: UIColor.label,
-        ]))
-        transcript.scrollRangeToVisible(NSRange(location: transcript.textStorage.length - 1, length: 1))
+    private func applyHeader() {
+        let environment = view.traitCollection.textEnvironment
+        titleLabel.attributedText = ChatTextStyles.headerTitle.string(botTitle, color: Palette.text, alignment: .center, lineBreakMode: .byTruncatingTail, in: environment)
+        let subtitle = record.map { record in record.displayName.map { "Guest · \($0)" } ?? "Guest" }
+        subtitleLabel.isHidden = subtitle == nil
+        subtitleLabel.attributedText = subtitle.map {
+            ChatTextStyles.headerSubtitle.string($0, color: Palette.textSecondary, alignment: .center, lineBreakMode: .byTruncatingTail, in: environment)
+        }
+        view.setNeedsLayout()
     }
+
+    /// The status speaks where the screen is: in the composer's status row
+    /// in a conversation, under the title while joining, centred otherwise.
+    private func applyStatus() {
+        let onboarding = onboardingInvitation != nil && !terminal
+        onboardingSubtitle.string = onboarding ? statusText : ""
+        messageLabel.string = record == nil && !onboarding ? statusText : ""
+        messageLabel.isHidden = record != nil || onboarding
+        composer.status = record == nil ? nil : GuestComposerView.Status(
+            text: statusText, color: Self.tone(statusText), pulsing: statusText.hasSuffix("…") && !statusText.hasPrefix("Read only")
+        )
+        view.setNeedsLayout()
+    }
+
+    /// The composer status row's colours: connected, working, offline or
+    /// failed.
+    private static func tone(_ status: String) -> ColorToken {
+        if status.hasPrefix("Guest conversation") { return Palette.statusConnected }
+        if status.hasPrefix("Bot is offline") || status.hasPrefix("Read only") { return Palette.statusDisconnected }
+        if status.hasSuffix("…") { return Palette.statusConnecting }
+        if status.hasPrefix("Report sent") { return Palette.statusConnected }
+        return Palette.statusError
+    }
+
+    private func appendMessages(_ addition: [GuestMessage]) {
+        messages += addition
+        transcript.accessibilityValue = GuestTranscript.text(messages, botName: record?.session.botName ?? botTitle)
+        replan()
+    }
+
+    /// Plans every row off the main thread, measuring only rows whose input,
+    /// width or text size changed, then shows them in one apply.
+    private func replan() {
+        let width = transcript.bounds.width
+        let text = transcript.traitCollection.textEnvironment
+        plannedWidth = width
+        plannedText = text
+        guard width > 0 else { return }
+        let botName = record?.session.botName ?? botTitle
+        let inputs = messages.map { GuestRowInput(message: $0, botName: botName, copied: $0.id == copiedMessageID) }
+        let cached = rows
+        planGeneration += 1
+        let generation = planGeneration
+        planning?.cancel()
+        planning = Task { [weak self] in
+            let planned = await Task.detached(priority: .userInitiated) { () -> [PlannedRow] in
+                inputs.map { input in
+                    if let row = cached[input.message.id], row.input == input, row.width == width, row.text == text { return row }
+                    return PlannedRow(input: input, width: width, text: text, plan: GuestRowRenderer.plan(input, width: width, in: text))
+                }
+            }.value
+            guard let self, self.planGeneration == generation else { return }
+            self.rows = Dictionary(planned.map { ($0.input.message.id, $0) }, uniquingKeysWith: { first, _ in first })
+            self.transcript.apply(planned.map(\.plan), width: width)
+        }
+    }
+
+    private func perform(_ action: GuestRowAction) {
+        switch action {
+        case .copy(let id, let text):
+            UIPasteboard.general.string = text
+            copiedMessageID = id
+            replan()
+            copiedReset?.cancel()
+            copiedReset = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+                self?.copiedMessageID = nil
+                self?.replan()
+            }
+        case .option(let text):
+            send(text)
+        }
+    }
+
+    // MARK: Errors and leaving
 
     @discardableResult private func handle(_ error: any Error) async -> Bool {
         let generation = self.generation
@@ -401,7 +557,7 @@ import HappyLayout
         switch error as? GuestError {
         case .inviteFull: await terminate("This invite is full. There are no free seats."); return true
         case .invalidName:
-            statusLabel.text = "Use 1–40 letters or numbers. Spaces and . ' - _ are allowed."
+            statusText = "Use 1–40 letters or numbers. Spaces and . ' - _ are allowed."
             opening = nil
             updateComposer()
             return true
@@ -414,11 +570,12 @@ import HappyLayout
             record?.readOnlyOverride = true
             if let record { try? await vault.save(record, select: false) }
             guard self.generation == generation else { return true }
-            statusLabel.text = "Read only · You can view this conversation."
+            statusText = "Read only · You can view this conversation."
             updateComposer()
         default:
-            statusLabel.text = record?.pending == nil ? "Connection lost. Reconnecting…" : "Message not confirmed. Reconnect to retry."
+            statusText = record?.pending == nil ? "Connection lost. Reconnecting…" : "Message not confirmed. Reconnect to retry."
             retryButton.isHidden = false
+            view.setNeedsLayout()
         }
         return false
     }
@@ -428,12 +585,12 @@ import HappyLayout
         reset()
         let generation = self.generation
         terminal = true
-        statusLabel.text = text
+        statusText = text
         updateComposer()
         if let id {
             do { try await vault.remove(invitationID: id) }
             catch {
-                if self.generation == generation { statusLabel.text = "Access ended. Couldn't remove the saved guest session." }
+                if self.generation == generation { statusText = "Access ended. Couldn't remove the saved guest session." }
             }
         }
     }
@@ -443,12 +600,16 @@ import HappyLayout
         opening?.cancel(); opening = nil
         polling?.cancel(); polling = nil
         sending?.cancel(); sending = nil
+        planning?.cancel(); planning = nil
         record = nil; client = nil; cursor = nil; invitationID = nil
         onboardingInvitation = nil
         redemptionName = nil
         terminal = false; forcedReadOnly = false
         noticeUntil = nil
-        transcript.text = ""; input.text = ""; nameInput.text = ""; titleLabel.text = "Happy"
+        messages = []; rows = [:]; copiedMessageID = nil
+        transcript.apply([], width: transcript.bounds.width)
+        transcript.accessibilityValue = nil
+        composer.text = ""; nameInput.text = ""; botTitle = "Happy"
         retryButton.isHidden = true
     }
 
@@ -459,7 +620,7 @@ import HappyLayout
             do {
                 try await client.report(session: session)
                 if self?.generation == generation { self?.showNotice("Report sent to the bot owner.") }
-            } catch { if self?.generation == generation { self?.statusLabel.text = "Couldn't send the report. Try again." } }
+            } catch { if self?.generation == generation { self?.statusText = "Couldn't send the report. Try again." } }
         }
     }
 
@@ -476,7 +637,7 @@ import HappyLayout
 
     private func showNotice(_ text: String) {
         noticeUntil = Date().addingTimeInterval(5)
-        statusLabel.text = text
+        statusText = text
     }
 }
 #endif

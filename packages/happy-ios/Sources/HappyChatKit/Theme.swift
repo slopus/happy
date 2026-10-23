@@ -118,20 +118,15 @@ extension UIView {
     }
 
     /// One device pixel, for hairlines.
-    var hairline: CGFloat {
+    package var hairline: CGFloat {
         let scale = window?.screen.scale ?? traitCollection.displayScale
         return 1 / max(scale, 1)
     }
 }
 
 extension UIImage {
-    /// An image from HappyUI's bundle.
-    static func happy(_ name: String) -> UIImage? {
-        UIImage(named: name, in: .module, compatibleWith: nil)
-    }
-
     /// An SF Symbol at a point size, standing in for happy-app's Ionicons.
-    static func symbol(_ name: String, pointSize: CGFloat, weight: UIImage.SymbolWeight = .regular) -> UIImage? {
+    package static func symbol(_ name: String, pointSize: CGFloat, weight: UIImage.SymbolWeight = .regular) -> UIImage? {
         UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: pointSize, weight: weight))
     }
 }

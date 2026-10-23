@@ -213,7 +213,7 @@ public enum FontFace: String, CaseIterable, Sendable {
     case monoSemiBold = "IBMPlexMono-SemiBold"
     case logo = "BricolageGrotesque-Bold"
 
-    /// The file in HappyUI's Resources/Fonts that holds this face.
+    /// The file in HappyChatKit's Resources/Fonts that holds this face.
     public var fileName: String { rawValue + ".ttf" }
 }
 

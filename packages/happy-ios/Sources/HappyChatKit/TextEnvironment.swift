@@ -88,18 +88,18 @@ extension UIViewController {
     /// Draws this screen's text at the person's text size, as React Native
     /// does. Only for a screen whose every height is measured from its text
     /// as drawn, with no plan made at the designed size.
-    func followsTextSize() {
+    package func followsTextSize() {
         traitOverrides.followsTextSize = true
     }
 }
 
 extension UIView {
     /// The traits a view's text environment comes from.
-    static var textSizeTraits: [UITrait] { [UITraitPreferredContentSizeCategory.self, FollowsTextSize.self] }
+    package static var textSizeTraits: [UITrait] { [UITraitPreferredContentSizeCategory.self, FollowsTextSize.self] }
 
     /// Measures this view and every view it is in again: a new text size
     /// moves every frame measured from text, up to the screen.
-    func setNeedsLayoutUpTheTree() {
+    package func setNeedsLayoutUpTheTree() {
         var view: UIView? = self
         while let current = view {
             current.invalidateIntrinsicContentSize()
@@ -111,7 +111,7 @@ extension UIView {
 
 /// UIFonts by face and point size, shared by every thread. RN builds each
 /// font at exactly `size × multiplier`, unrounded (docs/DYNAMIC-TYPE.md).
-enum ScaledFonts {
+package enum ScaledFonts {
     private struct Key: Hashable {
         let face: ChatFace
         let size: CGFloat
@@ -120,7 +120,7 @@ enum ScaledFonts {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var fonts: [Key: UIFont] = [:]
 
-    static func font(_ face: ChatFace, size: CGFloat) -> UIFont {
+    package static func font(_ face: ChatFace, size: CGFloat) -> UIFont {
         let key = Key(face: face, size: size)
         lock.lock()
         if let font = fonts[key] {
@@ -163,12 +163,12 @@ extension TextStyle {
 
 extension ChatTextStyle {
     /// `font` at the environment's text size. Safe off main.
-    func font(in environment: TextEnvironment) -> UIFont {
+    package func font(in environment: TextEnvironment) -> UIFont {
         ScaledFonts.font(face, size: scaled(environment.scale).size)
     }
 
     /// `lineHeightValue` at the environment's text size. Safe off main.
-    func lineHeightValue(in environment: TextEnvironment) -> CGFloat {
+    package func lineHeightValue(in environment: TextEnvironment) -> CGFloat {
         scaled(environment.scale).lineHeight ?? font(in: environment).lineHeight.rounded(.up)
     }
 }

@@ -82,7 +82,7 @@ public enum Markdown {
 
     // MARK: Blocks (parseMarkdownBlock.ts)
 
-    static func parseBlocks(_ markdown: String) -> [MarkdownBlock] {
+    package static func parseBlocks(_ markdown: String) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
         let lines = markdown.jsSplit("\n")
         var index = 0
@@ -201,14 +201,14 @@ public enum Markdown {
 
     /// Splits a pipe-delimited row, dropping only the empty cells the outer
     /// pipes make and keeping empty cells inside.
-    static func splitTableRow(_ line: String) -> [String] {
+    package static func splitTableRow(_ line: String) -> [String] {
         var cells = trim(line).jsSplit("|").map(trim)
         if cells.first == "" { cells.removeFirst() }
         if cells.last == "" { cells.removeLast() }
         return cells
     }
 
-    static func parseTable(_ lines: [String], start: Int) -> (MarkdownBlock?, Int) {
+    package static func parseTable(_ lines: [String], start: Int) -> (MarkdownBlock?, Int) {
         var index = start
         var tableLines: [String] = []
         // LLMs often put blank lines between rows; they don't end the table.
@@ -277,7 +277,7 @@ public enum Markdown {
 
     /// Plain text with bare http(s) URLs turned into links, trailing
     /// punctuation left outside them.
-    static func pushText(_ spans: inout [MarkdownSpan], _ text: String, styles: [MarkdownSpan.Style]) {
+    package static func pushText(_ spans: inout [MarkdownSpan], _ text: String, styles: [MarkdownSpan.Style]) {
         guard !text.isEmpty else { return }
         let source = text as NSString
         var last = 0
@@ -305,23 +305,23 @@ public enum Markdown {
     // MARK: JavaScript string helpers
 
     /// `String.prototype.trim`: whitespace and line terminators at both ends.
-    static func trim(_ string: String) -> String {
+    package static func trim(_ string: String) -> String {
         string.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// `line.length - line.trimStart().length`.
-    static func leadingWhitespace(_ line: String) -> Int {
+    package static func leadingWhitespace(_ line: String) -> Int {
         let start = line.unicodeScalars.prefix { CharacterSet.whitespacesAndNewlines.contains($0) }
         return start.reduce(0) { $0 + $1.utf16.count }
     }
 
     /// `Math.floor(n / 2)`, which rounds negative halves down too.
-    static func floorHalf(_ value: Int) -> Int {
+    package static func floorHalf(_ value: Int) -> Int {
         Int((Double(value) / 2).rounded(.down))
     }
 
     /// `parseInt` of a run of digits; absurdly long runs saturate.
-    static func number(_ digits: String?) -> Int {
+    package static func number(_ digits: String?) -> Int {
         guard let digits else { return 0 }
         return Int(digits) ?? Int.max
     }
@@ -329,7 +329,7 @@ public enum Markdown {
 
 /// happy-app's regular expressions. NSRegularExpression is immutable and
 /// safe to share between threads.
-enum Patterns {
+package enum Patterns {
     nonisolated(unsafe) static let spans = regex(#"(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(([^)]+)\))?)|(`(.*?)(?:`|$))"#)
     nonisolated(unsafe) static let url = regex(#"https?://[^\s<]+"#)
     nonisolated(unsafe) static let option = regex(#"<option>(.*?)</option>"#)
@@ -338,18 +338,18 @@ enum Patterns {
     nonisolated(unsafe) static let bullet = regex(#"^([-*+])\s+"#)
     nonisolated(unsafe) static let tableSeparator = regex(#"^[|\s\-:=]*$"#)
 
-    static func regex(_ pattern: String, options: NSRegularExpression.Options = []) -> NSRegularExpression {
+    package static func regex(_ pattern: String, options: NSRegularExpression.Options = []) -> NSRegularExpression {
         // The patterns are literals; a typo is a programming error.
         try! NSRegularExpression(pattern: pattern, options: options)
     }
 }
 
 extension NSRegularExpression {
-    func matches(in string: String) -> [NSTextCheckingResult] {
+    package func matches(in string: String) -> [NSTextCheckingResult] {
         matches(in: string, range: NSRange(location: 0, length: (string as NSString).length))
     }
 
-    func firstMatch(in string: String) -> NSTextCheckingResult? {
+    package func firstMatch(in string: String) -> NSTextCheckingResult? {
         firstMatch(in: string, range: NSRange(location: 0, length: (string as NSString).length))
     }
 }
@@ -357,11 +357,11 @@ extension NSRegularExpression {
 extension NSTextCheckingResult {
     /// Whether a capture group took part in the match (JavaScript's
     /// `match[n]` being truthy needs a non-empty group, see `group`).
-    func has(_ group: Int) -> Bool {
+    package func has(_ group: Int) -> Bool {
         group < numberOfRanges && range(at: group).location != NSNotFound && range(at: group).length > 0
     }
 
-    func group(_ group: Int, in string: String) -> String? {
+    package func group(_ group: Int, in string: String) -> String? {
         guard group < numberOfRanges else { return nil }
         let range = range(at: group)
         guard range.location != NSNotFound else { return nil }
@@ -373,25 +373,25 @@ extension String {
     /// `split(separator)` on one UTF-16 unit, as JavaScript splits. Swift's
     /// own split works on characters, where "\r\n" is one character and
     /// would not split on "\n".
-    func jsSplit(_ separator: Unicode.Scalar) -> [String] {
+    package func jsSplit(_ separator: Unicode.Scalar) -> [String] {
         let unit = UInt16(separator.value)
         return utf16.split(separator: unit, omittingEmptySubsequences: false).map { String($0) ?? String(decoding: Array($0), as: UTF16.self) }
     }
 
     /// `slice(n)` in UTF-16 units, as JavaScript counts.
-    func utf16Dropping(_ count: Int) -> Substring {
+    package func utf16Dropping(_ count: Int) -> Substring {
         let units = utf16
         guard let start = units.index(units.startIndex, offsetBy: count, limitedBy: units.endIndex) else { return "" }
         return self[start...]
     }
 
-    func utf16DroppingLast(_ count: Int) -> Substring {
+    package func utf16DroppingLast(_ count: Int) -> Substring {
         let units = utf16
         guard let end = units.index(units.endIndex, offsetBy: -count, limitedBy: units.startIndex) else { return "" }
         return self[..<end]
     }
 
-    func utf16Suffix(_ count: Int) -> Substring {
+    package func utf16Suffix(_ count: Int) -> Substring {
         let units = utf16
         guard let start = units.index(units.endIndex, offsetBy: -count, limitedBy: units.startIndex) else { return self[...] }
         return self[start...]

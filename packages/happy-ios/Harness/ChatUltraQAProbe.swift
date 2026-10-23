@@ -1,4 +1,5 @@
 #if (DEBUG || HAPPY_FIXTURES) && canImport(UIKit)
+@testable import HappyChatKit
 import HappyCore
 @testable import HappyUI
 import UIKit

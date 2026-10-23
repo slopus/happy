@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+@testable import HappyChatKit
 import HappyIcons
 import HappyLayout
 @testable import HappyUI

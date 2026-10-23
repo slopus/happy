@@ -8,7 +8,7 @@ final class GuestUITests: XCTestCase {
         app.launchEnvironment["_XCAppClipURL"] = "https://evil.example/bot/invite/abcdefghijklmnop"
         app.launch()
         XCTAssertTrue(app.staticTexts["This invitation link is invalid."].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.buttons["guest.send"].isEnabled)
+        XCTAssertFalse(app.buttons["guest.send"].exists)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "iPhone guest screen · invalid link · ordinary dev harness"
         screenshot.lifetime = .keepAlways

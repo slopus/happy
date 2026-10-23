@@ -41,22 +41,6 @@ public final class WordmarkView: UIView {
     }
 }
 
-extension VectorPath {
-    var cgPath: CGPath {
-        let path = CGMutablePath()
-        for element in elements {
-            switch element {
-            case .move(let point): path.move(to: point)
-            case .line(let point): path.addLine(to: point)
-            case .quadCurve(let to, let control): path.addQuadCurve(to: to, control: control)
-            case .curve(let to, let control1, let control2): path.addCurve(to: to, control1: control1, control2: control2)
-            case .close: path.closeSubpath()
-            }
-        }
-        return path
-    }
-}
-
 /// The Get help pill in the bottom-right corner of the first-run screens.
 public final class GetHelpButton: UIControl {
     let iconView = IconView(.ionicons("help-circle-outline"), size: GetHelpButtonLayout.Metrics.iconSize)

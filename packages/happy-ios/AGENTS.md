@@ -420,6 +420,9 @@ the observed session projection. Equal visible snapshots are not re-emitted.
 | `HappyCore` | all | Server config, HTTP API, auth, QR login, pairing, record decryption, the delta `SyncEngine`, Socket.IO client, `AccountSession`, `AccountController`, what home shows (`MachineChoice`, `HomeState`, `SessionList`), settings logic, and the chat's model and seams (`Chat/`). |
 | `HappyLayout` | all | Pure layout functions, design tokens, the wordmark's vector paths. |
 | `HappyIcons` | all | happy-app's icon fonts as generated vector outlines, looked up by RN name (`Icon.ionicons("chevron-forward")`). |
+| `HappyMarkdown` | all | The Markdown parser and code tokenizer. Foundation only; `HappyCore` re-exports it. |
+| `HappyChatKit` | iOS (UIKit) | The chat's account-free drawing: palette, bundled fonts, `ChatText`, `TextEnvironment`, icon images, labels, round buttons and glass views. `HappyUI` re-exports it. |
+| `HappyGuest`, `HappyGuestUI` | iOS | The bot-invitation guest transport, Keychain vault and screen (docs/APP-CLIP.md). |
 | `HappyUI` | iOS (UIKit) | Views, screens and the coordinator. Wrapped in `#if canImport(UIKit)`. |
 | `HappyApp` | iOS | `@main` AppDelegate, SceneDelegate, the composition root and push notifications. |
 
@@ -428,6 +431,8 @@ Products:
 - `HappyApp` is the app that xtool packages.
 - `HappyKit` is everything else. The XcodeGen app target compiles
   `Sources/HappyApp` itself and links `HappyKit`.
+- `HappyGuestKit` is the App Clip's whole dependency set. Keep `HappyCore`,
+  `HappyStore`, `HappyUI` and anything holding owner credentials out of it.
 
 ## Build and test
 
@@ -542,7 +547,7 @@ change a file another workstream owns, ask the coordinator.
 
 | Workstream | Owns |
 | --- | --- |
-| Icons | `Sources/HappyIcons`, `scripts/generate-icons.*`, `Sources/HappyUI/Theme/IconImages.swift`, `ItemIcon`'s icon source, swapping SF Symbols for happy-app's icons in onboarding and troubleshoot, light/dark theme application |
+| Icons | `Sources/HappyIcons`, `scripts/generate-icons.*`, `Sources/HappyChatKit/IconImages.swift`, `ItemIcon`'s icon source, swapping SF Symbols for happy-app's icons in onboarding and troubleshoot, light/dark theme application |
 | Home | `Screens/HomeScreens.swift`, `Screens/SessionListScreens.swift`, `Components/SessionListViews.swift`, home header and dock, new session screen, `Core/Home/` (including the new-session draft store and `SessionStarter`) |
 | Settings | `Screens/SettingsScreens.swift` and every settings screen, the account switcher UI, `Core/Settings/` |
 | Chat | `Sources/HappyUI/Chat/`, `Sources/HappyLayout/Chat/`, the session screen, `docs/telegram-notes.md` |

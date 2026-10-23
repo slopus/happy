@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import HappyCore
+@testable import HappyMarkdown
 
 /// SimpleSyntaxHighlighter.tsx's tokenizer as the port first had it: the
 /// whole block's bracket nesting first, then each line. The per-line

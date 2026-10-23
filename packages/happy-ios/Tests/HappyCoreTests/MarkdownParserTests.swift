@@ -1,5 +1,6 @@
 import Foundation
 @testable import HappyCore
+@testable import HappyMarkdown
 import XCTest
 
 /// parseMarkdown.test.ts, parseMarkdownBlock.test.ts and linkUtils.test.ts,

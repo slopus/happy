@@ -42,7 +42,7 @@ titles (`OnboardingContent.tsx`, `TITLE_MAX_SCALE`). It sets no
 - `HappyLayout/TextScale.swift`: the factors, the cap, and
   `TextStyle`/`ChatTextStyle.scaled(_:)`. `maxScale` on a style is the cap;
   only `TextStyles.onboardingTitle` has one (1.2).
-- `HappyUI/Theme/TextEnvironment.swift`: `TextEnvironment` (text size and
+- `HappyChatKit/TextEnvironment.swift`: `TextEnvironment` (text size and
   display scale, from traits), `font(in:)`/`lineHeightValue(in:)` cached per
   face and size and safe off main, and the `FollowsTextSize` trait.
 

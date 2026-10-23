@@ -40,7 +40,7 @@ final class DesignTokenTests: XCTestCase {
     func testBundledFontFilesExist() {
         let fonts = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
-            .appendingPathComponent("../../Sources/HappyUI/Resources/Fonts")
+            .appendingPathComponent("../../Sources/HappyChatKit/Resources/Fonts")
             .standardizedFileURL
         for face in FontFace.allCases {
             let path = fonts.appendingPathComponent(face.fileName).path

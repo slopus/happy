@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import GRDB
+@testable import HappyChatKit
 @testable import HappyCore
 import HappyLayout
 import HappyStore
