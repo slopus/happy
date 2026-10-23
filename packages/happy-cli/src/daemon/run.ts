@@ -25,7 +25,7 @@ import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { detectCLIAvailability } from '@/utils/detectCLI';
-import { buildResumeLaunch } from '@/resume/handleResumeCommand';
+import { buildResumeLaunch, missingClaudeTranscriptReason } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import type { ResumeSessionOptions } from '@/api/apiMachine';
@@ -838,6 +838,15 @@ export async function startDaemon(): Promise<void> {
         }
 
         await fs.access(launch.cwd);
+
+        // The working directory surviving says nothing about the transcript,
+        // which lives outside Happy and can be swept away on its own. Without
+        // this the resume spawns a child that dies with "No conversation found
+        // with session ID", and every later message repeats it.
+        const missingTranscript = missingClaudeTranscriptReason(metadata);
+        if (missingTranscript) {
+          return { type: 'error', errorMessage: missingTranscript };
+        }
 
         if (cancelledResumes.has(happySessionId)) {
           return { type: 'error', errorMessage: `Resume of session ${happySessionId} was cancelled by a stop request.` };
