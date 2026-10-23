@@ -471,6 +471,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Used by hook server to notify Session when Claude changes session ID
     let currentSession: Session | null = null;
 
+    // Last title pushed from a session hook, so repeated hooks stay quiet
+    let appliedSessionTitle: string | null = null;
+
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
@@ -490,6 +493,25 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // *future* JSONL writes from a parallel `claude --resume`
             // terminal, which the file watcher will pick up.
             remoteScanner.onNewSession(sessionId, { treatExistingAsProcessed: true });
+
+            // A chat is titled only when the model calls mcp__happy__change_title,
+            // which it skips on `--resume` because it does not consider that a new
+            // chat — leaving the session as "New chat" forever. Claude Code already
+            // tells us the real title here, so use it. Same mechanism the MCP tool
+            // uses: a summary message.
+            if (data.session_title && data.session_title !== appliedSessionTitle && process.env.HAPPY_TITLE_FROM_SESSION !== '0') {
+                appliedSessionTitle = data.session_title;
+                logger.debug(`[START] Applying session title from hook: ${data.session_title}`);
+                try {
+                    session.sendClaudeSessionMessage({
+                        type: 'summary',
+                        summary: data.session_title,
+                        leafUuid: randomUUID()
+                    });
+                } catch (error) {
+                    logger.debug('[START] Failed to apply session title', error);
+                }
+            }
 
             // Update session ID in the Session instance
             if (currentSession) {
