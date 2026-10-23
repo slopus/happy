@@ -6,7 +6,8 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { ProjectGroupData, ProjectWorkspaceGroup, useSessionGitStatus } from '@/sync/storage';
+import { ProjectGroupData, ProjectWorkspaceGroup, useLocalSettingMutable, useSessionGitStatus } from '@/sync/storage';
+import { projectWorkspaceCollapseKey } from '@/sync/projectGroups';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 import { Avatar } from './Avatar';
 import { requestHomeDockFocus } from './homeDockFocus';
@@ -82,6 +83,16 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
             })
             : null;
 
+    // Collapsing follows the header, and the header is per checkout: a project
+    // with three worktrees renders four of these sections, so one toggle folds
+    // exactly the card it sits on rather than every checkout of the project.
+    const collapseKey = projectWorkspaceCollapseKey(project.id, workspace.id);
+    const [collapsedProjects, setCollapsedProjects] = useLocalSettingMutable('collapsedProjects');
+    const collapsed = !!collapsedProjects[collapseKey];
+    const toggleCollapsed = React.useCallback(() => {
+        setCollapsedProjects({ ...collapsedProjects, [collapseKey]: !collapsed });
+    }, [collapsed, collapsedProjects, collapseKey, setCollapsedProjects]);
+
     // Point the draft at this exact checkout before opening the composer, so
     // the dock's machine, project and worktree rows already read correctly.
     // `setMachineId` clears the path and worktree, so the order matters.
@@ -110,20 +121,39 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
     return (
         <View style={styles.section}>
             <View style={styles.header}>
-                {firstSession && (
-                    <Avatar id={firstSession.avatarId} size={HEADER_AVATAR_SIZE} flavor={null} imageUrl={firstSession.projectAvatarUri} thumbhash={firstSession.projectAvatarThumbhash} />
-                )}
-                <View style={styles.headerText}>
-                    <Text style={styles.title} numberOfLines={1}>
-                        {project.name}
-                    </Text>
-                    <View style={styles.branchLine}>
-                        <Text style={styles.branchText} numberOfLines={1}>
-                            {branchName}
+                <Pressable
+                    onPress={toggleCollapsed}
+                    hitSlop={{ top: 8, bottom: 8 }}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: !collapsed }}
+                    accessibilityLabel={worktreeName ? `${project.name} / ${worktreeName}` : project.name}
+                    style={styles.headerPress}
+                >
+                    <Ionicons
+                        name={collapsed ? 'chevron-forward' : 'chevron-down'}
+                        size={14}
+                        color={theme.colors.textSecondary}
+                    />
+                    {firstSession && (
+                        <Avatar id={firstSession.avatarId} size={HEADER_AVATAR_SIZE} flavor={null} imageUrl={firstSession.projectAvatarUri} thumbhash={firstSession.projectAvatarThumbhash} />
+                    )}
+                    <View style={styles.headerText}>
+                        <Text style={styles.title} numberOfLines={1}>
+                            {project.name}
                         </Text>
-                        <GitLineChanges changes={changes} />
+                        <View style={styles.branchLine}>
+                            <Text style={styles.branchText} numberOfLines={1}>
+                                {branchName}
+                            </Text>
+                            <GitLineChanges changes={changes} />
+                        </View>
                     </View>
-                </View>
+                    {collapsed && (
+                        <Text style={styles.count}>
+                            {workspace.sessions.length}
+                        </Text>
+                    )}
+                </Pressable>
                 <Pressable
                     onPress={handleNewSession}
                     hitSlop={12}
@@ -135,16 +165,18 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
                 </Pressable>
             </View>
 
-            <View style={styles.workspaceCard}>
-                {workspace.sessions.map((session, index) => (
-                    <CompactSessionRow
-                        key={session.id}
-                        session={session}
-                        selected={session.id === selectedSessionId}
-                        showBorder={index < workspace.sessions.length - 1}
-                    />
-                ))}
-            </View>
+            {!collapsed && (
+                <View style={styles.workspaceCard}>
+                    {workspace.sessions.map((session, index) => (
+                        <CompactSessionRow
+                            key={session.id}
+                            session={session}
+                            selected={session.id === selectedSessionId}
+                            showBorder={index < workspace.sessions.length - 1}
+                        />
+                    ))}
+                </View>
+            )}
         </View>
     );
 });
@@ -170,9 +202,22 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingRight: Platform.select({ ios: 26, default: 22 }),
         gap: 8,
     },
+    headerPress: {
+        flex: 1,
+        minWidth: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
     headerText: {
         flex: 1,
         minWidth: 0,
+    },
+    count: {
+        fontSize: 12,
+        lineHeight: 16,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
     },
     title: {
         color: theme.colors.groupped.sectionTitle,
