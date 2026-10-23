@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   resolveClaudeEntrypoint,
   findGlobalClaudeCliPath,
@@ -15,6 +17,8 @@ import {
   compareVersions,
   shouldWarnAboutGoalHookJsonValidationRisk,
 } from '../scripts/claude_version_utils.cjs';
+
+const modulePath = fileURLToPath(new URL('./claude_version_utils.cjs', import.meta.url));
 
 describe('Claude Version Utils - Cross-Platform Detection', () => {
 
@@ -478,5 +482,42 @@ describe('HAPPY_CLAUDE_PATH env var', () => {
     process.env.HAPPY_CLAUDE_PATH = '/nonexistent/path/claude';
     const result = findGlobalClaudeCliPath();
     expect(result?.source).not.toBe('HAPPY_CLAUDE_PATH');
+  });
+});
+
+describe('runClaudeCli - argv[0] preservation', () => {
+  let workDir: string;
+
+  beforeEach(() => {
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'happy-claude-argv0-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(workDir, { recursive: true, force: true });
+  });
+
+  // POSIX only: spawn's argv0 option is not applied on Windows, where
+  // cross-spawn may route the call through cmd.exe.
+  it.skipIf(process.platform === 'win32')('spawns the binary as "claude", not as its version number', () => {
+    // A native install resolves to ~/.local/share/claude/versions/<version>,
+    // so the file name carries no hint that this is Claude Code. Stand in for
+    // that binary with a symlink to node, which can report its own argv[0].
+    const versionsDir = path.join(workDir, 'versions');
+    fs.mkdirSync(versionsDir);
+    const claudeBinary = path.join(versionsDir, '9.9.9');
+    fs.symlinkSync(process.execPath, claudeBinary);
+
+    const argv0File = path.join(workDir, 'argv0.txt');
+    const binaryScript = `require('fs').writeFileSync(${JSON.stringify(argv0File)}, process.argv0)`;
+    // runClaudeCli forwards process.argv.slice(2) to the binary, so the args
+    // the stand-in needs have to look like the launcher's own arguments.
+    const launcherScript = [
+      `process.argv = [process.argv[0], 'launcher', '-e', ${JSON.stringify(binaryScript)}];`,
+      `require(${JSON.stringify(modulePath)}).runClaudeCli(${JSON.stringify(claudeBinary)});`,
+    ].join('\n');
+
+    execFileSync(process.execPath, ['-e', launcherScript], { stdio: 'ignore', timeout: 15_000 });
+
+    expect(fs.readFileSync(argv0File, 'utf8')).toBe('claude');
   });
 });
