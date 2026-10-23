@@ -119,7 +119,7 @@ interface AgentInputProps {
     /** Plan quota windows from agent state, for the week stat and its popup. */
     sessionStatusUsageLimits?: UsageLimitsLike | null;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy' | 'copilot';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -854,12 +854,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const hasImages = (props.selectedImages?.length ?? 0) > 0;
     const hasComposerContent = hasText || hasImages;
 
-    // Check if this is a Codex, Gemini, or OpenClaw session
+    // Check if this is a Codex, Gemini, OpenClaw, or Copilot session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
     const isRig = isRigMetadata(props.metadata);
     const isCodex = !isRig && (props.metadata?.flavor === 'codex' || props.agentType === 'codex');
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
     const isOpenClaw = props.metadata?.flavor === 'openclaw' || props.agentType === 'openclaw';
+    const isCopilot = props.metadata?.flavor === 'copilot' || props.agentType === 'copilot';
+    const isAgy = props.metadata?.flavor === 'agy' || props.agentType === 'agy';
     const displayPermissionMode = React.useMemo(() => (
         props.permissionMode ? hackMode(props.permissionMode) : null
     ), [props.permissionMode]);
@@ -1565,7 +1567,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             ? t('agentInput.agent.codex')
                                             : props.agentType === 'openclaw'
                                                 ? t('agentInput.agent.openclaw')
-                                                : t('agentInput.agent.gemini')}
+                                                : props.agentType === 'copilot'
+                                                    ? t('agentInput.agent.copilot')
+                                                    : props.agentType === 'agy'
+                                                        ? 'Antigravity'
+                                                        : t('agentInput.agent.gemini')}
                                 </Text>
                             </Pressable>
                         )}
