@@ -233,6 +233,15 @@ export const ca: TranslationStructure = {
         enterToSend: 'Enter per enviar',
         enterToSendEnabled: 'Prem Enter per enviar (Maj+Enter per a una nova línia)',
         enterToSendDisabled: 'Enter insereix una nova línia',
+        followUpBehavior: 'Comportament del seguiment',
+        followUpBehaviorOptions: {
+            steer: 'Enter dirigeix, ⌘↵ posa a la cua',
+            queue: 'Enter posa a la cua, ⌘↵ dirigeix',
+            steerTouch: 'Enviar dirigeix, mantenir premut posa a la cua',
+            queueTouch: 'Enviar posa a la cua, mantenir premut dirigeix',
+            alwaysSteer: 'Dirigir sempre',
+            alwaysQueue: 'Posar sempre a la cua',
+        },
         commandPalette: 'Paleta de comandes',
         commandPaletteEnabled: 'Prem ⌘K per obrir',
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
@@ -456,6 +465,15 @@ export const ca: TranslationStructure = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: 'Dirigir',
+            queue: 'Cua',
+            steerHint: ({ chord }: { chord: string }) => `Dirigir · ${chord} per posar a la cua`,
+            queueHint: ({ chord }: { chord: string }) => `Cua · ${chord} per dirigir`,
+            sendAsSteer: 'Enviar per dirigir',
+            sendAsQueue: 'Enviar a la cua',
+        },
         permissionMode: {
             title: 'MODE DE PERMISOS',
             auto: 'decideix pel seu compte, pregunta si dubta',
@@ -946,6 +964,8 @@ export const ca: TranslationStructure = {
         usageLimitUntil: ({ time }: { time: string }) => `Límit d'ús assolit fins a ${time}`,
         sentAsGoal: 'Sent as goal',
         sendsAfterThisTurn: 'Sends after this turn',
+        queued: 'A la cua',
+        steering: 'Dirigint',
         sending: 'Sending…',
         sendFailed: ({ reason }: { reason: string }) => `No enviat: ${reason}`,
         unknownTime: 'temps desconegut',

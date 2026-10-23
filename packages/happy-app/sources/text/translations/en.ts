@@ -247,6 +247,15 @@ export const en: TranslationStructure = {
         enterToSend: 'Enter to Send',
         enterToSendEnabled: 'Press Enter to send messages',
         enterToSendDisabled: 'Press ⌘+Enter to send messages',
+        followUpBehavior: 'Follow-up behavior',
+        followUpBehaviorOptions: {
+            steer: 'Enter steers, ⌘↵ queues',
+            queue: 'Enter queues, ⌘↵ steers',
+            steerTouch: 'Send steers, long-press to queue',
+            queueTouch: 'Send queues, long-press to steer',
+            alwaysSteer: 'Always steer',
+            alwaysQueue: 'Always queue',
+        },
         commandPalette: 'Command Palette',
         commandPaletteEnabled: 'Press ⌘K to open',
         commandPaletteDisabled: 'Quick command access disabled',
@@ -474,6 +483,15 @@ export const en: TranslationStructure = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: 'Steer',
+            queue: 'Queue',
+            steerHint: ({ chord }: { chord: string }) => `Steer · ${chord} to queue`,
+            queueHint: ({ chord }: { chord: string }) => `Queue · ${chord} to steer`,
+            sendAsSteer: 'Send as Steer',
+            sendAsQueue: 'Send as Queue',
+        },
         permissionMode: {
             title: 'PERMISSION MODE',
             auto: 'asks when unsure',
@@ -1044,6 +1062,8 @@ export const en: TranslationStructure = {
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         sentAsGoal: 'Sent as goal',
         sendsAfterThisTurn: 'Sends after this turn',
+        queued: 'Queued',
+        steering: 'Steering',
         sending: 'Sending…',
         sendFailed: ({ reason }: { reason: string }) => `Not sent: ${reason}`,
         unknownTime: 'unknown time',

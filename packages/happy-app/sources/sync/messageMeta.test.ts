@@ -69,6 +69,52 @@ describe('resolveMessageDeliveryMeta', () => {
     it('does not mark sessions that cannot acknowledge messages', () => {
         expect(resolveMessageDeliveryMeta({ ...idle, metadata: rigMetadataFixture, thinking: true })).toEqual({});
     });
+
+    describe('delivery', () => {
+        const queueing = {
+            ...idle,
+            metadata: { ...idle.metadata, capabilities: { ...idle.metadata.capabilities, queueing: true } },
+        };
+
+        it.each([
+            ['idle', false],
+            ['busy', true],
+        ] as const)('sends the chosen delivery to a daemon that reads it (%s)', (_label, thinking) => {
+            for (const delivery of ['steer', 'queue'] as const) {
+                expect(resolveMessageDeliveryMeta({ ...queueing, thinking }, false, false, delivery))
+                    .toEqual({ delivery, expectsAcceptance: true, queuedWhileBusy: thinking });
+            }
+        });
+
+        it.each([false, true])('omits it for a daemon that does not advertise queueing (thinking=%s)', (thinking) => {
+            expect(resolveMessageDeliveryMeta({ ...idle, thinking }, false, false, 'queue'))
+                .toEqual({ expectsAcceptance: true, queuedWhileBusy: thinking });
+            expect(resolveMessageDeliveryMeta({
+                ...idle,
+                thinking,
+                metadata: { ...idle.metadata, capabilities: { ...idle.metadata.capabilities, queueing: false } },
+            }, false, false, 'queue')).toEqual({ expectsAcceptance: true, queuedWhileBusy: thinking });
+        });
+
+        it('omits it when no delivery was chosen', () => {
+            expect(resolveMessageDeliveryMeta({ ...queueing, thinking: true }))
+                .toEqual({ expectsAcceptance: true, queuedWhileBusy: true });
+        });
+
+        it('keeps it without receipts, where the other delivery fields are absent', () => {
+            const metadata = { ...rigMetadataFixture, capabilities: { ...rigMetadataFixture.capabilities!, queueing: true } };
+            expect(resolveMessageDeliveryMeta({ ...idle, metadata, thinking: true }, false, false, 'queue'))
+                .toEqual({ delivery: 'queue' });
+        });
+
+        it.each([false, true])('never reaches a legacy happy-cli session (thinking=%s)', (thinking) => {
+            expect(resolveMessageDeliveryMeta({
+                metadata: { path: '/repo', host: 'mac', flavor: 'claude' } as any,
+                thinking,
+                agentState: null,
+            }, false, false, 'queue')).toEqual({});
+        });
+    });
 });
 
 describe('resolveMessageModeMeta', () => {
