@@ -12,6 +12,7 @@ import { Switch } from '@/components/Switch';
 import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
+import { managedConfiguration } from '@/sync/managedConfiguration';
 import {
     getServerUrl,
     setServerUrl,
@@ -89,7 +90,8 @@ export default function ServerConfigScreen() {
     const styles = stylesheet;
     const router = useRouter();
     const serverInfo = getServerInfo();
-    const [inputUrl, setInputUrl] = useState(serverInfo.isCustom ? getServerUrl() : '');
+    const isServerManaged = !!managedConfiguration.serverUrl;
+    const [inputUrl, setInputUrl] = useState(isServerManaged || serverInfo.isCustom ? getServerUrl() : '');
     const [isCustomServer, setIsCustomServer] = useState(serverInfo.isCustom);
     const [useCustomServerForVoice, setUseCustomServerForVoiceState] = useState(shouldUseCustomServerForVoice());
     const [error, setError] = useState<string | null>(null);
@@ -128,6 +130,7 @@ export default function ServerConfigScreen() {
     };
 
     const handleSave = async () => {
+        if (isServerManaged) return;
         if (!inputUrl.trim()) {
             Modal.alert(t('common.error'), t('server.enterServerUrl'));
             return;
@@ -163,6 +166,7 @@ export default function ServerConfigScreen() {
     };
 
     const handleReset = async () => {
+        if (isServerManaged) return;
         const confirmed = await Modal.confirm(
             t('server.resetToDefault'),
             t('server.resetServerDefault'),
@@ -199,7 +203,7 @@ export default function ServerConfigScreen() {
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             >
                 <ItemList style={styles.itemListContainer}>
-                    <ItemGroup footer={t('server.selfHostFooter')}>
+                    <ItemGroup footer={isServerManaged ? t('common.managedByOrganization') : t('server.selfHostFooter')}>
                         <View style={styles.contentContainer}>
                             <Text style={styles.labelText}>{t('server.serverUrlLabel').toUpperCase()}</Text>
                             <TextInput
@@ -217,7 +221,7 @@ export default function ServerConfigScreen() {
                                 autoCapitalize="none"
                                 autoCorrect={false}
                                 keyboardType="url"
-                                editable={!isValidating}
+                                editable={!isValidating && !isServerManaged}
                             />
                             {error && (
                                 <Text style={styles.errorText}>
@@ -234,9 +238,9 @@ export default function ServerConfigScreen() {
                                     title={isValidating ? t('server.validating') : t('common.save')}
                                     size="normal"
                                     action={handleSave}
-                                    disabled={isValidating}
+                                    disabled={isValidating || isServerManaged}
                                 />
-                                {isCustomServer && (
+                                {isCustomServer && !isServerManaged && (
                                     <RoundButton
                                         title={t('server.resetToDefault')}
                                         size="normal"
