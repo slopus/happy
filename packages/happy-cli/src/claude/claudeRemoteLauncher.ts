@@ -415,6 +415,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         permissionHandler.setPermissionModeUpdater(async (mode) => {
                             await q.setPermissionMode(mode);
                         });
+                        session.askSideQuestion = q.askSideQuestion;
                     },
                     onThinkingChange: session.onThinkingChange,
                     claudeEnvVars: session.claudeEnvVars,
@@ -468,6 +469,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             } finally {
 
                 logger.debug('[remote]: launch finally');
+
+                // The query is gone; side questions wait for the next one
+                session.askSideQuestion = null;
 
                 // Terminate all ongoing tool calls
                 for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {

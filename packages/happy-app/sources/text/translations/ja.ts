@@ -717,6 +717,23 @@ export const ja: TranslationStructure = {
         close: 'サイドチャットを閉じる',
     },
 
+    sideQuestion: {
+        title: 'サイド質問',
+        usage: '使い方: /btw <質問>',
+        subtitle: 'このチャットの内容をもとに回答します — ここでのやり取りはチャットに追加されません。',
+        followUpPlaceholder: '続けて質問…',
+        send: '質問する',
+        close: '閉じる',
+        answering: 'Claude が回答中…',
+        queued: '前の質問への回答を待っています…',
+        noAnswer: 'Claude からの回答はありませんでした。',
+        terminalMode: 'このセッションはターミナルで実行中です。ターミナルで /btw を使うか、アプリからメッセージを送って操作を引き継いでください。',
+        notStarted: 'このセッションではまだ Claude が起動していません。先にメッセージを送ってください — その後は Claude の作業中でも /btw を使えます。',
+        cliOutdated: 'このセッションは /btw 非対応の古い Happy CLI で動いています。必要ならそのコンピューターで CLI を更新してから、セッションを再起動してください。',
+        offline: 'このセッションはオフラインです。',
+        failed: ({ error }: { error: string }) => `回答を取得できませんでした: ${error}`,
+    },
+
     settingsVoice: {
         // Voice settings screen
         languageTitle: '言語',
