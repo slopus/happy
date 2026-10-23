@@ -262,11 +262,16 @@ repository:
 
 Land that fix in slopus/ultraview and bump the pin before the next binary.
 
-**Chat look, not yet uploaded.** Build 26 has the earlier plain-text guest
-screen. The main-app chat look (branch `app-clip-chat-look`) is the candidate
-for build 27. Built the same way (Preview, generic iOS, unsigned), the Clip
-grows from 1,992 KB to 7,120 KB. Its binary grows from 670 KB to 4.7 MB, and
-the bundled fonts add 1.2 MB. That is far below Apple's 100 MB App Clip limit.
+**Build 27: the chat look.** Build 26 has the earlier plain-text guest screen.
+Preview build 27 (`2026.10.1`, build `27`) has the main-app chat look. It was
+uploaded on 2026-10-23 for internal TestFlight testing only (delivery
+`f5176a7b-568c-4ae9-98de-34b25b4c4fa8`). It was archived the same way as build
+26, with the same local UltraView patch, from local commit `311f1c97` on branch
+`app-clip-chat-look`. That commit is `origin/main` `d6b85a0d` plus the App Clip
+commits; it was off-main and unpushed at upload time. Built for comparison
+(Preview, generic iOS, unsigned), the Clip grows from 1,992 KB to 7,120 KB. Its
+binary grows from 670 KB to 4.7 MB, and the bundled fonts add 1.2 MB. In the
+signed archive the Clip is 4.5 MB, far below Apple's 100 MB App Clip limit.
 
 Remaining work:
 
@@ -276,8 +281,8 @@ Remaining work:
   message fixture-byte assertions in `SendingDeliveryMetaTests` and one voice
   translation-catalog assertion in `TranslationCatalogTests`. Guest, layout
   and app-configuration checks pass (19 tests).
-- In App Store Connect, add the App Clip invocation URL to Preview build 26's
-  TestFlight configuration. This needs an App Store Connect API key or the web
+- In App Store Connect, add the App Clip invocation URL to the TestFlight
+  configuration of Preview builds 26 and 27. This needs an App Store Connect API key or the web
   UI; the Xcode sign-in alone does not provide it. Verify launch from TestFlight. A Safari or Messages
   link can open the installed Preview parent; it does not establish a public
   App Clip experience by itself.
