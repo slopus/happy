@@ -146,6 +146,7 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<Cre
     process.stdout.write('Waiting for authentication');
     let dots = 0;
     let cancelled = false;
+    let consecutiveFailures = 0;
 
     // Handle Ctrl-C during waiting
     const handleInterrupt = () => {
@@ -167,6 +168,7 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<Cre
                         'X-Happy-Client': `cli/${configuration.currentCliVersion}`
                     }
                 });
+                consecutiveFailures = 0;
                 if (response.data.state === 'authorized') {
                     let token = response.data.token as string;
                     let r = decodeBase64(response.data.response);
@@ -214,8 +216,15 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<Cre
                     }
                 }
             } catch (error) {
-                console.log('\n\nFailed to check authentication status. Please try again.');
-                return null;
+                // A single failed poll is almost always a transient network
+                // problem, not a reason to abandon a pairing that is still
+                // valid. Only give up after the server has been unreachable
+                // for about half a minute.
+                consecutiveFailures++;
+                if (consecutiveFailures >= 30) {
+                    console.log('\n\nFailed to check authentication status. Please try again.');
+                    return null;
+                }
             }
 
             // Animate waiting dots
