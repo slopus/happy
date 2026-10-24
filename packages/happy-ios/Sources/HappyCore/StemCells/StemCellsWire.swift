@@ -133,6 +133,31 @@ extension AgentWire {
     public struct AgentWait: Equatable, Sendable, Codable {
         public var startedAt: Double
         public var dueAt: Double
+
+        public init(startedAt: Double, dueAt: Double) {
+            self.startedAt = startedAt
+            self.dueAt = dueAt
+        }
+    }
+
+    /// The automatic recovery inside the current run (protocol 30+).
+    public struct AgentRetrying: Equatable, Sendable, Codable {
+        public var attempt: Int
+        public var maxAttempts: Int
+        public var kind: String
+        public var vendorName: String
+
+        public init(attempt: Int, maxAttempts: Int, kind: String, vendorName: String) {
+            self.attempt = attempt
+            self.maxAttempts = maxAttempts
+            self.kind = kind
+            self.vendorName = vendorName
+        }
+    }
+
+    public struct AgentSubagents: Equatable, Sendable, Codable {
+        public var total: Int?
+        public var running: Int?
     }
 
     public final class Agent: Equatable, Sendable, Codable {
@@ -148,8 +173,10 @@ extension AgentWire {
         public let canSendMessages: Bool?
         public let archivedAt: Double?
         public let version: String?
+        public let retrying: AgentRetrying?
+        public let subagents: AgentSubagents?
 
-        public init(id: String, workspaceId: String, parentAgentId: String? = nil, title: String? = nil, status: String = "idle", wait: AgentWait? = nil, subtasks: [Agent]? = nil, pendingQuestionId: String? = nil, unread: AgentUnread? = nil, canSendMessages: Bool? = nil, archivedAt: Double? = nil, version: String? = nil) {
+        public init(id: String, workspaceId: String, parentAgentId: String? = nil, title: String? = nil, status: String = "idle", wait: AgentWait? = nil, subtasks: [Agent]? = nil, pendingQuestionId: String? = nil, unread: AgentUnread? = nil, canSendMessages: Bool? = nil, archivedAt: Double? = nil, version: String? = nil, retrying: AgentRetrying? = nil, subagents: AgentSubagents? = nil) {
             self.id = id
             self.workspaceId = workspaceId
             self.parentAgentId = parentAgentId
@@ -162,6 +189,8 @@ extension AgentWire {
             self.canSendMessages = canSendMessages
             self.archivedAt = archivedAt
             self.version = version
+            self.retrying = retrying
+            self.subagents = subagents
         }
 
         public static func == (lhs: Agent, rhs: Agent) -> Bool {
@@ -342,6 +371,8 @@ extension AgentWire {
     public struct Run: Equatable, Sendable, Codable {
         public var id: String
         public var status: String
+        /// Unix milliseconds; the turn's clock counts from here.
+        public var startedAt: Double?
         public var messages: [Message]?
     }
 

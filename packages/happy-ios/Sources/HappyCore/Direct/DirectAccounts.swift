@@ -77,8 +77,9 @@ public final class DirectAccounts {
             let failure = try? JSONDecoder().decode(Failure.self, from: response.body)
             throw DirectAgentError.status(response.status, code: failure?.code, message: failure?.error)
         }
-        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
         await stop(id)
+        // Looked up after the wait: the list may have changed meanwhile.
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
         accounts[index].name = name
         onChange?()
         try? await storage.update(accounts[index])

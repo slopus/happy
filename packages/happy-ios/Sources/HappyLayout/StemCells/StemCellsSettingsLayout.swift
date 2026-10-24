@@ -15,6 +15,9 @@ public struct StemCellsSettingsBarLayout: Equatable, Sendable {
         public static let top: CGFloat = 6
         /// Edit's text inside the capsule, after the search slot.
         public static let editPadding: CGFloat = 16
+        /// Searching: the field inside the button band, then Cancel.
+        public static let fieldInset: CGFloat = 4
+        public static let cancelGap: CGFloat = 12
     }
 
     public var qr: CGRect
@@ -22,11 +25,15 @@ public struct StemCellsSettingsBarLayout: Equatable, Sendable {
     /// In the capsule's own space.
     public var search: CGRect
     public var edit: CGRect?
+    /// Searching, the field and Cancel take the bar.
+    public var field: CGRect?
+    public var cancel: CGRect?
     /// Where the scrolling content starts.
     public var bottom: CGFloat
 
-    /// `editWidth` is Edit's text width, nil where there is nothing to edit.
-    public init(width: CGFloat, safeTop: CGFloat, editWidth: CGFloat?) {
+    /// `editWidth` is Edit's text width, nil where there is nothing to edit;
+    /// `cancelWidth` is Cancel's while searching.
+    public init(width: CGFloat, safeTop: CGFloat, editWidth: CGFloat?, cancelWidth: CGFloat? = nil) {
         typealias M = Metrics
         let y = safeTop + M.top
         qr = CGRect(x: M.side, y: y, width: M.button, height: M.button)
@@ -34,6 +41,11 @@ public struct StemCellsSettingsBarLayout: Equatable, Sendable {
         let capsuleWidth = M.button + (editWidth.map { $0.rounded(.up) + M.editPadding } ?? 0)
         edit = editWidth.map { CGRect(x: M.button, y: 0, width: $0.rounded(.up), height: M.button) }
         capsule = CGRect(x: width - M.side - capsuleWidth, y: y, width: capsuleWidth, height: M.button)
+        if let cancelWidth {
+            let cancel = CGRect(x: width - M.side - cancelWidth.rounded(.up), y: y, width: cancelWidth.rounded(.up), height: M.button)
+            self.cancel = cancel
+            field = CGRect(x: M.side, y: y + M.fieldInset, width: max(0, cancel.minX - M.cancelGap - M.side), height: M.button - 2 * M.fieldInset)
+        }
         bottom = y + M.button
     }
 }
@@ -122,6 +134,9 @@ public struct StemCellsSettingsLayout: Equatable, Sendable {
         public static let toggle = CGSize(width: 63, height: 28)
         public static let separator: CGFloat = 1 / 3
         public static let bottom: CGFloat = 32
+        /// Searching with nothing found: the line, under the bar.
+        public static let emptyTop: CGFloat = 32
+        public static let emptyHeight: CGFloat = 24
     }
 
     public enum Accessory: Equatable, Sendable {
@@ -163,16 +178,21 @@ public struct StemCellsSettingsLayout: Equatable, Sendable {
     public var name: CGRect
     public var subtitle: CGRect
     public var cards: [Card]
+    /// "Nothing found", while searching.
+    public var empty: CGRect
     public var contentHeight: CGFloat
 
-    public init(width: CGFloat, nameHeight: CGFloat, subtitleHeight: CGFloat, cards specs: [[RowSpec]]) {
+    /// Searching, the strip and the name are hidden and the cards move up
+    /// into the strip's place.
+    public init(width: CGFloat, nameHeight: CGFloat, subtitleHeight: CGFloat, cards specs: [[RowSpec]], searching: Bool = false) {
         typealias M = Metrics
         strip = CGRect(x: 0, y: M.stripTop, width: width, height: StemCellsProfileCarousel.Metrics.height)
         let textWidth = max(0, width - 2 * M.textSide)
         name = CGRect(x: M.textSide, y: strip.maxY + M.nameGap, width: textWidth, height: nameHeight)
         subtitle = CGRect(x: M.textSide, y: name.maxY + M.subtitleGap, width: textWidth, height: subtitleHeight)
         let cardWidth = max(0, width - 2 * M.side)
-        var y = subtitle.maxY + M.cardsTop
+        var y = searching ? M.stripTop : subtitle.maxY + M.cardsTop
+        empty = CGRect(x: 0, y: M.stripTop + M.emptyTop, width: width, height: M.emptyHeight)
         var cards: [Card] = []
         for spec in specs where !spec.isEmpty {
             var rows: [Row] = []
@@ -183,7 +203,7 @@ public struct StemCellsSettingsLayout: Equatable, Sendable {
             y += CGFloat(spec.count) * M.row + M.cardGap
         }
         self.cards = cards
-        contentHeight = (cards.last.map { $0.frame.maxY } ?? subtitle.maxY) + M.bottom
+        contentHeight = (cards.last.map { $0.frame.maxY } ?? (searching ? M.stripTop : subtitle.maxY)) + M.bottom
     }
 
     static func row(_ spec: RowSpec, y: CGFloat, width: CGFloat, last: Bool) -> Row {

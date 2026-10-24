@@ -29,6 +29,10 @@ extension Palette {
     public static let stemCellsButton = ColorToken("#f8f8f8", "#171717")
     /// The sidebar's ground (`--groupped-background`).
     public static let stemCellsBackground = ColorToken("#f5f5f5", "#1e1e1e")
+    /// The working line's loader, clock and phase (`--text-secondary`), and
+    /// the "·" between them (`--input-placeholder`).
+    public static let stemCellsWorkingText = ColorToken("#49454f", "#cac4d0")
+    public static let stemCellsWorkingSeparator = ColorToken("#999999", "#8e8e93")
     /// A usage ring (`UsageRing`): its quiet track, its arc, and the arc
     /// when little or almost nothing is left.
     public static let stemCellsUsageTrack = ColorToken("#c0c0c0", "#48484a")
@@ -72,6 +76,10 @@ extension Palette {
 }
 
 public enum StemCellsMetrics {
+    /// A shimmer's pale band (`ShimmerText` `sheen`): the ink mixed 15%
+    /// into its ground; one sweep takes 1.6s.
+    public static let sheenInk: CGFloat = 0.15
+    public static let sheenDuration: Double = 1.6
     // Desktop's sidebar at its own pixels, a point for a pixel: `Sidebar.tsx`
     // (`SIDEBAR_ROW_HEIGHT` and the rest), `styles/sidebar.css`, `theme.css`.
     /// The row box's inset from the screen's edges (`--happy-panel-inset`).

@@ -41,7 +41,7 @@ enum StemCellsScan {
             return
         }
         guard let session = context.account.session else {
-            Alerts.show("Sign in to Happy", "Sign in to a Happy account before connecting this kind of code.", on: controller)
+            Alerts.show(Strings.StemCells.signInFirst, Strings.StemCells.signInFirstDetail, on: controller)
             return
         }
         let kind: PairingFlow.Kind = if case .account = link { .account } else { .terminal }

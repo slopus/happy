@@ -5,12 +5,29 @@ import UIKit
 
 /// Settings in a stack of its own, shown as a sheet over home. Home's root
 /// changes when another profile is chosen; this sheet stays up through it
-/// (`AppCoordinator.install`).
+/// while it shows only its own page (`AppCoordinator.install`).
 final class StemCellsSettingsNavigationController: UINavigationController {
+    private var context: AppContext?
+
     static func present(context: AppContext, computer: String?, from controller: UIViewController) {
         let navigation = StemCellsSettingsNavigationController(rootViewController: StemCellsSettingsViewController(context: context, computer: computer))
+        navigation.context = context
+        AppCoordinator.applyAppearance(to: navigation.navigationBar)
         navigation.modalPresentationStyle = .pageSheet
         controller.present(navigation, animated: true)
+    }
+
+    /// Kept up through a root change only on its own page with nothing
+    /// over it; a pushed flow that ends in a root change (pairing, signing
+    /// in, signing out) goes with the old root.
+    var keepsThroughRootChange: Bool {
+        viewControllers.count == 1 && presentedViewController == nil
+    }
+
+    /// Adding a Happy account ends when the sheet goes, signed in or not.
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed, context?.account.isAddingAccount == true { context?.account.cancelAddingAccount() }
     }
 }
 
@@ -63,6 +80,7 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     private var imageKeys: [String: String] = [:]
     private var imageJobs: [String: Task<Void, Never>] = [:]
     private var busy = false
+    private var switching: Task<Void, Never>?
 
     init(context: AppContext, computer: String?) {
         self.context = context
@@ -234,10 +252,20 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         watchPrioritizing()
         rebuild(animated: true)
         guard !profile.isActive else { return }
-        Task { [weak self] in
-            guard let self else { return }
+        // One switch at a time, and only the last choice still wanted; a
+        // failed one turns the page back to the profile that is active.
+        let previous = switching
+        switching = Task { [weak self] in
+            await previous?.value
+            guard let self, shownID == profile.id,
+                  context.account.accounts.first(where: { $0.id == profile.id })?.isActive == false else { return }
             do { try await context.account.switchAccount(to: profile.id) }
-            catch { Alerts.show(Strings.StemCells.couldNotSwitch, error.localizedDescription, on: self) }
+            catch {
+                guard shownID == profile.id else { return }
+                shownID = context.account.accounts.first(where: \.isActive)?.id
+                reload()
+                Alerts.show(Strings.StemCells.couldNotSwitch, error.localizedDescription, on: self)
+            }
         }
     }
 
@@ -307,16 +335,11 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         subtitle.isHidden = searching
         empty.isHidden = !(searching && !(query ?? "").isEmpty && rows.isEmpty)
         let text = heldName?.id == profile.id ? heldName!.name : profile.name
-        if name.text != text || subtitle.text != profile.subtitle {
-            let change = {
-                self.name.text = text
-                self.subtitle.text = profile.subtitle
-            }
+        for (label, value) in [(name, text), (subtitle, profile.subtitle)] where label.text != value {
             if animated {
-                UIView.transition(with: name, duration: 0.2, options: [.transitionCrossDissolve, .beginFromCurrentState], animations: change)
-                UIView.transition(with: subtitle, duration: 0.2, options: [.transitionCrossDissolve, .beginFromCurrentState], animations: {})
+                UIView.transition(with: label, duration: 0.2, options: [.transitionCrossDissolve, .beginFromCurrentState], animations: { label.text = value })
             } else {
-                change()
+                label.text = value
             }
         }
         while cards.count < rows.count { let card = StemCellsSettingsCardView(); scroll.addSubview(card); cards.append(card) }
@@ -334,22 +357,21 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let width = view.bounds.width
-        let bar = StemCellsSettingsBarLayout(width: width, safeTop: view.safeAreaInsets.top, editWidth: editWidth)
+        let searching = query != nil
+        let bar = StemCellsSettingsBarLayout(width: width, safeTop: view.safeAreaInsets.top, editWidth: editWidth, cancelWidth: searching ? cancelSearch.intrinsicContentSize.width : nil)
         qr.frame = bar.qr
         capsule.frame = bar.capsule
         searchButton.frame = bar.search
         editButton.isHidden = bar.edit == nil
         editButton.setTitle(nameField == nil ? Strings.StemCells.edit : Strings.StemCells.done, for: .normal)
         if let edit = bar.edit { editButton.frame = edit }
-        let searching = query != nil
         qr.isHidden = searching
         capsule.isHidden = searching
         searchField.isHidden = !searching
         cancelSearch.isHidden = !searching
-        if searching {
-            let cancelWidth = ceil(cancelSearch.intrinsicContentSize.width)
-            cancelSearch.frame = CGRect(x: width - StemCellsSettingsBarLayout.Metrics.side - cancelWidth, y: bar.qr.minY, width: cancelWidth, height: bar.qr.height)
-            searchField.frame = CGRect(x: StemCellsSettingsBarLayout.Metrics.side, y: bar.qr.minY + 4, width: cancelSearch.frame.minX - 12 - StemCellsSettingsBarLayout.Metrics.side, height: bar.qr.height - 8)
+        if let field = bar.field, let cancel = bar.cancel {
+            searchField.frame = field
+            cancelSearch.frame = cancel
         }
         scroll.frame = view.bounds
         let top = bar.bottom
@@ -360,20 +382,18 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         let specs = rows.map { card in
             card.map { StemCellsSettingsLayout.RowSpec(hasIcon: $0.icon != nil, valueWidth: StemCellsSettingsCardView.valueWidth($0.value), accessory: $0.accessory) }
         }
-        let layout = StemCellsSettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs)
-        // Searching, the cards move up into the strip's place.
-        let lift = searching ? layout.subtitle.maxY + StemCellsSettingsLayout.Metrics.cardsTop - StemCellsSettingsLayout.Metrics.stripTop : 0
+        let layout = StemCellsSettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, searching: searching)
         carousel.frame = layout.strip
         name.frame = layout.name
         nameField?.frame = layout.name
         subtitle.frame = layout.subtitle
-        empty.frame = CGRect(x: 0, y: 40, width: width, height: 24)
+        empty.frame = layout.empty
         for (index, card) in cards.enumerated() where layout.cards.indices.contains(index) {
             let frame = layout.cards[index]
-            card.frame = frame.frame.offsetBy(dx: 0, dy: -lift)
+            card.frame = frame.frame
             card.show(rows[index], layout: frame)
         }
-        scroll.contentSize = CGSize(width: width, height: layout.contentHeight - lift)
+        scroll.contentSize = CGSize(width: width, height: layout.contentHeight)
     }
 
     // MARK: Search
@@ -530,6 +550,12 @@ final class StemCellsMoreViewController: UIViewController {
         title = Strings.StemCells.more
         view.accessibilityIdentifier = "stem-settings-more"
         observation = context.account.observeAccounts { [weak self] _ in self?.update() }
+    }
+
+    /// Back from signing in without finishing: no account is being added.
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        if context.account.isAddingAccount { context.account.cancelAddingAccount() }
     }
 
     private func update() {

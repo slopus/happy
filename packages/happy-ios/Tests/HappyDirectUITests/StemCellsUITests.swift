@@ -609,6 +609,57 @@ final class StemCellsUITests: XCTestCase {
         capture("media-photo-answered")
     }
 
+    /// The working line through a real turn: the loader, the clock and the
+    /// phase as the agent's status moves, each change printed with its
+    /// time (`STEM_PHASE <seconds> <line>`) for desktop's side of the video.
+    func testWorking() {
+        home()
+        pause(1.5)
+        let bot = row("space", ProcessInfo.processInfo.environment["STEM_MEDIA_ROW"] ?? "Research Assistant")
+        XCTAssertTrue(bot.waitForExistence(timeout: 5))
+        bringIntoView(bot)
+        bot.tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        pause(2)
+        composer.tap()
+        composer.typeText("Think for a moment about what a good haiku needs. Then run `sleep 5` with your shell tool, one call and nothing else. Then write me a haiku about waiting.")
+        pause(0.5)
+        let working = app.descendants(matching: .any)["stem-working"]
+        app.buttons["Send"].tap()
+        let start = Date()
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
+        XCTAssertTrue(working.waitForExistence(timeout: 10), "the working line never showed")
+        var seen: [String] = []
+        var last = ""
+        let deadline = Date().addingTimeInterval(240)
+        while Date() < deadline {
+            // Read once, as it is: the line may go between two queries.
+            guard let line = (try? working.snapshot())?.label else { break }
+            if line != last, !line.isEmpty {
+                // The phase, without the clock that moves every second.
+                let phase = line.components(separatedBy: " · ").last ?? line
+                if seen.last != phase { seen.append(phase) }
+                print(String(format: "STEM_PHASE %.2f %@", Date().timeIntervalSince(start), line))
+                last = line
+            }
+            pause(0.1)
+        }
+        print("STEM_PHASES \(seen.joined(separator: " > "))")
+        XCTAssertFalse(working.exists, "the turn never finished")
+        XCTAssertTrue(seen.contains("Running tools") || seen.contains("Preparing tools"), "no tool phase showed: \(seen)")
+        pause(2)
+        capture("working-answered")
+        // Its row in the sidebar while it works: the name under the sheen.
+        composer.tap()
+        composer.typeText("Run sleep 8 with your shell tool, then say done.")
+        app.buttons["Send"].tap()
+        XCTAssertTrue(working.waitForExistence(timeout: 10))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(6)
+        capture("working-row")
+    }
+
     /// Closes the settings sheet with a pull down from its top.
     private func closeSettings() {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).press(

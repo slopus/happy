@@ -35,6 +35,14 @@ enum StemCellsFonts {
         return .systemFont(ofSize: size, weight: system)
     }
 
+    /// The face with even-width figures (`tabular-nums`), for a clock.
+    static func tabular(_ font: UIFont) -> UIFont {
+        UIFont(descriptor: font.fontDescriptor.addingAttributes([.featureSettings: [[
+            UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
+            UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector,
+        ]]]), size: font.pointSize)
+    }
+
     static func mono(bold: Bool, size: CGFloat) -> UIFont {
         _ = registration
         if let font = UIFont(name: bold ? "JetBrainsMono-Bold" : "JetBrainsMono-Regular", size: size) { return font }

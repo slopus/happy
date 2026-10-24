@@ -182,6 +182,7 @@ final class StemCellsRowView: UIView {
     private func applyState() {
         let ink = UIColor(selected || row?.unread == true ? Palette.stemCellsRowTextActive : Palette.stemCellsRowText)
         label.textColor = ink
+        label.ground = UIColor(selected ? Palette.stemCellsRowSelected : Palette.groupedBackground)
         picture.tintColor = picture.contentMode == .center ? ink : nil
         chevron.tintColor = UIColor(Palette.stemCellsRowText)
         if let row, row.kind != .section, row.kind != .separator { applyText(row) }
@@ -343,18 +344,27 @@ final class StemCellsRenameField: UITextField, UITextFieldDelegate {
     }
 }
 
-/// One line of text that can carry desktop's ShimmerText: a band of light
-/// travelling through the glyphs, the letters never moving.
+/// One line of text that can carry desktop's ShimmerText in its `sheen`
+/// sweep: the letters keep their own colour and a pale band, the ink 15%
+/// into the ground, wipes through them, the letters never moving. The
+/// band is a mask over a second copy of the text (one layer animation the
+/// render server runs, nothing per frame here); its ramp is three widths
+/// of the text sliding two widths a sweep, as desktop's background is. A
+/// change of text or width keeps the sweep where it was.
 final class StemCellsShimmerLabel: UIView {
     private let base = UILabel()
     private let highlight = UILabel()
     private let band = CAGradientLayer()
+    /// When the running sweep began; a restart picks it up from here.
+    private var sweepStart: CFTimeInterval?
+    private var sweptWidth: CGFloat = 0
 
     var attributedText: NSAttributedString? {
         didSet {
             base.attributedText = attributedText
             highlight.attributedText = attributedText
             applyColors()
+            setNeedsLayout()
         }
     }
 
@@ -362,12 +372,16 @@ final class StemCellsShimmerLabel: UIView {
         didSet { applyColors() }
     }
 
+    /// What the band goes toward: the surface behind the text.
+    var ground: UIColor = UIColor(Palette.groupedBackground) {
+        didSet { applyColors() }
+    }
+
     var shimmering = false {
         didSet {
             guard shimmering != oldValue else { return }
-            highlight.isHidden = !shimmering
-            applyColors()
-            if shimmering { startBand() } else { band.removeAllAnimations() }
+            if shimmering { sweepStart = CACurrentMediaTime() } else { sweepStart = nil }
+            update()
         }
     }
 
@@ -385,33 +399,59 @@ final class StemCellsShimmerLabel: UIView {
         band.colors = [UIColor.clear.cgColor, UIColor.white.cgColor, UIColor.clear.cgColor]
         band.locations = [0.4, 0.5, 0.6]
         highlight.layer.mask = band
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyColors() }
+        NotificationCenter.default.addObserver(self, selector: #selector(update), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(update), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// Asked for less motion, the text simply stays.
+    private var sweeps: Bool { shimmering && !UIAccessibility.isReduceMotionEnabled }
+
+    @objc private func update() {
+        highlight.isHidden = !sweeps
+        if sweeps { startBand() } else { band.removeAllAnimations() }
+    }
+
     private func applyColors() {
-        // Resting letters sit at 38% of the ink while the band passes.
-        base.textColor = shimmering ? textColor.withAlphaComponent(0.38) : textColor
-        highlight.textColor = textColor
+        let ink = textColor.resolvedColor(with: traitCollection)
+        let pale = Self.mix(ink, into: ground.resolvedColor(with: traitCollection), keeping: StemCellsMetrics.sheenInk)
         if let text = attributedText, text.length > 0 {
-            for label in [base, highlight] {
+            for (label, color) in [(base, ink), (highlight, pale)] {
                 let colored = NSMutableAttributedString(attributedString: text)
-                colored.addAttribute(.foregroundColor, value: label === base ? base.textColor! : highlight.textColor!, range: NSRange(location: 0, length: colored.length))
+                colored.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: colored.length))
                 label.attributedText = colored
             }
         }
+    }
+
+    /// `color-mix(in srgb, ink keep%, ground)`.
+    private static func mix(_ ink: UIColor, into ground: UIColor, keeping share: CGFloat) -> UIColor {
+        var (r1, g1, b1, a1): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+        var (r2, g2, b2, a2): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+        ink.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        ground.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        let rest = 1 - share
+        return UIColor(red: r1 * share + r2 * rest, green: g1 * share + g2 * rest, blue: b1 * share + b2 * rest, alpha: a1 * share + a2 * rest)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         base.frame = bounds
         highlight.frame = bounds
-        // Three widths of ramp, sliding two widths a cycle, as desktop's does.
         let width = max(1, min(bounds.width, base.intrinsicContentSize.width))
+        guard width != sweptWidth || band.bounds.height != bounds.height else { return }
+        sweptWidth = width
         CATransaction.begin(); CATransaction.setDisableActions(true)
         band.frame = CGRect(x: -2 * width, y: 0, width: 3 * width, height: bounds.height)
         CATransaction.commit()
-        if shimmering { startBand() }
+        if sweeps { startBand() }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { update() }
     }
 
     private func startBand() {
@@ -421,8 +461,11 @@ final class StemCellsShimmerLabel: UIView {
         let sweep = CABasicAnimation(keyPath: "position.x")
         sweep.fromValue = -width * 0.5
         sweep.toValue = width * 1.5
-        sweep.duration = 1.6
+        sweep.duration = StemCellsMetrics.sheenDuration
         sweep.repeatCount = .infinity
+        sweep.beginTime = sweepStart ?? CACurrentMediaTime()
+        sweep.isRemovedOnCompletion = false
+        sweep.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         band.add(sweep, forKey: "sweep")
     }
 }

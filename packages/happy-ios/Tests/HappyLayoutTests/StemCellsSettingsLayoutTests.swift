@@ -16,6 +16,21 @@ final class StemCellsSettingsLayoutTests: XCTestCase {
         let plain = StemCellsSettingsBarLayout(width: 390, safeTop: 47, editWidth: nil)
         XCTAssertEqual(plain.capsule, CGRect(x: 330, y: 53, width: 44, height: 44))
         XCTAssertNil(plain.edit)
+        XCTAssertNil(plain.field)
+        XCTAssertNil(plain.cancel)
+    }
+
+    func testSearchingTheFieldAndCancelTakeTheBarAndTheCardsMoveUp() {
+        let bar = StemCellsSettingsBarLayout(width: 390, safeTop: 47, editWidth: nil, cancelWidth: 52.3)
+        XCTAssertEqual(bar.cancel, CGRect(x: 321, y: 53, width: 53, height: 44))
+        XCTAssertEqual(bar.field, CGRect(x: 16, y: 57, width: 293, height: 36))
+        typealias L = StemCellsSettingsLayout
+        let layout = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: true, accessory: .chevron)]], searching: true)
+        XCTAssertEqual(layout.cards[0].frame, CGRect(x: 16, y: 8, width: 358, height: 52))
+        XCTAssertEqual(layout.empty, CGRect(x: 0, y: 40, width: 390, height: 24))
+        XCTAssertEqual(layout.contentHeight, 92)
+        let nothing = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [], searching: true)
+        XCTAssertEqual(nothing.contentHeight, 40)
     }
 
     func testTheChosenProfileIsCentredLargerAndTheOthersShrinkWithDistance() {

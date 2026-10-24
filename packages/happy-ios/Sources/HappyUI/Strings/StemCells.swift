@@ -58,7 +58,29 @@ extension Strings {
         public static let introLine = "Say what it is — it’ll find its place."
         public static let introOptions = "Or start one of these:"
         public static let composerPlaceholder = "Describe it…"
-        public static let working = "Working…"
+
+        // The working line (AgentWorkingStatus.tsx, happyAgentConnection's `activityOf`).
+        public static let phaseWaitingForModel = "Waiting for model"
+        public static let phaseThinking = "Thinking"
+        public static let phasePreparingTools = "Preparing tools"
+        public static let phaseRunningTools = "Running tools"
+        public static let phaseWorking = "Working"
+        public static let phaseDelegating = "Working in subagents"
+        public static let phaseAwaitingAnswer = "Waiting for answer"
+        public static let phaseWaitEnding = "Wait ending"
+        public static func phaseWaitFor(_ remaining: String) -> String { "Wait for \(remaining)" }
+        public static let workingSeparator = "·"
+        /// conversationFailureText.ts `conversationRetryingLabel`.
+        public static func phaseRetrying(kind: String, vendor: String, attempt: Int, of max: Int) -> String {
+            let count = "(\(attempt)/\(max))"
+            return switch kind {
+            case "context_too_long": "Context full — resetting, then retrying…"
+            case "provider_unavailable": "\(vendor) is overloaded — retrying \(count)…"
+            case "rate_limited": "\(vendor) is rate-limited — retrying \(count)…"
+            case "network": "Couldn’t reach \(vendor) — retrying \(count)…"
+            default: "\(vendor) — retrying \(count)…"
+            }
+        }
         public static let sending = "Sending…"
         public static let sendFailed = "Not sent. Tap to retry."
 
@@ -138,6 +160,8 @@ extension Strings {
         public static let qrText = "Scan a computer’s pairing code, or a code from the terminal or another device."
         public static let scanQRCode = "Scan QR Code"
         public static let enterLink = "Enter link manually"
+        public static let signInFirst = "Sign in to Happy"
+        public static let signInFirstDetail = "Sign in to a Happy account before connecting this kind of code."
 
         // The composer's pickers (desktop's ComposerModelControl, flattened).
         public static let model = "Model"

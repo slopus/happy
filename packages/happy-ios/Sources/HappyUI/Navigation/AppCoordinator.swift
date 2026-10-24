@@ -269,8 +269,9 @@ public final class AppCoordinator {
                 ?? WelcomeViewController(context: context)
         }
         // Stem Cells' settings stays up while the profile it chose takes
-        // over underneath; anything else presented goes with the old root.
-        let keepsSettings = navigation.presentedViewController is StemCellsSettingsNavigationController
+        // over underneath; anything else presented goes with the old root,
+        // and so does settings once a flow pushed in it caused the change.
+        let keepsSettings = (navigation.presentedViewController as? StemCellsSettingsNavigationController)?.keepsThroughRootChange == true
             && (context.account.direct.active != nil || session != nil)
         if !keepsSettings { navigation.presentedViewController?.dismiss(animated: false) }
         navigation.setViewControllers([root], animated: animated && !keepsSettings)

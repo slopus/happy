@@ -148,7 +148,10 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
     private func rest() {
         let index = StemCellsProfileCarousel.index(at: scroll.contentOffset.x, count: items.count)
         let target = StemCellsProfileCarousel.offset(for: index)
-        if abs(scroll.contentOffset.x - target) > 0.5 { scroll.setContentOffset(CGPoint(x: target, y: 0), animated: true); return }
+        // Far enough off to animate there (and come back here when it
+        // ends); a sliver off may never report an end, so it is set at once.
+        if abs(scroll.contentOffset.x - target) >= 1 { scroll.setContentOffset(CGPoint(x: target, y: 0), animated: true); return }
+        if scroll.contentOffset.x != target { scroll.setContentOffset(CGPoint(x: target, y: 0), animated: false) }
         guard index != selected, items.indices.contains(index) else { return }
         selected = index
         for (i, circle) in circles.enumerated() { circle.accessibilityTraits = i == index ? [.button, .selected] : .button }
@@ -157,10 +160,12 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
 
     @objc private func circleTapped(_ gesture: UITapGestureRecognizer) {
         guard let circle = gesture.view as? Circle, let index = circles.firstIndex(where: { $0 === circle }) else { return }
-        guard index != selected else { return }
+        let target = StemCellsProfileCarousel.offset(for: index)
+        // A tap back on the chosen circle mid-scroll still turns back to it.
+        guard index != selected || scroll.contentOffset.x != target else { return }
         StemCellsHaptics.play(.pick)
         centered = index
-        scroll.setContentOffset(CGPoint(x: StemCellsProfileCarousel.offset(for: index), y: 0), animated: true)
+        if abs(scroll.contentOffset.x - target) < 1 { rest() } else { scroll.setContentOffset(CGPoint(x: target, y: 0), animated: true) }
     }
 
     @objc private func addTapped() { onAdd?() }

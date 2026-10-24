@@ -78,12 +78,64 @@ public struct StemCellMedia: Equatable, Sendable {
     }
 }
 
+/// What desktop's working line reports (`AgentWorkingStatus`), projected
+/// as its chat store projects it (`workingPhaseProject`,
+/// `workingLabelProject`, `activityOf`): a question waiting on the person
+/// first, then delegated work, a scheduled wait, a retry, a model that has
+/// not answered yet, and otherwise the agent's own status.
+public struct StemCellActivity: Equatable, Sendable {
+    public enum Phase: Equatable, Sendable {
+        case waitingForModel
+        case thinking
+        case preparingTools
+        case runningTools
+        case working
+        case retrying(AgentWire.AgentRetrying)
+        case waiting(AgentWire.AgentWait)
+        case awaitingAnswer
+        case delegating
+    }
+
+    public var phase: Phase
+    /// Unix milliseconds the turn began; nil where no clock is shown.
+    public var startedAt: Double?
+
+    public init(phase: Phase, startedAt: Double?) {
+        self.phase = phase
+        self.startedAt = startedAt
+    }
+
+    /// The projection itself, from the agent's state and the turn's.
+    /// `produced` is whether the running turn has shown anything yet.
+    public static func project(working: Bool, status: String, wait: AgentWire.AgentWait?, retrying: AgentWire.AgentRetrying?, question: Bool, subagentsRunning: Int, produced: Bool, startedAt: Double?) -> StemCellActivity? {
+        if question { return StemCellActivity(phase: .awaitingAnswer, startedAt: nil) }
+        guard working else {
+            return subagentsRunning > 0 ? StemCellActivity(phase: .delegating, startedAt: nil) : nil
+        }
+        let phase: Phase
+        if let wait { phase = .waiting(wait) }
+        else if let retrying { phase = .retrying(retrying) }
+        else if !produced, ["idle", "queued", "thinking"].contains(status) { phase = .waitingForModel }
+        else {
+            phase = switch status {
+            case "thinking": .thinking
+            case "generating_tools": .preparingTools
+            case "running_tools": .runningTools
+            default: .working
+            }
+        }
+        return StemCellActivity(phase: phase, startedAt: startedAt)
+    }
+}
+
 public struct StemCellChatSnapshot: Equatable, Sendable {
     /// History has been read, or there is none to read yet.
     public var loaded = false
     public var items: [StemCellChatItem] = []
     /// The agent is at work on a run.
     public var working = false
+    /// The working line; nil when there is nothing to report.
+    public var activity: StemCellActivity?
     /// Older runs exist before the first one shown.
     public var hasMore = false
     /// Why the conversation could not be read.
@@ -128,6 +180,15 @@ public actor StemCellConversation {
     /// replaces it.
     private var picked: AgentWire.Mode?
     private var defaultMode: Task<AgentWire.Mode, Error>?
+    /// The agent's own state, for the working line.
+    private var status = "idle"
+    private var wait: AgentWire.AgentWait?
+    private var retrying: AgentWire.AgentRetrying?
+    private var question = false
+    private var subagentsRunning = 0
+    /// The running turn and when it began (or when a send was taken, before
+    /// its run is known).
+    private var activeRun: (id: String?, startedAt: Double?)?
     /// New work the daemon may not have made yet; sends wait for it.
     private var creation: Task<String, Error>?
     private var visible = false
@@ -240,6 +301,12 @@ public actor StemCellConversation {
         let echoed = Set(messages.keys)
         outgoing.removeAll { echoed.contains($0.id) }
         snapshot.working = start.agent.isWorking
+        adoptAgent(start.agent)
+        if start.agent.isWorking, let run = history.runs.last, run.status == "running" {
+            activeRun = (run.id, run.startedAt)
+        } else {
+            activeRun = nil
+        }
         snapshot.hasMore = history.hasMore
         snapshot.loaded = true
         snapshot.error = nil
@@ -308,15 +375,29 @@ public actor StemCellConversation {
             guard let runId = payload["run"]?["id"]?.stringValue else { return }
             accept(payload["acceptedMessageIds"]?.arrayValue?.compactMap(\.stringValue) ?? [], into: runId)
             snapshot.working = true
+            activeRun = (runId, payload["run"]?["startedAt"]?.numberValue)
         case "run.boundary":
             guard let runId = payload["startedRun"]?["id"]?.stringValue else { return }
             accept(payload["acceptedMessageIds"]?.arrayValue?.compactMap(\.stringValue) ?? [], into: runId)
             snapshot.working = true
+            activeRun = (runId, payload["startedRun"]?["startedAt"]?.numberValue)
         case "run.finished":
             snapshot.working = false
+            activeRun = nil
+            retrying = nil
             if visible { markRead() }
         case "agent.updated":
-            if let status = payload["changes"]?["status"]?.stringValue { snapshot.working = status != "idle" }
+            guard let changes = payload["changes"] else { return }
+            if let status = changes["status"]?.stringValue {
+                self.status = status
+                snapshot.working = status != "idle"
+                if status == "idle" { activeRun = nil }
+            }
+            // Present and null clears; absent leaves it.
+            if let value = changes["wait"] { wait = value == .null ? nil : Self.decode(AgentWire.AgentWait.self, value) }
+            if let value = changes["retrying"] { retrying = value == .null ? nil : Self.decode(AgentWire.AgentRetrying.self, value) }
+            if let value = changes["pendingQuestionId"] { question = value.stringValue != nil }
+            if let running = changes["subagents"]?["running"]?.numberValue { subagentsRunning = Int(running) }
         default:
             return
         }
@@ -456,6 +537,8 @@ public actor StemCellConversation {
     private func sent(_ id: String) {
         guard let index = outgoing.firstIndex(where: { $0.id == id }) else { return }
         outgoing[index].accepted = true
+        // Until the run says when it began, the clock counts from the send.
+        if activeRun == nil { activeRun = (nil, Date().timeIntervalSince1970 * 1000) }
         snapshot.working = true
         publish()
     }
@@ -540,7 +623,33 @@ public actor StemCellConversation {
             items.append(StemCellChatItem(id: send.id, role: .user, pieces: pieces, delivery: send.failure.map { .failed($0) } ?? (send.accepted ? .pending : .sending)))
         }
         snapshot.items = items
+        snapshot.activity = StemCellActivity.project(
+            working: snapshot.working, status: status, wait: wait, retrying: retrying, question: question,
+            subagentsRunning: subagentsRunning, produced: produced, startedAt: activeRun?.startedAt
+        )
         continuation.yield(snapshot)
+    }
+
+    /// The running turn has shown something of the agent's: a thought, a
+    /// line, a tool call.
+    private var produced: Bool {
+        guard let id = activeRun?.id, let run = runs.first(where: { $0.id == id }) else { return false }
+        return run.messageIds.contains { messages[$0].map { $0.role != "user" && !$0.content.isEmpty } ?? false }
+    }
+
+    private func adoptAgent(_ agent: AgentWire.Agent) {
+        // A read says only working or idle; which kind of work is in the
+        // events, so a read mid-turn keeps what they last said.
+        if !(agent.status == "working" && status != "idle") { status = agent.status }
+        wait = agent.wait
+        retrying = agent.retrying
+        question = agent.pendingQuestionId != nil
+        subagentsRunning = agent.subagents?.running ?? 0
+    }
+
+    private static func decode<T: Decodable>(_ type: T.Type, _ value: JSONValue) -> T? {
+        guard let data = try? JSONEncoder().encode(value) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
 
     private func item(_ message: AgentWire.Message, shown: inout [String: StemCellMedia], streaming: Bool) -> StemCellChatItem? {

@@ -93,6 +93,10 @@ public actor StemCellsStore {
     /// The last Prioritizing write; each waits for the one before, so the
     /// daemon ends on the last choice.
     private var prioritizingWrite: Task<Void, Never>?
+    private var prioritizingWrites = 0
+    /// What the daemon last said Prioritizing is; a refused write, the
+    /// last one asked for, shows this again.
+    private var prioritizingDaemon: Bool?
     private var cursor: String?
     private var capabilities = AgentWire.Health.Capabilities()
 
@@ -262,6 +266,7 @@ public actor StemCellsStore {
             let answer = try await sidebar
             let (botList, taskList) = try await (bots, tasks)
             snapshot.prioritizing = (try? await setting) == .bool(true)
+            prioritizingDaemon = snapshot.prioritizing
             let served = (try? await surfaceList) ?? nil
             surfaces = served ?? []
             snapshot.offers = StemCellOffer.available(surfaces: served != nil, capabilities: capabilities)
@@ -381,6 +386,7 @@ public actor StemCellsStore {
         case "user_settings.updated":
             if payload["setting"]?["key"]?.stringValue == Self.settingKey {
                 snapshot.prioritizing = payload["setting"]?["value"] == .bool(true)
+                prioritizingDaemon = snapshot.prioritizing
             }
         default:
             return
@@ -750,20 +756,31 @@ public actor StemCellsStore {
     /// Turns Prioritizing on or off, from Settings' switch; only ever the
     /// person's choice.
     public func setPrioritizing(_ on: Bool) {
-        let before = snapshot.prioritizing
         snapshot.prioritizing = on
         publish()
+        prioritizingWrites &+= 1
+        let write = prioritizingWrites
         let client = client
         let previous = prioritizingWrite
         prioritizingWrite = Task {
             await previous?.value
-            do { try await client.setUserSetting(Self.settingKey, .bool(on)) }
-            catch { await self.prioritizingRefused(error, back: before) }
+            do {
+                try await client.setUserSetting(Self.settingKey, .bool(on))
+                await self.prioritizingAccepted(on)
+            } catch {
+                await self.prioritizingRefused(error, write: write)
+            }
         }
     }
 
-    private func prioritizingRefused(_ error: Error, back: Bool?) {
-        snapshot.prioritizing = back
+    private func prioritizingAccepted(_ on: Bool) {
+        prioritizingDaemon = on
+    }
+
+    /// A later choice still on its way decides what shows; otherwise the
+    /// daemon's own value comes back.
+    private func prioritizingRefused(_ error: Error, write: Int) {
+        if write == prioritizingWrites { snapshot.prioritizing = prioritizingDaemon }
         snapshot.error = Self.describe(error)
         publish()
     }

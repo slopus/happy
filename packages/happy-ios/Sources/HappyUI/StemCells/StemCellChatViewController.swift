@@ -28,7 +28,7 @@ final class StemCellChatViewController: UIViewController {
     private let introView = StemCellIntroView()
     private var rowViews: [String: ChatPlanView] = [:]
     private var plans: [ChatRowPlan] = []
-    private let working = StemCellsShimmerLabel()
+    private let working = StemCellWorkingView()
     private let card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.Composer.inputPlaceholder))
     private let keyboardTracker = UIView()
 
@@ -75,12 +75,7 @@ final class StemCellChatViewController: UIViewController {
         scrollView.delegate = self
         view.addSubview(scrollView)
         scrollView.addSubview(introView)
-        working.attributedText = NSAttributedString(string: Strings.StemCells.working, attributes: [.font: StemCellsFonts.ui(.medium, size: 15)])
-        working.textColor = UIColor(Palette.textSecondary)
         working.isHidden = true
-        working.isAccessibilityElement = true
-        working.accessibilityLabel = Strings.StemCells.working
-        working.accessibilityIdentifier = "stem-working"
         scrollView.addSubview(working)
         introView.accessibilityIdentifier = "stem-intro"
         introView.onOffer = { [weak self] offer in self?.make(offer) }
@@ -185,8 +180,7 @@ final class StemCellChatViewController: UIViewController {
         let wasSettled = !chat.items.isEmpty
         chat = snapshot
         media.register(snapshot.items)
-        working.shimmering = snapshot.working
-        working.isHidden = !snapshot.working
+        working.show(snapshot.activity)
         if wasSettled != !snapshot.items.isEmpty, let intro { introView.configure(intro, settled: !snapshot.items.isEmpty) }
         updatePrimary()
         updateChips()
@@ -311,8 +305,7 @@ final class StemCellChatViewController: UIViewController {
             heights.append(layout.size.height)
         }
         heights += plans.map(\.size.height)
-        let workingHeight: CGFloat = chat.working ? 36 : 0
-        heights.append(workingHeight)
+        heights.append(chat.activity == nil ? 0 : StemCellWorkingLayout.Metrics.height)
         let stack = StemCellChatStackLayout(heights: heights, width: width, viewport: viewport)
         var index = 0
         if let introLayout {
@@ -324,9 +317,7 @@ final class StemCellChatViewController: UIViewController {
             rowViews[plan.id]?.setLayoutFrame(stack.frames[index])
             index += 1
         }
-        let workingFrame = stack.frames[index]
-        let workingSize = working.sizeThatFits(CGSize(width: width - 32, height: workingHeight))
-        working.frame = CGRect(x: 16, y: workingFrame.minY + (workingHeight - workingSize.height) / 2, width: min(workingSize.width, width - 32), height: workingSize.height)
+        working.frame = stack.frames[index]
         let previous = scrollView.contentSize.height
         scrollView.contentSize = CGSize(width: width, height: stack.contentHeight)
         if followsNewest, previous != stack.contentHeight || scrollView.contentOffset.y != newestOffset {
