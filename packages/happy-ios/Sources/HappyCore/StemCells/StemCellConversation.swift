@@ -35,6 +35,9 @@ public struct StemCellChatItem: Equatable, Sendable, Identifiable {
         /// A story a tool drafted (`draft_story`), by its ID: drawn as the
         /// story itself, following it live.
         case story(String)
+        /// A sidebar Prioritizing proposed (a `sidebar_proposal` artifact),
+        /// drawn by the sidebar's own rows and answered where it stands.
+        case sidebarProposal(artifactId: String)
     }
 
     public var id: String
@@ -51,6 +54,11 @@ public struct StemCellChatItem: Equatable, Sendable, Identifiable {
 
     public var text: String {
         pieces.compactMap { if case .text(let text) = $0 { text } else { nil } }.joined(separator: "\n\n")
+    }
+
+    /// The sidebar proposals it shows, by artifact ID.
+    public var proposalIds: [String] {
+        pieces.compactMap { if case .sidebarProposal(let artifactId) = $0 { artifactId } else { nil } }
     }
 }
 
@@ -720,6 +728,11 @@ public actor StemCellConversation {
                 if let bytes = pictures[key] { pieces.append(.picture(id: key, mimeType: mimeType, data: bytes)) }
             case .toolCall(let id, _, _, let presentation):
                 guard let presentation else { continue }
+                if presentation.type == "artifact", let artifactId = presentation.artifactId, presentation.artifactType == "sidebar_proposal" {
+                    // One card across every version: a revision redraws its rows.
+                    if !pieces.contains(.sidebarProposal(artifactId: artifactId)) { pieces.append(.sidebarProposal(artifactId: artifactId)) }
+                    continue
+                }
                 if presentation.type == "artifact", let artifactId = presentation.artifactId {
                     // Stories: a `story` artifact is the story, by its ID.
                     if presentation.artifactType == "story" {

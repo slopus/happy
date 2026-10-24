@@ -36,7 +36,13 @@ final class StemCellChatViewController: UIViewController {
     private var chat = StemCellChatSnapshot()
     private var following: Task<Void, Never>?
     private var planning: Task<Void, Never>?
-    private var planned: (items: [StemCellChatItem], key: StemCellChatPlanner.Key, copied: String?)?
+    private var planned: (items: [StemCellChatItem], key: StemCellChatPlanner.Key, copied: String?, proposals: [String: StemCellProposalShown])?
+    /// The sidebar proposals the transcript shows, and their cards by row.
+    private let proposals: StemCellSidebarProposals
+    private var proposalViews: [String: StemCellSidebarProposalView] = [:]
+    /// The proposals as the rows on screen were planned with them.
+    private var shownProposals: [String: StemCellProposalShown] = [:]
+    private var sidebarRows: [StemCellsRow] = []
     private var watch: StemCellsWatch?
     private var modelsWatch: StemCellsWatch?
     private var copied: (id: String, until: Task<Void, Never>)?
@@ -56,6 +62,7 @@ final class StemCellChatViewController: UIViewController {
         opensFocused = creation != nil
         conversation = StemCellConversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created, mode: creation == nil ? nil : session.models.newWorkMode)
         planner = StemCellChatPlanner(syntax: session.syntax)
+        proposals = StemCellSidebarProposals(client: session.client, store: session.store)
         media = StemCellMediaLoader(client: session.client, agentId: agentId)
         let files = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("StemCells", isDirectory: true)
         pictures = ComposerImagePicker(staging: ComposerAttachmentStaging(filesDirectory: files))
@@ -120,6 +127,7 @@ final class StemCellChatViewController: UIViewController {
         scrollView.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(held(_:))))
 
         applyIntro()
+        proposals.onChange = { [weak self] in self?.replan() }
         let updates = conversation.updates
         following = Task { [weak self] in
             for await snapshot in updates {
@@ -161,6 +169,7 @@ final class StemCellChatViewController: UIViewController {
             planning?.cancel()
             watch?.invalidate()
             modelsWatch?.invalidate()
+            proposals.stop()
             Task { await conversation.stop() }
         }
     }
@@ -170,8 +179,17 @@ final class StemCellChatViewController: UIViewController {
     /// The row's name and mark as the sidebar has them: Prioritizing's name
     /// lands here too, and the stem cell gives way to its clay icon.
     private func follow(_ snapshot: StemCellsSnapshot) {
-        if snapshot.live, !live { media.retryFailed() }
+        if snapshot.live, !live {
+            media.retryFailed()
+            proposals.reconnected()
+        }
         live = snapshot.live
+        // A proposal's rows name the spaces as the sidebar does now, folded
+        // ones too.
+        if snapshot.allRows != sidebarRows {
+            sidebarRows = snapshot.allRows
+            proposals.spacesChanged()
+        }
         if introView.offers != snapshot.offers {
             introView.setOffers(snapshot.offers)
             view.setNeedsLayout()
@@ -210,6 +228,7 @@ final class StemCellChatViewController: UIViewController {
         let wasSettled = !chat.items.isEmpty
         chat = snapshot
         media.register(snapshot.items)
+        proposals.want(snapshot.items.flatMap(\.proposalIds))
         working.show(snapshot.activity)
         if wasSettled != !snapshot.items.isEmpty, let intro { introView.configure(intro, settled: !snapshot.items.isEmpty) }
         updatePrimary()
@@ -252,13 +271,15 @@ final class StemCellChatViewController: UIViewController {
         guard key.width > 0 else { return }
         let items = chat.items
         let copiedId = copied?.id
-        if let planned, planned.items == items, planned.key == key, planned.copied == copiedId { return }
-        planned = (items, key, copiedId)
+        let shown = proposals.shown
+        if let planned, planned.items == items, planned.key == key, planned.copied == copiedId, planned.proposals == shown { return }
+        planned = (items, key, copiedId, shown)
         planning?.cancel()
         let planner = planner
         planning = Task { [weak self] in
-            let plans = await planner.plans(items, key: key, copied: copiedId)
+            let plans = await planner.plans(items, key: key, copied: copiedId, proposals: shown)
             guard !Task.isCancelled, let self else { return }
+            self.shownProposals = shown
             self.show(plans)
         }
     }
@@ -266,6 +287,7 @@ final class StemCellChatViewController: UIViewController {
     private func show(_ plans: [ChatRowPlan]) {
         self.plans = plans
         var seen = Set<String>()
+        var hosted = Set<String>()
         for plan in plans {
             seen.insert(plan.id)
             let row = rowViews[plan.id] ?? {
@@ -279,6 +301,17 @@ final class StemCellChatViewController: UIViewController {
             }()
             row.apply(plan)
             row.accessibilityLabel = plan.accessibilityLabel
+            var cardsHosted: [UIView] = []
+            for (artifactId, layout, frame) in plan.proposals {
+                guard let shown = shownProposals[artifactId] else { continue }
+                let key = "\(plan.id)#\(artifactId)"
+                hosted.insert(key)
+                let card = proposalViews[key] ?? makeProposal(artifactId, key: key)
+                if card.superview !== row { row.addSubview(card) }
+                card.setLayoutFrame(frame)
+                card.apply(shown, layout: layout)
+                cardsHosted.append(card)
+            }
             // A row with media reads as its message, then each picture or
             // recording on its own, and each card as what it opens.
             let cards = plan.hits.sorted { $0.frame.minY < $1.frame.minY }.compactMap { hit -> UIAccessibilityElement? in
@@ -290,7 +323,7 @@ final class StemCellChatViewController: UIViewController {
                 card.accessibilityFrameInContainerSpace = hit.frame
                 return card
             }
-            let media: [Any] = (row.mediaViews as [Any]) + (cards as [Any])
+            let media: [Any] = (row.mediaViews as [Any]) + (cards as [Any]) + (cardsHosted as [Any])
             row.isAccessibilityElement = media.isEmpty
             if media.isEmpty {
                 row.accessibilityElements = nil
@@ -311,7 +344,26 @@ final class StemCellChatViewController: UIViewController {
             row.removeFromSuperview()
             rowViews.removeValue(forKey: id)
         }
+        for (key, card) in proposalViews where !hosted.contains(key) {
+            card.removeFromSuperview()
+            proposalViews.removeValue(forKey: key)
+        }
         layoutTranscript()
+    }
+
+    private func makeProposal(_ artifactId: String, key: String) -> StemCellSidebarProposalView {
+        let card = StemCellSidebarProposalView(images: session.images)
+        let proposals = proposals
+        card.onAccept = { proposals.accept(artifactId) }
+        card.onDecline = { proposals.decline(artifactId) }
+        card.onTurn = { [weak self] rowId in
+            // The section opens under the finger, not pulled up to the newest row.
+            self?.followsNewest = false
+            StemCellsHaptics.play(.fold)
+            proposals.turn(artifactId, rowId: rowId)
+        }
+        proposalViews[key] = card
+        return card
     }
 
     // MARK: Layout
@@ -361,6 +413,9 @@ final class StemCellChatViewController: UIViewController {
         let previous = scrollView.contentSize.height
         scrollView.contentSize = CGSize(width: width, height: stack.contentHeight)
         if followsNewest, previous != stack.contentHeight || scrollView.contentOffset.y != newestOffset {
+            scrollView.contentOffset.y = newestOffset
+        } else if !followsNewest, scrollView.contentOffset.y > newestOffset, !scrollView.isTracking, !scrollView.isDecelerating {
+            // Shorter than the place it was read at (a section folded): no gap under the end.
             scrollView.contentOffset.y = newestOffset
         }
     }

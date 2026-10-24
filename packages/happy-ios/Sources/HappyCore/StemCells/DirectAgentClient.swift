@@ -289,6 +289,25 @@ public final class DirectAgentClient: Sendable {
         return try await send("GET", "/v0/agents/\(Self.escape(agentId))/tool-calls/\(Self.escape(toolCallId))/media/\(index)", headers: headers)
     }
 
+    // MARK: Sidebar proposals
+
+    /// A proposal Prioritizing made, with its latest document.
+    public func sidebarProposal(_ artifactId: String) async throws -> AgentWire.SidebarProposalResponse {
+        try await decode(AgentWire.SidebarProposalResponse.self, "GET", "/v0/spaces/sidebar/proposals/\(Self.escape(artifactId))")
+    }
+
+    /// Takes the proposal as the person's own change of the sidebar.
+    public func acceptSidebarProposal(_ artifactId: String, mutationId: String) async throws -> AgentWire.SidebarProposal {
+        struct Answer: Decodable { let proposal: AgentWire.SidebarProposal }
+        return try await decode(Answer.self, "POST", "/v0/spaces/sidebar/proposals/\(Self.escape(artifactId))/accept", json: .object(["mutationId": .string(mutationId)])).proposal
+    }
+
+    /// Keeps the sidebar as it is.
+    public func declineSidebarProposal(_ artifactId: String, mutationId: String) async throws -> AgentWire.SidebarProposal {
+        struct Answer: Decodable { let proposal: AgentWire.SidebarProposal }
+        return try await decode(Answer.self, "POST", "/v0/spaces/sidebar/proposals/\(Self.escape(artifactId))/decline", json: .object(["mutationId": .string(mutationId)])).proposal
+    }
+
     // MARK: Artifacts
 
     /// One version of an artifact, `nil` for the latest: its entry, its files

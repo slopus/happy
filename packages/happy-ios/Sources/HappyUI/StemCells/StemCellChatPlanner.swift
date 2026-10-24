@@ -17,31 +17,33 @@ actor StemCellChatPlanner {
     }
 
     private let syntax: CodeSyntaxService
-    private var cache: [String: (item: StemCellChatItem, key: Key, copied: Bool, plan: ChatRowPlan)] = [:]
+    private var cache: [String: (item: StemCellChatItem, key: Key, copied: Bool, proposals: [StemCellProposalShown?], plan: ChatRowPlan)] = [:]
 
     init(syntax: CodeSyntaxService) {
         self.syntax = syntax
     }
 
-    func plans(_ items: [StemCellChatItem], key: Key, copied: String?) -> [ChatRowPlan] {
-        var next: [String: (item: StemCellChatItem, key: Key, copied: Bool, plan: ChatRowPlan)] = [:]
+    /// `proposals` are the sidebar proposals the items show, as they stand.
+    func plans(_ items: [StemCellChatItem], key: Key, copied: String?, proposals: [String: StemCellProposalShown] = [:]) -> [ChatRowPlan] {
+        var next: [String: (item: StemCellChatItem, key: Key, copied: Bool, proposals: [StemCellProposalShown?], plan: ChatRowPlan)] = [:]
         var plans: [ChatRowPlan] = []
         for item in items {
             let isCopied = copied == item.id
+            let shown = item.proposalIds.map { proposals[$0] }
             let plan: ChatRowPlan
-            if let cached = cache[item.id], cached.item == item, cached.key == key, cached.copied == isCopied {
+            if let cached = cache[item.id], cached.item == item, cached.key == key, cached.copied == isCopied, cached.proposals == shown {
                 plan = cached.plan
             } else {
-                plan = Self.plan(item, key: key, copied: isCopied, syntax: syntax)
+                plan = Self.plan(item, key: key, copied: isCopied, syntax: syntax, proposals: proposals)
             }
-            next[item.id] = (item, key, isCopied, plan)
+            next[item.id] = (item, key, isCopied, shown, plan)
             if plan.size.height > 0 { plans.append(plan) }
         }
         cache = next
         return plans
     }
 
-    static func plan(_ item: StemCellChatItem, key: Key, copied: Bool, syntax: CodeSyntaxService) -> ChatRowPlan {
+    static func plan(_ item: StemCellChatItem, key: Key, copied: Bool, syntax: CodeSyntaxService, proposals: [String: StemCellProposalShown] = [:]) -> ChatRowPlan {
         let (width, environment) = (key.width, key.environment)
         guard !item.pieces.isEmpty else { return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: []) }
         typealias M = StemCellMessageLayout.Metrics
@@ -58,8 +60,12 @@ actor StemCellChatPlanner {
                 case tree(StemCellChatMediaPlan.Tree)
                 case card(StemCellChatMediaPlan.Card)
                 case story(String)
+                case proposal(String)
+                /// Words the planner writes, read but not selectable.
+                case line(MarkdownPiece)
             }
             var drafts: [Draft] = []
+            var spoken: [String] = text.isEmpty ? [] : [text]
             for piece in item.pieces {
                 switch piece {
                 case .text(let text):
@@ -82,6 +88,18 @@ actor StemCellChatPlanner {
                 case .artifact(let artifact):
                     drafts.append(.card(StemCellChatMediaPlan.card(artifact: artifact)))
                     parts.append(.card)
+                case .sidebarProposal(let artifactId):
+                    // Drawn by the sidebar's own rows once it is read.
+                    if let shown = proposals[artifactId], shown.status != .loading, shown.status != .missing {
+                        drafts.append(.proposal(artifactId))
+                        parts.append(.proposal(shown.input))
+                    } else {
+                        let line = proposals[artifactId]?.status == .missing ? Strings.StemCells.proposalMissing : Strings.StemCells.proposalLoading
+                        let markdown = MarkdownPiece(line, color: Palette.stemCellsCardDetail, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.stemCellsText, header: ChatTextStyles.stemCellsHeader)
+                        drafts.append(.line(markdown))
+                        parts.append(.markdown(markdown.blocks))
+                        spoken.append(line)
+                    }
                 case .picture:
                     break
                 }
@@ -89,6 +107,7 @@ actor StemCellChatPlanner {
             let layout = StemCellMessageLayout.agent(width: width, maxContentWidth: key.maxContentWidth, parts: parts)
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
+            var proposals: [(artifactId: String, layout: StemCellSidebarProposalLayout, frame: CGRect)] = []
             func media(_ media: StemCellMedia, _ frame: CGRect) {
                 items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.StemCells.media(isVideo: media.isVideo, name: media.item.name)), frame: frame))
                 hits.insert(ChatHit(frame: frame, action: .openMedia(media.key)), at: 0)
@@ -121,12 +140,16 @@ actor StemCellChatPlanner {
                     card(drafted, frame)
                 case (.story(let frame), .story(let id)):
                     items.append(.embed(.story(id), frame: frame))
+                case (.markdown(let placed, let origin), .line(let markdown)):
+                    items += markdown.draw(placed, origin: origin).items
+                case (.proposal(let layout, let frame), .proposal(let artifactId)):
+                    proposals.append((artifactId, layout, frame))
                 default:
                     break
                 }
             }
             // Each picture and recording reads as itself (`ChatMediaView`).
-            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: text)
+            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"), proposals: proposals)
         case .user:
             // Desktop's own message: the text as written (Figtree 16/24), lines and all, in
             // the accent bubble at the right, its photos under it.

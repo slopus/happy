@@ -20,14 +20,18 @@ final class ChatRowPlan: @unchecked Sendable {
     let alpha: CGFloat
     /// What VoiceOver reads for the row.
     let accessibilityLabel: String?
+    /// Stem Cells sidebar proposals, which the screen keeps as live views
+    /// over the row: each laid out, at its frame in row coordinates.
+    let proposals: [(artifactId: String, layout: StemCellSidebarProposalLayout, frame: CGRect)]
 
-    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil) {
+    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: StemCellSidebarProposalLayout, frame: CGRect)] = []) {
         self.id = id
         self.size = size
         self.items = items
         self.hits = hits
         self.alpha = alpha
         self.accessibilityLabel = accessibilityLabel
+        self.proposals = proposals
     }
 }
 

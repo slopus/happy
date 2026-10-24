@@ -42,6 +42,18 @@ extension Strings {
         public static let cancel = "Cancel"
         public static let save = "Save"
 
+        // A sidebar Prioritizing proposed (SidebarProposal.tsx, HappyAgentSidebarProposal.tsx).
+        public static let proposedSidebar = "Proposed sidebar"
+        public static func proposalVersion(_ version: Int) -> String { "v\(version)" }
+        public static func proposalLabel(_ version: Int) -> String { "Proposed sidebar, version \(version)" }
+        public static let keepMine = "Keep mine"
+        public static let useThisSidebar = "Use this sidebar"
+        public static let proposalAccepted = "You use this sidebar now."
+        public static let proposalDeclined = "You kept your own sidebar."
+        public static let proposalLoading = "Loading the proposed sidebar…"
+        public static let proposalMissing = "This proposal is no longer available."
+        public static let proposalFailed = "That didn't reach your computer. Try again."
+
         // Prioritizing's setting, which only the person turns on.
         public static let prioritizingOff = "Prioritizing is off"
         public static let prioritizingOffDetail = "Turn it on to name and place new work."

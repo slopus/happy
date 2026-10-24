@@ -456,6 +456,13 @@ public actor StemCellsStore {
         return try? JSONDecoder().decode(AgentWire.Space.self, from: data)
     }
 
+    /// Another sidebar document (a proposal's) as this sidebar's rows, with
+    /// the spaces, places and icons held now: every row, folds included.
+    public func rows(of html: String) -> [StemCellsRow]? {
+        guard let document = try? SpaceSidebar.parse(html) else { return nil }
+        return StemCellsRows.all(document, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels)
+    }
+
     // MARK: The document on screen
 
     /// The held document with every unconfirmed edit on top, without new work.

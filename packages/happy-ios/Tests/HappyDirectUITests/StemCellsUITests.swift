@@ -853,6 +853,88 @@ final class StemCellsUITests: XCTestCase {
         }
     }
 
+    /// Prioritizing asked, in its own conversation, for a tidier sidebar: its
+    /// proposal arrives live as the sidebar's own rows in a card, a folded
+    /// section opens in the card alone, and the answer is given there. The
+    /// first proposal is taken ("Use this sidebar"), the second declined
+    /// ("Keep mine"); each prints `STEM_PROPOSAL` with how it ended, so the
+    /// run can read the sidebar back.
+    func testProposal() {
+        home()
+        pause(1.5)
+        // The first ask flips what the last run's took, so the test runs again.
+        let asks = [
+            ProcessInfo.processInfo.environment["STEM_PROPOSAL_ASK"] ?? "Please propose a sidebar with propose_sidebar (don't apply anything yourself). If there is a Distractions section, move its rows to the end of the Travel section and drop the Distractions section. If there isn't, take the last two rows of the Travel section into a new section called Distractions, folded, right after Travel. Only propose it.",
+            "Please propose one more sidebar with propose_sidebar (don't apply anything yourself): move the Bots section to the very end. Only propose it.",
+        ]
+        let open = row("space", "Prioritizing")
+        for _ in 0..<3 where !open.exists { app.swipeDown(); pause(0.3) }
+        XCTAssertTrue(open.waitForExistence(timeout: 5), "no Prioritizing row")
+        bringIntoView(open)
+        open.tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        for (round, ask) in asks.enumerated() {
+            let take = round == 0
+            let answers = app.buttons.matching(identifier: take ? "stem-proposal-use" : "stem-proposal-keep")
+            pause(2)
+            // An answered card shows no buttons: one that does was left open
+            // by an earlier run, and is answered as it stands.
+            if answers.count == 0 {
+                if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+                composer.tap()
+                composer.typeText(ask)
+                pause(0.5)
+                app.buttons["Send"].tap()
+                // Prioritizing reads the sidebar, then proposes: the card comes live.
+                let deadline = Date().addingTimeInterval(300)
+                while Date() < deadline, answers.count == 0 { pause(1) }
+                XCTAssertGreaterThan(answers.count, 0, "no proposal arrived in round \(round + 1)")
+            }
+            let answer = answers.element(boundBy: answers.count - 1)
+            pause(3)
+            // The keyboard down, pulled away as a finger would.
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).press(
+                forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)),
+                withVelocity: .default, thenHoldForDuration: 0.2
+            )
+            pause(1)
+            bringIntoView(answer)
+            pause(1)
+            capture("proposal-\(round + 1)-open")
+            // A folded section opens in the card alone.
+            // The newest card: earlier runs' stay in the transcript, answered.
+            let cards = app.descendants(matching: .any).matching(identifier: "stem-proposal")
+            let card = cards.element(boundBy: cards.count - 1)
+            let folded = card.descendants(matching: .any)["stem-row:section:Travel"]
+            if take, folded.exists {
+                let shown = card.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:space:")).count
+                bringIntoView(folded)
+                folded.tap()
+                pause(1.5)
+                capture("proposal-1-unfolded")
+                let opened = card.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:space:")).count
+                print("STEM_PROPOSAL_FOLD \(shown) -> \(opened)")
+                folded.tap()
+                pause(1)
+                bringIntoView(answer)
+            }
+            answer.tap()
+            let said = take ? "You use this sidebar now." : "You kept your own sidebar."
+            let status = app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label == %@", "stem-proposal-status", said)).firstMatch
+            XCTAssertTrue(status.waitForExistence(timeout: 30), "the card never said \(said)")
+            pause(1)
+            bringIntoView(status)
+            pause(1)
+            capture("proposal-\(round + 1)-answered")
+            print("STEM_PROPOSAL \(take ? "accepted" : "declined")")
+            pause(1)
+        }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(2)
+        capture("proposal-sidebar")
+    }
+
     /// Opening a conversation with pictures twice: cold, read over the
     /// paired connection, then warm, from what the first open kept. Each
     /// open prints how long its pictures took (`STEM_OPEN`).

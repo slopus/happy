@@ -89,6 +89,13 @@ extension AgentWire {
         public var acceptedVersion: Int?
     }
 
+    /// `GET /v0/spaces/sidebar/proposals/:artifactId`: the proposal and its
+    /// latest document, in the sidebar's grammar.
+    public struct SidebarProposalResponse: Equatable, Sendable, Codable {
+        public var proposal: SidebarProposal
+        public var html: String
+    }
+
     public struct LibraryIcon: Equatable, Sendable, Codable {
         public var slug: String
     }

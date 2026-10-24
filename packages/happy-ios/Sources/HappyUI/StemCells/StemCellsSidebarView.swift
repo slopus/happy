@@ -118,6 +118,8 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
                 views[row.id] = view
             }
             view.configure(row)
+            // Rows a tap doesn't open (a proposal's) read as what they are.
+            if onSelect == nil, row.kind != .section, row.kind != .separator { view.accessibilityTraits = .staticText }
             view.selected = row.id == selectedRowId
             touched += 1
         }
@@ -173,10 +175,11 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
 
     @objc private func rowPressed(_ gesture: PressRecognizer) {
         guard let view = gesture.view as? StemCellsRowView else { return }
-        view.pressed = (gesture.state == .began || gesture.state == .changed) && swiped == nil
+        let opens = onSelect != nil || view.row?.kind == .section
+        view.pressed = opens && (gesture.state == .began || gesture.state == .changed) && swiped == nil
     }
 
-    static func layoutRows(_ rows: [StemCellsRow]) -> [StemCellsSidebarLayout.Row] {
+    nonisolated static func layoutRows(_ rows: [StemCellsRow]) -> [StemCellsSidebarLayout.Row] {
         rows.map { row in
             let kind: StemCellsSidebarLayout.Kind = switch row.kind {
             case .section: .section

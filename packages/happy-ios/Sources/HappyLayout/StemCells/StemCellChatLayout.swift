@@ -167,6 +167,8 @@ public struct StemCellMessageLayout: Equatable, Sendable {
         case card
         /// A story drawn inline (`StoryCardLayout`).
         case story
+        /// A sidebar Prioritizing proposed, at the column's left.
+        case proposal(StemCellSidebarProposalLayout.Input)
     }
 
     public enum Placed: Equatable, Sendable {
@@ -176,6 +178,8 @@ public struct StemCellMessageLayout: Equatable, Sendable {
         case tree(StemCellMediaTreeLayout, origin: CGPoint)
         case card(CGRect)
         case story(CGRect)
+        /// The card's frame; its insides are `layout`'s, from the frame's origin.
+        case proposal(StemCellSidebarProposalLayout, frame: CGRect)
     }
 
     public var size: CGSize
@@ -232,6 +236,10 @@ public struct StemCellMessageLayout: Equatable, Sendable {
                 let size = StoryCardLayout.size(width: inner)
                 placed.append(.story(CGRect(origin: CGPoint(x: left, y: y), size: size)))
                 y += size.height
+            case .proposal(let input):
+                let proposal = StemCellSidebarProposalLayout(width: inner, input: input)
+                placed.append(.proposal(proposal, frame: CGRect(origin: CGPoint(x: left, y: y), size: proposal.size)))
+                y += proposal.size.height
             }
         }
         return StemCellMessageLayout(size: CGSize(width: max(0, width), height: y + M.marginV), parts: placed, bubble: nil, text: nil, pictures: [], status: nil)

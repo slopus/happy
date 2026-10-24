@@ -58,6 +58,17 @@ extension Palette {
     /// A picture opened on its own: black behind it, white controls.
     public static let stemCellsViewerGround = ColorToken("#000000")
     public static let stemCellsViewerControl = ColorToken("#ffffff")
+    /// A sidebar proposal (`SidebarProposal`): its card's hairline
+    /// (`--modal-border`) on `stemCellsCardFill`, the rows on
+    /// `stemCellsBackground`; "Use this sidebar" black in both themes with
+    /// white ink (`--button-primary-*`), grey while it waits; "Keep mine" on
+    /// `stemCellsButton` ringed in `stemCellsDivider`; a refusal's notice
+    /// (`--status-error`).
+    public static let stemCellsProposalBorder = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.1), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.1))
+    public static let stemCellsPrimaryButton = ColorToken("#000000")
+    public static let stemCellsPrimaryButtonInk = ColorToken("#ffffff")
+    public static let stemCellsPrimaryButtonDisabled = ColorToken("#c0c0c0")
+    public static let stemCellsNotice = ColorToken("#ff3b30", "#ff453a")
     /// A row pulled open: its quiet action, its destructive one, and their ink.
     public static let stemCellsSwipeAction = ColorToken("#8e8e93", "#636366")
     public static let stemCellsSwipeDestructive = ColorToken("#ff3b30", "#ff453a")
