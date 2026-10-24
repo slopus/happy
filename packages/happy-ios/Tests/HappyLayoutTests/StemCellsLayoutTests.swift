@@ -17,26 +17,27 @@ final class StemCellsLayoutTests: XCTestCase {
             .init(kind: .row, hasMark: false),
         ], width: 390)
         let frames = result.frames
-        // Box 8 in from each side; ink 12 inside it.
-        XCTAssertEqual(frames[0].box, CGRect(x: 8, y: 4, width: 374, height: 40))
-        XCTAssertEqual(frames[0].mark, CGRect(x: 20, y: 13, width: 22, height: 22))
-        XCTAssertEqual(frames[0].label, CGRect(x: 52, y: 4, width: 318, height: 40))
+        // Desktop's pixels: the box 6 in (`--happy-panel-inset`), 32 tall
+        // (`SIDEBAR_ROW_HEIGHT`); ink 10 inside it; a 20 mark, then 8 to the label.
+        XCTAssertEqual(frames[0].box, CGRect(x: 6, y: 6, width: 378, height: 32))
+        XCTAssertEqual(frames[0].mark, CGRect(x: 16, y: 12, width: 20, height: 20))
+        XCTAssertEqual(frames[0].label, CGRect(x: 44, y: 6, width: 330, height: 32))
         XCTAssertNil(frames[0].trailing)
         // A trailing mark takes 18 and 8 more from the label.
         // Rows stand 2 apart (`SIDEBAR_ROW_GAP`).
-        XCTAssertEqual(frames[1].trailing, CGRect(x: 352, y: 57, width: 18, height: 18))
-        XCTAssertEqual(frames[1].label, CGRect(x: 52, y: 46, width: 292, height: 40))
-        // The separator's hairline runs the box's width at its middle.
-        XCTAssertEqual(frames[2].box, CGRect(x: 8, y: 88, width: 374, height: 21))
-        XCTAssertEqual(frames[2].rule, CGRect(x: 8, y: 98, width: 374, height: 1))
-        // A section keeps clear of its fold's lane, whether or not it shows.
-        XCTAssertEqual(frames[3].box, CGRect(x: 8, y: 111, width: 374, height: 34))
-        XCTAssertEqual(frames[3].label, CGRect(x: 20, y: 111, width: 324, height: 34))
-        XCTAssertEqual(frames[3].chevron, CGRect(x: 352, y: 119, width: 18, height: 18))
+        XCTAssertEqual(frames[1].trailing, CGRect(x: 356, y: 47, width: 18, height: 18))
+        XCTAssertEqual(frames[1].label, CGRect(x: 44, y: 40, width: 304, height: 32))
+        // The separator is 17 tall, its hairline across the box at its middle.
+        XCTAssertEqual(frames[2].box, CGRect(x: 6, y: 74, width: 378, height: 17))
+        XCTAssertEqual(frames[2].rule, CGRect(x: 6, y: 82, width: 378, height: 1))
+        // A section heading is 28; its title keeps clear of its fold's lane.
+        XCTAssertEqual(frames[3].box, CGRect(x: 6, y: 93, width: 378, height: 28))
+        XCTAssertEqual(frames[3].label, CGRect(x: 16, y: 93, width: 336, height: 28))
+        XCTAssertEqual(frames[3].chevron, CGRect(x: 356, y: 98, width: 18, height: 18))
         // No mark: no leading space.
         XCTAssertNil(frames[4].mark)
-        XCTAssertEqual(frames[4].label, CGRect(x: 20, y: 147, width: 350, height: 40))
-        XCTAssertEqual(result.contentHeight, 187 + 12)
+        XCTAssertEqual(frames[4].label, CGRect(x: 16, y: 123, width: 358, height: 32))
+        XCTAssertEqual(result.contentHeight, 155 + 6)
     }
 
     func testNestedRowsHangOffTheirParentsMark() {
@@ -47,21 +48,20 @@ final class StemCellsLayoutTests: XCTestCase {
             .init(kind: .row, depth: 1),
         ], width: 320)
         let frames = result.frames
-        XCTAssertEqual(frames[1].mark, CGRect(x: 52, y: 55, width: 22, height: 22))
-        XCTAssertEqual(frames[2].mark, CGRect(x: 84, y: 97, width: 22, height: 22))
-        XCTAssertEqual(frames[3].label, CGRect(x: 84, y: 130, width: 216, height: 40))
+        // A nested row: 16 more padding per level, its branch box pulled back
+        // 16, then 8 to the mark.
+        XCTAssertEqual(frames[1].mark, CGRect(x: 44, y: 46, width: 20, height: 20))
+        XCTAssertEqual(frames[2].mark, CGRect(x: 60, y: 80, width: 20, height: 20))
+        XCTAssertEqual(frames[3].label, CGRect(x: 72, y: 108, width: 232, height: 32))
         XCTAssertEqual(result.connectors, [
-            // Row 1: from under row 0's mark down to its middle, then the elbow.
-            CGRect(x: 30.5, y: 35, width: 1, height: 31),
-            CGRect(x: 31, y: 65.5, width: 17, height: 1),
-            // Its sibling (row 3) follows: the stem runs on past row 2, gaps and all.
-            CGRect(x: 30.5, y: 66, width: 1, height: 64),
-            // Row 2, under row 1's mark.
-            CGRect(x: 62.5, y: 77, width: 1, height: 31),
-            CGRect(x: 63, y: 107.5, width: 17, height: 1),
-            // Row 3: the last child, its stem from its own top.
-            CGRect(x: 30.5, y: 130, width: 1, height: 20),
-            CGRect(x: 31, y: 149.5, width: 17, height: 1),
+            // Row 0's children (1 and 3): one stem from 10 under its middle to
+            // just past the last child's, and a 9-long elbow into each.
+            CGRect(x: 25.5, y: 32, width: 1, height: 93),
+            CGRect(x: 26.5, y: 56, width: 9, height: 1),
+            CGRect(x: 26.5, y: 124, width: 9, height: 1),
+            // Row 1's child (2), one level in.
+            CGRect(x: 41.5, y: 66, width: 1, height: 25),
+            CGRect(x: 42.5, y: 90, width: 9, height: 1),
         ])
     }
 
@@ -70,7 +70,7 @@ final class StemCellsLayoutTests: XCTestCase {
         let folded = StemCellsSidebarLayout.layout([.init(kind: .row), .init(kind: .section), .init(kind: .row)], width: 390)
         XCTAssertEqual(open.frames[0], folded.frames[0])
         XCTAssertEqual(open.frames[1], folded.frames[1])
-        XCTAssertEqual(open.contentHeight - folded.contentHeight, 42)
+        XCTAssertEqual(open.contentHeight - folded.contentHeight, 34)
     }
 
     func testIntroCentresItsMarkOverItsLine() {

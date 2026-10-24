@@ -33,6 +33,10 @@ extension Strings {
         public static let fold = "Collapse"
         public static let unfold = "Expand"
         public static let rename = "Rename"
+        // A row pulled open: short names for its two actions.
+        public static let swipeClose = "Close"
+        public static let swipeLeave = "Leave"
+        public static let swipeArchive = "Archive"
         public static let cancel = "Cancel"
         public static let save = "Save"
 

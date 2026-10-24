@@ -207,7 +207,7 @@ final class StemCellPickerViewController: UIViewController {
 
     @objc private func picked(_ row: StemCellPickerRowView) {
         guard let id = row.id else { return }
-        UISelectionFeedbackGenerator().selectionChanged()
+        StemCellsHaptics.play(.pick)
         let onPick = onPick
         dismiss(animated: true) { onPick(id) }
     }

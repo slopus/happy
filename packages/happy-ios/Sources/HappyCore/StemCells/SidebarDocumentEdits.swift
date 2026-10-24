@@ -40,7 +40,9 @@ public enum SidebarDocumentEdits {
         var at = 0
         if let afterId {
             guard let after = rest.firstIndex(where: { $0.id == afterId }) else { return nil }
-            at = section && rest[after].kind != .separator ? blockEnd(rest, after) : runEnd(rest, after)
+            // Search and Create carry no run: what lands after one lands right there.
+            let hidden = rest[after].kind == .search || rest[after].kind == .create
+            at = hidden ? after + 1 : section && rest[after].kind != .separator ? blockEnd(rest, after) : runEnd(rest, after)
         }
         let result = Array(rest[..<at]) + moved + Array(rest[at...])
         if result.map(\.id) == nodes.map(\.id) { return nil }

@@ -36,7 +36,8 @@ final class StemCellsUITests: XCTestCase {
 
     /// Pairs if this simulator has no computer yet, then waits for its sidebar.
     private func home() {
-        let happy = row("space", "Happy")
+        // Any row: Prioritizing may have filed Happy's under a folded section.
+        let happy = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:")).firstMatch
         if happy.waitForExistence(timeout: 8) { return }
         print("STEM_PAIR_READY")
         let match = app.buttons["Emoji match"]
@@ -148,7 +149,8 @@ final class StemCellsUITests: XCTestCase {
         capture("happy-selected")
     }
 
-    /// Renaming a task from its row's menu: the new name shows at once and stays.
+    /// Renaming a task from its row's menu, in the row itself: the title
+    /// turns into a field, Return keeps the new name, and it stays.
     func testRename() {
         home()
         // Whichever of the two names the last run left.
@@ -163,17 +165,133 @@ final class StemCellsUITests: XCTestCase {
         pause(1)
         capture("row-menu")
         rename.tap()
-        let field = app.alerts.textFields.firstMatch
+        let field = app.textFields["stem-rename"]
         XCTAssertTrue(field.waitForExistence(timeout: 3))
-        field.buttons["Clear text"].firstMatch.tap()
+        pause(1)
+        capture("rename-in-place")
+        // The old name is selected: typing replaces it.
         field.typeText(to)
-        pause(0.5)
-        app.alerts.buttons["Save"].tap()
+        pause(0.8)
+        capture("rename-typed")
+        field.typeText("\n")
         let renamed = row("space", to)
         XCTAssertTrue(renamed.waitForExistence(timeout: 2))
         pause(4)
         XCTAssertTrue(renamed.exists, "the name went back")
         capture("renamed")
+    }
+
+    /// A row pulled sideways shows Rename and how it's put away; Rename
+    /// edits in place, a tap outside keeps it; Archive puts a bot away.
+    func testSwipe() {
+        home()
+        let (from, to) = row("space", "Weekly meal plan").waitForExistence(timeout: 3) ? ("Weekly meal plan", "Meals this week") : ("Meals this week", "Weekly meal plan")
+        let task = row("space", from)
+        bringIntoView(task)
+        pause(1)
+        pull(task)
+        let rename = app.buttons["stem-swipe:rename"]
+        XCTAssertTrue(rename.waitForExistence(timeout: 3))
+        pause(1)
+        capture("swipe-open")
+        rename.tap()
+        let field = app.textFields["stem-rename"]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.typeText(to)
+        pause(0.8)
+        capture("swipe-rename-typed")
+        // A tap on empty list below the rows keeps it.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+        XCTAssertTrue(row("space", to).waitForExistence(timeout: 2))
+        pause(3)
+        XCTAssertTrue(row("space", to).exists, "the name went back")
+        capture("swipe-renamed")
+
+        // Happy has no actions.
+        let happy = row("space", "Happy")
+        bringIntoView(happy)
+        pull(happy)
+        pause(1)
+        XCTAssertFalse(app.buttons["stem-swipe:rename"].exists)
+
+        // A throwaway bot the run made, archived from its row.
+        let bot = row("space", "Swipe Me")
+        if bot.waitForExistence(timeout: 2) {
+            do {
+                bringIntoView(bot)
+                pull(bot)
+                let archive = app.buttons["stem-swipe:archive"]
+                XCTAssertTrue(archive.waitForExistence(timeout: 3))
+                pause(1)
+                capture("swipe-archive")
+                archive.tap()
+                let deadline = Date().addingTimeInterval(10)
+                while Date() < deadline, bot.exists { pause(0.5) }
+                XCTAssertFalse(bot.exists, "the archived bot stayed")
+                pause(1)
+                capture("swipe-archived")
+            }
+        }
+    }
+
+    /// A leftward pull across a row.
+    private func pull(_ element: XCUIElement) {
+        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+        start.press(forDuration: 0.01, thenDragTo: element.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)), withVelocity: .fast, thenHoldForDuration: 0)
+    }
+
+    /// A hold lifts a row with its menu; moving carries it (the menu goes),
+    /// its peers glide aside, and the drop lands where the gap was. A
+    /// section carries its rows.
+    func testReorder() {
+        home()
+        pause(1)
+        let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:space:"))
+        func order() -> [String] {
+            rows.allElementsBoundByIndex.filter { $0.frame.height > 0 }.sorted { $0.frame.minY < $1.frame.minY }.map { $0.identifier }
+        }
+        // A task a few rows down, carried up two rows.
+        let all = order()
+        guard all.count > 5 else { return XCTFail("too few rows to reorder: \(all)") }
+        let moving = app.descendants(matching: .any)[all[4]]
+        let target = app.descendants(matching: .any)[all[2]]
+        _ = (moving.frame, target.frame)
+        capture("reorder-before")
+        // Held: the menu shows first.
+        moving.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2, thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)), withVelocity: .slow, thenHoldForDuration: 0.8)
+        pause(2)
+        capture("reorder-after")
+        let after = order()
+        // Just over the row it was let go on (a section heading may stand between).
+        let landed = after.firstIndex(of: all[4]) ?? -1
+        XCTAssertTrue(landed < after.firstIndex(of: all[2])! && landed > after.firstIndex(of: all[0])!, "the row did not land over \(all[2]): \(after)")
+        // Released without moving: the menu stays open.
+        moving.press(forDuration: 1.2)
+        XCTAssertTrue(app.collectionViews.firstMatch.waitForExistence(timeout: 2) || app.buttons["Open"].exists, "the menu did not stay")
+        pause(1)
+        capture("reorder-menu-stays")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+        pause(1)
+        // A section, carried with its rows to the top.
+        let sections = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:section:"))
+        // A section, carried over the section above it (past its whole block,
+        // as desktop asks: a neighbour is passed by half its height).
+        let shown = sections.allElementsBoundByIndex.filter { $0.frame.minY > app.frame.height * 0.12 && $0.frame.maxY < app.frame.height * 0.75 }.sorted { $0.frame.minY < $1.frame.minY }
+        // Far enough apart that the hold turns into a carry (a small move keeps the menu).
+        if let index = shown.indices.dropFirst().first(where: { shown[$0].frame.minY - shown[$0 - 1].frame.minY > 100 }) {
+            // By identifier: an element bound by index is another row once the order changes.
+            let section = app.descendants(matching: .any)[shown[index].identifier]
+            let top = app.descendants(matching: .any)[shown[index - 1].identifier]
+            capture("reorder-section-before")
+            section.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2, thenDragTo: top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)), withVelocity: .slow, thenHoldForDuration: 0.8)
+            capture("reorder-section-held")
+            pause(1)
+            // Checked at once: Prioritizing may tidy the sidebar again after.
+            capture("reorder-section")
+            XCTAssertLessThan(section.frame.minY, top.frame.minY, "the section did not land over the one above")
+        } else {
+            XCTFail("no two sections on screen far enough apart")
+        }
     }
 
     /// Search over every row.

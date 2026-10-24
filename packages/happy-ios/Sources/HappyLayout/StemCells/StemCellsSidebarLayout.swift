@@ -74,14 +74,15 @@ public enum StemCellsSidebarLayout {
             var frame = Frame(box: box, mark: nil, label: .zero, trailing: nil, chevron: nil, rule: nil)
             switch row.kind {
             case .separator:
-                frame.rule = CGRect(x: boxX, y: midY - 0.5, width: boxWidth, height: 1)
+                frame.rule = CGRect(x: boxX, y: (midY - 0.5).rounded(.down), width: boxWidth, height: 1)
             case .section:
-                // The title keeps clear of the fold's lane, so showing the fold moves nothing.
+                // The title keeps clear of the fold's lane (`padding-right:
+                // row padding + 22`), so showing the fold moves nothing.
                 let x = boxX + M.padding
-                frame.label = CGRect(x: x, y: y, width: max(0, trailingRect.minX - M.trailingGap - x), height: height)
+                frame.label = CGRect(x: x, y: y, width: max(0, trailingRect.minX - sectionFoldGap - x), height: height)
                 frame.chevron = trailingRect
             case .widget, .row:
-                var x = boxX + M.padding + CGFloat(row.depth) * M.indent
+                var x = leadingX(depth: row.depth)
                 if row.hasMark {
                     frame.mark = CGRect(x: x, y: midY - M.mark / 2, width: M.mark, height: M.mark)
                     x += M.mark + M.markGap
@@ -99,27 +100,44 @@ public enum StemCellsSidebarLayout {
         return Result(frames: frames, connectors: connectors(rows, frames), contentHeight: y + bottom)
     }
 
-    /// A nested row hangs off a stem under its parent's mark: an elbow into
-    /// the row at its middle, and the stem running on to its next sibling.
+    /// Between a section's title and its fold: `22 − 18`.
+    static let sectionFoldGap: CGFloat = 4
+
+    /// Where a row's mark (or, without one, its label) starts. A nested row is
+    /// padded `SIDEBAR_ROW_INDENT` per level and leads with its branch box,
+    /// pulled back under the parent's lane, then the row's gap.
+    static func leadingX(depth: Int) -> CGFloat {
+        typealias M = StemCellsMetrics
+        let padded = M.inset + M.padding + CGFloat(depth) * M.indent
+        return depth > 0 ? padded - M.branchPull + M.branch + M.markGap : padded
+    }
+
+    /// `SidebarTreeConnectors`: one stem per parent at the centre of its
+    /// children's branch boxes, from `SIDEBAR_BRANCH_STEM_INSET` under the
+    /// parent's middle to a point past its last child's, and a 9-long elbow
+    /// into each child at its middle.
     static func connectors(_ rows: [Row], _ frames: [Frame]) -> [CGRect] {
         typealias M = StemCellsMetrics
         var lines: [CGRect] = []
+        var parents: [Int: Int] = [:]
+        var children: [Int: [Int]] = [:]
+        var order: [Int] = []
         for (index, row) in rows.enumerated() where row.depth > 0 && row.kind == .row {
-            let stemX = M.inset + M.padding + CGFloat(row.depth - 1) * M.indent + M.mark / 2
-            let midY = frames[index].box.midY
-            // From the parent's mark, or the row before at the same depth, down to this row's middle.
-            var top = frames[index].box.minY
-            if index > 0, rows[index - 1].depth == row.depth - 1, let mark = frames[index - 1].mark { top = mark.maxY }
-            else if index > 0, rows[index - 1].depth == row.depth - 1 { top = frames[index - 1].box.midY + M.mark / 2 }
-            lines.append(CGRect(x: stemX - 0.5, y: top, width: 1, height: max(0, midY - top)))
-            let elbowEnd = frames[index].mark?.minX ?? frames[index].label.minX
-            lines.append(CGRect(x: stemX, y: midY - 0.5, width: max(0, elbowEnd - 4 - stemX), height: 1))
-            // The stem runs on past this row's subtree, gaps included, to the
-            // sibling that follows it.
-            var next = index + 1
-            while next < rows.count, rows[next].depth > row.depth { next += 1 }
-            if next < rows.count, rows[next].depth == row.depth, rows[next].kind == .row {
-                lines.append(CGRect(x: stemX - 0.5, y: midY, width: 1, height: frames[next].box.minY - midY))
+            var parent = index - 1
+            while parent >= 0, rows[parent].depth >= row.depth { parent -= 1 }
+            guard parent >= 0, rows[parent].depth == row.depth - 1 else { continue }
+            parents[index] = parent
+            if children[parent] == nil { order.append(parent) }
+            children[parent, default: []].append(index)
+        }
+        for parent in order {
+            let kids = children[parent] ?? []
+            let stemX = M.inset + M.padding + CGFloat(rows[parent].depth) * M.indent + M.branch / 2
+            let top = frames[parent].box.midY + M.stemInset
+            let bottom = (kids.map { frames[$0].box.midY }.max() ?? top) + 1
+            lines.append(CGRect(x: stemX - 0.5, y: top, width: 1, height: max(0, bottom - top)))
+            for kid in kids {
+                lines.append(CGRect(x: stemX + 0.5, y: frames[kid].box.midY, width: M.elbow, height: 1))
             }
         }
         return lines

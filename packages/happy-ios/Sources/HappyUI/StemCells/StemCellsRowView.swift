@@ -34,6 +34,16 @@ final class StemCellsRowView: UIView {
     var lifted = false {
         didSet { if lifted != oldValue { applyState() } }
     }
+    /// Pulled sideways over its actions: its box is filled so they stay under it.
+    var swiping = false {
+        didSet { if swiping != oldValue { applyState() } }
+    }
+    private var field: StemCellsRenameField?
+    private var finish: ((String?) -> Void)?
+    /// A title just saved, shown until the row says the same.
+    private var held: (label: String, until: Task<Void, Never>)?
+    /// The row as the sidebar last gave it.
+    private var latest: StemCellsRow?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -56,6 +66,11 @@ final class StemCellsRowView: UIView {
 
     /// Shows `row`; a row equal to the one shown changes nothing.
     func configure(_ row: StemCellsRow) {
+        latest = row
+        var row = row
+        if let held {
+            if row.label == held.label { held.until.cancel(); self.held = nil } else { row.label = held.label }
+        }
         guard row != self.row else { return }
         let previous = self.row
         self.row = row
@@ -101,7 +116,7 @@ final class StemCellsRowView: UIView {
         case .glyph(let name):
             picture.isHidden = false
             picture.contentMode = .center
-            picture.image = StemCellsGlyphs.image(name, size: 17)
+            picture.image = StemCellsGlyphs.image(name, size: StemCellsMetrics.glyph)
         case .image(let path, let thumbhash):
             // A picture is a rounded square.
             picture.isHidden = false
@@ -168,7 +183,7 @@ final class StemCellsRowView: UIView {
         chevron.tintColor = UIColor(Palette.stemCellsRowText)
         if let row, row.kind != .section, row.kind != .separator { applyText(row) }
         let carryable = row?.kind != .section && row?.kind != .separator
-        fill.backgroundColor = lifted ? UIColor(Palette.stemCellsBackground) : selected ? UIColor(Palette.stemCellsRowSelected) : pressed && carryable ? UIColor(Palette.stemCellsRowPressed) : .clear
+        fill.backgroundColor = lifted || swiping ? UIColor(Palette.stemCellsBackground) : selected ? UIColor(Palette.stemCellsRowSelected) : pressed && carryable ? UIColor(Palette.stemCellsRowPressed) : .clear
         layer.shadowColor = UIColor.black.cgColor
         layer.shadowOpacity = lifted ? 0.14 : 0
         layer.shadowRadius = 12
@@ -187,6 +202,7 @@ final class StemCellsRowView: UIView {
         stemCell.frame = mark
         picture.frame = mark
         label.frame = local(frames.label)
+        field?.frame = label.frame
         trailing.frame = frames.trailing.map(local) ?? .zero
         dot.frame = trailing.frame.isEmpty ? .zero : CGRect(
             x: trailing.frame.midX - StemCellsMetrics.unreadDot / 2, y: trailing.frame.midY - StemCellsMetrics.unreadDot / 2,
@@ -194,6 +210,106 @@ final class StemCellsRowView: UIView {
         )
         chevron.frame = frames.chevron.map(local) ?? .zero
         rule.frame = frames.rule.map(local) ?? .zero
+    }
+
+    // MARK: Rename in place
+
+    /// The title becomes a field in its own frame and font, `text` selected
+    /// and the keyboard up. `done` gets what was kept, or nil when Escape
+    /// put the old one back.
+    func beginEditing(_ text: String, done: @escaping (String?) -> Void) {
+        guard field == nil, let row else { return }
+        let field = StemCellsRenameField()
+        let section = row.kind == .section
+        field.font = section ? StemCellsFonts.mono(bold: true, size: StemCellsMetrics.sectionLabelSize) : StemCellsFonts.ui(.medium, size: StemCellsMetrics.labelSize)
+        if section { field.defaultTextAttributes[.kern] = StemCellsMetrics.sectionLabelSize * StemCellsMetrics.sectionTracking }
+        field.textColor = UIColor(Palette.stemCellsRowTextActive)
+        field.tintColor = UIColor(Palette.stemCellsRowTextActive)
+        field.text = text
+        field.returnKeyType = .done
+        field.autocapitalizationType = .sentences
+        field.accessibilityIdentifier = "stem-rename"
+        field.frame = label.frame
+        field.onFinish = { [weak self] kept in self?.finishEditing(kept) }
+        addSubview(field)
+        self.field = field
+        finish = done
+        label.isHidden = true
+        field.becomeFirstResponder()
+        field.selectAll(nil)
+    }
+
+    private func finishEditing(_ kept: String?) {
+        guard let field else { return }
+        self.field = nil
+        field.onFinish = nil
+        field.removeFromSuperview()
+        label.isHidden = false
+        let finish = finish
+        self.finish = nil
+        finish?(kept)
+    }
+
+    /// Shows `title` now and keeps it until the row says the same (or a
+    /// moment passes), so a saved name never flickers back.
+    func holdLabel(_ title: String) {
+        held?.until.cancel()
+        let until = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled, let self else { return }
+            held = nil
+            if let latest { show(latest) }
+        }
+        held = (title, until)
+        if var shown = latest {
+            shown.label = title
+            show(shown)
+        }
+    }
+
+    /// A row that differs only in its title.
+    private func show(_ shown: StemCellsRow) {
+        row = shown
+        applyText(shown)
+        accessibilityLabel = shown.label
+        accessibilityIdentifier = "stem-row:\(shown.kind):\(shown.label)"
+    }
+}
+
+/// The field a title turns into: Return and losing focus keep it, Escape
+/// puts the old one back.
+final class StemCellsRenameField: UITextField, UITextFieldDelegate {
+    var onFinish: ((String?) -> Void)?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        delegate = self
+        borderStyle = .none
+        backgroundColor = .clear
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var keyCommands: [UIKeyCommand]? {
+        [UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(cancel))]
+    }
+
+    @objc private func cancel() {
+        let finish = onFinish
+        onFinish = nil
+        resignFirstResponder()
+        finish?(nil)
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        resignFirstResponder()
+        return false
+    }
+
+    func textFieldDidEndEditing(_ textField: UITextField) {
+        let finish = onFinish
+        onFinish = nil
+        finish?(text ?? "")
     }
 }
 

@@ -41,38 +41,61 @@ extension Palette {
     /// A picture opened on its own: black behind it, white controls.
     public static let stemCellsViewerGround = ColorToken("#000000")
     public static let stemCellsViewerControl = ColorToken("#ffffff")
+    /// A row pulled open: its quiet action, its destructive one, and their ink.
+    public static let stemCellsSwipeAction = ColorToken("#8e8e93", "#636366")
+    public static let stemCellsSwipeDestructive = ColorToken("#ff3b30", "#ff453a")
+    public static let stemCellsSwipeInk = ColorToken("#ffffff")
 }
 
 public enum StemCellsMetrics {
+    // Desktop's sidebar at its own pixels, a point for a pixel: `Sidebar.tsx`
+    // (`SIDEBAR_ROW_HEIGHT` and the rest), `styles/sidebar.css`, `theme.css`.
     /// The row box's inset from the screen's edges (`--happy-panel-inset`).
-    public static let inset: CGFloat = 8
-    /// Ink's inset inside the row box (`--happy-panel-row-padding`).
-    public static let padding: CGFloat = 12
-    public static let rowHeight: CGFloat = 40
-    public static let sectionHeight: CGFloat = 34
-    public static let separatorHeight: CGFloat = 21
+    public static let inset: CGFloat = 6
+    /// Ink's inset inside the row box (`--happy-panel-row-padding`, `SIDEBAR_ROW_PADDING_X`).
+    public static let padding: CGFloat = 10
+    /// `SIDEBAR_ROW_HEIGHT`.
+    public static let rowHeight: CGFloat = 32
+    /// `.happy-sidebar__section-item`.
+    public static let sectionHeight: CGFloat = 28
+    /// `.happy-sidebar__separator`.
+    public static let separatorHeight: CGFloat = 17
     public static let widgetMinHeight: CGFloat = 32
     /// Between one row and the next (`SIDEBAR_ROW_GAP`).
     public static let rowGap: CGFloat = 2
-    /// The leading lane every mark stands in.
-    public static let mark: CGFloat = 22
-    public static let markGap: CGFloat = 10
-    /// A nested row starts where its parent's label does.
-    public static var indent: CGFloat { mark + markGap }
-    /// The trailing square a status mark, an unread dot or a fold stands in.
+    /// The leading lane every mark stands in (`SIDEBAR_LEADING_SLOT`, the `xs` avatar).
+    public static let mark: CGFloat = 20
+    /// A glyph's size in that lane.
+    public static let glyph: CGFloat = 16
+    /// The row's flex gap: mark to label, label to trailing lane.
+    public static let markGap: CGFloat = 8
+    /// Added per nesting level (`SIDEBAR_ROW_INDENT`).
+    public static let indent: CGFloat = 16
+    /// A nested row's branch box (`.happy-sidebar__item-branch`): 20 wide,
+    /// pulled back 16, so its centre is the parent's stem; the elbow runs 9.
+    public static let branch: CGFloat = 20
+    public static let branchPull: CGFloat = 16
+    public static let elbow: CGFloat = 9
+    /// How far under the parent's middle its stem starts (`SIDEBAR_BRANCH_STEM_INSET`).
+    public static let stemInset: CGFloat = 10
+    /// The trailing square a status mark, an unread dot or a fold stands in (`SIDEBAR_SLOT_CELL`).
     public static let trailing: CGFloat = 18
     public static let trailingGap: CGFloat = 8
-    public static let unreadDot: CGFloat = 8
-    public static let cornerRadius: CGFloat = 8
+    /// `.happy-sidebar__item-unread`.
+    public static let unreadDot: CGFloat = 6
+    /// `--happy-hover-radius`.
+    public static let cornerRadius: CGFloat = 6
     /// A picture's rounding in its lane: a rounded square, never a circle.
     public static let pictureRadius: CGFloat = 6
-    public static let labelSize: CGFloat = 16
-    public static let sectionLabelSize: CGFloat = 12
+    /// `.happy-sidebar__item-label`: 13, weight 500, line 16.
+    public static let labelSize: CGFloat = 13
+    /// `.happy-sidebar__section-item-label`: mono 11, bold.
+    public static let sectionLabelSize: CGFloat = 11
     /// `letter-spacing: 0.08em`.
     public static let sectionTracking: CGFloat = 0.08
     /// The tree's lines, at 0.28 of the row ink.
     public static let connectorAlpha: CGFloat = 0.28
-    /// Room above the first row and below the last.
-    public static let contentTop: CGFloat = 4
-    public static let contentBottom: CGFloat = 12
+    /// Room above the first row and below the last (`.happy-sidebar__body-content`).
+    public static let contentTop: CGFloat = 6
+    public static let contentBottom: CGFloat = 6
 }

@@ -352,6 +352,7 @@ final class StemCellChatViewController: UIViewController {
         let picked = pictures.images.map(\.attachment)
         guard !text.isEmpty || !picked.isEmpty else { return }
         card.setText("", selection: NSRange(location: 0, length: 0))
+        StemCellsHaptics.play(.send)
         followsNewest = true
         let conversation = conversation
         let store = session.store

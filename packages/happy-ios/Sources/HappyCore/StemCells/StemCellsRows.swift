@@ -335,10 +335,10 @@ public enum StemCellsDrop {
         row.kind == .search || row.kind == .create
     }
 
-    /// A row the person can pick up: a space or a section, never Happy's
-    /// own row or a hidden one.
+    /// A row the person can pick up: a space, a section, a separator or a
+    /// widget, never Happy's own row, a session or a hidden one.
     public static func canMove(_ row: StemCellsRow) -> Bool {
-        !isHidden(row) && !row.isHappy && (row.kind == .space || row.kind == .section)
+        !isHidden(row) && !row.isHappy && [.space, .section, .separator, .widget].contains(row.kind)
     }
 
     /// The top-level node `moving` is set down after when it is dropped

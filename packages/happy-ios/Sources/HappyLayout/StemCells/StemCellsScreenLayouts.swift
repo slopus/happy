@@ -27,7 +27,7 @@ public struct StemCellsHomeLayout: Equatable, Sendable {
 /// centred; 8 of room under the card.
 public struct StemCellsBannerLayout: Equatable, Sendable {
     public enum Metrics {
-        public static let inset: CGFloat = StemCellsMetrics.inset + 4
+        public static let inset: CGFloat = 12
         public static let padding: CGFloat = 14
         public static let buttonGap: CGFloat = 12
         public static let detailGap: CGFloat = 2

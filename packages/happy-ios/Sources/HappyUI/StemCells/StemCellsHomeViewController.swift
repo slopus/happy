@@ -62,6 +62,10 @@ final class StemCellsHomeViewController: UIViewController {
         sidebar.onSelect = { [weak self] row in self?.open(row) }
         sidebar.onFold = { [weak self] row in self?.fold(row) }
         sidebar.menu = { [weak self] row in self?.menu(for: row) }
+        sidebar.swipeActions = { [weak self] row in self?.swipeActions(for: row) ?? [] }
+        sidebar.beginDrag = { [weak self] row in self?.beginDrag(row) }
+        sidebar.onDrop = { [weak self] drag, to in self?.drop(drag, to: to) }
+        sidebar.onDragging = { [weak self] active in self?.dragging(active) }
         sidebar.delegate = self
         banner.onTurnOn = { [weak self] in
             guard let store = self?.session?.store else { return }
@@ -235,6 +239,7 @@ final class StemCellsHomeViewController: UIViewController {
 
     private func fold(_ row: StemCellsRow) {
         guard let store = session?.store else { return }
+        StemCellsHaptics.play(.fold)
         Task { await store.attentionInput(); await store.fold(row.nodeId) }
     }
 
@@ -243,6 +248,7 @@ final class StemCellsHomeViewController: UIViewController {
     func makeNewWork() {
         guard let session, !creating, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         creating = true
+        StemCellsHaptics.play(.newWork)
         let store = session.store
         Task { @MainActor in
             let creation = await store.createStemCell()
@@ -264,9 +270,11 @@ final class StemCellsHomeViewController: UIViewController {
         switch row.kind {
         case .section:
             items.append(UIAction(title: row.collapsed == true ? Strings.StemCells.unfold : Strings.StemCells.fold, image: StemCellsGlyphs.image(row.collapsed == true ? "chevron-down" : "chevron-right")) { [weak self] _ in self?.fold(row) })
-            items.append(UIAction(title: Strings.StemCells.renameSection, image: StemCellsGlyphs.image("pencil")) { [weak self] _ in
-                self?.rename(current: row.label) { label in Task { await store.relabel(row.nodeId, label: label) } }
-            })
+            if let rename = renaming(row) {
+                items.append(UIAction(title: rename.title, image: StemCellsGlyphs.image("pencil")) { [weak self] _ in
+                    self?.sidebar.afterMenuCloses { rename.begin() }
+                })
+            }
         case .space:
             let openTitle = row.targetKind == "bot" ? Strings.StemCells.openBot : Strings.StemCells.open
             items.append(UIAction(title: openTitle, image: StemCellsGlyphs.image("open")) { [weak self] _ in self?.open(row) })
@@ -283,30 +291,20 @@ final class StemCellsHomeViewController: UIViewController {
                 ]))
                 break
             }
-            if let spaceId = row.spaceId, row.targetKind == "task" || row.targetKind == "bot" {
-                items.append(UIAction(title: row.targetKind == "bot" ? Strings.StemCells.renameBot : Strings.StemCells.renameTask, image: StemCellsGlyphs.image("pencil")) { [weak self] _ in
-                    self?.rename(current: row.label == Strings.StemCells.untitled ? "" : row.label) { title in Task { await store.rename(spaceId, title: title) } }
+            if let rename = renaming(row) {
+                items.append(UIAction(title: rename.title, image: StemCellsGlyphs.image("pencil")) { [weak self] _ in
+                    self?.sidebar.afterMenuCloses { rename.begin() }
                 })
             }
             // HappyAgentSpacesSidebar's menus: new work closes from here and
             // only from here; other work is left or archived.
-            if row.isUntouchedStemCell, let spaceId = row.spaceId {
-                items.append(UIMenu(options: .displayInline, children: [
-                    UIAction(title: Strings.StemCells.closeNewWork, image: StemCellsGlyphs.image("close"), attributes: .destructive) { _ in Task { await store.discard(spaceId) } },
-                ]))
-            } else if let targetId = row.targetId, row.targetKind == "task" {
-                var leaving: [UIMenuElement] = [
-                    UIAction(title: Strings.StemCells.leaveTask, image: StemCellsGlyphs.image("close")) { _ in Task { await store.leave(taskId: targetId) } },
-                ]
-                if row.canArchive {
-                    leaving.append(UIAction(title: Strings.StemCells.archiveTask, image: StemCellsGlyphs.image("archive"), attributes: .destructive) { _ in Task { await store.archive(kind: "task", id: targetId) } })
+            let leaving = closing(row).map { act in
+                UIAction(title: act.title, image: StemCellsGlyphs.image(act.icon), attributes: act.destructive ? .destructive : []) { _ in
+                    StemCellsHaptics.play(.putAway)
+                    act.run()
                 }
-                items.append(UIMenu(options: .displayInline, children: leaving))
-            } else if let targetId = row.targetId, row.targetKind == "bot" {
-                items.append(UIMenu(options: .displayInline, children: [
-                    UIAction(title: Strings.StemCells.archiveBot, image: StemCellsGlyphs.image("archive"), attributes: .destructive) { _ in Task { await store.archive(kind: "bot", id: targetId) } },
-                ]))
             }
+            if !leaving.isEmpty { items.append(UIMenu(options: .displayInline, children: leaving)) }
         case .session:
             items.append(UIAction(title: Strings.StemCells.open, image: StemCellsGlyphs.image("open")) { [weak self] _ in self?.open(row) })
         default:
@@ -315,20 +313,92 @@ final class StemCellsHomeViewController: UIViewController {
         return UIMenu(children: items)
     }
 
-    private func rename(current: String, _ done: @escaping (String) -> Void) {
-        let alert = UIAlertController(title: Strings.StemCells.rename, message: nil, preferredStyle: .alert)
-        alert.addTextField { field in field.text = current; field.autocapitalizationType = .sentences; field.clearButtonMode = .whileEditing }
-        alert.addAction(UIAlertAction(title: Strings.StemCells.cancel, style: .cancel))
-        alert.addAction(UIAlertAction(title: Strings.StemCells.save, style: .default) { [weak alert] _ in
-            let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !text.isEmpty { done(text) }
-        })
-        present(alert, animated: true)
+    /// A row's rename, when it has one: a section's heading, a task's or a
+    /// bot's name, never Happy's. It happens in the row itself.
+    private func renaming(_ row: StemCellsRow) -> (title: String, begin: () -> Void)? {
+        guard let store = session?.store, !row.isHappy else { return nil }
+        switch row.kind {
+        case .section:
+            return (Strings.StemCells.renameSection, { [weak self] in
+                self?.sidebar.beginRename(row.id, text: row.label) { label in Task { await store.relabel(row.nodeId, label: label) } }
+            })
+        case .space where row.targetKind == "task" || row.targetKind == "bot":
+            guard let spaceId = row.spaceId else { return nil }
+            return (row.targetKind == "bot" ? Strings.StemCells.renameBot : Strings.StemCells.renameTask, { [weak self] in
+                let current = row.label == Strings.StemCells.untitled ? "" : row.label
+                self?.sidebar.beginRename(row.id, text: current) { title in Task { await store.rename(spaceId, title: title) } }
+            })
+        default:
+            return nil
+        }
+    }
+
+    /// How a row's work is put away, as desktop offers it: new work nobody
+    /// named closes; a task is left, and archived too when the person may;
+    /// a bot is archived. Never Happy.
+    private func closing(_ row: StemCellsRow) -> [(title: String, short: String, icon: String, destructive: Bool, run: () -> Void)] {
+        guard let store = session?.store, row.kind == .space, !row.isHappy else { return [] }
+        if row.isUntouchedStemCell, let spaceId = row.spaceId {
+            return [(Strings.StemCells.closeNewWork, Strings.StemCells.swipeClose, "close", true, { Task { await store.discard(spaceId) } })]
+        }
+        guard let targetId = row.targetId else { return [] }
+        switch row.targetKind {
+        case "task":
+            var acts: [(title: String, short: String, icon: String, destructive: Bool, run: () -> Void)] = [
+                (Strings.StemCells.leaveTask, Strings.StemCells.swipeLeave, "close", false, { Task { await store.leave(taskId: targetId) } }),
+            ]
+            if row.canArchive {
+                acts.append((Strings.StemCells.archiveTask, Strings.StemCells.swipeArchive, "archive", true, { Task { await store.archive(kind: "task", id: targetId) } }))
+            }
+            return acts
+        case "bot":
+            return [(Strings.StemCells.archiveBot, Strings.StemCells.swipeArchive, "archive", true, { Task { await store.archive(kind: "bot", id: targetId) } })]
+        default:
+            return []
+        }
+    }
+
+    /// A row pulled open: Rename, then the one way it is put away (Archive
+    /// where the person may, else Leave or Close).
+    private func swipeActions(for row: StemCellsRow) -> [StemCellsSwipeAction] {
+        var actions: [StemCellsSwipeAction] = []
+        if let rename = renaming(row) {
+            actions.append(StemCellsSwipeAction(title: Strings.StemCells.rename, destructive: false, identifier: "rename", handler: rename.begin))
+        }
+        if let away = closing(row).last {
+            actions.append(StemCellsSwipeAction(title: away.short, destructive: away.destructive, identifier: away.short.lowercased(), handler: {
+                StemCellsHaptics.play(.putAway)
+                away.run()
+            }))
+        }
+        return actions
+    }
+
+    // MARK: Carry
+
+    private func beginDrag(_ row: StemCellsRow) -> StemCellsDrag? {
+        guard let document = snapshot.document else { return nil }
+        return StemCellsDrag(holding: row.id, drawn: Self.drawn(snapshot.rows), all: snapshot.allRows, document: document)
+    }
+
+    private func drop(_ drag: StemCellsDrag, to: Int) {
+        guard let store = session?.store else { return }
+        guard case .some(let after) = drag.after(to: to) else { return }
+        Task { await store.move(drag.moving, after: after) }
+    }
+
+    private func dragging(_ active: Bool) {
+        guard let store = session?.store else { return }
+        Task {
+            if active { await store.attentionInput() }
+            await store.setDragging(active)
+        }
     }
 }
 
 extension StemCellsHomeViewController: UIScrollViewDelegate {
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        sidebar.closeSwipe(animated: true)
         // Scrolling is being in the list: Prioritizing's batches wait.
         if let store = session?.store { Task { await store.attentionInput() } }
     }
