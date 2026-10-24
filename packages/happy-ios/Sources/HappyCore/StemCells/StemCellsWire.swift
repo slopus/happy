@@ -307,6 +307,10 @@ extension AgentWire {
         public var artifactId: String?
         public var artifactType: String?
         public var title: String?
+        /// An artifact presentation's version, and which it shows: `latest`
+        /// follows the artifact; anything else is that version.
+        public var version: Int?
+        public var shows: String?
     }
 
     public enum Block: Equatable, Sendable, Codable {
@@ -383,6 +387,26 @@ extension AgentWire {
         public var runs: [Run]
         public var hasMore: Bool
         public var cursor: String?
+    }
+
+    /// One version of an artifact (`GET /v0/artifacts/:id/versions/:number`).
+    public struct ArtifactVersion: Equatable, Sendable, Codable {
+        public struct File: Equatable, Sendable, Codable {
+            public var path: String
+            public var mimeType: String
+            public var size: Double
+        }
+
+        public struct Live: Equatable, Sendable, Codable {
+            public var url: String
+        }
+
+        public var artifactId: String
+        public var number: Int
+        public var title: String
+        public var entry: File?
+        public var files: [File]
+        public var live: Live?
     }
 
     public struct Bootstrap: Equatable, Sendable, Codable {

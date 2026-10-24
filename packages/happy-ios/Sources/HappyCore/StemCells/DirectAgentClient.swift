@@ -289,6 +289,74 @@ public final class DirectAgentClient: Sendable {
         return try await send("GET", "/v0/agents/\(Self.escape(agentId))/tool-calls/\(Self.escape(toolCallId))/media/\(index)", headers: headers)
     }
 
+    // MARK: Artifacts
+
+    /// One version of an artifact, `nil` for the latest: its entry, its files
+    /// and how it wants to be shown.
+    public func artifactVersion(_ artifactId: String, version: Int?) async throws -> AgentWire.ArtifactVersion {
+        struct Answer: Decodable { let version: AgentWire.ArtifactVersion }
+        return try await decode(Answer.self, "GET", "/v0/artifacts/\(Self.escape(artifactId))/versions/\(version.map(String.init) ?? "latest")").version
+    }
+
+    /// One file of a numbered version, whole or one range of it. `path` is
+    /// the manifest's, each segment escaped on its own. `range` is a `Range` header as a player sent it.
+    public func artifactFile(_ artifactId: String, version: Int, path: String, range: String? = nil) async throws -> DirectHTTPResponse {
+        let headers = range.map { ["Range": $0] } ?? [:]
+        let escaped = path.split(separator: "/", omittingEmptySubsequences: false).map { Self.escape(String($0)) }.joined(separator: "/")
+        return try await send("GET", "/v0/artifacts/\(Self.escape(artifactId))/versions/\(version)/files/\(escaped)", headers: headers)
+    }
+
+    /// One answer holds at most 8 MiB, so a whole file is read in ranges
+    /// of this size.
+    public static let rangeChunk = 4 * 1024 * 1024
+
+    /// Reads a file a range at a time through `fetch` (nil: the whole file,
+    /// for one that is empty). `each` takes the pieces in order, with the
+    /// first answer's head on the first and the file's whole length.
+    public static func read(
+        isolation: isolated (any Actor)? = #isolation,
+        _ fetch: (ClosedRange<Int>?) async throws -> DirectHTTPResponse,
+        each: (_ piece: Data, _ head: DirectHTTPResponse?, _ total: Int) async throws -> Void
+    ) async throws {
+        var offset = 0
+        var total = Int.max
+        while offset < total {
+            try Task.checkCancellation()
+            let response: DirectHTTPResponse
+            do {
+                response = try await fetch(offset...(offset + rangeChunk - 1))
+            } catch DirectAgentError.status(416, _, _) where offset == 0 {
+                let whole = try await fetch(nil)
+                return try await each(whole.body, whole, whole.body.count)
+            }
+            // A server that ignores ranges answers with the whole file.
+            if response.status == 200, offset == 0 { return try await each(response.body, response, response.body.count) }
+            guard response.status == 206, !response.body.isEmpty,
+                  let length = length(contentRange: response.headers["content-range"]) else { throw DirectAgentError.invalidResponse }
+            if offset == 0 { total = length }
+            try await each(response.body, offset == 0 ? response : nil, total)
+            offset += response.body.count
+        }
+    }
+
+    /// A single `Range` no longer than one answer may hold, as a server may
+    /// answer: `bytes=0-` asks for the first piece, and a player asks on.
+    /// Anything else (several ranges, a suffix) is left as it is.
+    public static func bounded(range header: String) -> String {
+        let spec = header.trimmingCharacters(in: .whitespaces)
+        guard spec.hasPrefix("bytes="), !spec.contains(",") else { return header }
+        let bounds = spec.dropFirst(6).split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+        guard bounds.count == 2, let start = Int(bounds[0].trimmingCharacters(in: .whitespaces)) else { return header }
+        let last = start + rangeChunk - 1
+        let end = Int(bounds[1].trimmingCharacters(in: .whitespaces)).map { min($0, last) } ?? last
+        return "bytes=\(start)-\(end)"
+    }
+
+    /// The whole length in a `Content-Range` such as `bytes 0-1/28560`.
+    public static func length(contentRange: String?) -> Int? {
+        contentRange?.split(separator: "/").last.flatMap { Int($0) }
+    }
+
     /// A daemon-relative image such as a bot's avatar.
     public func image(_ path: String) async throws -> Data {
         guard path.hasPrefix("/v0/") else { throw DirectAgentError.invalidResponse }
@@ -298,23 +366,42 @@ public final class DirectAgentClient: Sendable {
     // MARK: Events
 
     /// The journal as it happens, from `after` when given. The first frame is
-    /// `hello`; the stream ends when the connection does.
+    /// `hello`; the stream ends when the connection does, or when nothing,
+    /// not even a heartbeat, has come for `silence`.
     public func events(after cursor: String?) async throws -> AsyncThrowingStream<ServerSentEvent, Error> {
         let response = try await transport.stream(path: "/v0/events/stream", credential: token, headers: cursor.map { ["Last-Event-ID": $0] } ?? [:])
         if response.status == 401 { throw DirectAgentError.revoked }
         guard response.status == 200 else { throw DirectAgentError.status(response.status, code: nil, message: nil) }
         let body = response.body
+        let transport = transport
         return AsyncThrowingStream { continuation in
             let reader = Task {
                 var parser = ServerSentEventParser()
+                var watchdog = Self.watch(continuation, transport: transport)
+                defer { watchdog.cancel() }
                 do {
                     for try await bytes in body {
+                        watchdog.cancel()
+                        watchdog = Self.watch(continuation, transport: transport)
                         for frame in parser.append(bytes) { continuation.yield(frame) }
                     }
                     continuation.finish()
                 } catch { continuation.finish(throwing: error) }
             }
             continuation.onTermination = { _ in reader.cancel() }
+        }
+    }
+
+    /// The daemon writes a heartbeat every 15 seconds. A computer whose
+    /// daemon restarted or went to sleep never closes the tunnel's stream,
+    /// so this long without a byte means it is gone, and so is the tunnel.
+    static let silence: Duration = .seconds(40)
+
+    private static func watch(_ continuation: AsyncThrowingStream<ServerSentEvent, Error>.Continuation, transport: any DirectTransport) -> Task<Void, Never> {
+        Task {
+            guard (try? await Task.sleep(for: silence)) != nil else { return }
+            await transport.reset()
+            continuation.finish(throwing: DirectPairingError.unavailable)
         }
     }
 

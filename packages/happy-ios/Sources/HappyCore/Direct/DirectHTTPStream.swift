@@ -15,7 +15,11 @@ extension TailcatHTTPTransport {
         guard Self.safe(path: path, credential: credential, headers: headers) else { throw DirectPairingError.invalidResponse }
         let client = try await connection()
         let port = port
-        let stream = try await client.openTCP(port: port)
+        let stream: TailcatConnection
+        do { stream = try await client.openTCP(port: port) } catch {
+            if Self.lostTunnel(error) { await reset(client) }
+            throw error
+        }
         do {
             var head = "GET \(path) HTTP/1.1\r\nHost: server.tailcat:\(port)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: text/event-stream\r\n"
             for (name, value) in headers { head += "\(name): \(value)\r\n" }
@@ -59,6 +63,9 @@ extension TailcatHTTPTransport {
             return DirectHTTPStream(status: responseHead.status, headers: responseHead.headers, body: body)
         } catch {
             await stream.close()
+            // No answer on a stream the tunnel opened: the far side may
+            // have restarted and forgotten it.
+            if Self.lostTunnel(error) { await reset(client) }
             throw error
         }
     }

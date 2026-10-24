@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import AVFoundation
 import HappyCore
+import os
 import UIKit
 import UniformTypeIdentifiers
 
@@ -22,6 +23,11 @@ final class StemCellMediaLoader: NSObject, ChatMediaSource {
     /// A tool's bytes, so a larger decode doesn't fetch them again.
     private let bytes = NSCache<NSString, NSData>()
     private let placeholders = NSCache<NSString, UIImage>()
+    #if DEBUG
+    /// UI tests: every picture fails until the first retry, as a dropped
+    /// connection would make it (`STEM_MEDIA_FAIL_UNTIL_RETRY`).
+    private var failsUntilRetry = ProcessInfo.processInfo.environment["STEM_MEDIA_FAIL_UNTIL_RETRY"] == "1"
+    #endif
 
     init(client: DirectAgentClient, agentId: String) {
         self.client = client
@@ -52,8 +58,9 @@ final class StemCellMediaLoader: NSObject, ChatMediaSource {
             for piece in item.pieces {
                 switch piece {
                 case .picture(let id, _, let data): sent[Self.sentKey(id)] = data
-                case .gallery(let media, _): for one in media { tools[one.key] = one }
-                case .text: break
+                case .gallery(let media, _), .tree(let media, _): for one in media { tools[one.key] = one }
+                case .file(let one): tools[one.key] = one
+                case .text, .artifact: break
                 }
             }
         }
@@ -97,6 +104,9 @@ final class StemCellMediaLoader: NSObject, ChatMediaSource {
     }
 
     private func picture(_ media: StemCellMedia, pixels: Int) async -> UIImage? {
+        #if DEBUG
+        if failsUntilRetry { return nil }
+        #endif
         let key = media.key as NSString
         let data: Data
         if let kept = bytes.object(forKey: key) {
@@ -116,6 +126,42 @@ final class StemCellMediaLoader: NSObject, ChatMediaSource {
         generator.maximumSize = CGSize(width: pixels, height: pixels)
         guard let frame = try? await generator.image(at: .zero) else { return nil }
         return UIImage(cgImage: frame.image)
+    }
+
+    /// Asks every picture that failed to load to try again, as when the
+    /// computer is reachable again.
+    func retryFailed() {
+        #if DEBUG
+        failsUntilRetry = false
+        #endif
+        NotificationCenter.default.post(name: Self.retry, object: self)
+    }
+
+    nonisolated static let retry = Notification.Name("StemCellMediaLoader.retry")
+
+    /// A document's or file's bytes, as presented, written to `url` a range
+    /// at a time off the main thread. False when they could not be read.
+    func download(_ media: StemCellMedia, to url: URL) async -> Bool {
+        let kept = bytes.object(forKey: media.key as NSString).map { $0 as Data }
+        let client = client
+        let agentId = agentId
+        return await Task.detached(priority: .userInitiated) { () -> Bool in
+            let manager = FileManager.default
+            do {
+                try manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                if let kept { try kept.write(to: url, options: .atomic); return true }
+                guard manager.createFile(atPath: url.path, contents: nil) else { return false }
+                let handle = try FileHandle(forWritingTo: url)
+                defer { try? handle.close() }
+                try await DirectAgentClient.read({ range in
+                    try await client.media(agentId, toolCallId: media.toolCallId, index: media.index, range: range)
+                }, each: { piece, _, _ in try handle.write(contentsOf: piece) })
+                return true
+            } catch {
+                try? manager.removeItem(at: url)
+                return false
+            }
+        }.value
     }
 
     // MARK: Playback
@@ -141,6 +187,10 @@ final class StemCellMediaStream: NSObject, AVAssetResourceLoaderDelegate, @unche
     static let scheme = "happy-stem-media"
     /// Asked for at a time; a player asks for more as it plays.
     static let chunk = 512 * 1024
+    #if DEBUG
+    /// Each range read, for checking that a recording streams.
+    private static let log = Logger(subsystem: "engineering.happy", category: "stem-media")
+    #endif
 
     private let client: DirectAgentClient
     private let agentId: String
@@ -210,6 +260,9 @@ final class StemCellMediaStream: NSObject, AVAssetResourceLoaderDelegate, @unche
             while offset < span.upperBound {
                 try Task.checkCancellation()
                 let response = try await client.media(agentId, toolCallId: media.toolCallId, index: media.index, range: offset...(min(span.upperBound, offset + Self.chunk) - 1))
+                #if DEBUG
+                Self.log.notice("range \(offset)-\(min(span.upperBound, offset + Self.chunk) - 1) of \(total): \(response.status), \(response.body.count) bytes")
+                #endif
                 // A whole file answered to a range starts at zero.
                 let body = response.status == 200 ? response.body.dropFirst(offset) : response.body
                 guard !body.isEmpty else { throw URLError(.networkConnectionLost) }

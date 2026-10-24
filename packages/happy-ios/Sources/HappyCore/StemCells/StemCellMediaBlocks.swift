@@ -2,9 +2,8 @@ import Foundation
 
 /// Layout blocks in an agent's text (happy-agent `API.md`, "Media layouts in
 /// text"): plain HTML that arranges media the conversation already showed.
-/// The phone keeps what a column of pictures can show: the pictures each
-/// `<img src>` names, in order, how many columns the block's root asks for,
-/// and its words as a caption. The HTML itself is never drawn.
+/// `StemCellMediaTree.parse` reads each into the tree it is drawn as; the
+/// HTML itself is never drawn.
 public enum StemCellMediaBlocks {
     public enum Segment: Equatable, Sendable {
         case markdown(String)
@@ -12,16 +11,10 @@ public enum StemCellMediaBlocks {
     }
 
     public struct Layout: Equatable, Sendable {
-        /// Each `<img src>`, in order.
-        public var sources: [String]
-        /// Columns the root's grid or wrapping row asks for, 1 to 3.
-        public var columns: Int
-        /// The block's words, tags taken out, whitespace collapsed.
-        public var caption: String
+        /// The block as written.
+        public var raw: String
         /// False when its root never closed or it ends inside a tag.
         public var complete: Bool
-        /// The block as written, for when it is shown as Markdown after all.
-        public var raw: String
     }
 
     static let roots = ["div", "section", "figure", "p", "img"]
@@ -68,17 +61,17 @@ public enum StemCellMediaBlocks {
                     pushMarkdown(markdownStart..<lineStart)
                     let html = string(lineStart..<block.end)
                     if !block.complete {
-                        segments.append(.layout(layout(html, complete: false)))
+                        segments.append(.layout(Layout(raw: html, complete: false)))
                         return segments
                     }
-                    if block.image { segments.append(.layout(layout(html, complete: true))) } else { pushMarkdown(lineStart..<block.end) }
+                    if block.image { segments.append(.layout(Layout(raw: html, complete: true))) } else { pushMarkdown(lineStart..<block.end) }
                     markdownStart = block.end
                     lineStart = block.end
                     continue
                 }
                 if newline == nil, isPartialStart(line) {
                     pushMarkdown(markdownStart..<lineStart)
-                    segments.append(.layout(Layout(sources: [], columns: 1, caption: "", complete: false, raw: String(decoding: line, as: UTF16.self))))
+                    segments.append(.layout(Layout(raw: String(decoding: line, as: UTF16.self), complete: false)))
                     return segments
                 }
             }
@@ -306,104 +299,5 @@ public enum StemCellMediaBlocks {
             paragraph = (from, end)
             return end
         }
-    }
-
-    // MARK: What the phone keeps of a block
-
-    static func layout(_ raw: String, complete: Bool) -> Layout {
-        var sources: [String] = []
-        var caption: [UInt16] = []
-        var rootStyle: String?
-        let units = Array(raw.utf16)
-        var index = 0
-        while index < units.count {
-            if units[index] == 0x3C {
-                if startsWith(units, "<!--", at: index) {
-                    index = (find(units, "-->", from: index + 4) ?? units.count) + 3
-                    continue
-                }
-                let closing = index + 1 < units.count && units[index + 1] == 0x2F
-                let nameStart = index + (closing ? 2 : 1)
-                if nameStart < units.count, isTagNameStart(units[nameStart]) {
-                    var nameEnd = nameStart
-                    while nameEnd < units.count, isTagNameUnit(units[nameEnd]) { nameEnd += 1 }
-                    guard let end = closing ? self.index(of: 0x3E, in: units, from: nameEnd) : openTagEnd(units, from: nameEnd) else { break }
-                    let name = String(decoding: units[nameStart..<nameEnd], as: UTF16.self).lowercased()
-                    let tag = String(decoding: units[(index + 1)..<end], as: UTF16.self)
-                    if !closing {
-                        if rootStyle == nil { rootStyle = attribute("style", in: tag) ?? "" }
-                        if name == "img", let source = attribute("src", in: tag) { sources.append(source) }
-                    }
-                    caption.append(space)
-                    index = end + 1
-                    continue
-                }
-            }
-            caption.append(units[index])
-            index += 1
-        }
-        let words = decodeEntities(String(decoding: caption, as: UTF16.self)).split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return Layout(sources: sources, columns: columns(rootStyle ?? ""), caption: words, complete: complete, raw: raw)
-    }
-
-    /// `name="value"`, `name='value'` or `name=value` in a tag's text.
-    static func attribute(_ name: String, in tag: String) -> String? {
-        let characters = Array(tag.unicodeScalars)
-        let wanted = Array(name.lowercased().unicodeScalars)
-        var index = 0
-        while index < characters.count {
-            // An attribute name starts after whitespace.
-            guard index > 0, characters[index - 1] == " " || characters[index - 1] == "\t" || characters[index - 1] == "\n" else { index += 1; continue }
-            let end = index + wanted.count
-            guard end <= characters.count, String(String.UnicodeScalarView(characters[index..<end])).lowercased().unicodeScalars.elementsEqual(wanted) else { index += 1; continue }
-            var cursor = end
-            while cursor < characters.count, characters[cursor] == " " { cursor += 1 }
-            guard cursor < characters.count, characters[cursor] == "=" else { index += 1; continue }
-            cursor += 1
-            while cursor < characters.count, characters[cursor] == " " { cursor += 1 }
-            guard cursor < characters.count else { return "" }
-            let quote = characters[cursor]
-            if quote == "\"" || quote == "'" {
-                let valueStart = cursor + 1
-                var valueEnd = valueStart
-                while valueEnd < characters.count, characters[valueEnd] != quote { valueEnd += 1 }
-                return decodeEntities(String(String.UnicodeScalarView(characters[valueStart..<min(valueEnd, characters.count)])))
-            }
-            var valueEnd = cursor
-            while valueEnd < characters.count, characters[valueEnd] != " ", characters[valueEnd] != "/" { valueEnd += 1 }
-            return decodeEntities(String(String.UnicodeScalarView(characters[cursor..<valueEnd])))
-        }
-        return nil
-    }
-
-    /// The columns a root's style asks for: its grid's tracks, or two for a
-    /// wrapping row; one otherwise. At most three on a phone.
-    static func columns(_ style: String) -> Int {
-        let style = style.lowercased()
-        if let range = style.range(of: "grid-template-columns:") {
-            let value = style[range.upperBound...].prefix { $0 != ";" }.trimmingCharacters(in: .whitespaces)
-            var count = 0
-            if let repeatRange = value.range(of: "repeat(") {
-                let argument = value[repeatRange.upperBound...].prefix { $0 != "," }.trimmingCharacters(in: .whitespaces)
-                count = Int(argument) ?? 2
-            } else {
-                var depth = 0
-                var token = false
-                for character in value {
-                    if character == "(" { depth += 1 } else if character == ")" { depth -= 1 }
-                    if character == " ", depth == 0 { token = false } else if !token { token = true; count += 1 }
-                }
-            }
-            return min(3, max(1, count))
-        }
-        if style.contains("display: flex") || style.contains("display:flex"), !style.contains("flex-direction: column") { return 2 }
-        return 1
-    }
-
-    static func decodeEntities(_ text: String) -> String {
-        guard text.contains("&") else { return text }
-        return text.replacingOccurrences(of: "&lt;", with: "<").replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&quot;", with: "\"").replacingOccurrences(of: "&#39;", with: "'")
-            .replacingOccurrences(of: "&nbsp;", with: " ").replacingOccurrences(of: "&amp;", with: "&")
     }
 }

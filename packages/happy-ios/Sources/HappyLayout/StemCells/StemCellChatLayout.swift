@@ -161,12 +161,18 @@ public struct StemCellMessageLayout: Equatable, Sendable {
         case markdown([MarkdownLayout.Block])
         /// A tool call's pictures and recordings; `columns` 0 is justified rows.
         case media([StemCellMediaLayout.Item], columns: Int)
+        /// A layout the agent wrote for media it showed.
+        case tree([StemCellMediaTreeLayout.Box])
+        /// A document, file or artifact: one card across the column.
+        case card
     }
 
     public enum Placed: Equatable, Sendable {
         case markdown(MarkdownLayout, origin: CGPoint)
         /// One frame per item, in the items' order.
         case media([CGRect])
+        case tree(StemCellMediaTreeLayout, origin: CGPoint)
+        case card(CGRect)
     }
 
     public var size: CGSize
@@ -212,6 +218,13 @@ public struct StemCellMessageLayout: Equatable, Sendable {
                 let media = StemCellMediaLayout(width: inner, items: items, columns: columns)
                 placed.append(.media(media.frames.map { $0.offsetBy(dx: left, dy: y) }))
                 y += media.size.height
+            case .tree(let boxes):
+                let tree = StemCellMediaTreeLayout(width: inner, root: boxes)
+                placed.append(.tree(tree, origin: CGPoint(x: left, y: y)))
+                y += tree.size.height
+            case .card:
+                placed.append(.card(CGRect(x: left, y: y, width: inner, height: StemCellResultCardLayout.height)))
+                y += StemCellResultCardLayout.height
             }
         }
         return StemCellMessageLayout(size: CGSize(width: max(0, width), height: y + M.marginV), parts: placed, bubble: nil, text: nil, pictures: [], status: nil)
@@ -256,5 +269,43 @@ public struct StemCellMessageLayout: Equatable, Sendable {
             size: CGSize(width: max(0, width), height: bottom + M.marginV),
             parts: [], bubble: bubble, text: textFrame, pictures: pictureFrames, status: status
         )
+    }
+}
+
+/// Desktop's ResultCard: one thing an agent produced, as a 64-tall card
+/// across its container. A 40 chip 12 in carries the kind's glyph, the
+/// title (20 tall) over a detail line (18) beside it, and a chevron at the
+/// right when it opens.
+public struct StemCellResultCardLayout: Equatable, Sendable {
+    public static let height: CGFloat = 64
+    public static let radius: CGFloat = 8
+    public static let chip: CGFloat = 40
+    public static let chipRadius: CGFloat = 6
+    public static let glyph: CGFloat = 20
+    public static let chevron: CGFloat = 20
+    public static let padding: CGFloat = 12
+    public static let gap: CGFloat = 12
+    public static let titleHeight: CGFloat = 20
+    public static let detailHeight: CGFloat = 18
+
+    public var chip: CGRect
+    public var glyph: CGRect
+    public var title: CGRect
+    public var detail: CGRect
+    public var chevron: CGRect?
+
+    public init(frame: CGRect, opens: Bool) {
+        typealias C = StemCellResultCardLayout
+        chip = CGRect(x: frame.minX + C.padding, y: frame.minY + (frame.height - C.chip) / 2, width: C.chip, height: C.chip)
+        glyph = CGRect(x: chip.midX - C.glyph / 2, y: chip.midY - C.glyph / 2, width: C.glyph, height: C.glyph)
+        let textX = chip.maxX + C.gap
+        var right = frame.maxX - C.padding
+        if opens {
+            chevron = CGRect(x: right - C.chevron, y: frame.minY + (frame.height - C.chevron) / 2, width: C.chevron, height: C.chevron)
+            right -= C.chevron + C.gap
+        }
+        let top = frame.minY + (frame.height - C.titleHeight - C.detailHeight) / 2
+        title = CGRect(x: textX, y: top, width: max(0, right - textX), height: C.titleHeight)
+        detail = CGRect(x: textX, y: top + C.titleHeight, width: max(0, right - textX), height: C.detailHeight)
     }
 }

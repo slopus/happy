@@ -40,6 +40,7 @@ final class StemCellsSession {
     static func forget(_ accountID: String) {
         StemCellsOfflineFile.remove(accountID)
         StoriesSession.forget(accountID)
+        StemCellFilePreview.removeAll()
         guard let session = sessions.removeValue(forKey: accountID) else { return }
         session.following?.cancel()
         let store = session.store

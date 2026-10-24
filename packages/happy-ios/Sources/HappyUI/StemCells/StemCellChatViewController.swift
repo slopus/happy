@@ -2,6 +2,7 @@
 import AVKit
 import HappyCore
 import HappyLayout
+import QuickLook
 import UIKit
 
 /// One Stem Cells conversation, simplified from desktop's: the work's
@@ -41,6 +42,10 @@ final class StemCellChatViewController: UIViewController {
     private var copied: (id: String, until: Task<Void, Never>)?
     /// The newest row is in view: what arrives keeps it there.
     private var followsNewest = true
+    /// The computer was reachable when last heard: pictures that failed
+    /// while it wasn't are asked for again when it is back.
+    private var live = true
+    private var preview: StemCellFilePreview?
 
     init(session: StemCellsSession, agentId: String, title: String, spaceId: String?, stemCell intro: Intro?, creation: StemCellCreation? = nil) {
         self.session = session
@@ -153,6 +158,8 @@ final class StemCellChatViewController: UIViewController {
     /// The row's name and mark as the sidebar has them: Prioritizing's name
     /// lands here too, and the stem cell gives way to its clay icon.
     private func follow(_ snapshot: StemCellsSnapshot) {
+        if snapshot.live, !live { media.retryFailed() }
+        live = snapshot.live
         if introView.offers != snapshot.offers {
             introView.setOffers(snapshot.offers)
             view.setNeedsLayout()
@@ -250,8 +257,17 @@ final class StemCellChatViewController: UIViewController {
             row.apply(plan)
             row.accessibilityLabel = plan.accessibilityLabel
             // A row with media reads as its message, then each picture or
-            // recording on its own.
-            let media = row.mediaViews
+            // recording on its own, and each card as what it opens.
+            let cards = plan.hits.sorted { $0.frame.minY < $1.frame.minY }.compactMap { hit -> UIAccessibilityElement? in
+                guard let label = self.cardLabel(hit.action) else { return nil }
+                let card = UIAccessibilityElement(accessibilityContainer: row)
+                card.accessibilityLabel = label
+                card.accessibilityTraits = .button
+                card.accessibilityIdentifier = "stem-card"
+                card.accessibilityFrameInContainerSpace = hit.frame
+                return card
+            }
+            let media: [Any] = (row.mediaViews as [Any]) + (cards as [Any])
             row.isAccessibilityElement = media.isEmpty
             if media.isEmpty {
                 row.accessibilityElements = nil
@@ -359,9 +375,31 @@ final class StemCellChatViewController: UIViewController {
         }
     }
 
+    /// What a card says it opens; nil for any other hit.
+    private func cardLabel(_ action: ChatRowAction) -> String? {
+        switch action {
+        case .openArtifact(let artifact): Strings.StemCells.open(artifact.title.isEmpty ? Strings.StemCells.untitledArtifact : artifact.title)
+        case .openMedia(let key): media.media(key).flatMap { $0.isVisual ? nil : Strings.StemCells.open($0.item.name) }
+        default: nil
+        }
+    }
+
     /// Desktop opens a picture in its Lightbox and plays a recording where
-    /// it is; the phone plays it in the system player.
+    /// it is; the phone plays it in the system player, and shows a document
+    /// or file in Quick Look once its bytes are here.
     private func open(_ key: String) {
+        if let file = media.media(key), !file.isVisual {
+            let preview = StemCellFilePreview(loader: media, media: file)
+            self.preview = preview
+            Task { [weak self] in
+                guard let controller = await preview.controller() else {
+                    self?.showFileUnavailable()
+                    return
+                }
+                self?.present(controller, animated: true)
+            }
+            return
+        }
         if let player = media.player(key) {
             let playback = AVPlayerViewController()
             playback.player = player
@@ -370,6 +408,12 @@ final class StemCellChatViewController: UIViewController {
         }
         let presented = media.media(key)
         present(StemCellPictureViewController(source: media, key: key, thumbhash: presented?.item.thumbhash, label: presented?.item.name ?? Strings.StemCells.picture), animated: true)
+    }
+
+    private func showFileUnavailable() {
+        let alert = UIAlertController(title: nil, message: Strings.StemCells.fileUnavailable, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
+        present(alert, animated: true)
     }
 
     @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
@@ -389,6 +433,8 @@ final class StemCellChatViewController: UIViewController {
                 Task { await conversation.retry(localId) }
             case .openMedia(let key):
                 open(key)
+            case .openArtifact(let artifact):
+                navigationController?.pushViewController(StemCellArtifactViewController(session: session, artifact: artifact), animated: true)
             default:
                 break
             }

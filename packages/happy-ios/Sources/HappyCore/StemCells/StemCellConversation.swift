@@ -21,9 +21,17 @@ public struct StemCellChatItem: Equatable, Sendable, Identifiable {
         case text(String)
         /// A picture sent with a message, inline.
         case picture(id: String, mimeType: String, data: Data)
-        /// Pictures and videos an agent's tool presented, or a layout block
-        /// in its text arranged, in `columns` (0: justified rows); read on demand.
+        /// Pictures and videos an agent's tool presented, in `columns` (0:
+        /// justified rows); read on demand.
         case gallery([StemCellMedia], columns: Int)
+        /// A layout the agent wrote for media it showed: a presentation's
+        /// `tree`, or a block in its text. The tree's item indexes are
+        /// positions in `media`.
+        case tree([StemCellMedia], StemCellMediaTree)
+        /// A document or other file a tool presented, as a card that opens it.
+        case file(StemCellMedia)
+        /// An artifact a tool made or changed, as a card that opens it.
+        case artifact(StemCellArtifact)
     }
 
     public var id: String
@@ -57,6 +65,9 @@ public struct StemCellMedia: Equatable, Sendable {
     }
 
     public var isVideo: Bool { item.kind == "video" }
+    /// A picture or recording; anything else is a document or file, and an
+    /// unknown kind is a file.
+    public var isVisual: Bool { item.kind == "image" || item.kind == "video" }
 
     /// What a screen knows it by.
     public var key: String { "tool/\(toolCallId)/\(index)" }
@@ -76,6 +87,28 @@ public struct StemCellMedia: Equatable, Sendable {
         guard lx > 0, ly > 0 else { return nil }
         return Double(lx) / Double(ly)
     }
+}
+
+/// An artifact a call created, changed or took up (`artifact`
+/// presentation): `shows` `latest` follows it, else it is exactly `version`.
+public struct StemCellArtifact: Equatable, Sendable {
+    public var id: String
+    public var version: Int
+    public var type: String
+    public var title: String
+    public var followsLatest: Bool
+
+    public init(id: String, version: Int, type: String, title: String, followsLatest: Bool) {
+        self.id = id
+        self.version = version
+        self.type = type
+        self.title = title
+        self.followsLatest = followsLatest
+    }
+
+    /// Desktop's card follows the artifact from the call that created it,
+    /// whose files are written after it.
+    public var opensLatest: Bool { followsLatest || version == 1 }
 }
 
 /// What desktop's working line reports (`AgentWorkingStatus`), projected
@@ -564,16 +597,16 @@ public actor StemCellConversation {
     // MARK: Snapshot
 
     /// `columns` as the presentation asks, or 0 for desktop's justified
-    /// rows when it asks for none. A tree is drawn as one column on the phone.
+    /// rows when it asks for none or for a layout the phone doesn't know.
     static func columns(_ layout: JSONValue?, count: Int) -> Int {
         if layout?["type"]?.stringValue == "columns", let columns = layout?["columns"]?.numberValue, columns == 1 || columns == 2 { return Int(columns) }
-        if layout?["type"]?.stringValue == "tree" { return 1 }
         return 0
     }
 
-    /// An agent's text with its layout blocks as galleries of what they
-    /// name. A block that names nothing shown is the Markdown it is; one
-    /// still arriving is held back until it closes.
+    /// An agent's text with its layout blocks as the trees they make of
+    /// media shown earlier. A block that places nothing shown, or lost
+    /// content to a limit, is the Markdown it is; one still arriving is held
+    /// back until it closes.
     static func pieces(_ text: String, shown: [String: StemCellMedia], streaming: Bool) -> [StemCellChatItem.Piece] {
         var pieces: [StemCellChatItem.Piece] = []
         func markdown(_ text: String) {
@@ -590,14 +623,16 @@ public actor StemCellConversation {
                     if !streaming { markdown(layout.raw) }
                     continue
                 }
-                var placed = Set<String>()
-                let media = layout.sources.compactMap { source -> StemCellMedia? in
-                    guard let media = shown[source], placed.insert("\(media.toolCallId):\(media.index)").inserted else { return nil }
-                    return media
+                // Each `src` names one item; the same item twice is the same index.
+                var media: [StemCellMedia] = []
+                let parsed = StemCellMediaTree.parse(html: layout.raw) { source in
+                    guard let found = shown[source] else { return nil }
+                    if let index = media.firstIndex(where: { $0.key == found.key }) { return index }
+                    media.append(found)
+                    return media.count - 1
                 }
-                guard !media.isEmpty else { markdown(layout.raw); continue }
-                pieces.append(.gallery(media, columns: layout.columns))
-                if !layout.caption.isEmpty { pieces.append(.text(layout.caption)) }
+                guard !parsed.placed.isEmpty, !parsed.truncated else { markdown(layout.raw); continue }
+                pieces.append(.tree(media, parsed.tree))
             }
         }
         return pieces
@@ -681,18 +716,31 @@ public actor StemCellConversation {
                 if pictures[key] == nil { pictures[key] = Data(base64Encoded: data) }
                 if let bytes = pictures[key] { pieces.append(.picture(id: key, mimeType: mimeType, data: bytes)) }
             case .toolCall(let id, _, _, let presentation):
-                guard let presentation, presentation.type == "media" else { continue }
-                var gallery: [StemCellMedia] = []
-                for (offset, item) in (presentation.items ?? []).enumerated() {
-                    let media = StemCellMedia(toolCallId: id, index: offset, item: item)
-                    // Named by a later layout block, by either path; the latest wins.
-                    if let source = item.source {
-                        shown[source.path] = media
-                        shown[source.absolutePath] = media
-                    }
-                    if item.kind == "image" || item.kind == "video" { gallery.append(media) }
+                guard let presentation else { continue }
+                if presentation.type == "artifact", let artifactId = presentation.artifactId {
+                    // Stories: a `story` artifact is drawn by its own card.
+                    pieces.append(.artifact(StemCellArtifact(
+                        id: artifactId, version: presentation.version ?? 1, type: presentation.artifactType ?? "unknown",
+                        title: presentation.title ?? "", followsLatest: presentation.shows == "latest"
+                    )))
+                    continue
                 }
-                if !gallery.isEmpty { pieces.append(.gallery(gallery, columns: Self.columns(presentation.layout, count: gallery.count))) }
+                guard presentation.type == "media" else { continue }
+                let media = (presentation.items ?? []).enumerated().map { StemCellMedia(toolCallId: id, index: $0.offset, item: $0.element) }
+                for one in media {
+                    // Named by a later layout block, by either path; the latest wins.
+                    if let source = one.item.source {
+                        shown[source.path] = one
+                        shown[source.absolutePath] = one
+                    }
+                }
+                if let tree = StemCellMediaTree.decode(presentation.layout, itemCount: media.count) {
+                    pieces.append(.tree(media, tree))
+                    continue
+                }
+                let visual = media.filter(\.isVisual)
+                if !visual.isEmpty { pieces.append(.gallery(visual, columns: Self.columns(presentation.layout, count: visual.count))) }
+                for one in media where !one.isVisual { pieces.append(.file(one)) }
             case .reasoning, .unknown:
                 continue
             }

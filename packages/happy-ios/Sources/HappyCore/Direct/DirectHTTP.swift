@@ -15,6 +15,8 @@ public protocol DirectTransport: Sendable {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse
     /// A GET whose body arrives as it is written, for an event stream.
     func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream
+    /// Lets go of the connection so the next request makes a new one.
+    func reset() async
     func close() async
 }
 
@@ -33,6 +35,8 @@ extension DirectTransport {
     public func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream {
         throw DirectPairingError.unavailable
     }
+
+    public func reset() async {}
 
     func request(_ path: String, credential: String, method: String = "GET", body: Data? = nil, headers: [String: String] = [:]) async throws -> DirectHTTPResponse {
         try await request(method: method, path: path, credential: credential, body: body, headers: headers)
@@ -57,6 +61,20 @@ public actor TailcatHTTPTransport: DirectTransport {
         await old?.close()
     }
 
+    /// A computer whose daemon restarted has forgotten this tunnel's session
+    /// and drops what it sends until the tunnel rekeys, minutes later; a new
+    /// tunnel handshakes at once.
+    public func reset() async {
+        let old = client; client = nil
+        await old?.close()
+    }
+
+    /// Resets the tunnel if it is still `used`, after a failure on it.
+    func reset(_ used: TailcatClient) async {
+        guard client === used else { return }
+        await reset()
+    }
+
     func connection() async throws -> TailcatClient {
         guard !closed else { throw CancellationError() }
         if let client { return client }
@@ -79,7 +97,24 @@ public actor TailcatHTTPTransport: DirectTransport {
         guard ["GET", "POST", "PATCH", "PUT", "DELETE"].contains(method), Self.safe(path: path, credential: credential, headers: headers) else { throw DirectPairingError.invalidResponse }
         let client = try await connection()
         let port = port
-        return try await withThrowingTaskGroup(of: DirectHTTPResponse.self) { group in
+        do {
+            return try await exchange(client: client, port: port, method: method, path: path, credential: credential, body: body, headers: headers)
+        } catch {
+            if Self.lostTunnel(error) { await reset(client) }
+            throw error
+        }
+    }
+
+    /// Whether `error` says the tunnel carried nothing back (a timeout, a
+    /// stream it could not open), rather than a refused or garbled answer.
+    nonisolated static func lostTunnel(_ error: Error) -> Bool {
+        if error is CancellationError { return false }
+        if let error = error as? DirectPairingError { return error == .unavailable }
+        return true
+    }
+
+    private nonisolated func exchange(client: TailcatClient, port: UInt16, method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+        try await withThrowingTaskGroup(of: DirectHTTPResponse.self) { group in
             group.addTask {
                 let stream = try await client.openTCP(port: port)
                 return try await withTaskCancellationHandler {

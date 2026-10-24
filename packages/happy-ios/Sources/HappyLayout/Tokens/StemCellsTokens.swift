@@ -42,6 +42,19 @@ extension Palette {
     /// A recording's play button over its first frame, and its glyph.
     public static let stemCellsPlayFill = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.55), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.55))
     public static let stemCellsPlayGlyph = ColorToken("#ffffff")
+    /// A result card (`ResultCard`): its fill (`--surface`), its chip
+    /// (`--surface-selected`), its title (`--text`) and its glyph, detail and
+    /// chevron (`--text-secondary`); its ring is `stemCellsDivider`.
+    public static let stemCellsCardFill = ColorToken("#ffffff", "#212121")
+    public static let stemCellsCardChip = ColorToken("#eaeaea", "#2c2c2e")
+    public static let stemCellsCardTitle = ColorToken("#000000", "#ffffff")
+    public static let stemCellsCardDetail = ColorToken("#49454f", "#cac4d0")
+    /// A media layout's text tones (`data-tone`): default, muted, accent.
+    public static let stemCellsTreeText = ColorToken("#000000", "#ffffff")
+    public static let stemCellsTreeMuted = ColorToken("#49454f", "#cac4d0")
+    public static let stemCellsTreeAccent = ColorToken("#2baccc")
+    /// A picture that could not be read: its quiet glyph over the placeholder.
+    public static let stemCellsMediaFailed = ColorToken("#49454f", "#cac4d0")
     /// A picture opened on its own: black behind it, white controls.
     public static let stemCellsViewerGround = ColorToken("#000000")
     public static let stemCellsViewerControl = ColorToken("#ffffff")

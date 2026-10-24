@@ -1658,8 +1658,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         case .copyMenu, .selectable, .markdownSelectable:
             // Long presses; see `chatList(_:hold:frame:at:)`.
             break
-        case .openMedia:
-            // Only Stem Cells conversations show media.
+        case .openMedia, .openArtifact:
+            // Only Stem Cells conversations show media and artifacts.
             break
         }
     }

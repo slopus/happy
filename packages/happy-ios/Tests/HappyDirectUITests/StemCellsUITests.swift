@@ -64,7 +64,8 @@ final class StemCellsUITests: XCTestCase {
     /// the bars, the dock and the home indicator.
     private func bringIntoView(_ element: XCUIElement) {
         let height = app.frame.height
-        for _ in 0..<8 {
+        // Enough for a transcript many runs long.
+        for _ in 0..<24 {
             let y = element.frame.midY
             if y > height * 0.2, y < height * 0.6 { break }
             let shift = min(max((y - height * 0.4) / height, -0.35), 0.35)
@@ -607,6 +608,232 @@ final class StemCellsUITests: XCTestCase {
         while Date() < deadline, working.exists { pause(1) }
         pause(2)
         capture("media-photo-answered")
+    }
+
+    /// What an agent arranges and publishes: a `present_files` layout with
+    /// a caption, a document's card, a layout block in its reply, and an
+    /// artifact's card that opens it; then a file in Quick Look.
+    func testLayouts() {
+        home()
+        pause(1.5)
+        let bot = row("space", ProcessInfo.processInfo.environment["STEM_LAYOUT_ROW"] ?? "Chef")
+        XCTAssertTrue(bot.waitForExistence(timeout: 5))
+        bringIntoView(bot)
+        bot.tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        pause(3)
+        let tiles = app.descendants(matching: .any).matching(identifier: "stem-media")
+        let cards = app.descendants(matching: .any).matching(identifier: "stem-card")
+        let artifact = cards.matching(NSPredicate(format: "label == %@", "Open Pantry notes")).firstMatch
+        let file = cards.matching(NSPredicate(format: "label ENDSWITH %@", ".csv")).firstMatch
+        let working = app.descendants(matching: .any)["stem-working"]
+        if !artifact.exists || tiles.count < 3 {
+            composer.tap()
+            composer.typeText(
+                "In a temporary folder make three 800x500 PNG swatches with python or ffmpeg: tomato.png (red), basil.png (green), lemon.png (yellow), "
+                    + "and pantry.csv with three lines of made-up stock. Then call present_files once with all four files and this layout argument: "
+                    + "<figure style=\"display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px\"><img src=\"TOMATO\"><img src=\"BASIL\"><img src=\"LEMON\">"
+                    + "<figcaption style=\"grid-column: span 3; tone: muted\">Three swatches, one <strong>per</strong> ingredient</figcaption></figure> "
+                    + "(put the real paths in each src). Then use create_artifact to publish a markdown artifact titled Pantry notes with a heading and two bullet points. "
+                    + "End your reply with exactly this HTML block on its own lines, paths filled in: "
+                    + "<div style=\"display: flex; gap: 12px\"><img src=\"TOMATO\" style=\"width: 120px\"><img src=\"LEMON\" style=\"width: 120px\"></div>"
+            )
+            pause(1)
+            app.buttons["Send"].tap()
+            if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
+            let deadline = Date().addingTimeInterval(420)
+            while Date() < deadline, !artifact.exists || tiles.count < 5 || working.exists { pause(2) }
+        }
+        XCTAssertGreaterThanOrEqual(tiles.count, 5, "the layout and the block should show five pictures")
+        XCTAssertTrue(artifact.exists, "no artifact card")
+        XCTAssertTrue(file.exists, "no file card")
+        let loaded = NSPredicate(format: "value == %@", "loaded")
+        for index in 0..<tiles.count { expectation(for: loaded, evaluatedWith: tiles.element(boundBy: index)) }
+        waitForExpectations(timeout: 60)
+        // The keyboard down: dragged away from the transcript.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        pause(1)
+        bringIntoView(tiles.element(boundBy: tiles.count - 5))
+        pause(1.5)
+        capture("layout-tree")
+        for index in 0..<tiles.count {
+            let tile = tiles.element(boundBy: index)
+            print("STEM_TILE \(index) \(tile.label) \(tile.frame)")
+        }
+        print("STEM_CARD file \(file.frame) artifact \(artifact.frame)")
+        bringIntoView(tiles.element(boundBy: tiles.count - 1))
+        pause(1.5)
+        capture("layout-block")
+
+        bringIntoView(artifact)
+        pause(1)
+        artifact.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-artifact-document"].waitForExistence(timeout: 15), "the artifact never opened")
+        pause(2)
+        capture("layout-artifact")
+        app.navigationBars.buttons.firstMatch.tap()
+        pause(1.5)
+
+        bringIntoView(file)
+        pause(1)
+        file.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        pause(4)
+        capture("layout-file")
+        for name in ["Done", "Close"] where app.buttons[name].exists {
+            app.buttons[name].tap()
+            break
+        }
+        pause(1.5)
+    }
+
+    /// Pictures that failed while the computer was away load once it is back:
+    /// every picture fails at first (`STEM_MEDIA_FAIL_UNTIL_RETRY`), the
+    /// driver stops the daemon and starts it again, and the reconnect asks
+    /// for them once more.
+    func testMediaRetry() {
+        app.terminate()
+        app.launchEnvironment["STEM_MEDIA_FAIL_UNTIL_RETRY"] = "1"
+        app.launch()
+        home()
+        pause(1.5)
+        let bot = row("space", ProcessInfo.processInfo.environment["STEM_LAYOUT_ROW"] ?? "Chef")
+        XCTAssertTrue(bot.waitForExistence(timeout: 5))
+        bringIntoView(bot)
+        bot.tap()
+        let tiles = app.descendants(matching: .any).matching(identifier: "stem-media")
+        let failed = tiles.matching(NSPredicate(format: "value == %@", "failed"))
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline, failed.count == 0 { pause(0.5) }
+        XCTAssertGreaterThan(failed.count, 0, "nothing failed")
+        app.swipeDown(velocity: .slow)
+        bringIntoView(failed.firstMatch)
+        pause(1.5)
+        capture("retry-failed")
+        print("STEM_STOP_DAEMON")
+        pause(6)
+        print("STEM_START_DAEMON")
+        let back = Date().addingTimeInterval(90)
+        while Date() < back, failed.count > 0 { pause(0.5) }
+        XCTAssertEqual(failed.count, 0, "pictures stayed failed after the computer came back")
+        pause(2)
+        capture("retry-loaded")
+    }
+
+    /// A long recording plays while it streams, a range at a time; the run
+    /// reads the ranges from the app's log (`stem-media`). The file is the
+    /// one the driver made (`STEM_VIDEO_PATH`).
+    func testStreaming() {
+        home()
+        pause(1.5)
+        let bot = row("space", ProcessInfo.processInfo.environment["STEM_LAYOUT_ROW"] ?? "Chef")
+        XCTAssertTrue(bot.waitForExistence(timeout: 5))
+        bringIntoView(bot)
+        bot.tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        pause(3)
+        let video = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label ENDSWITH %@", "stem-media", "countdown.mp4"))
+        let working = app.descendants(matching: .any)["stem-working"]
+        if video.count == 0 {
+            let path = ProcessInfo.processInfo.environment["STEM_VIDEO_PATH"] ?? ""
+            composer.tap()
+            composer.typeText("Please present the file \(path) to me inline with present_files, and say nothing else.")
+            pause(1)
+            app.buttons["Send"].tap()
+            let deadline = Date().addingTimeInterval(240)
+            while Date() < deadline, video.count == 0 || working.exists { pause(2) }
+        }
+        XCTAssertGreaterThan(video.count, 0, "the recording was never presented")
+        let tile = video.element(boundBy: video.count - 1)
+        expectation(for: NSPredicate(format: "value == %@", "loaded"), evaluatedWith: tile)
+        waitForExpectations(timeout: 60)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        pause(1)
+        bringIntoView(tile)
+        pause(1)
+        print("STEM_PLAY")
+        tile.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        pause(8)
+        capture("streaming-playing")
+        // Halfway along: the player asks for a range far ahead.
+        let scrubber = app.sliders.firstMatch
+        if !scrubber.exists { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        if scrubber.waitForExistence(timeout: 3) {
+            print("STEM_SEEK")
+            scrubber.adjust(toNormalizedSliderPosition: 0.75)
+            pause(6)
+            capture("streaming-seeked")
+        }
+    }
+
+    /// A file larger than one answer may hold (8 MiB) opens in Quick Look,
+    /// read a range at a time. The file is the one the driver made
+    /// (`STEM_FILE_PATH`).
+    func testLargeFile() {
+        home()
+        pause(1.5)
+        let bot = row("space", ProcessInfo.processInfo.environment["STEM_LAYOUT_ROW"] ?? "Chef")
+        XCTAssertTrue(bot.waitForExistence(timeout: 5))
+        bringIntoView(bot)
+        bot.tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        pause(3)
+        let path = ProcessInfo.processInfo.environment["STEM_FILE_PATH"] ?? ""
+        let name = (path as NSString).lastPathComponent
+        let card = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label == %@", "stem-card", "Open \(name)"))
+        let working = app.descendants(matching: .any)["stem-working"]
+        if card.count == 0 {
+            composer.tap()
+            composer.typeText("Please present the file \(path) to me inline with present_files, and say nothing else.")
+            pause(1)
+            app.buttons["Send"].tap()
+            let deadline = Date().addingTimeInterval(240)
+            while Date() < deadline, card.count == 0 || working.exists { pause(2) }
+        }
+        XCTAssertGreaterThan(card.count, 0, "the file was never presented")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        pause(1)
+        let open = card.element(boundBy: card.count - 1)
+        bringIntoView(open)
+        pause(1)
+        let start = Date()
+        open.tap()
+        // Quick Look draws in its own process: what shows here is that it
+        // covers the conversation, and that no alert says the read failed.
+        let covered = Date().addingTimeInterval(60)
+        while Date() < covered, composer.isHittable, app.alerts.count == 0 { pause(0.2) }
+        XCTAssertEqual(app.alerts.count, 0, "the file could not be read")
+        XCTAssertFalse(composer.isHittable, "Quick Look never showed the file")
+        print("STEM_FILE_OPENED \(String(format: "%.1f", Date().timeIntervalSince(start)))s")
+        pause(3)
+        capture("large-file")
+    }
+
+    /// Opening a conversation with pictures twice: cold, read over the
+    /// paired connection, then warm, from what the first open kept. Each
+    /// open prints how long its pictures took (`STEM_OPEN`).
+    func testMediaColdWarm() {
+        home()
+        pause(1.5)
+        let bot = row("space", ProcessInfo.processInfo.environment["STEM_LAYOUT_ROW"] ?? "Chef")
+        XCTAssertTrue(bot.waitForExistence(timeout: 5))
+        bringIntoView(bot)
+        let loaded = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND value == %@", "stem-media", "loaded"))
+        let tiles = app.descendants(matching: .any).matching(identifier: "stem-media")
+        for pass in ["cold", "warm"] {
+            let start = Date()
+            bot.tap()
+            let deadline = Date().addingTimeInterval(30)
+            while Date() < deadline, tiles.count == 0 || loaded.count < tiles.count { pause(0.1) }
+            print("STEM_OPEN \(pass) \(String(format: "%.2f", Date().timeIntervalSince(start)))s \(loaded.count)/\(tiles.count)")
+            XCTAssertGreaterThan(loaded.count, 0)
+            pause(2)
+            capture("open-\(pass)")
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            pause(2)
+        }
     }
 
     /// The working line through a real turn: the loader, the clock and the

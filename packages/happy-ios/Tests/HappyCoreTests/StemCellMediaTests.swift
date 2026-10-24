@@ -30,22 +30,6 @@ final class StemCellMediaTests: XCTestCase {
         }
     }
 
-    func testABlockKeepsItsPicturesColumnsAndWords() {
-        let layout = StemCellMediaBlocks.layout("""
-        <figure style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px">
-          <img src="a.png" alt="A"><img src='b.png'>
-          <figcaption>Before &amp; after</figcaption>
-        </figure>
-        """, complete: true)
-        XCTAssertEqual(layout.sources, ["a.png", "b.png"])
-        XCTAssertEqual(layout.columns, 3)
-        XCTAssertEqual(layout.caption, "Before & after")
-        XCTAssertEqual(StemCellMediaBlocks.columns("display: grid; grid-template-columns: 1fr 1fr"), 2)
-        XCTAssertEqual(StemCellMediaBlocks.columns("display: grid; grid-template-columns: minmax(100px, 1fr) 2fr 1fr 1fr"), 3)
-        XCTAssertEqual(StemCellMediaBlocks.columns("display: flex; flex-wrap: wrap"), 2)
-        XCTAssertEqual(StemCellMediaBlocks.columns(""), 1)
-    }
-
     private func image(_ path: String, index: Int = 0) -> StemCellMedia {
         let item = AgentWire.MediaItem(kind: "image", name: path, mimeType: "image/png", size: 10, width: 100, height: 50, thumbhash: nil, scale: nil, source: .init(path: path, absolutePath: "/w/" + path))
         return StemCellMedia(toolCallId: "t1", index: index, item: item)
@@ -57,9 +41,12 @@ final class StemCellMediaTests: XCTestCase {
         let pieces = StemCellConversation.pieces(text, shown: shown, streaming: false)
         XCTAssertEqual(pieces.count, 3)
         XCTAssertEqual(pieces[0], .text("Look:"))
-        guard case .gallery(let media, let columns) = pieces[1] else { return XCTFail("no gallery") }
+        guard case .tree(let media, let tree) = pieces[1] else { return XCTFail("no tree") }
         XCTAssertEqual(media.map(\.item.name), ["a.png", "b.png"])
-        XCTAssertEqual(columns, 1)
+        XCTAssertEqual(tree.root, [.element(tag: "div", style: [:], children: [.item(index: 0, alt: nil, style: [:]), .item(index: 1, alt: nil, style: [:])])])
+        // A block that lost content to a limit is the Markdown it is.
+        let long = "<div><img src=\"a.png\">" + String(repeating: "<span>x</span>", count: 600) + "</div>"
+        XCTAssertEqual(StemCellConversation.pieces(long, shown: shown, streaming: false), [.text(long)])
         XCTAssertEqual(pieces[2], .text("Nice."))
         // Naming nothing shown: the block is the Markdown it is.
         let none = StemCellConversation.pieces("<div><img src=\"x.png\"></div>", shown: shown, streaming: false)
@@ -75,6 +62,6 @@ final class StemCellMediaTests: XCTestCase {
         XCTAssertEqual(StemCellConversation.columns(nil, count: 3), 0)
         XCTAssertEqual(StemCellConversation.columns(.object(["type": .string("columns"), "columns": .number(1)]), count: 3), 1)
         XCTAssertEqual(StemCellConversation.columns(.object(["type": .string("columns"), "columns": .number(2)]), count: 1), 2)
-        XCTAssertEqual(StemCellConversation.columns(.object(["type": .string("tree"), "root": .array([])]), count: 4), 1)
+        XCTAssertEqual(StemCellConversation.columns(.object(["type": .string("tree"), "root": .array([])]), count: 4), 0)
     }
 }

@@ -52,17 +52,33 @@ actor StemCellChatPlanner {
             // apart, no copy button (a long press selects instead); its
             // pictures and recordings where they were presented.
             var parts: [StemCellMessageLayout.Part] = []
-            var markdowns: [MarkdownPiece] = []
-            var galleries: [[StemCellMedia]] = []
+            enum Draft {
+                case markdown(MarkdownPiece)
+                case gallery([StemCellMedia])
+                case tree(StemCellChatMediaPlan.Tree)
+                case card(StemCellChatMediaPlan.Card)
+            }
+            var drafts: [Draft] = []
             for piece in item.pieces {
                 switch piece {
                 case .text(let text):
                     let markdown = MarkdownPiece(StemCellMarkdown.joiningSoftBreaks(text), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment)
-                    markdowns.append(markdown)
+                    drafts.append(.markdown(markdown))
                     parts.append(.markdown(markdown.blocks))
                 case .gallery(let media, let columns):
-                    galleries.append(media)
+                    drafts.append(.gallery(media))
                     parts.append(.media(media.map(Self.layoutItem), columns: columns))
+                case .tree(let media, let tree):
+                    let planned = StemCellChatMediaPlan.tree(media, tree, environment: environment)
+                    drafts.append(.tree(planned))
+                    parts.append(.tree(planned.boxes))
+                case .file(let media):
+                    drafts.append(.card(StemCellChatMediaPlan.card(file: media)))
+                    parts.append(.card)
+                case .artifact(let artifact):
+                    // Stories: a `story` artifact is drawn by its own card, not this one.
+                    drafts.append(.card(StemCellChatMediaPlan.card(artifact: artifact)))
+                    parts.append(.card)
                 case .picture:
                     break
                 }
@@ -70,20 +86,38 @@ actor StemCellChatPlanner {
             let layout = StemCellMessageLayout.agent(width: width, maxContentWidth: key.maxContentWidth, parts: parts)
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
-            var (markdownIndex, galleryIndex) = (0, 0)
-            for placed in layout.parts {
-                switch placed {
-                case .markdown(let placed, let origin):
-                    let drawn = markdowns[markdownIndex].draw(placed, origin: origin)
-                    markdownIndex += 1
+            func media(_ media: StemCellMedia, _ frame: CGRect) {
+                items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.StemCells.media(isVideo: media.isVideo, name: media.item.name)), frame: frame))
+                hits.insert(ChatHit(frame: frame, action: .openMedia(media.key)), at: 0)
+            }
+            func card(_ card: StemCellChatMediaPlan.Card, _ frame: CGRect) {
+                let drawn = StemCellChatMediaPlan.draw(card, in: frame, environment: environment)
+                items += drawn.items
+                hits.insert(drawn.hit, at: 0)
+            }
+            for (placed, draft) in zip(layout.parts, drafts) {
+                switch (placed, draft) {
+                case (.markdown(let placed, let origin), .markdown(let markdown)):
+                    let drawn = markdown.draw(placed, origin: origin)
                     items += drawn.items
                     hits += drawn.hits
-                case .media(let frames):
-                    for (media, frame) in zip(galleries[galleryIndex], frames) {
-                        items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.StemCells.media(isVideo: media.isVideo, name: media.item.name)), frame: frame))
-                        hits.insert(ChatHit(frame: frame, action: .openMedia(media.key)), at: 0)
+                case (.media(let frames), .gallery(let gallery)):
+                    for (one, frame) in zip(gallery, frames) { media(one, frame) }
+                case (.tree(let tree, let origin), .tree(let planned)):
+                    for (index, frame) in tree.items.sorted(by: { $0.key < $1.key }) {
+                        let one = planned.media[index]
+                        let placed = frame.offsetBy(dx: origin.x, dy: origin.y)
+                        if one.isVisual { media(one, placed) } else { card(StemCellChatMediaPlan.card(file: one), placed) }
                     }
-                    galleryIndex += 1
+                    for (id, frame) in tree.texts.sorted(by: { $0.key < $1.key }) {
+                        guard let text = planned.texts[id] else { continue }
+                        let placed = frame.offsetBy(dx: origin.x, dy: origin.y)
+                        items.append(.text(text.layout(for: placed), placed))
+                    }
+                case (.card(let frame), .card(let drafted)):
+                    card(drafted, frame)
+                default:
+                    break
                 }
             }
             // Each picture and recording reads as itself (`ChatMediaView`).

@@ -140,6 +140,8 @@ enum ChatRowAction: Equatable, Sendable {
     case mermaidHeight(row: String, index: Int, height: CGFloat)
     /// A Stem Cells picture or recording, opened whole by its `ChatMedia.key`.
     case openMedia(String)
+    /// A Stem Cells artifact's card.
+    case openArtifact(StemCellArtifact)
 
     // Long presses
 

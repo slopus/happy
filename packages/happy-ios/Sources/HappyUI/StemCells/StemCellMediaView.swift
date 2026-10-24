@@ -23,7 +23,9 @@ protocol ChatMediaSource: AnyObject {
 /// Desktop's MediaImageTile and MediaVideoTile: the thumbhash in
 /// `surface-pressed`, the picture faded in over it (160 ms), a hairline
 /// over the whole tile and corners rounded 8. A recording shows its first
-/// frame under a play button; a tap plays it.
+/// frame under a play button; a tap plays it. A picture that failed keeps
+/// its placeholder under a quiet glyph and is asked for again when the
+/// computer is back (`StemCellMediaLoader.retry`).
 final class ChatMediaView: UIView {
     static let radius: CGFloat = 8
     static let fade: TimeInterval = 0.16
@@ -34,6 +36,8 @@ final class ChatMediaView: UIView {
     private let outline = UIView()
     private let play = UIView()
     private let playIcon = UIImageView()
+    private let failure = UIImageView()
+    private var failed = false
     private var media: ChatMedia?
     private var loadedPixels = 0
     private var task: Task<Void, Never>?
@@ -62,6 +66,12 @@ final class ChatMediaView: UIView {
         playIcon.tintColor = UIColor(Palette.stemCellsPlayGlyph)
         play.addSubview(playIcon)
         addSubview(play)
+        failure.contentMode = .center
+        failure.image = .icon(.ionicons("image-outline"), size: Self.playIconSize - 2)
+        failure.tintColor = UIColor(Palette.stemCellsMediaFailed)
+        failure.isHidden = true
+        addSubview(failure)
+        NotificationCenter.default.addObserver(self, selector: #selector(retry(_:)), name: StemCellMediaLoader.retry, object: nil)
         outline.isUserInteractionEnabled = false
         outline.layer.cornerRadius = Self.radius
         outline.layer.cornerCurve = .continuous
@@ -85,6 +95,7 @@ final class ChatMediaView: UIView {
         placeholderTask = nil
         self.media = media
         loadedPixels = 0
+        setFailed(false)
         placeholder.image = nil
         picture.image = nil
         play.isHidden = media?.isVideo != true
@@ -106,6 +117,7 @@ final class ChatMediaView: UIView {
         picture.frame = bounds
         outline.frame = bounds
         play.frame = StemCellMediaFlow.playButton(in: bounds.size)
+        failure.frame = play.frame
         playIcon.frame = play.bounds
         loadIfNeeded()
     }
@@ -138,14 +150,30 @@ final class ChatMediaView: UIView {
             guard !Task.isCancelled, let self, self.media == media else { return }
             self.task = nil
             guard let image else {
+                // Not again until asked: the computer may be away.
                 self.loadedPixels = pixels
+                if self.picture.image == nil { self.setFailed(true) }
                 return
             }
             self.show(image, pixels: pixels, fade: true)
         }
     }
 
+    @objc private func retry(_ notification: Notification) {
+        guard failed, let source = source(), notification.object as AnyObject? === source else { return }
+        setFailed(false)
+        loadedPixels = 0
+        loadIfNeeded()
+    }
+
+    private func setFailed(_ value: Bool) {
+        failed = value
+        failure.isHidden = !value || media?.isVideo == true
+        if value { accessibilityValue = Strings.StemCells.mediaFailed } else if picture.image == nil { accessibilityValue = Strings.StemCells.mediaLoading }
+    }
+
     private func show(_ image: UIImage, pixels: Int, fade: Bool) {
+        setFailed(false)
         let first = picture.image == nil
         loadedPixels = pixels
         picture.image = image

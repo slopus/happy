@@ -128,6 +128,62 @@ extension Strings {
         /// A tile's accessibility value, which UI tests wait on.
         public static let mediaLoading = "loading"
         public static let mediaLoaded = "loaded"
+        public static let mediaFailed = "failed"
+
+        // Files and artifacts a tool showed, as desktop's result cards.
+        /// What kind of file a presented item is, in a word, from its media type.
+        public static func fileKind(kind: String, mimeType: String) -> String {
+            if mimeType == "application/pdf" { return "PDF" }
+            if kind == "document" { return "Document" }
+            let parts = mimeType.split(separator: "/", maxSplits: 1).map(String.init)
+            switch parts.first {
+            case "image": return "Image"
+            case "video": return "Video"
+            case "audio": return "Audio"
+            case "text" where parts.count > 1: return parts[1] == "plain" ? "Text" : parts[1].uppercased()
+            default: return "File"
+            }
+        }
+
+        /// A byte count in the unit a person reads it in (`artifactSizeText`).
+        public static func size(_ bytes: Double) -> String {
+            func tenth(_ value: Double) -> String {
+                let rounded = (value * 10).rounded() / 10
+                return rounded == rounded.rounded() ? String(Int(rounded)) : String(rounded)
+            }
+            if bytes < 1024 { return "\(Int(bytes)) B" }
+            if bytes < 1024 * 1024 { return "\(tenth(bytes / 1024)) KB" }
+            if bytes < 1024 * 1024 * 1024 { return "\(tenth(bytes / (1024 * 1024))) MB" }
+            return "\(tenth(bytes / (1024 * 1024 * 1024))) GB"
+        }
+
+        public static func fileDetail(kind: String, mimeType: String, size: Double?) -> String {
+            [fileKind(kind: kind, mimeType: mimeType), size.map { self.size($0) }].compactMap { $0 }.joined(separator: " · ")
+        }
+
+        public static func artifactKind(_ type: String) -> String {
+            switch type {
+            case "markdown": "Markdown"
+            case "html": "Web page"
+            case "image": "Image"
+            case "image_series": "Image series"
+            case "video": "Video"
+            case "document": "Document"
+            default: "Artifact"
+            }
+        }
+
+        /// A creation's card names its kind; a change's, the version it made.
+        public static func artifactDetail(type: String, version: Int) -> String {
+            version == 1 ? artifactKind(type) : "\(artifactKind(type)) · Version \(version)"
+        }
+
+        public static let untitledArtifact = "Untitled artifact"
+        public static func open(_ title: String) -> String { "Open \(title)" }
+        public static let artifactDeleted = "This artifact was deleted."
+        public static let artifactUnavailable = "This artifact couldn’t be loaded. Check that your computer is on."
+        public static let artifactLive = "This page runs on your computer. Open it there."
+        public static let fileUnavailable = "This file couldn’t be loaded. Check that your computer is on."
 
         // Settings, from the computer's picture.
         public static let accounts = "Accounts"
