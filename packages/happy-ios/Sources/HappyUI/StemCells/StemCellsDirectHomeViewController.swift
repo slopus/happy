@@ -4,15 +4,17 @@ import HappyLayout
 import UIKit
 
 /// Home for a paired computer in development and preview builds: home's
-/// floating header over that computer's Stem Cells. The Happy mark opens
-/// settings (the computer, the accounts); search and the filter are the
-/// pill at the right, the filter at the far edge.
+/// floating header over that computer's Stem Cells. The computer's own
+/// picture at the left opens settings; its name is plain in the middle;
+/// search and the filter are the pill at the right, the filter at the far edge.
 final class StemCellsDirectHomeViewController: UIViewController {
     private let context: AppContext
     private let id: String
     private let header = HomeHeaderView()
     private let stemCells: StemCellsHomeViewController
     private var observation: AccountsObservation?
+    private var avatarKey: String?
+    private var avatarJob: Task<Void, Never>?
 
     init(context: AppContext, id: String) {
         self.context = context
@@ -66,10 +68,38 @@ final class StemCellsDirectHomeViewController: UIViewController {
         }
     }
 
+    /// The computer's name, plain in the middle, and its own picture at
+    /// the left, round; Happy's mark where it has none. The picture last
+    /// shown stays until the next is decoded, so nothing flashes.
     private func updateTitle() {
         guard let account = context.account.direct.accounts.first(where: { $0.id == id }) else { return }
-        header.titleLabel.string = account.name
+        if header.titleLabel.string != account.name { header.titleLabel.string = account.name }
+        let key = "\(account.avatarETag ?? ""):\(account.avatar?.count ?? 0):\(account.thumbhash ?? "")"
+        guard key != avatarKey else { view.setNeedsLayout(); return }
+        avatarKey = key
+        let bytes = account.avatar
+        let thumbhash = account.thumbhash
+        avatarJob?.cancel()
+        avatarJob = Task { [weak self] in
+            let image = await Task.detached { () -> UIImage? in
+                if let bytes, let image = AccountPictureImages.decode(bytes)?.picture as? UIImage { return image }
+                return thumbhash.flatMap { AccountPictureImages.placeholder($0)?.picture as? UIImage }
+            }.value
+            guard !Task.isCancelled, let self else { return }
+            self.showAvatar(image)
+        }
         view.setNeedsLayout()
+    }
+
+    private func showAvatar(_ image: UIImage?) {
+        if let image {
+            header.logo.image = image.withRenderingMode(.alwaysOriginal)
+            header.logo.contentMode = .scaleAspectFill
+        } else {
+            header.logo.image = UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
+            header.logo.contentMode = .scaleAspectFit
+        }
+        header.showsAccountAvatar = image != nil
     }
 
     override func viewDidLayoutSubviews() {
