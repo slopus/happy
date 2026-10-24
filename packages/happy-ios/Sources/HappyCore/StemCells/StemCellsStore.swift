@@ -158,6 +158,8 @@ public actor StemCellsStore {
     /// shows stays, and `start` resumes from the last cursor.
     public func pause() {
         following?.cancel(); following = nil
+        // Kept now rather than after the app may have been closed.
+        if let keeping { keeping.cancel(); self.keeping = nil; saveOffline() }
         if snapshot.live { snapshot.live = false; publish() }
     }
 
@@ -175,6 +177,7 @@ public actor StemCellsStore {
         loading?.cancel(); loading = nil
         placesReload?.cancel(); placesReload = nil
         attentionIdle?.cancel(); attentionIdle = nil
+        keeping?.cancel(); keeping = nil
         continuation.finish()
         await client.close()
     }
@@ -868,8 +871,11 @@ public actor StemCellsStore {
         publish()
     }
 
+    /// Kept only as the daemon has it: never while a hand or a write holds
+    /// the document (the rows may be ahead of it, or a rename not yet
+    /// taken); the publish that ends those keeps it then.
     private func saveOffline() {
-        guard let offline, let artifactId, let held else { return }
+        guard let offline, let artifactId, let held, writes == 0, !dragging, !stale, titleIntents.isEmpty else { return }
         let sidebar = StemCellsOfflineSnapshot.Sidebar(
             artifactId: artifactId, version: held.version, html: held.html,
             spaces: spaces.values.filter { $0.version > 0 }.sorted { $0.id < $1.id },

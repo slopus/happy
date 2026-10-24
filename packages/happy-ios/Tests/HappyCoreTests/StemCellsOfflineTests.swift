@@ -47,8 +47,34 @@ final class StemCellsOfflineTests: XCTestCase {
         let file = StemCellsOfflineFile(directory: directory)
         file.keepPicture(Data([1, 2, 3]), path: "/v0/bots/b1/avatar", thumbhash: "KZcG/N+=")
         XCTAssertEqual(file.picture("/v0/bots/b1/avatar", thumbhash: "KZcG/N+="), Data([1, 2, 3]))
-        // A new picture has a new hash: the old bytes are not it.
+        // A new picture has a new hash: the old bytes are not it, and
+        // keeping the new one drops the old.
         XCTAssertNil(file.picture("/v0/bots/b1/avatar", thumbhash: "other"))
-        XCTAssertEqual(file.pictureURL("/v0/b", thumbhash: "x/").lastPathComponent, "_2fv0_2fb_23x_2f")
+        file.keepPicture(Data([4]), path: "/v0/bots/b1/avatar", thumbhash: "other")
+        XCTAssertNil(file.picture("/v0/bots/b1/avatar", thumbhash: "KZcG/N+="))
+        XCTAssertEqual(file.picture("/v0/bots/b1/avatar", thumbhash: "other"), Data([4]))
+        let folder = file.pictureURL("/v0/bots/b1/avatar", thumbhash: "other").deletingLastPathComponent()
+        XCTAssertEqual(try? FileManager.default.contentsOfDirectory(atPath: folder.path).count, 1)
+        XCTAssertEqual(file.pictureURL("/v0/b", thumbhash: "x/").lastPathComponent.count, 32)
+    }
+
+    func testARemovedFolderStaysGoneWhateverWasOnItsWay() async {
+        let file = StemCellsOfflineFile(directory: directory)
+        await file.update { $0.config = "a" }
+        await file.flush()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
+        StemCellsOfflineFile.Gate.close(directory)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        // Late writes from the file that was open on it.
+        await file.update { $0.config = "b" }
+        await file.flush()
+        file.keepPicture(Data([1]), path: "/p", thumbhash: nil)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        // A computer paired again opens the folder afresh.
+        let again = StemCellsOfflineFile(directory: directory)
+        await again.update { $0.config = "c" }
+        await again.flush()
+        let kept = await StemCellsOfflineFile(directory: directory).read()
+        XCTAssertEqual(kept?.config, "c")
     }
 }

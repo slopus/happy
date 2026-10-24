@@ -1,4 +1,5 @@
 import Foundation
+import HappyCrypto
 import HappyWire
 
 /// What one paired computer last showed, kept on this phone so the app
@@ -41,13 +42,20 @@ public struct StemCellsOfflineSnapshot: Codable, Equatable, Sendable {
 
 /// The folder, and the one writer of its snapshot: every change is merged
 /// into what was last written and saved off the main thread, in order.
+///
+/// Every write to the folder goes through its gate, and removing the
+/// computer closes the gate and deletes the folder under the same lock: a
+/// write still on its way when the computer goes finds the gate shut and
+/// writes nothing, so nothing of a removed computer comes back.
 public actor StemCellsOfflineFile {
     public nonisolated let directory: URL
+    private nonisolated let gate: Gate
     private var contents: StemCellsOfflineSnapshot?
     private var saving: Task<Void, Never>?
 
     public init(directory: URL) {
         self.directory = directory
+        gate = Gate.open(directory)
     }
 
     /// The folder for a computer; nil where the system gives none.
@@ -57,9 +65,10 @@ public actor StemCellsOfflineFile {
             .appendingPathComponent(accountID, isDirectory: true)
     }
 
-    /// Forgets everything kept for a computer.
+    /// Forgets everything kept for a computer, and refuses what any file
+    /// still open on it would write later.
     public nonisolated static func remove(_ accountID: String) {
-        if let directory = directory(for: accountID) { try? FileManager.default.removeItem(at: directory) }
+        if let directory = directory(for: accountID) { Gate.close(directory) }
         removeLegacy(accountID)
     }
 
@@ -75,7 +84,7 @@ public actor StemCellsOfflineFile {
     /// What was kept, read once; nil when nothing was or it can't be read.
     public func read() -> StemCellsOfflineSnapshot? {
         if let contents { return contents }
-        guard let data = try? Data(contentsOf: snapshotURL),
+        guard !gate.isClosed, let data = try? Data(contentsOf: snapshotURL),
               let kept = try? JSONDecoder().decode(StemCellsOfflineSnapshot.self, from: data),
               kept.format == StemCellsOfflineSnapshot.format else { return nil }
         contents = kept
@@ -84,17 +93,21 @@ public actor StemCellsOfflineFile {
 
     /// Changes what is kept and writes it, after any write before it.
     public func update(_ change: @Sendable (inout StemCellsOfflineSnapshot) -> Void) {
+        guard !gate.isClosed else { return }
         var next = read() ?? StemCellsOfflineSnapshot()
         change(&next)
         guard next != contents else { return }
         contents = next
         let previous = saving
         let url = snapshotURL
+        let gate = gate
         saving = Task.detached(priority: .utility) {
             await previous?.value
             guard let data = try? JSONEncoder().encode(next) else { return }
-            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? data.write(to: url, options: .atomic)
+            gate.write {
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? data.write(to: url, options: .atomic)
+            }
         }
     }
 
@@ -107,20 +120,70 @@ public actor StemCellsOfflineFile {
 
     /// A picture's bytes as last read, by where it is served and its hash.
     public nonisolated func picture(_ path: String, thumbhash: String?) -> Data? {
-        try? Data(contentsOf: pictureURL(path, thumbhash: thumbhash))
+        guard !gate.isClosed else { return nil }
+        return try? Data(contentsOf: pictureURL(path, thumbhash: thumbhash))
     }
 
+    /// Keeps a picture, in place of any other kept from the same path: a
+    /// new avatar replaces the old one rather than piling up beside it.
     public nonisolated func keepPicture(_ data: Data, path: String, thumbhash: String?) {
         let url = pictureURL(path, thumbhash: thumbhash)
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        gate.write {
+            let folder = url.deletingLastPathComponent()
+            try? FileManager.default.removeItem(at: folder)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try? data.write(to: url, options: .atomic)
+        }
     }
 
-    /// A name safe on disk: the path and hash, letters and digits only.
+    /// `pictures/<path's digest>/<hash's digest>`: short, safe names, one
+    /// folder per path.
     nonisolated func pictureURL(_ path: String, thumbhash: String?) -> URL {
-        let key = "\(path)#\(thumbhash ?? "")".unicodeScalars.map { scalar in
-            CharacterSet.alphanumerics.contains(scalar) && scalar.isASCII ? String(scalar) : String(format: "_%02x", scalar.value)
-        }.joined()
-        return picturesURL.appendingPathComponent(key)
+        picturesURL.appendingPathComponent(Self.digest(path), isDirectory: true).appendingPathComponent(Self.digest(thumbhash ?? ""))
+    }
+
+    nonisolated static func digest(_ text: String) -> String {
+        Hashing.sha256(Data(text.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The one lock every write to a folder takes, shared by every file
+    /// open on that folder.
+    final class Gate: @unchecked Sendable {
+        private static let lock = NSLock()
+        nonisolated(unsafe) private static var gates: [URL: Gate] = [:] // under `lock`
+        private let lock = NSLock()
+        private var closed = false
+        private let directory: URL
+
+        private init(directory: URL) { self.directory = directory }
+
+        static func open(_ directory: URL) -> Gate {
+            lock.lock(); defer { lock.unlock() }
+            if let gate = gates[directory] { return gate }
+            let gate = Gate(directory: directory)
+            gates[directory] = gate
+            return gate
+        }
+
+        /// Shuts the folder's gate and deletes it; a later file opens a new one.
+        static func close(_ directory: URL) {
+            lock.lock()
+            let gate = gates.removeValue(forKey: directory) ?? Gate(directory: directory)
+            lock.unlock()
+            gate.lock.lock(); defer { gate.lock.unlock() }
+            gate.closed = true
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        var isClosed: Bool {
+            lock.lock(); defer { lock.unlock() }
+            return closed
+        }
+
+        func write(_ body: () -> Void) {
+            lock.lock(); defer { lock.unlock() }
+            guard !closed else { return }
+            body()
+        }
     }
 }
