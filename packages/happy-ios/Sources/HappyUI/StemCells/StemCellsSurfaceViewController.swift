@@ -236,7 +236,7 @@ final class StemCellsTodoRowView: UIView {
         if done { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
         label.attributedText = NSAttributedString(string: todo.text, attributes: attributes)
         accessibilityLabel = todo.text
-        accessibilityValue = done ? "done" : nil
+        accessibilityValue = done ? Strings.StemCells.todoDone : nil
         accessibilityIdentifier = "stem-todo"
     }
 

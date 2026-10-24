@@ -63,6 +63,8 @@ final class StemCellsDropTests: XCTestCase {
         XCTAssertNil(StemCellsDrop.after("happy-create", droppedBefore: nil, rows: rows))
         XCTAssertNil(StemCellsDrop.after("happy", droppedBefore: nil, rows: rows))
         XCTAssertNil(StemCellsDrop.after("a", droppedBefore: "nowhere", rows: rows))
+        // Nothing is set down against a row the phone doesn't draw.
+        XCTAssertNil(StemCellsDrop.after("c", droppedBefore: "happy-create", rows: rows))
         XCTAssertTrue(rows.filter(StemCellsDrop.isHidden).map(\.nodeId) == ["happy-search", "happy-create"])
     }
 }

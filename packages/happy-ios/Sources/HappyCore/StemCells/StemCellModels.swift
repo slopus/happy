@@ -118,7 +118,7 @@ public struct StemCellModelCatalog: Equatable, Sendable {
     /// effort is the model's own default.
     public func defaultMode() -> AgentWire.Mode {
         let declared = provider(defaultProviderId)
-        let declaredModel = declared?.models.first { $0.id == defaultModelId }
+        let declaredModel = declared?.isDisabled == false ? declared?.models.first { $0.id == defaultModelId } : nil
         let provider = declaredModel != nil ? declared : providers.first { !$0.isDisabled && !$0.hidden }
         let model = declaredModel ?? provider?.models.first
         return AgentWire.Mode(
@@ -135,7 +135,7 @@ public struct StemCellModelCatalog: Equatable, Sendable {
     /// model's own default, never one carried over that it may not support; a
     /// speed it doesn't offer is dropped.
     public func select(providerId: String?, modelId: String, effort: String? = nil, from current: AgentWire.Mode) -> AgentWire.Mode {
-        let providerId = providerId ?? providers.first { $0.models.contains { $0.id == modelId } }?.id ?? current.providerId
+        let providerId = providerId ?? providers.first { !$0.isDisabled && !$0.hidden && $0.models.contains { $0.id == modelId } }?.id ?? current.providerId
         let provider = provider(providerId)
         let model = provider?.models.first { $0.id == modelId }
         let effort = effort.flatMap { level in model?.efforts.contains(level) == false ? nil : level } ?? model?.defaultEffort ?? current.effort
@@ -174,7 +174,7 @@ public struct StemCellModelMenus: Equatable, Sendable {
         public var label: String
         public var accounts: [Account]
         /// The account whose models the service lists: the selected one when
-        /// it is this service's, else the first.
+        /// it is this service's, else the first that is switched on.
         public var account: String
 
         public var shown: Account? { accounts.first { $0.id == account } ?? accounts.first }
@@ -184,8 +184,10 @@ public struct StemCellModelMenus: Equatable, Sendable {
     public enum Notice: Equatable, Sendable {
         /// It still works; it is only kept out of the lists.
         case hidden
-        /// It no longer serves the conversation.
-        case unavailable(String)
+        /// It is no longer configured on the computer; its name.
+        case removed(String)
+        /// It is switched off, so nothing is sent to it; its name.
+        case off(String)
     }
 
     public var services: [Service]
@@ -210,21 +212,27 @@ public struct StemCellModelMenus: Equatable, Sendable {
             } else {
                 services.append(Service(id: provider.type, label: Self.serviceName(provider.type), accounts: [account], account: provider.id))
             }
+            // A switched-off account is listed, but a service opens on one that works.
+            if let index = services.firstIndex(where: { $0.id == provider.type }), !provider.isDisabled,
+               catalog.provider(services[index].account)?.isDisabled == true,
+               !services[index].accounts.contains(where: { $0.id == selection.providerId }) {
+                services[index].account = provider.id
+            }
         }
         let selected = catalog.provider(selection.providerId)
         // An account removed from the configuration still names its model.
-        if current == nil, selected == nil, let model = catalog.models.first(where: { $0.id == selection.modelId }) {
+        if current == nil, let model = catalog.models.first(where: { $0.id == selection.modelId }) {
             current = Self.choice(model, disabled: true)
         }
         self.services = services
         self.current = current
         let name = selected?.name ?? selection.providerId
-        if let selected, selected.enabled {
+        if let selected, !selected.isDisabled {
             notice = selected.hidden ? .hidden : nil
         } else if selected == nil {
-            notice = .unavailable("The \(name) account is no longer configured on this Happy Agent.")
+            notice = .removed(name)
         } else {
-            notice = .unavailable("The \(name) account is switched off, so nothing is sent to it.")
+            notice = .off(name)
         }
     }
 
@@ -283,8 +291,9 @@ public struct StemCellModelMenus: Equatable, Sendable {
 /// `happyAgentComposerModelUsageProject` for one `GET /v0/usage` entry.
 public struct StemCellAccountUsage: Equatable, Sendable {
     public struct Window: Equatable, Sendable {
-        /// "Week" or "Session".
-        public var label: String
+        public enum Kind: Equatable, Sendable { case week, session }
+
+        public var kind: Kind
         public var usedPercent: Double
         public var resetsAt: Date?
         public var capturedAt: Date?
@@ -332,15 +341,15 @@ public struct StemCellAccountUsage: Equatable, Sendable {
                 let full = all.filter { $0.used >= 100 }
                 blocking = full.isEmpty ? Array(all.sorted { $0.used > $1.used }.prefix(1)) : full
             }
-            func window(_ label: String, _ raw: Raw?) -> Window? {
+            func window(_ kind: Window.Kind, _ raw: Raw?) -> Window? {
                 raw.map { raw in
-                    Window(label: label, usedPercent: raw.used, resetsAt: raw.resets.map(date), capturedAt: raw.captured.map(date), blocking: blocking.contains(raw))
+                    Window(kind: kind, usedPercent: raw.used, resetsAt: raw.resets.map(date), capturedAt: raw.captured.map(date), blocking: blocking.contains(raw))
                 }
             }
             let resets = blocking.compactMap(\.resets).max()
             usage[providerId] = StemCellAccountUsage(
-                week: hasPlan ? window("Week", weekly) : nil,
-                session: hasPlan ? window("Session", fiveHour) : nil,
+                week: hasPlan ? window(.week, weekly) : nil,
+                session: hasPlan ? window(.session, fiveHour) : nil,
                 updatedAt: refreshedAt.map(date),
                 refreshing: refreshing,
                 refreshError: refreshError,

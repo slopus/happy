@@ -139,4 +139,9 @@ final class StemCellMediaLayoutTests: XCTestCase {
         XCTAssertEqual(alone.pictures, [CGRect(x: 166, y: 8, width: 100, height: 200), CGRect(x: 274, y: 8, width: 100, height: 200)])
         XCTAssertEqual(alone.size.height, 216)
     }
+
+    func testAPlayButtonSitsInTheMiddleOfItsTile() {
+        XCTAssertEqual(StemCellMediaFlow.playButton(in: CGSize(width: 380, height: 214)), CGRect(x: 166, y: 83, width: 48, height: 48))
+        XCTAssertEqual(StemCellMediaFlow.playButton(in: CGSize(width: 161, height: 161)), CGRect(x: 57, y: 57, width: 48, height: 48))
+    }
 }

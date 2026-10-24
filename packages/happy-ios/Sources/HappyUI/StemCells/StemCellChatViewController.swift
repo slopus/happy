@@ -47,7 +47,7 @@ final class StemCellChatViewController: UIViewController {
         self.spaceId = spaceId
         self.intro = intro
         opensFocused = creation != nil
-        conversation = StemCellConversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created)
+        conversation = StemCellConversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created, mode: creation == nil ? nil : session.models.newWorkMode)
         planner = StemCellChatPlanner(syntax: session.syntax)
         media = StemCellMediaLoader(client: session.client, agentId: agentId)
         let files = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("StemCells", isDirectory: true)
@@ -55,6 +55,13 @@ final class StemCellChatViewController: UIViewController {
         super.init(nibName: nil, bundle: nil)
         self.title = title
         navigationItem.largeTitleDisplayMode = .never
+        // New work's media is under the ID the daemon gives it.
+        if let created = creation?.created {
+            Task { [weak self] in
+                guard let id = try? await created.value else { return }
+                self?.media.agentId = id
+            }
+        }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -119,10 +126,6 @@ final class StemCellChatViewController: UIViewController {
         let conversation = conversation
         Task { await conversation.start() }
         watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
-        // New work goes with what the dock picked before it existed.
-        if opensFocused, let mode = session.models.newWorkMode {
-            Task { await conversation.setMode(mode) }
-        }
         modelsWatch = session.models.watch { [weak self] in self?.updateChips() }
         session.models.load()
         updateChips()
@@ -258,12 +261,17 @@ final class StemCellChatViewController: UIViewController {
             row.isAccessibilityElement = media.isEmpty
             if media.isEmpty {
                 row.accessibilityElements = nil
-            } else {
+            } else if let label = plan.accessibilityLabel, !label.isEmpty {
+                // The message covers its words, never its media.
                 let message = UIAccessibilityElement(accessibilityContainer: row)
-                message.accessibilityLabel = plan.accessibilityLabel
+                message.accessibilityLabel = label
                 message.accessibilityIdentifier = "stem-message"
-                message.accessibilityFrameInContainerSpace = CGRect(origin: .zero, size: plan.size)
+                message.accessibilityFrameInContainerSpace = plan.items.reduce(CGRect.null) { frame, item in
+                    item.wordsFrame.map { frame.union($0) } ?? frame
+                }
                 row.accessibilityElements = [message] + media
+            } else {
+                row.accessibilityElements = media
             }
         }
         for (id, row) in rowViews where !seen.contains(id) {
@@ -508,6 +516,18 @@ extension StemCellChatViewController: AgentInputCardDelegate {
 
 extension StemCellChatViewController: ChatMediaProviding {
     var chatMedia: ChatMediaSource? { media }
+}
+
+private extension ChatDrawItem {
+    /// Where a message's words are drawn: its bubble, text and blocks, not
+    /// its pictures.
+    var wordsFrame: CGRect? {
+        switch self {
+        case .box(let box): box.frame
+        case .text(_, let frame), .scroller(_, let frame, _, _), .mermaid(_, let frame), .webImage(_, let frame, _), .diff(_, let frame, _, _, _, _), .diffHeader(_, _, let frame): frame
+        default: nil
+        }
+    }
 }
 
 extension StemCellChatViewController: UIScrollViewDelegate {

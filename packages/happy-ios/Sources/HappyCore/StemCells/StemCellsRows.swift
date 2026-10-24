@@ -345,12 +345,13 @@ public enum StemCellsDrop {
     /// just above the drawn top-level row `before` (nil: below the last).
     /// A drop at the very top lands right after whatever hidden node sits
     /// before the first drawn row (Create), never before it. Nil when the
-    /// row can't move there.
+    /// row can't move there, or `before` is hidden. `rows` are all of them,
+    /// hidden ones included, so the anchor is the document's real neighbour.
     public static func after(_ moving: String, droppedBefore before: String?, rows: [StemCellsRow]) -> String?? {
         guard let row = rows.first(where: { $0.nodeId == moving }), canMove(row), row.depth == 0 else { return nil }
         let top = rows.filter { $0.depth == 0 && $0.nodeId != moving }
         guard let before else { return .some(top.last?.nodeId) }
-        guard let index = top.firstIndex(where: { $0.nodeId == before }) else { return nil }
+        guard let index = top.firstIndex(where: { $0.nodeId == before }), !isHidden(top[index]) else { return nil }
         return .some(index > 0 ? top[index - 1].nodeId : nil)
     }
 }

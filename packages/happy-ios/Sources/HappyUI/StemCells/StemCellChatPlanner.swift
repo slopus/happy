@@ -80,14 +80,14 @@ actor StemCellChatPlanner {
                     hits += drawn.hits
                 case .media(let frames):
                     for (media, frame) in zip(galleries[galleryIndex], frames) {
-                        items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: media.item.name), frame: frame))
+                        items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.StemCells.media(isVideo: media.isVideo, name: media.item.name)), frame: frame))
                         hits.insert(ChatHit(frame: frame, action: .openMedia(media.key)), at: 0)
                     }
                     galleryIndex += 1
                 }
             }
-            let names = galleries.joined().map { "\($0.isVideo ? Strings.StemCells.video : Strings.StemCells.picture): \($0.item.name)" }
-            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: ([text] + names).filter { !$0.isEmpty }.joined(separator: ", "))
+            // Each picture and recording reads as itself (`ChatMediaView`).
+            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: text)
         case .user:
             // Desktop's own message: the text as written, lines and all, in
             // the accent bubble at the right, its photos under it.
@@ -121,8 +121,8 @@ actor StemCellChatPlanner {
             }
             // On its way, or waiting for the agent to take it: dimmed, never moved.
             let alpha: CGFloat = item.delivery == .sending || item.delivery == .pending ? 0.6 : 1
-            let label = ([text] + pictures.map { _ in Strings.StemCells.picture }).filter { !$0.isEmpty }.joined(separator: ", ")
-            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, alpha: alpha, accessibilityLabel: failure ? "\(label), \(Strings.StemCells.sendFailed)" : label)
+            let label = [text, failure ? Strings.StemCells.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, alpha: alpha, accessibilityLabel: label)
         }
     }
 

@@ -31,7 +31,7 @@ final class StemCellPictureViewController: UIViewController, UIScrollViewDelegat
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
+        view.backgroundColor = UIColor(Palette.stemCellsViewerGround)
         scrollView.delegate = self
         scrollView.minimumZoomScale = 1
         scrollView.maximumZoomScale = 4
@@ -45,7 +45,7 @@ final class StemCellPictureViewController: UIViewController, UIScrollViewDelegat
         imageView.accessibilityIdentifier = "stem-picture-viewer"
         canvas.addSubview(imageView)
         closeButton.setImage(.icon(.ionicons("close"), size: 26), for: .normal)
-        closeButton.tintColor = .white
+        closeButton.tintColor = UIColor(Palette.stemCellsViewerControl)
         closeButton.accessibilityLabel = Strings.StemCells.close
         closeButton.addTarget(self, action: #selector(close), for: .touchUpInside)
         view.addSubview(closeButton)

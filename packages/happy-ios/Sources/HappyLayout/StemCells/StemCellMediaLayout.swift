@@ -47,6 +47,13 @@ public enum StemCellMediaFlow {
     public static let messageMaxWidth: CGFloat = 560
 
     public static let gap: CGFloat = 8
+    /// A recording's play button, a circle in the middle of its tile.
+    public static let playSize: CGFloat = 48
+
+    public static func playButton(in tile: CGSize) -> CGRect {
+        CGRect(x: ((tile.width - playSize) / 2).rounded(), y: ((tile.height - playSize) / 2).rounded(), width: playSize, height: playSize)
+    }
+
     /// The narrowest a picture is drawn because its height is capped.
     public static let minWidth: CGFloat = 160
     static let extremeWide: CGFloat = 3

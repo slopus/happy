@@ -1,5 +1,4 @@
 import ObjectiveC
-import UIKit
 import XCTest
 
 /// XCUITest waits up to a minute for the app to idle around every action,
@@ -431,15 +430,25 @@ final class StemCellsUITests: XCTestCase {
         }
         pause(1.5)
 
-        // A photo from the clipboard, with a question about it.
-        UIPasteboard.general.image = Self.swatch()
+        // A photo from the library (the newest: the swatch the run put
+        // there with `simctl addmedia`), with a question about it.
         app.buttons["Add a picture"].tap()
-        let paste = app.alerts.buttons["Paste from Clipboard"]
-        XCTAssertTrue(paste.waitForExistence(timeout: 3))
-        paste.tap()
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        if springboard.buttons["Allow Paste"].waitForExistence(timeout: 3) { springboard.buttons["Allow Paste"].tap() }
+        let library = app.alerts.buttons["Photo Library"]
+        XCTAssertTrue(library.waitForExistence(timeout: 3))
+        library.tap()
+        let photos = app.images.matching(NSPredicate(format: "label BEGINSWITH %@", "Photo"))
+        XCTAssertTrue(photos.firstMatch.waitForExistence(timeout: 10), "the photo picker never showed the library")
+        pause(1)
+        capture("media-library")
+        // Newest first.
+        photos.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        pause(0.8)
+        for name in ["Add", "Done"] where app.buttons[name].exists {
+            app.buttons[name].tap()
+            break
+        }
         pause(2)
+        capture("media-picked")
         composer.tap()
         composer.typeText("What colours and words are in this picture? Answer in one sentence, no tools.")
         pause(1)
@@ -452,18 +461,6 @@ final class StemCellsUITests: XCTestCase {
         while Date() < deadline, working.exists { pause(1) }
         pause(2)
         capture("media-photo-answered")
-    }
-
-    /// A picture to paste: a blue-to-orange band with words on it.
-    private static func swatch() -> UIImage {
-        let size = CGSize(width: 900, height: 600)
-        return UIGraphicsImageRenderer(size: size, format: { let format = UIGraphicsImageRendererFormat(); format.scale = 1; return format }()).image { context in
-            let colors = [UIColor.systemBlue.cgColor, UIColor.systemOrange.cgColor] as CFArray
-            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1])!
-            context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
-            let text = NSAttributedString(string: "Hello from the phone", attributes: [.font: UIFont.boldSystemFont(ofSize: 64), .foregroundColor: UIColor.white])
-            text.draw(at: CGPoint(x: 90, y: 260))
-        }
     }
 
     /// The header: the Happy mark opens settings, where the accounts are;

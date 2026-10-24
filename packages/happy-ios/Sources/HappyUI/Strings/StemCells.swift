@@ -88,6 +88,7 @@ extension Strings {
         // A Surface on the phone: read, and a todo added.
         public static let addTodo = "Add a todo"
         public static let noTodos = "Nothing here yet."
+        public static let todoDone = "done"
         public static let emptyDocument = "This document is empty."
         public static let openOnComputer = "Open this on your computer to use it."
 
@@ -95,8 +96,12 @@ extension Strings {
         public static let picture = "Picture"
         public static let video = "Video"
         public static let playVideo = "Play video"
+        public static func media(isVideo: Bool, name: String) -> String { "\(isVideo ? video : picture): \(name)" }
         public static let addPicture = "Add a picture"
         public static let close = "Close"
+        /// A tile's accessibility value, which UI tests wait on.
+        public static let mediaLoading = "loading"
+        public static let mediaLoaded = "loaded"
 
         // Settings, from the Happy mark.
         public static let thisComputer = "This computer"
@@ -112,6 +117,15 @@ extension Strings {
         public static let modelsNotConfigured = "Models not configured"
         public static let latestBenchmarks = "Latest benchmarks"
         public static let hiddenAccount = "Hidden account. It still works; it’s only kept out of the lists."
+        public static func accountRemoved(_ name: String) -> String { "The \(name) account is no longer configured on this Happy Agent." }
+        public static func accountOff(_ name: String) -> String { "The \(name) account is switched off, so nothing is sent to it." }
+        public static func window(_ kind: StemCellAccountUsage.Window.Kind) -> String {
+            switch kind {
+            case .week: "Week"
+            case .session: "Session"
+            }
+        }
+        public static func percentLeft(_ percent: Int) -> String { "\(percent)% left" }
         public static let usageUnknown = "Usage unknown"
         public static let updating = "Updating…"
         public static let couldntRefresh = "Couldn’t refresh"

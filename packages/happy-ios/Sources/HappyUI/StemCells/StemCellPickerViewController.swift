@@ -44,6 +44,8 @@ struct StemCellPickerContent: Equatable {
 final class StemCellPickerViewController: UIViewController {
     private var content: StemCellPickerContent
     private let onPick: (String) -> Void
+    /// However it closes: a pick, a swipe down or a tap outside.
+    var onClose: (() -> Void)?
     private let scrollView = UIScrollView()
     private let titleLabel = UILabel()
     private let noticeBox = UIView()
@@ -154,6 +156,14 @@ final class StemCellPickerViewController: UIViewController {
         view.setNeedsLayout()
     }
 
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed {
+            onClose?()
+            onClose = nil
+        }
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         scrollView.frame = view.bounds
@@ -244,7 +254,7 @@ final class StemCellPickerRowView: UIControl {
         isEnabled = !row.disabled
         alpha = row.disabled ? 0.4 : 1
         accessibilityIdentifier = "stem-pick:\(row.id.replacingOccurrences(of: "\n", with: ":"))"
-        accessibilityLabel = [row.title, row.gauge.map { "\($0.left)% left" }, row.subtitle].compactMap { $0 }.joined(separator: ", ")
+        accessibilityLabel = [row.title, row.gauge.map { Strings.StemCells.percentLeft($0.left) }, row.subtitle].compactMap { $0 }.joined(separator: ", ")
         accessibilityTraits = row.checked ? [.button, .selected] : row.disabled ? [.button, .notEnabled] : .button
     }
 

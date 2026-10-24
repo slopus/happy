@@ -35,6 +35,12 @@ extension Palette {
     public static let stemCellsUsageArc = ColorToken("#49454f", "#cac4d0")
     public static let stemCellsUsageLow = ColorToken("#ff9500", "#ffab00")
     public static let stemCellsUsageCritical = ColorToken("#ff3b30", "#ff453a")
+    /// A recording's play button over its first frame, and its glyph.
+    public static let stemCellsPlayFill = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.55), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.55))
+    public static let stemCellsPlayGlyph = ColorToken("#ffffff")
+    /// A picture opened on its own: black behind it, white controls.
+    public static let stemCellsViewerGround = ColorToken("#000000")
+    public static let stemCellsViewerControl = ColorToken("#ffffff")
 }
 
 public enum StemCellsMetrics {

@@ -124,17 +124,23 @@ public actor StemCellConversation {
     /// Pictures already decoded, by message and block.
     private var pictures: [String: Data] = [:]
     private var mode: AgentWire.Mode?
+    /// A mode the person chose here; what the daemon last ran with never
+    /// replaces it.
+    private var picked: AgentWire.Mode?
     private var defaultMode: Task<AgentWire.Mode, Error>?
     /// New work the daemon may not have made yet; sends wait for it.
     private var creation: Task<String, Error>?
     private var visible = false
 
-    public init(client: DirectAgentClient, store: StemCellsStore, agentId: String, creation: Task<String, Error>? = nil) {
+    public init(client: DirectAgentClient, store: StemCellsStore, agentId: String, creation: Task<String, Error>? = nil, mode: AgentWire.Mode? = nil) {
         self.client = client
         self.store = store
         self.agentId = agentId
         self.creation = creation
         (updates, continuation) = AsyncStream.makeStream(of: StemCellChatSnapshot.self, bufferingPolicy: .bufferingNewest(1))
+        picked = mode
+        self.mode = mode
+        snapshot.mode = mode
     }
 
     // MARK: Life
@@ -217,7 +223,7 @@ public actor StemCellConversation {
     }
 
     private func adopt(_ start: AgentWire.Bootstrap, _ history: AgentWire.MessagesResponse) {
-        mode = start.mode ?? mode
+        mode = picked ?? start.mode ?? mode
         snapshot.mode = mode
         if mode == nil, defaultMode == nil { defaultMode = Task { [client] in try await client.defaultMode() } }
         runs = []
@@ -420,6 +426,7 @@ public actor StemCellConversation {
 
     /// The next message goes with this model, account and effort.
     public func setMode(_ mode: AgentWire.Mode) {
+        picked = mode
         self.mode = mode
         snapshot.mode = mode
         publish()

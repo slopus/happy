@@ -27,7 +27,6 @@ protocol ChatMediaSource: AnyObject {
 final class ChatMediaView: UIView {
     static let radius: CGFloat = 8
     static let fade: TimeInterval = 0.16
-    static let playSize: CGFloat = 48
     static let playIconSize: CGFloat = 22
 
     private let placeholder = UIImageView()
@@ -56,11 +55,11 @@ final class ChatMediaView: UIView {
             view.clipsToBounds = true
             addSubview(view)
         }
-        play.backgroundColor = UIColor.black.withAlphaComponent(0.55)
-        play.layer.cornerRadius = Self.playSize / 2
+        play.backgroundColor = UIColor(Palette.stemCellsPlayFill)
+        play.layer.cornerRadius = StemCellMediaFlow.playSize / 2
         playIcon.contentMode = .center
         playIcon.image = .icon(.ionicons("play"), size: Self.playIconSize)
-        playIcon.tintColor = .white
+        playIcon.tintColor = UIColor(Palette.stemCellsPlayGlyph)
         play.addSubview(playIcon)
         addSubview(play)
         outline.isUserInteractionEnabled = false
@@ -91,7 +90,7 @@ final class ChatMediaView: UIView {
         play.isHidden = media?.isVideo != true
         accessibilityLabel = media?.label
         accessibilityTraits = media?.isVideo == true ? .button : .image
-        accessibilityValue = "loading"
+        accessibilityValue = Strings.StemCells.mediaLoading
         setNeedsLayout()
         loadIfNeeded()
     }
@@ -106,7 +105,7 @@ final class ChatMediaView: UIView {
         placeholder.frame = bounds
         picture.frame = bounds
         outline.frame = bounds
-        play.frame = CGRect(x: (bounds.width - Self.playSize) / 2, y: (bounds.height - Self.playSize) / 2, width: Self.playSize, height: Self.playSize)
+        play.frame = StemCellMediaFlow.playButton(in: bounds.size)
         playIcon.frame = play.bounds
         loadIfNeeded()
     }
@@ -150,7 +149,7 @@ final class ChatMediaView: UIView {
         let first = picture.image == nil
         loadedPixels = pixels
         picture.image = image
-        accessibilityValue = "loaded"
+        accessibilityValue = Strings.StemCells.mediaLoaded
         guard first, fade else {
             placeholder.image = nil
             return

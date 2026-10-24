@@ -16,6 +16,7 @@ final class StemCellModelState {
     }
     private var watchers: [UUID: () -> Void] = [:]
     private var loading: Task<Void, Never>?
+    private var refreshing: Task<Void, Never>?
 
     init(client: DirectAgentClient) {
         self.client = client
@@ -53,14 +54,21 @@ final class StemCellModelState {
     /// the computer has asked their services (desktop asks as its menu opens).
     func refreshUsage(_ accounts: [String]) {
         let client = client
-        Task { [weak self] in
+        refreshing?.cancel()
+        refreshing = Task { [weak self] in
             if let usage = try? await client.accountUsage() { self?.apply(usage) }
             try? await client.refreshAccountUsage(accounts)
             for _ in 0..<3 {
-                try? await Task.sleep(for: .seconds(2))
+                guard (try? await Task.sleep(for: .seconds(2))) != nil else { return }
                 if let usage = try? await client.accountUsage() { self?.apply(usage) }
             }
         }
+    }
+
+    /// The sheet closed: no more readings.
+    func stopRefreshing() {
+        refreshing?.cancel()
+        refreshing = nil
     }
 
     private func apply(_ usage: [String: StemCellAccountUsage]) {
@@ -177,7 +185,8 @@ enum StemCellModelPickers {
     private static func notice(_ menus: StemCellModelMenus) -> StemCellPickerContent.Notice? {
         switch menus.notice {
         case .hidden: .quiet(Strings.StemCells.hiddenAccount)
-        case .unavailable(let explanation): .warning(explanation)
+        case .removed(let name): .warning(Strings.StemCells.accountRemoved(name))
+        case .off(let name): .warning(Strings.StemCells.accountOff(name))
         case nil: nil
         }
     }
@@ -188,7 +197,7 @@ enum StemCellModelPickers {
         guard let usage else { return nil }
         var lines: [String] = []
         for window in [usage.week, usage.session].compactMap({ $0 }) {
-            lines.append(Strings.StemCells.usageWindow(window.label, left: window.left, resets: window.resetsAt.map { Strings.StemCells.dayTime($0, now: now) }))
+            lines.append(Strings.StemCells.usageWindow(Strings.StemCells.window(window.kind), left: window.left, resets: window.resetsAt.map { Strings.StemCells.dayTime($0, now: now) }))
         }
         if lines.isEmpty { lines.append(Strings.StemCells.usageUnknown) }
         if usage.limited {
@@ -206,7 +215,7 @@ enum StemCellModelPickers {
         let newest = max(usage.updatedAt ?? .distantPast, windows.compactMap(\.capturedAt).max() ?? .distantPast)
         for window in windows {
             if let captured = window.capturedAt, newest.timeIntervalSince(captured) > 600 {
-                lines.append(Strings.StemCells.windowAsOf(window.label, Strings.StemCells.clock(captured, now: now)))
+                lines.append(Strings.StemCells.windowAsOf(Strings.StemCells.window(window.kind), Strings.StemCells.clock(captured, now: now)))
             }
         }
         return lines.joined(separator: "\n")
@@ -243,7 +252,6 @@ enum StemCellModelPickers {
         if kind == .provider { state.refreshUsage(menus.services.flatMap(\.accounts).map(\.id)) }
         var watch: StemCellsWatch?
         let sheet = StemCellPickerViewController(content: content(kind, menus: menus, usage: state.usage)) { id in
-            watch?.invalidate()
             if id == "benchmarks" {
                 UIApplication.shared.open(benchmarks)
                 return
@@ -253,6 +261,10 @@ enum StemCellModelPickers {
         // Usage read while it is open lands in it.
         watch = state.watch { [weak sheet] in
             sheet?.update(content(kind, menus: menus, usage: state.usage))
+        }
+        sheet.onClose = {
+            watch?.invalidate()
+            state.stopRefreshing()
         }
         host.present(sheet, animated: true)
     }

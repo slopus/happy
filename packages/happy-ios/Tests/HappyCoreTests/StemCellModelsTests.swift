@@ -50,6 +50,11 @@ final class StemCellModelsTests: XCTestCase {
         var missing = catalog
         missing.defaultModelId = "anthropic/gone"
         XCTAssertEqual(missing.defaultMode(), mode("codex", "openai/sol", "medium"))
+        // A declared account that is switched off is passed over too.
+        var off = catalog
+        off.defaultProviderId = "grok"
+        off.defaultModelId = "xai/grok"
+        XCTAssertEqual(off.defaultMode(), mode("codex", "openai/sol", "medium"))
     }
 
     func testPickingAModelTakesItsDefaultEffortAndDropsASpeedItLacks() {
@@ -90,12 +95,17 @@ final class StemCellModelsTests: XCTestCase {
         XCTAssertEqual(hidden.notice, .hidden)
         XCTAssertEqual(hidden.current?.label, "Sonnet 5")
         XCTAssertEqual(hidden.effort, "low")
-        XCTAssertEqual(StemCellModelMenus(catalog: catalog, selection: mode("grok", "xai/grok")).notice, .unavailable("The grok account is switched off, so nothing is sent to it."))
+        XCTAssertEqual(StemCellModelMenus(catalog: catalog, selection: mode("grok", "xai/grok")).notice, .off("grok"))
         let gone = StemCellModelMenus(catalog: catalog, selection: mode("bedrock", "anthropic/opus-5", "ultra"))
-        XCTAssertEqual(gone.notice, .unavailable("The bedrock account is no longer configured on this Happy Agent."))
+        XCTAssertEqual(gone.notice, .removed("bedrock"))
         XCTAssertEqual(gone.current?.disabled, true)
         // An effort the model doesn't have shows its default.
         XCTAssertEqual(gone.effort, "medium")
+        // An account that stopped listing the model still names it, greyed.
+        let dropped = StemCellModelMenus(catalog: catalog, selection: mode("claude-work", "anthropic/sonnet-5"))
+        XCTAssertEqual(dropped.current?.label, "Sonnet 5")
+        XCTAssertEqual(dropped.current?.disabled, true)
+        XCTAssertNil(dropped.notice)
     }
 
     func testNames() {
@@ -121,7 +131,7 @@ final class StemCellModelsTests: XCTestCase {
         let claude = usage["claude"]!
         XCTAssertEqual(claude.week?.left, 20)
         XCTAssertEqual(claude.session?.left, 68)
-        XCTAssertEqual(claude.shown?.label, "Week")
+        XCTAssertEqual(claude.shown?.kind, .week)
         XCTAssertEqual(claude.updatedAt, Date(timeIntervalSince1970: 1))
         XCTAssertFalse(claude.limited)
         XCTAssertEqual(usage["codex"]?.refreshError, "The provider did not report account usage.")

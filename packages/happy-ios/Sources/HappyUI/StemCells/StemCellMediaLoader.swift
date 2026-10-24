@@ -12,13 +12,13 @@ import UniformTypeIdentifiers
 @MainActor
 final class StemCellMediaLoader: NSObject, ChatMediaSource {
     private let client: DirectAgentClient
-    private let agentId: String
+    /// New work's is the daemon's ID once it has made it.
+    var agentId: String
     private var tools: [String: StemCellMedia] = [:]
     private var sent: [String: Data] = [:]
     private var streams: [String: StemCellMediaStream] = [:]
-    /// Decoded pictures by "pixels|key", and the largest kept for each key.
-    private let images = NSCache<NSString, UIImage>()
-    private var largest: [String: Int] = [:]
+    /// Each key's largest decode, so eviction drops the size with the picture.
+    private let images = NSCache<NSString, Decoded>()
     /// A tool's bytes, so a larger decode doesn't fetch them again.
     private let bytes = NSCache<NSString, NSData>()
     private let placeholders = NSCache<NSString, UIImage>()
@@ -35,7 +35,15 @@ final class StemCellMediaLoader: NSObject, ChatMediaSource {
     @objc private func memoryWarning() {
         images.removeAllObjects()
         bytes.removeAllObjects()
-        largest = [:]
+    }
+
+    private final class Decoded {
+        let pixels: Int
+        let image: UIImage
+        init(pixels: Int, image: UIImage) {
+            self.pixels = pixels
+            self.image = image
+        }
     }
 
     /// What the conversation shows now, by the keys its plans draw.
@@ -58,8 +66,8 @@ final class StemCellMediaLoader: NSObject, ChatMediaSource {
     // MARK: ChatMediaSource
 
     func cachedImage(_ key: String, pixels: Int) -> UIImage? {
-        guard let kept = largest[key], kept >= pixels else { return nil }
-        return images.object(forKey: "\(kept)|\(key)" as NSString)
+        guard let kept = images.object(forKey: key as NSString), kept.pixels >= pixels else { return nil }
+        return kept.image
     }
 
     func image(_ key: String, pixels: Int) async -> UIImage? {
@@ -72,10 +80,9 @@ final class StemCellMediaLoader: NSObject, ChatMediaSource {
         } else {
             image = nil
         }
-        if let image, pixels > largest[key] ?? 0 {
+        if let image, pixels > images.object(forKey: key as NSString)?.pixels ?? 0 {
             let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
-            images.setObject(image, forKey: "\(pixels)|\(key)" as NSString, cost: cost)
-            largest[key] = pixels
+            images.setObject(Decoded(pixels: pixels, image: image), forKey: key as NSString, cost: cost)
         }
         return image
     }
@@ -151,7 +158,8 @@ final class StemCellMediaStream: NSObject, AVAssetResourceLoaderDelegate, @unche
     }
 
     func asset() -> AVURLAsset {
-        let name = (media.item.name as NSString).pathExtension
+        // Letters and digits only, so the URL always parses.
+        let name = (media.item.name as NSString).pathExtension.filter { $0.isASCII && ($0.isLetter || $0.isNumber) }
         let url = URL(string: "\(Self.scheme)://media/\(media.index)\(name.isEmpty ? "" : "." + name)")!
         let asset = AVURLAsset(url: url)
         asset.resourceLoader.setDelegate(self, queue: queue)
@@ -178,44 +186,66 @@ final class StemCellMediaStream: NSObject, AVAssetResourceLoaderDelegate, @unche
         init(_ request: AVAssetResourceLoadingRequest) { self.request = request }
     }
 
+    /// Fetches off `queue`; reads and answers the request only on it, where
+    /// AVFoundation cancels it.
     private func serve(_ box: Request) async {
-        let request = box.request
         do {
             let total = try await size()
-            if let info = request.contentInformationRequest {
-                info.contentType = UTType(mimeType: media.item.mimeType)?.identifier ?? UTType.mpeg4Movie.identifier
-                info.contentLength = Int64(total)
-                info.isByteRangeAccessSupported = true
-            }
-            if let data = request.dataRequest {
-                var offset = Int(data.currentOffset != 0 ? data.currentOffset : data.requestedOffset)
-                let end = data.requestsAllDataToEndOfResource ? total : min(total, Int(data.requestedOffset) + data.requestedLength)
-                while offset < end {
-                    try Task.checkCancellation()
-                    let response = try await client.media(agentId, toolCallId: media.toolCallId, index: media.index, range: offset...(min(end, offset + Self.chunk) - 1))
-                    // A whole file answered to a range starts at zero.
-                    let body = response.status == 200 ? response.body.dropFirst(offset) : response.body
-                    guard !body.isEmpty else { break }
-                    data.respond(with: Data(body.prefix(end - offset)))
-                    offset += min(body.count, end - offset)
+            let type = UTType(mimeType: media.item.mimeType)?.identifier ?? UTType.mpeg4Movie.identifier
+            let span = await onQueue { () -> Range<Int>? in
+                let request = box.request
+                guard !request.isCancelled else { return nil }
+                if let info = request.contentInformationRequest {
+                    info.contentType = type
+                    info.contentLength = Int64(total)
+                    info.isByteRangeAccessSupported = true
                 }
+                guard let data = request.dataRequest else { return 0..<0 }
+                let start = Int(data.currentOffset != 0 ? data.currentOffset : data.requestedOffset)
+                let end = data.requestsAllDataToEndOfResource ? total : min(total, Int(data.requestedOffset) + data.requestedLength)
+                return start..<max(start, end)
             }
-            request.finishLoading()
+            guard let span else { return }
+            var offset = span.lowerBound
+            while offset < span.upperBound {
+                try Task.checkCancellation()
+                let response = try await client.media(agentId, toolCallId: media.toolCallId, index: media.index, range: offset...(min(span.upperBound, offset + Self.chunk) - 1))
+                // A whole file answered to a range starts at zero.
+                let body = response.status == 200 ? response.body.dropFirst(offset) : response.body
+                guard !body.isEmpty else { throw URLError(.networkConnectionLost) }
+                let piece = Data(body.prefix(span.upperBound - offset))
+                let going = await onQueue { () -> Bool in
+                    guard !box.request.isCancelled else { return false }
+                    box.request.dataRequest?.respond(with: piece)
+                    return true
+                }
+                guard going else { return }
+                offset += piece.count
+            }
+            await onQueue { if !box.request.isCancelled { box.request.finishLoading() } }
         } catch is CancellationError {
         } catch {
-            request.finishLoading(with: error)
+            await onQueue { if !box.request.isCancelled { box.request.finishLoading(with: error) } }
         }
     }
 
     /// The recording's length: as presented, else from a first range's
-    /// `Content-Range`.
+    /// `Content-Range`, else a whole file's length.
     private func size() async throws -> Int {
-        if let total { return total }
+        if let total = await onQueue({ self.total }) { return total }
         let response = try await client.media(agentId, toolCallId: media.toolCallId, index: media.index, range: 0...1)
         let range = response.headers.first { $0.key.lowercased() == "content-range" }?.value
-        let size = range.flatMap { $0.split(separator: "/").last.flatMap { Int($0) } } ?? response.body.count
-        total = size
+        guard let size = range.flatMap({ $0.split(separator: "/").last.flatMap { Int($0) } }) ?? (response.status == 200 ? response.body.count : nil) else {
+            throw URLError(.cannotParseResponse)
+        }
+        await onQueue { self.total = size }
         return size
+    }
+
+    private func onQueue<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            queue.async { continuation.resume(returning: work()) }
+        }
     }
 }
 #endif
