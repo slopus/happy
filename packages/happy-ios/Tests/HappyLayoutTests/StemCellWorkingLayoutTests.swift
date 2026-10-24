@@ -19,4 +19,9 @@ final class StemCellWorkingLayoutTests: XCTestCase {
         XCTAssertNil(layout.separator)
         XCTAssertEqual(layout.phase, CGRect(x: 36, y: 8, width: 338, height: 24))
     }
+
+    func testTheWaitRingKeepsItsStrokeInsideTheColumn() {
+        XCTAssertEqual(StemCellWorkingLayout.ringRadius(CGSize(width: 14, height: 14)), 6)
+        XCTAssertEqual(StemCellWorkingLayout.ringRadius(CGSize(width: 1, height: 14)), 0)
+    }
 }

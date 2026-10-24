@@ -407,7 +407,7 @@ final class StemCellsShimmerLabel: UIView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     /// Asked for less motion, the text simply stays.
-    private var sweeps: Bool { shimmering && !UIAccessibility.isReduceMotionEnabled }
+    private var sweeps: Bool { shimmering && window != nil && !UIAccessibility.isReduceMotionEnabled }
 
     @objc private func update() {
         highlight.isHidden = !sweeps
@@ -451,7 +451,8 @@ final class StemCellsShimmerLabel: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window != nil { update() }
+        // Off screen the band stops; back on, it picks up where it was.
+        update()
     }
 
     private func startBand() {

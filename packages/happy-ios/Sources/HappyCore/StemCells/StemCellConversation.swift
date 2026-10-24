@@ -300,11 +300,14 @@ public actor StemCellConversation {
         }
         let echoed = Set(messages.keys)
         outgoing.removeAll { echoed.contains($0.id) }
-        snapshot.working = start.agent.isWorking
+        // A send taken before the daemon started its run keeps the line
+        // and the send's clock until the run's own events come.
+        let awaiting = activeRun != nil && activeRun?.id == nil && (outgoing.contains { $0.accepted } || !pending.isEmpty)
+        snapshot.working = start.agent.isWorking || awaiting
         adoptAgent(start.agent)
         if start.agent.isWorking, let run = history.runs.last, run.status == "running" {
             activeRun = (run.id, run.startedAt)
-        } else {
+        } else if !awaiting {
             activeRun = nil
         }
         snapshot.hasMore = history.hasMore
@@ -383,15 +386,14 @@ public actor StemCellConversation {
             activeRun = (runId, payload["startedRun"]?["startedAt"]?.numberValue)
         case "run.finished":
             snapshot.working = false
-            activeRun = nil
-            retrying = nil
+            settle()
             if visible { markRead() }
         case "agent.updated":
             guard let changes = payload["changes"] else { return }
             if let status = changes["status"]?.stringValue {
                 self.status = status
                 snapshot.working = status != "idle"
-                if status == "idle" { activeRun = nil }
+                if status == "idle" { settle() }
             }
             // Present and null clears; absent leaves it.
             if let value = changes["wait"] { wait = value == .null ? nil : Self.decode(AgentWire.AgentWait.self, value) }
@@ -635,6 +637,14 @@ public actor StemCellConversation {
     private var produced: Bool {
         guard let id = activeRun?.id, let run = runs.first(where: { $0.id == id }) else { return false }
         return run.messageIds.contains { messages[$0].map { $0.role != "user" && !$0.content.isEmpty } ?? false }
+    }
+
+    /// The turn is over: nothing of it carries into the next one.
+    private func settle() {
+        activeRun = nil
+        status = "idle"
+        wait = nil
+        retrying = nil
     }
 
     private func adoptAgent(_ agent: AgentWire.Agent) {

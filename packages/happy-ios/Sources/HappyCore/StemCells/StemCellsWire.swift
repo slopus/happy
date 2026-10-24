@@ -198,6 +198,7 @@ extension AgentWire {
                 && lhs.wait == rhs.wait && lhs.subtasks == rhs.subtasks && lhs.pendingQuestionId == rhs.pendingQuestionId
                 && lhs.unread == rhs.unread && lhs.canSendMessages == rhs.canSendMessages && lhs.archivedAt == rhs.archivedAt
                 && lhs.parentAgentId == rhs.parentAgentId && lhs.version == rhs.version
+                && lhs.retrying == rhs.retrying && lhs.subagents == rhs.subagents
         }
 
         public var isWorking: Bool { status != "idle" }

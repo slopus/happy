@@ -76,7 +76,7 @@ final class StemCellWorkingView: UIView {
         // Only work in progress shimmers; a question or a wait is still.
         let still = glyph != nil || waiting
         phase.shimmering = !still
-        if previous?.startedAt != activity.startedAt || previous == nil { startClock() }
+        if previous == nil || previous?.startedAt != activity.startedAt || Self.waitDue(previous) != Self.waitDue(activity) { startClock() }
         tick()
     }
 
@@ -110,12 +110,18 @@ final class StemCellWorkingView: UIView {
         setNeedsLayout()
     }
 
-    /// Ticks as each of the turn's seconds turns over, not on the phone's.
+    private static func waitDue(_ activity: StemCellActivity?) -> Double? {
+        if case .waiting(let wait) = activity?.phase { wait.dueAt } else { nil }
+    }
+
+    /// Ticks as each second turns over: a wait's own, counting down to its
+    /// end, else the turn's. Nothing ticks where nothing on the line moves.
     private func startClock() {
         stopClock()
-        guard window != nil, activity != nil else { return }
+        guard window != nil, let activity else { return }
+        let due = Self.waitDue(activity)
+        guard let origin = due ?? activity.startedAt else { return }
         let now = Date().timeIntervalSince1970 * 1000
-        let origin = activity?.startedAt ?? now
         let into = (now - origin).truncatingRemainder(dividingBy: 1000)
         let first = Date(timeIntervalSinceNow: (1000 - (into < 0 ? into + 1000 : into)) / 1000)
         let clock = Timer(fire: first, interval: 1, repeats: true) { [weak self] _ in
@@ -279,7 +285,7 @@ final class StemCellWaitRingView: UIView {
         isUserInteractionEnabled = false
         for shape in [track, fill] {
             shape.fillColor = nil
-            shape.lineWidth = 2
+            shape.lineWidth = StemCellWorkingLayout.Metrics.ringStroke
             layer.addSublayer(shape)
         }
         fill.lineCap = .round
@@ -301,7 +307,7 @@ final class StemCellWaitRingView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let radius = (min(bounds.width, bounds.height) - 2) / 2
+        let radius = StemCellWorkingLayout.ringRadius(bounds.size)
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
         let path = UIBezierPath(arcCenter: center, radius: radius, startAngle: -.pi / 2, endAngle: 1.5 * .pi, clockwise: true).cgPath
         track.path = path

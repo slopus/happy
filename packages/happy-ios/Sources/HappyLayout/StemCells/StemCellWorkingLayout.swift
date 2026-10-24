@@ -24,6 +24,13 @@ public struct StemCellWorkingLayout: Equatable, Sendable {
         public static let loader = CGSize(width: 8, height: 14)
         /// The transcript's sides.
         public static let side: CGFloat = 16
+        /// A wait's ring (`WaitRing`): its stroke, track and fill alike.
+        public static let ringStroke: CGFloat = 2
+    }
+
+    /// The ring's radius inside a box, the stroke kept inside it.
+    public static func ringRadius(_ box: CGSize) -> CGFloat {
+        max(0, (min(box.width, box.height) - Metrics.ringStroke) / 2)
     }
 
     public enum Glyph: Equatable, Sendable {
