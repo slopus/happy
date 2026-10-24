@@ -609,23 +609,26 @@ final class StemCellsUITests: XCTestCase {
         capture("media-photo-answered")
     }
 
-    /// The header: the Happy mark opens settings, where the accounts are;
-    /// search is beside the filter at the right.
+    /// Closes the settings sheet with a pull down from its top.
+    private func closeSettings() {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).press(
+            forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)),
+            withVelocity: .fast, thenHoldForDuration: 0
+        )
+        pause(1.5)
+    }
+
+    /// The header: the computer's picture at the left opens settings; the
+    /// name in the middle; search beside the filter at the right.
     func testHeader() {
         home()
         pause(1.5)
         capture("header")
         app.descendants(matching: .any)["stem-settings-mark"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["stem-settings-accounts"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["stem-settings-qr"].waitForExistence(timeout: 3))
         pause(1.5)
         capture("settings")
-        app.descendants(matching: .any)["stem-settings-accounts"].tap()
-        pause(2)
-        capture("settings-accounts")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        pause(1)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        pause(1.5)
+        closeSettings()
         app.buttons["stem-search"].tap()
         pause(1)
         app.typeText("lisbon")
@@ -633,6 +636,105 @@ final class StemCellsUITests: XCTestCase {
         capture("header-search")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         pause(1.5)
+    }
+
+    /// Settings from the picture: the QR sheet and its Scan, Edit renaming
+    /// the computer in place, Prioritizing's switch, the profiles' circles
+    /// (choosing one turns the page and makes it active), "+", and More.
+    func testSettings() {
+        home()
+        pause(1)
+        app.descendants(matching: .any)["stem-settings-mark"].tap()
+        let qr = app.descendants(matching: .any)["stem-settings-qr"]
+        XCTAssertTrue(qr.waitForExistence(timeout: 3))
+        pause(1.5)
+        capture("settings")
+
+        // The QR sheet: nothing to share, so Scan comes first.
+        qr.tap()
+        let scan = app.buttons["stem-qr-scan"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 3))
+        pause(1.5)
+        capture("settings-qr")
+        scan.tap()
+        let closeScanner = app.buttons["Close"]
+        XCTAssertTrue(closeScanner.waitForExistence(timeout: 5), "Scan opened no camera")
+        pause(1.5)
+        capture("settings-scan")
+        closeScanner.tap()
+        pause(1)
+
+        // Edit renames the computer in place; Return keeps it.
+        let name = app.staticTexts["stem-settings-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 3))
+        let from = name.label
+        let to = from == "Studio Mac" ? "Mac Studio" : "Studio Mac"
+        app.buttons["stem-settings-edit"].tap()
+        let field = app.textFields["stem-settings-rename"]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        pause(1)
+        capture("settings-edit")
+        field.typeText(to)
+        pause(0.8)
+        field.typeText("\n")
+        XCTAssertTrue(app.staticTexts["stem-settings-name"].waitForExistence(timeout: 2))
+        pause(2)
+        XCTAssertEqual(app.staticTexts["stem-settings-name"].label, to, "the name went back")
+        capture("settings-renamed")
+        print("STEM_RENAMED \(from) -> \(to)")
+
+        // Prioritizing's switch, off and on again.
+        let prioritizing = app.switches["stem-settings-toggle:prioritizing"]
+        XCTAssertTrue(prioritizing.waitForExistence(timeout: 3))
+        let was = prioritizing.value as? String
+        prioritizing.tap()
+        pause(1.5)
+        XCTAssertNotEqual(prioritizing.value as? String, was)
+        capture("settings-prioritizing")
+        prioritizing.tap()
+        pause(1.5)
+        XCTAssertEqual(prioritizing.value as? String, was)
+
+        // The other computer's circle: the page turns to it, then back.
+        // By place in the strip, not name: a computer paired twice wears one name.
+        let first = app.descendants(matching: .any)["stem-profile:0"]
+        let second = app.descendants(matching: .any)["stem-profile:1"]
+        if second.exists {
+            let (mine, other) = first.isSelected ? (first, second) : (second, first)
+            XCTAssertTrue(mine.isSelected, "the shown profile isn't the chosen circle")
+            other.tap()
+            pause(2.5)
+            XCTAssertTrue(other.isSelected, "the tapped circle didn't come to the middle")
+            capture("settings-other-profile")
+            mine.tap()
+            pause(2.5)
+            XCTAssertTrue(mine.isSelected)
+            XCTAssertEqual(app.staticTexts["stem-settings-name"].label, to)
+        }
+
+        // "+" opens the scanner.
+        app.descendants(matching: .any)["stem-profile-add"].tap()
+        XCTAssertTrue(closeScanner.waitForExistence(timeout: 5))
+        pause(1)
+        closeScanner.tap()
+        pause(1)
+
+        // More holds the status and Happy's settings.
+        app.descendants(matching: .any)["stem-settings:more"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-settings-more"].waitForExistence(timeout: 3))
+        pause(1.5)
+        capture("settings-more")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(1)
+
+        // Back to the first name, so the next run starts the same.
+        app.buttons["stem-settings-edit"].tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.typeText(from + "\n")
+        pause(2)
+        closeSettings()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-settings-mark"].waitForExistence(timeout: 3))
+        capture("settings-closed")
     }
 
     private func pickIn(_ opener: XCUIElement, _ id: String, shot: String) {

@@ -45,6 +45,30 @@ extension Palette {
     public static let stemCellsSwipeAction = ColorToken("#8e8e93", "#636366")
     public static let stemCellsSwipeDestructive = ColorToken("#ff3b30", "#ff453a")
     public static let stemCellsSwipeInk = ColorToken("#ffffff")
+
+    /// Settings, after Telegram's: the ground under the cards, a card, its
+    /// separators, a row's title and quieter value, and the red of leaving.
+    public static let stemCellsSettingsGround = ColorToken("#efeff4", "#000000")
+    public static let stemCellsSettingsCard = ColorToken("#ffffff", "#1c1c1e")
+    public static let stemCellsSettingsSeparator = ColorToken("#c8c7cc", "#38383a")
+    public static let stemCellsSettingsText = ColorToken("#000000", "#ffffff")
+    public static let stemCellsSettingsSecondary = ColorToken("#8e8e93", "#98989f")
+    public static let stemCellsSettingsDestructive = ColorToken("#ff3b30", "#ff453a")
+    /// The chosen profile's ring, and the bar's glass buttons' glyphs.
+    public static let stemCellsSettingsRing = ColorToken("#000000", "#ffffff")
+    /// The squares under a row's white glyph (iOS's system colours).
+    public static let stemCellsSettingsTileOrange = ColorToken("#ff9500")
+    public static let stemCellsSettingsTileGray = ColorToken("#8e8e93")
+    public static let stemCellsSettingsTileBlue = ColorToken("#007aff")
+    public static let stemCellsSettingsTilePurple = ColorToken("#af52de")
+    public static let stemCellsSettingsTileGreen = ColorToken("#34c759")
+    public static let stemCellsSettingsGlyph = ColorToken("#ffffff")
+    /// The QR sheet's first button and its ink; the second's tint.
+    public static let stemCellsSettingsPrimary = ColorToken("#007aff", "#0a84ff")
+    public static let stemCellsSettingsPrimaryInk = ColorToken("#ffffff")
+    public static let stemCellsSettingsSecondaryFill = ColorToken(light: RGBA(red: 0, green: 0.478, blue: 1, alpha: 0.1), dark: RGBA(red: 0.039, green: 0.518, blue: 1, alpha: 0.15))
+    /// The "+" circle at the end of the profiles.
+    public static let stemCellsSettingsAddFill = ColorToken("#e5e5ea", "#2c2c2e")
 }
 
 public enum StemCellsMetrics {

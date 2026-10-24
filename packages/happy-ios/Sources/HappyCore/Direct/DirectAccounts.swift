@@ -60,6 +60,31 @@ public final class DirectAccounts {
         activeID = id; onChange?()
     }
 
+    /// Renames the computer (`PATCH /v0/config` `node.name`). The name shows
+    /// here at once; the identity loop starts again from it, so a retry
+    /// never puts the old one back.
+    public func rename(_ id: String, to name: String) async throws {
+        guard let credential = credentials[id] else { throw AccountSwitchError.unknownAccount }
+        let body = try JSONSerialization.data(withJSONObject: ["node": ["name": name]])
+        let transport = makeTransport(credential)
+        defer { Task { await transport.close() } }
+        // The transport names the body's type itself.
+        let response = try await transport.request(method: "PATCH", path: "/v0/config", credential: credential.deviceToken, body: body, headers: [:])
+        if response.status == 401 { throw DirectPairingError.revoked }
+        guard response.status == 200 else {
+            // The daemon's own words (an owner-only rename, a name it refuses).
+            struct Failure: Decodable { let error: String?; let code: String? }
+            let failure = try? JSONDecoder().decode(Failure.self, from: response.body)
+            throw DirectAgentError.status(response.status, code: failure?.code, message: failure?.error)
+        }
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
+        await stop(id)
+        accounts[index].name = name
+        onChange?()
+        try? await storage.update(accounts[index])
+        startConnections()
+    }
+
     public func remove(_ id: String) async throws {
         // Await teardown before deleting credentials. The loop can no longer
         // publish or save an old identity after removal completes.

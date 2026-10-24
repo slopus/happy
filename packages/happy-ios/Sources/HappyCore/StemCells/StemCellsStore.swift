@@ -90,6 +90,9 @@ public actor StemCellsStore {
 
     private var snapshot = StemCellsSnapshot()
     private var following: Task<Void, Never>?
+    /// The last Prioritizing write; each waits for the one before, so the
+    /// daemon ends on the last choice.
+    private var prioritizingWrite: Task<Void, Never>?
     private var cursor: String?
     private var capabilities = AgentWire.Health.Capabilities()
 
@@ -520,7 +523,7 @@ public actor StemCellsStore {
 
     /// The daemon's own words for a refusal, or empty where it gave none
     /// (the screens say it in theirs).
-    static func describe(_ error: Error) -> String {
+    public static func describe(_ error: Error) -> String {
         if case DirectAgentError.status(_, _, let message?) = error { return message }
         return ""
     }
@@ -741,17 +744,26 @@ public actor StemCellsStore {
 
     /// Turns Prioritizing on: the person's explicit choice, never automatic.
     public func enablePrioritizing() {
-        snapshot.prioritizing = true
+        setPrioritizing(true)
+    }
+
+    /// Turns Prioritizing on or off, from Settings' switch; only ever the
+    /// person's choice.
+    public func setPrioritizing(_ on: Bool) {
+        let before = snapshot.prioritizing
+        snapshot.prioritizing = on
         publish()
         let client = client
-        Task {
-            do { try await client.setUserSetting(Self.settingKey, .bool(true)) }
-            catch { await self.prioritizingRefused(error) }
+        let previous = prioritizingWrite
+        prioritizingWrite = Task {
+            await previous?.value
+            do { try await client.setUserSetting(Self.settingKey, .bool(on)) }
+            catch { await self.prioritizingRefused(error, back: before) }
         }
     }
 
-    private func prioritizingRefused(_ error: Error) {
-        snapshot.prioritizing = false
+    private func prioritizingRefused(_ error: Error, back: Bool?) {
+        snapshot.prioritizing = back
         snapshot.error = Self.describe(error)
         publish()
     }

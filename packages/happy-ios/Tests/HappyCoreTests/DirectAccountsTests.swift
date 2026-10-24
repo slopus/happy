@@ -13,12 +13,17 @@ actor IdentityTransport: DirectTransport {
     var requests: [(String, [String: String])] = []
     var closed = false
     var failuresRemaining = 0
+    var patches: [Data] = []
     func failNext(_ count: Int) { failuresRemaining = count }
     func configure(name: String? = nil, etag: String? = nil, noAvatar: Bool? = nil, revoked: Bool? = nil) {
         if let name { self.name = name }; if let etag { self.etag = etag }; if let noAvatar { self.noAvatar = noAvatar }; if let revoked { self.revoked = revoked }
     }
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
         requests.append((path, headers))
+        if method == "PATCH" {
+            patches.append(body ?? Data())
+            if let patch = try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: [String: String]], let next = patch["node"]?["name"] { name = next }
+        }
         if failuresRemaining > 0 { failuresRemaining -= 1; throw DirectPairingError.unavailable }
         if revoked { return DirectHTTPResponse(status: 401) }
         switch path {
@@ -97,6 +102,21 @@ final class DirectAccountsTests: XCTestCase {
         let last = try await DirectIdentity.refresh(third, transport: transport, token: "token")
         XCTAssertNil(last.avatar); XCTAssertNil(last.avatarETag)
     }
+    func testRenameSendsTheNodeNameAndShowsItAtOnce() async throws {
+        let transport = IdentityTransport()
+        let manager = DirectAccounts(credentials: KeychainDirectCredentialStore(backend: AccountsKeychain()), directory: try directory(), makeTransport: { _ in transport })
+        await manager.setForeground(false)
+        let account = try await manager.add(value(), name: "QR name")
+        var changes = 0
+        manager.onChange = { changes += 1 }
+        try await manager.rename(account.id, to: "Studio Mac")
+        XCTAssertEqual(manager.accounts.first?.name, "Studio Mac")
+        XCTAssertGreaterThan(changes, 0)
+        let sent = await transport.patches
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: sent[0]) as? [String: [String: String]], ["node": ["name": "Studio Mac"]])
+    }
+
     func testRevocationStopsRetryAndBackgroundPauses() async throws {
         let transport = IdentityTransport()
         let manager = DirectAccounts(credentials: InMemoryDirectCredentialStore(), directory: nil, makeTransport: { _ in transport })

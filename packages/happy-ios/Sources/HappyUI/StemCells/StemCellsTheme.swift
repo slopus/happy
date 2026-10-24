@@ -85,6 +85,7 @@ enum StemCellsGlyphs {
         case "layers": .ionicons("layers-outline")
         case "eye": .ionicons("eye-outline")
         case "eye-off": .ionicons("eye-off-outline")
+        case "more": .materialIcons("more-horiz")
         default: .ionicons(name)
         }
     }

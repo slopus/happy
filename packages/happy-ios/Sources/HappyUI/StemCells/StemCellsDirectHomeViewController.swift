@@ -110,7 +110,7 @@ final class StemCellsDirectHomeViewController: UIViewController {
     }
 
     @objc private func openSettings() {
-        navigationController?.pushViewController(StemCellsSettingsViewController(context: context, computer: id), animated: true)
+        StemCellsSettingsNavigationController.present(context: context, computer: id, from: self)
     }
 }
 #endif
