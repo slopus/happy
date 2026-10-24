@@ -52,9 +52,13 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
     private var arranged: [StemCellsRow]?
     private var arrangedUntil: Task<Void, Never>?
     private var carry: Carry?
+    /// A drop's preview is still flying to its slot.
+    private var landing = false
     /// A menu action waiting for the menu to close (a rename needs the keyboard).
     private var afterMenu: (() -> Void)?
     private var swiped: (id: String, view: StemCellsSwipeActionsView)?
+    /// How far open the pulled row was when the pull began.
+    private var pullBase: CGFloat = 0
     private var editing: (id: String, commit: (String) -> Void)?
     private lazy var pulls = PullDelegate(sidebar: self)
 
@@ -100,8 +104,7 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
         dispatchPrecondition(condition: .onQueue(.main))
         let previous = Dictionary(self.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         self.rows = rows
-        // The document caught up with a drop: its order is the one shown.
-        if carry == nil, let arranged, arranged.map(\.id) == rows.map(\.id) { settle() }
+        settleIfCaughtUp()
         var touched = 0
         var live = Set<String>()
         for row in rows {
@@ -122,6 +125,7 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
             view.removeFromSuperview()
             views.removeValue(forKey: id)
             if swiped?.id == id { closeSwipe(animated: false) }
+            if editing?.id == id { editing = nil }
             touched += 1
         }
         setNeedsLayout()
@@ -145,9 +149,13 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
 
     @objc private func rowTapped(_ gesture: UITapGestureRecognizer) {
         guard let view = gesture.view as? StemCellsRowView, let row = view.row else { return }
-        // A tap while something is open closes it and does nothing else.
-        if editing != nil { endEditing(true); return }
-        if swiped != nil { closeSwipe(animated: true); return }
+        // A tap while something is open closes it and does nothing else; a
+        // tap in the title being edited is the field's.
+        if editing != nil || swiped != nil {
+            if let id = editing?.id, id != row.id { finishRename() }
+            closeSwipe(animated: true)
+            return
+        }
         switch row.kind {
         case .section: onFold?(row)
         case .separator: break
@@ -157,8 +165,10 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
 
     @objc private func tappedAway(_ gesture: UITapGestureRecognizer) {
         let point = gesture.location(in: self)
-        if editing != nil, let id = editing?.id, views[id]?.frame.contains(point) != true { endEditing(true) }
-        if let swiped, !swiped.view.frame.contains(point), views[swiped.id]?.frame.contains(point) != true { closeSwipe(animated: true) }
+        // A row's own tap closes what is open, and only that.
+        guard row(at: point) == nil else { return }
+        if editing != nil { finishRename() }
+        if let swiped, !swiped.view.frame.contains(point) { closeSwipe(animated: true) }
     }
 
     @objc private func rowPressed(_ gesture: PressRecognizer) {
@@ -184,15 +194,16 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
         let input = Self.layoutRows(shown)
         let width = bounds.width
         if laidOut?.width != width || laidOut?.rows != input || layoutResult?.frames.count != shown.count {
-            laidOut = (width, input)
             place(shown, animated: false)
         }
     }
 
     /// Lays `shown` out and moves each row to its place, gliding when asked.
     private func place(_ shown: [StemCellsRow], animated: Bool) {
-        let result = StemCellsSidebarLayout.layout(Self.layoutRows(shown), width: bounds.width)
+        let input = Self.layoutRows(shown)
+        let result = StemCellsSidebarLayout.layout(input, width: bounds.width)
         layoutResult = result
+        laidOut = (bounds.width, input)
         let move = {
             for (row, frame) in zip(shown, result.frames) {
                 guard let view = self.views[row.id] else { continue }
@@ -269,12 +280,16 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
     /// Turns `rowId`'s title into a field holding `text`, selected, with the
     /// keyboard up. Return or a tap elsewhere keeps it; Escape keeps the old one.
     func beginRename(_ rowId: String, text: String, commit: @escaping (String) -> Void) {
+        beginRename(rowId, text: text, retries: 1, commit: commit)
+    }
+
+    private func beginRename(_ rowId: String, text: String, retries: Int, commit: @escaping (String) -> Void) {
         guard let view = views[rowId] else { return }
         closeSwipe(animated: true)
-        if editing != nil { endEditing(true) }
+        if editing != nil { finishRename() }
         editing = (rowId, commit)
         scrollRectToVisible(view.frame.insetBy(dx: 0, dy: -24), animated: true)
-        view.beginEditing(text) { [weak self, weak view] result in
+        let began = view.beginEditing(text) { [weak self, weak view] result in
             guard let self, editing?.id == rowId else { return }
             let commit = editing?.commit
             editing = nil
@@ -285,16 +300,35 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
             view?.holdLabel(trimmed)
             commit?(trimmed)
         }
+        guard !began else { return }
+        // The keyboard wasn't to be had (a menu still leaving): once more, a moment on.
+        editing = nil
+        guard retries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.beginRename(rowId, text: text, retries: retries - 1, commit: commit)
+        }
+    }
+
+    /// Keeps what the field holds, and lets go of it however it stands.
+    private func finishRename() {
+        guard let id = editing?.id else { return }
+        views[id]?.commitEditing()
+        // A row that had no field (or is gone) can't say so.
+        if editing?.id == id { editing = nil }
     }
 
     // MARK: Swipe
 
     @objc private func rowPulled(_ gesture: UIPanGestureRecognizer) {
         guard let view = gesture.view as? StemCellsRowView, let row = view.row else { return }
-        let pull = -gesture.translation(in: self).x + (swiped?.id == row.id ? swiped?.view.openWidth ?? 0 : 0)
+        if gesture.state == .began {
+            if let swiped, swiped.id != row.id { closeSwipe(animated: true) }
+            // Pulled again while open: from open, else from closed.
+            pullBase = swiped?.id == row.id ? swiped?.view.openWidth ?? 0 : 0
+        }
+        let pull = -gesture.translation(in: self).x + pullBase
         switch gesture.state {
         case .began:
-            if let swiped, swiped.id != row.id { closeSwipe(animated: true) }
             if swiped == nil {
                 let actions = swipeActions?(row) ?? []
                 guard !actions.isEmpty else { gesture.state = .cancelled; return }
@@ -339,7 +373,8 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
         let close = { swiped.view.pull(0, row: view) }
         let done = { (_: Bool) in
             swiped.view.removeFromSuperview()
-            view?.swiping = false
+            // Unless pulled again while it closed.
+            if self.swiped?.id != swiped.id { view?.swiping = false }
         }
         if animated {
             UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseOut, .beginFromCurrentState], animations: close, completion: done)
@@ -370,9 +405,9 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
         guard to != carry.to else { return }
         carry.to = to
         self.carry = carry
-        arranged = carry.drag.order(to: to)
-        laidOut = nil
-        place(arranged!, animated: true)
+        let order = carry.drag.order(to: to)
+        arranged = order
+        place(order, animated: true)
         StemCellsHaptics.play(.slot)
     }
 
@@ -400,13 +435,30 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
         onDragging?(false)
     }
 
-    private func settle() {
+    /// Back to the document's order. The carried rows stay hidden while a
+    /// preview is still flying to them (`revealing` false).
+    private func settle(revealing: Bool = true) {
         arrangedUntil?.cancel()
         arrangedUntil = nil
         arranged = nil
-        for view in views.values { view.isHidden = false }
+        if revealing { for view in views.values { view.isHidden = false } }
         laidOut = nil
         setNeedsLayout()
+    }
+
+    /// Settles once nothing is carried or landing and the document shows
+    /// the order dropped (or, dropped where it was, never changed).
+    private func settleIfCaughtUp() {
+        guard carry?.link == nil, !landing, let arranged, arranged.map(\.id) == rows.map(\.id) else { return }
+        settle()
+    }
+
+    /// A drop's preview reached its slot: the rows show again.
+    private func landed() {
+        guard landing else { return }
+        landing = false
+        for view in views.values { view.isHidden = false }
+        settleIfCaughtUp()
     }
 }
 
@@ -423,10 +475,12 @@ extension StemCellsSidebarView {
 
     /// A pull is sideways, leftward to open or either way once open.
     fileprivate func pullShouldBegin(_ pan: UIPanGestureRecognizer) -> Bool {
-        guard editing == nil, carry?.link == nil, let view = pan.view as? StemCellsRowView else { return false }
+        guard editing == nil, carry?.link == nil, let view = pan.view as? StemCellsRowView, let row = view.row else { return false }
         let velocity = pan.velocity(in: self)
         guard abs(velocity.x) > abs(velocity.y) * 1.5 else { return false }
-        return velocity.x < 0 || swiped?.id == view.row?.id
+        if swiped?.id == row.id { return true }
+        // Happy's row has nothing behind it: the pull is never taken from the scroll.
+        return velocity.x < 0 && !(swipeActions?(row) ?? []).isEmpty
     }
 }
 
@@ -437,9 +491,12 @@ extension StemCellsSidebarView: UIDragInteractionDelegate {
         // yet under way is replaced.
         guard carry?.link == nil, editing == nil, let view = row(at: point), let row = view.row,
               let drag = beginDrag?(row) else { return [] }
+        // The carry's indices are the document's drawn rows: measured on
+        // those, never on an order still held from a drop.
+        let frames = StemCellsSidebarLayout.layout(Self.layoutRows(rows), width: bounds.width).frames
+        guard arranged == nil, let last = drag.units.last?.last, last < frames.count else { return [] }
         closeSwipe(animated: false)
-        let result = layoutResult ?? StemCellsSidebarLayout.layout(Self.layoutRows(rows), width: bounds.width)
-        carry = Carry(drag: drag, start: point, hand: convert(point, to: superview), to: drag.from, heights: heights(drag, frames: result.frames))
+        carry = Carry(drag: drag, start: point, hand: convert(point, to: superview), to: drag.from, heights: heights(drag, frames: frames))
         let item = UIDragItem(itemProvider: NSItemProvider())
         item.localObject = row.id
         return [item]
@@ -478,11 +535,18 @@ extension StemCellsSidebarView: UIDragInteractionDelegate {
     func dragInteraction(_ interaction: UIDragInteraction, sessionIsRestrictedToDraggingApplication session: any UIDragSession) -> Bool { true }
     func dragInteraction(_ interaction: UIDragInteraction, sessionAllowsMoveOperation session: any UIDragSession) -> Bool { true }
 
-    func dragInteraction(_ interaction: UIDragInteraction, session: any UIDragSession, didEndWith operation: UIDropOperation) {
-        // Let go outside the list: everything goes back where it was.
-        guard carry != nil, operation != .move else { return }
+    func dragInteraction(_ interaction: UIDragInteraction, session: any UIDragSession, willEndWith operation: UIDropOperation) {
+        // Let go outside the list: the peers glide back as the row flies home.
+        guard carry?.link != nil, operation != .move else { return }
         endCarry()
-        UIView.animate(withDuration: 0.16) { self.settle(); self.layoutIfNeeded() }
+        UIView.animate(withDuration: 0.16) { self.settle(revealing: false); self.layoutIfNeeded() }
+    }
+
+    func dragInteraction(_ interaction: UIDragInteraction, session: any UIDragSession, didEndWith operation: UIDropOperation) {
+        // Whatever the previews did, nothing stays hidden or carried.
+        if carry?.link != nil { endCarry(); settle() }
+        landed()
+        for view in views.values { view.isHidden = false }
     }
 
     func dragInteraction(_ interaction: UIDragInteraction, item: UIDragItem, willAnimateCancelWith animator: any UIDragAnimating) {
@@ -523,6 +587,8 @@ extension StemCellsSidebarView: UIDropInteractionDelegate {
             guard !Task.isCancelled else { return }
             self?.settle()
         }
+        // Shown again once the preview lands (`landed`), not when the store answers.
+        landing = true
         StemCellsHaptics.play(.drop)
         onDrop?(drag, to)
         endCarry()
@@ -535,10 +601,7 @@ extension StemCellsSidebarView: UIDropInteractionDelegate {
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, item: UIDragItem, willAnimateDropWith animator: any UIDragAnimating) {
-        animator.addCompletion { [weak self] _ in
-            guard let self else { return }
-            for view in views.values { view.isHidden = false }
-        }
+        animator.addCompletion { [weak self] _ in self?.landed() }
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, sessionDidExit session: any UIDropSession) {

@@ -232,9 +232,11 @@ final class StemCellsRowView: UIView {
 
     /// The title becomes a field in its own frame and font, `text` selected
     /// and the keyboard up. `done` gets what was kept, or nil when Escape
-    /// put the old one back.
-    func beginEditing(_ text: String, done: @escaping (String?) -> Void) {
-        guard field == nil, let row else { return }
+    /// put the old one back. False, and nothing changed, when the field
+    /// couldn't take the keyboard.
+    @discardableResult
+    func beginEditing(_ text: String, done: @escaping (String?) -> Void) -> Bool {
+        guard field == nil, let row else { return false }
         let field = StemCellsRenameField()
         let section = row.kind == .section
         field.font = section ? StemCellsFonts.mono(bold: true, size: StemCellsMetrics.sectionLabelSize) : StemCellsFonts.ui(.medium, size: StemCellsMetrics.labelSize)
@@ -251,8 +253,20 @@ final class StemCellsRowView: UIView {
         self.field = field
         finish = done
         label.isHidden = true
-        field.becomeFirstResponder()
+        guard field.becomeFirstResponder() else {
+            finish = nil
+            finishEditing(nil)
+            return false
+        }
         field.selectAll(nil)
+        return true
+    }
+
+    /// Keeps what the field holds: by letting go of the keyboard, or at once
+    /// when it no longer has it.
+    func commitEditing() {
+        guard let field else { return }
+        if field.isFirstResponder { field.resignFirstResponder() } else { finishEditing(field.text) }
     }
 
     private func finishEditing(_ kept: String?) {

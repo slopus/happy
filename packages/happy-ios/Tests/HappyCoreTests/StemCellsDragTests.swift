@@ -88,7 +88,7 @@ final class StemCellsDragTests: XCTestCase {
         // After the folded section, the separator would end its run there and
         // show e, never hide anything; carrying it above d files d away
         // nowhere either. Only a landing that hides a shown row is blocked.
-        XCTAssertFalse(drag.blocked.contains(true) && drag.blocked[drag.from])
+        XCTAssertFalse(drag.blocked.contains(true))
         let (row, _) = try setUp("d")
         // d set down after the folded section would vanish into it.
         XCTAssertEqual(row.blocked, [false, false, false, false, false, false, false, false].enumerated().map { $0.offset == 7 })
@@ -105,6 +105,15 @@ final class StemCellsDragTests: XCTestCase {
         XCTAssertEqual(drag.target(deltaY: -17, heights: heights), 4)
         XCTAssertEqual(drag.target(deltaY: -18, heights: heights), 3)
         XCTAssertEqual(drag.target(deltaY: -1000, heights: heights), 0)
+    }
+
+    func testAFoldedSectionIsNotSetDownAboveRowsItWouldFold() throws {
+        let (drag, document) = try setUp("old")
+        // [happy, a, a1], [work, b, c], [sep], [d], [old]: above Happy or d it
+        // would fold them away; before Work or the separator its run is empty.
+        XCTAssertEqual(drag.blocked, [true, false, false, true, false])
+        XCTAssertEqual(drag.target(deltaY: -1000, heights: [68, 102, 19, 34, 30]), 1)
+        XCTAssertEqual(try drop(drag, to: 1, in: document), ["happy-search", "happy-create", "happy", "a", "old", "e", "work", "b", "c", "sep", "d"])
     }
 
     func testWhatCantBeCarried() throws {

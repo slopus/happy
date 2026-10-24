@@ -48,7 +48,7 @@ final class StemCellHatchView: UIView {
         // Sixty keyframes a second, from the same frames the tests pin.
         let count = Int(StemCellHatch.total * 60) + 1
         let times = (0..<count).map { Double($0) / Double(count - 1) }
-        let frames = times.map { StemCellHatch.frame(at: $0 * StemCellHatch.total, size: size, seed: seed) }
+        let frames = StemCellHatch.frames(at: times.map { $0 * StemCellHatch.total }, size: size, seed: seed)
         func path(_ frame: StemCellHatch.Frame, scale: CGFloat) -> CGPath {
             let path = CGMutablePath()
             for cell in frame.cells {

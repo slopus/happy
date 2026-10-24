@@ -105,9 +105,18 @@ public enum StemCellHatch {
 
     /// The hatch at `t` seconds, for a mark `size` across.
     public static func frame(at t: Double, size: CGFloat, seed: String) -> Frame {
+        frames(at: [t], size: size, seed: seed)[0]
+    }
+
+    /// The hatch at each of `times`, its cells split once for them all.
+    public static func frames(at times: [Double], size: CGFloat, seed: String) -> [Frame] {
         let generations = generations(size: size)
         let time = Timeline(depth: generations)
         let levels = regions(size: size, generations: generations, seed: seed)
+        return times.map { frame(at: $0, size: size, generations: generations, time: time, levels: levels) }
+    }
+
+    private static func frame(at t: Double, size: CGFloat, generations: Int, time: Timeline, levels: [[CGRect]]) -> Frame {
         let leaves = 1 << generations
         func circle(_ rect: CGRect, scale: CGFloat) -> Cell {
             Cell(center: CGPoint(x: rect.midX, y: rect.midY), radius: min(rect.width, rect.height) * 0.5 * scale)

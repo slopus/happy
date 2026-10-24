@@ -36,14 +36,12 @@ public struct StemCellsDrag: Equatable, Sendable {
         self.drawn = drawn
         self.all = all
         var blocked = Array(repeating: false, count: units.count)
-        // Carrying a folded section is folding: it hides what it lands on, as asked.
-        if !(row.kind == .section && row.collapsed == true) {
-            let shown = Self.shownTop(document)
-            for to in units.indices where to != from {
-                guard case .some(let after) = Self.anchor(to: to, units: units, from: from, drawn: drawn, all: all, moving: row.nodeId),
-                      let moved = SidebarDocumentEdits.move(document, row.nodeId, after: after) else { continue }
-                blocked[to] = !shown.isSubset(of: Self.shownTop(moved))
-            }
+        // A folded section too: set down above rows it would fold them away.
+        let shown = Self.shownTop(document)
+        for to in units.indices where to != from {
+            guard case .some(let after) = Self.anchor(to: to, units: units, from: from, drawn: drawn, all: all, moving: row.nodeId),
+                  let moved = SidebarDocumentEdits.move(document, row.nodeId, after: after) else { continue }
+            blocked[to] = !shown.isSubset(of: Self.shownTop(moved))
         }
         self.blocked = blocked
     }

@@ -22,6 +22,7 @@ final class StemCellsHomeViewController: UIViewController {
     private var session: StemCellsSession?
     private var watch: StemCellsWatch?
     private var accountsObservation: AccountsObservation?
+    private var carryWork: Task<Void, Never>?
     private var snapshot = StemCellsSnapshot()
     private var creating = false
 
@@ -384,14 +385,24 @@ final class StemCellsHomeViewController: UIViewController {
     private func drop(_ drag: StemCellsDrag, to: Int) {
         guard let store = session?.store else { return }
         guard case .some(let after) = drag.after(to: to) else { return }
-        Task { await store.move(drag.moving, after: after) }
+        inOrder { await store.move(drag.moving, after: after) }
     }
 
     private func dragging(_ active: Bool) {
         guard let store = session?.store else { return }
-        Task {
+        inOrder {
             if active { await store.attentionInput() }
             await store.setDragging(active)
+        }
+    }
+
+    /// Runs `work` after what the carry asked of the store before it: a
+    /// drop's move reaches the store ahead of the carry's end.
+    private func inOrder(_ work: @escaping @MainActor () async -> Void) {
+        let previous = carryWork
+        carryWork = Task { @MainActor in
+            await previous?.value
+            await work()
         }
     }
 }
