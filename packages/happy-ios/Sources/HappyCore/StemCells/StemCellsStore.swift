@@ -194,7 +194,10 @@ public actor StemCellsStore {
                         let resumed = hello?["resumed"]?.boolValue == true && hello?["gap"]?.boolValue != true
                         if let next = hello?["cursor"]?.stringValue, !resumed || cursor == nil { cursor = next }
                         snapshot.live = true
-                        if !resumed { for listener in listeners.values { listener.continuation.yield(.resync) } }
+                        if !resumed {
+                            for listener in listeners.values { listener.continuation.yield(.resync) }
+                            for listener in typeListeners.values { listener.continuation.yield(.resync) }
+                        }
                         if !resumed || held == nil { await load() } else { publish() }
                         continue
                     }
@@ -203,6 +206,9 @@ public actor StemCellsStore {
                     let payload = envelope["payload"]
                     if let key = payload?["agentId"]?.stringValue ?? payload?["surfaceId"]?.stringValue ?? payload?["todo"]?["surfaceId"]?.stringValue {
                         for listener in listeners.values where listener.key == key { listener.continuation.yield(.event(envelope)) }
+                    }
+                    if let type = envelope["type"]?.stringValue {
+                        for listener in typeListeners.values where listener.prefixes.contains(where: type.hasPrefix) { listener.continuation.yield(.event(envelope)) }
                     }
                     receive(envelope)
                 }
@@ -238,7 +244,19 @@ public actor StemCellsStore {
         return stream
     }
 
-    private func unlisten(_ id: UUID) { listeners.removeValue(forKey: id) }
+    private func unlisten(_ id: UUID) { listeners.removeValue(forKey: id); typeListeners.removeValue(forKey: id) }
+
+    private var typeListeners: [UUID: (prefixes: [String], continuation: AsyncStream<ConversationEvent>.Continuation)] = [:]
+
+    /// Every event whose type starts with one of `prefixes` (`"story."`),
+    /// for what no conversation or Surface key names. `resync` as above.
+    public func events(matching prefixes: [String]) -> AsyncStream<ConversationEvent> {
+        let id = UUID()
+        let (stream, continuation) = AsyncStream.makeStream(of: ConversationEvent.self)
+        typeListeners[id] = (prefixes, continuation)
+        continuation.onTermination = { [weak self] _ in Task { await self?.unlisten(id) } }
+        return stream
+    }
 
     // MARK: Reads
 

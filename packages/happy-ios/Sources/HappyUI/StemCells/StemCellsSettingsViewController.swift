@@ -76,6 +76,9 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     private var observation: AccountsObservation?
     private var prioritizingWatch: StemCellsWatch?
     private var prioritizing: Bool?
+    private var storiesWatch: StemCellsWatch?
+    /// Whether the computer offers Stories and the person has them on.
+    private var stories: StoriesSnapshot.Availability?
     private var images: [String: UIImage] = [:]
     private var imageKeys: [String: String] = [:]
     private var imageJobs: [String: Task<Void, Never>] = [:]
@@ -273,10 +276,18 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         prioritizingWatch?.invalidate()
         prioritizingWatch = nil
         prioritizing = nil
+        storiesWatch?.invalidate()
+        storiesWatch = nil
+        stories = nil
         guard let profile = shown, profile.isDirect, let session = StemCellsSession.session(for: profile.id, context: context) else { return }
         prioritizingWatch = session.watch { [weak self] snapshot in
             guard let self, prioritizing != snapshot.prioritizing else { return }
             prioritizing = snapshot.prioritizing
+            rebuild(animated: false)
+        }
+        storiesWatch = StoriesSession.session(for: session).watch { [weak self] snapshot in
+            guard let self, stories != snapshot.availability else { return }
+            stories = snapshot.availability
             rebuild(animated: false)
         }
     }
@@ -286,8 +297,13 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     private func rowsFor(_ profile: Profile) -> [[StemCellsSettingsRow]] {
         let id = profile.id
         if profile.isDirect {
+            var experiments = [StemCellsSettingsRow(id: "prioritizing", title: Strings.StemCells.prioritizing, icon: ("pulse-outline", .orange), accessory: .toggle, isOn: prioritizing == true, toggled: { [weak self] on in self?.setPrioritizing(on) })]
+            // Stories: only where the computer offers them.
+            if stories == .on || stories == .off {
+                experiments.append(StemCellsSettingsRow(id: "stories", title: Strings.Stories.setting, icon: ("sparkles-outline", .blue), accessory: .toggle, isOn: stories == .on, toggled: { [weak self] on in self?.setStories(on) }))
+            }
             return [
-                [StemCellsSettingsRow(id: "prioritizing", title: Strings.StemCells.prioritizing, icon: ("pulse-outline", .orange), accessory: .toggle, isOn: prioritizing == true, toggled: { [weak self] on in self?.setPrioritizing(on) })],
+                experiments,
                 [StemCellsSettingsRow(id: "more", title: Strings.StemCells.more, icon: ("more", .gray), action: { [weak self] in self?.openMore(profile) })],
                 [StemCellsSettingsRow(id: "disconnect", title: Strings.StemCells.disconnect, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) })],
             ]
@@ -481,6 +497,13 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         prioritizing = on
         let store = session.store
         Task { await store.setPrioritizing(on) }
+    }
+
+    private func setStories(_ on: Bool) {
+        guard let profile = shown, let session = StemCellsSession.session(for: profile.id, context: context) else { return }
+        stories = on ? .on : .off
+        let store = StoriesSession.session(for: session).store
+        Task { await store.setEnabled(on) }
     }
 
     /// A Happy account's page, once that account is the active one.

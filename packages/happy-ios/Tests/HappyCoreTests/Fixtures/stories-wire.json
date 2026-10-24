@@ -1,0 +1,1120 @@
+{
+ "samples": {
+  "story": [
+   {
+    "id": "s7k2m9q4w1e5t8y3u6i0o2p5",
+    "status": "draft",
+    "authorUserId": "u1x2y3z4a5b6c7d8e9f0g1h2",
+    "createdBy": {
+     "kind": "agent",
+     "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8"
+    },
+    "source": {
+     "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8",
+     "toolCallId": "c3v5b7n9m1q2w4e6r8t0y2u4"
+    },
+    "caption": "Login redirect loop: fixed.",
+    "frames": [
+     {
+      "id": "f1",
+      "kind": "image",
+      "width": 1440,
+      "height": 900,
+      "scale": 2,
+      "thumbhash": "3PcNNYSFeXh/d3eld0iHZoZgVwh2",
+      "durationMs": null,
+      "asset": {
+       "type": "chat_media",
+       "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8",
+       "toolCallId": "k8j7h6g5f4d3s2a1q0w9e8r7",
+       "index": 0
+      },
+      "available": true,
+      "placement": {
+       "x": 0.5,
+       "y": 0.5,
+       "scale": 1,
+       "rotation": 0
+      },
+      "background": [
+       "#1D2B3A",
+       "#4A6A84"
+      ],
+      "overlays": [
+       {
+        "id": "o1",
+        "type": "text",
+        "text": "No more loops\nsecond line",
+        "style": {
+         "font": "sanFrancisco",
+         "fill": "filled",
+         "color": "#FFFFFF",
+         "align": "center",
+         "width": 0.8
+        },
+        "transform": {
+         "x": 0.5,
+         "y": 0.2,
+         "scale": 1,
+         "rotation": 0
+        }
+       },
+       {
+        "id": "t0",
+        "type": "text",
+        "text": "sanFrancisco",
+        "style": {
+         "font": "sanFrancisco",
+         "fill": "regular",
+         "color": "#12AB9F",
+         "align": "left",
+         "width": 0.1
+        },
+        "transform": {
+         "x": 0,
+         "y": 0.9,
+         "scale": 0.05,
+         "rotation": -3.141592653589793
+        }
+       },
+       {
+        "id": "t1",
+        "type": "text",
+        "text": "typewriter",
+        "style": {
+         "font": "typewriter",
+         "fill": "filled",
+         "color": "#12AB9F",
+         "align": "center",
+         "width": 0.2
+        },
+        "transform": {
+         "x": 0.1,
+         "y": 0.9,
+         "scale": 1.05,
+         "rotation": -2.641592653589793
+        }
+       },
+       {
+        "id": "t2",
+        "type": "text",
+        "text": "avenirNext",
+        "style": {
+         "font": "avenirNext",
+         "fill": "semi",
+         "color": "#12AB9F",
+         "align": "right",
+         "width": 0.30000000000000004
+        },
+        "transform": {
+         "x": 0.2,
+         "y": 0.9,
+         "scale": 2.05,
+         "rotation": -2.141592653589793
+        }
+       },
+       {
+        "id": "t3",
+        "type": "text",
+        "text": "courierNew",
+        "style": {
+         "font": "courierNew",
+         "fill": "stroke",
+         "color": "#12AB9F",
+         "align": "left",
+         "width": 0.4
+        },
+        "transform": {
+         "x": 0.30000000000000004,
+         "y": 0.9,
+         "scale": 3.05,
+         "rotation": -1.6415926535897931
+        }
+       },
+       {
+        "id": "t4",
+        "type": "text",
+        "text": "noteworthy",
+        "style": {
+         "font": "noteworthy",
+         "fill": "blur",
+         "color": "#12AB9F",
+         "align": "center",
+         "width": 0.5
+        },
+        "transform": {
+         "x": 0.4,
+         "y": 0.9,
+         "scale": 4.05,
+         "rotation": -1.1415926535897931
+        }
+       },
+       {
+        "id": "t5",
+        "type": "text",
+        "text": "georgia",
+        "style": {
+         "font": "georgia",
+         "fill": "regular",
+         "color": "#12AB9F",
+         "align": "right",
+         "width": 0.6
+        },
+        "transform": {
+         "x": 0.5,
+         "y": 0.9,
+         "scale": 5.05,
+         "rotation": -0.6415926535897931
+        }
+       },
+       {
+        "id": "t6",
+        "type": "text",
+        "text": "papyrus",
+        "style": {
+         "font": "papyrus",
+         "fill": "filled",
+         "color": "#12AB9F",
+         "align": "left",
+         "width": 0.7000000000000001
+        },
+        "transform": {
+         "x": 0.6000000000000001,
+         "y": 0.9,
+         "scale": 6.05,
+         "rotation": -0.14159265358979312
+        }
+       },
+       {
+        "id": "t7",
+        "type": "text",
+        "text": "snellRoundhand",
+        "style": {
+         "font": "snellRoundhand",
+         "fill": "semi",
+         "color": "#12AB9F",
+         "align": "center",
+         "width": 0.8
+        },
+        "transform": {
+         "x": 0.7000000000000001,
+         "y": 0.9,
+         "scale": 7.05,
+         "rotation": 0.3584073464102069
+        }
+       },
+       {
+        "id": "o2",
+        "type": "link",
+        "url": "https://happy.engineering/docs?x=1",
+        "label": null,
+        "style": "white",
+        "transform": {
+         "x": 0.5,
+         "y": 0.6,
+         "scale": 1.2,
+         "rotation": 0.3
+        }
+       },
+       {
+        "id": "o3",
+        "type": "link",
+        "url": "HTTP://example.com",
+        "label": "Example",
+        "style": "custom",
+        "color": "#FF00AA",
+        "transform": {
+         "x": -0.5,
+         "y": 1.5,
+         "scale": 10,
+         "rotation": 3.141592653589793
+        }
+       },
+       {
+        "id": "o4",
+        "type": "sticker",
+        "packId": "utyaduck",
+        "stickerId": "AgAD8gADVp29Cg",
+        "transform": {
+         "x": 0.78,
+         "y": 0.8,
+         "scale": 0.35,
+         "rotation": -0.2
+        }
+       },
+       {
+        "id": "o5",
+        "type": "emoji",
+        "emoji": "👨‍👩‍👧",
+        "transform": {
+         "x": 0.3,
+         "y": 0.3,
+         "scale": 0.2,
+         "rotation": 0
+        }
+       },
+       {
+        "id": "o6",
+        "type": "reaction",
+        "emoji": "❤️",
+        "transform": {
+         "x": 0.5,
+         "y": 0.75,
+         "scale": 0.25,
+         "rotation": 0
+        }
+       },
+       {
+        "id": "o7",
+        "type": "reaction",
+        "emoji": "🔥",
+        "dark": true,
+        "flipped": true,
+        "transform": {
+         "x": 0.2,
+         "y": 0.75,
+         "scale": 0.25,
+         "rotation": 0.1
+        }
+       }
+      ]
+     }
+    ],
+    "audience": "team",
+    "artifactVersion": 3,
+    "createdAt": 1755300000000,
+    "updatedAt": 1755300500000,
+    "postedAt": null,
+    "expiresAt": null,
+    "seen": false,
+    "viewCount": null,
+    "myReaction": null,
+    "reactions": [],
+    "version": "01991f3a-5c1e-7000-8000-2f9a1b3c4d5e"
+   },
+   {
+    "id": "s2",
+    "status": "posted",
+    "authorUserId": null,
+    "createdBy": {
+     "kind": "user",
+     "userId": null
+    },
+    "source": null,
+    "caption": null,
+    "frames": [
+     {
+      "id": "f2",
+      "kind": "video",
+      "width": null,
+      "height": null,
+      "thumbhash": null,
+      "durationMs": 12000,
+      "asset": {
+       "type": "chat_media",
+       "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8",
+       "toolCallId": "k8j7h6g5f4d3s2a1q0w9e8r7",
+       "index": 0
+      },
+      "available": true,
+      "placement": {
+       "x": 0.5,
+       "y": 0.5,
+       "scale": 1,
+       "rotation": 0
+      },
+      "background": [
+       "#000000",
+       "#000000"
+      ],
+      "overlays": []
+     },
+     {
+      "id": "f3",
+      "kind": "image",
+      "width": 1440,
+      "height": 900,
+      "scale": 2,
+      "thumbhash": "3PcNNYSFeXh/d3eld0iHZoZgVwh2",
+      "durationMs": null,
+      "asset": {
+       "type": "artifact_file",
+       "artifactId": "s2",
+       "version": 2,
+       "path": "media/f3.jpg"
+      },
+      "available": false,
+      "placement": {
+       "x": 0.4,
+       "y": 0.6,
+       "scale": 1.5,
+       "rotation": 0.785
+      },
+      "background": [
+       "#1D2B3A",
+       "#4A6A84"
+      ],
+      "overlays": []
+     }
+    ],
+    "audience": "self",
+    "artifactVersion": 3,
+    "createdAt": 1755300000000,
+    "updatedAt": 1755300500000,
+    "postedAt": 1755300000000,
+    "expiresAt": 1755386400000,
+    "seen": true,
+    "viewCount": 4,
+    "myReaction": "❤️",
+    "reactions": [
+     {
+      "emoji": "❤️",
+      "count": 3
+     },
+     {
+      "emoji": "🔥",
+      "count": 1
+     }
+    ],
+    "version": "01991f3a-5c1e-7000-8000-2f9a1b3c4d5e"
+   },
+   {
+    "id": "s3",
+    "status": "deleted",
+    "authorUserId": "u1x2y3z4a5b6c7d8e9f0g1h2",
+    "createdBy": {
+     "kind": "user",
+     "userId": "u1x2y3z4a5b6c7d8e9f0g1h2"
+    },
+    "source": {
+     "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8",
+     "toolCallId": "c3v5b7n9m1q2w4e6r8t0y2u4"
+    },
+    "caption": "Login redirect loop: fixed.",
+    "frames": [
+     {
+      "id": "f1a2b3c4d5e6f7g8h9i0j1k2",
+      "kind": "image",
+      "width": 1440,
+      "height": 900,
+      "scale": 2,
+      "thumbhash": "3PcNNYSFeXh/d3eld0iHZoZgVwh2",
+      "durationMs": null,
+      "asset": {
+       "type": "chat_media",
+       "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8",
+       "toolCallId": "k8j7h6g5f4d3s2a1q0w9e8r7",
+       "index": 0
+      },
+      "available": true,
+      "placement": {
+       "x": 0.5,
+       "y": 0.5,
+       "scale": 1,
+       "rotation": 0
+      },
+      "background": [
+       "#1D2B3A",
+       "#4A6A84"
+      ],
+      "overlays": []
+     }
+    ],
+    "audience": "team",
+    "artifactVersion": 3,
+    "createdAt": 1755300000000,
+    "updatedAt": 1755300500000,
+    "postedAt": null,
+    "expiresAt": null,
+    "seen": false,
+    "viewCount": null,
+    "myReaction": null,
+    "reactions": [],
+    "version": "01991f3a-5c1e-7000-8000-2f9a1b3c4d5e"
+   }
+  ],
+  "feed": [
+   {
+    "authors": [
+     {
+      "userId": "u1",
+      "name": "Kirill Dubovitskiy",
+      "photo": "/v0/users/u1/photo",
+      "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+      "isSelf": true,
+      "storyIds": [
+       "s2"
+      ],
+      "unseenCount": 0,
+      "draftCount": 1,
+      "latestPostedAt": 1755300000000
+     },
+     {
+      "userId": "u9",
+      "name": "Steve Korshakov",
+      "photo": null,
+      "thumbhash": null,
+      "isSelf": false,
+      "storyIds": [
+       "s4",
+       "s5"
+      ],
+      "unseenCount": 1,
+      "draftCount": null,
+      "latestPostedAt": 1755400000000
+     }
+    ],
+    "stories": {
+     "s2": {
+      "id": "s2",
+      "status": "posted",
+      "authorUserId": "u1x2y3z4a5b6c7d8e9f0g1h2",
+      "createdBy": {
+       "kind": "agent",
+       "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8"
+      },
+      "source": {
+       "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8",
+       "toolCallId": "c3v5b7n9m1q2w4e6r8t0y2u4"
+      },
+      "caption": "Login redirect loop: fixed.",
+      "frames": [
+       {
+        "id": "f1a2b3c4d5e6f7g8h9i0j1k2",
+        "kind": "image",
+        "width": 1440,
+        "height": 900,
+        "scale": 2,
+        "thumbhash": "3PcNNYSFeXh/d3eld0iHZoZgVwh2",
+        "durationMs": null,
+        "asset": {
+         "type": "chat_media",
+         "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8",
+         "toolCallId": "k8j7h6g5f4d3s2a1q0w9e8r7",
+         "index": 0
+        },
+        "available": true,
+        "placement": {
+         "x": 0.5,
+         "y": 0.5,
+         "scale": 1,
+         "rotation": 0
+        },
+        "background": [
+         "#1D2B3A",
+         "#4A6A84"
+        ],
+        "overlays": []
+       }
+      ],
+      "audience": "team",
+      "artifactVersion": 3,
+      "createdAt": 1755300000000,
+      "updatedAt": 1755300500000,
+      "postedAt": 1755300000000,
+      "expiresAt": 1755386400000,
+      "seen": true,
+      "viewCount": 0,
+      "myReaction": null,
+      "reactions": [],
+      "version": "01991f3a-5c1e-7000-8000-2f9a1b3c4d5e"
+     }
+    },
+    "cursor": "01991f3a-0000-7000-8000-000000000000"
+   },
+   {
+    "authors": [
+     {
+      "userId": null,
+      "name": "Me",
+      "photo": "/v0/profile/photo",
+      "thumbhash": null,
+      "isSelf": true,
+      "storyIds": [],
+      "unseenCount": 0,
+      "draftCount": 0,
+      "latestPostedAt": null
+     }
+    ],
+    "stories": {},
+    "cursor": "c"
+   }
+  ],
+  "page": [
+   {
+    "stories": [
+     {
+      "id": "s1",
+      "status": "draft",
+      "authorUserId": "u1x2y3z4a5b6c7d8e9f0g1h2",
+      "createdBy": {
+       "kind": "agent",
+       "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8"
+      },
+      "source": {
+       "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8",
+       "toolCallId": "c3v5b7n9m1q2w4e6r8t0y2u4"
+      },
+      "caption": "Login redirect loop: fixed.",
+      "frames": [
+       {
+        "id": "f1a2b3c4d5e6f7g8h9i0j1k2",
+        "kind": "image",
+        "width": 1440,
+        "height": 900,
+        "scale": 2,
+        "thumbhash": "3PcNNYSFeXh/d3eld0iHZoZgVwh2",
+        "durationMs": null,
+        "asset": {
+         "type": "chat_media",
+         "agentId": "a9b8c7d6e5f4g3h2i1j0k9l8",
+         "toolCallId": "k8j7h6g5f4d3s2a1q0w9e8r7",
+         "index": 0
+        },
+        "available": true,
+        "placement": {
+         "x": 0.5,
+         "y": 0.5,
+         "scale": 1,
+         "rotation": 0
+        },
+        "background": [
+         "#1D2B3A",
+         "#4A6A84"
+        ],
+        "overlays": []
+       }
+      ],
+      "audience": "team",
+      "artifactVersion": 3,
+      "createdAt": 1755300000000,
+      "updatedAt": 1755300500000,
+      "postedAt": null,
+      "expiresAt": null,
+      "seen": false,
+      "viewCount": null,
+      "myReaction": null,
+      "reactions": [],
+      "version": "01991f3a-5c1e-7000-8000-2f9a1b3c4d5e"
+     }
+    ],
+    "nextCursor": null,
+    "cursor": "c1"
+   },
+   {
+    "stories": [],
+    "nextCursor": "n",
+    "cursor": "c2"
+   }
+  ],
+  "media": [
+   {
+    "items": [
+     {
+      "asset": {
+       "type": "chat_media",
+       "agentId": "a",
+       "toolCallId": "t",
+       "index": 0
+      },
+      "kind": "image",
+      "name": "login-fixed.png",
+      "width": 1440,
+      "height": 900,
+      "scale": 2,
+      "thumbhash": "3PcNNYSFeXh/d3eld0iHZoZgVwh2",
+      "createdAt": 1755300000000
+     },
+     {
+      "asset": {
+       "type": "artifact_file",
+       "artifactId": "r",
+       "version": 1,
+       "path": "clip.mp4"
+      },
+      "kind": "video",
+      "name": "clip.mp4",
+      "width": null,
+      "height": null,
+      "thumbhash": null,
+      "createdAt": 1755300000001
+     }
+    ],
+    "nextCursor": null
+   }
+  ],
+  "viewers": [
+   {
+    "viewers": [
+     {
+      "userId": "u9",
+      "name": "Steve Korshakov",
+      "photo": "/v0/users/u9/photo",
+      "thumbhash": null,
+      "reaction": "❤️",
+      "reactedAt": 1755400000000
+     },
+     {
+      "userId": "u8",
+      "name": "Ada",
+      "photo": null,
+      "thumbhash": null,
+      "reaction": null,
+      "reactedAt": null
+     }
+    ],
+    "nextCursor": null
+   }
+  ],
+  "frameInputs": [
+   {
+    "id": "f1",
+    "upload": {
+     "uploadId": "u8p2l4o6a1d3e5f7g9h0j2k4",
+     "name": "IMG_0042.jpg"
+    },
+    "overlays": []
+   },
+   {
+    "asset": {
+     "type": "chat_media",
+     "agentId": "a",
+     "toolCallId": "t",
+     "index": 1
+    },
+    "overlays": []
+   },
+   {
+    "id": "f2",
+    "placement": {
+     "x": 0.5,
+     "y": 0.5,
+     "scale": 1.2,
+     "rotation": 0
+    },
+    "background": [
+     "#000000",
+     "#FFFFFF"
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "type": "text",
+      "text": "No more loops\nsecond line",
+      "style": {
+       "font": "sanFrancisco",
+       "fill": "filled",
+       "color": "#FFFFFF",
+       "align": "center",
+       "width": 0.8
+      },
+      "transform": {
+       "x": 0.5,
+       "y": 0.2,
+       "scale": 1,
+       "rotation": 0
+      }
+     }
+    ]
+   }
+  ],
+  "pack": [
+   {
+    "pack": {
+     "id": "utyaduck",
+     "title": "Duck",
+     "kind": "stickers",
+     "thumbnail": "AgAD8gADVp29Cg",
+     "stickerCount": 2,
+     "version": "a34d668493927d74"
+    },
+    "stickers": [
+     {
+      "packId": "utyaduck",
+      "id": "AgAD8gADVp29Cg",
+      "emoji": [
+       "😂"
+      ],
+      "format": "tgs",
+      "width": 512,
+      "height": 512,
+      "size": 5272,
+      "sha256": "a34d668493927d74a2b2032a496f7e31f77d47c2e6f3a4e568933950d293e206"
+     },
+     {
+      "packId": "utyaduck",
+      "id": "b-2_x",
+      "emoji": [],
+      "format": "webm",
+      "width": 512,
+      "height": 400,
+      "size": 1,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+     }
+    ]
+   },
+   {
+    "pack": {
+     "id": "e-1",
+     "title": "Shapes",
+     "kind": "emoji",
+     "thumbnail": "x",
+     "stickerCount": 0,
+     "version": "v"
+    },
+    "stickers": []
+   }
+  ],
+  "recents": [
+   {
+    "recents": [
+     {
+      "packId": "utyaduck",
+      "stickerId": "AgAD8gADVp29Cg"
+     }
+    ],
+    "cursor": "c"
+   },
+   {
+    "recents": []
+   }
+  ]
+ },
+ "constants": {
+  "canvas": {
+   "width": 1080,
+   "height": 1920
+  },
+  "maxFrames": 10,
+  "maxOverlays": 32,
+  "maxCaption": 1024,
+  "lifetimeMs": 86400000,
+  "imageDurationMs": 5000,
+  "maxVideoDurationMs": 60000,
+  "settingKey": "happy-desktop.experiments.stories",
+  "hapticMoments": [
+   "story.open",
+   "story.advance",
+   "story.post",
+   "story.delete",
+   "story.react",
+   "sticker.drop",
+   "overlay.snap",
+   "overlay.trash"
+  ],
+  "fonts": [
+   "sanFrancisco",
+   "typewriter",
+   "avenirNext",
+   "courierNew",
+   "noteworthy",
+   "georgia",
+   "papyrus",
+   "snellRoundhand"
+  ],
+  "fills": [
+   "regular",
+   "filled",
+   "semi",
+   "stroke",
+   "blur"
+  ],
+  "linkStyles": [
+   "white",
+   "black",
+   "transparent",
+   "blur",
+   "custom"
+  ],
+  "grid": [
+   {
+    "kind": "stickers",
+    "width": 200,
+    "spacing": 0,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 200,
+    "spacing": 0,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 200,
+    "spacing": 4,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 200,
+    "spacing": 4,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 200,
+    "spacing": 8,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 200,
+    "spacing": 8,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 320,
+    "spacing": 0,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 320,
+    "spacing": 0,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 320,
+    "spacing": 4,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 320,
+    "spacing": 4,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 320,
+    "spacing": 8,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 320,
+    "spacing": 8,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 343,
+    "spacing": 0,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 343,
+    "spacing": 0,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 343,
+    "spacing": 4,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 343,
+    "spacing": 4,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 343,
+    "spacing": 8,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 343,
+    "spacing": 8,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 390,
+    "spacing": 0,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 390,
+    "spacing": 0,
+    "columns": 9
+   },
+   {
+    "kind": "stickers",
+    "width": 390,
+    "spacing": 4,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 390,
+    "spacing": 4,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 390,
+    "spacing": 8,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 390,
+    "spacing": 8,
+    "columns": 8
+   },
+   {
+    "kind": "stickers",
+    "width": 430,
+    "spacing": 0,
+    "columns": 6
+   },
+   {
+    "kind": "emoji",
+    "width": 430,
+    "spacing": 0,
+    "columns": 10
+   },
+   {
+    "kind": "stickers",
+    "width": 430,
+    "spacing": 4,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 430,
+    "spacing": 4,
+    "columns": 9
+   },
+   {
+    "kind": "stickers",
+    "width": 430,
+    "spacing": 8,
+    "columns": 5
+   },
+   {
+    "kind": "emoji",
+    "width": 430,
+    "spacing": 8,
+    "columns": 9
+   },
+   {
+    "kind": "stickers",
+    "width": 600,
+    "spacing": 0,
+    "columns": 8
+   },
+   {
+    "kind": "emoji",
+    "width": 600,
+    "spacing": 0,
+    "columns": 15
+   },
+   {
+    "kind": "stickers",
+    "width": 600,
+    "spacing": 4,
+    "columns": 8
+   },
+   {
+    "kind": "emoji",
+    "width": 600,
+    "spacing": 4,
+    "columns": 13
+   },
+   {
+    "kind": "stickers",
+    "width": 600,
+    "spacing": 8,
+    "columns": 7
+   },
+   {
+    "kind": "emoji",
+    "width": 600,
+    "spacing": 8,
+    "columns": 12
+   },
+   {
+    "kind": "stickers",
+    "width": 744,
+    "spacing": 0,
+    "columns": 10
+   },
+   {
+    "kind": "emoji",
+    "width": 744,
+    "spacing": 0,
+    "columns": 18
+   },
+   {
+    "kind": "stickers",
+    "width": 744,
+    "spacing": 4,
+    "columns": 10
+   },
+   {
+    "kind": "emoji",
+    "width": 744,
+    "spacing": 4,
+    "columns": 17
+   },
+   {
+    "kind": "stickers",
+    "width": 744,
+    "spacing": 8,
+    "columns": 9
+   },
+   {
+    "kind": "emoji",
+    "width": 744,
+    "spacing": 8,
+    "columns": 15
+   },
+   {
+    "kind": "stickers",
+    "width": 1024,
+    "spacing": 0,
+    "columns": 14
+   },
+   {
+    "kind": "emoji",
+    "width": 1024,
+    "spacing": 0,
+    "columns": 25
+   },
+   {
+    "kind": "stickers",
+    "width": 1024,
+    "spacing": 4,
+    "columns": 13
+   },
+   {
+    "kind": "emoji",
+    "width": 1024,
+    "spacing": 4,
+    "columns": 23
+   },
+   {
+    "kind": "stickers",
+    "width": 1024,
+    "spacing": 8,
+    "columns": 13
+   },
+   {
+    "kind": "emoji",
+    "width": 1024,
+    "spacing": 8,
+    "columns": 21
+   }
+  ]
+ }
+}

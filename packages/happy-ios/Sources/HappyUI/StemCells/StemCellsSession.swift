@@ -39,6 +39,7 @@ final class StemCellsSession {
     /// Forgets a computer that was unpaired, and what was kept of it.
     static func forget(_ accountID: String) {
         StemCellsOfflineFile.remove(accountID)
+        StoriesSession.forget(accountID)
         guard let session = sessions.removeValue(forKey: accountID) else { return }
         session.following?.cancel()
         let store = session.store

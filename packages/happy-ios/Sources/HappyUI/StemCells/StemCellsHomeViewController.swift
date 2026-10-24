@@ -25,6 +25,8 @@ final class StemCellsHomeViewController: UIViewController {
     private var carryWork: Task<Void, Never>?
     private var snapshot = StemCellsSnapshot()
     private var creating = false
+    /// Stories' row above the sidebar; no height while Stories are off.
+    private lazy var stories = StoriesHomeController(host: self)
 
     /// Every snapshot shown, for the screen around this one.
     var onSnapshot: ((StemCellsSnapshot) -> Void)?
@@ -68,6 +70,8 @@ final class StemCellsHomeViewController: UIViewController {
         sidebar.onDrop = { [weak self] drag, to in self?.drop(drag, to: to) }
         sidebar.onDragging = { [weak self] active in self?.dragging(active) }
         sidebar.delegate = self
+        sidebar.addSubview(stories.row)
+        stories.onHeightChange = { [weak self] in self?.view.setNeedsLayout() }
         banner.onTurnOn = { [weak self] in
             guard let store = self?.session?.store else { return }
             Task { await store.enablePrioritizing() }
@@ -108,6 +112,7 @@ final class StemCellsHomeViewController: UIViewController {
         watch?.invalidate(); watch = nil
         modelsWatch?.invalidate(); modelsWatch = nil
         session = id.flatMap { StemCellsSession.session(for: $0, context: context) }
+        stories.attach(session)
         sidebar.images = session?.images
         sidebar.apply([])
         snapshot = StemCellsSnapshot()
@@ -188,15 +193,17 @@ final class StemCellsHomeViewController: UIViewController {
         // The list keeps clear of the pickers over the dock too.
         let barHeight = modelBar.isHidden ? 0 : StemCellModelBarLayout.height + StemCellModelBarLayout.gap
         dockView.scrimRaise = barHeight
-        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom + barHeight, bannerHeight: bannerHeight)
+        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom + barHeight, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.height)
         banner.frame = layout.banner
         sidebar.frame = bounds
+        stories.row.frame = layout.stories
         let insets = UIEdgeInsets(layout.listInsets)
         if sidebar.contentInset != insets {
             let atTop = sidebar.contentOffset.y <= -sidebar.contentInset.top + 1
             sidebar.contentInset = insets
             sidebar.verticalScrollIndicatorInsets = UIEdgeInsets(layout.indicatorInsets)
-            if atTop { sidebar.contentOffset.y = -insets.top }
+            // A shrinking top (Stories turned off) leaves nothing scrolled past it.
+            if atTop || (!sidebar.isDragging && sidebar.contentOffset.y < -insets.top) { sidebar.contentOffset.y = -insets.top }
         }
         empty.frame = layout.empty
         modelBar.frame = bounds

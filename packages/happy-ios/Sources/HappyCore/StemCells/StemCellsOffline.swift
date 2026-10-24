@@ -116,6 +116,23 @@ public actor StemCellsOfflineFile {
         await saving?.value
     }
 
+    // MARK: Other files
+
+    /// A file another feature keeps for this computer (`stories.json`),
+    /// written whole through the gate, so it goes with the computer.
+    public nonisolated func writeExtra(_ name: String, data: Data) {
+        let url = directory.appendingPathComponent(name)
+        gate.write {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    public nonisolated func readExtra(_ name: String) -> Data? {
+        guard !gate.isClosed else { return nil }
+        return try? Data(contentsOf: directory.appendingPathComponent(name))
+    }
+
     // MARK: Pictures
 
     /// A picture's bytes as last read, by where it is served and its hash.

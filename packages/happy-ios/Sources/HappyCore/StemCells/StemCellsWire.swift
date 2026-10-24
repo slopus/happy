@@ -120,6 +120,8 @@ extension AgentWire {
             public var calendarSurfaces: Bool?
             public var systemMonitorSurfaces: Bool?
             public var chatSurfaces: Bool?
+            public var stories: Bool?
+            public var stickers: Bool?
         }
         public var ready: Bool
         public var capabilities: Capabilities?

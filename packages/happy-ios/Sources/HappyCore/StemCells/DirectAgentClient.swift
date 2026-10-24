@@ -31,8 +31,9 @@ public final class DirectAgentClient: Sendable {
 
     // MARK: Requests
 
-    func send(_ method: String, _ path: String, json: JSONValue? = nil, headers: [String: String] = [:]) async throws -> DirectHTTPResponse {
-        let body = try json.map { try JSONEncoder().encode($0) }
+    /// `raw` is sent as is, in place of `json` (an upload's bytes).
+    func send(_ method: String, _ path: String, json: JSONValue? = nil, raw: Data? = nil, headers: [String: String] = [:]) async throws -> DirectHTTPResponse {
+        let body = try raw ?? json.map { try JSONEncoder().encode($0) }
         let response = try await transport.request(method: method, path: path, credential: token, body: body, headers: headers)
         if response.status == 401 { throw DirectAgentError.revoked }
         guard (200..<300).contains(response.status) || response.status == 304 || response.status == 206 else {

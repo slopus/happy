@@ -11,12 +11,17 @@ public struct StemCellsHomeLayout: Equatable, Sendable {
     public var listInsets: LayoutInsets
     public var indicatorInsets: LayoutInsets
     public var empty: CGRect
+    /// The stories row, in the list's content space: just above its first
+    /// row, so it scrolls with the list. Empty when it isn't drawn.
+    public var stories: CGRect
 
     /// `contentTop` is where content starts under the header, `chromeTop`
-    /// the header's own foot, `listBottom` the room the dock keeps.
-    public init(size: CGSize, contentTop: CGFloat, chromeTop: CGFloat, listBottom: CGFloat, bannerHeight: CGFloat) {
+    /// the header's own foot, `listBottom` the room the dock keeps,
+    /// `storiesHeight` the stories row's (0: not drawn).
+    public init(size: CGSize, contentTop: CGFloat, chromeTop: CGFloat, listBottom: CGFloat, bannerHeight: CGFloat, storiesHeight: CGFloat = 0) {
         banner = CGRect(x: 0, y: contentTop, width: size.width, height: bannerHeight)
-        listInsets = LayoutInsets(top: banner.maxY, left: 0, bottom: listBottom, right: 0)
+        stories = storiesHeight > 0 ? CGRect(x: 0, y: -storiesHeight, width: size.width, height: storiesHeight) : .zero
+        listInsets = LayoutInsets(top: banner.maxY + max(0, storiesHeight), left: 0, bottom: listBottom, right: 0)
         indicatorInsets = LayoutInsets(top: chromeTop, left: 0, bottom: listBottom, right: 0)
         empty = CGRect(x: 0, y: contentTop, width: size.width, height: max(0, size.height - contentTop - listBottom))
     }
