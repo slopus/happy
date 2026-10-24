@@ -23,6 +23,7 @@ public final class DirectAccounts {
     }
 
     public var active: DirectAccount? { accounts.first { $0.id == activeID } }
+    func credential(for id: String) -> DirectDeviceCredentials? { credentials[id] }
     func configureStorage(_ directory: URL?) async { await storage.configureDirectory(directory) }
 
     public func restore() async throws {

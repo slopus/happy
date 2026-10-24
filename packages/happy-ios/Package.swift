@@ -120,7 +120,8 @@ let package = Package(
         ),
         .testTarget(
             name: "HappyLayoutTests",
-            dependencies: ["HappyLayout"]
+            dependencies: ["HappyLayout"],
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(
             name: "HappyIconsTests",

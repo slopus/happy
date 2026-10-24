@@ -13,10 +13,27 @@ public struct DirectHTTPResponse: Sendable {
 
 public protocol DirectTransport: Sendable {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse
+    /// A GET whose body arrives as it is written, for an event stream.
+    func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream
     func close() async
 }
 
+/// A response head, and its decoded body as the bytes arrive. The body ends
+/// when the server closes it; ending the iteration closes the stream.
+public struct DirectHTTPStream: Sendable {
+    public let status: Int
+    public let headers: [String: String]
+    public let body: AsyncThrowingStream<Data, Error>
+    public init(status: Int, headers: [String: String] = [:], body: AsyncThrowingStream<Data, Error>) {
+        self.status = status; self.headers = headers; self.body = body
+    }
+}
+
 extension DirectTransport {
+    public func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream {
+        throw DirectPairingError.unavailable
+    }
+
     func request(_ path: String, credential: String, method: String = "GET", body: Data? = nil, headers: [String: String] = [:]) async throws -> DirectHTTPResponse {
         try await request(method: method, path: path, credential: credential, body: body, headers: headers)
     }
@@ -26,7 +43,7 @@ extension DirectTransport {
 /// `server.tailcat` is a logical authority, never a DNS lookup.
 public actor TailcatHTTPTransport: DirectTransport {
     private let address: String
-    private let port: UInt16
+    let port: UInt16
     private var client: TailcatClient?
     private var connecting: Task<TailcatClient, Error>?
     private var closed = false
@@ -40,7 +57,7 @@ public actor TailcatHTTPTransport: DirectTransport {
         await old?.close()
     }
 
-    private func connection() async throws -> TailcatClient {
+    func connection() async throws -> TailcatClient {
         guard !closed else { throw CancellationError() }
         if let client { return client }
         let task: Task<TailcatClient, Error>
@@ -59,10 +76,7 @@ public actor TailcatHTTPTransport: DirectTransport {
     }
 
     public func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
-        guard ["GET", "POST"].contains(method), path.hasPrefix("/"),
-              !path.contains("\r"), !path.contains("\n"), !path.contains(" "),
-              !credential.contains("\r"), !credential.contains("\n"),
-              headers.allSatisfy({ !$0.key.contains("\r") && !$0.key.contains("\n") && !$0.key.contains(":") && !$0.value.contains("\r") && !$0.value.contains("\n") }) else { throw DirectPairingError.invalidResponse }
+        guard ["GET", "POST", "PATCH", "PUT", "DELETE"].contains(method), Self.safe(path: path, credential: credential, headers: headers) else { throw DirectPairingError.invalidResponse }
         let client = try await connection()
         let port = port
         return try await withThrowingTaskGroup(of: DirectHTTPResponse.self) { group in
