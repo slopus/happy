@@ -56,6 +56,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var realArchive: RealArchiveHarness?
     private var qaProbe: ChatUltraQAProbe?
     private var qaReal: ChatUltraQAReal?
+    private var stories: StoriesHarness?
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -69,6 +70,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         #if DEBUG || HAPPY_FIXTURES
         if arguments.contains("-qaRealChat") {
             qaReal = ChatUltraQAReal(window: window)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "stories" {
+            stories = StoriesHarness(window: window)
             return
         }
         if arguments.contains("-real-archive") {

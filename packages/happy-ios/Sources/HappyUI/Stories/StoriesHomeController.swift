@@ -26,7 +26,7 @@ final class StoriesHomeController {
     var height: CGFloat { snapshot.isOn ? StoriesRowLayout.Metrics.height : 0 }
 
     func attach(_ stemCells: StemCellsSession?) {
-        guard stemCells?.accountID != session?.stemCells.accountID else { return }
+        guard stemCells?.accountID != session?.accountID else { return }
         watch?.invalidate(); watch = nil
         session = stemCells.map(StoriesSession.session(for:))
         row.images = stemCells?.images

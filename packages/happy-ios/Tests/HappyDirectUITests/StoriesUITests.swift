@@ -69,6 +69,55 @@ final class StoriesUITests: XCTestCase {
         add(attachment)
     }
 
+    /// My Story from the row, against the computer: a story posted there
+    /// opens in the viewer grown from the circle, shows its frame with its
+    /// overlays, its views, and deleting it from "more" takes it away.
+    func testViewer() {
+        home()
+        let mine = element("story-circle:self")
+        XCTAssertTrue(mine.waitForExistence(timeout: 10), "no stories row")
+        step("post-sample", wait: 5)
+        mine.tap()
+        let canvas = element("story-canvas")
+        XCTAssertTrue(canvas.waitForExistence(timeout: 6), "the viewer never opened")
+        XCTAssertTrue(element("story-views").waitForExistence(timeout: 3), "no views on my own story")
+        pause(2)
+        capture("viewer-my-story")
+
+        element("story-views").tap()
+        XCTAssertTrue(element("story-viewers-list").waitForExistence(timeout: 5), "no viewers list")
+        pause(1.5)
+        capture("viewer-views")
+        app.buttons["Done"].tap()
+        pause(1)
+
+        // Delete the story shown; the viewer moves on or closes.
+        let page = element("story-viewer-page")
+        let before = (page.value as? String) ?? ""
+        element("story-more").tap()
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3), "no Delete in more")
+        pause(0.8)
+        capture("viewer-more")
+        app.buttons["Delete"].firstMatch.tap()
+        let confirm = app.alerts.buttons["Delete"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3), "no confirmation")
+        pause(0.8)
+        capture("viewer-delete-confirm")
+        confirm.tap()
+        pause(3)
+        capture("viewer-after-delete")
+        let shown = (page.exists ? page.value as? String : nil) ?? "closed"
+        XCTAssertNotEqual(shown, before, "the deleted story is still shown")
+
+        // Down closes it.
+        if canvas.exists {
+            canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(forDuration: 0.05, thenDragTo: canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)), withVelocity: .fast, thenHoldForDuration: 0)
+        }
+        XCTAssertTrue(mine.waitForExistence(timeout: 5))
+        pause(1.5)
+        capture("viewer-closed")
+    }
+
     /// The row above the sidebar: My Story first with its "+", a story
     /// posted on the computer gives it a ring live, and Settings' switch
     /// takes the row away and brings it back without the list jumping.

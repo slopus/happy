@@ -17,7 +17,7 @@ final class StoriesMedia {
     private var packs: [String: Task<[String: Sticker], Never>] = [:]
     private var stickerFiles: [String: Task<Data?, Never>] = [:]
     private var streams: [String: StoriesByteStream] = [:]
-    private var observer: NSObjectProtocol?
+    nonisolated(unsafe) private var observer: NSObjectProtocol?
 
     private final class Decoded {
         let pixels: Int
@@ -29,8 +29,16 @@ final class StoriesMedia {
         self.client = client
         images.totalCostLimit = 64 * 1024 * 1024
         observer = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.images.removeAllObjects() }
+            MainActor.assumeIsolated {
+                self?.images.removeAllObjects()
+                // A playing recording keeps its own stream (see `asset()`).
+                self?.streams.removeAll()
+            }
         }
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
     // MARK: Frames
@@ -202,9 +210,14 @@ final class StoriesByteStream: NSObject, AVAssetResourceLoaderDelegate, @uncheck
         self.fetch = fetch
     }
 
+    nonisolated(unsafe) private static var owner: UInt8 = 0
+
+    /// An asset read through this stream, which it keeps alive: the
+    /// resource loader holds its delegate weakly.
     func asset() -> AVURLAsset {
         let asset = AVURLAsset(url: URL(string: "\(Self.scheme)://frame/\(name.isEmpty ? "media" : name).mp4")!)
         asset.resourceLoader.setDelegate(self, queue: queue)
+        withUnsafePointer(to: &Self.owner) { objc_setAssociatedObject(asset, $0, self, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
         return asset
     }
 
@@ -268,10 +281,26 @@ final class StoriesByteStream: NSObject, AVAssetResourceLoaderDelegate, @uncheck
     }
 
     private var type: String?
+    /// The one probe for the length under way, shared by every request
+    /// that arrives meanwhile. Touched only on `queue`.
+    private var probing: Task<(Int, String), Error>?
 
     /// The length, from a first range's `Content-Range`, and the type served.
     private func head() async throws -> (Int, String) {
-        if let known = await onQueue({ self.total.map { ($0, self.type ?? UTType.mpeg4Movie.identifier) } }) { return known }
+        let probe = await onQueue { () -> Task<(Int, String), Error> in
+            if let total = self.total { return Task { (total, self.type ?? UTType.mpeg4Movie.identifier) } }
+            if let probing = self.probing { return probing }
+            let probing = Task { try await self.probe() }
+            self.probing = probing
+            return probing
+        }
+        do { return try await probe.value } catch {
+            await onQueue { self.probing = nil }
+            throw error
+        }
+    }
+
+    private func probe() async throws -> (Int, String) {
         let response = try await fetch(0...1)
         let range = response.headers.first { $0.key.lowercased() == "content-range" }?.value
         guard let size = range.flatMap({ $0.split(separator: "/").last.flatMap { Int($0) } }) ?? (response.status == 200 ? response.body.count : nil) else {

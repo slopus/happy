@@ -25,6 +25,7 @@ extension Strings {
         public static let delete = "Delete"
         public static let deleteStory = "Delete story?"
         public static let deleteDetail = "This story will be removed for everyone."
+        public static let deleteFailed = "Couldn't delete the story"
         public static let openConversation = "Open conversation"
         public static let viewers = "Viewers"
         public static let noViewers = "No views yet"

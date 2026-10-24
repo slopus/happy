@@ -7,11 +7,13 @@ import UIKit
 /// once per computer beside its Stem Cells session.
 @MainActor
 final class StoriesSession {
-    let stemCells: StemCellsSession
+    /// The computer's Stem Cells; nil in the harness, which has none.
+    private(set) weak var stemCells: StemCellsSession?
+    let accountID: String
+    let client: DirectAgentClient
+    let images: StemCellsImages
     let store: StoriesStore
     let media: StoriesMedia
-    var client: DirectAgentClient { stemCells.client }
-    var images: StemCellsImages { stemCells.images }
     private(set) var snapshot = StoriesSnapshot()
     private var watchers: [UUID: (StoriesSnapshot) -> Void] = [:]
     private var following: Task<Void, Never>?
@@ -35,10 +37,22 @@ final class StoriesSession {
         Task { await store.stop() }
     }
 
-    private init(stemCells: StemCellsSession) {
+    private convenience init(stemCells: StemCellsSession) {
+        let events = stemCells.store
+        self.init(accountID: stemCells.accountID, client: stemCells.client, images: stemCells.images, offline: stemCells.offline) {
+            await events.events(matching: StoriesStore.eventPrefixes)
+        }
         self.stemCells = stemCells
-        store = StoriesStore(client: stemCells.client, stemCells: stemCells.store, offline: stemCells.offline)
-        media = StoriesMedia(client: stemCells.client)
+    }
+
+    /// Stories from parts: the harness draws the viewer and editor over a
+    /// computer of its own this way.
+    init(accountID: String, client: DirectAgentClient, images: StemCellsImages, offline: StemCellsOfflineFile?, events: @escaping StoriesStore.Events) {
+        self.accountID = accountID
+        self.client = client
+        self.images = images
+        store = StoriesStore(client: client, events: events, offline: offline)
+        media = StoriesMedia(client: client)
         let updates = store.updates
         following = Task { [weak self] in
             for await snapshot in updates {

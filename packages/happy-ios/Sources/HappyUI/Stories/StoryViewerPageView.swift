@@ -1,0 +1,238 @@
+#if canImport(UIKit)
+import HappyCore
+import HappyIcons
+import HappyLayout
+import UIKit
+
+/// One author in the viewer, as Telegram's story item set lays it out: the
+/// canvas with its corners rounded, the progress strip and the author over
+/// its top, close and more beside them, and the bar under it with the heart,
+/// or on one's own story how many have seen it.
+final class StoryViewerPageView: UIView {
+    let canvas = StoryCanvasView()
+    let closeButton = UIButton(type: .system)
+    let moreButton = UIButton(type: .system)
+    let heartButton = UIButton(type: .custom)
+    let viewsButton = UIButton(type: .system)
+    private let topFade = CAGradientLayer()
+    private let strip = UIView()
+    private var segments: [StoryProgressSegment] = []
+    private let avatar = UIImageView()
+    private let initials = UILabel()
+    private let nameLabel = UILabel()
+    private let timeLabel = UILabel()
+    /// Shades the side of the cube turned away.
+    let shade = UIView()
+    private var chrome: [UIView] { [strip, avatar, nameLabel, timeLabel, closeButton, moreButton, heartButton, viewsButton] }
+
+    private(set) var author: StoryFeedAuthor?
+    private var photoKey: String?
+    private var loading: Task<Void, Never>?
+    var layout = StoryViewerLayout(size: .zero, safeArea: LayoutInsets())
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = UIColor(Palette.storiesViewerGround)
+        canvas.layer.cornerRadius = StoryViewerLayout.Metrics.cornerRadius
+        canvas.layer.cornerCurve = .continuous
+        addSubview(canvas)
+        topFade.colors = [UIColor(white: 0, alpha: 0.4).cgColor, UIColor(white: 0, alpha: 0).cgColor]
+        canvas.layer.addSublayer(topFade)
+        strip.isUserInteractionEnabled = false
+        addSubview(strip)
+        avatar.clipsToBounds = true
+        avatar.contentMode = .scaleAspectFill
+        avatar.backgroundColor = UIColor(Palette.storiesAvatarFill)
+        avatar.layer.cornerRadius = StoryViewerLayout.Metrics.avatar / 2
+        initials.font = .systemFont(ofSize: 13, weight: .semibold)
+        initials.textColor = UIColor(Palette.storiesAvatarText)
+        initials.textAlignment = .center
+        avatar.addSubview(initials)
+        addSubview(avatar)
+        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+        nameLabel.textColor = UIColor(Palette.storiesViewerText)
+        timeLabel.font = .systemFont(ofSize: 13)
+        timeLabel.textColor = UIColor(Palette.storiesViewerText).withAlphaComponent(0.7)
+        for label in [nameLabel, timeLabel] {
+            label.layer.shadowColor = UIColor.black.cgColor
+            label.layer.shadowOpacity = 0.25
+            label.layer.shadowRadius = 2
+            label.layer.shadowOffset = .zero
+            addSubview(label)
+        }
+        closeButton.setImage(UIImage.icon(.ionicons("close"), size: 26).withRenderingMode(.alwaysTemplate), for: .normal)
+        closeButton.accessibilityLabel = Strings.Stories.close
+        closeButton.accessibilityIdentifier = "story-close"
+        moreButton.setImage(UIImage.icon(.materialIcons("more-horiz"), size: 26).withRenderingMode(.alwaysTemplate), for: .normal)
+        moreButton.accessibilityIdentifier = "story-more"
+        for button in [closeButton, moreButton, viewsButton] {
+            button.tintColor = .white
+            addSubview(button)
+        }
+        heartButton.accessibilityIdentifier = "story-heart"
+        heartButton.accessibilityLabel = Strings.Stories.react
+        addSubview(heartButton)
+        viewsButton.contentHorizontalAlignment = .leading
+        viewsButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
+        viewsButton.setImage(UIImage.icon(.ionicons("eye-outline"), size: 20).withRenderingMode(.alwaysTemplate), for: .normal)
+        viewsButton.configuration = nil
+        viewsButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 6)
+        viewsButton.titleEdgeInsets = UIEdgeInsets(top: 0, left: 6, bottom: 0, right: 0)
+        viewsButton.accessibilityIdentifier = "story-views"
+        shade.backgroundColor = .black
+        shade.alpha = 0
+        shade.isUserInteractionEnabled = false
+        addSubview(shade)
+        accessibilityIdentifier = "story-viewer-page"
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    deinit { loading?.cancel() }
+
+    // MARK: Showing
+
+    /// Draws `author` at frame `position` of `frames` (their stories' frames in order).
+    func show(author: StoryFeedAuthor, frames: [(story: Story, frame: StoryFrame)], position: Int, media: StoriesMedia?, images: StemCellsImages?, now: Int64) {
+        let changedAuthor = self.author?.key != author.key
+        self.author = author
+        nameLabel.text = author.isSelf ? Strings.Stories.myStory : author.name
+        initials.text = StoriesRow.initials(author.name)
+        loadPhoto(author, images: images)
+        if segments.count != frames.count || changedAuthor {
+            segments.forEach { $0.removeFromSuperview() }
+            segments = frames.indices.map { index in
+                let segment = StoryProgressSegment()
+                segment.accessibilityIdentifier = "story-segment:\(index)"
+                strip.addSubview(segment)
+                return segment
+            }
+        }
+        for (index, segment) in segments.enumerated() { segment.progress = index < position ? 1 : 0 }
+        guard frames.indices.contains(position) else { return }
+        let (story, frame) = frames[position]
+        canvas.show(story, frame: frame, media: media)
+        timeLabel.text = story.postedAt.map { Strings.Stories.ago(now - $0) }
+        heartButton.isHidden = author.isSelf
+        viewsButton.isHidden = !author.isSelf
+        // Others' stories offer only their conversation, when there is one.
+        moreButton.isHidden = !author.isSelf && story.source == nil
+        setHeart(story.myReaction)
+        let views = story.viewCount ?? 0
+        viewsButton.setTitle(views == 0 ? Strings.Stories.noViewers : Strings.Stories.views(views), for: .normal)
+        accessibilityValue = "\(story.id)#\(position)"
+        setNeedsLayout()
+    }
+
+    /// The current segment's fill, 0…1.
+    func setProgress(_ progress: Double, at position: Int) {
+        guard segments.indices.contains(position) else { return }
+        segments[position].progress = CGFloat(progress)
+    }
+
+    func setHeart(_ reaction: String?) {
+        let image: UIImage
+        if let reaction, reaction != Strings.Stories.heart {
+            image = Self.emojiImage(reaction, size: 28)
+        } else {
+            image = UIImage.icon(.ionicons(reaction == nil ? "heart-outline" : "heart"), size: 28).withRenderingMode(.alwaysTemplate)
+        }
+        heartButton.setImage(image, for: .normal)
+        heartButton.tintColor = reaction == nil ? .white : UIColor(red: 1, green: 0.23, blue: 0.33, alpha: 1)
+        heartButton.accessibilityValue = reaction
+    }
+
+    static func emojiImage(_ emoji: String, size: CGFloat) -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).image { _ in
+            StoryEmojiOverlayView.drawEmoji(emoji, in: CGRect(x: 0, y: 0, width: size, height: size))
+        }
+    }
+
+    /// Holding the frame hides everything over it but the frame.
+    var chromeHidden = false {
+        didSet {
+            guard chromeHidden != oldValue else { return }
+            canvas.chromeHidden = chromeHidden
+            UIView.animate(withDuration: 0.2) { for view in self.chrome { view.alpha = self.chromeHidden ? 0 : 1 } }
+            topFade.opacity = chromeHidden ? 0 : 1
+        }
+    }
+
+    private func loadPhoto(_ author: StoryFeedAuthor, images: StemCellsImages?) {
+        let key = images == nil ? nil : author.photo.map { "\($0)#\(author.thumbhash ?? "")" }
+        guard key != photoKey else { return }
+        photoKey = key
+        loading?.cancel()
+        avatar.image = nil
+        initials.isHidden = false
+        guard let path = author.photo, let images else { return }
+        let pixels = Int(StoryViewerLayout.Metrics.avatar * 3)
+        if let cached = images.cachedPicture(path, thumbhash: author.thumbhash, pixels: pixels) {
+            avatar.image = cached
+            initials.isHidden = true
+            return
+        }
+        loading = Task { [weak self] in
+            let image = await images.picture(path, thumbhash: author.thumbhash, pixels: pixels)
+            guard let self, !Task.isCancelled, photoKey == key, let image else { return }
+            avatar.image = image
+            initials.isHidden = true
+        }
+    }
+
+    // MARK: Layout
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let safe = safeAreaInsets
+        layout = StoryViewerLayout(size: bounds.size, safeArea: LayoutInsets(top: safe.top, left: 0, bottom: safe.bottom, right: 0))
+        canvas.frame = layout.canvas
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        topFade.frame = CGRect(x: 0, y: 0, width: layout.canvas.width, height: 96)
+        CATransaction.commit()
+        strip.frame = bounds
+        for (segment, frame) in zip(segments, StoryViewerLayout.segments(segments.count, in: layout.strip)) { segment.frame = frame }
+        avatar.frame = layout.avatar
+        initials.frame = avatar.bounds
+        let lineHeight: CGFloat = 17
+        nameLabel.frame = CGRect(x: layout.titleOrigin.x, y: layout.titleOrigin.y, width: layout.titleWidth, height: lineHeight)
+        timeLabel.frame = CGRect(x: layout.titleOrigin.x, y: layout.titleOrigin.y + lineHeight, width: layout.titleWidth, height: lineHeight)
+        closeButton.frame = layout.close
+        moreButton.frame = layout.more
+        heartButton.frame = layout.heart
+        viewsButton.frame = layout.views
+        shade.frame = bounds
+    }
+}
+
+/// One frame's segment of the strip: a translucent track filled from the left.
+final class StoryProgressSegment: UIView {
+    private let fill = CALayer()
+
+    var progress: CGFloat = 0 { didSet { if progress != oldValue { placeFill() } } }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = UIColor(Palette.storiesProgressTrack)
+        fill.backgroundColor = UIColor(Palette.storiesProgressFill).cgColor
+        layer.addSublayer(fill)
+        clipsToBounds = true
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = bounds.height / 2
+        placeFill()
+    }
+
+    private func placeFill() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fill.frame = CGRect(x: 0, y: 0, width: bounds.width * max(0, min(1, progress)), height: bounds.height)
+        CATransaction.commit()
+    }
+}
+#endif

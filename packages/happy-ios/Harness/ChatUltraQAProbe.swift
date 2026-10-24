@@ -1050,6 +1050,8 @@ final class ChatUltraQAProbe: NSObject {
         case .questionSubmit(let toolId): "submit:\(toolId)"
         case .diffShowMore(let toolId, let chunk, let file): "showMore:\(toolId):\(chunk):\(file)"
         case .mermaidHeight(let row, let index, _): "mermaidHeight:\(row):\(index)"
+        case .openMedia(let id): "media:\(id)"
+        case .openArtifact(let artifact): "artifact:\(artifact.id)"
         case .copyMenu: "copyMenu"
         case .selectable: "selectable"
         case .markdownSelectable: "markdownSelectable"
