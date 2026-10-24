@@ -585,6 +585,10 @@ extension StemCellChatViewController: ChatMediaProviding {
     var chatMedia: ChatMediaSource? { media }
 }
 
+extension StemCellChatViewController: StoriesProviding {
+    var stories: StoriesSession? { StoriesSession.session(for: session) }
+}
+
 private extension ChatDrawItem {
     /// Where a message's words are drawn: its bubble, text and blocks, not
     /// its pictures.

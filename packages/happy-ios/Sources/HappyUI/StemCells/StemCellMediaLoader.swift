@@ -60,7 +60,7 @@ final class StemCellMediaLoader: NSObject, ChatMediaSource {
                 case .picture(let id, _, let data): sent[Self.sentKey(id)] = data
                 case .gallery(let media, _), .tree(let media, _): for one in media { tools[one.key] = one }
                 case .file(let one): tools[one.key] = one
-                case .text, .artifact: break
+                case .text, .artifact, .story: break
                 }
             }
         }

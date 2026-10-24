@@ -179,6 +179,10 @@ final class StoryCanvasView: UIView {
     func stop() {
         loading?.cancel()
         stopPlayer()
+        storyId = nil
+        shownFrame = nil
+        mediaView.image = nil
+        isReady = false
     }
 
     // MARK: Overlays

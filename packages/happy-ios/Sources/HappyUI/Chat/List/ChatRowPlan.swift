@@ -82,6 +82,14 @@ enum ChatDrawItem {
     /// A picture or recording a Stem Cells agent presented, or a photo the
     /// person sent, loaded once it is on screen.
     case media(ChatMedia, frame: CGRect)
+    /// Live content of its own, drawn by a view that reads and follows it.
+    case embed(ChatEmbed, frame: CGRect)
+}
+
+/// What an embedded view shows.
+enum ChatEmbed: Equatable, Sendable {
+    /// A story, by its ID (`StoryInlineView`).
+    case story(String)
 }
 
 /// A diagram in a row: `index` is its place among the row's diagrams, so

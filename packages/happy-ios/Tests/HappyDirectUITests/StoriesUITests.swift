@@ -69,6 +69,74 @@ final class StoriesUITests: XCTestCase {
         add(attachment)
     }
 
+    /// "Post it", with real inference: new work makes and presents a chart,
+    /// the person says "post it", the agent drafts a story that appears
+    /// inline with Post and Edit, Post turns it "Posted", and tapping it
+    /// opens the viewer. Back home, My Story has it.
+    func testPostIt() {
+        home()
+        pause(1.5)
+        element("stem-new-work").tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        pause(1)
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        composer.typeText(
+            "In a temporary folder, make a 1080x1350 PNG bar chart of four made-up fruit sales with python (matplotlib or Pillow, whatever you have). "
+                + "Then present it to me inline with present_files. One short sentence of text is enough."
+        )
+        pause(0.5)
+        app.buttons["Send"].tap()
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
+        let pictures = app.descendants(matching: .any).matching(identifier: "stem-media")
+        let working = element("stem-working")
+        var deadline = Date().addingTimeInterval(300)
+        while Date() < deadline, pictures.count == 0 || working.exists { pause(2) }
+        XCTAssertGreaterThan(pictures.count, 0, "no chart was presented")
+        pause(2)
+        capture("post-it-chart")
+
+        composer.tap()
+        composer.typeText("Post it")
+        pause(0.5)
+        app.buttons["Send"].tap()
+        let inline = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "story-inline:")).firstMatch
+        deadline = Date().addingTimeInterval(240)
+        while Date() < deadline, !inline.exists || working.exists { pause(2) }
+        XCTAssertTrue(inline.exists, "no story was drafted inline")
+        pause(1)
+        let post = element("story-inline-post")
+        XCTAssertTrue(post.waitForExistence(timeout: 20), "the draft has no Post")
+        XCTAssertTrue(element("story-inline-edit").exists, "the draft has no Edit")
+        // The newest content is at the foot, just over the composer.
+        for _ in 0..<6 where !post.isHittable { app.swipeUp(velocity: .slow); pause(0.6) }
+        XCTAssertTrue(post.isHittable, "Post never came into view")
+        pause(2)
+        capture("post-it-draft")
+
+        post.tap()
+        let status = element("story-inline-status")
+        expectation(for: NSPredicate(format: "label == %@", "Posted"), evaluatedWith: status)
+        waitForExpectations(timeout: 20)
+        XCTAssertFalse(post.isHittable, "Post stayed after posting")
+        pause(1.5)
+        capture("post-it-posted")
+
+        // A posted story opens the viewer.
+        // Near the canvas's foot (it ends at 0.91 of the card): its top may be under the bar.
+        inline.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).tap()
+        XCTAssertTrue(element("story-views").waitForExistence(timeout: 6), "the posted story didn't open the viewer")
+        pause(2)
+        capture("post-it-viewer")
+        element("story-close").tap()
+        pause(1.5)
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(element("story-circle:self").waitForExistence(timeout: 8))
+        pause(2)
+        capture("post-it-home")
+    }
+
     /// My Story from the row, against the computer: a story posted there
     /// opens in the viewer grown from the circle, shows its frame with its
     /// overlays, its views, and deleting it from "more" takes it away.

@@ -8,9 +8,9 @@ import UIKit
 @MainActor
 enum StoriesViewerPresenter {
     @discardableResult
-    static func present(session: StoriesSession, feed: StoryFeed, authorIndex: Int, from host: UIViewController, origin: UIView?) -> StoryViewerViewController? {
+    static func present(session: StoriesSession, feed: StoryFeed, authorIndex: Int, storyId: String? = nil, from host: UIViewController, origin: UIView?) -> StoryViewerViewController? {
         guard host.presentedViewController == nil else { return nil }
-        let viewer = StoryViewerViewController(session: session, feed: feed, authorIndex: authorIndex)
+        let viewer = StoryViewerViewController(session: session, feed: feed, authorIndex: authorIndex, storyId: storyId)
         viewer.origin = origin
         viewer.transitioningDelegate = StoriesViewerTransition.shared
         viewer.onOpenConversation = { [weak host] source in
@@ -23,11 +23,32 @@ enum StoriesViewerPresenter {
         host.present(viewer, animated: true)
         return viewer
     }
+
+    /// Opens one posted story, from where it is drawn inline: among its
+    /// author's stories when the row has them, or on its own.
+    @discardableResult
+    static func present(session: StoriesSession, story: Story, from host: UIViewController, origin: UIView?) -> StoryViewerViewController? {
+        let snapshot = session.snapshot
+        if var feed = snapshot.feed, let index = feed.authors.firstIndex(where: { $0.storyIds.contains(story.id) }) {
+            feed.stories = snapshot.stories
+            return present(session: session, feed: feed, authorIndex: index, storyId: story.id, from: host, origin: origin)
+        }
+        let mine = snapshot.feed?.authors.first(where: \.isSelf)
+        let isSelf = story.authorUserId == nil || story.authorUserId == mine?.userId
+        let known = isSelf ? mine : snapshot.feed?.authors.first { $0.userId == story.authorUserId }
+        let author = StoryFeedAuthor(
+            userId: story.authorUserId, name: known?.name ?? (isSelf ? Strings.Stories.myStory : ""),
+            photo: known?.photo, thumbhash: known?.thumbhash, isSelf: isSelf,
+            storyIds: [story.id], unseenCount: 0, draftCount: nil, latestPostedAt: story.postedAt
+        )
+        return present(session: session, feed: StoryFeed(authors: [author], stories: [story.id: story], cursor: ""), authorIndex: 0, storyId: story.id, from: host, origin: origin)
+    }
 }
 
-/// The viewer grows from the circle it opened from: its canvas starts as
-/// the circle, round, and becomes the story. Closing it shrinks it back,
-/// or, with the circle out of sight, lets it fall away.
+/// The viewer grows from what it opened from: its canvas starts as the
+/// row's circle, round, or as the story drawn inline, with its corners,
+/// and becomes the story. Closing it shrinks it back, or, with that out of
+/// sight, lets it fall away.
 @MainActor
 final class StoriesViewerTransition: NSObject, UIViewControllerTransitioningDelegate, UIViewControllerAnimatedTransitioning {
     static let shared = StoriesViewerTransition()
@@ -58,20 +79,24 @@ final class StoriesViewerTransition: NSObject, UIViewControllerTransitioningDele
             container.addSubview(viewer.view)
             viewer.view.layoutIfNeeded()
         }
+        let circle = viewer.origin is StoriesCircleView
         let origin = viewer.origin.flatMap { origin -> CGRect? in
             guard origin.window != nil, !origin.isHidden else { return nil }
-            let frame = origin.convert(StoriesRowLayout.item.avatar, to: container)
+            let frame = origin.convert(circle ? StoriesRowLayout.item.avatar : origin.bounds, to: container)
             return container.bounds.intersects(frame) ? frame : nil
         }
         let shrunk = origin.map { Self.transform(page: page, canvas: page.canvas.frame, to: $0) }
         let radius = page.canvas.layer.cornerRadius
+        // The corners it starts and ends with, before the page's scale.
+        let scale = origin.map { page.canvas.frame.width > 0 ? $0.width / page.canvas.frame.width : 1 } ?? 1
+        let shrunkRadius = circle ? page.canvas.bounds.width / 2 : (viewer.origin?.layer.cornerRadius ?? 0) / max(scale, 0.01)
         let ground = UIColor(Palette.storiesViewerGround)
         if presenting {
             viewer.view.backgroundColor = ground.withAlphaComponent(0)
             page.backgroundColor = .clear
             if let shrunk {
                 page.transform = shrunk
-                page.canvas.layer.cornerRadius = page.canvas.bounds.width / 2
+                page.canvas.layer.cornerRadius = shrunkRadius
             } else {
                 page.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
                 page.alpha = 0
@@ -92,7 +117,7 @@ final class StoriesViewerTransition: NSObject, UIViewControllerTransitioningDele
             UIView.animate(withDuration: transitionDuration(using: context), delay: 0, options: [.curveEaseInOut]) {
                 if let shrunk {
                     page.transform = shrunk
-                    page.canvas.layer.cornerRadius = page.canvas.bounds.width / 2
+                    page.canvas.layer.cornerRadius = shrunkRadius
                     page.alpha = 0
                 } else {
                     page.transform = CGAffineTransform(translationX: 0, y: container.bounds.height * 0.3).scaledBy(x: 0.85, y: 0.85)

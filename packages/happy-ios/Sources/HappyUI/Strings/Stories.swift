@@ -46,6 +46,7 @@ extension Strings {
         public static let draft = "Draft"
         public static let posted = "Posted"
         public static let deleted = "This story was deleted"
+        public static let unavailable = "This story isn't available"
         public static let postFailed = "Couldn't post"
         public static let newerVersion = "The story changed. Check it and post again."
 

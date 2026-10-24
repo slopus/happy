@@ -32,6 +32,9 @@ public struct StemCellChatItem: Equatable, Sendable, Identifiable {
         case file(StemCellMedia)
         /// An artifact a tool made or changed, as a card that opens it.
         case artifact(StemCellArtifact)
+        /// A story a tool drafted (`draft_story`), by its ID: drawn as the
+        /// story itself, following it live.
+        case story(String)
     }
 
     public var id: String
@@ -718,7 +721,11 @@ public actor StemCellConversation {
             case .toolCall(let id, _, _, let presentation):
                 guard let presentation else { continue }
                 if presentation.type == "artifact", let artifactId = presentation.artifactId {
-                    // Stories: a `story` artifact is drawn by its own card.
+                    // Stories: a `story` artifact is the story, by its ID.
+                    if presentation.artifactType == "story" {
+                        pieces.append(.story(artifactId))
+                        continue
+                    }
                     pieces.append(.artifact(StemCellArtifact(
                         id: artifactId, version: presentation.version ?? 1, type: presentation.artifactType ?? "unknown",
                         title: presentation.title ?? "", followsLatest: presentation.shows == "latest"

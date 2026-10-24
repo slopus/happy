@@ -39,6 +39,9 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     private let picker = StoryReactionPicker()
     private var observers: [NSObjectProtocol] = []
     private var held = false
+    /// The story asked for, kept among its author's while the viewer is
+    /// open: one opened from a conversation may be out of the feed.
+    private let opened: String?
 
     private enum Pause: Hashable { case hold, drag, sheet, background, picker, appearing }
     private enum Drag { case none, sideways(next: Int), down }
@@ -53,7 +56,9 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         var acted: Bool
     }
 
-    init(session: StoriesSession, feed: StoryFeed, authorIndex: Int) {
+    /// Opens on `authorIndex`'s first unseen story, or on `storyId`.
+    init(session: StoriesSession, feed: StoryFeed, authorIndex: Int, storyId: String? = nil) {
+        opened = storyId
         self.session = session
         authors = feed.authors.filter { !$0.storyIds.isEmpty }
         stories = session.snapshot.stories.merging(feed.stories) { held, _ in held }
@@ -64,6 +69,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         modalPresentationCapturesStatusBarAppearance = true
         if authors.indices.contains(self.authorIndex) {
             position = startPosition(authors[self.authorIndex])
+            if let storyId, let index = frames(authors[self.authorIndex]).firstIndex(where: { $0.story.id == storyId }) { position = index }
         }
     }
 
@@ -262,7 +268,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
             for (index, author) in authors.enumerated() {
                 guard let fresh = feed.authors.first(where: { $0.key == author.key }) else { continue }
                 var merged = fresh
-                merged.storyIds = author.storyIds.filter { fresh.storyIds.contains($0) } + fresh.storyIds.filter { !author.storyIds.contains($0) }
+                // The story opened stays, even one that left the feed.
+                merged.storyIds = author.storyIds.filter { fresh.storyIds.contains($0) || $0 == opened } + fresh.storyIds.filter { !author.storyIds.contains($0) }
                 authors[index] = merged
             }
         }

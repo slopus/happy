@@ -165,6 +165,8 @@ public struct StemCellMessageLayout: Equatable, Sendable {
         case tree([StemCellMediaTreeLayout.Box])
         /// A document, file or artifact: one card across the column.
         case card
+        /// A story drawn inline (`StoryCardLayout`).
+        case story
     }
 
     public enum Placed: Equatable, Sendable {
@@ -173,6 +175,7 @@ public struct StemCellMessageLayout: Equatable, Sendable {
         case media([CGRect])
         case tree(StemCellMediaTreeLayout, origin: CGPoint)
         case card(CGRect)
+        case story(CGRect)
     }
 
     public var size: CGSize
@@ -225,6 +228,10 @@ public struct StemCellMessageLayout: Equatable, Sendable {
             case .card:
                 placed.append(.card(CGRect(x: left, y: y, width: inner, height: StemCellResultCardLayout.height)))
                 y += StemCellResultCardLayout.height
+            case .story:
+                let size = StoryCardLayout.size(width: inner)
+                placed.append(.story(CGRect(origin: CGPoint(x: left, y: y), size: size)))
+                y += size.height
             }
         }
         return StemCellMessageLayout(size: CGSize(width: max(0, width), height: y + M.marginV), parts: placed, bubble: nil, text: nil, pictures: [], status: nil)

@@ -57,6 +57,7 @@ actor StemCellChatPlanner {
                 case gallery([StemCellMedia])
                 case tree(StemCellChatMediaPlan.Tree)
                 case card(StemCellChatMediaPlan.Card)
+                case story(String)
             }
             var drafts: [Draft] = []
             for piece in item.pieces {
@@ -75,8 +76,10 @@ actor StemCellChatPlanner {
                 case .file(let media):
                     drafts.append(.card(StemCellChatMediaPlan.card(file: media)))
                     parts.append(.card)
+                case .story(let id):
+                    drafts.append(.story(id))
+                    parts.append(.story)
                 case .artifact(let artifact):
-                    // Stories: a `story` artifact is drawn by its own card, not this one.
                     drafts.append(.card(StemCellChatMediaPlan.card(artifact: artifact)))
                     parts.append(.card)
                 case .picture:
@@ -116,6 +119,8 @@ actor StemCellChatPlanner {
                     }
                 case (.card(let frame), .card(let drafted)):
                     card(drafted, frame)
+                case (.story(let frame), .story(let id)):
+                    items.append(.embed(.story(id), frame: frame))
                 default:
                     break
                 }
