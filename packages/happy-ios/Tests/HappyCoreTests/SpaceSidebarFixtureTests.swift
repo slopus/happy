@@ -94,4 +94,13 @@ final class SpaceSidebarFixtureTests: XCTestCase {
             XCTAssertEqual(edited.map { SpaceSidebar.format($0) }, entry["result"]!.stringValue, "edit \(index) \(entry["kind"]!)")
         }
     }
+
+    func testDesktopHidesSessions() throws {
+        for (index, entry) in cases("hides").enumerated() {
+            let document = try SpaceSidebar.parse(entry["html"]!.stringValue!)
+            let attached = Set(entry["attached"]!.arrayValue!.compactMap(\.stringValue))
+            let edited = SidebarDocumentEdits.hideSessions(document, entry["id"]!.stringValue!, attached: { attached.contains($0) })
+            XCTAssertEqual(edited.map { SpaceSidebar.format($0) }, entry["result"]!.stringValue, "hide \(index)")
+        }
+    }
 }

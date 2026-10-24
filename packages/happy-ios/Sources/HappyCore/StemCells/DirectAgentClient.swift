@@ -56,7 +56,8 @@ public final class DirectAgentClient: Sendable {
     }
 
     public func userSetting(_ key: String) async throws -> JSONValue? {
-        do { return try await decode(AgentWire.Setting.self, "GET", "/v0/user-settings/\(Self.escape(key))").value }
+        struct Response: Decodable { let setting: AgentWire.Setting }
+        do { return try await decode(Response.self, "GET", "/v0/user-settings/\(Self.escape(key))").setting.value }
         catch DirectAgentError.status(404, _, _) { return nil }
     }
 
@@ -159,6 +160,50 @@ public final class DirectAgentClient: Sendable {
                 continue
             }
         }
+    }
+
+    /// A bot under the phone's own IDs, unnamed: the daemon calls it New Bot
+    /// and names it from its first message. It answers once the bot is ready.
+    public func createBot(id: String, workspaceId: String, agentId: String) async throws -> AgentWire.Bot {
+        let body: JSONValue = .object(["id": .string(id), "workspaceId": .string(workspaceId), "agentId": .string(agentId), "mutationId": .string(ClientID.make())])
+        struct Response: Decodable { let bot: AgentWire.Bot }
+        return try await decode(Response.self, "POST", "/v0/bots", json: body).bot
+    }
+
+    // MARK: Surfaces
+
+    /// The joined Surfaces; nil where the daemon serves none (`404`, `501`).
+    public func surfaces() async throws -> [AgentWire.Surface]? {
+        struct Response: Decodable { let surfaces: [Lossy<AgentWire.Surface>] }
+        do { return try await decode(Response.self, "GET", "/v0/surfaces").surfaces.compactMap(\.value) }
+        catch DirectAgentError.status(404, _, _), DirectAgentError.status(501, _, _) { return nil }
+    }
+
+    /// `id` is the retry key: a repeat returns the Surface already made.
+    public func createSurface(id: String, type: String, name: String, text: String? = nil) async throws -> AgentWire.Surface {
+        var body: [String: JSONValue] = ["id": .string(id), "type": .string(type), "name": .string(name), "mutationId": .string(ClientID.make())]
+        if let text { body["text"] = .string(text) }
+        struct Response: Decodable { let surface: AgentWire.Surface }
+        return try await decode(Response.self, "POST", "/v0/surfaces", json: .object(body)).surface
+    }
+
+    /// A todo list's active todos, then its completed ones.
+    public func todos(_ surfaceId: String) async throws -> [AgentWire.Todo] {
+        struct Response: Decodable { let todos: [Lossy<AgentWire.Todo>] }
+        let path = "/v0/surfaces/todo/\(Self.escape(surfaceId))"
+        async let active = decode(Response.self, "GET", path)
+        async let completed = decode(Response.self, "GET", path + "?scope=completed")
+        return try await (active.todos + completed.todos).compactMap(\.value)
+    }
+
+    /// A new todo at the top of the list; `id` is the retry key.
+    public func addTodo(_ surfaceId: String, id: String, text: String) async throws {
+        _ = try await send("POST", "/v0/surfaces/todo/\(Self.escape(surfaceId))", json: .object(["id": .string(id), "text": .string(text), "mutationId": .string(ClientID.make())]))
+    }
+
+    /// A document as Markdown, its read-only projection.
+    public func document(_ surfaceId: String) async throws -> String {
+        try await decode(JSONValue.self, "GET", "/v0/surfaces/document/\(Self.escape(surfaceId))")["document"]?["text"]?.stringValue ?? ""
     }
 
     // MARK: Conversations

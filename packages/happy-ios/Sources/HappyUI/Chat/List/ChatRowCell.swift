@@ -71,6 +71,8 @@ final class ChatPlanView: UIView {
     /// (a diff's "Show N more lines").
     var onAction: ((ChatRowAction) -> Void)?
     private(set) var plan: ChatRowPlan?
+    /// The pictures and recordings the plan shows now.
+    var mediaViews: [UIView] { media.filter { !$0.isHidden } }
     private var boxes: [UIView] = []
     private var texts: [ChatTextView] = []
     private var icons: [UIImageView] = []
@@ -83,6 +85,7 @@ final class ChatPlanView: UIView {
     private var attachments: [ChatAttachmentView] = []
     private var webImages: [ChatWebImageView] = []
     private var mermaids: [ChatMermaidView] = []
+    private var media: [ChatMediaView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -119,6 +122,7 @@ final class ChatPlanView: UIView {
         var attachmentIndex = 0
         var webImageIndex = 0
         var mermaidIndex = 0
+        var mediaIndex = 0
         var order: [UIView] = []
         for item in plan.items {
             switch item {
@@ -217,6 +221,11 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(diagram)
                 order.append(view)
+            case .media(let item, let frame):
+                let view = take(&media, &mediaIndex) { ChatMediaView() }
+                view.setLayoutFrame(frame)
+                view.apply(item)
+                order.append(view)
             }
         }
         for view in boxes[boxIndex...] { view.isHidden = true }
@@ -250,6 +259,10 @@ final class ChatPlanView: UIView {
         }
         for view in mermaids[mermaidIndex...] {
             view.onHeight = nil
+            view.isHidden = true
+        }
+        for view in media[mediaIndex...] {
+            view.apply(nil)
             view.isHidden = true
         }
         for view in order {

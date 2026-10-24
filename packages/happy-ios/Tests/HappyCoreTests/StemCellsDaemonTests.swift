@@ -150,4 +150,70 @@ final class StemCellsDaemonTests: XCTestCase {
         await conversation.stop()
         await store.stop()
     }
+
+    /// Each offer makes the real thing: a Surface through `POST /v0/surfaces`,
+    /// a bot through `POST /v0/bots`.
+    func testOffersMakeTheRealThing() async throws {
+        let credentials = try await credentials()
+        let client = client(credentials)
+        let store = StemCellsStore(client: client)
+        await store.start()
+        var updates = store.updates.makeAsyncIterator()
+        let deadline = ContinuousClock.now + .seconds(20)
+        var ready: StemCellsSnapshot?
+        while ContinuousClock.now < deadline, let snapshot = await updates.next() {
+            if snapshot.live, snapshot.availability == .available { ready = snapshot; break }
+        }
+        // The setting the banner follows reads as the daemon holds it.
+        let (api, _) = try daemon()
+        let held = try call(api, ["GET", "/v0/user-settings/" + StemCellsStore.settingKey])["setting"]?["value"]
+        let read = try await client.userSetting(StemCellsStore.settingKey)
+        XCTAssertEqual(read, held == .null ? nil : held)
+        XCTAssertEqual(ready?.prioritizing, held == .bool(true))
+        let offers = try XCTUnwrap(ready?.offers)
+        XCTAssertEqual(offers.first, .surface("todo"))
+        XCTAssertEqual(offers.last, .bot)
+
+        let list = try await store.createSurface(type: "todo", name: "Offer list")
+        XCTAssertEqual(list.type, "todo")
+        try await client.addTodo(list.id, id: ClientID.make(), text: "Buy oranges")
+        let todos = try await client.todos(list.id)
+        XCTAssertEqual(todos.map(\.text), ["Buy oranges"])
+
+        if offers.contains(.surface("document")) {
+            let document = try await store.createSurface(type: "document", name: "Offer notes")
+            let text = try await client.document(document.id)
+            XCTAssertTrue(text.contains("Offer notes"), text)
+        }
+
+        let bot = try await store.createBot()
+        XCTAssertNotNil(bot.agent?.id)
+        await store.stop()
+    }
+
+    /// Every task row whose conversation has subtasks offers to show them,
+    /// or already shows them.
+    func testTaskRowsOfferTheirSubtasks() async throws {
+        let credentials = try await credentials()
+        let (api, _) = try daemon()
+        let tasks = try call(api, ["GET", "/v0/tasks?scope=joined"])["tasks"]?.arrayValue ?? []
+        let withSubtasks = Set(tasks.compactMap { task -> String? in
+            let live = task["agent"]?["subtasks"]?.arrayValue?.filter { $0["archivedAt"] == nil || $0["archivedAt"] == .null } ?? []
+            return live.isEmpty || task["archivedAt"].map({ $0 != .null }) == true ? nil : task["id"]?.stringValue
+        })
+        let store = StemCellsStore(client: client(credentials))
+        await store.start()
+        var updates = store.updates.makeAsyncIterator()
+        let deadline = ContinuousClock.now + .seconds(20)
+        var ready: StemCellsSnapshot?
+        while ContinuousClock.now < deadline, let snapshot = await updates.next() {
+            if snapshot.live, snapshot.availability == .available, !snapshot.allRows.isEmpty { ready = snapshot; break }
+        }
+        let rows = try XCTUnwrap(ready?.allRows).filter { $0.targetKind == "task" && withSubtasks.contains($0.targetId ?? "") }
+        for row in rows {
+            XCTAssertTrue(row.hasHiddenSessions || row.hasShownSessions, "\(row.label) offers none of its subtasks")
+            XCTAssertFalse(row.sessions.isEmpty, "\(row.label) has no sessions")
+        }
+        await store.stop()
+    }
 }

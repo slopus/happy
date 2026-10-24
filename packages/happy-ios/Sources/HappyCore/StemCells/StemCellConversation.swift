@@ -21,8 +21,9 @@ public struct StemCellChatItem: Equatable, Sendable, Identifiable {
         case text(String)
         /// A picture sent with a message, inline.
         case picture(id: String, mimeType: String, data: Data)
-        /// A picture or video an agent's tool presented; read on demand.
-        case media(toolCallId: String, index: Int, item: AgentWire.MediaItem)
+        /// Pictures and videos an agent's tool presented, or a layout block
+        /// in its text arranged, in `columns` (0: justified rows); read on demand.
+        case gallery([StemCellMedia], columns: Int)
     }
 
     public var id: String
@@ -30,8 +31,50 @@ public struct StemCellChatItem: Equatable, Sendable, Identifiable {
     public var pieces: [Piece]
     public var delivery: Delivery
 
+    public init(id: String, role: Role, pieces: [Piece], delivery: Delivery) {
+        self.id = id
+        self.role = role
+        self.pieces = pieces
+        self.delivery = delivery
+    }
+
     public var text: String {
         pieces.compactMap { if case .text(let text) = $0 { text } else { nil } }.joined(separator: "\n\n")
+    }
+}
+
+/// One picture or video a tool call presented: its bytes are
+/// `GET /v0/agents/:agentId/tool-calls/:toolCallId/media/:index`.
+public struct StemCellMedia: Equatable, Sendable {
+    public var toolCallId: String
+    public var index: Int
+    public var item: AgentWire.MediaItem
+
+    public init(toolCallId: String, index: Int, item: AgentWire.MediaItem) {
+        self.toolCallId = toolCallId
+        self.index = index
+        self.item = item
+    }
+
+    public var isVideo: Bool { item.kind == "video" }
+
+    /// What a screen knows it by.
+    public var key: String { "tool/\(toolCallId)/\(index)" }
+
+    /// The shape a thumbhash's header carries, width over height
+    /// (`thumbHashToApproximateAspectRatio`); nil when there is none.
+    public static func hashedRatio(_ thumbhash: String?) -> Double? {
+        guard var base64 = thumbhash, !base64.isEmpty else { return nil }
+        base64 = base64.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+        guard let hash = Data(base64Encoded: base64).map(Array.init), hash.count >= 5 else { return nil }
+        let header = Int(hash[3])
+        let hasAlpha = hash[2] & 0x80 != 0
+        let isLandscape = hash[4] & 0x80 != 0
+        let lx = isLandscape ? (hasAlpha ? 5 : 7) : header & 7
+        let ly = isLandscape ? header & 7 : (hasAlpha ? 5 : 7)
+        guard lx > 0, ly > 0 else { return nil }
+        return Double(lx) / Double(ly)
     }
 }
 
@@ -411,15 +454,59 @@ public actor StemCellConversation {
 
     // MARK: Snapshot
 
+    /// `columns` as the presentation asks, or 0 for desktop's justified
+    /// rows when it asks for none. A tree is drawn as one column on the phone.
+    static func columns(_ layout: JSONValue?, count: Int) -> Int {
+        if layout?["type"]?.stringValue == "columns", let columns = layout?["columns"]?.numberValue, columns == 1 || columns == 2 { return Int(columns) }
+        if layout?["type"]?.stringValue == "tree" { return 1 }
+        return 0
+    }
+
+    /// An agent's text with its layout blocks as galleries of what they
+    /// name. A block that names nothing shown is the Markdown it is; one
+    /// still arriving is held back until it closes.
+    static func pieces(_ text: String, shown: [String: StemCellMedia], streaming: Bool) -> [StemCellChatItem.Piece] {
+        var pieces: [StemCellChatItem.Piece] = []
+        func markdown(_ text: String) {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            if case .text(let previous)? = pieces.last { pieces[pieces.count - 1] = .text(previous + "\n\n" + trimmed) } else { pieces.append(.text(trimmed)) }
+        }
+        for segment in StemCellMediaBlocks.split(text) {
+            switch segment {
+            case .markdown(let text):
+                markdown(text)
+            case .layout(let layout):
+                if !layout.complete {
+                    if !streaming { markdown(layout.raw) }
+                    continue
+                }
+                var placed = Set<String>()
+                let media = layout.sources.compactMap { source -> StemCellMedia? in
+                    guard let media = shown[source], placed.insert("\(media.toolCallId):\(media.index)").inserted else { return nil }
+                    return media
+                }
+                guard !media.isEmpty else { markdown(layout.raw); continue }
+                pieces.append(.gallery(media, columns: layout.columns))
+                if !layout.caption.isEmpty { pieces.append(.text(layout.caption)) }
+            }
+        }
+        return pieces
+    }
+
     private func publish() {
         var items: [StemCellChatItem] = []
+        // What a layout block's `<img src>` can name: media shown earlier.
+        var shown: [String: StemCellMedia] = [:]
         for run in runs {
+            // The newest run while the agent works may end mid-block.
+            let streaming = snapshot.working && run.id == runs.last?.id
             for id in run.messageIds {
-                if let message = messages[id], let item = item(message) { items.append(item) }
+                if let message = messages[id], let item = item(message, shown: &shown, streaming: streaming) { items.append(item) }
             }
         }
         for id in pending {
-            if let message = messages[id], let item = item(message) { items.append(item) }
+            if let message = messages[id], let item = item(message, shown: &shown, streaming: false) { items.append(item) }
         }
         for send in outgoing {
             var pieces: [StemCellChatItem.Piece] = send.text.isEmpty ? [] : [.text(send.text)]
@@ -432,7 +519,7 @@ public actor StemCellConversation {
         continuation.yield(snapshot)
     }
 
-    private func item(_ message: AgentWire.Message) -> StemCellChatItem? {
+    private func item(_ message: AgentWire.Message, shown: inout [String: StemCellMedia], streaming: Bool) -> StemCellChatItem? {
         let role: StemCellChatItem.Role
         switch message.role {
         case "user": role = .user
@@ -444,16 +531,25 @@ public actor StemCellConversation {
             switch block {
             case .text(let text):
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty { pieces.append(.text(trimmed)) }
+                guard !trimmed.isEmpty else { continue }
+                pieces += role == .agent ? Self.pieces(trimmed, shown: shown, streaming: streaming || message.status == "streaming") : [.text(trimmed)]
             case .image(let mimeType, let data):
                 let key = "\(message.id):\(index)"
                 if pictures[key] == nil { pictures[key] = Data(base64Encoded: data) }
                 if let bytes = pictures[key] { pieces.append(.picture(id: key, mimeType: mimeType, data: bytes)) }
             case .toolCall(let id, _, _, let presentation):
-                guard presentation?.type == "media" else { continue }
-                for (offset, media) in (presentation?.items ?? []).enumerated() where media.kind == "image" || media.kind == "video" {
-                    pieces.append(.media(toolCallId: id, index: offset, item: media))
+                guard let presentation, presentation.type == "media" else { continue }
+                var gallery: [StemCellMedia] = []
+                for (offset, item) in (presentation.items ?? []).enumerated() {
+                    let media = StemCellMedia(toolCallId: id, index: offset, item: item)
+                    // Named by a later layout block, by either path; the latest wins.
+                    if let source = item.source {
+                        shown[source.path] = media
+                        shown[source.absolutePath] = media
+                    }
+                    if item.kind == "image" || item.kind == "video" { gallery.append(media) }
                 }
+                if !gallery.isEmpty { pieces.append(.gallery(gallery, columns: Self.columns(presentation.layout, count: gallery.count))) }
             case .reasoning, .unknown:
                 continue
             }

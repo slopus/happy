@@ -29,8 +29,36 @@ public struct StemCellsSnapshot: Equatable, Sendable {
     public var error: String?
     /// Why the last new work could not be made, as `error`.
     public var stemCellError: String?
+    /// What new work offers to make at once instead (desktop's `createOffers`).
+    public var offers: [StemCellOffer] = []
 
     public init() {}
+}
+
+/// One kind of thing new work can be made as directly: a Surface the daemon
+/// serves, or a bot.
+public enum StemCellOffer: Equatable, Sendable {
+    case surface(String)
+    case bot
+
+    /// Desktop's order: `SURFACE_CREATE_OFFERS`, then New bot.
+    public static let surfaceTypes = ["todo", "document", "calendar", "system_monitor", "chat"]
+
+    /// `surfaceCreateMenu`: a todo list wherever Surfaces are served; the
+    /// other kinds only where health says the daemon serves them.
+    static func available(surfaces: Bool, capabilities: AgentWire.Health.Capabilities) -> [StemCellOffer] {
+        guard surfaces else { return [.bot] }
+        let served = surfaceTypes.filter { type in
+            switch type {
+            case "document": capabilities.collaborativeDocuments == true
+            case "calendar": capabilities.calendarSurfaces == true
+            case "system_monitor": capabilities.systemMonitorSurfaces == true
+            case "chat": capabilities.chatSurfaces == true
+            default: true
+            }
+        }
+        return served.map { .surface($0) } + [.bot]
+    }
 }
 
 /// New work, named on this phone before the daemon answers.
@@ -89,6 +117,7 @@ public actor StemCellsStore {
     private var agentIcons: [String: AgentWire.LibraryIcon] = [:]
     private var bots: [JSONValue] = []
     private var tasks: [JSONValue] = []
+    private var surfaces: [AgentWire.Surface] = []
     private var agents = StemCellsAgents()
     private var places = StemCellsPlaces()
     private var placesReload: Task<Void, Never>?
@@ -158,8 +187,9 @@ public actor StemCellsStore {
                     }
                     if let id = frame.id { cursor = id }
                     guard let envelope = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8)) else { continue }
-                    if let agentId = envelope["payload"]?["agentId"]?.stringValue {
-                        for listener in listeners.values where listener.agentId == agentId { listener.continuation.yield(.event(envelope)) }
+                    let payload = envelope["payload"]
+                    if let key = payload?["agentId"]?.stringValue ?? payload?["surfaceId"]?.stringValue ?? payload?["todo"]?["surfaceId"]?.stringValue {
+                        for listener in listeners.values where listener.key == key { listener.continuation.yield(.event(envelope)) }
                     }
                     receive(envelope)
                 }
@@ -184,12 +214,13 @@ public actor StemCellsStore {
         case resync
     }
 
-    private var listeners: [UUID: (agentId: String, continuation: AsyncStream<ConversationEvent>.Continuation)] = [:]
+    private var listeners: [UUID: (key: String, continuation: AsyncStream<ConversationEvent>.Continuation)] = [:]
 
-    public func conversationEvents(_ agentId: String) -> AsyncStream<ConversationEvent> {
+    /// `key` is a conversation's agent ID, or a Surface's ID for its todos.
+    public func conversationEvents(_ key: String) -> AsyncStream<ConversationEvent> {
         let id = UUID()
         let (stream, continuation) = AsyncStream.makeStream(of: ConversationEvent.self)
-        listeners[id] = (agentId, continuation)
+        listeners[id] = (key, continuation)
         continuation.onTermination = { [weak self] _ in Task { await self?.unlisten(id) } }
         return stream
     }
@@ -216,6 +247,7 @@ public actor StemCellsStore {
             async let bots = client.bots()
             async let tasks = client.tasks()
             async let setting = client.userSetting(Self.settingKey)
+            async let surfaceList = client.surfaces()
             let capabilities = (try? await health)?.capabilities ?? AgentWire.Health.Capabilities()
             self.capabilities = capabilities
             guard capabilities.sidebarOperations == true else {
@@ -227,6 +259,9 @@ public actor StemCellsStore {
             let answer = try await sidebar
             let (botList, taskList) = try await (bots, tasks)
             snapshot.prioritizing = (try? await setting) == .bool(true)
+            let served = (try? await surfaceList) ?? nil
+            surfaces = served ?? []
+            snapshot.offers = StemCellOffer.available(surfaces: served != nil, capabilities: capabilities)
             self.bots = botList; self.tasks = taskList
             agents = StemCellsAgents()
             for owner in botList + taskList { if let agent = owner["agent"] { agents.absorb(agent) } }
@@ -303,7 +338,7 @@ public actor StemCellsStore {
             guard let data = try? JSONEncoder().encode(value) else { return [] }
             return (try? decoder.decode([Lossy<T>].self, from: data))?.compactMap(\.value) ?? []
         }
-        places = StemCellsPlaces(bots: decode(composed(bots)), tasks: decode(composed(tasks)))
+        places = StemCellsPlaces(bots: decode(composed(bots)), tasks: decode(composed(tasks)), surfaces: surfaces)
     }
 
     // MARK: Events
@@ -327,6 +362,19 @@ public actor StemCellsStore {
             if let agent = payload["agent"] { agents.created(agent); rebuildPlaces() }
         case "bot.created", "bot.updated", "task.created", "task.updated", "task.joined", "task.left":
             schedulePlacesReload()
+        case "surface.created":
+            if let surface = payload["surface"].flatMap(Self.decodeSurface) {
+                surfaces.removeAll { $0.id == surface.id }
+                surfaces.append(surface)
+                rebuildPlaces()
+            }
+        case "surface.updated":
+            if let id = payload["surfaceId"]?.stringValue ?? payload["surface"]?["id"]?.stringValue,
+               let name = payload["changes"]?["name"]?.stringValue ?? payload["name"]?.stringValue,
+               let index = surfaces.firstIndex(where: { $0.id == id }) {
+                surfaces[index].name = name
+                rebuildPlaces()
+            }
         case "user_settings.updated":
             if payload["setting"]?["key"]?.stringValue == Self.settingKey {
                 snapshot.prioritizing = payload["setting"]?["value"] == .bool(true)
@@ -362,6 +410,11 @@ public actor StemCellsStore {
             else { titleIntents[space.id]?.base = space.title; space.title = intent.title }
         }
         spaces[space.id] = space
+    }
+
+    static func decodeSurface(_ value: JSONValue) -> AgentWire.Surface? {
+        guard let data = try? JSONEncoder().encode(value) else { return nil }
+        return try? JSONDecoder().decode(AgentWire.Surface.self, from: data)
     }
 
     static func decodeSpace(_ value: JSONValue) -> AgentWire.Space? {
@@ -494,6 +547,11 @@ public actor StemCellsStore {
         edit(expanding: [nodeId]) { SidebarDocumentEdits.revealSessions($0, nodeId, sessions: sessions) }
     }
 
+    public func hideSessions(_ nodeId: String) {
+        let spaces = spaces
+        edit { SidebarDocumentEdits.hideSessions($0, nodeId, attached: { spaces[$0] != nil }) }
+    }
+
     /// Holds the document and the daemon's edits through a drag and its drop.
     public func setDragging(_ active: Bool) {
         dragging = active
@@ -565,6 +623,49 @@ public actor StemCellsStore {
         publish()
         // Whatever the daemon did keep is read back.
         if creating.isEmpty { if dragging { stale = true } else { reloadSidebar() } }
+    }
+
+    /// One of new work's offers: a Surface, which the daemon puts in the
+    /// sidebar once it holds something. A document starts with its name as
+    /// its heading, so it does at once.
+    public func createSurface(type: String, name: String) async throws -> AgentWire.Surface {
+        let id = ClientID.make()
+        let text = type == "document" ? "# \(name)\n" : nil
+        do {
+            let surface = try await retrying { [client] in try await client.createSurface(id: id, type: type, name: name, text: text) }
+            surfaces.removeAll { $0.id == surface.id }
+            surfaces.append(surface)
+            rebuildPlaces()
+            publish()
+            return surface
+        } catch {
+            failed(error)
+            throw error
+        }
+    }
+
+    /// A new bot, unnamed: its row comes with the daemon's events, and its
+    /// conversation is ready when this answers.
+    public func createBot() async throws -> AgentWire.Bot {
+        let (id, workspaceId, agentId) = (ClientID.make(), ClientID.make(), ClientID.make())
+        do {
+            let bot = try await retrying { [client] in try await client.createBot(id: id, workspaceId: workspaceId, agentId: agentId) }
+            schedulePlacesReload()
+            return bot
+        } catch {
+            failed(error)
+            throw error
+        }
+    }
+
+    /// Sends again only what was not heard; the caller's IDs make a repeat harmless.
+    private func retrying<T: Sendable>(_ request: @Sendable () async throws -> T) async throws -> T {
+        for attempt in 0..<3 {
+            do { return try await request() }
+            catch let error as DirectAgentError where (error.status ?? 500) < 500 { throw error }
+            catch { if attempt == 2 { throw error }; try await Task.sleep(for: .milliseconds(500 * (attempt + 1))) }
+        }
+        throw DirectAgentError.invalidResponse
     }
 
     public func dismissStemCellError() {

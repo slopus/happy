@@ -115,4 +115,57 @@ final class StemCellsLayoutTests: XCTestCase {
         XCTAssertEqual(long.frames, [CGRect(x: 0, y: 0, width: 390, height: 400), CGRect(x: 0, y: 400, width: 390, height: 300)])
         XCTAssertEqual(long.contentHeight, 700)
     }
+
+    func testAgentParagraphsSitOneGapApart() {
+        let layout = StemCellMessageLayout.agent(width: 390, blocks: [.text(block(height: 24)), .text(block(height: 48))])
+        XCTAssertEqual(layout.markdownOrigin, CGPoint(x: 16, y: 8))
+        let frames = layout.markdown?.blocks.compactMap { placed -> CGRect? in
+            if case let .text(frame) = placed { return frame }
+            return nil
+        }
+        // No outer margins: the first paragraph starts at the top, the next 8 below.
+        XCTAssertEqual(frames, [rect(0, 0, 358, 24), rect(0, 32, 358, 48)])
+        XCTAssertEqual(layout.size, CGSize(width: 390, height: 96))
+        // A wide screen keeps the reading column.
+        let wide = StemCellMessageLayout.agent(width: 1000, maxContentWidth: 800, blocks: [.text(block(height: 24))])
+        XCTAssertEqual(wide.markdownOrigin, CGPoint(x: 116, y: 8))
+        XCTAssertEqual(wide.markdown?.size.width, 768)
+    }
+
+    func testAPersonsMessageHugsTheRightInItsBubble() {
+        let short = StemCellMessageLayout.user(width: 390, text: text("hello", lineHeight: 20), showsStatus: false)
+        XCTAssertEqual(short.bubble, rect(310, 8, 64, 40))
+        XCTAssertEqual(short.text, rect(322, 18, 40, 20))
+        XCTAssertNil(short.status)
+        XCTAssertEqual(short.size, CGSize(width: 390, height: 56))
+        // Long text wraps at 76% of the column, less the padding.
+        let long = StemCellMessageLayout.user(width: 390, text: text(String(repeating: "a", count: 100), lineHeight: 20), showsStatus: true)
+        XCTAssertEqual(long.bubble, rect(102, 8, 272, 100))
+        XCTAssertEqual(long.text, rect(114, 18, 248, 80))
+        XCTAssertEqual(long.status, rect(16, 110, 358, 14))
+        XCTAssertEqual(long.size.height, 132)
+    }
+
+    func testTheIntroOffersWrapCentredUnderItsCaption() {
+        let line = text("Say what it is — it’ll find its place.", advance: 8, lineHeight: 20)
+        let caption = text("Or start one of these:", advance: 8, lineHeight: 20)
+        let layout = MakeStuffIntroLayout(width: 390, line: line, caption: caption, optionLabels: [80, 90, 100, 60, 120, 70])
+        XCTAssertEqual(layout.caption, rect(16, 120, 358, 20))
+        // Buttons are their label and 42 of chrome; each line is centred.
+        XCTAssertEqual(layout.options, [
+            rect(64, 156, 122, 28), rect(194, 156, 132, 28),
+            rect(69, 192, 142, 28), rect(219, 192, 102, 28),
+            rect(54, 228, 162, 28), rect(224, 228, 112, 28),
+        ])
+        // desktop's makeStuffIntroHeight: 116 + 4 + 20 + 16 + 3 × 28 + 2 × 8 + 16.
+        XCTAssertEqual(layout.size, CGSize(width: 390, height: 272))
+        // A wide screen wraps at 480.
+        let wide = MakeStuffIntroLayout(width: 1000, line: line, caption: caption, optionLabels: [180, 180, 180])
+        XCTAssertEqual(wide.options, [rect(274, 156, 222, 28), rect(504, 156, 222, 28), rect(389, 192, 222, 28)])
+        // Begun: the options give way and the row ends under its line.
+        let settled = MakeStuffIntroLayout(width: 390, line: line, caption: caption, optionLabels: [80], settled: true)
+        XCTAssertNil(settled.caption)
+        XCTAssertEqual(settled.options, [])
+        XCTAssertEqual(settled.size.height, 116)
+    }
 }

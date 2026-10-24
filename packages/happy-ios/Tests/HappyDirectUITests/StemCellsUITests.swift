@@ -1,4 +1,5 @@
 import ObjectiveC
+import UIKit
 import XCTest
 
 /// XCUITest waits up to a minute for the app to idle around every action,
@@ -56,6 +57,23 @@ final class StemCellsUITests: XCTestCase {
 
     private func row(_ kind: String, _ label: String) -> XCUIElement {
         app.descendants(matching: .any)["stem-row:\(kind):\(label)"]
+    }
+
+    /// Scrolls the list in short, held drags from the middle of the screen
+    /// until `element` sits between 20% and 60% of its height, clear of
+    /// the bars, the dock and the home indicator.
+    private func bringIntoView(_ element: XCUIElement) {
+        let height = app.frame.height
+        for _ in 0..<8 {
+            let y = element.frame.midY
+            if y > height * 0.2, y < height * 0.6 { break }
+            let shift = min(max((y - height * 0.4) / height, -0.35), 0.35)
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).press(
+                forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6 - shift)),
+                withVelocity: .slow, thenHoldForDuration: 0.4
+            )
+            pause(0.8)
+        }
     }
 
     private func pause(_ seconds: TimeInterval) {
@@ -132,9 +150,11 @@ final class StemCellsUITests: XCTestCase {
     /// Renaming a task from its row's menu: the new name shows at once and stays.
     func testRename() {
         home()
-        let tasks = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:space:Reply with"))
-        XCTAssertGreaterThan(tasks.count, 0)
-        let task = tasks.element(boundBy: 0)
+        // Whichever of the two names the last run left.
+        let (from, to) = row("space", "Pick a new laptop").waitForExistence(timeout: 3) ? ("Pick a new laptop", "Choose a laptop") : ("Choose a laptop", "Pick a new laptop")
+        let task = row("space", from)
+        XCTAssertTrue(task.exists)
+        bringIntoView(task)
         pause(1)
         task.press(forDuration: 1.0)
         let rename = app.buttons["Rename task"]
@@ -145,10 +165,10 @@ final class StemCellsUITests: XCTestCase {
         let field = app.alerts.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.buttons["Clear text"].firstMatch.tap()
-        field.typeText("Renamed on the phone")
+        field.typeText(to)
         pause(0.5)
         app.alerts.buttons["Save"].tap()
-        let renamed = row("space", "Renamed on the phone")
+        let renamed = row("space", to)
         XCTAssertTrue(renamed.waitForExistence(timeout: 2))
         pause(4)
         XCTAssertTrue(renamed.exists, "the name went back")
@@ -165,5 +185,282 @@ final class StemCellsUITests: XCTestCase {
         capture("search")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         pause(1)
+    }
+
+    /// New work's offers make the real thing: a todo list that takes a todo
+    /// and joins the sidebar, a document with its heading, and a bot whose
+    /// conversation opens. The untouched new work is closed after.
+    func testOffers() {
+        home()
+        pause(1.5)
+        app.descendants(matching: .any)["stem-new-work"].tap()
+        XCTAssertTrue(app.staticTexts["Or start one of these:"].waitForExistence(timeout: 5))
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        pause(1.5)
+        capture("offers")
+
+        offer("New todo list", name: "Weekend errands")
+        let field = app.textFields["stem-todo-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        pause(1)
+        field.tap()
+        field.typeText("Buy oranges\n")
+        XCTAssertTrue(app.descendants(matching: .any)["stem-todo"].waitForExistence(timeout: 10))
+        field.tap()
+        field.typeText("Water the cactus\n")
+        pause(2)
+        capture("todo-list")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(1)
+
+        offer("New document", name: "Trip notes")
+        XCTAssertTrue(app.descendants(matching: .any)["stem-document"].waitForExistence(timeout: 10))
+        pause(2)
+        capture("document")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(1)
+
+        app.descendants(matching: .any)["stem-offer:New bot"].tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 20))
+        pause(2)
+        capture("new-bot")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(1)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(row("space", "Weekend errands").waitForExistence(timeout: 15), "the todo list never joined the sidebar")
+        XCTAssertTrue(row("space", "Trip notes").waitForExistence(timeout: 15), "the document never joined the sidebar")
+        pause(2)
+        capture("sidebar-with-surfaces")
+        let fresh = row("space", "New")
+        if fresh.exists {
+            fresh.press(forDuration: 1.0)
+            let close = app.buttons["Close new work"]
+            if close.waitForExistence(timeout: 3) { close.tap() }
+            pause(2)
+        }
+        row("space", "Weekend errands").tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-todo"].waitForExistence(timeout: 10))
+        pause(2)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(1)
+    }
+
+    private func offer(_ label: String, name: String) {
+        let button = app.descendants(matching: .any)["stem-offer:\(label)"]
+        XCTAssertTrue(button.waitForExistence(timeout: 5))
+        button.tap()
+        let field = app.alerts.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.buttons["Clear text"].firstMatch.tap()
+        field.typeText(name)
+        pause(0.5)
+        app.alerts.buttons["Create"].tap()
+    }
+
+    /// Prioritizing turned on from the banner, then new work: live over the
+    /// events stream the row grows its icon and its name, Prioritizing puts
+    /// its own row in, and its batch moves the new row where it belongs.
+    func testPrioritizing() {
+        home()
+        let turnOn = app.buttons["Turn on"]
+        if turnOn.waitForExistence(timeout: 5) {
+            pause(2)
+            capture("prioritizing-off")
+            turnOn.tap()
+            pause(2)
+        }
+        XCTAssertFalse(app.buttons["Turn on"].exists)
+        app.descendants(matching: .any)["stem-new-work"].tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        pause(1)
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        composer.typeText("Plan a weekend hiking trip to Sintra: a short packing list and two trails. A few lines, no tools.")
+        pause(0.5)
+        app.buttons["Send"].tap()
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
+        let messages = app.descendants(matching: .any).matching(identifier: "stem-message")
+        let working = app.descendants(matching: .any)["stem-working"]
+        var deadline = Date().addingTimeInterval(120)
+        while Date() < deadline, messages.count < 2 || working.exists { pause(1) }
+        XCTAssertGreaterThanOrEqual(messages.count, 2, "the agent never answered")
+        pause(2)
+        capture("prioritizing-chat")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        // The sidebar, untouched, while Prioritizing works: the stem cell
+        // grows its icon and name at once, and the batch moves the row once
+        // Prioritizing's turn ends.
+        let fresh = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND value == %@", "stem-row:space:New", "stem cell"))
+        deadline = Date().addingTimeInterval(180)
+        while Date() < deadline, fresh.count > 0 { pause(2) }
+        XCTAssertEqual(fresh.count, 0, "the new work never grew its icon and name")
+        capture("prioritizing-named")
+        pause(60)
+        capture("prioritizing-placed")
+        // Where the batch put it: under its section, further down.
+        for _ in 0..<4 { app.swipeUp(); pause(1) }
+        pause(2)
+        capture("prioritizing-section")
+        for _ in 0..<4 { app.swipeDown(); pause(0.5) }
+        pause(1)
+    }
+
+    /// The sidebar left alone for a while, for what arrives over events.
+    func testWatchSidebar() {
+        home()
+        pause(Double(ProcessInfo.processInfo.environment["STEM_WATCH_SECONDS"] ?? "") ?? 150)
+        capture("watched")
+        for _ in 0..<4 { app.swipeUp(); pause(1.5) }
+        capture("watched-bottom")
+        for _ in 0..<4 { app.swipeDown(); pause(0.5) }
+        pause(1)
+    }
+
+    /// A task's subtasks shown under its row from its menu, one opened, and
+    /// Prioritizing's own row with its notes.
+    func testSubtasks() {
+        home()
+        pause(1.5)
+        for label in ["Plan Lisbon trip", "Refactor billing service"] {
+            let task = row("space", label)
+            XCTAssertTrue(task.waitForExistence(timeout: 5))
+            // Into the middle of the screen, clear of the dock, and still.
+            bringIntoView(task)
+            task.press(forDuration: 1.0)
+            let show = app.buttons["Show subtasks"]
+            // Already shown from an earlier run: hide them, then show them again.
+            if !show.waitForExistence(timeout: 2), app.buttons["Hide subtasks"].exists {
+                pause(1)
+                app.buttons["Hide subtasks"].tap()
+                pause(2)
+                task.press(forDuration: 1.0)
+            }
+            XCTAssertTrue(show.waitForExistence(timeout: 3), "\(label) offered no subtasks")
+            pause(1)
+            show.tap()
+            pause(2)
+        }
+        let sessions = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:session:"))
+        XCTAssertTrue(sessions.firstMatch.waitForExistence(timeout: 5), "no subtask showed under its task")
+        pause(1.5)
+        capture("subtasks")
+        sessions.firstMatch.tap()
+        pause(4)
+        capture("subtask-chat")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(1.5)
+        for _ in 0..<3 { app.swipeDown(); pause(0.3) }
+        let prioritizing = row("space", "Prioritizing")
+        if prioritizing.waitForExistence(timeout: 3) {
+            prioritizing.tap()
+            pause(4)
+            capture("prioritizing-notes")
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            pause(1.5)
+        }
+    }
+
+    /// What an agent presents comes inline: a picture and a recording, read
+    /// over the paired connection, each opened whole; then a photo the
+    /// person pastes goes with their words and shows under them.
+    func testMedia() {
+        home()
+        pause(1.5)
+        let bot = row("space", ProcessInfo.processInfo.environment["STEM_MEDIA_ROW"] ?? "Research Assistant")
+        XCTAssertTrue(bot.waitForExistence(timeout: 5))
+        bringIntoView(bot)
+        bot.tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        pause(3)
+        let tiles = app.descendants(matching: .any).matching(identifier: "stem-media")
+        let videos = tiles.matching(NSPredicate(format: "label ENDSWITH %@", ".mp4"))
+        let pictures = tiles.matching(NSPredicate(format: "label ENDSWITH %@", ".png"))
+        let working = app.descendants(matching: .any)["stem-working"]
+        if videos.count == 0 || pictures.count == 0 {
+            composer.tap()
+            composer.typeText(
+                "Please make two files in a temporary folder: a 960x600 PNG bar chart of four made-up fruit sales (python or ffmpeg, whatever you have), "
+                    + "and a 4 second 640x360 MP4 with ffmpeg's testsrc pattern. Then present both to me inline with present_files so I see them here. One short sentence of text is enough."
+            )
+            pause(1)
+            app.buttons["Send"].tap()
+            if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
+            let deadline = Date().addingTimeInterval(360)
+            while Date() < deadline, videos.count == 0 || pictures.count == 0 || working.exists { pause(2) }
+        }
+        XCTAssertGreaterThan(pictures.count, 0, "no picture was presented")
+        XCTAssertGreaterThan(videos.count, 0, "no recording was presented")
+        let picture = pictures.element(boundBy: pictures.count - 1)
+        let video = videos.element(boundBy: videos.count - 1)
+        // Read over the paired connection, then drawn.
+        let loaded = NSPredicate(format: "value == %@", "loaded")
+        expectation(for: loaded, evaluatedWith: picture)
+        expectation(for: loaded, evaluatedWith: video)
+        waitForExpectations(timeout: 60)
+        pause(2)
+        // The keyboard down and the picture in view, above the recording.
+        app.swipeDown(velocity: .slow)
+        pause(1)
+        bringIntoView(picture)
+        pause(1.5)
+        capture("media-inline")
+
+        // The tiles take no touches of their own: the transcript's tap opens them.
+        picture.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.images["stem-picture-viewer"].waitForExistence(timeout: 5))
+        pause(2.5)
+        capture("media-picture-open")
+        app.buttons["Close"].tap()
+        pause(1.5)
+
+        bringIntoView(video)
+        pause(1.5)
+        video.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        pause(6)
+        capture("media-video-playing")
+        app.swipeDown(velocity: .fast)
+        pause(1)
+        if !composer.isHittable {
+            for name in ["Close", "Done"] where app.buttons[name].exists {
+                app.buttons[name].tap()
+                break
+            }
+        }
+        pause(1.5)
+
+        // A photo from the clipboard, with a question about it.
+        UIPasteboard.general.image = Self.swatch()
+        app.buttons["Add a picture"].tap()
+        let paste = app.alerts.buttons["Paste from Clipboard"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 3))
+        paste.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        if springboard.buttons["Allow Paste"].waitForExistence(timeout: 3) { springboard.buttons["Allow Paste"].tap() }
+        pause(2)
+        composer.tap()
+        composer.typeText("What colours and words are in this picture? Answer in one sentence, no tools.")
+        pause(1)
+        capture("media-photo-attached")
+        app.buttons["Send"].tap()
+        let sent = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label ENDSWITH %@", "stem-media", "Picture"))
+        XCTAssertTrue(sent.firstMatch.waitForExistence(timeout: 10), "the photo never showed under the message")
+        let deadline = Date().addingTimeInterval(120)
+        pause(3)
+        while Date() < deadline, working.exists { pause(1) }
+        pause(2)
+        capture("media-photo-answered")
+    }
+
+    /// A picture to paste: a blue-to-orange band with words on it.
+    private static func swatch() -> UIImage {
+        let size = CGSize(width: 900, height: 600)
+        return UIGraphicsImageRenderer(size: size, format: { let format = UIGraphicsImageRendererFormat(); format.scale = 1; return format }()).image { context in
+            let colors = [UIColor.systemBlue.cgColor, UIColor.systemOrange.cgColor] as CFArray
+            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1])!
+            context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
+            let text = NSAttributedString(string: "Hello from the phone", attributes: [.font: UIFont.boldSystemFont(ofSize: 64), .foregroundColor: UIColor.white])
+            text.draw(at: CGPoint(x: 90, y: 260))
+        }
     }
 }

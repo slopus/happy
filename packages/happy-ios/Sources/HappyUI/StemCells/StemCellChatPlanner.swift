@@ -4,8 +4,9 @@ import HappyLayout
 import UIKit
 
 /// Plans a Stem Cells conversation's rows off the main thread, with the
-/// chat's own pieces: a person's message in its bubble on the right, the
-/// agent's markdown under it with its copy button. A row is planned again
+/// chat's own pieces: a person's message in its bubble on the right with
+/// its photos, the agent's markdown and the pictures and recordings it
+/// presented. A row is planned again
 /// only when its item, the width or the text size changed.
 actor StemCellChatPlanner {
     struct Key: Equatable {
@@ -42,64 +43,108 @@ actor StemCellChatPlanner {
 
     static func plan(_ item: StemCellChatItem, key: Key, copied: Bool, syntax: CodeSyntaxService) -> ChatRowPlan {
         let (width, environment) = (key.width, key.environment)
+        guard !item.pieces.isEmpty else { return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: []) }
+        typealias M = StemCellMessageLayout.Metrics
         let text = item.text
-        guard !text.isEmpty else { return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: []) }
         switch item.role {
         case .agent:
-            let markdown = MarkdownPiece(text, color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment)
-            let layout = AgentTextLayout(width: width, maxContentWidth: key.maxContentWidth, blocks: markdown.blocks)
-            let drawn = markdown.draw(layout.markdown, origin: layout.markdownOrigin)
-            let slop = AgentTextLayout.Metrics.copyHitSlop
-            let copyTarget = CGRect(
-                x: layout.copyButton.minX - slop.left, y: layout.copyButton.minY - slop.top,
-                width: layout.copyButton.width + slop.left + slop.right, height: layout.copyButton.height + slop.top + slop.bottom
-            )
-            return ChatRowPlan(
-                id: item.id, size: layout.size,
-                items: drawn.items + [.icon(.ionicons(copied ? "checkmark" : "copy-outline"), size: AgentTextLayout.Metrics.copyIconSize, frame: layout.copyIcon, tint: Palette.text)],
-                hits: [ChatHit(frame: copyTarget, action: .copyMessage(id: item.id, text: text))] + drawn.hits,
-                accessibilityLabel: text
-            )
+            // Desktop's agent text: markdown, soft breaks as spaces, blocks 8
+            // apart, no copy button (a long press selects instead); its
+            // pictures and recordings where they were presented.
+            var parts: [StemCellMessageLayout.Part] = []
+            var markdowns: [MarkdownPiece] = []
+            var galleries: [[StemCellMedia]] = []
+            for piece in item.pieces {
+                switch piece {
+                case .text(let text):
+                    let markdown = MarkdownPiece(StemCellMarkdown.joiningSoftBreaks(text), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment)
+                    markdowns.append(markdown)
+                    parts.append(.markdown(markdown.blocks))
+                case .gallery(let media, let columns):
+                    galleries.append(media)
+                    parts.append(.media(media.map(Self.layoutItem), columns: columns))
+                case .picture:
+                    break
+                }
+            }
+            let layout = StemCellMessageLayout.agent(width: width, maxContentWidth: key.maxContentWidth, parts: parts)
+            var items: [ChatDrawItem] = []
+            var hits: [ChatHit] = []
+            var (markdownIndex, galleryIndex) = (0, 0)
+            for placed in layout.parts {
+                switch placed {
+                case .markdown(let placed, let origin):
+                    let drawn = markdowns[markdownIndex].draw(placed, origin: origin)
+                    markdownIndex += 1
+                    items += drawn.items
+                    hits += drawn.hits
+                case .media(let frames):
+                    for (media, frame) in zip(galleries[galleryIndex], frames) {
+                        items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: media.item.name), frame: frame))
+                        hits.insert(ChatHit(frame: frame, action: .openMedia(media.key)), at: 0)
+                    }
+                    galleryIndex += 1
+                }
+            }
+            let names = galleries.joined().map { "\($0.isVideo ? Strings.StemCells.video : Strings.StemCells.picture): \($0.item.name)" }
+            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: ([text] + names).filter { !$0.isEmpty }.joined(separator: ", "))
         case .user:
-            let palette = ChatRowRenderer.bubblePalette(.gray)
-            let markdown = MarkdownPiece(text, color: Palette.userMessageText, selectable: false, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment)
-            let layout = UserMessageLayout(.init(width: width, maxContentWidth: key.maxContentWidth, content: .text(markdown.blocks)))
+            // Desktop's own message: the text as written, lines and all, in
+            // the accent bubble at the right, its photos under it.
+            let body = text.isEmpty ? nil : MeasuredText(ChatTextStyles.markdownText.string(text, color: Palette.userMessageText, in: environment))
+            let pictures: [(id: String, image: StemCellMediaFlow.Image)] = item.pieces.compactMap {
+                guard case .picture(let id, _, let data) = $0 else { return nil }
+                return (id, Self.pictureSize(data))
+            }
+            var failure = false
+            if case .failed = item.delivery { failure = true }
+            let layout = StemCellMessageLayout.user(width: width, maxContentWidth: key.maxContentWidth, text: body?.measurable, pictures: pictures.map(\.image), showsStatus: failure)
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
             if let bubble = layout.bubble {
-                items.append(.box(ChatBox(frame: bubble, fill: palette.background, border: palette.border, borderWidth: 1, radius: UserMessageLayout.Metrics.bubbleRadius)))
+                items.append(.box(ChatBox(frame: bubble, fill: Palette.stemCellsUserBubble, radius: M.bubbleRadius)))
                 hits.append(ChatHit(frame: bubble, action: .copyMenu(text), hold: true))
             }
-            if let placed = layout.markdown {
-                let drawn = markdown.draw(placed, origin: layout.markdownOrigin)
-                items += drawn.items
-                hits = drawn.hits + hits
+            if let body, let frame = layout.text { items.append(.text(body.layout(for: frame), frame)) }
+            for (picture, frame) in zip(pictures, layout.pictures) {
+                let key = StemCellMediaLoader.sentKey(picture.id)
+                items.append(.media(ChatMedia(key: key, isVideo: false, thumbhash: nil, label: Strings.StemCells.picture), frame: frame))
+                hits.append(ChatHit(frame: frame, action: .openMedia(key)))
             }
-            // The status line keeps its height whether or not it says anything,
-            // so a message never moves when it settles.
-            let status: String
-            var failed = false
-            switch item.delivery {
-            case .sent, .pending: status = ""
-            case .sending: status = Strings.StemCells.sending
-            case .failed:
-                status = Strings.StemCells.sendFailed
-                failed = true
-            }
-            if !status.isEmpty {
+            if failure, let frame = layout.status {
                 let line = ChatTextLayout(
-                    ChatTextStyles.pendingStatus.string(status, color: failed ? Palette.statusError : Palette.textSecondary, alignment: .right, lineBreakMode: .byTruncatingTail, in: environment),
-                    width: layout.status.width, maxLines: 1
+                    ChatTextStyles.pendingStatus.string(Strings.StemCells.sendFailed, color: Palette.statusError, alignment: .right, lineBreakMode: .byTruncatingTail, in: environment),
+                    width: frame.width, maxLines: 1
                 )
-                items.append(.text(line, layout.status))
-                if failed { hits.insert(ChatHit(frame: layout.status, action: .retry(localId: item.id)), at: 0) }
+                items.append(.text(line, frame))
+                hits.insert(ChatHit(frame: frame, action: .retry(localId: item.id)), at: 0)
             }
-            return ChatRowPlan(
-                id: item.id, size: layout.size, items: items, hits: hits,
-                alpha: item.delivery == .pending ? UserMessageLayout.Metrics.pendingOpacity : 1,
-                accessibilityLabel: [text, status.isEmpty ? nil : status].compactMap { $0 }.joined(separator: ", ")
-            )
+            // On its way, or waiting for the agent to take it: dimmed, never moved.
+            let alpha: CGFloat = item.delivery == .sending || item.delivery == .pending ? 0.6 : 1
+            let label = ([text] + pictures.map { _ in Strings.StemCells.picture }).filter { !$0.isEmpty }.joined(separator: ", ")
+            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, alpha: alpha, accessibilityLabel: failure ? "\(label), \(Strings.StemCells.sendFailed)" : label)
         }
+    }
+
+    /// What the flow knows of a presented item before its bytes arrive.
+    static func layoutItem(_ media: StemCellMedia) -> StemCellMediaLayout.Item {
+        let item = media.item
+        return StemCellMediaLayout.Item(isVideo: media.isVideo, image: StemCellMediaFlow.Image(
+            width: item.width.map { CGFloat($0) }, height: item.height.map { CGFloat($0) },
+            scale: item.scale.map { CGFloat($0) }, hashedRatio: StemCellMedia.hashedRatio(item.thumbhash).map { CGFloat($0) }
+        ))
+    }
+
+    /// A sent photo's upright pixel size, read from its header alone.
+    static func pictureSize(_ data: Data) -> StemCellMediaFlow.Image {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? CGFloat,
+              let height = properties[kCGImagePropertyPixelHeight] as? CGFloat
+        else { return StemCellMediaFlow.Image() }
+        // EXIF orientations 5 to 8 turn the picture on its side.
+        let turned = (properties[kCGImagePropertyOrientation] as? Int).map { (5...8).contains($0) } ?? false
+        return turned ? StemCellMediaFlow.Image(width: height, height: width) : StemCellMediaFlow.Image(width: width, height: height)
     }
 }
 #endif

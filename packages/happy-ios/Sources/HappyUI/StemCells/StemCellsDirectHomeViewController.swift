@@ -34,7 +34,7 @@ final class StemCellsDirectHomeViewController: UIViewController {
         view.addSubview(header)
         header.settingsButton.addAction(UIAction { [weak self] _ in self?.openComputer() }, for: .primaryActionTriggered)
         header.filterButton.menu = UIMenu(children: [
-            UIMenu(title: Strings.SessionsFilter.groupingTitle, image: UIImage(systemName: "rectangle.grid.1x2"), options: .displayInline, children: [
+            UIMenu(title: Strings.SessionsFilter.groupingTitle, image: StemCellsGlyphs.image("layers"), options: .displayInline, children: [
                 UIAction(title: Strings.StemCells.filterTitle, state: .on) { _ in },
             ]),
         ])

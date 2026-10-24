@@ -116,6 +116,10 @@ extension AgentWire {
             public var sidebarOperations: Bool?
             public var sidebarProposals: Bool?
             public var sidebarAttachments: Bool?
+            public var collaborativeDocuments: Bool?
+            public var calendarSurfaces: Bool?
+            public var systemMonitorSurfaces: Bool?
+            public var chatSurfaces: Bool?
         }
         public var ready: Bool
         public var capabilities: Capabilities?
@@ -190,6 +194,28 @@ extension AgentWire {
         public var canArchive: Bool?
         public var version: String?
         public var agent: Agent?
+    }
+
+    /// A Surface: a todo list, document, calendar, system monitor or chat.
+    public struct Surface: Equatable, Sendable, Codable {
+        public var id: String
+        public var type: String
+        public var name: String
+        public var version: String?
+
+        public init(id: String, type: String, name: String, version: String? = nil) {
+            self.id = id
+            self.type = type
+            self.name = name
+            self.version = version
+        }
+    }
+
+    public struct Todo: Equatable, Sendable, Codable, Identifiable {
+        public var id: String
+        public var text: String
+        /// `active`, `completed` or `deleted`.
+        public var status: String
     }
 
     public struct CreateStemCellResponse: Equatable, Sendable, Codable {

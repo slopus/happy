@@ -163,33 +163,47 @@ public struct MarkdownLayout: Equatable, Sendable {
     public var blocks: [Placed]
     public var size: CGSize
 
-    public init(width: CGFloat, blocks input: [Block]) {
+    /// `gap`: blocks stand exactly this far apart, with nothing above the
+    /// first or below the last, as CSS margins between siblings do
+    /// (happy-desktop's `> * + * { margin-top: 8px }`); nil keeps RN's
+    /// own margins above.
+    public init(width: CGFloat, blocks input: [Block], gap: CGFloat? = nil) {
         typealias M = Metrics
         let width = max(0, width)
         var y: CGFloat = 0
         var placed: [Placed] = []
+        func open(_ margin: CGFloat) {
+            if let gap { if !placed.isEmpty { y += gap } } else { y += margin }
+        }
+        func close(_ margin: CGFloat) {
+            if gap == nil { y += margin }
+        }
 
         for block in input {
             switch block {
             case .text(let text):
-                y += M.textMarginTop
+                open(M.textMarginTop)
                 let size = text.size(fitting: width)
                 placed.append(.text(CGRect(x: 0, y: y, width: width, height: size.height)))
-                y += size.height + M.textMarginBottom
+                y += size.height
+                close(M.textMarginBottom)
 
             case .header(let level, let text):
                 let margins = M.headerMargins(level)
-                y += margins.top
+                open(margins.top)
                 let height = text.height(fitting: width)
                 placed.append(.header(CGRect(x: 0, y: y, width: width, height: height)))
-                y += height + margins.bottom
+                y += height
+                close(margins.bottom)
 
             case .rule:
-                y += M.ruleMargin
+                open(M.ruleMargin)
                 placed.append(.rule(CGRect(x: 0, y: y, width: width, height: M.ruleHeight)))
-                y += M.ruleHeight + M.ruleMargin
+                y += M.ruleHeight
+                close(M.ruleMargin)
 
             case .list(let items):
+                open(0)
                 let top = y
                 var items_: [PlacedListItem] = []
                 for (index, item) in items.enumerated() {
@@ -206,10 +220,10 @@ public struct MarkdownLayout: Equatable, Sendable {
                     y += max(marker.height + M.listMarkerTop, textHeight)
                 }
                 placed.append(.list(frame: CGRect(x: 0, y: top, width: width, height: y - top), items: items_))
-                y += M.listMarginBottom
+                close(M.listMarginBottom)
 
             case .code(let language, let code):
-                y += M.blockMargin
+                open(M.blockMargin)
                 var inner: CGFloat = 0
                 var languageFrame: CGRect?
                 if let language {
@@ -227,10 +241,11 @@ public struct MarkdownLayout: Equatable, Sendable {
                     contentSize: CGSize(width: max(width, codeWidth + 2 * M.codePadding), height: scrollHeight),
                     text: CGRect(x: M.codePadding, y: M.codePadding, width: codeWidth, height: code.height)
                 )))
-                y += frame.height + M.blockMargin
+                y += frame.height
+                close(M.blockMargin)
 
             case .options(let labels):
-                y += M.blockMargin
+                open(M.blockMargin)
                 let top = y
                 var buttons: [CGRect] = []
                 var labelFrames: [CGRect] = []
@@ -243,10 +258,10 @@ public struct MarkdownLayout: Equatable, Sendable {
                     y += height + 2 * M.optionPaddingV
                 }
                 placed.append(.options(frame: CGRect(x: 0, y: top, width: width, height: y - top), buttons: buttons, labels: labelFrames))
-                y += M.blockMargin
+                close(M.blockMargin)
 
             case .table(let table):
-                y += M.blockMargin
+                open(M.blockMargin)
                 let grid = Self.tableGrid(table)
                 let scrollWidth = min(grid.contentSize.width, max(0, width - 2 * M.tableBorder))
                 let frame = CGRect(x: 0, y: y, width: scrollWidth + 2 * M.tableBorder, height: grid.contentSize.height + 2 * M.tableBorder)
@@ -258,10 +273,11 @@ public struct MarkdownLayout: Equatable, Sendable {
                     rows: grid.rows,
                     separators: grid.separators
                 )))
-                y += frame.height + M.blockMargin
+                y += frame.height
+                close(M.blockMargin)
 
             case .image(let caption):
-                y += M.blockMargin
+                open(M.blockMargin)
                 let imageWidth = min(width, M.imageMaxWidth)
                 let picture = CGRect(x: 0, y: 0, width: imageWidth, height: M.imageHeight)
                 var height = M.imageHeight
@@ -272,13 +288,15 @@ public struct MarkdownLayout: Equatable, Sendable {
                     height += M.imageCaptionGap + captionHeight
                 }
                 placed.append(.image(frame: CGRect(x: 0, y: y, width: imageWidth, height: height), picture: picture, caption: captionFrame))
-                y += height + M.blockMargin
+                y += height
+                close(M.blockMargin)
 
             case .mermaid(let reported):
-                y += M.blockMargin
+                open(M.blockMargin)
                 let height = Self.mermaidHeight(reported: reported)
                 placed.append(.mermaid(CGRect(x: 0, y: y, width: width, height: height)))
-                y += height + M.blockMargin
+                y += height
+                close(M.blockMargin)
             }
         }
 

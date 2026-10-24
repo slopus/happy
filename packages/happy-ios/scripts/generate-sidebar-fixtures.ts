@@ -292,6 +292,20 @@ for (let i = 0; i < 400; i++) {
     edits.push(entry);
 }
 
+// Hide subtasks, after the edits so their vectors stay as they were: the
+// sessions under a row go, and a space nested under one takes its place.
+const hides: any[] = [];
+for (let i = 0; i < 120; i++) {
+    const document = randomDocument();
+    const html = formatSpaceSidebar(document);
+    const ids = allIds(document).filter((id) => !["happy-search", "happy-create"].includes(id));
+    const id = pick(ids);
+    const attached = document.items.filter((item: any) => item.type === "space").map((item: any) => item.id).filter(() => chance(0.7));
+    const isAttached = (candidate: string) => attached.includes(candidate);
+    const edited = desktop.sidebarDocumentEdit(html, (view: any) => desktop.sidebarDocumentSessionsHide(view, keyOf(document, id), isAttached));
+    hides.push({ html, id, attached, result: edited ?? null });
+}
+
 const out = resolve(import.meta.dir, "../Tests/HappyCoreTests/Fixtures/space-sidebar-vectors.json");
-writeFileSync(out, JSON.stringify({ parse, apply, diff, edits }) + "\n");
-console.log(`parse ${parse.length}, apply ${apply.length}, diff ${diff.length}, edits ${edits.length}`);
+writeFileSync(out, JSON.stringify({ parse, apply, diff, edits, hides }) + "\n");
+console.log(`parse ${parse.length}, apply ${apply.length}, diff ${diff.length}, edits ${edits.length}, hides ${hides.length}`);

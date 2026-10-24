@@ -67,6 +67,12 @@ final class StemCellsRowView: UIView {
         accessibilityTraits = row.kind == .section ? [.header, .button] : row.kind == .separator ? .none : .button
         isAccessibilityElement = row.kind != .separator
         accessibilityIdentifier = "stem-row:\(row.kind):\(row.label)"
+        // What the row wears, so a test can watch a stem cell grow its icon.
+        accessibilityValue = switch row.mark {
+        case .stemCell: "stem cell"
+        case .clay(let slug): slug
+        default: nil
+        }
         setNeedsLayout()
     }
 
@@ -95,7 +101,7 @@ final class StemCellsRowView: UIView {
         case .glyph(let name):
             picture.isHidden = false
             picture.contentMode = .center
-            picture.image = StemCellsGlyphs.image(name, size: 17)?.withRenderingMode(.alwaysTemplate)
+            picture.image = StemCellsGlyphs.image(name, size: 17)
         case .image(let path, let thumbhash):
             // A picture is a rounded square.
             picture.isHidden = false
@@ -137,18 +143,18 @@ final class StemCellsRowView: UIView {
         chevron.isHidden = row.kind != .section
         rule.isHidden = row.kind != .separator
         if row.kind == .section {
-            chevron.image = UIImage.symbol(row.collapsed == true ? "chevron.right" : "chevron.down", pointSize: 11, weight: .semibold)?.withRenderingMode(.alwaysTemplate)
+            chevron.image = StemCellsGlyphs.image(row.collapsed == true ? "chevron-right" : "chevron-down", size: 12)
             // Shown while folded; faint while open, so it is found without hovering.
             chevron.alpha = row.collapsed == true ? 1 : 0.45
         }
         switch row.status {
         case .awaitingInput:
             trailing.isHidden = false
-            trailing.image = UIImage.symbol("questionmark.circle.fill", pointSize: 14, weight: .semibold)?.withRenderingMode(.alwaysTemplate)
+            trailing.image = StemCellsGlyphs.image("question", size: 15)
             trailing.tintColor = UIColor(Palette.stemCellsQuestion)
         case .waiting:
             trailing.isHidden = false
-            trailing.image = UIImage.symbol("clock", pointSize: 13, weight: .regular)?.withRenderingMode(.alwaysTemplate)
+            trailing.image = StemCellsGlyphs.image("clock", size: 14)
             trailing.tintColor = UIColor(Palette.stemCellsRowText)
         case .working, .none:
             dot.isHidden = !row.unread

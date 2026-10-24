@@ -137,17 +137,17 @@ final class StemCellsHomeViewController: UIViewController {
         let bounds = view.bounds
         dockText.prepare(HomeDockController.textKey(width: bounds.width, text: TextEnvironment(traitCollection)))
         let bannerHeight = banner.isEmpty ? 0 : banner.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height
-        banner.frame = CGRect(x: 0, y: contentInsets.contentTop, width: bounds.width, height: bannerHeight)
+        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight)
+        banner.frame = layout.banner
         sidebar.frame = bounds
-        let top = contentInsets.contentTop + bannerHeight
-        let insets = UIEdgeInsets(top: top, left: 0, bottom: contentInsets.listBottom, right: 0)
+        let insets = UIEdgeInsets(layout.listInsets)
         if sidebar.contentInset != insets {
             let atTop = sidebar.contentOffset.y <= -sidebar.contentInset.top + 1
             sidebar.contentInset = insets
-            sidebar.verticalScrollIndicatorInsets = UIEdgeInsets(top: contentInsets.chromeTop, left: 0, bottom: contentInsets.listBottom, right: 0)
+            sidebar.verticalScrollIndicatorInsets = UIEdgeInsets(layout.indicatorInsets)
             if atTop { sidebar.contentOffset.y = -insets.top }
         }
-        empty.frame = bounds.inset(by: UIEdgeInsets(top: contentInsets.contentTop, left: 0, bottom: contentInsets.listBottom, right: 0))
+        empty.frame = layout.empty
         dockView.frame = bounds
     }
 
@@ -161,6 +161,12 @@ final class StemCellsHomeViewController: UIViewController {
             navigationController?.pushViewController(StemCellsSearchViewController(session: session, onOpen: { [weak self] row in self?.open(row) }), animated: true)
         case .create:
             makeNewWork()
+        case .space where row.targetKind == "surface":
+            guard let surfaceId = row.targetId else { return }
+            session.selectedRowId = row.id
+            sidebar.selectedRowId = row.id
+            let surface = AgentWire.Surface(id: surfaceId, type: row.surfaceType ?? "", name: row.label)
+            navigationController?.pushViewController(StemCellsSurfaceViewController(session: session, surface: surface), animated: true)
         case .space, .session:
             guard let agentId = row.agentId else { return }
             session.selectedRowId = row.id
@@ -210,21 +216,28 @@ final class StemCellsHomeViewController: UIViewController {
         var items: [UIMenuElement] = []
         switch row.kind {
         case .section:
-            items.append(UIAction(title: row.collapsed == true ? Strings.StemCells.unfold : Strings.StemCells.fold, image: UIImage(systemName: row.collapsed == true ? "chevron.down" : "chevron.right")) { [weak self] _ in self?.fold(row) })
-            items.append(UIAction(title: Strings.StemCells.renameSection, image: UIImage(systemName: "pencil")) { [weak self] _ in
+            items.append(UIAction(title: row.collapsed == true ? Strings.StemCells.unfold : Strings.StemCells.fold, image: StemCellsGlyphs.image(row.collapsed == true ? "chevron-down" : "chevron-right")) { [weak self] _ in self?.fold(row) })
+            items.append(UIAction(title: Strings.StemCells.renameSection, image: StemCellsGlyphs.image("pencil")) { [weak self] _ in
                 self?.rename(current: row.label) { label in Task { await store.relabel(row.nodeId, label: label) } }
             })
         case .space:
             let openTitle = row.targetKind == "bot" ? Strings.StemCells.openBot : Strings.StemCells.open
-            items.append(UIAction(title: openTitle, image: UIImage(systemName: "arrow.up.forward.square")) { [weak self] _ in self?.open(row) })
+            items.append(UIAction(title: openTitle, image: StemCellsGlyphs.image("open")) { [weak self] _ in self?.open(row) })
+            // Opening comes first, then what the row shows under it.
+            if row.hasHiddenSessions {
+                items.append(UIAction(title: Strings.StemCells.showSubtasks, image: StemCellsGlyphs.image("eye")) { _ in Task { await store.revealSessions(row.nodeId, sessions: row.sessions) } })
+            }
+            if row.hasShownSessions {
+                items.append(UIAction(title: Strings.StemCells.hideSubtasks, image: StemCellsGlyphs.image("eye-off")) { _ in Task { await store.hideSessions(row.nodeId) } })
+            }
             if row.isHappy {
                 items.append(UIMenu(options: .displayInline, children: [
-                    UIAction(title: Strings.StemCells.tidyNow, image: UIImage(systemName: "list.bullet")) { _ in Task { await store.tidy() } },
+                    UIAction(title: Strings.StemCells.tidyNow, image: StemCellsGlyphs.image("list")) { _ in Task { await store.tidy() } },
                 ]))
                 break
             }
             if let spaceId = row.spaceId, row.targetKind == "task" || row.targetKind == "bot" {
-                items.append(UIAction(title: row.targetKind == "bot" ? Strings.StemCells.renameBot : Strings.StemCells.renameTask, image: UIImage(systemName: "pencil")) { [weak self] _ in
+                items.append(UIAction(title: row.targetKind == "bot" ? Strings.StemCells.renameBot : Strings.StemCells.renameTask, image: StemCellsGlyphs.image("pencil")) { [weak self] _ in
                     self?.rename(current: row.label == Strings.StemCells.untitled ? "" : row.label) { title in Task { await store.rename(spaceId, title: title) } }
                 })
             }
@@ -232,23 +245,23 @@ final class StemCellsHomeViewController: UIViewController {
             // only from here; other work is left or archived.
             if row.isUntouchedStemCell, let spaceId = row.spaceId {
                 items.append(UIMenu(options: .displayInline, children: [
-                    UIAction(title: Strings.StemCells.closeNewWork, image: UIImage(systemName: "xmark"), attributes: .destructive) { _ in Task { await store.discard(spaceId) } },
+                    UIAction(title: Strings.StemCells.closeNewWork, image: StemCellsGlyphs.image("close"), attributes: .destructive) { _ in Task { await store.discard(spaceId) } },
                 ]))
             } else if let targetId = row.targetId, row.targetKind == "task" {
                 var leaving: [UIMenuElement] = [
-                    UIAction(title: Strings.StemCells.leaveTask, image: UIImage(systemName: "xmark")) { _ in Task { await store.leave(taskId: targetId) } },
+                    UIAction(title: Strings.StemCells.leaveTask, image: StemCellsGlyphs.image("close")) { _ in Task { await store.leave(taskId: targetId) } },
                 ]
                 if row.canArchive {
-                    leaving.append(UIAction(title: Strings.StemCells.archiveTask, image: UIImage(systemName: "archivebox"), attributes: .destructive) { _ in Task { await store.archive(kind: "task", id: targetId) } })
+                    leaving.append(UIAction(title: Strings.StemCells.archiveTask, image: StemCellsGlyphs.image("archive"), attributes: .destructive) { _ in Task { await store.archive(kind: "task", id: targetId) } })
                 }
                 items.append(UIMenu(options: .displayInline, children: leaving))
             } else if let targetId = row.targetId, row.targetKind == "bot" {
                 items.append(UIMenu(options: .displayInline, children: [
-                    UIAction(title: Strings.StemCells.archiveBot, image: UIImage(systemName: "archivebox"), attributes: .destructive) { _ in Task { await store.archive(kind: "bot", id: targetId) } },
+                    UIAction(title: Strings.StemCells.archiveBot, image: StemCellsGlyphs.image("archive"), attributes: .destructive) { _ in Task { await store.archive(kind: "bot", id: targetId) } },
                 ]))
             }
         case .session:
-            items.append(UIAction(title: Strings.StemCells.open, image: UIImage(systemName: "arrow.up.forward.square")) { [weak self] _ in self?.open(row) })
+            items.append(UIAction(title: Strings.StemCells.open, image: StemCellsGlyphs.image("open")) { [weak self] _ in self?.open(row) })
         default:
             return nil
         }
@@ -319,28 +332,25 @@ final class StemCellsBannerView: UIView {
         setNeedsLayout()
     }
 
-    private var metrics: (inset: CGFloat, padding: CGFloat) { (StemCellsMetrics.inset + 4, 14) }
+    private func layout(width: CGFloat) -> StemCellsBannerLayout {
+        StemCellsBannerLayout(
+            width: width, title: title.measurable,
+            detail: detail.isHidden ? nil : detail.measurable,
+            button: button.isHidden ? nil : button.sizeThatFits(.zero)
+        )
+    }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
-        guard !isEmpty else { return .zero }
-        let width = size.width - 2 * metrics.inset - 2 * metrics.padding
-        let buttonWidth = button.isHidden ? 0 : button.sizeThatFits(.zero).width + 12
-        let titleHeight = title.sizeThatFits(CGSize(width: width - buttonWidth, height: .greatestFiniteMagnitude)).height
-        let detailHeight = detail.isHidden ? 0 : detail.sizeThatFits(CGSize(width: width - buttonWidth, height: .greatestFiniteMagnitude)).height + 2
-        return CGSize(width: size.width, height: titleHeight + detailHeight + 2 * metrics.padding + 8)
+        isEmpty ? .zero : layout(width: size.width).size
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let (inset, padding) = metrics
-        card.frame = CGRect(x: inset, y: 0, width: bounds.width - 2 * inset, height: max(0, bounds.height - 8))
-        let buttonSize = button.isHidden ? .zero : button.sizeThatFits(.zero)
-        let textWidth = card.bounds.width - 2 * padding - (button.isHidden ? 0 : buttonSize.width + 12)
-        let titleHeight = title.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height
-        title.frame = CGRect(x: padding, y: padding, width: textWidth, height: titleHeight)
-        let detailHeight = detail.isHidden ? 0 : detail.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height
-        detail.frame = CGRect(x: padding, y: title.frame.maxY + 2, width: textWidth, height: detailHeight)
-        button.frame = CGRect(x: card.bounds.width - padding - buttonSize.width, y: (card.bounds.height - buttonSize.height) / 2, width: buttonSize.width, height: buttonSize.height)
+        let layout = layout(width: bounds.width)
+        card.frame = layout.card
+        title.frame = layout.title
+        detail.frame = layout.detail ?? .zero
+        button.frame = layout.button ?? .zero
     }
 }
 
@@ -376,16 +386,10 @@ final class StemCellsEmptyView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let width = min(bounds.width - 48, 360)
-        let labelHeight = label.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-        let buttonSize = button.isHidden ? .zero : button.sizeThatFits(.zero)
-        let total = 64 + 20 + labelHeight + (button.isHidden ? 0 : 24 + buttonSize.height)
-        var y = (bounds.height - total) / 2
-        mark.frame = CGRect(x: (bounds.width - 64) / 2, y: y, width: 64, height: 64)
-        y += 84
-        label.frame = CGRect(x: (bounds.width - width) / 2, y: y, width: width, height: labelHeight)
-        y += labelHeight + 24
-        button.frame = CGRect(x: (bounds.width - buttonSize.width) / 2, y: y, width: buttonSize.width, height: buttonSize.height)
+        let layout = StemCellsEmptyLayout(size: bounds.size, label: label.measurable, button: button.isHidden ? nil : button.sizeThatFits(.zero))
+        mark.frame = layout.mark
+        label.frame = layout.label
+        button.frame = layout.button ?? .zero
     }
 }
 #endif

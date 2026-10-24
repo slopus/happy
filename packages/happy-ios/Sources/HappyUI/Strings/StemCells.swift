@@ -57,5 +57,45 @@ extension Strings {
         public static let working = "Working…"
         public static let sending = "Sending…"
         public static let sendFailed = "Not sent. Tap to retry."
+
+        // What new work offers to make at once (AppHappyAgentView.tsx `SURFACE_CREATE_OFFERS`).
+        public static func offer(_ offer: StemCellOffer) -> String {
+            switch offer {
+            case .bot: "New bot"
+            case .surface("todo"): "New todo list"
+            case .surface("document"): "New document"
+            case .surface("calendar"): "New calendar"
+            case .surface("system_monitor"): "New system monitor"
+            case .surface("chat"): "New chat"
+            case .surface: "New"
+            }
+        }
+        /// The name a new Surface starts with, which the person may change first.
+        public static func surfaceName(_ type: String) -> String {
+            switch type {
+            case "todo": "Todo list"
+            case "document": "Document"
+            case "calendar": "Calendar"
+            case "system_monitor": "System Monitor"
+            case "chat": "Chat"
+            default: "Untitled"
+            }
+        }
+        public static let nameIt = "Name it"
+        public static let make = "Create"
+        public static let newBot = "New Bot"
+
+        // A Surface on the phone: read, and a todo added.
+        public static let addTodo = "Add a todo"
+        public static let noTodos = "Nothing here yet."
+        public static let emptyDocument = "This document is empty."
+        public static let openOnComputer = "Open this on your computer to use it."
+
+        // Pictures and recordings in a conversation.
+        public static let picture = "Picture"
+        public static let video = "Video"
+        public static let playVideo = "Play video"
+        public static let addPicture = "Add a picture"
+        public static let close = "Close"
     }
 }

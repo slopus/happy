@@ -5,10 +5,12 @@ import Foundation
 public struct StemCellsPlaces: Equatable, Sendable {
     public var bots: [AgentWire.Bot]
     public var tasks: [AgentWire.Task]
+    public var surfaces: [AgentWire.Surface]
 
-    public init(bots: [AgentWire.Bot] = [], tasks: [AgentWire.Task] = []) {
+    public init(bots: [AgentWire.Bot] = [], tasks: [AgentWire.Task] = [], surfaces: [AgentWire.Surface] = []) {
         self.bots = bots
         self.tasks = tasks
+        self.surfaces = surfaces
     }
 
     /// The system key of Happy's own bot.
@@ -16,6 +18,7 @@ public struct StemCellsPlaces: Equatable, Sendable {
 
     func bot(_ id: String) -> AgentWire.Bot? { bots.first { $0.id == id } }
     func task(_ id: String) -> AgentWire.Task? { tasks.first { $0.id == id } }
+    func surface(_ id: String) -> AgentWire.Surface? { surfaces.first { $0.id == id } }
 
     /// The conversation a space's row stands for.
     func conversation(_ space: AgentWire.Space) -> AgentWire.Agent? {
@@ -64,7 +67,8 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
         case clay(String)
         /// A picture read from the daemon, drawn as a rounded square.
         case image(path: String, thumbhash: String?)
-        /// A plain glyph: "search", "compose", "tasks", "agents" or "doc".
+        /// A plain glyph: "search", "compose", "tasks", "agents", "doc",
+        /// "calendar", "pulse" or "users".
         case glyph(String)
     }
 
@@ -97,6 +101,13 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
     /// The task or bot the row stands for, and whether the person may archive it.
     public var targetId: String?
     public var canArchive = false
+    /// The row's conversation's subtasks as they nest, which "Show subtasks"
+    /// puts under it; whether some are not drawn, and whether some are.
+    public var sessions: [SidebarDocumentEdits.SessionTree] = []
+    public var hasHiddenSessions = false
+    public var hasShownSessions = false
+    /// A Surface row's type: `todo`, `document`, `calendar`, `system_monitor` or `chat`.
+    public var surfaceType: String?
 
     public init(id: String, nodeId: String, kind: Kind, depth: Int = 0, label: String, mark: Mark = .none, status: Status = .none, unread: Bool = false, collapsed: Bool? = nil, isHappy: Bool = false, agentId: String? = nil, workspaceId: String? = nil, spaceId: String? = nil, targetKind: String? = nil, isUntouchedStemCell: Bool = false) {
         self.id = id
@@ -143,6 +154,13 @@ public enum StemCellsRows {
     /// Every row in document order, folded ones included.
     public static func all(_ document: SpaceSidebarDocument, spaces: [String: AgentWire.Space], places: StemCellsPlaces, agentIcons: [String: AgentWire.LibraryIcon], labels: Labels = Labels()) -> [StemCellsRow] {
         var rows: [StemCellsRow] = []
+        var held = Set<String>()
+        func hold(_ node: SpaceSidebarNode) {
+            guard node.kind == .space else { return }
+            held.insert(node.id)
+            node.children.forEach(hold)
+        }
+        document.items.forEach(hold)
         for node in document.items {
             switch node.kind {
             case .search:
@@ -158,7 +176,7 @@ public enum StemCellsRows {
             case .space:
                 // A space this client does not know yet draws nothing until it does.
                 guard let space = spaces[node.id], knownTarget(space) else { continue }
-                rows.append(contentsOf: spaceRows(node, space, depth: 0, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels))
+                rows.append(contentsOf: spaceRows(node, space, depth: 0, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels, held: held))
             }
         }
         return rows
@@ -192,8 +210,8 @@ public enum StemCellsRows {
         ["task", "bot", "surface", "agent"].contains(space.target.kind)
     }
 
-    private static func spaceRows(_ node: SpaceSidebarNode, _ space: AgentWire.Space, depth: Int, spaces: [String: AgentWire.Space], places: StemCellsPlaces, agentIcons: [String: AgentWire.LibraryIcon], labels: Labels) -> [StemCellsRow] {
-        let children = nested(node.children, depth: depth + 1, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels)
+    private static func spaceRows(_ node: SpaceSidebarNode, _ space: AgentWire.Space, depth: Int, spaces: [String: AgentWire.Space], places: StemCellsPlaces, agentIcons: [String: AgentWire.LibraryIcon], labels: Labels, held: Set<String>) -> [StemCellsRow] {
+        let children = nested(node.children, depth: depth + 1, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels, held: held)
         let conversation = places.conversation(space)
         var row = StemCellsRow(
             id: "space:\(space.id)", nodeId: node.id, kind: .space, depth: depth,
@@ -209,22 +227,34 @@ public enum StemCellsRows {
         )
         if row.workspaceId == nil, let agentId = row.agentId { row.workspaceId = places.agent(agentId)?.workspaceId }
         row.targetId = space.target.id
+        row.sessions = sessionTree(conversation?.subtasks ?? [])
+        row.hasHiddenSessions = hasMissing(row.sessions, held: held)
+        row.hasShownSessions = node.children.contains { spaces[$0.id] == nil }
+        if space.target.kind == "surface" { row.surfaceType = places.surface(space.target.id)?.type }
         // A bot can always be archived; a task only where the daemon says so.
         row.canArchive = space.target.kind == "bot" || places.task(space.target.id)?.canArchive == true
         return [row] + children
     }
 
-    private static func nested(_ nodes: [SpaceSidebarNode], depth: Int, spaces: [String: AgentWire.Space], places: StemCellsPlaces, agentIcons: [String: AgentWire.LibraryIcon], labels: Labels) -> [StemCellsRow] {
+    static func sessionTree(_ agents: [AgentWire.Agent]) -> [SidebarDocumentEdits.SessionTree] {
+        agents.filter { $0.archivedAt == nil }.map { SidebarDocumentEdits.SessionTree(id: $0.id, children: sessionTree($0.subtasks ?? [])) }
+    }
+
+    static func hasMissing(_ trees: [SidebarDocumentEdits.SessionTree], held: Set<String>) -> Bool {
+        trees.contains { !held.contains($0.id) || hasMissing($0.children, held: held) }
+    }
+
+    private static func nested(_ nodes: [SpaceSidebarNode], depth: Int, spaces: [String: AgentWire.Space], places: StemCellsPlaces, agentIcons: [String: AgentWire.LibraryIcon], labels: Labels, held: Set<String>) -> [StemCellsRow] {
         var rows: [StemCellsRow] = []
         for node in nodes where node.kind == .space {
             if let space = spaces[node.id] {
                 guard knownTarget(space) else { continue }
-                rows.append(contentsOf: spaceRows(node, space, depth: depth, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels))
+                rows.append(contentsOf: spaceRows(node, space, depth: depth, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels, held: held))
                 continue
             }
             // A session the lists do not know yet draws nothing until they do.
             guard let agent = places.agent(node.id) else { continue }
-            let children = nested(node.children, depth: depth + 1, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels)
+            let children = nested(node.children, depth: depth + 1, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels, held: held)
             rows.append(StemCellsRow(
                 id: "session:\(node.id)", nodeId: node.id, kind: .session, depth: depth,
                 label: agent.title ?? labels.untitledSession,
@@ -257,9 +287,20 @@ public enum StemCellsRows {
         }
         if space.title == nil { return .stemCell(seed: space.id) }
         switch space.target.kind {
-        case "surface": return .glyph("doc")
+        case "surface": return .glyph(surfaceGlyph(places.surface(space.target.id)?.type))
         case "task": return .glyph("tasks")
         default: return .glyph("agents")
+        }
+    }
+
+    /// The glyph desktop's Create menu gives each kind of Surface.
+    public static func surfaceGlyph(_ type: String?) -> String {
+        switch type {
+        case "todo": "tasks"
+        case "calendar": "calendar"
+        case "system_monitor": "pulse"
+        case "chat": "users"
+        default: "doc"
         }
     }
 

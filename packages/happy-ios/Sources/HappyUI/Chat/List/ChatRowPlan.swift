@@ -79,6 +79,9 @@ enum ChatDrawItem {
     /// A mermaid diagram, drawn by its own page; the page reports how tall
     /// it is with `mermaidHeight`.
     case mermaid(ChatMermaid, frame: CGRect)
+    /// A picture or recording a Stem Cells agent presented, or a photo the
+    /// person sent, loaded once it is on screen.
+    case media(ChatMedia, frame: CGRect)
 }
 
 /// A diagram in a row: `index` is its place among the row's diagrams, so
@@ -94,6 +97,17 @@ struct ChatMermaid: Equatable, Sendable {
 struct ChatMermaidHeights: Equatable, Sendable {
     var row = ""
     var heights: [Int: CGFloat] = [:]
+}
+
+/// One picture or recording in a Stem Cells conversation: `key` names it
+/// to the screen's `ChatMediaSource`, and its thumbhash shows until it
+/// arrives. A recording shows its first frame under a play button.
+struct ChatMedia: Equatable, Sendable {
+    var key: String
+    var isVideo: Bool
+    var thumbhash: String?
+    /// What VoiceOver reads: its name.
+    var label: String
 }
 
 /// A picture the person attached: `ref` under the session's attachments,
@@ -124,6 +138,8 @@ enum ChatRowAction: Equatable, Sendable {
     case diffShowMore(toolId: String, chunk: Int, file: Int)
     /// A diagram's page says how tall it is, in points.
     case mermaidHeight(row: String, index: Int, height: CGFloat)
+    /// A Stem Cells picture or recording, opened whole by its `ChatMedia.key`.
+    case openMedia(String)
 
     // Long presses
 

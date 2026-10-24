@@ -1,0 +1,80 @@
+import Foundation
+import XCTest
+@testable import HappyCore
+import HappyWire
+
+/// Layout blocks in an agent's text, split exactly as the reference
+/// `splitMediaLayoutBlocks` splits them (`scripts/generate-media-block-fixtures.ts`),
+/// and what the phone keeps of each.
+final class StemCellMediaTests: XCTestCase {
+    private static let vectors: JSONValue = {
+        let url = Bundle.module.url(forResource: "media-layout-blocks", withExtension: "json", subdirectory: "Fixtures")!
+        return try! JSONValue.decode(Data(contentsOf: url))
+    }()
+
+    func testSplitsAsTheReference() {
+        for (index, entry) in Self.vectors["cases"]!.arrayValue!.enumerated() {
+            let text = entry["text"]!.stringValue!
+            let expected = entry["segments"]!.arrayValue!.map { segment -> String in
+                segment["type"]!.stringValue! == "markdown"
+                    ? "M:" + segment["text"]!.stringValue!
+                    : "L\(segment["complete"]!.boolValue! ? "" : "?"):" + segment["html"]!.stringValue!
+            }
+            let actual = StemCellMediaBlocks.split(text).map { segment -> String in
+                switch segment {
+                case .markdown(let text): "M:" + text
+                case .layout(let layout): "L\(layout.complete ? "" : "?"):" + layout.raw
+                }
+            }
+            XCTAssertEqual(actual, expected, "case \(index): \(text.debugDescription)")
+        }
+    }
+
+    func testABlockKeepsItsPicturesColumnsAndWords() {
+        let layout = StemCellMediaBlocks.layout("""
+        <figure style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px">
+          <img src="a.png" alt="A"><img src='b.png'>
+          <figcaption>Before &amp; after</figcaption>
+        </figure>
+        """, complete: true)
+        XCTAssertEqual(layout.sources, ["a.png", "b.png"])
+        XCTAssertEqual(layout.columns, 3)
+        XCTAssertEqual(layout.caption, "Before & after")
+        XCTAssertEqual(StemCellMediaBlocks.columns("display: grid; grid-template-columns: 1fr 1fr"), 2)
+        XCTAssertEqual(StemCellMediaBlocks.columns("display: grid; grid-template-columns: minmax(100px, 1fr) 2fr 1fr 1fr"), 3)
+        XCTAssertEqual(StemCellMediaBlocks.columns("display: flex; flex-wrap: wrap"), 2)
+        XCTAssertEqual(StemCellMediaBlocks.columns(""), 1)
+    }
+
+    private func image(_ path: String, index: Int = 0) -> StemCellMedia {
+        let item = AgentWire.MediaItem(kind: "image", name: path, mimeType: "image/png", size: 10, width: 100, height: 50, thumbhash: nil, scale: nil, source: .init(path: path, absolutePath: "/w/" + path))
+        return StemCellMedia(toolCallId: "t1", index: index, item: item)
+    }
+
+    func testABlockShowsWhatItNamesOrStaysMarkdown() {
+        let shown = ["a.png": image("a.png"), "/w/b.png": image("b.png", index: 1)]
+        let text = "Look:\n\n<div><img src=\"a.png\"><img src=\"/w/b.png\"><img src=\"c.png\"></div>\n\nNice."
+        let pieces = StemCellConversation.pieces(text, shown: shown, streaming: false)
+        XCTAssertEqual(pieces.count, 3)
+        XCTAssertEqual(pieces[0], .text("Look:"))
+        guard case .gallery(let media, let columns) = pieces[1] else { return XCTFail("no gallery") }
+        XCTAssertEqual(media.map(\.item.name), ["a.png", "b.png"])
+        XCTAssertEqual(columns, 1)
+        XCTAssertEqual(pieces[2], .text("Nice."))
+        // Naming nothing shown: the block is the Markdown it is.
+        let none = StemCellConversation.pieces("<div><img src=\"x.png\"></div>", shown: shown, streaming: false)
+        XCTAssertEqual(none, [.text("<div><img src=\"x.png\"></div>")])
+        // Still arriving: held back, never drawn as HTML.
+        XCTAssertEqual(StemCellConversation.pieces("Here:\n<div><img src=\"a.png\">", shown: shown, streaming: true), [.text("Here:")])
+        // Final but never closed: Markdown.
+        XCTAssertEqual(StemCellConversation.pieces("<div><img src=\"a.png\">", shown: shown, streaming: false), [.text("<div><img src=\"a.png\">")])
+    }
+
+    func testColumnsFollowThePresentation() {
+        XCTAssertEqual(StemCellConversation.columns(nil, count: 1), 0)
+        XCTAssertEqual(StemCellConversation.columns(nil, count: 3), 0)
+        XCTAssertEqual(StemCellConversation.columns(.object(["type": .string("columns"), "columns": .number(1)]), count: 3), 1)
+        XCTAssertEqual(StemCellConversation.columns(.object(["type": .string("columns"), "columns": .number(2)]), count: 1), 2)
+        XCTAssertEqual(StemCellConversation.columns(.object(["type": .string("tree"), "root": .array([])]), count: 4), 1)
+    }
+}

@@ -164,6 +164,23 @@ public enum SidebarDocumentEdits {
         return edited
     }
 
+    /// `sidebarDocumentSessionsHide`: takes the sessions back out from under
+    /// a row or session; a space nested under one of them (`attached`)
+    /// takes its place. Nil when everything under it is a space.
+    public static func hideSessions(_ document: SpaceSidebarDocument, _ id: String, attached: (String) -> Bool) -> SpaceSidebarDocument? {
+        guard let location = SpaceSidebar.locate(document, id) else { return nil }
+        let node = SpaceSidebar.node(document, at: location.path)
+        guard node.kind == .space, !node.children.allSatisfy({ attached($0.id) }) else { return nil }
+        func kept(_ nodes: [SpaceSidebarNode]) -> [SpaceSidebarNode] {
+            nodes.flatMap { attached($0.id) ? [$0] : kept($0.children) }
+        }
+        var hidden = node
+        hidden.children = kept(node.children)
+        var edited = document
+        SpaceSidebar.withNode(&edited, location.path) { $0 = hidden }
+        return edited
+    }
+
     /// A conversation's sessions as they nest, by agent ID.
     public struct SessionTree: Equatable, Sendable {
         public var id: String

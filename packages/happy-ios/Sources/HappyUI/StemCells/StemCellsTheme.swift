@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import CoreText
 import HappyCore
+import HappyIcons
 import HappyLayout
 import UIKit
 
@@ -59,18 +60,38 @@ enum ClayIconImages {
     static var happy: UIImage? { UIImage.happy("clay-happy-mark") }
 }
 
-/// The glyphs a row wears when it has nothing of its own, as SF Symbols.
+/// Desktop's icon names (`IconName`) as happy-app's icons: the glyphs a row
+/// wears when it has nothing of its own, and the ones its menus and states use.
 enum StemCellsGlyphs {
-    static func image(_ name: String, size: CGFloat = 16, weight: UIImage.SymbolWeight = .regular) -> UIImage? {
-        let symbol = switch name {
-        case "search": "magnifyingglass"
-        case "compose": "square.and.pencil"
-        case "tasks": "checklist"
-        case "agents": "person.crop.circle"
-        case "doc": "doc.text"
-        default: name
+    static func icon(_ name: String) -> Icon {
+        switch name {
+        case "search": .ionicons("search-outline")
+        case "compose": .ionicons("create-outline")
+        case "tasks": .ionicons("checkbox-outline")
+        case "agents": .ionicons("person-circle-outline")
+        case "doc": .ionicons("document-text-outline")
+        case "calendar": .ionicons("calendar-outline")
+        case "pulse": .ionicons("pulse-outline")
+        case "users": .ionicons("people-outline")
+        case "chevron-right": .ionicons("chevron-forward")
+        case "chevron-down": .ionicons("chevron-down")
+        case "open": .ionicons("chevron-forward")
+        case "pencil": .octicons("pencil")
+        case "close": .ionicons("close-outline")
+        case "archive": .ionicons("archive-outline")
+        case "list": .ionicons("list-outline")
+        case "question": .ionicons("help-circle")
+        case "clock": .ionicons("time-outline")
+        case "layers": .ionicons("layers-outline")
+        case "eye": .ionicons("eye-outline")
+        case "eye-off": .ionicons("eye-off-outline")
+        default: .ionicons(name)
         }
-        return UIImage.symbol(symbol, pointSize: size, weight: weight)
+    }
+
+    /// A template image to tint, `size` points as RN sizes an icon.
+    static func image(_ name: String, size: CGFloat = 16) -> UIImage {
+        UIImage.icon(icon(name), size: size)
     }
 }
 #endif

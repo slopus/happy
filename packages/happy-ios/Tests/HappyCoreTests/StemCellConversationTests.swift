@@ -42,3 +42,34 @@ final class StemCellConversationTests: XCTestCase {
         XCTAssertEqual(decoded.content, [.text("hi"), .unknown("image")])
     }
 }
+
+/// Soft breaks as remark reads them on desktop.
+final class StemCellMarkdownTests: XCTestCase {
+    private func join(_ text: String) -> String { StemCellMarkdown.joiningSoftBreaks(text) }
+
+    func testASoftBreakIsASpace() {
+        XCTAssertEqual(join("Spiky-dreamed,\nit envies thorns,\nbut syrup drips."), "Spiky-dreamed, it envies thorns, but syrup drips.")
+    }
+
+    func testABlankLineStartsAParagraph() {
+        XCTAssertEqual(join("One\ntwo\n\nThree"), "One two\n\nThree")
+    }
+
+    func testBlocksKeepTheirLines() {
+        let text = "Intro\n- a\n- b\n1. c\n# Head\nAfter\n> quote\n| a | b |\n| - | - |\n---"
+        XCTAssertEqual(join(text), text)
+    }
+
+    func testCodeIsLeftAlone() {
+        let text = "Run\n```sh\nline one\nline two\n```\nthen\nthis"
+        XCTAssertEqual(join(text), "Run\n```sh\nline one\nline two\n```\nthen this")
+    }
+
+    func testAHardBreakKeepsItsLine() {
+        XCTAssertEqual(join("End  \nNext\\\nLast"), "End  \nNext\\\nLast")
+    }
+
+    func testAListItemRunsOnLazily() {
+        XCTAssertEqual(join("- first\n  more\n- second"), "- first more\n- second")
+    }
+}

@@ -74,11 +74,11 @@ final class StemCellsSearchViewController: UIViewController, UISearchBarDelegate
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let top = view.safeAreaInsets.top
         let barHeight = searchBar.sizeThatFits(CGSize(width: view.bounds.width, height: 56)).height
-        searchBar.frame = CGRect(x: 4, y: top, width: view.bounds.width - 8, height: barHeight)
+        let layout = StemCellsSearchLayout(width: view.bounds.width, safeArea: LayoutInsets(view.safeAreaInsets), barHeight: barHeight)
+        searchBar.frame = layout.bar
         list.frame = view.bounds
-        list.contentInset = UIEdgeInsets(top: top + barHeight, left: 0, bottom: view.safeAreaInsets.bottom, right: 0)
+        list.contentInset = UIEdgeInsets(layout.listInsets)
     }
 }
 #endif

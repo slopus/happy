@@ -23,6 +23,10 @@ extension Palette {
     public static let stemCellCore = ColorToken("#ee9fcb")
     /// A question waiting on the person (`--status-error`).
     public static let stemCellsQuestion = ColorToken("#FF3B30", "#FF453A")
+    /// The person's own message (`--user-message-background`).
+    public static let stemCellsUserBubble = ColorToken("#f0eee6", "#2c2c2e")
+    /// A secondary button's fill (`--surface-high`), ringed in `--divider`.
+    public static let stemCellsButton = ColorToken("#f8f8f8", "#171717")
     /// The sidebar's ground (`--groupped-background`).
     public static let stemCellsBackground = ColorToken("#f5f5f5", "#1e1e1e")
 }

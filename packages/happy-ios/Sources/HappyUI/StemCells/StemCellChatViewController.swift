@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import AVKit
 import HappyCore
 import HappyLayout
 import UIKit
@@ -6,15 +7,13 @@ import UIKit
 /// One Stem Cells conversation, simplified from desktop's: the work's
 /// intro at the top (its stem cell, or the clay icon it grew into, over
 /// "Say what it is — it’ll find its place."), what the person wrote and
-/// what the agent said, and a composer. Tool calls are never shown.
+/// what the agent said with the pictures and recordings it presented, and
+/// a composer that sends photos too. Tool calls are never shown.
 ///
 /// New work opens here before the daemon has made it: the intro and the
 /// composer are up at once, and a first message waits for the work to exist.
 final class StemCellChatViewController: UIViewController {
-    enum Intro: Equatable {
-        case stemCell(seed: String)
-        case clay(String)
-    }
+    typealias Intro = StemCellIntroView.Mark
 
     private let session: StemCellsSession
     private let conversation: StemCellConversation
@@ -22,6 +21,8 @@ final class StemCellChatViewController: UIViewController {
     private let opensFocused: Bool
     private var intro: Intro?
     private let planner: StemCellChatPlanner
+    private let media: StemCellMediaLoader
+    private let pictures: ComposerImagePicker
 
     private let scrollView = UIScrollView()
     private let introView = StemCellIntroView()
@@ -47,6 +48,9 @@ final class StemCellChatViewController: UIViewController {
         opensFocused = creation != nil
         conversation = StemCellConversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created)
         planner = StemCellChatPlanner(syntax: session.syntax)
+        media = StemCellMediaLoader(client: session.client, agentId: agentId)
+        let files = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("StemCells", isDirectory: true)
+        pictures = ComposerImagePicker(staging: ComposerAttachmentStaging(filesDirectory: files))
         super.init(nibName: nil, bundle: nil)
         self.title = title
         navigationItem.largeTitleDisplayMode = .never
@@ -71,10 +75,19 @@ final class StemCellChatViewController: UIViewController {
         working.accessibilityIdentifier = "stem-working"
         scrollView.addSubview(working)
         introView.accessibilityIdentifier = "stem-intro"
+        introView.onOffer = { [weak self] offer in self?.make(offer) }
         // New work asks what it is; a conversation already going asks for the next message.
         if case .stemCell = intro { card.configuration.placeholder = Strings.StemCells.composerPlaceholder }
+        card.configuration.showsAdd = true
+        card.configuration.addAccessibilityLabel = Strings.StemCells.addPicture
         card.delegate = self
         card.textView.accessibilityIdentifier = "stem-composer"
+        pictures.host = { [weak self] in self }
+        pictures.onChange = { [weak self] in
+            guard let self else { return }
+            card.configuration.attachments = pictures.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) }
+            updatePrimary()
+        }
         view.addSubview(card)
 
         keyboardTracker.isHidden = true
@@ -133,6 +146,10 @@ final class StemCellChatViewController: UIViewController {
     /// The row's name and mark as the sidebar has them: Prioritizing's name
     /// lands here too, and the stem cell gives way to its clay icon.
     private func follow(_ snapshot: StemCellsSnapshot) {
+        if introView.offers != snapshot.offers {
+            introView.setOffers(snapshot.offers)
+            view.setNeedsLayout()
+        }
         guard let spaceId, let row = snapshot.rows.first(where: { $0.spaceId == spaceId }) else { return }
         if title != row.label { title = row.label }
         let next: Intro? = switch row.mark {
@@ -155,6 +172,7 @@ final class StemCellChatViewController: UIViewController {
     private func apply(_ snapshot: StemCellChatSnapshot) {
         let wasSettled = !chat.items.isEmpty
         chat = snapshot
+        media.register(snapshot.items)
         working.shimmering = snapshot.working
         working.isHidden = !snapshot.working
         if wasSettled != !snapshot.items.isEmpty, let intro { introView.configure(intro, settled: !snapshot.items.isEmpty) }
@@ -200,6 +218,19 @@ final class StemCellChatViewController: UIViewController {
             }()
             row.apply(plan)
             row.accessibilityLabel = plan.accessibilityLabel
+            // A row with media reads as its message, then each picture or
+            // recording on its own.
+            let media = row.mediaViews
+            row.isAccessibilityElement = media.isEmpty
+            if media.isEmpty {
+                row.accessibilityElements = nil
+            } else {
+                let message = UIAccessibilityElement(accessibilityContainer: row)
+                message.accessibilityLabel = plan.accessibilityLabel
+                message.accessibilityIdentifier = "stem-message"
+                message.accessibilityFrameInContainerSpace = CGRect(origin: .zero, size: plan.size)
+                row.accessibilityElements = [message] + media
+            }
         }
         for (id, row) in rowViews where !seen.contains(id) {
             row.removeFromSuperview()
@@ -233,7 +264,7 @@ final class StemCellChatViewController: UIViewController {
         var heights: [CGFloat] = []
         var introLayout: MakeStuffIntroLayout?
         if intro != nil {
-            let layout = MakeStuffIntroLayout(width: width, line: introView.lineMeasurable, settled: !chat.items.isEmpty)
+            let layout = introView.layout(width: width)
             introLayout = layout
             heights.append(layout.size.height)
         }
@@ -268,23 +299,43 @@ final class StemCellChatViewController: UIViewController {
     // MARK: Acts
 
     private func updatePrimary() {
-        let hasText = !card.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasContent = !card.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pictures.images.isEmpty
         card.configuration.primaryAction = AgentInputPrimaryAction.resolve(
-            hasComposerContent: hasText, isSendBlocked: false, isSendDisabled: false, showAbortButton: chat.working, canAbort: true
+            hasComposerContent: hasContent, isSendBlocked: false, isSendDisabled: false, showAbortButton: chat.working, canAbort: true
         )
     }
 
     private func send() {
         let text = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        let picked = pictures.images.map(\.attachment)
+        guard !text.isEmpty || !picked.isEmpty else { return }
         card.setText("", selection: NSRange(location: 0, length: 0))
         followsNewest = true
         let conversation = conversation
         let store = session.store
+        let staged = pictures
         Task {
+            // Read off the main thread; the staged files go once they are read.
+            let photos = await Task.detached {
+                picked.compactMap { attachment in (try? Data(contentsOf: attachment.fileURL)).map { (mimeType: attachment.mimeType, data: $0) } }
+            }.value
+            staged.clear()
             await store.attentionInput()
-            await conversation.send(text: text)
+            await conversation.send(text: text, pictures: photos)
         }
+    }
+
+    /// Desktop opens a picture in its Lightbox and plays a recording where
+    /// it is; the phone plays it in the system player.
+    private func open(_ key: String) {
+        if let player = media.player(key) {
+            let playback = AVPlayerViewController()
+            playback.player = player
+            present(playback, animated: true) { player.play() }
+            return
+        }
+        let presented = media.media(key)
+        present(StemCellPictureViewController(source: media, key: key, thumbhash: presented?.item.thumbhash, label: presented?.item.name ?? Strings.StemCells.picture), animated: true)
     }
 
     @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
@@ -302,6 +353,8 @@ final class StemCellChatViewController: UIViewController {
             case .retry(let localId):
                 let conversation = conversation
                 Task { await conversation.retry(localId) }
+            case .openMedia(let key):
+                open(key)
             default:
                 break
             }
@@ -324,6 +377,42 @@ final class StemCellChatViewController: UIViewController {
                 break
             }
             return
+        }
+    }
+
+    // MARK: Offers
+
+    /// Desktop's `createOfferSelect`: a Surface is named, then made and
+    /// opened; a bot is made at once and its conversation opened. The new
+    /// work stays where it is, under them.
+    private func make(_ offer: StemCellOffer) {
+        let store = session.store
+        switch offer {
+        case .bot:
+            Task { @MainActor [weak self] in
+                guard let bot = try? await store.createBot(), let agentId = bot.agent?.id, let self else { return }
+                let chat = StemCellChatViewController(session: session, agentId: agentId, title: bot.name, spaceId: nil, stemCell: nil)
+                navigationController?.pushViewController(chat, animated: true)
+            }
+        case .surface(let type):
+            let alert = UIAlertController(title: Strings.StemCells.offer(offer), message: nil, preferredStyle: .alert)
+            alert.addTextField { field in
+                field.text = Strings.StemCells.surfaceName(type)
+                field.placeholder = Strings.StemCells.nameIt
+                field.autocapitalizationType = .sentences
+                field.clearButtonMode = .whileEditing
+                field.accessibilityIdentifier = "stem-offer-name"
+            }
+            alert.addAction(UIAlertAction(title: Strings.StemCells.cancel, style: .cancel))
+            alert.addAction(UIAlertAction(title: Strings.StemCells.make, style: .default) { [weak self, weak alert] _ in
+                let typed = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let name = typed.isEmpty ? Strings.StemCells.surfaceName(type) : typed
+                Task { @MainActor [weak self] in
+                    guard let surface = try? await store.createSurface(type: type, name: name), let self else { return }
+                    navigationController?.pushViewController(StemCellsSurfaceViewController(session: session, surface: surface), animated: true)
+                }
+            })
+            present(alert, animated: true)
         }
     }
 
@@ -354,7 +443,7 @@ extension StemCellChatViewController: AgentInputCardDelegate {
     }
 
     func agentInputCardDidPressPrimary(_ card: AgentInputCardView) {
-        if card.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if card.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, pictures.images.isEmpty {
             guard chat.working else { return }
             let conversation = conversation
             Task { await conversation.abort() }
@@ -365,10 +454,18 @@ extension StemCellChatViewController: AgentInputCardDelegate {
 
     func agentInputCardDidPressSend(_ card: AgentInputCardView) { send() }
 
+    func agentInputCardDidPressAdd(_ card: AgentInputCardView) { pictures.attach() }
+
+    func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) { pictures.remove(id: id) }
+
     func agentInputCardDidPressStop(_ card: AgentInputCardView) {
         let conversation = conversation
         Task { await conversation.abort() }
     }
+}
+
+extension StemCellChatViewController: ChatMediaProviding {
+    var chatMedia: ChatMediaSource? { media }
 }
 
 extension StemCellChatViewController: UIScrollViewDelegate {
@@ -382,78 +479,4 @@ extension StemCellChatViewController: UIScrollViewDelegate {
     }
 }
 
-/// MakeStuffIntro: the work's 64px mark centred over its line. Once the
-/// conversation has begun the line keeps its place, hidden.
-final class StemCellIntroView: UIView {
-    private let stemCell = StemCellMarkView()
-    private let clay = UIImageView()
-    private let line = UILabel()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        isUserInteractionEnabled = false
-        clay.contentMode = .scaleAspectFit
-        line.attributedText = Self.lineText
-        line.numberOfLines = 0
-        for view in [stemCell, clay, line] { addSubview(view) }
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    /// `.happy-make-stuff__line`: 14/20, centred, in the text colour.
-    private static var lineText: NSAttributedString {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        paragraph.minimumLineHeight = 20
-        paragraph.maximumLineHeight = 20
-        return NSAttributedString(string: Strings.StemCells.introLine, attributes: [
-            .font: StemCellsFonts.ui(.regular, size: 14),
-            .foregroundColor: UIColor(Palette.text),
-            .paragraphStyle: paragraph,
-        ])
-    }
-
-    var lineMeasurable: Measurable {
-        let text = line.attributedText ?? Self.lineText
-        return Measurable { width in
-            text.boundingRect(with: CGSize(width: width, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], context: nil).size.ceiled
-        }
-    }
-
-    func configure(_ intro: StemCellChatViewController.Intro, settled: Bool) {
-        switch intro {
-        case .stemCell(let seed):
-            stemCell.seed = seed
-            stemCell.isHidden = false
-            clay.isHidden = true
-        case .clay(let slug):
-            let image = ClayIconImages.image(slug)
-            if clay.isHidden, !stemCell.isHidden {
-                // The stem cell grows into the picture Prioritizing chose.
-                clay.image = image
-                clay.alpha = 0
-                clay.isHidden = false
-                UIView.animate(withDuration: 0.35) { self.clay.alpha = 1; self.stemCell.alpha = 0 } completion: { _ in
-                    self.stemCell.isHidden = true
-                    self.stemCell.alpha = 1
-                }
-            } else {
-                clay.image = image
-                clay.isHidden = false
-                stemCell.isHidden = true
-            }
-        }
-        line.isHidden = settled
-    }
-
-    func place(_ layout: MakeStuffIntroLayout) {
-        stemCell.frame = layout.mark
-        clay.frame = layout.mark
-        line.frame = layout.line
-    }
-}
-
-private extension CGSize {
-    var ceiled: CGSize { CGSize(width: width.rounded(.up), height: height.rounded(.up)) }
-}
 #endif
