@@ -74,7 +74,10 @@ final class StemCellsRowView: UIView {
         guard row != self.row else { return }
         let previous = self.row
         self.row = row
-        if previous?.mark != row.mark { applyMark(row.mark) }
+        if previous?.mark != row.mark {
+            applyMark(row.mark)
+            if case .stemCell(let seed) = previous?.mark, case .clay(let slug) = row.mark, let image = ClayIconImages.image(slug) { hatch(seed: seed, into: image) }
+        }
         applyText(row)
         applyTrailing(row)
         applyState()
@@ -210,6 +213,19 @@ final class StemCellsRowView: UIView {
         )
         chevron.frame = frames.chevron.map(local) ?? .zero
         rule.frame = frames.rule.map(local) ?? .zero
+    }
+
+    // MARK: Hatch
+
+    /// The stem cell grows into its picture where the person can see it;
+    /// elsewhere the picture just shows.
+    private func hatch(seed: String, into image: UIImage) {
+        guard let frames, let mark = frames.mark, StemCellHatchView.canPlay(in: self) else { return }
+        let hatch = StemCellHatchView(frame: mark.offsetBy(dx: -frames.box.minX, dy: -frames.box.minY))
+        picture.alpha = 0
+        insertSubview(hatch, aboveSubview: picture)
+        StemCellHatchHaptics.shared.play(size: mark.width)
+        hatch.play(seed: seed, image: image) { [weak self] in self?.picture.alpha = 1 }
     }
 
     // MARK: Rename in place

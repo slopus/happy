@@ -75,15 +75,16 @@ final class StemCellIntroView: UIView {
             clay.isHidden = true
         case .clay(let slug):
             let image = ClayIconImages.image(slug)
-            if clay.isHidden, !stemCell.isHidden {
+            if clay.isHidden, !stemCell.isHidden, let seed = stemCell.seed, let image, StemCellHatchView.canPlay(in: self) {
                 // The stem cell grows into the picture Prioritizing chose.
                 clay.image = image
-                clay.alpha = 0
                 clay.isHidden = false
-                UIView.animate(withDuration: 0.35) { self.clay.alpha = 1; self.stemCell.alpha = 0 } completion: { _ in
-                    self.stemCell.isHidden = true
-                    self.stemCell.alpha = 1
-                }
+                clay.alpha = 0
+                stemCell.isHidden = true
+                let hatch = StemCellHatchView(frame: stemCell.frame)
+                addSubview(hatch)
+                StemCellHatchHaptics.shared.play(size: stemCell.frame.width)
+                hatch.play(seed: seed, image: image) { [weak self] in self?.clay.alpha = 1 }
             } else {
                 clay.image = image
                 clay.isHidden = false

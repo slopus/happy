@@ -137,6 +137,34 @@ final class StemCellsUITests: XCTestCase {
         capture("sidebar-after-new-work")
     }
 
+    /// New work, then back to the sidebar to watch its stem cell hatch into
+    /// the picture Prioritizing gives it.
+    func testHatch() {
+        home()
+        pause(1)
+        let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "stem-row:space:", "stem cell"))
+        let before = cells.count
+        app.descendants(matching: .any)["stem-new-work"].tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 3))
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        composer.typeText("Plan a weekend of bouldering in Fontainebleau. One line, no tools.")
+        app.buttons["Send"].tap()
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
+        pause(2)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertGreaterThan(cells.count, before, "no stem cell row")
+        capture("hatch-waiting")
+        let deadline = Date().addingTimeInterval(150)
+        while Date() < deadline, cells.count > before { pause(0.5) }
+        // The hatch plays for 2.5 s.
+        pause(1.2)
+        capture("hatching")
+        pause(4)
+        capture("hatched")
+        XCTAssertLessThan(Date(), deadline, "the stem cell never hatched")
+    }
+
     /// Happy's own conversation opens from its row and stays selected.
     func testOpenHappy() {
         home()

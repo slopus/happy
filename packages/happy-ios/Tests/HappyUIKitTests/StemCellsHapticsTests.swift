@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyLayout
 @testable import HappyUI
 import UIKit
 import XCTest
@@ -47,5 +48,11 @@ final class StemCellsHapticsTests: XCTestCase {
         XCTAssertEqual(recorder.prepared, [.impact(.medium)])
     }
 
+    /// The hatch's samples make a valid Core Haptics pattern, as long as the hatch.
+    func testTheHatchPatternBuilds() throws {
+        let haptics = StemCellHatch.haptics(size: 20)
+        let pattern = try StemCellHatchHaptics.pattern(haptics)
+        XCTAssertEqual(pattern.duration, haptics.taps.last!.time, accuracy: 0.06)
+    }
 }
 #endif
