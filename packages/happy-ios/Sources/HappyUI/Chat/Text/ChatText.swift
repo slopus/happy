@@ -12,6 +12,15 @@ extension ChatWeight {
         case .bold: .bold
         }
     }
+
+    var figtree: StemCellsFonts.Weight {
+        switch self {
+        case .regular: .regular
+        case .medium: .medium
+        case .semibold: .semiBold
+        case .bold: .bold
+        }
+    }
 }
 
 extension ChatTextStyle {
@@ -23,7 +32,24 @@ extension ChatTextStyle {
         case .menlo: UIFont(name: "Menlo-Regular", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
         case .menloBold: UIFont(name: "Menlo-Bold", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .semibold)
         case .menloItalic: UIFont(name: "Menlo-Italic", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+        case .figtree(let weight): StemCellsFonts.ui(weight.figtree, size: size)
+        case .figtreeOblique(let weight):
+            // A browser's synthetic oblique: a quarter of the height across.
+            UIFont(descriptor: StemCellsFonts.ui(weight.figtree, size: size).fontDescriptor.withMatrix(CGAffineTransform(a: 1, b: 0, c: 0.25, d: 1, tx: 0, ty: 0)), size: size)
         }
+    }
+
+    /// The face `**strong**` swaps in: desktop's 700 in Figtree, IBM Plex
+    /// SemiBold everywhere else, as before.
+    var strongFace: ChatFace {
+        if case .figtree = face { return .figtree(.bold) }
+        return .plex(.semiBold)
+    }
+
+    /// The face `*em*` swaps in.
+    var emphasisFace: ChatFace {
+        if case .figtree(let weight) = face { return .figtreeOblique(weight) }
+        return .plex(.italic)
     }
 
     /// One line of this style.
@@ -87,9 +113,9 @@ enum ChatSpans {
                 spanStyle = ChatTextStyles.markdownCode
                 spanStyle.lineHeight = style.lineHeight
             } else if span.styles.contains(.bold) || span.styles.contains(.semibold) {
-                spanStyle = style.with(.plex(.semiBold))
+                spanStyle = style.with(style.strongFace)
             } else if span.styles.contains(.italic) {
-                spanStyle = style.with(.plex(.italic))
+                spanStyle = style.with(style.emphasisFace)
             }
             var attributes = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
             if let url = span.url, Markdown.isHTTPLink(url) {

@@ -811,6 +811,48 @@ final class StemCellsUITests: XCTestCase {
         capture("large-file")
     }
 
+    /// A task's name renamed where it stands in its conversation's bar: the
+    /// bar and the sidebar row wear it at once and the computer keeps it
+    /// (`STEM_RENAMED`, read back by the run). Renamed back after, so the
+    /// test can run again.
+    func testRenameTitle() {
+        home()
+        pause(1.5)
+        let old = ProcessInfo.processInfo.environment["STEM_RENAME_ROW"] ?? "Renew passport"
+        let new = old + " by May"
+        let titled = { (name: String) in self.app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label == %@", "stem-chat-title", name)).firstMatch }
+        let field = app.textFields["stem-chat-title-field"]
+        for (from, to) in [(old, new), (new, old)] {
+            let task = row("space", from)
+            XCTAssertTrue(task.waitForExistence(timeout: 10), "no row named \(from)")
+            bringIntoView(task)
+            task.tap()
+            let title = titled(from)
+            XCTAssertTrue(title.waitForExistence(timeout: 5), "the bar doesn't show \(from)")
+            pause(1)
+            if to == new { capture("rename-before") }
+            title.tap()
+            XCTAssertTrue(field.waitForExistence(timeout: 3), "the name never became a field")
+            pause(0.8)
+            if to == new { capture("rename-editing") }
+            // The field opens with its name selected: typing replaces it.
+            field.typeText(to + "\n")
+            XCTAssertTrue(titled(to).waitForExistence(timeout: 3), "the bar never showed \(to)")
+            XCTAssertFalse(field.exists)
+            pause(1)
+            if to == new {
+                capture("rename-after")
+                print("STEM_RENAMED \(to)")
+            }
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(row("space", to).waitForExistence(timeout: 5), "the sidebar row never showed \(to)")
+            if to == new {
+                pause(1)
+                capture("rename-sidebar")
+            }
+        }
+    }
+
     /// Opening a conversation with pictures twice: cold, read over the
     /// paired connection, then warm, from what the first open kept. Each
     /// open prints how long its pictures took (`STEM_OPEN`).

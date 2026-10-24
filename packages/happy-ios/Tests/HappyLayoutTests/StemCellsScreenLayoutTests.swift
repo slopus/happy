@@ -76,4 +76,19 @@ final class StemCellsScreenLayoutTests: XCTestCase {
         XCTAssertEqual(content.icon, rect(11, 7, 14, 14))
         XCTAssertEqual(content.label, rect(31, 6, 80, 16))
     }
+
+    func testChatTitleIsItsTextWideAndAllOfItWhileEdited() {
+        let max = StemCellChatTitleLayout.maxWidth(barWidth: 393)
+        XCTAssertEqual(max, 265)
+        let shown = StemCellChatTitleLayout(textWidth: 41.3, maxWidth: max, editing: false)
+        XCTAssertEqual(shown.size, CGSize(width: 42, height: 44))
+        XCTAssertEqual(shown.text, rect(0, 0, 42, 44))
+        let long = StemCellChatTitleLayout(textWidth: 400, maxWidth: max, editing: false)
+        XCTAssertEqual(long.text, rect(0, 0, 265, 44))
+        let editing = StemCellChatTitleLayout(textWidth: 41.3, maxWidth: max, editing: true)
+        XCTAssertEqual(editing.text, rect(0, 0, 265, 44))
+        // Before the bar is measured, the name is its own width.
+        let unmeasured = StemCellChatTitleLayout(textWidth: 41.3, maxWidth: StemCellChatTitleLayout.maxWidth(barWidth: 0), editing: false)
+        XCTAssertEqual(unmeasured.text, rect(0, 0, 42, 44))
+    }
 }

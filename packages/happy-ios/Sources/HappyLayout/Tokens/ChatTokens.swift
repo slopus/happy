@@ -25,11 +25,15 @@ public enum ChatFace: Hashable, Sendable {
     case menloBold
     /// Menlo with `fontStyle: 'italic'`.
     case menloItalic
+    /// Desktop's UI face (Stem Cells), at a weight.
+    case figtree(ChatWeight)
+    /// Figtree slanted, as a browser draws `em` in a face with no italic.
+    case figtreeOblique(ChatWeight)
 
     public var isMonospaced: Bool {
         switch self {
         case .plex(let face): face == .mono || face == .monoItalic || face == .monoSemiBold
-        case .system, .systemItalic: false
+        case .system, .systemItalic, .figtree, .figtreeOblique: false
         case .menlo, .menloBold, .menloItalic: true
         }
     }
@@ -215,6 +219,18 @@ public enum ChatTextStyles {
         case 2: ChatTextStyle(.plex(.semiBold), size: 20, lineHeight: 24)
         case 3: ChatTextStyle(.plex(.semiBold), size: 16, lineHeight: 28)
         default: ChatTextStyle(.plex(.semiBold), size: 16, lineHeight: 24)
+        }
+    }
+    /// Stem Cells' agent text, as desktop's Message sets it: Figtree 16/24.
+    public static let stemCellsText = ChatTextStyle(.figtree(.regular), size: 16, lineHeight: 24)
+    /// Desktop's heading ramp: all 600 on 24 but h1's 900 (Figtree Bold
+    /// here, its heaviest bundled), h2 at 20, h3 on 28.
+    public static func stemCellsHeader(_ level: Int) -> ChatTextStyle {
+        switch level {
+        case 1: ChatTextStyle(.figtree(.bold), size: 16, lineHeight: 24)
+        case 2: ChatTextStyle(.figtree(.semibold), size: 20, lineHeight: 24)
+        case 3: ChatTextStyle(.figtree(.semibold), size: 16, lineHeight: 28)
+        default: ChatTextStyle(.figtree(.semibold), size: 16, lineHeight: 24)
         }
     }
     public static let codeBlock = ChatTextStyle(.plex(.mono), size: 14, lineHeight: 20)

@@ -325,8 +325,12 @@ struct MarkdownPiece {
     /// diagrams' pages reported. `syntax` colours its code blocks. The text
     /// is at `environment`'s size; the block margins, the code's padding,
     /// the tables' estimated columns, the images' and the diagrams' boxes
-    /// keep theirs, as RN's do.
-    init(_ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights, syntax: CodeSyntaxService, in environment: TextEnvironment?) {
+    /// keep theirs, as RN's do. `body` sets paragraphs and lists, `header`
+    /// headings (Stem Cells passes desktop's).
+    init(
+        _ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights, syntax: CodeSyntaxService, in environment: TextEnvironment?,
+        body: ChatTextStyle = ChatTextStyles.markdownText, header: (Int) -> ChatTextStyle = ChatTextStyles.markdownHeader
+    ) {
         var blocks: [MarkdownLayout.Block] = []
         var drawers: [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])] = []
 
@@ -345,12 +349,12 @@ struct MarkdownPiece {
         for block in Markdown.parse(markdown) {
             switch block {
             case .text(let spans):
-                let measured = MeasuredText(ChatSpans.string(spans, style: ChatTextStyles.markdownText, color: color, in: environment))
+                let measured = MeasuredText(ChatSpans.string(spans, style: body, color: color, in: environment))
                 blocks.append(.text(measured.measurable))
                 drawers.append(text(measured))
 
             case .header(let level, let spans):
-                let measured = MeasuredText(ChatSpans.string(spans, style: ChatTextStyles.markdownHeader(level), color: color, in: environment))
+                let measured = MeasuredText(ChatSpans.string(spans, style: header(level), color: color, in: environment))
                 blocks.append(.header(level: level, measured.measurable))
                 drawers.append(text(measured))
 
@@ -362,16 +366,16 @@ struct MarkdownPiece {
 
             case .list(let items):
                 let rows = items.map { item in
-                    (MeasuredText(ChatTextStyles.markdownText.string(Self.bullets[min(item.depth, Self.bullets.count - 1)], color: color, in: environment)),
-                     MeasuredText(ChatSpans.string(item.spans, style: ChatTextStyles.markdownText, color: color, in: environment)), item.depth)
+                    (MeasuredText(body.string(Self.bullets[min(item.depth, Self.bullets.count - 1)], color: color, in: environment)),
+                     MeasuredText(ChatSpans.string(item.spans, style: body, color: color, in: environment)), item.depth)
                 }
                 blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))
                 drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1) }, hold: hold))
 
             case .numberedList(let items):
                 let rows = items.map { item in
-                    (MeasuredText(ChatTextStyles.markdownText.string("\(item.number).", color: color, in: environment)),
-                     MeasuredText(ChatSpans.string(item.spans, style: ChatTextStyles.markdownText, color: color, in: environment)), item.depth)
+                    (MeasuredText(body.string("\(item.number).", color: color, in: environment)),
+                     MeasuredText(ChatSpans.string(item.spans, style: body, color: color, in: environment)), item.depth)
                 }
                 blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))
                 drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1) }, hold: hold))

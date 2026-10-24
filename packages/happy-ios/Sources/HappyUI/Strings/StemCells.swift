@@ -23,6 +23,8 @@ extension Strings {
         public static let renameTask = "Rename task"
         public static let renameBot = "Rename bot"
         public static let renameSection = "Rename section"
+        /// The conversation's name in its bar, for VoiceOver.
+        public static let renameHint = "Renames it"
         public static let closeNewWork = "Close new work"
         public static let leaveTask = "Leave task"
         public static let archiveTask = "Archive task"

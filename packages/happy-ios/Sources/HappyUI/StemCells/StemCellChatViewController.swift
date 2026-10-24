@@ -46,6 +46,8 @@ final class StemCellChatViewController: UIViewController {
     /// while it wasn't are asked for again when it is back.
     private var live = true
     private var preview: StemCellFilePreview?
+    /// The name in the bar, renamed where it stands.
+    private let titleView = StemCellChatTitleView()
 
     init(session: StemCellsSession, agentId: String, title: String, spaceId: String?, stemCell intro: Intro?, creation: StemCellCreation? = nil) {
         self.session = session
@@ -59,6 +61,8 @@ final class StemCellChatViewController: UIViewController {
         pictures = ComposerImagePicker(staging: ComposerAttachmentStaging(filesDirectory: files))
         super.init(nibName: nil, bundle: nil)
         self.title = title
+        titleView.text = title
+        navigationItem.titleView = titleView
         navigationItem.largeTitleDisplayMode = .never
         // New work's media is under the ID the daemon gives it.
         if let created = creation?.created {
@@ -136,8 +140,16 @@ final class StemCellChatViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(false, animated: animated)
+        // Before the bar first places the name, so it isn't placed at no width.
+        titleView.barWidth = navigationController?.navigationBar.bounds.width ?? view.bounds.width
         let conversation = conversation
         Task { await conversation.setVisible(true) }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Leaving keeps a name being typed, as a tap away does.
+        titleView.finishEditing()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -166,6 +178,17 @@ final class StemCellChatViewController: UIViewController {
         }
         guard let spaceId, let row = snapshot.rows.first(where: { $0.spaceId == spaceId }) else { return }
         if title != row.label { title = row.label }
+        titleView.text = row.label
+        // A task or a bot is renamed as its row is; Happy never.
+        if !row.isHappy, row.targetKind == "task" || row.targetKind == "bot" {
+            titleView.editableText = row.label == Strings.StemCells.untitled ? "" : row.label
+            if titleView.onRename == nil {
+                let store = session.store
+                titleView.onRename = { title in Task { await store.rename(spaceId, title: title) } }
+            }
+        } else {
+            titleView.onRename = nil
+        }
         let next: Intro? = switch row.mark {
         case .stemCell(let seed): .stemCell(seed: seed)
         case .clay(let slug): .clay(slug)
@@ -295,6 +318,7 @@ final class StemCellChatViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        titleView.barWidth = navigationController?.navigationBar.bounds.width ?? view.bounds.width
         replan()
         let screen = StemCellChatScreenLayout(
             size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets),
@@ -417,6 +441,11 @@ final class StemCellChatViewController: UIViewController {
     }
 
     @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
+        // A tap away from the name being edited keeps it, as in the sidebar.
+        if titleView.isEditing {
+            titleView.finishEditing()
+            return
+        }
         for (id, row) in rowViews {
             let point = recognizer.location(in: row)
             guard row.bounds.contains(point) else { continue }

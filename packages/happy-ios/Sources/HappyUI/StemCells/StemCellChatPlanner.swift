@@ -48,7 +48,7 @@ actor StemCellChatPlanner {
         let text = item.text
         switch item.role {
         case .agent:
-            // Desktop's agent text: markdown, soft breaks as spaces, blocks 8
+            // Desktop's agent text: Figtree 16/24 markdown, soft breaks as spaces, blocks 8
             // apart, no copy button (a long press selects instead); its
             // pictures and recordings where they were presented.
             var parts: [StemCellMessageLayout.Part] = []
@@ -62,7 +62,7 @@ actor StemCellChatPlanner {
             for piece in item.pieces {
                 switch piece {
                 case .text(let text):
-                    let markdown = MarkdownPiece(StemCellMarkdown.joiningSoftBreaks(text), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment)
+                    let markdown = MarkdownPiece(StemCellMarkdown.joiningSoftBreaks(text), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.stemCellsText, header: ChatTextStyles.stemCellsHeader)
                     drafts.append(.markdown(markdown))
                     parts.append(.markdown(markdown.blocks))
                 case .gallery(let media, let columns):
@@ -123,9 +123,9 @@ actor StemCellChatPlanner {
             // Each picture and recording reads as itself (`ChatMediaView`).
             return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: text)
         case .user:
-            // Desktop's own message: the text as written, lines and all, in
+            // Desktop's own message: the text as written (Figtree 16/24), lines and all, in
             // the accent bubble at the right, its photos under it.
-            let body = text.isEmpty ? nil : MeasuredText(ChatTextStyles.markdownText.string(text, color: Palette.userMessageText, in: environment))
+            let body = text.isEmpty ? nil : MeasuredText(ChatTextStyles.stemCellsText.string(text, color: Palette.userMessageText, in: environment))
             let pictures: [(id: String, image: StemCellMediaFlow.Image)] = item.pieces.compactMap {
                 guard case .picture(let id, _, let data) = $0 else { return nil }
                 return (id, Self.pictureSize(data))

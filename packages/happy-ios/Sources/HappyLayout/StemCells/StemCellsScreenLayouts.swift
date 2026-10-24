@@ -180,6 +180,32 @@ public struct StemCellsSurfaceBodyLayout: Equatable, Sendable {
     }
 }
 
+/// A conversation's name in its bar, renamed where it stands: as wide as
+/// its text, no wider than `maxWidth`; while it is edited, the whole of
+/// `maxWidth`, so the field doesn't grow under the keyboard. The text and
+/// the field fill it, centred.
+public struct StemCellChatTitleLayout: Equatable, Sendable {
+    public static let height: CGFloat = 44
+    /// The bar keeps this much clear a side, for the back button.
+    public static let sideClearance: CGFloat = 64
+
+    public var size: CGSize
+    public var text: CGRect
+
+    /// No bound while the bar's width is unknown (0): the name is as wide as
+    /// its text, and the bar fits it.
+    public static func maxWidth(barWidth: CGFloat) -> CGFloat {
+        barWidth > 0 ? max(0, barWidth - 2 * sideClearance) : .greatestFiniteMagnitude
+    }
+
+    public init(textWidth: CGFloat, maxWidth: CGFloat, editing: Bool) {
+        let fitted = min(textWidth.rounded(.up), maxWidth)
+        let width = editing && maxWidth < .greatestFiniteMagnitude ? maxWidth : fitted
+        size = CGSize(width: max(0, width), height: Self.height)
+        text = CGRect(origin: .zero, size: size)
+    }
+}
+
 /// A picture opened whole: fitted inside the safe area on black, never
 /// enlarged past its own size, with its close button at the top right.
 public struct StemCellPictureViewerLayout: Equatable, Sendable {
