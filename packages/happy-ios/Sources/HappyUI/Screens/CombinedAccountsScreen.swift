@@ -11,6 +11,12 @@ final class HomeAccountControl: NSObject {
     private weak var header: HomeHeaderView?
     private var observation: AccountsObservation?
     private var imageJob: Task<Void, Never>?
+    private var accounts: [AccountSummary] = []
+    /// Stem Cells: the mark is the Happy logo and opens settings, which is
+    /// where switching accounts went.
+    var opensSettings: (() -> Void)? {
+        didSet { update(accounts) }
+    }
 
     init(context: AppContext, controller: UIViewController, header: HomeHeaderView? = nil) {
         self.context = context; self.controller = controller; self.header = header
@@ -20,6 +26,17 @@ final class HomeAccountControl: NSObject {
     }
 
     private func update(_ accounts: [AccountSummary]) {
+        self.accounts = accounts
+        if opensSettings != nil {
+            imageJob?.cancel()
+            header?.showsAccountAvatar = false
+            header?.logoControl.isUserInteractionEnabled = true
+            header?.logoControl.isAccessibilityElement = true
+            header?.logoControl.accessibilityLabel = Strings.StemCells.openSettings
+            header?.logoControl.accessibilityTraits = .button
+            apply(UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate), multiple: false)
+            return
+        }
         let multiple = accounts.count > 1
         let active = accounts.first(where: \.isActive)
         header?.showsAccountAvatar = multiple
@@ -61,6 +78,7 @@ final class HomeAccountControl: NSObject {
     }
 
     @objc private func open() {
+        if let opensSettings { return opensSettings() }
         guard let controller else { return }
         controller.navigationController?.pushViewController(CombinedAccountsViewController(context: context), animated: true)
     }

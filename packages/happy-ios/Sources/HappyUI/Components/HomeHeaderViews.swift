@@ -252,6 +252,18 @@ final class HomeHeaderView: UIView {
     let filterButton = HeaderIconButton(.ionicons("filter"), size: 22, label: Strings.Home.filterTitle)
     let actionDivider = UIView()
     let settingsButton = HeaderIconButton(.ionicons("settings-outline"), size: 22, label: Strings.Settings.title)
+    /// Stem Cells' search, in the pill's first slot.
+    let searchButton = HeaderIconButton(.ionicons("search-outline"), size: 22, label: Strings.StemCells.search)
+    /// Stem Cells: the pill is search then filter, and the logo is the way
+    /// to settings, so there is no gear.
+    var stemCellsActions = false {
+        didSet {
+            guard stemCellsActions != oldValue else { return }
+            searchButton.isHidden = !stemCellsActions
+            settingsButton.isHidden = stemCellsActions
+            setNeedsLayout()
+        }
+    }
     let titleLabel = StyledLabel(style: TextStyles.headerTitle, color: Palette.headerTint, lines: 1, alignment: .center)
     let statusDot = StatusDotView()
     let statusLabel = StyledLabel(style: TextStyles.homeHeaderStatus, color: Palette.textSecondary, lines: 1, alignment: .center)
@@ -270,9 +282,10 @@ final class HomeHeaderView: UIView {
         logoControl.isUserInteractionEnabled = false
         logoControl.addSubview(logo)
         actionDivider.backgroundColor = UIColor(Palette.divider)
-        for view in [filterButton, actionDivider, settingsButton] {
+        for view in [searchButton, filterButton, actionDivider, settingsButton] {
             actions.addSubview(view)
         }
+        searchButton.isHidden = true
         titleLabel.string = Strings.Home.sessionsTitle
         titleLabel.accessibilityTraits = .header
         for view in [scrim, logoControl, actions, titleLabel, statusDot, statusLabel] {
@@ -338,9 +351,14 @@ final class HomeHeaderView: UIView {
         logo.layer.cornerRadius = showsAccountAvatar ? layout.logo.width / 2 : 0
         actions.setLayoutFrame(layout.actions)
         let origin = layout.actions.origin
-        filterButton.setLayoutFrame(layout.filterButton.offsetBy(dx: -origin.x, dy: -origin.y))
+        // The pill's two slots: filter and settings, or in Stem Cells search
+        // and filter, so the filter sits at the far right.
+        let first = layout.filterButton.offsetBy(dx: -origin.x, dy: -origin.y)
+        let second = layout.settingsButton.offsetBy(dx: -origin.x, dy: -origin.y)
+        searchButton.setLayoutFrame(first)
+        filterButton.setLayoutFrame(stemCellsActions ? second : first)
         actionDivider.setLayoutFrame(layout.actionDivider.offsetBy(dx: -origin.x, dy: -origin.y))
-        settingsButton.setLayoutFrame(layout.settingsButton.offsetBy(dx: -origin.x, dy: -origin.y))
+        settingsButton.setLayoutFrame(second)
         titleLabel.setLayoutFrame(layout.title)
         if let frame = layout.statusDot { statusDot.setLayoutFrame(frame) }
         if let frame = layout.status { statusLabel.setLayoutFrame(frame) }

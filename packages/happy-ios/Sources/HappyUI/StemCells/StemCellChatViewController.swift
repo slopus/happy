@@ -37,6 +37,7 @@ final class StemCellChatViewController: UIViewController {
     private var planning: Task<Void, Never>?
     private var planned: (items: [StemCellChatItem], key: StemCellChatPlanner.Key, copied: String?)?
     private var watch: StemCellsWatch?
+    private var modelsWatch: StemCellsWatch?
     private var copied: (id: String, until: Task<Void, Never>)?
     /// The newest row is in view: what arrives keeps it there.
     private var followsNewest = true
@@ -118,6 +119,13 @@ final class StemCellChatViewController: UIViewController {
         let conversation = conversation
         Task { await conversation.start() }
         watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
+        // New work goes with what the dock picked before it existed.
+        if opensFocused, let mode = session.models.newWorkMode {
+            Task { await conversation.setMode(mode) }
+        }
+        modelsWatch = session.models.watch { [weak self] in self?.updateChips() }
+        session.models.load()
+        updateChips()
         // New work: the keyboard comes up with the screen.
         if opensFocused { card.focus() }
     }
@@ -137,6 +145,7 @@ final class StemCellChatViewController: UIViewController {
             following?.cancel()
             planning?.cancel()
             watch?.invalidate()
+            modelsWatch?.invalidate()
             Task { await conversation.stop() }
         }
     }
@@ -177,8 +186,33 @@ final class StemCellChatViewController: UIViewController {
         working.isHidden = !snapshot.working
         if wasSettled != !snapshot.items.isEmpty, let intro { introView.configure(intro, settled: !snapshot.items.isEmpty) }
         updatePrimary()
+        updateChips()
         replan()
         view.setNeedsLayout()
+    }
+
+    // MARK: Model
+
+    /// What the next message goes with: the conversation's, else what new
+    /// work starts on, else the computer's default.
+    private var mode: AgentWire.Mode? {
+        chat.mode ?? (opensFocused ? session.models.newWorkMode : nil) ?? session.models.catalog?.defaultMode()
+    }
+
+    private func updateChips() {
+        let menus = session.models.catalog.flatMap { catalog in mode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
+        StemCellModelPickers.configure(card, menus: menus)
+    }
+
+    private func pick(_ kind: StemCellModelPickers.Kind) {
+        guard let mode else {
+            session.models.load()
+            return
+        }
+        let conversation = conversation
+        StemCellModelPickers.present(kind, from: self, state: session.models, mode: mode) { next in
+            Task { await conversation.setMode(next) }
+        }
     }
 
     private var planKey: StemCellChatPlanner.Key {
@@ -457,6 +491,14 @@ extension StemCellChatViewController: AgentInputCardDelegate {
     func agentInputCardDidPressAdd(_ card: AgentInputCardView) { pictures.attach() }
 
     func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) { pictures.remove(id: id) }
+
+    func agentInputCard(_ card: AgentInputCardView, didPress chip: AgentInputChip) {
+        switch chip {
+        case .permission: pick(.provider)
+        case .model: pick(.model)
+        case .effort: pick(.effort)
+        }
+    }
 
     func agentInputCardDidPressStop(_ card: AgentInputCardView) {
         let conversation = conversation

@@ -4,14 +4,14 @@ import HappyLayout
 import UIKit
 
 /// Home for a paired computer in development and preview builds: home's
-/// floating header over that computer's Stem Cells. The gear opens the
-/// computer's own page, where it can be disconnected.
+/// floating header over that computer's Stem Cells. The Happy mark opens
+/// settings (the computer, the accounts); search and the filter are the
+/// pill at the right, the filter at the far edge.
 final class StemCellsDirectHomeViewController: UIViewController {
     private let context: AppContext
     private let id: String
     private let header = HomeHeaderView()
     private let stemCells: StemCellsHomeViewController
-    private var accountControl: HomeAccountControl?
     private var observation: AccountsObservation?
 
     init(context: AppContext, id: String) {
@@ -32,14 +32,21 @@ final class StemCellsDirectHomeViewController: UIViewController {
         view.addSubview(stemCells.view)
         stemCells.didMove(toParent: self)
         view.addSubview(header)
-        header.settingsButton.addAction(UIAction { [weak self] _ in self?.openComputer() }, for: .primaryActionTriggered)
+        header.stemCellsActions = true
+        header.searchButton.accessibilityIdentifier = "stem-search"
+        header.searchButton.addAction(UIAction { [weak self] _ in self?.stemCells.openSearch() }, for: .primaryActionTriggered)
+        header.logoControl.isUserInteractionEnabled = true
+        header.logoControl.isAccessibilityElement = true
+        header.logoControl.accessibilityLabel = Strings.StemCells.openSettings
+        header.logoControl.accessibilityTraits = .button
+        header.logoControl.accessibilityIdentifier = "stem-settings-mark"
+        header.logoControl.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openSettings)))
         header.filterButton.menu = UIMenu(children: [
             UIMenu(title: Strings.SessionsFilter.groupingTitle, image: StemCellsGlyphs.image("layers"), options: .displayInline, children: [
                 UIAction(title: Strings.StemCells.filterTitle, state: .on) { _ in },
             ]),
         ])
         header.filterButton.showsMenuAsPrimaryAction = true
-        accountControl = HomeAccountControl(context: context, controller: self, header: header)
         stemCells.onSnapshot = { [weak self] snapshot in
             self?.header.status = snapshot.live ? .connected : .connecting
         }
@@ -72,8 +79,8 @@ final class StemCellsDirectHomeViewController: UIViewController {
         stemCells.contentInsets = layout.insets
     }
 
-    private func openComputer() {
-        navigationController?.pushViewController(DirectHomeViewController(context: context, id: id), animated: true)
+    @objc private func openSettings() {
+        navigationController?.pushViewController(StemCellsSettingsViewController(context: context, computer: id), animated: true)
     }
 }
 #endif

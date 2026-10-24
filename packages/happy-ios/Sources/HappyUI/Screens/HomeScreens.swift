@@ -64,6 +64,10 @@ public final class HomeViewController: UIViewController {
         showsBackTitle()
         header.isHidden = true
         header.settingsButton.addAction(UIAction { [weak self] _ in self?.openSettings() }, for: .primaryActionTriggered)
+        header.searchButton.accessibilityIdentifier = "stem-search"
+        header.searchButton.addAction(UIAction { [weak self] _ in
+            (self?.content as? StemCellsHomeViewController)?.openSearch()
+        }, for: .primaryActionTriggered)
         header.filterButton.menu = filterMenu()
         header.filterButton.showsMenuAsPrimaryAction = true
         header.filterButton.preferredMenuElementOrder = .fixed
@@ -339,6 +343,11 @@ public final class HomeViewController: UIViewController {
         let blank = floating && traitCollection.isTabletLayout
         content?.view.isHidden = blank
         header.isHidden = !floating || blank
+        // Stem Cells: search and the filter in the pill, settings behind the mark.
+        header.stemCellsActions = showsStemCells
+        if showsStemCells != (accountControl?.opensSettings != nil) {
+            accountControl?.opensSettings = showsStemCells ? { [weak self] in self?.openSettings() } : nil
+        }
         dock?.isAvailable = floating && !blank && !showsStemCells
         if navigationController?.topViewController === self {
             navigationController?.setNavigationBarHidden(floating, animated: animated)

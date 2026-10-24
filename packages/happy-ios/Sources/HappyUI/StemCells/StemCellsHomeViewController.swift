@@ -5,7 +5,9 @@ import UIKit
 
 /// Home in Stem Cells mode: one paired computer's sidebar, as desktop's
 /// `HappyAgentSpacesSidebar` draws it, under home's header and over the
-/// dock. The dock's field stays; tapping it makes new work.
+/// dock. The dock's field stays; tapping it makes new work, sent with what
+/// the pickers over it hold. Desktop's Search and Create rows aren't drawn:
+/// search is the header's button and create is the dock.
 final class StemCellsHomeViewController: UIViewController {
     private let context: AppContext
     /// The computer this screen always shows; nil to follow the choice.
@@ -14,6 +16,8 @@ final class StemCellsHomeViewController: UIViewController {
     private let banner = StemCellsBannerView()
     private let empty = StemCellsEmptyView()
     let dockView = HomeDockView()
+    private let modelBar = StemCellModelBarView()
+    private var modelsWatch: StemCellsWatch?
     private let dockText = HomeDockTextStore()
     private var session: StemCellsSession?
     private var watch: StemCellsWatch?
@@ -44,6 +48,8 @@ final class StemCellsHomeViewController: UIViewController {
         view.addSubview(empty)
         view.addSubview(banner)
         view.addSubview(dockView)
+        view.addSubview(modelBar)
+        modelBar.onPress = { [weak self] kind in self?.pick(kind) }
         dockView.showsScrim = true
         dockView.prompt = ""
         dockView.entryButton.accessibilityIdentifier = "stem-new-work"
@@ -95,6 +101,7 @@ final class StemCellsHomeViewController: UIViewController {
         let id = computerID()
         guard id != session?.accountID else { return }
         watch?.invalidate(); watch = nil
+        modelsWatch?.invalidate(); modelsWatch = nil
         session = id.flatMap { StemCellsSession.session(for: $0, context: context) }
         sidebar.images = session?.images
         sidebar.apply([])
@@ -102,7 +109,10 @@ final class StemCellsHomeViewController: UIViewController {
         if let session {
             sidebar.selectedRowId = session.selectedRowId
             watch = session.watch { [weak self] snapshot in self?.apply(snapshot) }
+            modelsWatch = session.models.watch { [weak self] in self?.updateModelBar() }
+            session.models.load()
         }
+        updateModelBar()
         applyChrome()
     }
 
@@ -110,7 +120,7 @@ final class StemCellsHomeViewController: UIViewController {
         let previous = self.snapshot
         self.snapshot = snapshot
         onSnapshot?(snapshot)
-        if previous.rows != snapshot.rows { sidebar.apply(snapshot.rows) }
+        if previous.rows != snapshot.rows { sidebar.apply(Self.drawn(snapshot.rows)) }
         if previous.prioritizing != snapshot.prioritizing || previous.availability != snapshot.availability || previous.error != snapshot.error || previous.stemCellError != snapshot.stemCellError {
             applyChrome()
         }
@@ -129,7 +139,38 @@ final class StemCellsHomeViewController: UIViewController {
             notice: notice
         )
         dockView.isHidden = !hasComputer || snapshot.availability == .unsupported
+        modelBar.isHidden = dockView.isHidden
         view.setNeedsLayout()
+    }
+
+    /// The rows a phone draws: all but Search and Create, which stay in the
+    /// document for desktop.
+    static func drawn(_ rows: [StemCellsRow]) -> [StemCellsRow] {
+        rows.filter { $0.kind != .search && $0.kind != .create }
+    }
+
+    private func updateModelBar() {
+        let models = session?.models
+        let menus = models?.catalog.flatMap { catalog in models?.newWorkMode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
+        modelBar.configure(menus)
+        view.setNeedsLayout()
+    }
+
+    /// A pick here is what the next new work is sent with.
+    private func pick(_ kind: StemCellModelPickers.Kind) {
+        guard let models = session?.models, let mode = models.newWorkMode else {
+            session?.models.load()
+            return
+        }
+        StemCellModelPickers.present(kind, from: self, state: models, mode: mode) { next in
+            models.dockMode = next
+        }
+    }
+
+    /// Search, from the header.
+    func openSearch() {
+        guard let session else { return }
+        navigationController?.pushViewController(StemCellsSearchViewController(session: session, onOpen: { [weak self] row in self?.open(row) }), animated: true)
     }
 
     override func viewDidLayoutSubviews() {
@@ -137,7 +178,12 @@ final class StemCellsHomeViewController: UIViewController {
         let bounds = view.bounds
         dockText.prepare(HomeDockController.textKey(width: bounds.width, text: TextEnvironment(traitCollection)))
         let bannerHeight = banner.isEmpty ? 0 : banner.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height
-        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight)
+        dockView.frame = bounds
+        let bar = modelBar.layout(field: dockView.fieldFrame)
+        // The list keeps clear of the pickers over the dock too.
+        let barHeight = modelBar.isHidden ? 0 : StemCellModelBarLayout.height + StemCellModelBarLayout.gap
+        dockView.scrimRaise = barHeight
+        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom + barHeight, bannerHeight: bannerHeight)
         banner.frame = layout.banner
         sidebar.frame = bounds
         let insets = UIEdgeInsets(layout.listInsets)
@@ -148,7 +194,8 @@ final class StemCellsHomeViewController: UIViewController {
             if atTop { sidebar.contentOffset.y = -insets.top }
         }
         empty.frame = layout.empty
-        dockView.frame = bounds
+        modelBar.frame = bounds
+        modelBar.place(field: bar.frame.isEmpty ? .zero : dockView.fieldFrame)
     }
 
     // MARK: Acts
@@ -158,7 +205,7 @@ final class StemCellsHomeViewController: UIViewController {
         Task { await session.store.attentionInput() }
         switch row.kind {
         case .search:
-            navigationController?.pushViewController(StemCellsSearchViewController(session: session, onOpen: { [weak self] row in self?.open(row) }), animated: true)
+            openSearch()
         case .create:
             makeNewWork()
         case .space where row.targetKind == "surface":

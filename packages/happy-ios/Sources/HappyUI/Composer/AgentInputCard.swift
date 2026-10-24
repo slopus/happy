@@ -113,11 +113,15 @@ public struct AgentInputChipConfiguration: Equatable, Sendable {
     /// Nil draws a chip that does nothing, dimmed to 0.58 (a model chip with
     /// no models to pick).
     public var menu: AgentInputMenu?
+    /// The chip opens its owner's own picker instead of a menu: a press is
+    /// `agentInputCard(_:didPress:)`, and `menu` is not drawn.
+    public var opensPicker: Bool
 
-    public init(content: Content, accessibilityLabel: String, menu: AgentInputMenu?) {
+    public init(content: Content, accessibilityLabel: String, menu: AgentInputMenu?, opensPicker: Bool = false) {
         self.content = content
         self.accessibilityLabel = accessibilityLabel
         self.menu = menu
+        self.opensPicker = opensPicker
     }
 }
 
@@ -238,6 +242,8 @@ public protocol AgentInputCardDelegate: AnyObject {
     func agentInputCardDidPressAdd(_ card: AgentInputCardView)
     func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String)
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip)
+    /// A chip that `opensPicker` was pressed.
+    func agentInputCard(_ card: AgentInputCardView, didPress chip: AgentInputChip)
     /// Return was typed. False swallows the newline (an autocomplete pick).
     func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool
     /// A hardware keyboard's Tab was typed. False swallows the tab (an
@@ -258,6 +264,7 @@ extension AgentInputCardDelegate {
     public func agentInputCardDidPressAdd(_ card: AgentInputCardView) {}
     public func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) {}
     public func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {}
+    public func agentInputCard(_ card: AgentInputCardView, didPress chip: AgentInputChip) {}
     public func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool { true }
     public func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool { true }
     public func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl) {}
@@ -438,6 +445,10 @@ public final class AgentInputCardView: UIView {
             chip.onRefuse = { [weak self] which in
                 guard let self else { return }
                 self.delegate?.agentInputCardDidRefuse(self, control: AgentInputControl(which))
+            }
+            chip.onPress = { [weak self] which in
+                guard let self else { return }
+                self.delegate?.agentInputCard(self, didPress: which)
             }
             middle.addSubview(chip)
         }
@@ -1277,6 +1288,8 @@ final class ComposerChipButton: UIButton {
     let chip: AgentInputChip
     var onSelect: ((String, AgentInputChip) -> Void)?
     var onRefuse: ((AgentInputChip) -> Void)?
+    /// A press on a chip that opens its owner's picker.
+    var onPress: ((AgentInputChip) -> Void)?
     /// Presses shake the chip instead of opening its menu.
     var refuses = false {
         didSet {
@@ -1308,9 +1321,12 @@ final class ComposerChipButton: UIButton {
     }
 
     @objc private func tapped() {
-        guard refuses else { return }
-        AgentInputCardView.shake(self, .refusal)
-        onRefuse?(chip)
+        if refuses {
+            AgentInputCardView.shake(self, .refusal)
+            onRefuse?(chip)
+        } else if chipConfiguration?.opensPicker == true {
+            onPress?(chip)
+        }
     }
 
     @available(*, unavailable)
@@ -1351,7 +1367,7 @@ final class ComposerChipButton: UIButton {
             label.isHidden = true
         }
         accessibilityLabel = configuration.accessibilityLabel
-        alpha = configuration.menu != nil ? 1 : AgentInputCardLayout.Metrics.disabledChipOpacity
+        alpha = configuration.menu != nil || configuration.opensPicker ? 1 : AgentInputCardLayout.Metrics.disabledChipOpacity
         applyMenu()
     }
 
@@ -1365,9 +1381,10 @@ final class ComposerChipButton: UIButton {
     /// covers dimmed chips too); otherwise the menu opens on tap.
     private func applyMenu() {
         let model = chipConfiguration?.menu
-        menu = refuses ? nil : model.map(makeMenu)
-        showsMenuAsPrimaryAction = !refuses
-        isEnabled = refuses || model != nil
+        let opensPicker = chipConfiguration?.opensPicker == true
+        menu = refuses || opensPicker ? nil : model.map(makeMenu)
+        showsMenuAsPrimaryAction = !refuses && !opensPicker
+        isEnabled = refuses || opensPicker || model != nil
     }
 
     private func makeMenu(_ model: AgentInputMenu) -> UIMenu {

@@ -52,6 +52,12 @@ final class HomeDockView: UIView {
         didSet { if text != oldValue { setNeedsLayout() } }
     }
 
+    /// How far above its own top the scrim reaches, for controls drawn
+    /// over the capsule (Stem Cells' pickers).
+    var scrimRaise: CGFloat = 0 {
+        didSet { if scrimRaise != oldValue { setNeedsLayout() } }
+    }
+
     /// The scrim shows only over a list that can scroll under it.
     var showsScrim = false {
         didSet { scrim.isHidden = !showsScrim }
@@ -93,6 +99,12 @@ final class HomeDockView: UIView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// The capsule, in this view.
+    var fieldFrame: CGRect {
+        layoutIfNeeded()
+        return composerFrame
     }
 
     /// Only the capsule takes touches; the list scrolls everywhere else.
@@ -184,7 +196,7 @@ final class HomeDockView: UIView {
             entry: entry
         ))
         composerFrame = layout.composer
-        scrim.setLayoutFrame(layout.scrim)
+        scrim.setLayoutFrame(layout.scrim.inset(by: UIEdgeInsets(top: -scrimRaise, left: 0, bottom: 0, right: 0)))
         shell.setLayoutFrame(layout.composer)
         let radius = layout.composer.height / 2
         shell.layer.shadowPath = UIBezierPath(roundedRect: shell.bounds, cornerRadius: radius).cgPath

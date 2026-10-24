@@ -90,8 +90,10 @@ final class StemCellsUITests: XCTestCase {
     /// Pairing, the sidebar in desktop's order, and folding a section.
     func testSidebar() {
         home()
-        XCTAssertTrue(row("search", "Search").exists)
-        XCTAssertTrue(row("create", "Create").exists)
+        // Search is the header's button and Create the dock: neither is a row.
+        XCTAssertFalse(row("search", "Search").exists)
+        XCTAssertFalse(row("create", "Create").exists)
+        XCTAssertTrue(app.buttons["stem-search"].exists)
         pause(2)
         capture("sidebar")
         let sections = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:section:"))
@@ -178,7 +180,7 @@ final class StemCellsUITests: XCTestCase {
     /// Search over every row.
     func testSearch() {
         home()
-        row("search", "Search").tap()
+        app.buttons["stem-search"].tap()
         pause(1)
         app.typeText("happy")
         pause(2)
@@ -462,5 +464,100 @@ final class StemCellsUITests: XCTestCase {
             let text = NSAttributedString(string: "Hello from the phone", attributes: [.font: UIFont.boldSystemFont(ofSize: 64), .foregroundColor: UIColor.white])
             text.draw(at: CGPoint(x: 90, y: 260))
         }
+    }
+
+    /// The header: the Happy mark opens settings, where the accounts are;
+    /// search is beside the filter at the right.
+    func testHeader() {
+        home()
+        pause(1.5)
+        capture("header")
+        app.descendants(matching: .any)["stem-settings-mark"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-settings-accounts"].waitForExistence(timeout: 3))
+        pause(1.5)
+        capture("settings")
+        app.descendants(matching: .any)["stem-settings-accounts"].tap()
+        pause(2)
+        capture("settings-accounts")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(1)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(1.5)
+        app.buttons["stem-search"].tap()
+        pause(1)
+        app.typeText("lisbon")
+        pause(2)
+        capture("header-search")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(1.5)
+    }
+
+    private func pickIn(_ opener: XCUIElement, _ id: String, shot: String) {
+        XCTAssertTrue(opener.waitForExistence(timeout: 5), "no \(opener)")
+        opener.tap()
+        let row = app.descendants(matching: .any)["stem-pick:\(id)"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "the picker has no \(id)")
+        pause(1.5)
+        capture(shot)
+        if !row.isHittable { app.descendants(matching: .any)["stem-picker"].swipeUp(); pause(1) }
+        row.tap()
+        pause(1.5)
+    }
+
+    /// The pickers: on the dock before new work exists, then in its
+    /// conversation; each send goes with what was picked. The driver reads
+    /// the modes back from the daemon.
+    func testPickers() {
+        home()
+        pause(1.5)
+        capture("dock-pickers")
+        // The provider sheet shows each account's usage; it is looked at and closed.
+        app.descendants(matching: .any)["stem-dock-provider"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-pick:claude"].waitForExistence(timeout: 5))
+        pause(3)
+        capture("picker-provider")
+        app.descendants(matching: .any)["stem-picker"].swipeDown(velocity: .fast)
+        pause(1.5)
+        pickIn(app.descendants(matching: .any)["stem-dock-model"], "claude:anthropic/haiku-5-5", shot: "picker-model")
+        pickIn(app.descendants(matching: .any)["stem-dock-effort"], "low", shot: "picker-effort")
+        pause(1)
+        capture("dock-picked")
+
+        app.descendants(matching: .any)["stem-new-work"].tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        XCTAssertTrue(app.buttons["Model: Haiku 5.5"].waitForExistence(timeout: 5), "new work lost the dock's model")
+        XCTAssertTrue(app.buttons["Effort: Low"].exists, "new work lost the dock's effort")
+        pause(1)
+        capture("new-work-chips")
+        composer.typeText("Say which model you are in five words or fewer. No tools.")
+        app.buttons["Send"].tap()
+        let messages = app.descendants(matching: .any).matching(identifier: "stem-message")
+        let working = app.descendants(matching: .any)["stem-working"]
+        var deadline = Date().addingTimeInterval(120)
+        while Date() < deadline, messages.count < 2 || working.exists { pause(1) }
+        pause(1.5)
+        print("STEM_FIRST_ANSWERED")
+
+        app.swipeDown(velocity: .slow)
+        pause(1)
+        pickIn(app.buttons["Model: Haiku 5.5"], "claude:anthropic/sonnet-5", shot: "chat-picker-model")
+        // A new model starts on its own default effort.
+        XCTAssertTrue(app.buttons["Effort: Medium"].waitForExistence(timeout: 3))
+        pickIn(app.buttons["Effort: Medium"], "high", shot: "chat-picker-effort")
+        XCTAssertTrue(app.buttons["Effort: High"].waitForExistence(timeout: 3))
+        composer.tap()
+        composer.typeText("And now? Five words or fewer.")
+        app.buttons["Send"].tap()
+        deadline = Date().addingTimeInterval(120)
+        pause(2)
+        while Date() < deadline, messages.count < 4 || working.exists { pause(1) }
+        pause(2)
+        capture("chat-picked")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(2)
+        // The dock keeps its own pick for the next new work.
+        XCTAssertTrue(app.descendants(matching: .any)["stem-dock-model"].label.contains("Haiku 5.5"))
     }
 }

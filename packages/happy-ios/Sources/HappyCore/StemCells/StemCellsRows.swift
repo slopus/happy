@@ -324,3 +324,33 @@ public enum StemCellsRows {
         return words.isEmpty ? nil : words
     }
 }
+
+/// Where a row dragged on a phone lands. A phone doesn't draw desktop's
+/// Search and Create rows, but they stay in the document: they never move,
+/// and every drop is anchored on the rows the person can see, so desktop's
+/// order doesn't shift around them.
+public enum StemCellsDrop {
+    /// Kept in the document for desktop; never drawn on a phone.
+    public static func isHidden(_ row: StemCellsRow) -> Bool {
+        row.kind == .search || row.kind == .create
+    }
+
+    /// A row the person can pick up: a space or a section, never Happy's
+    /// own row or a hidden one.
+    public static func canMove(_ row: StemCellsRow) -> Bool {
+        !isHidden(row) && !row.isHappy && (row.kind == .space || row.kind == .section)
+    }
+
+    /// The top-level node `moving` is set down after when it is dropped
+    /// just above the drawn top-level row `before` (nil: below the last).
+    /// A drop at the very top lands right after whatever hidden node sits
+    /// before the first drawn row (Create), never before it. Nil when the
+    /// row can't move there.
+    public static func after(_ moving: String, droppedBefore before: String?, rows: [StemCellsRow]) -> String?? {
+        guard let row = rows.first(where: { $0.nodeId == moving }), canMove(row), row.depth == 0 else { return nil }
+        let top = rows.filter { $0.depth == 0 && $0.nodeId != moving }
+        guard let before else { return .some(top.last?.nodeId) }
+        guard let index = top.firstIndex(where: { $0.nodeId == before }) else { return nil }
+        return .some(index > 0 ? top[index - 1].nodeId : nil)
+    }
+}

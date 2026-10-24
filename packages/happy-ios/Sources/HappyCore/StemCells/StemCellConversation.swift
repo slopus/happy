@@ -88,6 +88,9 @@ public struct StemCellChatSnapshot: Equatable, Sendable {
     public var hasMore = false
     /// Why the conversation could not be read.
     public var error: String?
+    /// The model, account and effort the next message goes with: the last
+    /// one sent, a pick, or the computer's default.
+    public var mode: AgentWire.Mode?
 
     public init() {}
 }
@@ -215,6 +218,7 @@ public actor StemCellConversation {
 
     private func adopt(_ start: AgentWire.Bootstrap, _ history: AgentWire.MessagesResponse) {
         mode = start.mode ?? mode
+        snapshot.mode = mode
         if mode == nil, defaultMode == nil { defaultMode = Task { [client] in try await client.defaultMode() } }
         runs = []
         messages = [:]
@@ -414,13 +418,26 @@ public actor StemCellConversation {
         }
     }
 
+    /// The next message goes with this model, account and effort.
+    public func setMode(_ mode: AgentWire.Mode) {
+        self.mode = mode
+        snapshot.mode = mode
+        publish()
+    }
+
     private func sendingMode() async throws -> AgentWire.Mode {
         if let mode { return mode }
         let task = defaultMode ?? Task { [client] in try await client.defaultMode() }
         defaultMode = task
         do {
             let mode = try await task.value
+            // A pick made while the default was read wins.
+            if let picked = self.mode { return picked }
             self.mode = mode
+            if snapshot.mode == nil {
+                snapshot.mode = mode
+                publish()
+            }
             return mode
         } catch {
             defaultMode = nil

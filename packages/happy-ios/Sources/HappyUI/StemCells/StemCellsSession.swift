@@ -12,6 +12,8 @@ final class StemCellsSession {
     let client: DirectAgentClient
     let store: StemCellsStore
     let images: StemCellsImages
+    /// The models the composer's pickers offer, and the dock's pick.
+    let models: StemCellModelState
     /// Colours the code blocks its conversations show.
     let syntax = CodeSyntaxService()
     private(set) var snapshot = StemCellsSnapshot()
@@ -50,6 +52,8 @@ final class StemCellsSession {
             untitledSession: Strings.StemCells.untitledSession, widget: Strings.StemCells.prioritizing
         ))
         images = StemCellsImages(client: client)
+        models = StemCellModelState(client: client)
+        models.load()
         let updates = store.updates
         following = Task { [weak self] in
             for await snapshot in updates {

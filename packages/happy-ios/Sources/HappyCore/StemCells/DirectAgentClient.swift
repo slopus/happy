@@ -225,11 +225,33 @@ public final class DirectAgentClient: Sendable {
     }
 
     /// The mode a conversation with no last composer mode sends with (`GET /v0/config` `defaults`).
+    /// What new work is sent with when nothing was picked: desktop's
+    /// default selection, the declared model at its own default effort.
     public func defaultMode() async throws -> AgentWire.Mode {
-        let config = try await decode(JSONValue.self, "GET", "/v0/config")
-        guard let defaults = config["config"]?["defaults"], let providerId = defaults["providerId"]?.stringValue,
-              let modelId = defaults["modelId"]?.stringValue else { throw DirectAgentError.invalidResponse }
-        return AgentWire.Mode(providerId: providerId, modelId: modelId, effort: defaults["effort"]?.stringValue ?? "medium", serviceTier: nil, permissionMode: defaults["permissionMode"]?.stringValue ?? "auto")
+        try await modelCatalog().defaultMode()
+    }
+
+    /// The models every account offers, in the daemon's order.
+    public func modelCatalog() async throws -> StemCellModelCatalog {
+        guard let catalog = StemCellModelCatalog(response: try await send("GET", "/v0/config").body) else { throw DirectAgentError.invalidResponse }
+        return catalog
+    }
+
+    /// Each account's plan usage, by provider ID.
+    public func accountUsage() async throws -> [String: StemCellAccountUsage] {
+        StemCellAccountUsage.project(try await decode(JSONValue.self, "GET", "/v0/usage"))
+    }
+
+    /// Asks for fresher readings of these accounts; they arrive as
+    /// `provider.usage.updated`.
+    public func refreshAccountUsage(_ providerIds: [String]) async throws {
+        _ = try await send("POST", "/v0/usage/refresh", json: .object(["providerIds": .array(providerIds.map { .string($0) })]))
+    }
+
+    /// The mode the agent's last message carried; nil before its first.
+    public func agentMode(_ agentId: String) async throws -> AgentWire.Mode? {
+        struct Response: Decodable { let mode: AgentWire.Mode? }
+        return try await decode(Response.self, "GET", "/v0/agents/\(Self.escape(agentId))/mode").mode
     }
 
     public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], mode: AgentWire.Mode) async throws {

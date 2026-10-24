@@ -29,6 +29,12 @@ extension Palette {
     public static let stemCellsButton = ColorToken("#f8f8f8", "#171717")
     /// The sidebar's ground (`--groupped-background`).
     public static let stemCellsBackground = ColorToken("#f5f5f5", "#1e1e1e")
+    /// A usage ring (`UsageRing`): its quiet track, its arc, and the arc
+    /// when little or almost nothing is left.
+    public static let stemCellsUsageTrack = ColorToken("#c0c0c0", "#48484a")
+    public static let stemCellsUsageArc = ColorToken("#49454f", "#cac4d0")
+    public static let stemCellsUsageLow = ColorToken("#ff9500", "#ffab00")
+    public static let stemCellsUsageCritical = ColorToken("#ff3b30", "#ff453a")
 }
 
 public enum StemCellsMetrics {
