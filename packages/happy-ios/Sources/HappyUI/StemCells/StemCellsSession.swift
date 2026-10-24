@@ -14,6 +14,8 @@ final class StemCellsSession {
     let images: StemCellsImages
     /// The models the composer's pickers offer, and the dock's pick.
     let models: StemCellModelState
+    /// What this computer last showed, for opening on it offline.
+    let offline: StemCellsOfflineFile?
     /// Colours the code blocks its conversations show.
     let syntax = CodeSyntaxService()
     private(set) var snapshot = StemCellsSnapshot()
@@ -34,8 +36,9 @@ final class StemCellsSession {
         return session
     }
 
-    /// Forgets a computer that was unpaired.
+    /// Forgets a computer that was unpaired, and what was kept of it.
     static func forget(_ accountID: String) {
+        StemCellsOfflineFile.remove(accountID)
         guard let session = sessions.removeValue(forKey: accountID) else { return }
         session.following?.cancel()
         let store = session.store
@@ -45,14 +48,15 @@ final class StemCellsSession {
     private init(accountID: String, client: DirectAgentClient) {
         self.accountID = accountID
         self.client = client
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-        let cache = caches?.appendingPathComponent("StemCells", isDirectory: true).appendingPathComponent("\(accountID).json")
-        store = StemCellsStore(client: client, cache: cache, labels: StemCellsRows.Labels(
+        let offline = StemCellsOfflineFile.directory(for: accountID).map(StemCellsOfflineFile.init(directory:))
+        self.offline = offline
+        Task.detached(priority: .utility) { StemCellsOfflineFile.removeLegacy(accountID) }
+        store = StemCellsStore(client: client, offline: offline, labels: StemCellsRows.Labels(
             search: Strings.StemCells.search, create: Strings.StemCells.create, untitled: Strings.StemCells.untitled,
             untitledSession: Strings.StemCells.untitledSession, widget: Strings.StemCells.prioritizing
         ))
-        images = StemCellsImages(client: client)
-        models = StemCellModelState(client: client)
+        images = StemCellsImages(client: client, offline: offline)
+        models = StemCellModelState(client: client, offline: offline)
         models.load()
         let updates = store.updates
         following = Task { [weak self] in

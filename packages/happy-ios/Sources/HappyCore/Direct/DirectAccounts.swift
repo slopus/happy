@@ -93,6 +93,8 @@ public final class DirectAccounts {
         do { try await storage.remove(id) }
         catch { startConnections(); throw error }
         credentials.removeValue(forKey: id); accounts.removeAll { $0.id == id }
+        // What Stem Cells kept to open on it offline goes with it.
+        StemCellsOfflineFile.remove(id)
         if activeID == id { activeID = nil }
         onChange?()
     }

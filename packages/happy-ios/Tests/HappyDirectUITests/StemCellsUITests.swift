@@ -660,6 +660,55 @@ final class StemCellsUITests: XCTestCase {
         capture("working-row")
     }
 
+    /// A cold launch with the computer stopped: the sidebar, the rows'
+    /// pictures and the dock's model chips come from what this phone kept,
+    /// at once; the computer comes back and its live sidebar takes over
+    /// with no row moving. The driver stops and starts the throwaway
+    /// daemon when asked (`.context/offline.sh`).
+    func testOfflineLaunch() {
+        home()
+        let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:"))
+        let connecting = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "connecting")).firstMatch
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline, connecting.exists { pause(0.5) }
+        XCTAssertFalse(connecting.exists, "never went live")
+        // Kept on the first live read; a moment for it to reach the disk.
+        pause(3)
+        func shown() -> [String] {
+            (0..<min(rows.count, 12)).map { rows.element(boundBy: $0) }.filter { $0.frame.minY > 0 && $0.frame.maxY < app.frame.height * 0.8 }.map(\.identifier)
+        }
+        let live = shown()
+        let firstFrame = rows.element(boundBy: 0).frame
+        capture("offline-before")
+        print("STEM_STOP_DAEMON")
+        pause(8)
+        app.terminate()
+        app.launch()
+        let first = rows.firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 3), "nothing showed offline")
+        pause(1)
+        XCTAssertTrue(connecting.exists, "the computer should be out of reach")
+        let offline = shown()
+        XCTAssertEqual(offline, live, "the kept sidebar is not the one last shown")
+        XCTAssertFalse(app.staticTexts["Models not configured"].exists, "the model chips were not kept")
+        capture("offline-launch")
+        pause(3)
+        print("STEM_START_DAEMON")
+        let back = Date().addingTimeInterval(120)
+        var moved: [String] = []
+        while Date() < back, connecting.exists {
+            pause(0.25)
+            let now = shown()
+            if now != offline { moved = now }
+        }
+        XCTAssertFalse(connecting.exists, "the computer never came back")
+        pause(2)
+        XCTAssertEqual(shown(), offline, "rows moved when the live sidebar came")
+        XCTAssertTrue(moved.isEmpty, "rows moved on the way back: \(moved)")
+        XCTAssertEqual(rows.element(boundBy: 0).frame, firstFrame)
+        capture("offline-back")
+    }
+
     /// Closes the settings sheet with a pull down from its top.
     private func closeSettings() {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).press(

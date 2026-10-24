@@ -83,7 +83,8 @@ public actor StemCellsStore {
     static let attentionCalm: Duration = .seconds(300)
 
     private let client: DirectAgentClient
-    private let cache: URL?
+    private let offline: StemCellsOfflineFile?
+    private var keeping: Task<Void, Never>?
     private let labels: StemCellsRows.Labels
     private let continuation: AsyncStream<StemCellsSnapshot>.Continuation
     public nonisolated let updates: AsyncStream<StemCellsSnapshot>
@@ -136,9 +137,9 @@ public actor StemCellsStore {
     private var attentionIdle: Task<Void, Never>?
     private var attentionVisible = true
 
-    public init(client: DirectAgentClient, cache: URL? = nil, labels: StemCellsRows.Labels = StemCellsRows.Labels()) {
+    public init(client: DirectAgentClient, offline: StemCellsOfflineFile? = nil, labels: StemCellsRows.Labels = StemCellsRows.Labels()) {
         self.client = client
-        self.cache = cache
+        self.offline = offline
         self.labels = labels
         (updates, continuation) = AsyncStream.makeStream(of: StemCellsSnapshot.self, bufferingPolicy: .bufferingNewest(1))
     }
@@ -147,8 +148,10 @@ public actor StemCellsStore {
 
     public func start() {
         guard following == nil else { return }
-        restoreCache()
-        following = Task { [weak self] in await self?.follow() }
+        following = Task { [weak self] in
+            await self?.restoreOffline()
+            await self?.follow()
+        }
     }
 
     /// Closes the events stream while the app is in the background; what
@@ -288,7 +291,8 @@ public actor StemCellsStore {
             heldEvents = nil
             for event in pending { receive(event) }
             publish()
-            saveCache()
+            keeping?.cancel()
+            saveOffline()
         } catch {
             heldEvents = nil
             if snapshot.availability == .loading, case DirectAgentError.status(404, _, _) = error { snapshot.availability = .unsupported }
@@ -463,6 +467,17 @@ public actor StemCellsStore {
         }
         snapshot.happySpaceId = spaces.values.first { places.isHappy($0) }?.id
         continuation.yield(snapshot)
+        // What the events changed is kept too, once they settle.
+        if snapshot.live, held != nil { keepSoon() }
+    }
+
+    private func keepSoon() {
+        keeping?.cancel()
+        keeping = Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            saveOffline()
+        }
     }
 
     // MARK: Edits
@@ -829,41 +844,40 @@ public actor StemCellsStore {
         Task { try? await client.reportAttention(state) }
     }
 
-    // MARK: Cache
-
-    private struct Cached: Codable {
-        var artifactId: String
-        var version: Int
-        var html: String
-        var spaces: [AgentWire.Space]
-        var agentIcons: [String: AgentWire.LibraryIcon]
-        var bots: [JSONValue]
-        var tasks: [JSONValue]
-    }
+    // MARK: Offline
 
     /// The sidebar as last read, drawn at once while the daemon is asked.
-    private func restoreCache() {
-        guard let cache, held == nil, let data = try? Data(contentsOf: cache),
-              let cached = try? JSONDecoder().decode(Cached.self, from: data) else { return }
-        artifactId = cached.artifactId
-        held = (cached.version, cached.html)
-        for space in cached.spaces { adopt(space) }
-        agentIcons = cached.agentIcons
-        bots = cached.bots; tasks = cached.tasks
+    /// The live read that follows replaces it row for row, so a row that
+    /// has not changed does not move.
+    private func restoreOffline() async {
+        guard let offline, held == nil, let kept = await offline.read()?.sidebar, held == nil else { return }
+        artifactId = kept.artifactId
+        held = (kept.version, kept.html)
+        for space in kept.spaces { adopt(space) }
+        agentIcons = kept.agentIcons
+        bots = kept.bots; tasks = kept.tasks
+        surfaces = kept.surfaces ?? []
+        if let capabilities = kept.capabilities {
+            self.capabilities = capabilities
+            snapshot.offers = StemCellOffer.available(surfaces: kept.surfacesServed ?? false, capabilities: capabilities)
+        }
+        if snapshot.prioritizing == nil { snapshot.prioritizing = kept.prioritizing }
         for owner in bots + tasks { if let agent = owner["agent"] { agents.absorb(agent) } }
         rebuildPlaces()
         snapshot.availability = .available
         publish()
     }
 
-    private func saveCache() {
-        guard let cache, let artifactId, let held else { return }
-        let cached = Cached(artifactId: artifactId, version: held.version, html: held.html, spaces: spaces.values.filter { $0.version > 0 }.sorted { $0.id < $1.id }, agentIcons: agentIcons, bots: bots, tasks: tasks)
-        Task.detached(priority: .utility) {
-            guard let data = try? JSONEncoder().encode(cached) else { return }
-            try? FileManager.default.createDirectory(at: cache.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? data.write(to: cache, options: .atomic)
-        }
+    private func saveOffline() {
+        guard let offline, let artifactId, let held else { return }
+        let sidebar = StemCellsOfflineSnapshot.Sidebar(
+            artifactId: artifactId, version: held.version, html: held.html,
+            spaces: spaces.values.filter { $0.version > 0 }.sorted { $0.id < $1.id },
+            agentIcons: agentIcons, bots: bots, tasks: tasks, surfaces: surfaces,
+            surfacesServed: snapshot.offers.contains { if case .surface = $0 { true } else { false } },
+            capabilities: capabilities, prioritizing: prioritizingDaemon
+        )
+        Task { await offline.update { $0.sidebar = sidebar } }
     }
 }
 

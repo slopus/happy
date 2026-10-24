@@ -233,8 +233,14 @@ public final class DirectAgentClient: Sendable {
 
     /// The models every account offers, in the daemon's order.
     public func modelCatalog() async throws -> StemCellModelCatalog {
-        guard let catalog = StemCellModelCatalog(response: try await send("GET", "/v0/config").body) else { throw DirectAgentError.invalidResponse }
-        return catalog
+        try await modelCatalogResponse().catalog
+    }
+
+    /// The catalog with the response it was read from, to keep offline.
+    public func modelCatalogResponse() async throws -> (catalog: StemCellModelCatalog, text: String) {
+        let body = try await send("GET", "/v0/config").body
+        guard let catalog = StemCellModelCatalog(response: body) else { throw DirectAgentError.invalidResponse }
+        return (catalog, String(decoding: body, as: UTF8.self))
     }
 
     /// Each account's plan usage, by provider ID.

@@ -126,12 +126,12 @@ final class StemCellsRowView: UIView {
             picture.contentMode = .scaleAspectFill
             picture.layer.cornerRadius = StemCellsMetrics.pictureRadius
             let pixels = Int(StemCellsMetrics.mark * 3)
-            if let cached = images?.cached(path, pixels: pixels) {
+            if let cached = images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels) {
                 picture.image = cached
             } else {
                 picture.image = StemCellsImages.placeholder(thumbhash)
                 pictureJob = Task { [weak self] in
-                    guard let image = await self?.images?.image(path, pixels: pixels), !Task.isCancelled else { return }
+                    guard let image = await self?.images?.picture(path, thumbhash: thumbhash, pixels: pixels), !Task.isCancelled else { return }
                     self?.picture.image = image
                 }
             }

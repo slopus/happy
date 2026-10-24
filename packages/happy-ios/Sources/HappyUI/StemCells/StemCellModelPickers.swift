@@ -12,14 +12,21 @@ final class StemCellModelState {
     private(set) var usage: [String: StemCellAccountUsage] = [:]
     /// What new work is sent with: picked on the dock before the work exists.
     var dockMode: AgentWire.Mode? {
-        didSet { if dockMode != oldValue { changed() } }
+        didSet {
+            guard dockMode != oldValue else { return }
+            changed()
+            let mode = dockMode
+            if let offline { Task { await offline.update { $0.dockMode = mode } } }
+        }
     }
+    private let offline: StemCellsOfflineFile?
     private var watchers: [UUID: () -> Void] = [:]
     private var loading: Task<Void, Never>?
     private var refreshing: Task<Void, Never>?
 
-    init(client: DirectAgentClient) {
+    init(client: DirectAgentClient, offline: StemCellsOfflineFile? = nil) {
         self.client = client
+        self.offline = offline
     }
 
     /// The dock's pick, or the computer's default until one is made.
@@ -35,18 +42,29 @@ final class StemCellModelState {
         for watcher in watchers.values { watcher() }
     }
 
-    /// Reads the catalog, once at a time.
+    /// Reads the catalog, once at a time: what was kept first, so the
+    /// pickers are drawn offline too, then the computer's own.
     func load() {
         guard loading == nil else { return }
         let client = client
+        let offline = offline
         loading = Task { [weak self] in
-            let catalog = try? await client.modelCatalog()
+            if self?.catalog == nil, let kept = await offline?.read() {
+                let catalog = kept.config.flatMap { StemCellModelCatalog(response: Data($0.utf8)) }
+                guard let self else { return }
+                if self.catalog == nil, let catalog { self.catalog = catalog; changed() }
+                if dockMode == nil, let mode = kept.dockMode { dockMode = mode }
+            }
+            let read = try? await client.modelCatalogResponse()
             guard let self else { return }
             loading = nil
-            if let catalog, catalog != self.catalog {
-                self.catalog = catalog
+            guard let read else { return }
+            if read.catalog != self.catalog {
+                self.catalog = read.catalog
                 changed()
             }
+            let text = read.text
+            if let offline { Task { await offline.update { $0.config = text } } }
         }
     }
 
