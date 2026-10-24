@@ -29,9 +29,19 @@ This document describes how to deploy the Happy backend (`packages/happy-server`
 ## Environment variables
 **Required**
 - `DATABASE_URL`: Postgres connection string.
-- `HANDY_MASTER_SECRET`: master key for auth tokens and server-side encryption.
+- `HANDY_MASTER_SECRET`: master key for auth tokens and server-side encryption. Generate it once with `openssl rand -hex 32`, retain it in protected storage, and share it across server replicas. Missing, short, and published development values are rejected.
 - `REDIS_URL`: Redis connection string.
 - `S3_HOST`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_PUBLIC_URL`: object storage config.
+
+Set this value before using `.env.dev` or the local Kubernetes Secret template; both leave
+it empty. New managed development environments generate their own key in `master-secret`
+and reuse it across restarts. Existing environments must restore their original key if
+that file is missing. Generated `env.sh` files contain the key and must remain private.
+
+Changing the master secret invalidates authentication tokens and makes existing
+server-encrypted service credentials unreadable under the new key. Do not silently
+replace a deployed key: back up the data and plan credential migration or reconnection
+before rotation. Existing encrypted data is not migrated automatically.
 
 **Common**
 - `PORT`: API server port (default `3005`).

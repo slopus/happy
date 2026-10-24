@@ -56,11 +56,15 @@ Data persists in the `happy-data` Docker volume across container restarts.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `HANDY_MASTER_SECRET` | Yes | - | Master secret for auth/encryption |
+| `HANDY_MASTER_SECRET` | Yes | - | Unique random master secret, at least 32 characters; generate once with `openssl rand -hex 32` and retain it |
 | `PUBLIC_URL` | No | `http://localhost:3005` | Public base URL for file URLs sent to clients |
 | `PORT` | No | `3005` | Server port |
 | `DATA_DIR` | No | `/data` | Base data directory |
 | `PGLITE_DIR` | No | `/data/pglite` | PGlite database directory |
+
+Keep the same master secret across restarts and replicas. Published development values
+are rejected. Rotation invalidates tokens and prevents decryption of existing
+server-encrypted service credentials unless those credentials are migrated or reconnected.
 
 ### Optional: External Services
 
