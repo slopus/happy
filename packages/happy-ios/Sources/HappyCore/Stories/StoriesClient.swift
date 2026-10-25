@@ -38,6 +38,17 @@ extension DirectAgentClient {
         return try await decode(StoryMediaPage.self, "GET", "/v0/stories/media?\(query)")
     }
 
+    /// Where a conversation's media item is read from, by its asset: the
+    /// tool call's media or the artifact version's file.
+    public static func path(_ asset: StoryAsset) -> String {
+        switch asset {
+        case .chatMedia(let agentId, let toolCallId, let index):
+            "/v0/agents/\(escape(agentId))/tool-calls/\(escape(toolCallId))/media/\(index)"
+        case .artifactFile(let artifactId, let version, let path):
+            "/v0/artifacts/\(escape(artifactId))/versions/\(version)/files/" + path.split(separator: "/").map { escape(String($0)) }.joined(separator: "/")
+        }
+    }
+
     public func storyViewers(_ storyId: String, cursor: String? = nil) async throws -> StoryViewersPage {
         var path = "/v0/stories/\(Self.escape(storyId))/viewers?limit=50"
         if let cursor { path += "&cursor=\(Self.escape(cursor))" }
@@ -48,6 +59,12 @@ extension DirectAgentClient {
     public func storyFrame(_ storyId: String, frameId: String, range: ClosedRange<Int>? = nil) async throws -> DirectHTTPResponse {
         let headers = range.map { ["Range": "bytes=\($0.lowerBound)-\($0.upperBound)"] } ?? [:]
         return try await send("GET", "/v0/stories/\(Self.escape(storyId))/frames/\(Self.escape(frameId))", headers: headers)
+    }
+
+    /// A conversation's media item's bytes, whole or one range of them.
+    public func asset(_ asset: StoryAsset, range: ClosedRange<Int>? = nil) async throws -> DirectHTTPResponse {
+        let headers = range.map { ["Range": "bytes=\($0.lowerBound)-\($0.upperBound)"] } ?? [:]
+        return try await send("GET", Self.path(asset), headers: headers)
     }
 
     // MARK: Writing

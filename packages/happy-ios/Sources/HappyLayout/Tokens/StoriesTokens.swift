@@ -21,4 +21,13 @@ extension Palette {
     public static let storiesViewerText = ColorToken("#FFFFFF")
     public static let storiesProgressTrack = ColorToken(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.3), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.3))
     public static let storiesProgressFill = ColorToken("#FFFFFF")
+    /// The editor (`MediaEditorScreen`, `DrawingEntitiesView`): Post's
+    /// tinted glass, the snap lines, the angle line, a selection's handles.
+    public static let storiesEditorPost = ColorToken("#0088FF")
+    public static let storiesEditorGuide = ColorToken("#5FC1F0")
+    public static let storiesEditorAngle = ColorToken("#FFD70A")
+    public static let storiesEditorHandle = ColorToken("#0A60FF")
+    /// The sticker sheet's ground and its interactive stickers' pills.
+    public static let storiesStickerSheet = ColorToken("#1C1C1E")
+    public static let storiesStickerPill = ColorToken(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.11), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.11))
 }

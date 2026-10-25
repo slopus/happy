@@ -90,6 +90,15 @@ final class StoriesMedia {
         AVPlayer(playerItem: AVPlayerItem(asset: stream(storyId, frame).asset()))
     }
 
+    /// A player for a conversation's recording, before a story holds it.
+    func player(_ asset: StoryAsset) -> AVPlayer {
+        let client = client
+        let stream = StoriesByteStream(name: "asset", mimeType: "video/mp4") { range in
+            try await client.asset(asset, range: range)
+        }
+        return AVPlayer(playerItem: AVPlayerItem(asset: stream.asset()))
+    }
+
     private func stream(_ storyId: String, _ frame: StoryFrame) -> StoriesByteStream {
         let key = Self.key(storyId, frame.id)
         if let stream = streams[key] { return stream }

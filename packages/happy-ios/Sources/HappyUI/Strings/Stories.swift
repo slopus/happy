@@ -1,4 +1,5 @@
 import Foundation
+import HappyCore
 
 // Stories, spelled as happy-agent's API.md "Stories" and "Stickers" name
 // them, and as Telegram's stories say the rest. English only, as desktop is.
@@ -69,13 +70,51 @@ extension Strings {
         public static let invalidLink = "Enter an http or https link."
         public static let uploading = "Uploading…"
         public static let saveFailed = "Couldn't save the story"
-        public static let addFrame = "Add"
+        public static let addFrame = "Add frame"
         public static let noMedia = "Nothing to choose from yet"
+        public static let discardChanges = "Discard changes?"
+        public static let discardDetail = "Your edits to this story will be lost."
+        public static let discard = "Discard"
+        public static let saveDraft = "Save draft"
+        public static let keepEditing = "Keep editing"
+        public static let deleteFrame = "Delete frame"
+        public static let saving = "Saving…"
+        public static let couldntOpen = "Couldn't open that photo or video"
+        public static let fill = "Fill"
+        public static let align = "Alignment"
+        public static let trash = "Delete"
+        public static let color = "Color"
+        public static let font = "Font"
+        public static let textSize = "Text size"
+        public static let frames = "Frames"
+        public static let useLatest = "Use the newer version"
+        public static let overwrite = "Keep my edits"
+        public static let newerVersionDetail = "It was saved somewhere else since you opened it."
+        public static func fontName(_ font: StoryTextFont) -> String {
+            switch font {
+            case .sanFrancisco: "San Francisco"
+            case .typewriter: "Typewriter"
+            case .avenirNext: "Avenir Next"
+            case .courierNew: "Courier New"
+            case .noteworthy: "Noteworthy"
+            case .georgia: "Georgia"
+            case .papyrus: "Papyrus"
+            case .snellRoundhand: "Snell Roundhand"
+            }
+        }
 
         // The sticker picker.
         public static let search = "Search"
         public static let recentlyUsed = "Recently used"
         public static let clearRecents = "Clear recently used"
         public static let noResults = "No stickers found"
+        public static let emojiPeople = "Smileys & People"
+        public static let emojiNature = "Animals & Nature"
+        public static let emojiFood = "Food & Drink"
+        public static let emojiActivity = "Activity"
+        public static let emojiTravel = "Travel & Places"
+        public static let emojiObjects = "Objects"
+        public static let emojiSymbols = "Symbols"
+        public static let emojiFlags = "Flags"
     }
 }

@@ -36,6 +36,9 @@ final class StoryCanvasView: UIView {
     /// Whether the picture (or a recording's first frame) has been drawn.
     private(set) var isReady = false
     private(set) var player: AVPlayer?
+    /// Media the editor holds on the device, by frame: drawn from here, not
+    /// read from the computer, which doesn't have it yet.
+    var local: [String: StoryLocalMedia] = [:]
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -100,6 +103,21 @@ final class StoryCanvasView: UIView {
         mediaView.image = nil
         unavailable.isHidden = frame.available
         unavailable.text = frame.kind == .video ? Strings.Stories.videoUnavailable : Strings.Stories.photoUnavailable
+        if let local = local[frame.id] {
+            unavailable.isHidden = true
+            switch local {
+            case .image(let image):
+                mediaView.image = image
+            case .video(let url, let poster):
+                mediaView.image = poster
+                if playsVideo { attach(AVPlayer(url: url)) }
+            case .asset(let asset, let poster):
+                mediaView.image = poster
+                if frame.kind == .video, playsVideo, let media { attach(media.player(asset)) }
+            }
+            markReady()
+            return
+        }
         guard frame.available, let media else {
             markReady()
             return
@@ -109,16 +127,7 @@ final class StoryCanvasView: UIView {
             mediaView.image = cached
             if frame.kind == .image { markReady() }
         }
-        if frame.kind == .video, playsVideo {
-            let player = media.player(storyId, frame)
-            player.isMuted = false
-            self.player = player
-            playerView.player = player
-            playerView.isHidden = false
-            endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.onVideoEnd?() }
-            }
-        }
+        if frame.kind == .video, playsVideo { attach(media.player(storyId, frame)) }
         guard mediaView.image == nil || frame.kind == .video else { return }
         loading = Task { [weak self] in
             if let placeholder = await media.placeholder(frame.thumbhash), let self, !Task.isCancelled, self.mediaView.image == nil {
@@ -130,6 +139,16 @@ final class StoryCanvasView: UIView {
             if self.shownFrame?.width == nil, let image { self.measured = image.size }
             self.setNeedsLayout()
             self.markReady()
+        }
+    }
+
+    private func attach(_ player: AVPlayer) {
+        player.isMuted = false
+        self.player = player
+        playerView.player = player
+        playerView.isHidden = false
+        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.onVideoEnd?() }
         }
     }
 
@@ -229,6 +248,19 @@ final class StoryCanvasView: UIView {
 
     func overlayView(_ id: String) -> StoryOverlayView? { overlayViews[id] }
 
+    /// The topmost overlay of any kind under `point` (in this view), as the
+    /// editor's fingers take them.
+    func overlayView(at point: CGPoint, slop: CGFloat = 8) -> StoryOverlayView? {
+        for id in overlayOrder.reversed() {
+            guard let view = overlayViews[id], !view.isHidden else { continue }
+            let local = view.convert(point, from: self)
+            // The view's own points shrink with its scale only when the canvas scales it.
+            let reach = view.scalesWithTransform ? slop / max(0.05, CGFloat(view.overlay.transform?.scale ?? 1)) : slop
+            if view.bounds.insetBy(dx: -reach, dy: -reach).contains(local) { return view }
+        }
+        return nil
+    }
+
     /// Overlays, and the caption, hide while the person holds the frame.
     var chromeHidden = false {
         didSet {
@@ -276,6 +308,21 @@ final class StoryCanvasView: UIView {
 
     /// Room kept under the caption (the inline story's buttons).
     var captionInset: CGFloat = 16 { didSet { setNeedsLayout() } }
+}
+
+/// A frame's media while it is only on the device.
+enum StoryLocalMedia {
+    case image(UIImage)
+    case video(URL, poster: UIImage?)
+    /// A conversation's item, read from there until a save places it.
+    case asset(StoryAsset, poster: UIImage?)
+
+    var poster: UIImage? {
+        switch self {
+        case .image(let image): image
+        case .video(_, let poster), .asset(_, let poster): poster
+        }
+    }
 }
 
 /// A recording's picture.

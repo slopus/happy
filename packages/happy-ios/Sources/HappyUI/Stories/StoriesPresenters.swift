@@ -142,11 +142,45 @@ final class StoriesViewerTransition: NSObject, UIViewControllerTransitioningDele
     }
 }
 
-/// Opens the editor on a new draft, or on `draft`.
+/// Opens the editor on `draft`, or, for a new story, first asks where its
+/// media comes from (or which draft to go back to).
 @MainActor
 enum StoriesEditorPresenter {
-    static func present(session: StoriesSession, draft: Story?, from host: UIViewController) {
-        _ = (session, draft, host)
+    @discardableResult
+    static func present(session: StoriesSession, draft: Story?, from host: UIViewController) -> StoriesMediaChooser? {
+        if let draft {
+            open(StoryEditorViewController(session: session, draft: StoryDraft(editing: draft)), from: host)
+            return nil
+        }
+        let chooser = StoriesMediaChooser(session: session, host: host, limit: StoryCanvas.maxFrames, drafts: true) { [weak host] choice in
+            guard let host else { return }
+            switch choice {
+            case .picked(let picked):
+                guard !picked.isEmpty else { return }
+                var draft = StoryDraft()
+                var local: [String: StoryLocalMedia] = [:]
+                for one in picked {
+                    draft.add(one.frame)
+                    local[one.frame.id] = one.local
+                }
+                draft.select(0)
+                open(StoryEditorViewController(session: session, draft: draft, local: local), from: host)
+            case .draft(let story):
+                open(StoryEditorViewController(session: session, draft: StoryDraft(editing: story)), from: host)
+            }
+        }
+        chooser.start(from: host.view)
+        return chooser
+    }
+
+    /// Presents once what the host shows (a picker on its way out) is gone.
+    private static func open(_ editor: StoryEditorViewController, from host: UIViewController, attempt: Int = 0) {
+        if let shown = host.presentedViewController {
+            guard shown.isBeingDismissed || attempt < 20 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { open(editor, from: host, attempt: attempt + 1) }
+            return
+        }
+        host.present(editor, animated: true)
     }
 }
 #endif

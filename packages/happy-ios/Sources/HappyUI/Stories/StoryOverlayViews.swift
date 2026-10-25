@@ -20,11 +20,21 @@ class StoryOverlayView: UIView {
 
     var id: String { overlay.id ?? "" }
 
-    /// Takes a changed overlay of the same kind; false when it can't.
+    /// Takes a changed overlay of the same kind; false when it can't. Only
+    /// moving it draws nothing again.
     func update(_ overlay: StoryOverlay) -> Bool {
+        let redraw = !Self.sameLook(overlay, self.overlay)
         self.overlay = overlay
-        setNeedsDisplay()
+        if redraw { setNeedsDisplay() }
         return true
+    }
+
+    /// The same overlay but for where it is.
+    static func sameLook(_ a: StoryOverlay, _ b: StoryOverlay) -> Bool {
+        var a = a, b = b
+        a.transform = .fitted
+        b.transform = .fitted
+        return a == b
     }
 
     /// The unscaled size on a canvas of `canvas`.
@@ -37,15 +47,17 @@ class StoryOverlayView: UIView {
     /// Places it on a canvas of `canvas`, in the canvas's coordinates.
     func place(canvas: CGSize) {
         guard let t = overlay.transform else { return }
-        let size = baseSize(canvas: canvas)
-        transform = .identity
-        bounds = CGRect(origin: .zero, size: size)
+        let size = CGRect(origin: .zero, size: baseSize(canvas: canvas))
+        // Bounds and centre hold under a transform; only a new size draws again.
+        if bounds != size {
+            bounds = size
+            setNeedsLayout()
+            setNeedsDisplay()
+        }
         center = StoryCanvasLayout.center(t.x, t.y, canvas: canvas)
         var turned = CGAffineTransform(rotationAngle: CGFloat(t.rotation))
         if scalesWithTransform { turned = turned.scaledBy(x: CGFloat(t.scale), y: CGFloat(t.scale)) }
         transform = turned
-        setNeedsLayout()
-        setNeedsDisplay()
     }
 
     static func make(_ overlay: StoryOverlay, media: StoriesMedia?) -> StoryOverlayView? {
@@ -105,15 +117,15 @@ final class StoryTextOverlayView: StoryOverlayView {
 
     private var measured: (canvas: CGSize, overlay: StoryOverlay, value: Measured)?
 
-    private func measure(canvas: CGSize) -> Measured? {
-        guard case .text(_, let string, let style, _) = overlay else { return nil }
-        if let measured, measured.canvas == canvas, measured.overlay == overlay { return measured.value }
-        let size = StoryCanvasLayout.textFontSize(canvas: canvas)
-        let font = Self.font(style.font, size: size)
+    /// The text's font and paragraph on a canvas of `canvas`; with `inked`
+    /// its colours as the fill uses them too.
+    static func attributes(_ style: StoryTextStyle, canvas: CGSize, inked: Bool = true) -> [NSAttributedString.Key: Any] {
+        let font = Self.font(style.font, size: StoryCanvasLayout.textFontSize(canvas: canvas))
         let color = UIColor(hex: style.color) ?? .white
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = switch style.align { case .left: .left; case .center: .center; case .right: .right }
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .paragraphStyle: paragraph]
+        guard inked else { return attributes }
         switch style.fill {
         case .regular: attributes[.foregroundColor] = color
         case .filled: attributes[.foregroundColor] = Self.contrasting(color)
@@ -124,7 +136,21 @@ final class StoryTextOverlayView: StoryOverlayView {
             attributes[.strokeWidth] = -5
         case .blur: attributes[.foregroundColor] = UIColor.white
         }
-        let text = NSAttributedString(string: string, attributes: attributes)
+        return attributes
+    }
+
+    /// Where the wrapped text is laid out in this view's unscaled points:
+    /// the editor types into a text view placed there.
+    func textFrame(canvas: CGSize) -> CGRect? {
+        guard let measured = measure(canvas: canvas) else { return nil }
+        return CGRect(x: measured.origin.x, y: measured.origin.y, width: measured.wrap, height: measured.size.height - 2 * measured.padding.height)
+    }
+
+    private func measure(canvas: CGSize) -> Measured? {
+        guard case .text(_, let string, let style, _) = overlay else { return nil }
+        if let measured, measured.canvas == canvas, Self.sameLook(measured.overlay, overlay) { return measured.value }
+        let size = StoryCanvasLayout.textFontSize(canvas: canvas)
+        let text = NSAttributedString(string: string, attributes: Self.attributes(style, canvas: canvas))
         let wrap = StoryCanvasLayout.textWrap(style.width, canvas: canvas)
         let padding = CGSize(width: size * 0.35, height: size * 0.12)
         let storage = NSTextStorage(attributedString: text)
@@ -138,8 +164,10 @@ final class StoryTextOverlayView: StoryOverlayView {
         manager.enumerateLineFragments(forGlyphRange: manager.glyphRange(for: container)) { _, used, _, _, _ in
             lines.append(used)
         }
-        let usedWidth = lines.map(\.maxX).max() ?? 0
-        let usedMin = lines.map(\.minX).min() ?? 0
+        // No text yet is a box around where the caret stands.
+        let caret: CGFloat = switch style.align { case .left: 0; case .center: wrap / 2; case .right: wrap }
+        let usedWidth = lines.map(\.maxX).max() ?? caret
+        let usedMin = lines.map(\.minX).min() ?? caret
         let height = ceil(manager.usedRect(for: container).height)
         // The box is the lines' extent, so alignment holds within it.
         let shift = usedMin

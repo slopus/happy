@@ -610,11 +610,12 @@ public actor StoriesStore {
         return story
     }
 
-    /// An edit of the version held; `caption` nil leaves it as it is.
-    public func update(_ storyId: String, caption: String??, frames: [StoryFrameInput]?) async throws -> Story {
-        guard let held = snapshot.stories[storyId] else { throw DirectAgentError.invalidResponse }
+    /// An edit of `version` (the editor's), or of the version held; `caption`
+    /// nil leaves it as it is.
+    public func update(_ storyId: String, version: String? = nil, caption: String??, frames: [StoryFrameInput]?) async throws -> Story {
+        guard let base = version ?? snapshot.stories[storyId]?.version else { throw DirectAgentError.invalidResponse }
         do {
-            let story = try await client.updateStory(storyId, version: held.version, caption: caption, frames: frames)
+            let story = try await client.updateStory(storyId, version: base, caption: caption, frames: frames)
             adopt(story)
             publish()
             return story

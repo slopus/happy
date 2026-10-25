@@ -11,7 +11,10 @@ import UIKit
 /// heart's other emoji.
 ///
 /// `stories-probe`'s accessibility value reports the viewer:
-/// `viewer=1 author=1 position=0 paused=0 chrome=1 reaction=🔥 haptics=open,react`.
+/// `viewer=1 author=1 position=0 paused=0 chrome=1 reaction=🔥 haptics=open,react`,
+/// or the editor: `editor=1 frames=1 overlays=sticker,text trail=… saved=draft:2`.
+/// `-storiesCompose` opens the editor on a picture of the harness's own,
+/// which the Photos source hands back in place of the system picker.
 @MainActor
 final class StoriesHarness {
     private let window: UIWindow
@@ -43,8 +46,11 @@ final class StoriesHarness {
         probe.alpha = 0.02
         host.view.addSubview(probe)
         row.onOpen = { [weak self] item in self?.open(item) }
+        row.onAdd = { [weak self] in self?.compose() }
+        StoriesMediaChooser.library = { await Self.library() }
         window.rootViewController = host
         Task { await transport.drawFrames(Self.frames()) }
+        Task { await transport.drawStickers(Self.stickers()) }
         watch = session.watch { [weak self] snapshot in
             guard let self else { return }
             self.snapshot = snapshot
@@ -54,6 +60,45 @@ final class StoriesHarness {
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.report() }
         }
+        if arguments.contains("-storiesCompose") {
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(600))
+                self?.compose()
+            }
+        }
+    }
+
+    private func compose() {
+        StoriesEditorPresenter.present(session: session, draft: nil, from: host)
+    }
+
+    /// The harness's photo library: one tall picture with a grid to read
+    /// placement by.
+    static func library() async -> [StoriesMediaChooser.Picked] {
+        let size = CGSize(width: 1080, height: 1440)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            let gradient = CGGradient(colorsSpace: nil, colors: [UIColor.systemTeal.cgColor, UIColor.systemIndigo.cgColor] as CFArray, locations: [0, 1])!
+            context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
+            UIColor(white: 1, alpha: 0.15).setFill()
+            for x in stride(from: 0, to: size.width, by: 120) { context.fill(CGRect(x: x, y: 0, width: 2, height: size.height)) }
+            for y in stride(from: 0, to: size.height, by: 120) { context.fill(CGRect(x: 0, y: y, width: size.width, height: 2)) }
+            let text = NSAttributedString(string: "Picked", attributes: [.font: UIFont.systemFont(ofSize: 150, weight: .heavy), .foregroundColor: UIColor(white: 1, alpha: 0.85)])
+            text.draw(at: CGPoint(x: (size.width - text.size().width) / 2, y: size.height * 0.6))
+        }
+        guard let data = image.pngData(), let picked = await StoriesMediaChooser.image(data, type: .png) else { return [] }
+        return [picked]
+    }
+
+    /// The editor, under whatever it shows (the picker, a sheet).
+    private var editor: StoryEditorViewController? {
+        var shown = host.presentedViewController
+        while let controller = shown {
+            if let editor = controller as? StoryEditorViewController { return editor }
+            shown = controller.presentedViewController
+        }
+        return nil
     }
 
     private func layout() {
@@ -68,12 +113,73 @@ final class StoriesHarness {
 
     private func report() {
         layout()
+        // Over everything, so a full-screen editor doesn't take it away.
+        if probe.superview !== window { window.addSubview(probe) }
+        window.bringSubviewToFront(probe)
+        let made = snapshot.stories.values.filter { !["m1", "s1", "s2", "a1"].contains($0.id) }
+            .sorted { $0.createdAt < $1.createdAt }
+            .map { "\($0.status.rawValue):\($0.artifactVersion):\($0.frames.first?.overlays.count ?? 0)" }.joined(separator: ",")
+        if let editor {
+            let overlays = editor.draft.current?.overlays ?? []
+            let kinds = overlays.map { overlay -> String in
+                switch overlay {
+                case .text: "text"
+                case .link: "link"
+                case .sticker: "sticker"
+                case .emoji: "emoji"
+                case .reaction: "reaction"
+                case .unknown: "unknown"
+                }
+            }
+            let top = overlays.last?.transform.map { String(format: "%.3f,%.3f,%.2f,%.3f", $0.x, $0.y, $0.scale, $0.rotation) } ?? "nil"
+            probe.accessibilityValue = "editor=1 frames=\(editor.draft.frames.count) selected=\(editor.draft.selected) overlays=\(kinds.joined(separator: ",")) top=\(top) trail=\(editor.trail.joined(separator: ";")) saved=\(made) haptics=\(recorder.played.joined(separator: ","))"
+            return
+        }
         guard let viewer = host.presentedViewController as? StoryViewerViewController else {
-            probe.accessibilityValue = "viewer=0 haptics=\(recorder.played.joined(separator: ","))"
+            probe.accessibilityValue = "viewer=0 editor=0 saved=\(made) haptics=\(recorder.played.joined(separator: ","))"
             return
         }
         let reaction = viewer.current?.story.myReaction ?? "nil"
         probe.accessibilityValue = "viewer=1 author=\(viewer.authorIndex) position=\(viewer.position) paused=\(viewer.isPaused ? 1 : 0) chrome=\(viewer.currentPage.chromeHidden ? 0 : 1) reaction=\(reaction) trail=\(viewer.trail.joined(separator: ",")) haptics=\(recorder.played.joined(separator: ","))"
+    }
+
+    /// The harness packs' files: each a shape in its colour.
+    static func stickers() -> [String: Data] {
+        var files: [String: Data] = [:]
+        for pack in StoriesHarnessTransport.packs {
+            for sticker in pack.stickers {
+                let size = CGSize(width: 256, height: 256)
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                format.opaque = false
+                let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                    sticker.color.setFill()
+                    let box = CGRect(x: 24, y: 24, width: 208, height: 208)
+                    switch sticker.shape {
+                    case "circle": UIBezierPath(ovalIn: box).fill()
+                    case "star":
+                        let path = UIBezierPath()
+                        for point in 0..<10 {
+                            let radius: CGFloat = point % 2 == 0 ? 104 : 44
+                            let angle = CGFloat(point) * .pi / 5 - .pi / 2
+                            let at = CGPoint(x: 128 + radius * cos(angle), y: 128 + radius * sin(angle))
+                            if point == 0 { path.move(to: at) } else { path.addLine(to: at) }
+                        }
+                        path.close()
+                        path.fill()
+                    case "heart":
+                        UIBezierPath(ovalIn: CGRect(x: 30, y: 40, width: 110, height: 110)).fill()
+                        UIBezierPath(ovalIn: CGRect(x: 116, y: 40, width: 110, height: 110)).fill()
+                        let tip = UIBezierPath()
+                        tip.move(to: CGPoint(x: 36, y: 118)); tip.addLine(to: CGPoint(x: 220, y: 118)); tip.addLine(to: CGPoint(x: 128, y: 226)); tip.close()
+                        tip.fill()
+                    default: UIBezierPath(roundedRect: box, cornerRadius: 36).fill()
+                    }
+                }
+                files["\(pack.id)/\(sticker.id)"] = image.pngData()
+            }
+        }
+        return files
     }
 
     /// Every frame's picture: a gradient, its name large, bands to read
@@ -124,7 +230,61 @@ final class StoriesHarnessHaptics {
 actor StoriesHarnessTransport: DirectTransport {
     private var stories: [String: [String: Any]] = [:]
     private var frames: [String: Data] = [:]
-    private let order = ["self": ["m1"], "u2": ["s1", "s2"], "u3": ["a1"]]
+    private var order = ["self": ["m1"], "u2": ["s1", "s2"], "u3": ["a1"]]
+    private var uploads: [String: Data] = [:]
+    private var recents: [[String: Any]] = []
+    private var stickerFiles: [String: Data] = [:]
+    private var revision = 0
+
+    /// Two tiny packs drawn here: shapes for the Stickers tab, and glyphs
+    /// of kind emoji. Their files are PNGs under the `webp` name, which
+    /// ImageIO reads by their bytes the same.
+    static let packs: [(id: String, title: String, kind: String, stickers: [(id: String, emoji: String, color: UIColor, shape: String)])] = [
+        ("shapes", "Shapes", "stickers", [
+            ("circle", "🔵", .systemBlue, "circle"), ("square", "🟥", .systemRed, "square"), ("star", "⭐️", .systemYellow, "star"),
+            ("heart", "❤️", .systemPink, "heart"), ("drop", "💧", .systemTeal, "circle"), ("leaf", "🍀", .systemGreen, "square"),
+        ]),
+        ("glyphs", "Glyphs", "emoji", [
+            ("plus", "➕", .systemOrange, "square"), ("ring", "⭕️", .systemPurple, "circle"),
+        ]),
+    ]
+
+    func drawStickers(_ files: [String: Data]) { stickerFiles = files }
+
+    private func stickerObject(_ packId: String, _ sticker: (id: String, emoji: String, color: UIColor, shape: String)) -> [String: Any] {
+        let size = stickerFiles["\(packId)/\(sticker.id)"]?.count ?? 1
+        return ["packId": packId, "id": sticker.id, "emoji": [sticker.emoji], "format": "webp", "width": 256, "height": 256, "size": size,
+                "sha256": String(repeating: "0", count: 56) + String(format: "%08x", abs("\(packId)/\(sticker.id)".hashValue) % 0xFFFFFFF)]
+    }
+
+    private func packObject(_ pack: (id: String, title: String, kind: String, stickers: [(id: String, emoji: String, color: UIColor, shape: String)])) -> [String: Any] {
+        ["id": pack.id, "title": pack.title, "kind": pack.kind, "thumbnail": pack.stickers[0].id, "stickerCount": pack.stickers.count, "version": "1"]
+    }
+
+    private func json(_ body: Data?) -> [String: Any] {
+        (body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
+    }
+
+    /// A frame as the daemon keeps one sent by hand: its upload becomes a
+    /// file of the story's artifact.
+    private func made(_ input: [String: Any], storyId: String, kept: [String: Any]?) -> [String: Any]? {
+        let id = input["id"] as? String ?? "f\(revision)"
+        var frame = kept ?? ["id": id, "kind": "image", "width": NSNull(), "height": NSNull(), "thumbhash": NSNull(), "durationMs": NSNull(), "available": true,
+                             "placement": ["x": 0.5, "y": 0.5, "scale": 1, "rotation": 0], "background": ["#203040", "#405060"], "overlays": [] as [Any]]
+        if let upload = input["upload"] as? [String: Any], let uploadId = upload["uploadId"] as? String, let data = uploads.removeValue(forKey: uploadId) {
+            frames[id] = data
+            let image = UIImage(data: data)
+            frame["width"] = image.map { Int($0.size.width * $0.scale) } ?? NSNull()
+            frame["height"] = image.map { Int($0.size.height * $0.scale) } ?? NSNull()
+            frame["asset"] = ["type": "artifact_file", "artifactId": storyId, "version": revision, "path": "media/\(id).png"]
+        } else if let asset = input["asset"] {
+            frame["asset"] = asset
+        } else if kept == nil {
+            return nil
+        }
+        for key in ["placement", "background", "overlays"] { if let value = input[key] { frame[key] = value } }
+        return frame
+    }
 
     init() {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -198,9 +358,59 @@ actor StoriesHarnessTransport: DirectTransport {
             let keys = ["self", "u2", "u3"]
             return ok(["authors": keys.map(author), "stories": stories, "cursor": "c1"])
         case ("GET", "/v0/stickers/recents"):
-            return ok(["recents": [], "cursor": "c1"])
+            return ok(["recents": recents, "cursor": "c1"])
+        case ("POST", "/v0/stickers/recents"):
+            let body = json(body)
+            let ref: [String: Any] = ["packId": body["packId"] as? String ?? "", "stickerId": body["stickerId"] as? String ?? ""]
+            recents.removeAll { ($0["packId"] as? String) == (ref["packId"] as? String) && ($0["stickerId"] as? String) == (ref["stickerId"] as? String) }
+            recents.insert(ref, at: 0)
+            return ok(["recents": recents, "cursor": "c1"])
+        case ("DELETE", "/v0/stickers/recents"):
+            recents = []
+            return ok(["recents": recents, "cursor": "c1"])
+        case ("GET", "/v0/stickers/packs"):
+            return ok(["packs": Self.packs.map(packObject)])
+        case ("GET", "/v0/stickers/search"):
+            let query = path.split(separator: "?").dropFirst().first.map(String.init) ?? ""
+            let items = URLComponents(string: "?" + query)?.queryItems ?? []
+            let emoji = items.first { $0.name == "emoji" }?.value
+            let q = items.first { $0.name == "q" }?.value?.lowercased()
+            let kind = items.first { $0.name == "kind" }?.value ?? "stickers"
+            let found = Self.packs.filter { $0.kind == kind }.flatMap { pack in
+                pack.stickers.filter { sticker in
+                    if let emoji { return sticker.emoji == emoji }
+                    if let q { return pack.title.lowercased().hasPrefix(q) }
+                    return false
+                }.map { stickerObject(pack.id, $0) }
+            }
+            return ok(["stickers": found])
+        case ("POST", "/v0/artifact-uploads"):
+            revision += 1
+            let id = "u\(revision)"
+            uploads[id] = body ?? Data()
+            return DirectHTTPResponse(status: 201, headers: ["content-type": "application/json"], body: (try? JSONSerialization.data(withJSONObject: ["upload": ["id": id, "size": body?.count ?? 0, "sha256": "", "createdAt": 0, "expiresAt": 0]])) ?? Data())
+        case ("POST", "/v0/stories"):
+            let body = json(body)
+            let id = body["id"] as? String ?? "made\(revision)"
+            if let story = stories[id] { return DirectHTTPResponse(status: 201, headers: [:], body: (try? JSONSerialization.data(withJSONObject: ["story": story])) ?? Data()) }
+            revision += 1
+            let frames = (body["frames"] as? [[String: Any]] ?? []).compactMap { made($0, storyId: id, kept: nil) }
+            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            let story: [String: Any] = ["id": id, "status": "draft", "authorUserId": NSNull(), "createdBy": ["kind": "user", "userId": NSNull()] as [String: Any], "source": NSNull(),
+                                        "caption": body["caption"] ?? NSNull(), "frames": frames, "audience": "self", "artifactVersion": 1, "createdAt": now, "updatedAt": now,
+                                        "postedAt": NSNull(), "expiresAt": NSNull(), "seen": false, "viewCount": NSNull(), "myReaction": NSNull(), "reactions": [] as [Any], "version": "v\(revision)"]
+            stories[id] = story
+            return DirectHTTPResponse(status: 201, headers: ["content-type": "application/json"], body: (try? JSONSerialization.data(withJSONObject: ["story": story])) ?? Data())
+        case ("GET", "/v0/stories"):
+            let drafts = stories.values.filter { ($0["status"] as? String) == "draft" }
+            return ok(["stories": drafts, "nextCursor": NSNull(), "cursor": "c1"])
         default:
             break
+        }
+        if parts.count >= 3, parts[1] == "stickers", parts[2] == "packs", parts.count >= 4, let pack = Self.packs.first(where: { $0.id == parts[3] }) {
+            if parts.count == 4 { return ok(["pack": packObject(pack), "stickers": pack.stickers.map { stickerObject(pack.id, $0) }]) }
+            if parts.count == 7, let data = stickerFiles["\(pack.id)/\(parts[5])"] { return DirectHTTPResponse(status: 200, headers: ["content-type": "image/webp"], body: data) }
+            return DirectHTTPResponse(status: 404)
         }
         guard parts.count >= 3, parts[1] == "stories", var story = stories[parts[2]] else { return DirectHTTPResponse(status: 404) }
         let id = parts[2]
@@ -239,6 +449,32 @@ actor StoriesHarnessTransport: DirectTransport {
         case ("POST", "delete"):
             story["status"] = "deleted"
             stories[id] = nil
+            return ok(["story": story])
+        case ("PATCH", ""):
+            guard headers["If-Match"] == story["version"] as? String else { return DirectHTTPResponse(status: 409) }
+            let body = json(body)
+            revision += 1
+            if let caption = body["caption"] { story["caption"] = caption }
+            if let inputs = body["frames"] as? [[String: Any]] {
+                let held = Dictionary((story["frames"] as? [[String: Any]] ?? []).map { ($0["id"] as? String ?? "", $0) }, uniquingKeysWith: { a, _ in a })
+                story["frames"] = inputs.compactMap { made($0, storyId: id, kept: ($0["id"] as? String).flatMap { held[$0] }) }
+            }
+            story["artifactVersion"] = (story["artifactVersion"] as? Int ?? 1) + 1
+            story["version"] = "v\(revision)"
+            stories[id] = story
+            return ok(["story": story])
+        case ("POST", "post"):
+            guard (story["status"] as? String) == "draft", (json(body)["artifactVersion"] as? Int) == story["artifactVersion"] as? Int else { return DirectHTTPResponse(status: 409) }
+            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            revision += 1
+            story["status"] = "posted"
+            story["postedAt"] = now
+            story["expiresAt"] = now + 86_400_000
+            story["seen"] = true
+            story["viewCount"] = 0
+            story["version"] = "v\(revision)"
+            stories[id] = story
+            order["self", default: []].append(id)
             return ok(["story": story])
         default:
             return DirectHTTPResponse(status: 404)

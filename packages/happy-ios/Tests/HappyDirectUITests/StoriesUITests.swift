@@ -137,6 +137,118 @@ final class StoriesUITests: XCTestCase {
         capture("post-it-home")
     }
 
+    /// A story by hand against the computer: My Story's "+" offers where
+    /// from; a conversation's chart becomes the first frame and a photo from
+    /// the library (the system picker), added from the frames panel, the
+    /// second; a sticker from the test pack, found by search, text and a
+    /// link go on; Post uploads the photo, makes
+    /// the draft and posts it, and the editor closes.
+    func testEditor() {
+        home()
+        let mine = element("story-circle:self")
+        XCTAssertTrue(mine.waitForExistence(timeout: 10), "no stories row")
+        step("library-photo", wait: 4)
+        pause(1)
+        // The "+" at the avatar's bottom right (StoriesRowLayout.item.plus).
+        mine.coordinate(withNormalizedOffset: CGVector(dx: 47.0 / 60, dy: 46.0 / 77)).tap()
+        let fromConversations = app.buttons["From conversations"]
+        XCTAssertTrue(fromConversations.waitForExistence(timeout: 5), "the + offered no sources")
+        pause(0.8)
+        capture("editor-sources")
+        fromConversations.tap()
+
+        // The first conversation with media.
+        let conversations = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH %@", "story-conversation:"))
+        XCTAssertTrue(conversations.firstMatch.waitForExistence(timeout: 6), "no conversations")
+        let firstMedia = element("story-media:0")
+        var found = false
+        for index in 0..<min(conversations.count, 10) {
+            conversations.element(boundBy: index).tap()
+            if firstMedia.waitForExistence(timeout: 4) { found = true; break }
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            pause(0.6)
+        }
+        XCTAssertTrue(found, "no conversation has media")
+        pause(1.5)
+        capture("editor-conversation-media")
+        firstMedia.tap()
+        let canvas = element("story-editor-canvas")
+        XCTAssertTrue(canvas.waitForExistence(timeout: 10), "the editor never opened")
+        pause(2)
+        capture("editor-open")
+
+        // A second frame from the photo library, from the frames panel.
+        element("story-editor-frames").tap()
+        XCTAssertTrue(element("story-editor-add").waitForExistence(timeout: 3))
+        pause(0.6)
+        element("story-editor-add").tap()
+        let photos = app.buttons["Photos"]
+        XCTAssertTrue(photos.waitForExistence(timeout: 4))
+        photos.tap()
+        // The system picker runs out of process; its first cell, the photo
+        // just added, sits at the grid's top left under the access note.
+        let chosen = app.buttons["Done"]
+        XCTAssertTrue(chosen.waitForExistence(timeout: 12), "the photo picker never opened")
+        pause(2)
+        capture("editor-photos")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.125, dy: 0.47)).tap()
+        pause(0.8)
+        XCTAssertTrue(chosen.isEnabled, "the photo wasn't selected")
+        chosen.tap()
+        XCTAssertTrue(element("story-editor-frame:1").waitForExistence(timeout: 15), "the photo didn't become a frame")
+        pause(2)
+        capture("editor-two-frames")
+        element("story-editor-frames").tap()
+        pause(0.5)
+
+        // A sticker from the test pack, by search.
+        element("story-tool-sticker").tap()
+        let search = element("sticker-search")
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("Shapes")
+        let star = element("sticker:happy-test-shapes/star")
+        XCTAssertTrue(star.waitForExistence(timeout: 10), "search didn't find the test pack")
+        pause(1.5)
+        capture("editor-picker")
+        star.tap()
+        pause(1.5)
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05, thenDragTo: canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.72, dy: 0.25)), withVelocity: 500, thenHoldForDuration: 0.3)
+        pause(0.5)
+
+        element("story-tool-text").tap()
+        XCTAssertTrue(element("story-text-entry").waitForExistence(timeout: 3))
+        app.typeText("Made on the phone")
+        element("story-text-done").tap()
+        pause(1)
+
+        // A link from the sheet's LINK pill.
+        element("story-tool-sticker").tap()
+        XCTAssertTrue(element("sticker-link").waitForExistence(timeout: 5), "no LINK pill")
+        element("sticker-link").tap()
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 4))
+        alert.textFields.element(boundBy: 0).typeText("happy.engineering")
+        alert.buttons["Done"].tap()
+        pause(1)
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05, thenDragTo: canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)), withVelocity: 500, thenHoldForDuration: 0.3)
+        pause(0.5)
+        element("story-editor-caption").tap()
+        app.typeText("Two frames, by hand\n")
+        pause(1)
+        capture("editor-composed")
+
+        element("story-editor-post").tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: canvas)
+        waitForExpectations(timeout: 90)
+        pause(2.5)
+        capture("editor-posted-row")
+        mine.tap()
+        XCTAssertTrue(element("story-views").waitForExistence(timeout: 8), "My Story didn't open")
+        pause(2)
+        capture("editor-posted-viewer")
+    }
+
     /// My Story from the row, against the computer: a story posted there
     /// opens in the viewer grown from the circle, shows its frame with its
     /// overlays, its views, and deleting it from "more" takes it away.
