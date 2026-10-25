@@ -229,8 +229,13 @@ final class StoriesMediaChooser: NSObject, PHPickerViewControllerDelegate, UIIma
         var pixels = [UInt8](repeating: 0, count: 4 * 16)
         guard let context = CGContext(data: &pixels, width: 1, height: 16, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return ["#000000", "#000000"] }
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1, height: 16))
-        // The first row in memory is the picture's top.
-        func hex(_ row: Int) -> String { String(format: "#%02X%02X%02X", pixels[row * 4], pixels[row * 4 + 1], pixels[row * 4 + 2]) }
+        // The first row in memory is the picture's top. Scaling down blends
+        // the edge rows with the clear outside, so they're un-premultiplied.
+        func hex(_ row: Int) -> String {
+            let alpha = max(1, Int(pixels[row * 4 + 3]))
+            func channel(_ index: Int) -> Int { min(255, Int(pixels[row * 4 + index]) * 255 / alpha) }
+            return String(format: "#%02X%02X%02X", channel(0), channel(1), channel(2))
+        }
         return [hex(0), hex(15)]
     }
 

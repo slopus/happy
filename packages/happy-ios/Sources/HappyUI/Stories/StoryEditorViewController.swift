@@ -27,7 +27,8 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
     private let captionField = UIVisualEffectView(effect: StoryEditorViewController.fieldGlass)
     private static var fieldGlass: UIGlassEffect {
         let glass = UIGlassEffect(style: .regular)
-        glass.tintColor = UIColor(white: 1, alpha: 0.025)
+        // Telegram's field renders as a deep shade of the frame under it.
+        glass.tintColor = UIColor(white: 0, alpha: 0.2)
         return glass
     }
     private let caption = UITextField()
@@ -174,7 +175,7 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
         captionField.isUserInteractionEnabled = false
         captionPanel.addSubview(captionField)
         caption.text = draft.caption
-        caption.attributedPlaceholder = NSAttributedString(string: Strings.Stories.caption, attributes: [.foregroundColor: UIColor(white: 1, alpha: 0.6)])
+        caption.attributedPlaceholder = NSAttributedString(string: Strings.Stories.caption, attributes: [.foregroundColor: UIColor(white: 1, alpha: 0.8)])
         caption.textColor = .white
         caption.tintColor = .white
         caption.font = .systemFont(ofSize: 17)
