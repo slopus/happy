@@ -13,6 +13,15 @@ public struct StoryCardLayout: Equatable, Sendable {
         public static let bar: CGFloat = 32
         public static let button = CGSize(width: 56, height: 32)
         public static let buttonGap: CGFloat = 4
+        /// A story no longer there: its mark, middle of the canvas, the
+        /// words 10 under it, 16 in from the sides; as Telegram marks an
+        /// expired story, the mark beside the words, here above them.
+        public static let notice: CGFloat = 36
+        public static let noticeGap: CGFloat = 10
+        public static let noticeInset: CGFloat = 16
+        /// "Posted" follows a story ring as the row draws one, 14 across.
+        public static let ring: CGFloat = 14
+        public static let ringGap: CGFloat = 6
     }
 
     public var size: CGSize
@@ -20,8 +29,13 @@ public struct StoryCardLayout: Equatable, Sendable {
     public var bar: CGRect
     public var post: CGRect
     public var edit: CGRect
-    /// "Draft", "Posted", or "This story was deleted": the bar's width.
+    /// "Draft" or "Posted": the bar's width, after the ring when posted.
     public var label: CGRect
+    public var ring: CGRect
+    public var postedLabel: CGRect
+    /// A story no longer there: its mark, and where its words start.
+    public var notice: CGRect
+    public var noticeText: CGRect
 
     public init(width: CGFloat) {
         typealias M = Metrics
@@ -31,6 +45,10 @@ public struct StoryCardLayout: Equatable, Sendable {
         post = CGRect(origin: bar.origin, size: M.button)
         edit = post.offsetBy(dx: M.button.width + M.buttonGap, dy: 0)
         label = bar
+        ring = CGRect(x: 0, y: bar.midY - M.ring / 2, width: M.ring, height: M.ring)
+        postedLabel = CGRect(x: ring.maxX + M.ringGap, y: bar.minY, width: max(0, canvasWidth - ring.maxX - M.ringGap), height: M.bar)
+        notice = CGRect(x: ((canvasWidth - M.notice) / 2).rounded(.down), y: (canvas.midY - M.notice).rounded(.down), width: M.notice, height: M.notice)
+        noticeText = CGRect(x: M.noticeInset, y: notice.maxY + M.noticeGap, width: max(0, canvasWidth - 2 * M.noticeInset), height: max(0, canvas.maxY - notice.maxY - M.noticeGap - M.noticeInset))
         size = CGSize(width: canvasWidth, height: bar.maxY)
     }
 

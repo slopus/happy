@@ -12,8 +12,11 @@ protocol StoriesProviding: AnyObject {
 
 /// A story drawn inline in a conversation, as `draft_story` presents it
 /// (happy-agent `API.md` "The inline draft"): its first frame drawn by the
-/// viewer's own canvas, followed live. A draft has Post and Edit under it;
-/// posted, it reads "Posted" and opens the viewer; deleted, it says so.
+/// viewer's own canvas, followed live. A draft has Post and Edit under it,
+/// Post turning to a spinner while it posts; posted, it reads "Posted"
+/// after a story ring and opens the viewer; deleted, a mark and the words
+/// say so where it was, as Telegram marks a story no longer there. Each
+/// change crossfades.
 final class StoryInlineView: UIView {
     private let canvas = StoryCanvasView()
     private let placeholder = UIView()
@@ -22,6 +25,11 @@ final class StoryInlineView: UIView {
     private let postButton = UIButton(type: .system)
     private let editButton = UIButton(type: .system)
     private let status = UILabel()
+    private let ring = UIImageView(image: StoryInlineView.ringImage)
+    private let notice = UIImageView(image: StoryInlineView.goneImage.withRenderingMode(.alwaysTemplate))
+    private let postSpinner = UIActivityIndicatorView(style: .medium)
+    /// What was last drawn, so a change can crossfade.
+    private var drawnState: String?
     private var storyId: String?
     private weak var session: StoriesSession?
     private var watch: StemCellsWatch?
@@ -48,6 +56,13 @@ final class StoryInlineView: UIView {
         message.numberOfLines = 0
         placeholder.addSubview(message)
         placeholder.addSubview(spinner)
+        notice.tintColor = UIColor(Palette.textSecondary)
+        notice.isHidden = true
+        placeholder.addSubview(notice)
+        ring.isHidden = true
+        addSubview(ring)
+        postSpinner.hidesWhenStopped = true
+        addSubview(postSpinner)
         for (button, title, id) in [(postButton, Strings.Stories.post, "story-inline-post"), (editButton, Strings.Stories.edit, "story-inline-edit")] {
             button.setTitle(title, for: .normal)
             button.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
@@ -76,8 +91,12 @@ final class StoryInlineView: UIView {
         accessibilityIdentifier = id.map { "story-inline:\($0)" }
         watch?.invalidate(); watch = nil
         canvas.stop()
-        render(nil)
+        // Another story, or none: nothing to crossfade from.
+        drawnState = nil
+        postSpinner.stopAnimating()
+        if id == nil { spinner.stopAnimating() }
         attach()
+        if watch == nil { render(nil) }
     }
 
     override func didMoveToWindow() {
@@ -154,19 +173,28 @@ final class StoryInlineView: UIView {
             message.text = nil
         }
         if message.text == nil, shown == nil { spinner.startAnimating() } else { spinner.stopAnimating() }
+        notice.isHidden = message.text == nil
         let isDraft = shown?.status == .draft
         let mayPost = isDraft && isAuthor
-        postButton.isHidden = !mayPost
+        postButton.isHidden = !mayPost || posting
         editButton.isHidden = !mayPost
-        postButton.isEnabled = !posting
         editButton.isEnabled = !posting
+        if mayPost, posting { postSpinner.startAnimating() } else { postSpinner.stopAnimating() }
         status.isHidden = mayPost
         status.text = switch shown?.status {
         case .posted: Strings.Stories.posted
         case .draft: Strings.Stories.draft
         default: nil
         }
-        accessibilityValue = shown.map { "\($0.status.rawValue)#\($0.artifactVersion)" } ?? (gone ? "gone" : "loading")
+        ring.isHidden = shown?.status != .posted
+        // A story that changes state while in sight crossfades to it; the
+        // placeholder drawn before the first snapshot is no state to leave.
+        let state = mayPost && posting ? "posting" : shown.map(\.status.rawValue) ?? message.text ?? "loading"
+        if let drawnState, drawnState != state, window != nil {
+            UIView.transition(with: self, duration: 0.2, options: [.transitionCrossDissolve, .allowUserInteraction], animations: nil)
+        }
+        if snapshot != nil { drawnState = state }
+        accessibilityValue = shown.map { "\($0.status.rawValue)#\($0.artifactVersion)" } ?? (story?.status == .deleted && !off ? "deleted" : gone ? "gone" : "loading")
         accessibilityLabel = shown?.caption
         setNeedsLayout()
     }
@@ -176,12 +204,58 @@ final class StoryInlineView: UIView {
         let layout = StoryCardLayout(width: bounds.width)
         canvas.frame = layout.canvas
         placeholder.frame = layout.canvas
-        message.frame = placeholder.bounds.insetBy(dx: 16, dy: 0)
+        notice.frame = layout.notice
+        if notice.isHidden {
+            message.frame = placeholder.bounds.insetBy(dx: StoryCardLayout.Metrics.noticeInset, dy: 0)
+        } else {
+            let fits = message.sizeThatFits(CGSize(width: layout.noticeText.width, height: .greatestFiniteMagnitude))
+            message.frame = CGRect(x: layout.noticeText.minX, y: layout.noticeText.minY, width: layout.noticeText.width, height: min(layout.noticeText.height, ceil(fits.height)))
+        }
         spinner.center = CGPoint(x: placeholder.bounds.midX, y: placeholder.bounds.midY)
         postButton.frame = layout.post
+        postSpinner.center = CGPoint(x: layout.post.minX + postSpinner.bounds.width / 2, y: layout.post.midY)
         editButton.frame = layout.edit
-        status.frame = layout.label
+        ring.frame = layout.ring
+        status.frame = ring.isHidden ? layout.label : layout.postedLabel
     }
+
+    // MARK: Marks
+
+    /// The row's unseen ring, small: a posted story's.
+    static let ringImage: UIImage = {
+        let size = StoryCardLayout.Metrics.ring
+        return UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).image { context in
+            let cg = context.cgContext
+            let width: CGFloat = 2
+            cg.addEllipse(in: CGRect(x: 0, y: 0, width: size, height: size).insetBy(dx: width / 2, dy: width / 2))
+            cg.setLineWidth(width)
+            cg.replacePathWithStrokedPath()
+            cg.clip()
+            let colors = [UIColor(Palette.storiesUnseenTop).cgColor, UIColor(Palette.storiesUnseenBottom).cgColor] as CFArray
+            if let gradient = CGGradient(colorsSpace: nil, colors: colors, locations: [0, 1]) {
+                cg.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size), options: [])
+            }
+        }
+    }()
+
+    /// A story no longer there: a seen ring broken into dashes, struck through.
+    static let goneImage: UIImage = {
+        let size = StoryCardLayout.Metrics.notice
+        return UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).image { context in
+            let cg = context.cgContext
+            cg.setStrokeColor(UIColor.black.cgColor)
+            cg.setLineCap(.round)
+            cg.setLineWidth(2)
+            let circle = CGRect(x: 0, y: 0, width: size, height: size).insetBy(dx: 3, dy: 3)
+            let circumference = .pi * circle.width
+            cg.setLineDash(phase: 0, lengths: [circumference / 12 - 4, 4])
+            cg.strokeEllipse(in: circle)
+            cg.setLineDash(phase: 0, lengths: [])
+            cg.move(to: CGPoint(x: size * 0.28, y: size * 0.28))
+            cg.addLine(to: CGPoint(x: size * 0.72, y: size * 0.72))
+            cg.strokePath()
+        }
+    }()
 
     // MARK: Acts
 

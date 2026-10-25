@@ -119,6 +119,38 @@ final class StoriesViewerUITests: XCTestCase {
         wait("paused", "0")
     }
 
+    /// A conversation's story card through its states: a draft with Post
+    /// and Edit, Post spinning then "Posted" after a ring, opening the
+    /// viewer, and deleted, a mark and the words where it was.
+    func testCardStates() {
+        app.terminate()
+        app.launchArguments += ["-storiesCard", "-storiesSlowMotion", "4"]
+        app.launch()
+        wait("card", "draft", timeout: 10, "the card never drew the draft")
+        let post = element("story-inline-post")
+        XCTAssertTrue(post.waitForExistence(timeout: 4))
+        pause(2)
+        capture("card-draft")
+        post.tap()
+        wait("card", "posted", timeout: 10, "Post didn't post")
+        let status = element("story-inline-status")
+        XCTAssertEqual(status.label, "Posted")
+        XCTAssertFalse(post.exists && post.isHittable, "Post stayed after posting")
+        pause(2)
+        capture("card-posted")
+        element("story-inline:d1").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        wait("viewer", "1", timeout: 8, "the posted card didn't open the viewer")
+        pause(3)
+        element("story-close").tap()
+        wait("viewer", "0", timeout: 8)
+        pause(2)
+        element("harness-delete-card").tap()
+        wait("card", "deleted", timeout: 10, "the card didn't show the story deleted")
+        XCTAssertTrue(app.staticTexts["This story was deleted"].exists)
+        pause(2)
+        capture("card-deleted")
+    }
+
     func testSomeoneElsesStories() {
         let steve = element("story-circle:Steve")
         XCTAssertTrue(steve.waitForExistence(timeout: 8), "no ring for Steve")

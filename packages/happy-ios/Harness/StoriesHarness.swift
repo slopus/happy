@@ -76,6 +76,12 @@ final class StoriesHarness {
         probe.alpha = 0.02
         host.view.addSubview(probe)
         window.rootViewController = host
+        // A conversation's story card over home, on a draft of the person's.
+        if arguments.contains("-storiesCard") {
+            let card = StoriesHarnessCard(session: session)
+            card.modalPresentationStyle = .fullScreen
+            DispatchQueue.main.async { [weak host] in host?.present(card, animated: false) }
+        }
         Task { await transport.drawFrames(Self.frames()) }
         Task { await transport.drawStickers(Self.stickers()) }
         watch = session.watch { [weak self] snapshot in
@@ -150,6 +156,11 @@ final class StoriesHarness {
             probe.accessibilityValue = "editor=1 frames=\(editor.draft.frames.count) selected=\(editor.draft.selected) overlays=\(kinds.joined(separator: ",")) top=\(top) trail=\(editor.trail.joined(separator: ";")) saved=\(made) haptics=\(recorder.played.joined(separator: ","))"
             return
         }
+        if let card = host.presentedViewController as? StoriesHarnessCard {
+            let viewer = card.presentedViewController is StoryViewerViewController
+            probe.accessibilityValue = "card=\(card.state) viewer=\(viewer ? 1 : 0)"
+            return
+        }
         guard let viewer = host.presentedViewController as? StoryViewerViewController else {
             let count = snapshot.feed?.authors.reduce(0) { $0 + $1.storyIds.count } ?? 0
             probe.accessibilityValue = "viewer=0 editor=0 header=\(host.stories.unlocked ? "open" : "closed") stories=\(count) title=\(host.titleX) saved=\(made) haptics=\(recorder.played.joined(separator: ","))"
@@ -219,6 +230,7 @@ final class StoriesHarness {
             ("f-s1", .systemGreen, .systemBlue, CGSize(width: 720, height: 1280)),
             ("f-s2", .systemPurple, .systemRed, CGSize(width: 720, height: 1280)),
             ("f-a1", .systemYellow, .systemBrown, CGSize(width: 720, height: 1280)),
+            ("f-d1", .systemTeal, .systemIndigo, CGSize(width: 720, height: 1280)),
         ]
         var frames: [String: Data] = [:]
         for (name, top, bottom, size) in names {
@@ -363,6 +375,16 @@ actor StoriesHarnessTransport: DirectTransport {
                 text("o7", "Ana's story", fill: "stroke", color: "#2040FF", font: "noteworthy", t(0.5, 0.3, 1.4)),
             ]),
         ], caption: nil)
+        // A draft of the person's, for the story card.
+        var draft = story("d1", author: nil, postedAgo: 5, frames: [
+            frame("f-d1", width: 720, height: 1280, background: ["#203040", "#405060"], overlays: [
+                text("o8", "A draft", fill: "filled", color: "#FFFFFF", t(0.5, 0.25, 1.2)),
+            ]),
+        ], caption: "Drafted in a conversation")
+        for key in ["postedAt", "expiresAt", "viewCount"] { draft[key] = NSNull() }
+        draft["status"] = "draft"
+        draft["seen"] = false
+        stories["d1"] = draft
         if videos {
             func video(_ id: String) -> [String: Any] {
                 var made = frame(id, width: 360, height: 640, background: ["#202020", "#000000"], overlays: [])
@@ -783,6 +805,46 @@ enum StoriesHarnessVideo {
                                                                    presentationTimeStamp: CMTime(value: CMTimeValue(start), timescale: CMTimeScale(rate)),
                                                                    packetDescriptions: nil, sampleBufferOut: &buffer) == noErr else { return nil }
         return buffer
+    }
+}
+/// A conversation's story card alone (`-storiesCard`), on the draft d1:
+/// Post, a delete as the viewer's would make, and the viewer it opens.
+final class StoriesHarnessCard: UIViewController, StoriesProviding {
+    let session: StoriesSession
+    var stories: StoriesSession? { session }
+    private let card = StoryInlineView()
+    private let delete = UIButton(type: .custom)
+
+    init(session: StoriesSession) {
+        self.session = session
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// What the card shows, for the probe.
+    var state: String { card.accessibilityValue?.split(separator: "#").first.map(String.init) ?? "none" }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor(Palette.groupedBackground)
+        view.addSubview(card)
+        card.apply("d1")
+        delete.accessibilityIdentifier = "harness-delete-card"
+        delete.backgroundColor = UIColor.black.withAlphaComponent(0.02)
+        let session = session
+        delete.addAction(UIAction { _ in
+            let store = session.store
+            Task { try? await store.delete("d1") }
+        }, for: .touchUpInside)
+        view.addSubview(delete)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let size = StoryCardLayout.size(width: view.bounds.width - 32)
+        card.frame = CGRect(origin: CGPoint(x: 16, y: view.safeAreaInsets.top + 24), size: size)
+        delete.frame = CGRect(x: view.bounds.width - 44, y: view.bounds.height - 60, width: 44, height: 44)
     }
 }
 #endif
