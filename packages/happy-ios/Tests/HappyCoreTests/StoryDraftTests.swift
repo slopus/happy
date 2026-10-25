@@ -101,7 +101,7 @@ final class StoryDraftTests: XCTestCase {
     }
 
     /// Keeping edits over a newer version: it becomes the base, the edits
-    /// stay, and a kept frame it no longer has goes.
+    /// stay, and a kept frame it no longer has is sent by its asset.
     func testRebasingOnANewerVersion() {
         func frame(_ id: String) -> StoryFrame {
             StoryFrame(id: id, kind: .image, width: 100, height: 100, thumbhash: nil, durationMs: nil, asset: .chatMedia(agentId: "a", toolCallId: id, index: 0), available: true)
@@ -115,10 +115,13 @@ final class StoryDraftTests: XCTestCase {
         draft.add(photo())
         draft.rebase(on: story("v2", [frame("f2")]))
         XCTAssertEqual(draft.original?.version, "v2")
-        XCTAssertEqual(draft.frames.map(\.id).first, "f2")
-        XCTAssertEqual(draft.frames.count, 2)
-        XCTAssertEqual(draft.selected, 1)
-        XCTAssertEqual(draft.frames[0].overlays.count, 1)
+        XCTAssertEqual(draft.frames.map(\.id).prefix(2), ["f1", "f2"])
+        XCTAssertEqual(draft.frames[0].media, .asset(.chatMedia(agentId: "a", toolCallId: "f1", index: 0)))
+        XCTAssertEqual(draft.frames[1].media, .kept)
+        XCTAssertEqual(draft.frames.count, 3)
+        XCTAssertEqual(draft.selected, 2)
+        XCTAssertEqual(draft.frames[1].overlays.count, 1)
         XCTAssertTrue(draft.hasChanges)
+        XCTAssertNoThrow(try draft.inputs(uploaded: [draft.frames[2].id: "u1"]))
     }
 }

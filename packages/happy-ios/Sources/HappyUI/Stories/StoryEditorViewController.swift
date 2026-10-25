@@ -446,7 +446,9 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
         switch recognizer.state {
         case .began:
             active.insert(recognizer)
-            if target == nil { begin(at: recognizer.location(in: canvas), by: recognizer) }
+            // A pinch or turn joining a drag that began on the media takes the selected overlay.
+            let joins = target == .media && !(recognizer is UIPanGestureRecognizer) && selected != nil
+            if target == nil || joins { begin(at: recognizer.location(in: canvas), by: recognizer) }
         case .changed:
             break
         case .ended, .cancelled, .failed:
@@ -493,8 +495,8 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
             StoriesHaptics.prepare(.snap, .trash)
             render()
         } else if let frame = draft.current {
+            // The selection stays; only a tap lets go of it.
             target = .media
-            select(nil)
             let t = frame.placement
             raw = (CGPoint(x: CGFloat(t.x) * size.width, y: CGFloat(t.y) * size.height), CGFloat(t.scale), CGFloat(t.rotation))
         }
@@ -520,7 +522,12 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
         switch target {
         case .overlay(let id):
             guard let overlay = draft.overlay(id), let view = canvas.overlayView(id) else { return }
-            let result = snapper.snap(center: raw.center, half: StorySnapper.half(box(view, scale: scale), rotation: raw.rotation), rotation: raw.rotation, canvas: size, edges: Self.edges(overlay))
+            var result = snapper.snap(center: raw.center, half: StorySnapper.half(box(view, scale: scale), rotation: raw.rotation), rotation: raw.rotation, canvas: size, edges: Self.edges(overlay) && !handling)
+            // A handle grows and turns it about its centre; only the angle snaps.
+            if handling {
+                result.center = raw.center
+                result.guides = []
+            }
             if result.snapped {
                 StoriesHaptics.play(.snap)
                 note("snap")
@@ -528,22 +535,22 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
             showGuides(result.guides, angle: result.turned ? result.rotation : nil, through: result.center)
             let rotation = Double(atan2(sin(result.rotation), cos(result.rotation)))
             draft.move(id, to: StoryTransform(x: Double(result.center.x / size.width), y: Double(result.center.y / size.height), scale: Double(scale), rotation: rotation))
-            let dragging = pan.map { active.contains($0) } ?? false
+            let dragging = !handling && active.count == 1 && pan.map { active.contains($0) && $0.numberOfTouches == 1 } ?? false
             binShown(dragging)
-            render()
-            if dragging, let pan {
-                let finger = pan.location(in: self.view)
-                let over = layout.map { $0.bin.insetBy(dx: -20, dy: -20).contains(finger) } ?? false
-                if over != overBin {
-                    overBin = over
-                    bin.open = over
-                    if over {
-                        StoriesHaptics.play(.trash)
-                        note("trash-over")
-                    }
+            let over = dragging && pan.map { finger in layout.map { $0.bin.insetBy(dx: -20, dy: -20).contains(finger.location(in: self.view)) } ?? false } ?? false
+            if over != overBin {
+                overBin = over
+                bin.open = over
+                if over {
+                    StoriesHaptics.play(.trash)
+                    note("trash-over")
+                } else {
+                    // Pulled back out: it comes back to the finger.
+                    UIView.animate(withDuration: 0.15) { view.alpha = 1 }
                 }
-                if over { suck(view) }
             }
+            render()
+            if over { suck(view) }
         case .media:
             draft.place(media: StoryTransform(x: Double(raw.center.x / size.width), y: Double(raw.center.y / size.height), scale: Double(scale), rotation: Double(turned)))
             render()
@@ -586,14 +593,13 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
     /// Dropped on the bin: it falls in and goes.
     private func trash(_ id: String) {
         selected = nil
-        let view = canvas.overlayView(id)
+        draft.remove(id)
+        note("trashed")
+        guard let view = canvas.overlayView(id) else { return render() }
         UIView.animate(withDuration: 0.2) {
-            view?.alpha = 0
-            view?.transform = view?.transform.scaledBy(x: 0.01, y: 0.01) ?? .identity
+            view.alpha = 0
+            view.transform = view.transform.scaledBy(x: 0.01, y: 0.01)
         } completion: { _ in
-            view?.alpha = 1
-            self.draft.remove(id)
-            self.note("trashed")
             self.render()
         }
     }
@@ -639,6 +645,7 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
         let size = canvas.bounds.size
         switch state {
         case .began:
+            handling = true
             raw = (CGPoint(x: CGFloat(t.x) * size.width, y: CGFloat(t.y) * size.height), CGFloat(t.scale), CGFloat(t.rotation))
             handleStart = (raw.scale, raw.rotation)
             if let view = canvas.overlayView(selected), let overlay = draft.overlay(selected) {
@@ -650,10 +657,13 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
             raw.rotation = handleStart.rotation + turn
             follow()
         default:
+            handling = false
             finishGesture()
         }
     }
 
+    /// A handle, not the canvas, is moving the selected overlay.
+    private var handling = false
     private var handleStart = (scale: CGFloat(1), rotation: CGFloat(0))
 
     @objc private func tapped(_ tap: UITapGestureRecognizer) {
@@ -770,7 +780,10 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
             chromeShown(true)
             if let id { canvas.overlayView(id)?.isHidden = false }
         }
-        entry.onCancel = { end(); self.render() }
+        entry.onCancel = { [weak self] in
+            end()
+            self?.render()
+        }
         entry.onDone = { [weak self] text, style, scale in
             guard let self else { return }
             end()
@@ -915,7 +928,7 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
                 }
                 note("saved:\(story.artifactVersion)")
                 // From here it is an edit of what was saved; the files are its own.
-                adopt(story)
+                adopt(story, ours: true)
                 if post, story.status == .draft {
                     stage = "post"
                     story = try await store.post(story.id, artifactVersion: story.artifactVersion)
@@ -933,7 +946,7 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
                 note("refused:\(stage)")
                 let refusal = StoryRefusal(error)
                 if refusal?.isConflict == true, !draft.isNew {
-                    conflicted(post: post, closes: closes)
+                    conflicted(post: post, closes: closes, stage: stage, message: refusal?.message)
                     return
                 }
                 let alert = UIAlertController(title: stage == "post" ? Strings.Stories.postFailed : Strings.Stories.saveFailed, message: refusal?.message, preferredStyle: .alert)
@@ -943,42 +956,66 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
         }
     }
 
-    /// The story was saved elsewhere since this editor read it: the newer
-    /// version is shown, or these edits are kept over it and sent again.
-    private func conflicted(post: Bool, closes: Bool) {
+    /// A 409. When the story was saved elsewhere since this editor read it,
+    /// a save offers the newer version or these edits kept over it; a post
+    /// shows the newer version, to be posted only once seen. A deleted story
+    /// or one with nothing to show is refused as the daemon says.
+    private func conflicted(post: Bool, closes: Bool, stage: String, message: String?) {
         let client = session.client
         let storyId = draft.storyId
+        let base = draft.original
         Task { [weak self] in
             let latest = try? await client.story(storyId)
             guard let self else { return }
-            let alert = UIAlertController(title: Strings.Stories.newerVersion, message: Strings.Stories.newerVersionDetail, preferredStyle: .alert)
-            if let latest {
-                alert.addAction(UIAlertAction(title: Strings.Stories.useLatest, style: .default) { [weak self] _ in
-                    self?.adopt(latest)
-                    self?.note("conflict:latest")
-                    self?.render()
-                })
-                alert.addAction(UIAlertAction(title: Strings.Stories.overwrite, style: .default) { [weak self] _ in
-                    guard let self else { return }
-                    draft.rebase(on: latest)
-                    note("conflict:mine")
-                    render()
-                    commit(post: post, closes: closes)
-                })
+            guard let latest, latest.status != .deleted, latest.version != base?.version || latest.artifactVersion != base?.artifactVersion else {
+                let alert = UIAlertController(title: stage == "post" ? Strings.Stories.postFailed : Strings.Stories.saveFailed, message: message, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: Strings.Stories.done, style: .default))
+                present(alert, animated: true)
+                return
             }
+            if stage == "post" {
+                adopt(latest, ours: false)
+                note("conflict:latest")
+                render()
+                let alert = UIAlertController(title: Strings.Stories.newerVersion, message: Strings.Stories.newerVersionDetail, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: Strings.Stories.done, style: .default))
+                present(alert, animated: true)
+                return
+            }
+            let alert = UIAlertController(title: Strings.Stories.newerVersion, message: Strings.Stories.newerVersionDetail, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: Strings.Stories.useLatest, style: .default) { [weak self] _ in
+                self?.adopt(latest, ours: false)
+                self?.note("conflict:latest")
+                self?.render()
+            })
+            alert.addAction(UIAlertAction(title: Strings.Stories.overwrite, style: .default) { [weak self] _ in
+                guard let self else { return }
+                draft.rebase(on: latest)
+                note("conflict:mine")
+                render()
+                commit(post: post, closes: closes)
+            })
             alert.addAction(UIAlertAction(title: Strings.Stories.cancel, style: .cancel))
             present(alert, animated: true)
         }
     }
 
     /// Edits `story` from here on: the frames are the story's own now.
-    private func adopt(_ story: Story) {
+    /// `ours` (this editor's own save) keeps drawing its frames from the
+    /// device; another's version is read afresh.
+    private func adopt(_ story: Story, ours: Bool) {
         let selectedId = draft.current?.id
         draft = StoryDraft(editing: story)
         if let index = draft.frames.firstIndex(where: { $0.id == selectedId }) { draft.select(index) }
         caption.text = draft.caption
         uploaded = [:]
-        local = [:]
+        if ours {
+            let kept = Set(draft.frames.map(\.id))
+            local = local.filter { kept.contains($0.key) }
+        } else {
+            local = [:]
+            thumbImages = [:]
+        }
         selected = nil
     }
 
@@ -1080,9 +1117,14 @@ final class StorySelectionView: UIView {
         CATransaction.commit()
     }
 
-    /// Only the handles take touches; the rest falls through to the canvas.
+    /// Only the handles take touches, and only their outer halves on a
+    /// small overlay: the rest falls through to the canvas.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        handles.contains { hypot(point.x - $0.position.x, point.y - $0.position.y) <= 22 }
+        let reach = min(22, max(10, bounds.width / 4))
+        return handles.contains { handle in
+            let outward = handle.position.x < bounds.midX ? point.x <= handle.position.x + reach / 2 : point.x >= handle.position.x - reach / 2
+            return outward && hypot(point.x - handle.position.x, point.y - handle.position.y) <= reach
+        }
     }
 
     @objc private func dragged(_ pan: UIPanGestureRecognizer) {
@@ -1097,7 +1139,8 @@ final class StorySelectionView: UIView {
             let length = hypot(start.dx, start.dy)
             guard length > 1 else { return }
             let scale = hypot(vector.dx, vector.dy) / length
-            let turn = atan2(vector.dy, vector.dx) - atan2(start.dy, start.dx)
+            // The angle between the two, never across atan2's ±π seam.
+            let turn = atan2(start.dx * vector.dy - start.dy * vector.dx, start.dx * vector.dx + start.dy * vector.dy)
             onHandle?(.changed, scale, turn)
         default:
             onHandle?(pan.state, 1, 0)

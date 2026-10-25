@@ -119,11 +119,18 @@ final class StoriesMediaChooser: NSObject, PHPickerViewControllerDelegate, UIIma
         picker.presentationController?.delegate = self
     }
 
-    private func refuse() {
+    private func refuse(attempt: Int = 0) {
         Self.live.remove(self)
+        guard let host else { return }
+        // A picker on its way out would drop the alert.
+        if host.presentedViewController != nil, attempt < 20 {
+            Self.live.insert(self)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.refuse(attempt: attempt + 1) }
+            return
+        }
         let alert = UIAlertController(title: Strings.Stories.couldntOpen, message: nil, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: Strings.Stories.done, style: .default))
-        host?.present(alert, animated: true)
+        host.present(alert, animated: true)
     }
 
     private static func read(_ given: NSItemProvider) async -> Picked? {

@@ -72,14 +72,15 @@ public struct StoryDraft: Equatable, Sendable {
 
     /// Keeps these edits over `latest`, a newer version saved elsewhere, so
     /// the next save replaces it. A kept frame the newer version no longer
-    /// has can't be kept, and goes.
+    /// has is sent again by its media's identity.
     public mutating func rebase(on latest: Story) {
         guard latest.id == storyId else { return }
         let held = Set(latest.frames.map(\.id))
-        let selectedId = current?.id
+        let was = original
+        for index in frames.indices where frames[index].media == .kept && !held.contains(frames[index].id) {
+            if let asset = was?.frames.first(where: { $0.id == frames[index].id })?.asset { frames[index].media = .asset(asset) }
+        }
         original = latest
-        frames.removeAll { $0.media == .kept && !held.contains($0.id) }
-        selected = frames.firstIndex { $0.id == selectedId } ?? min(selected, max(0, frames.count - 1))
     }
 
     public var isNew: Bool { original == nil }

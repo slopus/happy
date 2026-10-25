@@ -206,7 +206,12 @@ final class StickerPickerViewController: UIViewController, UICollectionViewDataS
             }
             guard let self, !Task.isCancelled else { return }
             for pack in contents { media.remember(pack) }
-            packs = contents
+            // The app ships no VP9 decoder: webm stickers are left out.
+            packs = contents.map { pack in
+                var pack = pack
+                pack.stickers.removeAll { $0.format == .webm }
+                return pack
+            }.filter { !$0.stickers.isEmpty }
             rebuild()
         }
     }
@@ -351,7 +356,7 @@ final class StickerPickerViewController: UIViewController, UICollectionViewDataS
             guard !Task.isCancelled else { return }
             let found = (try? await client.searchStickers(query: isEmoji ? nil : String(text.prefix(64)), emoji: isEmoji ? text : nil, kind: kind)) ?? []
             guard let self, !Task.isCancelled else { return }
-            results = found
+            results = found.filter { $0.format != .webm }
             rebuild()
         }
     }

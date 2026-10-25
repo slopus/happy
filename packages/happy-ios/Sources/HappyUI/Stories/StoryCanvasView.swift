@@ -114,6 +114,14 @@ final class StoryCanvasView: UIView {
             case .asset(let asset, let poster):
                 mediaView.image = poster
                 if frame.kind == .video, playsVideo, let media { attach(media.player(asset)) }
+                if frame.kind == .image, let media {
+                    let pixels = Self.pixels(bounds.size, scale: traitCollection.displayScale)
+                    loading = Task { [weak self] in
+                        let image = await media.assetImage(asset, pixels: pixels)
+                        guard let self, !Task.isCancelled, self.shownFrame?.id == frame.id, let image else { return }
+                        self.mediaView.image = image
+                    }
+                }
             }
             markReady()
             return
