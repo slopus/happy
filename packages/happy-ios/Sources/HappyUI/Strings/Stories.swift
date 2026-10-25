@@ -45,6 +45,21 @@ extension Strings {
             if minutes < 60 { return "\(minutes)m ago" }
             return "\(minutes / 60)h ago"
         }
+        /// When something happened, both in epoch milliseconds: how long
+        /// ago within a day, then "yesterday at" its time as Telegram's
+        /// list says, then the date.
+        public static func when(_ milliseconds: Int64, now: Int64, calendar: Calendar = .current) -> String {
+            if now - milliseconds < 86_400_000 { return ago(now - milliseconds) }
+            let date = Date(timeIntervalSince1970: TimeInterval(milliseconds) / 1000)
+            var style = Date.FormatStyle.dateTime
+            style.timeZone = calendar.timeZone
+            style.locale = Locale(identifier: "en_US")
+            if let yesterday = calendar.date(byAdding: .day, value: -1, to: Date(timeIntervalSince1970: TimeInterval(now) / 1000)),
+               calendar.isDate(date, inSameDayAs: yesterday) {
+                return "yesterday at \(date.formatted(style.hour().minute()))"
+            }
+            return date.formatted(style.month(.abbreviated).day())
+        }
 
         // The inline story.
         public static let post = "Post"

@@ -330,7 +330,7 @@ actor StoriesHarnessTransport: DirectTransport {
             frame("f-m1b", width: 1280, height: 720, background: ["#F08030", "#F03080"], overlays: [
                 ["id": "o3", "type": "emoji", "emoji": "🚀", "transform": t(0.25, 0.25, 0.25, -0.3)],
             ]),
-        ], caption: "Two frames of mine", viewCount: 2)
+        ], caption: "Two frames of mine", viewCount: 6)
         stories["s1"] = story("s1", author: "u2", postedAgo: 120, frames: [
             frame("f-s1", width: 720, height: 1280, background: ["#108040", "#1040A0"], overlays: [
                 text("o4", "React to this", fill: "regular", color: "#FFFFFF", font: "typewriter", t(0.5, 0.25, 1.3)),
@@ -465,9 +465,19 @@ actor StoriesHarnessTransport: DirectTransport {
             guard parts.count > 4, let data = frames[parts[4]] else { return DirectHTTPResponse(status: 404) }
             return DirectHTTPResponse(status: 200, headers: ["content-type": "image/png"], body: data)
         case ("GET", "viewers"):
+            // As the API orders them: reactors by latest reaction, then the rest by name.
+            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            func viewer(_ id: String, _ name: String, _ reaction: String? = nil, minutesAgo: Int64 = 0) -> [String: Any] {
+                ["userId": id, "name": name, "photo": NSNull(), "thumbhash": NSNull(),
+                 "reaction": (reaction as Any?) ?? NSNull(), "reactedAt": reaction == nil ? NSNull() : now - minutesAgo * 60_000]
+            }
             return ok(["viewers": [
-                ["userId": "u2", "name": "Steve Korshakov", "photo": NSNull(), "thumbhash": NSNull(), "reaction": "❤️", "reactedAt": 1],
-                ["userId": "u3", "name": "Ana Lima", "photo": NSNull(), "thumbhash": NSNull(), "reaction": NSNull(), "reactedAt": NSNull()],
+                viewer("u2", "Steve Korshakov", "❤️", minutesAgo: 2),
+                viewer("u4", "Maya Okafor", "🔥", minutesAgo: 14),
+                viewer("u5", "Leo Brandt", "👍", minutesAgo: 1_700),
+                viewer("u3", "Ana Lima"),
+                viewer("u6", "Jonas Weber"),
+                viewer("u7", "Priya Raman"),
             ], "nextCursor": NSNull()])
         case ("POST", "seen"):
             // Seen through this one: every earlier story of the author too.
