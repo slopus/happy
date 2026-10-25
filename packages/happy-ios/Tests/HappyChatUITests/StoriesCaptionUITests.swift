@@ -72,5 +72,12 @@ final class StoriesCaptionUITests: XCTestCase {
         XCTAssertTrue(more.waitForExistence(timeout: 2), "the caption didn't fold again")
         XCTAssertEqual(field("position"), position, "folding the caption turned the story")
         capture("caption-folded-again")
+
+        // Open again, a drag down from above the text folds it and closes the viewer.
+        more.tap()
+        XCTAssertTrue(element("story-caption-open").waitForExistence(timeout: 2))
+        pause(0.6)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)), withVelocity: .fast, thenHoldForDuration: 0)
+        wait("viewer", "0", "a drag down on the open caption didn't close the viewer")
     }
 }

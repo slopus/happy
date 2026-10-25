@@ -145,6 +145,14 @@ final class StoryCanvasView: UIView {
 
     @objc private func captionFolded() { setCaptionExpanded(false) }
 
+    /// The full caption's panel over the frame: a drag on it still closes
+    /// the viewer, except where its text scrolls.
+    func passesDrag(_ touch: UITouch) -> Bool {
+        guard captionExpanded, let view = touch.view, view.isDescendant(of: captionOpen) else { return false }
+        let scrolls = captionScroll.contentSize.height > captionScroll.bounds.height + 1
+        return !(scrolls && view.isDescendant(of: captionScroll))
+    }
+
     /// Opens the caption in full over the darkened frame, or folds it.
     func setCaptionExpanded(_ expanded: Bool, animated: Bool = true) {
         guard expanded != captionExpanded, !expanded || (onCaptionExpanded != nil && !captionMore.isHidden) else { return }

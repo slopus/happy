@@ -379,6 +379,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     private func turn(to index: Int, acted: Bool) {
         note("turn")
         burst?.removeFromSuperview()
+        page.canvas.setCaptionExpanded(false, animated: false)
         guard cube == nil, authors.indices.contains(index) else { return }
         prepareNeighbor(index)
         let direction: CGFloat = index > authorIndex ? -1 : 1
@@ -454,6 +455,9 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     // MARK: Gestures
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if gestureRecognizer is UIPanGestureRecognizer, page.canvas.passesDrag(touch) {
+            return cube == nil && presentedViewController == nil && !isBeingDismissed
+        }
         var view = touch.view
         while let current = view, current !== self.view {
             if current is UIControl || current === picker { return false }
@@ -531,6 +535,9 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
             holdTimer?.invalidate()
             page.chromeHidden = false
             pause(.drag, true)
+            // Any drag folds the caption, so no fold is left holding the
+            // next author still.
+            page.canvas.setCaptionExpanded(false)
             if abs(velocity.x) > abs(velocity.y) {
                 drag = .sideways(next: -1)
             } else {
@@ -538,7 +545,6 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
                 // Only the canvas shrinks away; the page's own black goes
                 // with the ground behind it.
                 page.backgroundColor = .clear
-                page.canvas.setCaptionExpanded(false)
             }
         case .changed:
             switch drag {
