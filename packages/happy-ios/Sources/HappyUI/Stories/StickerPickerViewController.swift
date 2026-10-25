@@ -538,10 +538,13 @@ final class StickerPickerCell: UICollectionViewCell {
         case .sticker(let sticker):
             emoji.isHidden = true
             content.isHidden = false
+            content.visible = true
             content.show(sticker, media: media)
             accessibilityIdentifier = "sticker:\(sticker.packId)/\(sticker.id)"
             accessibilityLabel = sticker.emoji.first
         case .emoji(let value):
+            // A cell that showed an animated sticker stops it.
+            content.visible = false
             content.isHidden = true
             emoji.isHidden = false
             emoji.text = value

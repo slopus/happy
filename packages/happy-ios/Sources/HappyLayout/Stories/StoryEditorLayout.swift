@@ -30,8 +30,8 @@ public struct StoryEditorLayout: Equatable, Sendable {
         public static let captionPanelTop: CGFloat = 14
         public static let captionPanelBottom: CGFloat = 6
         public static let captionLift: CGFloat = 3
-        /// Post's pill: its label and arrow 16 in from its ends.
-        public static let postPadding: CGFloat = 16
+        /// Post's pill (`GlassBarButtonComponent`): its label and arrow 12.5 in from its ends.
+        public static let postPadding: CGFloat = 12.5
         public static let frames: CGFloat = 33
         public static let framesSide: CGFloat = 12
         public static let panelHeight: CGFloat = 120
@@ -85,7 +85,7 @@ public struct StoryEditorLayout: Equatable, Sendable {
         let safeBottom = max(0, bounds.height - size.height - top)
         let row = bounds.maxY - safeBottom + M.buttonTop + lift
         close = CGRect(x: bounds.minX + side, y: row, width: M.button, height: M.button)
-        let postWidth = ceil(postContent) + 2 * M.postPadding
+        let postWidth = ceil(postContent + 2 * M.postPadding)
         post = CGRect(x: bounds.maxX - side - postWidth, y: row, width: postWidth, height: M.button)
         let toolsWidth = M.button * CGFloat(M.tools) + M.toolSpacing * CGFloat(M.tools - 1)
         tools = CGRect(x: close.maxX + ((post.minX - close.maxX - toolsWidth) / 2).rounded(.down), y: row, width: toolsWidth, height: M.button)

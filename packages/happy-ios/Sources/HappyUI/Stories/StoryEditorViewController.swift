@@ -23,7 +23,13 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
     private let stickerTool = UIButton(type: .custom)
     private let postButton = UIButton(configuration: .prominentGlass())
     private let captionPanel = UIView()
-    private let captionField = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    /// Telegram's editor field: regular glass with its dark panel tint.
+    private let captionField = UIVisualEffectView(effect: StoryEditorViewController.fieldGlass)
+    private static var fieldGlass: UIGlassEffect {
+        let glass = UIGlassEffect(style: .regular)
+        glass.tintColor = UIColor(white: 1, alpha: 0.025)
+        return glass
+    }
     private let caption = UITextField()
     private let captionDim = UIControl()
     private let framesButton = UIButton(configuration: .glass())
@@ -163,12 +169,12 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
         postButton.addAction(UIAction { [weak self] _ in self?.commit(post: true) }, for: .touchUpInside)
         view.addSubview(postButton)
 
-        captionField.clipsToBounds = true
-        captionField.layer.cornerRadius = StoryEditorLayout.Metrics.captionHeight / 2
-        captionField.layer.cornerCurve = .continuous
+        captionField.cornerConfiguration = .capsule()
+        captionField.overrideUserInterfaceStyle = .dark
+        captionField.isUserInteractionEnabled = false
         captionPanel.addSubview(captionField)
         caption.text = draft.caption
-        caption.attributedPlaceholder = NSAttributedString(string: Strings.Stories.caption, attributes: [.foregroundColor: UIColor(white: 1, alpha: 0.5)])
+        caption.attributedPlaceholder = NSAttributedString(string: Strings.Stories.caption, attributes: [.foregroundColor: UIColor(white: 1, alpha: 0.6)])
         caption.textColor = .white
         caption.tintColor = .white
         caption.font = .systemFont(ofSize: 17)

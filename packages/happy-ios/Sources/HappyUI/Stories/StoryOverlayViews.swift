@@ -441,7 +441,7 @@ final class StoryStickerContentView: UIView {
     private(set) var sticker: Sticker?
     private var loading: Task<Void, Never>?
     /// Animated stickers play only while visible.
-    var visible = true { didSet { if visible != oldValue { animation?.setPlaying(visible) } } }
+    var visible = true { didSet { if visible != oldValue { animation?.setPlaying(visible && window != nil) } } }
     private var animation: StoryStickerAnimating?
     private weak var media: StoriesMedia?
     /// The pixels the picture was read at; read again only to grow.
