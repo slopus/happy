@@ -128,6 +128,8 @@ final class StoriesViewerUITests: XCTestCase {
         wait("viewer", "0", "a drag down didn't close it")
         pause(1)
         capture("closed")
+        // Everything of Steve's seen: his ring has gone grey.
+        XCTAssertFalse(steve.label.contains("new"), "Steve's ring still says new: \(steve.label)")
         let haptics = field("haptics") ?? ""
         for moment in ["open", "react", "advance"] { XCTAssertTrue(haptics.contains(moment), "no \(moment) haptic in \(haptics)") }
     }

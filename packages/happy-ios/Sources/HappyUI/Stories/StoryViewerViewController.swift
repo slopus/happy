@@ -13,6 +13,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     var onOpenConversation: ((StorySource) -> Void)?
     /// The viewer went away.
     var onClose: (() -> Void)?
+    /// The viewer starts going away, back into what it opened from.
+    var onClosing: (() -> Void)?
     /// The circle the viewer opened from, which it closes into.
     weak var origin: UIView?
 
@@ -137,6 +139,13 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         startTicking()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        guard isBeingDismissed || presentingViewController == nil else { return }
+        onClosing?()
+        onClosing = nil
     }
 
     override func viewDidDisappear(_ animated: Bool) {

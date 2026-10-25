@@ -190,6 +190,11 @@ final class StoriesCircleView: UIControl {
     private let seenRing = CAShapeLayer()
     private let unseenRing = CAShapeLayer()
     private let unseenGradient = CAGradientLayer()
+    /// The gradient's mask: the unseen ring, or the dashes going round while
+    /// the story it opens on loads.
+    private let ringMask = CALayer()
+    private let dashes = CAReplicatorLayer()
+    private let dash = CAShapeLayer()
     private let cut = CAShapeLayer()
     private let title = UILabel()
     private var photoKey: String?
@@ -233,7 +238,23 @@ final class StoriesCircleView: UIControl {
         unseenGradient.startPoint = CGPoint(x: 0.5, y: 0)
         unseenGradient.endPoint = CGPoint(x: 0.5, y: 1)
         unseenRing.frame = unseenGradient.bounds
-        unseenGradient.mask = unseenRing
+        ringMask.frame = unseenGradient.bounds
+        ringMask.addSublayer(unseenRing)
+        unseenGradient.mask = ringMask
+        // Telegram's story loading ring: thirty short dashes round the
+        // avatar, chasing each other, the whole turning once in four seconds.
+        dash.fillColor = nil
+        dash.strokeColor = UIColor.white.cgColor
+        dash.lineCap = .round
+        dash.strokeEnd = 1.0 / 30
+        dash.frame = unseenGradient.bounds
+        dash.path = CGPath(ellipseIn: unseenGradient.bounds.insetBy(dx: StoriesRowLayout.Metrics.ringUnseenWidth / 2 + (geometry.ring.width / 2 - StoriesRowLayout.Metrics.ringRadius), dy: StoriesRowLayout.Metrics.ringUnseenWidth / 2 + (geometry.ring.width / 2 - StoriesRowLayout.Metrics.ringRadius)), transform: nil)
+        dashes.frame = unseenGradient.bounds
+        dashes.instanceCount = 30
+        dashes.instanceTransform = CATransform3DMakeRotation(2 * .pi / 30, 0, 0, 1)
+        dashes.instanceDelay = 0.025
+        dashes.opacity = 0
+        dashes.addSublayer(dash)
         content.layer.addSublayer(seenRing)
         content.layer.addSublayer(unseenGradient)
         cut.fillRule = .evenOdd
@@ -267,13 +288,24 @@ final class StoriesCircleView: UIControl {
         let previous = self.item
         self.item = item
         title.text = item.title
-        title.textColor = titleColor(item)
         initials.text = item.initials
         accessibilityIdentifier = "story-circle:\(item.isSelf ? "self" : item.title)"
         accessibilityLabel = Strings.Stories.author(item.title, unseen: item.unseen)
         if previous?.segments != item.segments || previous?.unseen != item.unseen {
+            // Seen since it last showed: the colour gives way to grey.
+            if let previous, previous.unseen > item.unseen, window != nil {
+                let fade = CATransition()
+                fade.type = .fade
+                fade.duration = 0.35
+                fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                for ring in [seenRing, unseenRing, unseenGradient] { ring.add(fade, forKey: "seen") }
+                UIView.transition(with: title, duration: 0.35, options: [.transitionCrossDissolve, .allowUserInteraction]) {
+                    self.title.textColor = self.titleColor(item)
+                }
+            }
             drawRing()
         }
+        title.textColor = titleColor(item)
         loadPhoto(item, images: images)
         setNeedsLayout()
     }
@@ -305,6 +337,53 @@ final class StoriesCircleView: UIControl {
     private func applyRingWidths() {
         seenRing.lineWidth = StoriesHeaderLayout.ringWidth(StoriesRowLayout.Metrics.ringSeenWidth, scale: drawnScale)
         unseenRing.lineWidth = StoriesHeaderLayout.ringWidth(StoriesRowLayout.Metrics.ringUnseenWidth, scale: drawnScale)
+        dash.lineWidth = unseenRing.lineWidth
+    }
+
+    /// The story it opens on is loading: the ring gives way to the dashes,
+    /// as Telegram's does, and comes back once it's done.
+    var isLoadingStory = false {
+        didSet {
+            guard isLoadingStory != oldValue else { return }
+            accessibilityValue = isLoadingStory ? "loading" : nil
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.2)
+            if isLoadingStory {
+                if dashes.superlayer == nil {
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    dashes.opacity = 0
+                    ringMask.addSublayer(dashes)
+                    CATransaction.commit()
+                }
+                let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+                turn.fromValue = -Double.pi / 2
+                turn.toValue = -Double.pi / 2 + 2 * Double.pi
+                turn.duration = 4
+                turn.repeatCount = .infinity
+                dashes.add(turn, forKey: "turn")
+                let chase = CAKeyframeAnimation(keyPath: "strokeStart")
+                chase.values = [0, 1.0 / 30, 1.0 / 30, 0]
+                chase.keyTimes = [0, 0.45, 0.55, 1]
+                chase.duration = 2.5
+                chase.repeatCount = .infinity
+                dash.add(chase, forKey: "chase")
+                dashes.opacity = 1
+                unseenRing.opacity = 0
+                seenRing.opacity = 0
+            } else {
+                dashes.opacity = 0
+                unseenRing.opacity = 1
+                seenRing.opacity = 1
+                CATransaction.setCompletionBlock { [weak self] in
+                    guard let self, !self.isLoadingStory else { return }
+                    self.dashes.removeAllAnimations()
+                    self.dash.removeAllAnimations()
+                    self.dashes.removeFromSuperlayer()
+                }
+            }
+            CATransaction.commit()
+        }
     }
 
     /// Cuts this circle around the one before it, which overlaps it: a
@@ -393,6 +472,7 @@ final class StoriesCircleView: UIControl {
     /// Leaves the row: no more loading, and no taps while it fades.
     func leave() {
         loading?.cancel()
+        isLoadingStory = false
         isUserInteractionEnabled = false
     }
 }

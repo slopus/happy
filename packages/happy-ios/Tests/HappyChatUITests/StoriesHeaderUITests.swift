@@ -146,4 +146,47 @@ final class StoriesHeaderUITests: XCTestCase {
         pause(0.6)
         capture("header-all-seen")
     }
+
+    /// Over a slow link, a tapped circle's ring turns to dashes while the
+    /// story it opens on loads, and the viewer opens once it's here.
+    func testLoadingRing() {
+        app.terminate()
+        app.launchArguments.append("-storiesSlowFrames")
+        app.launch()
+        let ana = element("story-circle:Ana")
+        XCTAssertTrue(ana.waitForExistence(timeout: 8))
+        element("stories-collapsed").tap()
+        wait("header", "open")
+        pause(0.6)
+        ana.tap()
+        let deadline = Date().addingTimeInterval(1.2)
+        while Date() < deadline, (ana.value as? String) != "loading" { pause(0.05) }
+        XCTAssertEqual(ana.value as? String, "loading", "no loading ring while the story loads")
+        XCTAssertEqual(field("viewer"), "0", "the viewer opened before its picture")
+        capture("loading-ring")
+        wait("viewer", "1", timeout: 6, "the viewer never opened after loading")
+    }
+
+    /// Put away while its story loads, the row opens no viewer after all.
+    func testClosingStopsLoading() {
+        app.terminate()
+        app.launchArguments.append("-storiesSlowFrames")
+        app.launch()
+        let ana = element("story-circle:Ana")
+        XCTAssertTrue(ana.waitForExistence(timeout: 8))
+        element("stories-collapsed").tap()
+        wait("header", "open")
+        pause(0.6)
+        ana.tap()
+        flick(from: 0.6, to: 0.54)
+        wait("header", "closed", "a short flick up left the row open")
+        pause(2.5)
+        XCTAssertEqual(field("viewer"), "0", "the viewer opened over the closed row")
+        XCTAssertNotEqual(ana.value as? String, "loading", "the ring kept turning on the closed row")
+        element("stories-collapsed").tap()
+        wait("header", "open")
+        pause(0.6)
+        ana.tap()
+        wait("viewer", "1", timeout: 6, "the row wouldn't open a story after a stopped one")
+    }
 }

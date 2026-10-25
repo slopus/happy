@@ -385,6 +385,10 @@ actor StoriesHarnessTransport: DirectTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
         try await Task.sleep(for: .milliseconds(60))
         let route = String(path.split(separator: "?").first ?? "")
+        // "-storiesSlowFrames": pictures take a while, as over a slow link.
+        if route.contains("/frames/"), ProcessInfo.processInfo.arguments.contains("-storiesSlowFrames") {
+            try await Task.sleep(for: .milliseconds(1500))
+        }
         let parts = route.split(separator: "/").map(String.init)
         switch (method, route) {
         case ("GET", "/v0/health"):

@@ -39,7 +39,13 @@ final class StoriesHomeController {
     }
     /// Home shows something else (no computer, one too old): no stories.
     var isSuppressed = false {
-        didSet { if isSuppressed != oldValue { apply(snapshot) } }
+        didSet {
+            guard isSuppressed != oldValue else { return }
+            // Home changed under the viewer: what it held is drawn now.
+            let latest = held ?? snapshot
+            held = nil
+            draw(latest)
+        }
     }
     private weak var host: UIViewController?
     private weak var header: HomeHeaderView?
@@ -59,6 +65,15 @@ final class StoriesHomeController {
     /// Something changed what should be open while the list was moving or
     /// the viewer was up: settle once both are done.
     private var settleWhenBack = false
+    /// What came while the viewer was up, drawn as it closes back into the
+    /// row, so the rings it saw turn grey as Telegram's do, in sight.
+    private var viewerUp: Bool { viewer != nil }
+    private weak var viewer: StoryViewerViewController?
+    private var held: StoriesSnapshot?
+    /// A circle tapped whose story is still loading: the viewer opens once
+    /// it's here, or after a few seconds regardless.
+    private var opening: Task<Void, Never>?
+    private weak var loadingCircle: StoriesCircleView?
 
     init(host: UIViewController) {
         self.host = host
@@ -107,6 +122,9 @@ final class StoriesHomeController {
 
     func attach(_ stories: StoriesSession?, images: StemCellsImages?) {
         watch?.invalidate(); watch = nil
+        stopOpening()
+        viewer = nil
+        held = nil
         session = stories
         view.images = images
         snapshot = StoriesSnapshot()
@@ -116,10 +134,19 @@ final class StoriesHomeController {
         settleWhenBack = false
         applyInset(.immediate)
         if let session { watch = session.watch { [weak self] snapshot in self?.apply(snapshot) } }
-        else { apply(StoriesSnapshot()) }
+        else { draw(StoriesSnapshot()) }
     }
 
+    /// A snapshot from the session: held while the viewer is up.
     private func apply(_ next: StoriesSnapshot) {
+        if viewerUp {
+            held = next
+            return
+        }
+        draw(next)
+    }
+
+    private func draw(_ next: StoriesSnapshot) {
         let hadUnseen = StoriesRow.hasUnseen(items)
         snapshot = next
         items = next.isOn ? StoriesRow.items(next.feed, myStory: Strings.Stories.myStory) : []
@@ -127,6 +154,7 @@ final class StoriesHomeController {
         view.isHidden = !isShown
         let hasUnseen = StoriesRow.hasUnseen(items)
         if !isShown {
+            stopOpening()
             unlocked = false
             motion = nil
             applyInset(.immediate)
@@ -222,6 +250,7 @@ final class StoriesHomeController {
     private func change(to unlocked: Bool, haptic: Bool) {
         guard unlocked != self.unlocked else { return }
         self.unlocked = unlocked
+        if !unlocked { stopOpening() }
         if haptic { StoriesHaptics.play(unlocked ? .headerOpen : .headerClose) }
         motion = StoriesHeaderMotion(from: drawn, start: CACurrentMediaTime(), opening: unlocked)
         view.ticking = true
@@ -252,15 +281,75 @@ final class StoriesHomeController {
     }
 
     private func open(_ item: StoriesRowItem) {
+        guard opening == nil, !viewerUp, let session, let host, let feed = snapshot.feed,
+              let index = feed.authors.firstIndex(where: { $0.key == item.id }) else { return }
+        // As Telegram's row does: the picture it opens on first, the circle's
+        // ring turning to dashes if that takes more than a moment.
+        let author = feed.authors[index]
+        let stories = session.snapshot.stories.merging(feed.stories) { held, _ in held }
+        let start = StoriesRow.start(author, stories: stories)
+        if author.storyIds.indices.contains(start), let story = stories[author.storyIds[start]], let frame = story.frames.first,
+           frame.kind == .image, frame.available, let circle = view.circle(item.id) {
+            // The size the viewer reads it at: full screen, laid out before
+            // it is in a window.
+            let canvas = StoryViewerLayout(size: host.view.window?.bounds.size ?? host.view.bounds.size, safeArea: LayoutInsets()).canvas.size
+            let pixels = StoryCanvasView.pixels(canvas, scale: host.traitCollection.displayScale)
+            let media = session.media
+            if media.cachedFrame(story.id, frame.id, pixels: pixels) == nil {
+                loadingCircle = circle
+                opening = Task { [weak self, weak circle] in
+                    let ring = Task { @MainActor [weak circle] in
+                        try? await Task.sleep(for: .milliseconds(200))
+                        if !Task.isCancelled { circle?.isLoadingStory = true }
+                    }
+                    await StoriesOpening.first(of: { _ = await media.frame(story.id, frame, pixels: pixels) }, orAfter: .seconds(5))
+                    ring.cancel()
+                    circle?.isLoadingStory = false
+                    guard let self, !Task.isCancelled else { return }
+                    opening = nil
+                    guard isShown, unlocked else { return }
+                    present(item)
+                }
+                return
+            }
+        }
+        present(item)
+    }
+
+    /// The row closed or went away while a story loaded: no viewer after all.
+    private func stopOpening() {
+        opening?.cancel()
+        opening = nil
+        loadingCircle?.isLoadingStory = false
+        loadingCircle = nil
+    }
+
+    private func present(_ item: StoriesRowItem) {
         guard let session, let host, let feed = snapshot.feed,
               let index = feed.authors.firstIndex(where: { $0.key == item.id }) else { return }
-        let viewer = StoriesViewerPresenter.present(session: session, feed: feed, authorIndex: index, from: host, origin: view.circle(item.id))
-        viewer?.onClose = { [weak self] in
+        guard !viewerUp, let viewer = StoriesViewerPresenter.present(session: session, feed: feed, authorIndex: index, from: host, origin: view.circle(item.id)) else { return }
+        self.viewer = viewer
+        viewer.onClosing = { [weak self, weak viewer] in
+            guard let self, let viewer, viewer === self.viewer else { return }
+            self.release()
+        }
+        viewer.onClose = { [weak self, weak viewer] in
+            guard let self else { return }
+            if let viewer, viewer === self.viewer { self.release() }
             // Once the presentation has let go of it.
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.settleWhenBack else { return }
                 self.settle()
             }
+        }
+    }
+
+    /// The viewer goes: what came meanwhile is drawn, as it closes.
+    private func release() {
+        viewer = nil
+        if let held {
+            self.held = nil
+            draw(held)
         }
     }
 
@@ -301,6 +390,43 @@ final class StoriesHomeController {
         view.place(layout, unlocked: unlocked, side: state.side)
         header.titleX = layout.titleX
         header.backdropExtension = StoriesHeaderLayout.Metrics.scrollHeight * max(0, min(1, state.max))
+    }
+}
+
+/// Waits for the work, the limit or cancellation, whichever is first; the
+/// work goes on alone.
+@MainActor
+private final class StoriesOpening {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var finished = false
+    private var timer: Task<Void, Never>?
+
+    private func finish() {
+        finished = true
+        timer?.cancel()
+        timer = nil
+        continuation?.resume()
+        continuation = nil
+    }
+
+    static func first(of work: @escaping @MainActor () async -> Void, orAfter limit: Duration) async {
+        let gate = StoriesOpening()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !gate.finished else { return continuation.resume() }
+                gate.continuation = continuation
+                Task { @MainActor in
+                    await work()
+                    gate.finish()
+                }
+                gate.timer = Task { @MainActor in
+                    try? await Task.sleep(for: limit)
+                    if !Task.isCancelled { gate.finish() }
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in gate.finish() }
+        }
     }
 }
 #endif
