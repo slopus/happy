@@ -54,10 +54,6 @@ extension Strings {
         public static let proposalMissing = "This proposal is no longer available."
         public static let proposalFailed = "That didn't reach your computer. Try again."
 
-        // Prioritizing's setting, which only the person turns on.
-        public static let prioritizingOff = "Prioritizing is off"
-        public static let prioritizingOffDetail = "Turn it on to name and place new work."
-        public static let turnOn = "Turn on"
 
         // States.
         public static let noComputer = "Pair a computer to see its Stem Cells."

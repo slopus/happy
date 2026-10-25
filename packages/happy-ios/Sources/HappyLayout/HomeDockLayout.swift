@@ -6,8 +6,11 @@ import CoreGraphics
 /// Home's resting dock (HomeDock.tsx's `safeArea` and `renderComposer`):
 /// a one-line capsule at the foot of the screen that opens the composer.
 ///
-///     |16| ( Plan, ask, build…               (↑) ) |16|
+///     |16| ( Plan, ask, build…     Sonnet 5 ⌄ (↑) ) |16|
 ///
+/// An accessory (Stem Cells' model control) may sit in the capsule just
+/// before the send button, as desktop's composer keeps its model control
+/// in its own bar; the entry gives up its room.
 /// The capsule is 56 tall, 8 below the dock's top and `max(10, safe
 /// bottom)` above the screen's foot. Its text starts where the rounded end
 /// meets the straight edge (`MobileCollapsedComposerGeometry`); the send
@@ -26,6 +29,8 @@ public struct HomeDockLayout: Equatable, Sendable {
         public static let contentGap: CGFloat = 4
         /// The arrow in the send button.
         public static let sendIconSize: CGFloat = 16
+        /// Between the entry and the accessory.
+        public static let accessoryGap: CGFloat = 4
     }
 
     public struct Input {
@@ -38,13 +43,17 @@ public struct HomeDockLayout: Equatable, Sendable {
         public var maxWidth: CGFloat
         /// The prompt, or the placeholder, on one line.
         public var entry: Measurable
+        /// What sits before the send button; zero for nothing. It keeps
+        /// at least half the row for the entry.
+        public var accessory: CGSize
 
-        public init(size: CGSize, safeBottom: CGFloat, hairline: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude, entry: Measurable) {
+        public init(size: CGSize, safeBottom: CGFloat, hairline: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude, entry: Measurable, accessory: CGSize = .zero) {
             self.size = size
             self.safeBottom = safeBottom
             self.hairline = hairline
             self.maxWidth = maxWidth
             self.entry = entry
+            self.accessory = accessory
         }
     }
 
@@ -58,6 +67,8 @@ public struct HomeDockLayout: Equatable, Sendable {
     public var entry: CGRect
     public var entryText: CGRect
     public var send: CGRect
+    /// Zero-sized at the send button's left when there is none.
+    public var accessory: CGRect
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -86,7 +97,10 @@ public struct HomeDockLayout: Equatable, Sendable {
         let contentRight = inner.maxX - geometry.contentPaddingRight
         let button = metrics.primaryActionSize
         send = CGRect(x: contentRight - button, y: inner.midY - button / 2, width: button, height: button)
-        let entryRight = send.minX - metrics.primaryActionMarginLeft - M.contentGap
+        let beforeSend = send.minX - metrics.primaryActionMarginLeft - M.contentGap
+        let accessoryWidth = min(input.accessory.width, max(0, (beforeSend - contentLeft) / 2))
+        accessory = CGRect(x: beforeSend - accessoryWidth, y: inner.midY - input.accessory.height / 2, width: accessoryWidth, height: input.accessory.height)
+        let entryRight = accessoryWidth > 0 ? accessory.minX - M.accessoryGap : beforeSend
         entry = CGRect(x: contentLeft, y: inner.minY, width: max(0, entryRight - contentLeft), height: inner.height)
 
         let textLane = max(0, entry.width - geometry.inputPaddingLeft - geometry.inputPaddingRight)

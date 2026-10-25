@@ -117,14 +117,32 @@ enum StemCellModelPickers {
         return (provider, menus.current?.label ?? menus.selection.modelId, effort)
     }
 
-    /// The card's chips: the leading slot (the legacy composer's permission
-    /// chip) is the provider here, then the model, then the effort.
+    /// The settings desktop's model control lists (ComposerModelControl.tsx's
+    /// Model and Effort rows), with the provider after them: each a name, its
+    /// current value and the sheet it opens. Nil where there is nothing to pick.
+    static func settings(_ menus: StemCellModelMenus?) -> [(kind: Kind, name: String, value: String)] {
+        guard menus != nil else { return [] }
+        let labels = chips(menus)
+        var rows: [(kind: Kind, name: String, value: String)] = [(.model, Strings.StemCells.model, labels.model)]
+        if let effort = labels.effort { rows.append((.effort, Strings.StemCells.effort, effort)) }
+        if !labels.provider.isEmpty { rows.append((.provider, Strings.StemCells.provider, labels.provider)) }
+        return rows
+    }
+
+    /// The card's model control, in its own bar beside send as desktop's
+    /// composer has it: the model and its effort, each opening the same
+    /// short list of settings. No provider chip by the add button.
     static func configure(_ card: AgentInputCardView, menus: StemCellModelMenus?) {
         let labels = chips(menus)
+        let rows = settings(menus)
+        let menu = rows.isEmpty ? nil : AgentInputMenu(sections: rows.map { row in
+            AgentInputMenu.Section(title: row.name, options: [AgentInputMenu.Option(key: row.kind.rawValue, label: row.value)])
+        }, selectedKey: nil)
+        // With nothing to list a chip opens the model sheet, which asks again.
         func chip(_ kind: String, _ value: String) -> AgentInputChipConfiguration {
-            AgentInputChipConfiguration(content: .label(value), accessibilityLabel: Strings.StemCells.chipLabel(kind, value), menu: nil, opensPicker: true)
+            AgentInputChipConfiguration(content: .label(value), accessibilityLabel: Strings.StemCells.chipLabel(kind, value), menu: menu, opensPicker: menu == nil)
         }
-        card.configuration.permission = labels.provider.isEmpty ? nil : chip(Strings.StemCells.provider, labels.provider)
+        card.configuration.permission = nil
         card.configuration.model = chip(Strings.StemCells.model, labels.model)
         card.configuration.effort = labels.effort.map { chip(Strings.StemCells.effort, $0) }
     }

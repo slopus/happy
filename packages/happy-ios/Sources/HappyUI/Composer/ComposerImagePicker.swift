@@ -49,6 +49,17 @@ final class ComposerImagePicker: NSObject, PHPickerViewControllerDelegate {
         present(alert)
     }
 
+    /// Straight to the library: no question first (Stem Cells' add button).
+    func pick() {
+        pickImages()
+    }
+
+    /// The pasteboard's picture, attached: what a paste in the text view
+    /// does when there is one.
+    func paste() {
+        pasteImages()
+    }
+
     func remove(id: String) {
         guard let index = images.firstIndex(where: { $0.id == id }) else { return }
         staging.remove(images[index].attachment.fileURL)

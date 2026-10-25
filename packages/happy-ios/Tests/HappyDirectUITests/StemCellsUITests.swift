@@ -1,4 +1,5 @@
 import ObjectiveC
+import UIKit
 import XCTest
 
 /// XCUITest waits up to a minute for the app to idle around every action,
@@ -405,19 +406,12 @@ final class StemCellsUITests: XCTestCase {
         app.alerts.buttons["Create"].tap()
     }
 
-    /// Prioritizing turned on from the banner, then new work: live over the
+    /// Prioritizing on (home never mentions it off), then new work: live over the
     /// events stream the row grows its icon and its name, Prioritizing puts
     /// its own row in, and its batch moves the new row where it belongs.
     func testPrioritizing() {
         home()
-        let turnOn = app.buttons["Turn on"]
-        if turnOn.waitForExistence(timeout: 5) {
-            pause(2)
-            capture("prioritizing-off")
-            turnOn.tap()
-            pause(2)
-        }
-        XCTAssertFalse(app.buttons["Turn on"].exists)
+        XCTAssertFalse(app.staticTexts["Prioritizing is off"].exists, "home mentions Prioritizing being off")
         app.descendants(matching: .any)["stem-new-work"].tap()
         let composer = app.textViews["stem-composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
@@ -1188,9 +1182,18 @@ final class StemCellsUITests: XCTestCase {
         capture("settings-closed")
     }
 
-    private func pickIn(_ opener: XCUIElement, _ id: String, shot: String) {
-        XCTAssertTrue(opener.waitForExistence(timeout: 5), "no \(opener)")
-        opener.tap()
+    /// The model control's short list (Model, Effort, Provider, each
+    /// showing its value), then its `index`th setting.
+    private func open(_ control: XCUIElement, _ index: Int) {
+        XCTAssertTrue(control.waitForExistence(timeout: 5), "no \(control)")
+        control.tap()
+        let entry = app.collectionViews.buttons.element(boundBy: index)
+        XCTAssertTrue(entry.waitForExistence(timeout: 3), "the model control lists no setting \(index)")
+        entry.tap()
+    }
+
+    private func pickIn(_ control: XCUIElement, _ index: Int, _ id: String, shot: String) {
+        open(control, index)
         let row = app.descendants(matching: .any)["stem-pick:\(id)"]
         XCTAssertTrue(row.waitForExistence(timeout: 5), "the picker has no \(id)")
         pause(1.5)
@@ -1200,22 +1203,23 @@ final class StemCellsUITests: XCTestCase {
         pause(1.5)
     }
 
-    /// The pickers: on the dock before new work exists, then in its
-    /// conversation; each send goes with what was picked. The driver reads
-    /// the modes back from the daemon.
+    /// The pickers: the model control in the dock before new work exists,
+    /// then in its conversation's bar; each send goes with what was picked.
+    /// The driver reads the modes back from the daemon.
     func testPickers() {
         home()
         pause(1.5)
         capture("dock-pickers")
+        let dock = app.descendants(matching: .any)["stem-dock-model"]
         // The provider sheet shows each account's usage; it is looked at and closed.
-        app.descendants(matching: .any)["stem-dock-provider"].tap()
+        open(dock, 2)
         XCTAssertTrue(app.descendants(matching: .any)["stem-pick:claude"].waitForExistence(timeout: 5))
         pause(3)
         capture("picker-provider")
         app.descendants(matching: .any)["stem-picker"].swipeDown(velocity: .fast)
         pause(1.5)
-        pickIn(app.descendants(matching: .any)["stem-dock-model"], "claude:anthropic/haiku-5-5", shot: "picker-model")
-        pickIn(app.descendants(matching: .any)["stem-dock-effort"], "low", shot: "picker-effort")
+        pickIn(dock, 0, "claude:anthropic/haiku-5-5", shot: "picker-model")
+        pickIn(dock, 1, "low", shot: "picker-effort")
         pause(1)
         capture("dock-picked")
 
@@ -1238,10 +1242,10 @@ final class StemCellsUITests: XCTestCase {
 
         app.swipeDown(velocity: .slow)
         pause(1)
-        pickIn(app.buttons["Model: Haiku 5.5"], "claude:anthropic/sonnet-5", shot: "chat-picker-model")
+        pickIn(app.buttons["Model: Haiku 5.5"], 0, "claude:anthropic/sonnet-5", shot: "chat-picker-model")
         // A new model starts on its own default effort.
         XCTAssertTrue(app.buttons["Effort: Medium"].waitForExistence(timeout: 3))
-        pickIn(app.buttons["Effort: Medium"], "high", shot: "chat-picker-effort")
+        pickIn(app.buttons["Effort: Medium"], 1, "high", shot: "chat-picker-effort")
         XCTAssertTrue(app.buttons["Effort: High"].waitForExistence(timeout: 3))
         composer.tap()
         composer.typeText("And now? Five words or fewer.")
@@ -1254,6 +1258,77 @@ final class StemCellsUITests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         pause(2)
         // The dock keeps its own pick for the next new work.
-        XCTAssertTrue(app.descendants(matching: .any)["stem-dock-model"].label.contains("Haiku 5.5"))
+        XCTAssertTrue(dock.label.contains("Haiku 5.5"))
+    }
+
+    /// The composer with nothing in between: new work opens straight on its
+    /// composer, + goes straight to the library, and a long press's Paste
+    /// attaches a copied picture, sent with the message. A copied recording
+    /// offers no Paste: a message carries only text and pictures.
+    func testPaste() {
+        home()
+        pause(1)
+        app.descendants(matching: .any)["stem-new-work"].tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.alerts.firstMatch.exists || app.sheets.firstMatch.exists, "something stood between new work and its composer")
+        pause(1)
+        capture("paste-new-work")
+
+        // + opens the library at once.
+        app.buttons["Add a picture"].tap()
+        pause(2)
+        XCTAssertFalse(app.alerts.firstMatch.exists, "+ asked first")
+        capture("paste-plus-library")
+        XCUIApplication(bundleIdentifier: "com.apple.springboard").activate()
+        app.activate()
+        pause(1)
+        if !composer.isHittable { app.swipeDown(velocity: .fast); pause(1) }
+
+        // A copied picture: a long press, Paste, and it waits in the composer.
+        let size = CGSize(width: 240, height: 160)
+        let picture = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.systemOrange.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        UIPasteboard.general.image = picture
+        composer.press(forDuration: 1.0)
+        let paste = app.menuItems["Paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 3), "a copied picture offered no Paste")
+        capture("paste-menu")
+        paste.tap()
+        let attachment = app.descendants(matching: .any)["composer-attachment"]
+        XCTAssertTrue(attachment.waitForExistence(timeout: 5), "the pasted picture didn't attach")
+        pause(1)
+        capture("paste-attached")
+        composer.typeText("What colour is this picture? One word, no tools.")
+        app.buttons["Send"].tap()
+        XCTAssertTrue(until(4) { !attachment.exists }, "the picture stayed in the composer")
+        let messages = app.descendants(matching: .any).matching(identifier: "stem-message")
+        let working = app.descendants(matching: .any)["stem-working"]
+        let deadline = Date().addingTimeInterval(120)
+        pause(2)
+        while Date() < deadline, messages.count < 2 || working.exists { pause(1) }
+        pause(1.5)
+        capture("paste-sent")
+        let answer = messages.allElementsBoundByIndex.map(\.label).joined(separator: " ").lowercased()
+        print("STEM_PASTE_ANSWER \(answer.suffix(200))")
+        XCTAssertTrue(answer.contains("orange"), "the agent didn't see the pasted picture: \(answer.suffix(200))")
+
+        // A copied recording: no Paste, nothing attached.
+        UIPasteboard.general.items = [["public.mpeg-4": Data(repeating: 0, count: 64)]]
+        composer.tap()
+        pause(0.5)
+        composer.press(forDuration: 1.0)
+        pause(1)
+        capture("paste-video")
+        XCTAssertFalse(app.menuItems["Paste"].exists, "a recording offered Paste")
+        XCTAssertFalse(attachment.exists)
+    }
+
+    private func until(_ seconds: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline { if condition() { return true }; pause(0.2) }
+        return condition()
     }
 }

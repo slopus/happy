@@ -29,6 +29,20 @@ final class HomeDockLayoutTests: XCTestCase {
         assertFrame(layout.entryText, rect(44.5, 779, 136, 22))
     }
 
+    func testAnAccessorySitsBeforeSendAndTheEntryGivesWay() {
+        let layout = HomeDockLayout(.init(size: phone, safeBottom: 34, hairline: 0.5, entry: text("Plan, ask, build…", lineHeight: 22, maxLines: 1), accessory: CGSize(width: 120, height: 32)))
+        // Where the entry used to end, centred on the capsule.
+        assertFrame(layout.accessory, rect(195.5, 774, 120, 32))
+        assertFrame(layout.entry, rect(23.5, 762.5, 168, 55))
+        assertFrame(layout.send, rect(327.5, 769, 42, 42))
+        // Never more than half the row.
+        let wide = HomeDockLayout(.init(size: phone, safeBottom: 34, hairline: 0.5, entry: text("Plan", lineHeight: 22, maxLines: 1), accessory: CGSize(width: 300, height: 32)))
+        assertFrame(wide.accessory, rect(169.5, 774, 146, 32))
+        // None: nothing given up.
+        XCTAssertEqual(dock().accessory.width, 0)
+        assertFrame(dock().entry, rect(23.5, 762.5, 292, 55))
+    }
+
     func testLongPromptIsClampedToItsLane() {
         let layout = dock(entry: String(repeating: "x", count: 40))
         assertFrame(layout.entryText, rect(44.5, 779, 267, 22))

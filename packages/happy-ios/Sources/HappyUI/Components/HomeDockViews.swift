@@ -52,10 +52,16 @@ final class HomeDockView: UIView {
         didSet { if text != oldValue { setNeedsLayout() } }
     }
 
-    /// How far above its own top the scrim reaches, for controls drawn
-    /// over the capsule (Stem Cells' pickers).
-    var scrimRaise: CGFloat = 0 {
-        didSet { if scrimRaise != oldValue { setNeedsLayout() } }
+    /// Drawn in the capsule just before send at the size it fits (Stem
+    /// Cells' model control); the entry gives up its room.
+    var accessory: UIView? {
+        didSet {
+            guard accessory !== oldValue else { return }
+            oldValue?.removeFromSuperview()
+            if let accessory { addSubview(accessory) }
+            applyPresence()
+            setNeedsLayout()
+        }
     }
 
     /// The scrim shows only over a list that can scroll under it.
@@ -140,6 +146,7 @@ final class HomeDockView: UIView {
         scrim.presence = contentPresence
         entryClip.alpha = contentPresence
         sendButton.presence = contentPresence
+        accessory?.alpha = contentPresence
     }
 
     /// Runs `fade`, or shows the dock in full at once when it is nil.
@@ -193,10 +200,11 @@ final class HomeDockView: UIView {
             size: bounds.size,
             safeBottom: safeAreaInsets.bottom,
             hairline: hairline,
-            entry: entry
+            entry: entry,
+            accessory: accessory.map { $0.isHidden ? .zero : $0.sizeThatFits(bounds.size) } ?? .zero
         ))
         composerFrame = layout.composer
-        scrim.setLayoutFrame(layout.scrim.inset(by: UIEdgeInsets(top: -scrimRaise, left: 0, bottom: 0, right: 0)))
+        scrim.setLayoutFrame(layout.scrim)
         shell.setLayoutFrame(layout.composer)
         let radius = layout.composer.height / 2
         shell.layer.shadowPath = UIBezierPath(roundedRect: shell.bounds, cornerRadius: radius).cgPath
@@ -209,6 +217,7 @@ final class HomeDockView: UIView {
         entryButton.setLayoutFrame(layout.entry.offsetBy(dx: -layout.composer.minX, dy: -layout.composer.minY))
         entryLabel.setLayoutFrame(layout.entryText.offsetBy(dx: -layout.entry.minX, dy: -layout.entry.minY))
         sendButton.setLayoutFrame(layout.send)
+        accessory?.setLayoutFrame(layout.accessory)
     }
 }
 

@@ -293,7 +293,7 @@ public final class AgentInputCardView: UIView {
     /// frame as it does in RN. UIKit gives a TextKit 2 view Writing Tools'
     /// inline experience and a TextKit 1 view only its panel. Never ask it
     /// for its `layoutManager`: that turns it into TextKit 1 for good.
-    public let textView = UITextView(usingTextLayoutManager: true)
+    public let textView = AgentInputTextView(usingTextLayoutManager: true)
 
     private let surface = UIView()
     private let material = PartialBlurView(fraction: ComposerShadow.materialFraction)
@@ -1628,6 +1628,7 @@ final class AttachmentThumbnailView: UIView {
         removeButton.backgroundColor = UIColor(Palette.surfaceHigh)
         removeButton.addTarget(self, action: #selector(removeTapped), for: .touchUpInside)
         addSubview(removeButton)
+        accessibilityIdentifier = "composer-attachment"
         applyColors()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.applyColors()

@@ -16,7 +16,7 @@ final class StemCellsHomeViewController: UIViewController {
     private let banner = StemCellsBannerView()
     private let empty = StemCellsEmptyView()
     let dockView = HomeDockView()
-    private let modelBar = StemCellModelBarView()
+    private let modelControl = StemCellModelControl()
     private var modelsWatch: StemCellsWatch?
     private let dockText = HomeDockTextStore()
     private var session: StemCellsSession?
@@ -51,8 +51,8 @@ final class StemCellsHomeViewController: UIViewController {
         view.addSubview(empty)
         view.addSubview(banner)
         view.addSubview(dockView)
-        view.addSubview(modelBar)
-        modelBar.onPress = { [weak self] kind in self?.pick(kind) }
+        dockView.accessory = modelControl
+        modelControl.onPick = { [weak self] kind in self?.pick(kind) }
         dockView.showsScrim = true
         dockView.prompt = ""
         dockView.entryButton.accessibilityIdentifier = "stem-new-work"
@@ -72,10 +72,6 @@ final class StemCellsHomeViewController: UIViewController {
         sidebar.delegate = self
         sidebar.addSubview(stories.row)
         stories.onHeightChange = { [weak self] in self?.view.setNeedsLayout() }
-        banner.onTurnOn = { [weak self] in
-            guard let store = self?.session?.store else { return }
-            Task { await store.enablePrioritizing() }
-        }
         empty.onPair = { [weak self] in
             guard let self else { return }
             DirectPairingFlow.scan(context: context, on: self)
@@ -131,7 +127,7 @@ final class StemCellsHomeViewController: UIViewController {
         self.snapshot = snapshot
         onSnapshot?(snapshot)
         if previous.rows != snapshot.rows { sidebar.apply(Self.drawn(snapshot.rows)) }
-        if previous.prioritizing != snapshot.prioritizing || previous.availability != snapshot.availability || previous.error != snapshot.error || previous.stemCellError != snapshot.stemCellError {
+        if previous.availability != snapshot.availability || previous.error != snapshot.error || previous.stemCellError != snapshot.stemCellError {
             applyChrome()
         }
     }
@@ -144,12 +140,9 @@ final class StemCellsHomeViewController: UIViewController {
         sidebar.isHidden = !empty.isHidden
         let reason = { (text: String) in text.isEmpty ? Strings.StemCells.unanswered : text }
         let notice = snapshot.stemCellError.map { Strings.StemCells.newWorkFailed(reason($0)) } ?? snapshot.error.map(reason)
-        banner.configure(
-            prioritizingOff: hasComputer && snapshot.availability == .available && snapshot.prioritizing == false,
-            notice: notice
-        )
+        // Prioritizing being off is Settings' business: home says nothing of it.
+        banner.configure(notice: notice)
         dockView.isHidden = !hasComputer || snapshot.availability == .unsupported
-        modelBar.isHidden = dockView.isHidden
         view.setNeedsLayout()
     }
 
@@ -162,7 +155,7 @@ final class StemCellsHomeViewController: UIViewController {
     private func updateModelBar() {
         let models = session?.models
         let menus = models?.catalog.flatMap { catalog in models?.newWorkMode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
-        modelBar.configure(menus)
+        modelControl.configure(menus)
         view.setNeedsLayout()
     }
 
@@ -189,11 +182,7 @@ final class StemCellsHomeViewController: UIViewController {
         dockText.prepare(HomeDockController.textKey(width: bounds.width, text: TextEnvironment(traitCollection)))
         let bannerHeight = banner.isEmpty ? 0 : banner.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height
         dockView.frame = bounds
-        let bar = modelBar.layout(field: dockView.fieldFrame)
-        // The list keeps clear of the pickers over the dock too.
-        let barHeight = modelBar.isHidden ? 0 : StemCellModelBarLayout.height + StemCellModelBarLayout.gap
-        dockView.scrimRaise = barHeight
-        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom + barHeight, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.height)
+        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.height)
         banner.frame = layout.banner
         sidebar.frame = bounds
         stories.row.frame = layout.stories
@@ -206,8 +195,6 @@ final class StemCellsHomeViewController: UIViewController {
             if atTop || (!sidebar.isDragging && sidebar.contentOffset.y < -insets.top) { sidebar.contentOffset.y = -insets.top }
         }
         empty.frame = layout.empty
-        modelBar.frame = bounds
-        modelBar.place(field: bar.frame.isEmpty ? .zero : dockView.fieldFrame)
     }
 
     // MARK: Acts
@@ -422,13 +409,9 @@ extension StemCellsHomeViewController: UIScrollViewDelegate {
     }
 }
 
-/// The note above the list: Prioritizing is off, with the one way to turn
-/// it on, or the last thing the computer refused.
+/// The note above the list: the last thing the computer refused.
 final class StemCellsBannerView: UIView {
-    var onTurnOn: (() -> Void)?
     private let title = UILabel()
-    private let detail = UILabel()
-    private let button = UIButton(type: .system)
     private let card = UIView()
     private(set) var isEmpty = true
 
@@ -440,39 +423,21 @@ final class StemCellsBannerView: UIView {
         addSubview(card)
         title.font = StemCellsFonts.ui(.semiBold, size: 15)
         title.textColor = UIColor(Palette.stemCellsRowTextActive)
-        detail.font = StemCellsFonts.ui(.regular, size: 14)
-        detail.textColor = UIColor(Palette.stemCellsRowText)
-        detail.numberOfLines = 0
-        var configuration = UIButton.Configuration.filled()
-        configuration.cornerStyle = .capsule
-        configuration.baseBackgroundColor = UIColor(Palette.stemCellsRowTextActive)
-        configuration.baseForegroundColor = UIColor(Palette.groupedBackground)
-        configuration.attributedTitle = AttributedString(Strings.StemCells.turnOn, attributes: AttributeContainer([.font: StemCellsFonts.ui(.semiBold, size: 14)]))
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
-        button.configuration = configuration
-        button.addAction(UIAction { [weak self] _ in self?.onTurnOn?() }, for: .touchUpInside)
-        for view in [title, detail, button] { card.addSubview(view) }
+        card.addSubview(title)
         isHidden = true
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func configure(prioritizingOff: Bool, notice: String?) {
-        isEmpty = !prioritizingOff && notice == nil
+    func configure(notice: String?) {
+        isEmpty = notice == nil
         isHidden = isEmpty
-        button.isHidden = !prioritizingOff
-        title.text = prioritizingOff ? Strings.StemCells.prioritizingOff : notice
-        detail.text = prioritizingOff ? Strings.StemCells.prioritizingOffDetail : nil
-        detail.isHidden = !prioritizingOff
+        title.text = notice
         setNeedsLayout()
     }
 
     private func layout(width: CGFloat) -> StemCellsBannerLayout {
-        StemCellsBannerLayout(
-            width: width, title: title.measurable,
-            detail: detail.isHidden ? nil : detail.measurable,
-            button: button.isHidden ? nil : button.sizeThatFits(.zero)
-        )
+        StemCellsBannerLayout(width: width, title: title.measurable, detail: nil, button: nil)
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
@@ -484,8 +449,6 @@ final class StemCellsBannerView: UIView {
         let layout = layout(width: bounds.width)
         card.frame = layout.card
         title.frame = layout.title
-        detail.frame = layout.detail ?? .zero
-        button.frame = layout.button ?? .zero
     }
 }
 

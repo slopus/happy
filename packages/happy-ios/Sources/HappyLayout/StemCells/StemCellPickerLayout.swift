@@ -167,36 +167,30 @@ public struct StemCellUsageGaugeLayout: Equatable, Sendable {
     }
 }
 
-/// The three pickers above the home dock's field: small pills side by side
-/// from the field's left edge, `gap` apart and `gap` above it. A pill too
-/// wide for what is left is cut to it.
-public struct StemCellModelBarLayout: Equatable, Sendable {
-    public static let height: CGFloat = 30
-    public static let paddingH: CGFloat = 12
-    public static let gap: CGFloat = 8
+/// The home dock's model control (ComposerModelControl.tsx's trigger): the
+/// summary, then a chevron, in a 32-tall pill. Given less room than it
+/// wants, the summary is cut and the chevron stays.
+///
+///     |10| Sonnet 5 Medium |2| ⌄ |6|
+public struct StemCellModelControlLayout: Equatable, Sendable {
+    public static let height: CGFloat = 32
+    public static let paddingLeading: CGFloat = 10
+    public static let paddingTrailing: CGFloat = 6
+    public static let chevronGap: CGFloat = 2
+    public static let chevron: CGFloat = 14
 
-    public var pills: [CGRect]
-    public var labels: [CGRect]
-    /// The bar's whole box, for what the list keeps clear.
-    public var frame: CGRect
+    /// What it wants: the whole summary.
+    public var size: CGSize
+    public var summary: CGRect
+    public var chevron: CGRect?
 
-    /// `field` is the dock's capsule; `labels` each pill's one-line label.
-    public init(field: CGRect, labels: [CGSize]) {
-        var x = field.minX
-        let y = field.minY - Self.gap - Self.height
-        var pills: [CGRect] = []
-        var placed: [CGRect] = []
-        for label in labels {
-            let room = max(0, field.maxX - x)
-            let width = min(room, label.width + 2 * Self.paddingH)
-            let pill = CGRect(x: x, y: y, width: width, height: Self.height)
-            pills.append(pill)
-            placed.append(CGRect(x: pill.minX + Self.paddingH, y: y + ((Self.height - label.height) / 2).rounded(), width: max(0, width - 2 * Self.paddingH), height: label.height))
-            x = pill.maxX + Self.gap
-        }
-        self.pills = pills
-        self.labels = placed
-        frame = CGRect(x: field.minX, y: y, width: field.width, height: Self.height)
+    /// `summary` is its one line; `width`, when given, the room it got.
+    public init(summary text: CGSize, chevron hasChevron: Bool, width: CGFloat? = nil) {
+        let chevronWidth = hasChevron ? Self.chevronGap + Self.chevron : 0
+        size = CGSize(width: ceil(Self.paddingLeading + text.width + chevronWidth + Self.paddingTrailing), height: Self.height)
+        let room = max(0, (width ?? size.width) - Self.paddingLeading - chevronWidth - Self.paddingTrailing)
+        summary = CGRect(x: Self.paddingLeading, y: ((Self.height - text.height) / 2).rounded(), width: min(text.width, room), height: text.height)
+        chevron = hasChevron ? CGRect(x: summary.maxX + Self.chevronGap, y: (Self.height - Self.chevron) / 2, width: Self.chevron, height: Self.chevron) : nil
     }
 }
 

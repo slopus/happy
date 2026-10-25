@@ -791,11 +791,6 @@ public actor StemCellsStore {
 
     // MARK: Prioritizing
 
-    /// Turns Prioritizing on: the person's explicit choice, never automatic.
-    public func enablePrioritizing() {
-        setPrioritizing(true)
-    }
-
     /// Turns Prioritizing on or off, from Settings' switch; only ever the
     /// person's choice.
     public func setPrioritizing(_ on: Bool) {
