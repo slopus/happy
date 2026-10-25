@@ -20,7 +20,8 @@ struct StemCellsAgents: Equatable, Sendable {
         let subtasks = object.removeValue(forKey: "subtasks")?.arrayValue
         if Self.version(records[id]) <= Self.version(agent) { records[id] = .object(object) }
         if let subtasks {
-            children[id] = subtasks.compactMap { $0["id"]?.stringValue }
+            // An archived subtask is no longer under its parent, as `update` has it.
+            children[id] = subtasks.filter { $0["archivedAt"] == nil || $0["archivedAt"] == .null }.compactMap { $0["id"]?.stringValue }
             subtasks.forEach { absorb($0) }
         }
     }

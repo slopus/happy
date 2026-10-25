@@ -142,6 +142,11 @@ public final class DirectAgentClient: Sendable {
         try await archive("/v0/bots/\(Self.escape(botId))", key: "bot")
     }
 
+    /// A subtask's conversation (`POST /v0/agents/:agentId/archive`).
+    public func archiveAgent(_ agentId: String) async throws {
+        _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/archive", json: .object(["mutationId": .string(ClientID.make())]))
+    }
+
     /// Archival names the version it archives (`If-Match`).
     private func archive(_ path: String, key: String) async throws {
         guard let version = try await decode(JSONValue.self, "GET", path)[key]?["version"]?.stringValue else { throw DirectAgentError.invalidResponse }

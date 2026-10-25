@@ -18,12 +18,16 @@ public enum StemCellsSidebarLayout {
         public var hasMark: Bool
         /// A status mark or an unread dot in the trailing square.
         public var hasTrailing: Bool
+        /// Rows nested under it fold: its chevron takes the trailing square,
+        /// and a status or dot stands just before it.
+        public var hasFold: Bool
 
-        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false) {
+        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasFold: Bool = false) {
             self.kind = kind
             self.depth = depth
             self.hasMark = hasMark
             self.hasTrailing = hasTrailing
+            self.hasFold = hasFold
         }
     }
 
@@ -88,9 +92,15 @@ public enum StemCellsSidebarLayout {
                     x += M.mark + M.markGap
                 }
                 var right = inkRight
+                var slot = trailingRect
+                if row.hasFold, row.kind == .row {
+                    frame.chevron = slot
+                    right = slot.minX - M.trailingGap
+                    slot = slot.offsetBy(dx: -(M.trailing + M.trailingGap), dy: 0)
+                }
                 if row.hasTrailing {
-                    frame.trailing = trailingRect
-                    right = trailingRect.minX - M.trailingGap
+                    frame.trailing = slot
+                    right = slot.minX - M.trailingGap
                 }
                 frame.label = CGRect(x: x, y: y, width: max(0, right - x), height: height)
             }

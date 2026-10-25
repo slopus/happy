@@ -65,6 +65,28 @@ final class StemCellsLayoutTests: XCTestCase {
         ])
     }
 
+    func testARowWithNestedRowsWearsItsFoldAtTheEnd() {
+        let result = StemCellsSidebarLayout.layout([
+            .init(kind: .row, hasFold: true),
+            .init(kind: .row, depth: 1, hasTrailing: true, hasFold: true),
+            .init(kind: .row, depth: 2),
+        ], width: 390)
+        let frames = result.frames
+        // The fold takes the trailing square, as a section's does.
+        XCTAssertEqual(frames[0].chevron, CGRect(x: 356, y: 13, width: 18, height: 18))
+        XCTAssertNil(frames[0].trailing)
+        XCTAssertEqual(frames[0].label, CGRect(x: 44, y: 6, width: 304, height: 32))
+        // A status or dot stands one square before it, and the label stops short of both.
+        XCTAssertEqual(frames[1].chevron, CGRect(x: 356, y: 47, width: 18, height: 18))
+        XCTAssertEqual(frames[1].trailing, CGRect(x: 330, y: 47, width: 18, height: 18))
+        XCTAssertEqual(frames[1].label, CGRect(x: 72, y: 40, width: 250, height: 32))
+        XCTAssertNil(frames[2].chevron)
+        // Neither a separator nor a section takes a row's fold.
+        let others = StemCellsSidebarLayout.layout([.init(kind: .separator, hasFold: true), .init(kind: .widget, hasFold: true)], width: 390).frames
+        XCTAssertNil(others[0].chevron)
+        XCTAssertNil(others[1].chevron)
+    }
+
     func testFoldingMovesOnlyWhatFollows() {
         let open = StemCellsSidebarLayout.layout([.init(kind: .row), .init(kind: .section), .init(kind: .row), .init(kind: .row)], width: 390)
         let folded = StemCellsSidebarLayout.layout([.init(kind: .row), .init(kind: .section), .init(kind: .row)], width: 390)

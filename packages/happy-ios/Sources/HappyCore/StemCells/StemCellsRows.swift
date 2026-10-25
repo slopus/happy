@@ -229,7 +229,7 @@ public enum StemCellsRows {
         row.targetId = space.target.id
         row.sessions = sessionTree(conversation?.subtasks ?? [])
         row.hasHiddenSessions = hasMissing(row.sessions, held: held)
-        row.hasShownSessions = node.children.contains { spaces[$0.id] == nil }
+        row.hasShownSessions = node.children.contains { spaces[$0.id] == nil && places.agent($0.id) != nil }
         if space.target.kind == "surface" { row.surfaceType = places.surface(space.target.id)?.type }
         // A bot can always be archived; a task only where the daemon says so.
         row.canArchive = space.target.kind == "bot" || places.task(space.target.id)?.canArchive == true
@@ -255,7 +255,7 @@ public enum StemCellsRows {
             // A session the lists do not know yet draws nothing until they do.
             guard let agent = places.agent(node.id) else { continue }
             let children = nested(node.children, depth: depth + 1, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels, held: held)
-            rows.append(StemCellsRow(
+            var row = StemCellsRow(
                 id: "session:\(node.id)", nodeId: node.id, kind: .session, depth: depth,
                 label: agent.title ?? labels.untitledSession,
                 mark: agentIcons[node.id].map { ClayIcons.contains($0.slug) ? .clay($0.slug) : .none } ?? .none,
@@ -263,7 +263,12 @@ public enum StemCellsRows {
                 unread: agent.unread != nil,
                 collapsed: children.isEmpty ? nil : !node.expanded,
                 agentId: agent.id, workspaceId: agent.workspaceId
-            ))
+            )
+            // A subtask's own subtasks show and hide under it as a row's do.
+            row.sessions = sessionTree(agent.subtasks ?? [])
+            row.hasHiddenSessions = hasMissing(row.sessions, held: held)
+            row.hasShownSessions = node.children.contains { spaces[$0.id] == nil && places.agent($0.id) != nil }
+            rows.append(row)
             rows.append(contentsOf: children)
         }
         return rows

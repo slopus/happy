@@ -87,6 +87,7 @@ enum StemCellsGlyphs {
         case "pencil": .octicons("pencil")
         case "close": .ionicons("close-outline")
         case "archive": .ionicons("archive-outline")
+        case "trash": .ionicons("trash-outline")
         case "list": .ionicons("list-outline")
         case "question": .ionicons("help-circle")
         case "clock": .ionicons("time-outline")

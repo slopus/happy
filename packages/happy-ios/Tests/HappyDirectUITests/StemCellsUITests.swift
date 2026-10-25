@@ -1261,6 +1261,159 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(dock.label.contains("Haiku 5.5"))
     }
 
+    /// Rows nested under a row as desktop has them, against the computer's
+    /// side played by `family_driver.py`. A fold is the document's: one made
+    /// on the computer shows here live, and one made here reaches the
+    /// computer (`DRIVER_DOC`). Siblings reorder among themselves, a
+    /// subtask's own subtasks show and fold, one is archived, a task set
+    /// under a row renames in place, and a section's heading is deleted
+    /// with its rows left where they were.
+    func testFamily() {
+        home()
+        pause(1.5)
+        let parent = "Refactor billing service"
+        let task = row("space", parent)
+        XCTAssertTrue(task.waitForExistence(timeout: 5))
+        bringIntoView(task)
+        pause(1)
+        // One read: a row may go between two questions about it.
+        func shows(_ element: XCUIElement) -> Bool {
+            guard let shot = try? element.snapshot() else { return false }
+            return shot.frame.height > 0 && shot.frame.minY < app.frame.height && shot.frame.maxY > 0
+        }
+        func until(_ seconds: TimeInterval, _ condition: () -> Bool) -> Bool {
+            let deadline = Date().addingTimeInterval(seconds)
+            while Date() < deadline { if condition() { return true }; pause(0.2) }
+            return condition()
+        }
+        /// A tap on a row's chevron, at its trailing end.
+        func fold(_ row: XCUIElement) {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: row.frame.maxX - 25, dy: row.frame.midY)).tap()
+        }
+        let plan = row("session", "Billing test plan")
+        let deps = row("session", "Invoice deps")
+        if !shows(plan) { fold(task) }
+        XCTAssertTrue(until(5) { shows(plan) && shows(deps) }, "the task's subtasks aren't under it")
+        capture("family-open")
+
+        // Folded and unfolded on the computer: live here.
+        print("STEM_FAMILY_FOLD false \(parent)")
+        XCTAssertTrue(until(8) { !shows(plan) }, "a fold made on the computer didn't show")
+        capture("family-folded-there")
+        pause(1)
+        print("STEM_FAMILY_FOLD true \(parent)")
+        XCTAssertTrue(until(8) { shows(plan) }, "an unfold made on the computer didn't show")
+        pause(1)
+
+        // Folded here: at once, and the computer has it.
+        fold(task)
+        XCTAssertTrue(until(0.6) { !shows(plan) }, "the fold didn't happen at once")
+        capture("family-folded-here")
+        pause(1.5)
+        print("STEM_FAMILY_READ folded-here")
+        pause(1)
+        fold(task)
+        XCTAssertTrue(until(0.6) { shows(plan) }, "the unfold didn't happen at once")
+        pause(1.5)
+        print("STEM_FAMILY_READ unfolded-here")
+
+        // A subtask's own subtasks, shown under it and folded with it.
+        // Whatever the plan's own subtasks are called: subtask rows that are none of the others.
+        let others = ["Billing test plan", "Invoice deps", "Day Trips", "Neighbourhoods", "Best train day trip"].map { "stem-row:session:\($0)" }
+        let grandchildren = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND NOT (identifier IN %@)", "stem-row:session:", others))
+        if !grandchildren.allElementsBoundByIndex.contains(where: shows) {
+            // Not shown yet: Show subtasks. Shown but folded: Expand. Both from its menu.
+            bringIntoView(plan)
+            pause(1)
+            plan.press(forDuration: 1.0)
+            let show = app.buttons["Show subtasks"]
+            let expand = app.buttons["Expand"]
+            XCTAssertTrue(show.waitForExistence(timeout: 3) || expand.exists, "a subtask with subtasks offered neither Show subtasks nor Expand")
+            capture("family-subtask-menu")
+            (show.exists ? show : expand).tap()
+        }
+        XCTAssertTrue(until(6) { grandchildren.allElementsBoundByIndex.contains(where: shows) }, "a subtask's subtasks didn't show under it")
+        pause(1)
+        capture("family-nested")
+        fold(plan)
+        XCTAssertTrue(until(0.6) { !grandchildren.allElementsBoundByIndex.contains(where: shows) }, "a subtask didn't fold")
+        pause(1.5)
+        fold(plan)
+        XCTAssertTrue(until(2) { grandchildren.allElementsBoundByIndex.contains(where: shows) })
+        pause(1.5)
+
+        // Siblings: the upper one, with its own subtasks, carried down past the
+        // lower one. Clear of the dock, and away from the menu over the row.
+        bringIntoView(plan)
+        pause(1)
+        let (upper, lower) = plan.frame.minY < deps.frame.minY ? (plan, deps) : (deps, plan)
+        capture("family-drag-before")
+        upper.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.7, thenDragTo: lower.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 3.2)), withVelocity: .slow, thenHoldForDuration: 0.8)
+        pause(1.5)
+        capture("family-drag-after")
+        XCTAssertGreaterThan(upper.frame.minY, lower.frame.minY, "the subtask didn't move past its sibling")
+        XCTAssertGreaterThan(lower.frame.minY, task.frame.minY, "the subtask left its family")
+        pause(1.5)
+        print("STEM_FAMILY_READ dragged")
+        pause(1)
+
+        // A subtask's subtask archived from its menu: gone once the computer says.
+        if let leaf = grandchildren.allElementsBoundByIndex.first(where: shows) {
+            let id = leaf.identifier
+            leaf.press(forDuration: 1.0)
+            let archive = app.buttons["Archive subtask"]
+            XCTAssertTrue(archive.waitForExistence(timeout: 3), "a subtask offered no archive")
+            XCTAssertFalse(app.buttons["Rename"].exists || app.buttons["Rename task"].exists, "a subtask offered a rename")
+            capture("family-subtask-leaf-menu")
+            archive.tap()
+            XCTAssertTrue(until(10) { !shows(app.descendants(matching: .any)[id]) }, "the archived subtask stayed")
+            capture("family-archived")
+        }
+
+        // A task set under a row renames in place, as at the top.
+        let (from, to) = row("space", "Compare home insurance").waitForExistence(timeout: 2) ? ("Compare home insurance", "Compare insurance quotes") : ("Compare insurance quotes", "Compare home insurance")
+        print("STEM_FAMILY_NEST \(from) | \(parent)")
+        let nested = row("space", from)
+        XCTAssertTrue(until(8) { shows(nested) && nested.frame.minY > task.frame.minY && nested.frame.minX >= task.frame.minX }, "the task wasn't set under the row")
+        pause(1)
+        bringIntoView(nested)
+        nested.press(forDuration: 1.0)
+        let rename = app.buttons["Rename task"]
+        XCTAssertTrue(rename.waitForExistence(timeout: 3), "a nested task offered no rename")
+        capture("family-nested-menu")
+        rename.tap()
+        let field = app.textFields["stem-rename"]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.typeText(to + "\n")
+        XCTAssertTrue(row("space", to).waitForExistence(timeout: 2), "the nested rename didn't show")
+        capture("family-nested-renamed")
+        pause(2)
+        print("STEM_FAMILY_UNNEST \(to)")
+        pause(3)
+
+        // A section's heading deleted: its rows stay, under the one above.
+        print("STEM_FAMILY_SECTION_ADD Scratch")
+        let section = row("section", "Scratch")
+        XCTAssertTrue(section.waitForExistence(timeout: 8), "the computer's section didn't show")
+        bringIntoView(section)
+        pause(1)
+        let meals = row("space", "Meals this week")
+        let mealsY = meals.frame.minY
+        section.press(forDuration: 1.0)
+        let delete = app.buttons["Delete section"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 3), "a section offered no delete")
+        capture("family-section-menu")
+        delete.tap()
+        XCTAssertTrue(until(0.8) { !section.exists }, "the heading didn't go at once")
+        XCTAssertTrue(shows(meals), "the section's rows went with it")
+        XCTAssertLessThan(meals.frame.minY, mealsY, "its rows didn't close up under the block above")
+        capture("family-section-deleted")
+        pause(2)
+        print("STEM_FAMILY_READ section-deleted")
+        pause(1)
+    }
+
+
     /// The composer with nothing in between: new work opens straight on its
     /// composer, + goes straight to the library, and a long press's Paste
     /// attaches a copied picture, sent with the message. A copied recording

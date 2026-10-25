@@ -310,9 +310,19 @@ final class StemCellsHomeViewController: UIViewController {
                     self?.sidebar.afterMenuCloses { rename.begin() }
                 })
             }
+            // Only the heading goes: its rows join the block above.
+            items.append(UIMenu(options: .displayInline, children: [
+                UIAction(title: Strings.StemCells.deleteSection, image: StemCellsGlyphs.image("trash"), attributes: .destructive) { _ in
+                    StemCellsHaptics.play(.putAway)
+                    Task { await store.attentionInput(); await store.removeSection(row.nodeId) }
+                },
+            ]))
         case .space:
             let openTitle = row.targetKind == "bot" ? Strings.StemCells.openBot : Strings.StemCells.open
             items.append(UIAction(title: openTitle, image: StemCellsGlyphs.image("open")) { [weak self] _ in self?.open(row) })
+            if row.collapsed != nil {
+                items.append(UIAction(title: row.collapsed == true ? Strings.StemCells.unfold : Strings.StemCells.fold, image: StemCellsGlyphs.image(row.collapsed == true ? "chevron-down" : "chevron-right")) { [weak self] _ in self?.fold(row) })
+            }
             // Opening comes first, then what the row shows under it.
             if row.hasHiddenSessions {
                 items.append(UIAction(title: Strings.StemCells.showSubtasks, image: StemCellsGlyphs.image("eye")) { _ in Task { await store.revealSessions(row.nodeId, sessions: row.sessions) } })
@@ -341,7 +351,25 @@ final class StemCellsHomeViewController: UIViewController {
             }
             if !leaving.isEmpty { items.append(UIMenu(options: .displayInline, children: leaving)) }
         case .session:
+            // A subtask as desktop offers it: no rename (its title is the
+            // agent's own), its subtasks, and archiving it.
             items.append(UIAction(title: Strings.StemCells.open, image: StemCellsGlyphs.image("open")) { [weak self] _ in self?.open(row) })
+            if row.collapsed != nil {
+                items.append(UIAction(title: row.collapsed == true ? Strings.StemCells.unfold : Strings.StemCells.fold, image: StemCellsGlyphs.image(row.collapsed == true ? "chevron-down" : "chevron-right")) { [weak self] _ in self?.fold(row) })
+            }
+            if row.hasHiddenSessions {
+                items.append(UIAction(title: Strings.StemCells.showSubtasks, image: StemCellsGlyphs.image("eye")) { _ in Task { await store.revealSessions(row.nodeId, sessions: row.sessions) } })
+            }
+            if row.hasShownSessions {
+                items.append(UIAction(title: Strings.StemCells.hideSubtasks, image: StemCellsGlyphs.image("eye-off")) { _ in Task { await store.hideSessions(row.nodeId) } })
+            }
+            let leaving = closing(row).map { act in
+                UIAction(title: act.title, image: StemCellsGlyphs.image(act.icon), attributes: act.destructive ? .destructive : []) { _ in
+                    StemCellsHaptics.play(.putAway)
+                    act.run()
+                }
+            }
+            if !leaving.isEmpty { items.append(UIMenu(options: .displayInline, children: leaving)) }
         default:
             return nil
         }
@@ -372,7 +400,11 @@ final class StemCellsHomeViewController: UIViewController {
     /// named closes; a task is left, and archived too when the person may;
     /// a bot is archived. Never Happy.
     private func closing(_ row: StemCellsRow) -> [(title: String, short: String, icon: String, destructive: Bool, run: () -> Void)] {
-        guard let store = session?.store, row.kind == .space, !row.isHappy else { return [] }
+        guard let store = session?.store, !row.isHappy else { return [] }
+        if row.kind == .session, let agentId = row.agentId {
+            return [(Strings.StemCells.archiveSubtask, Strings.StemCells.swipeArchive, "archive", true, { Task { await store.archiveSubtask(agentId) } })]
+        }
+        guard row.kind == .space else { return [] }
         if row.isUntouchedStemCell, let spaceId = row.spaceId {
             return [(Strings.StemCells.closeNewWork, Strings.StemCells.swipeClose, "close", true, { Task { await store.discard(spaceId) } })]
         }

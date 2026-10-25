@@ -116,12 +116,63 @@ final class StemCellsDragTests: XCTestCase {
         XCTAssertEqual(try drop(drag, to: 1, in: document), ["happy-search", "happy-create", "happy", "a", "old", "e", "work", "b", "c", "sep", "d"])
     }
 
+    func testANestedRowMovesAmongItsFamily() throws {
+        let html = """
+        <nav>
+          <happy-search/>
+          <happy-create/>
+          <happy-space id="happy"/>
+          <happy-space id="t" expanded="true">
+            <happy-space id="s1"/>
+            <happy-space id="s2" expanded="true"><happy-space id="s2a"/></happy-space>
+            <happy-space id="s3"/>
+          </happy-space>
+          <happy-space id="u"/>
+        </nav>
+        """
+        let document = try SpaceSidebar.parse(html)
+        let all = rows(document)
+        let drawn = StemCellsRows.visible(all).filter { !StemCellsDrop.isHidden($0) }
+        let drag = try XCTUnwrap(StemCellsDrag(holding: "s1", drawn: drawn, all: all, document: document))
+        XCTAssertEqual(drag.parent, "t")
+        // s1, [s2, s2a], s3: its siblings with what is under them.
+        XCTAssertEqual(drag.units.map { $0.map { drawn[$0].nodeId } }, [["s1"], ["s2", "s2a"], ["s3"]])
+        XCTAssertEqual(drag.blocked, [false, false, false])
+        // The rows around the family stay; only the family reorders.
+        XCTAssertEqual(drag.order(to: 2).map(\.nodeId), ["happy", "t", "s2", "s2a", "s3", "s1", "u"])
+        let last = try XCTUnwrap(drag.after(to: 2))
+        XCTAssertEqual(last, "s3")
+        let moved = try XCTUnwrap(SidebarDocumentEdits.move(document, "s1", after: last))
+        XCTAssertEqual(moved.items[3].children.map(\.id), ["s2", "s3", "s1"])
+        // First under the parent, carrying what is nested under it.
+        let middle = try XCTUnwrap(StemCellsDrag(holding: "s2", drawn: drawn, all: all, document: document))
+        XCTAssertEqual(middle.held.map(\.nodeId), ["s2", "s2a"])
+        let first = try XCTUnwrap(middle.after(to: 0))
+        XCTAssertNil(first)
+        let top = try XCTUnwrap(SidebarDocumentEdits.move(document, "s2", after: first))
+        XCTAssertEqual(top.items[3].children.map(\.id), ["s2", "s1", "s3"])
+        // The daemon gets one move inside the family.
+        XCTAssertEqual(try SpaceSidebar.diff(document, top).count, 1)
+        // An only child has nowhere to go.
+        XCTAssertNil(StemCellsDrag(holding: "s2a", drawn: drawn, all: all, document: document))
+    }
+
     func testWhatCantBeCarried() throws {
         let document = try SpaceSidebar.parse(html)
         let all = rows(document)
         let drawn = StemCellsRows.visible(all).filter { !StemCellsDrop.isHidden($0) }
         XCTAssertNil(StemCellsDrag(holding: "happy", drawn: drawn, all: all, document: document))
+        // a1 is a's only nested row: it has no sibling to pass.
         XCTAssertNil(StemCellsDrag(holding: "a1", drawn: drawn, all: all, document: document))
         XCTAssertNil(StemCellsDrag(holding: "happy-search", drawn: drawn, all: all, document: document))
+    }
+
+    /// A nested row folds as a top-level one does: one `set` of its own `expanded`.
+    func testANestedRowFoldsByItself() throws {
+        let document = try SpaceSidebar.parse(#"<nav><happy-search/><happy-create/><happy-space id="t" expanded="true"><happy-space id="s1"><happy-space id="g1"/></happy-space><happy-space id="s2"/></happy-space></nav>"#)
+        let opened = try XCTUnwrap(SidebarDocumentEdits.fold(document, "s1"))
+        XCTAssertEqual(try SpaceSidebar.diff(document, opened), [.set(SpaceSidebarSet(id: "s1", expanded: true))])
+        let closed = try XCTUnwrap(SidebarDocumentEdits.fold(opened, "s1"))
+        XCTAssertEqual(try SpaceSidebar.diff(opened, closed), [.set(SpaceSidebarSet(id: "s1", expanded: false))])
     }
 }

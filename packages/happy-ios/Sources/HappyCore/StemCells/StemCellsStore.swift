@@ -590,6 +590,10 @@ public actor StemCellsStore {
         edit { SidebarDocumentEdits.fold($0, nodeId) }
     }
 
+    public func removeSection(_ sectionId: String) {
+        edit { SidebarDocumentEdits.removeSection($0, sectionId) }
+    }
+
     public func relabel(_ sectionId: String, label: String) {
         edit { SidebarDocumentEdits.relabel($0, sectionId, label: label) }
     }
@@ -749,6 +753,15 @@ public actor StemCellsStore {
         let client = client
         Task {
             do { try await kind == "bot" ? client.archiveBot(id) : client.archiveTask(id) }
+            catch { self.failed(error) }
+        }
+    }
+
+    /// Archives a subtask; its row goes when the daemon says so.
+    public func archiveSubtask(_ agentId: String) {
+        let client = client
+        Task {
+            do { try await client.archiveAgent(agentId) }
             catch { self.failed(error) }
         }
     }

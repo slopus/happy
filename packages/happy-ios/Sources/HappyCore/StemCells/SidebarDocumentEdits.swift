@@ -61,6 +61,15 @@ public enum SidebarDocumentEdits {
         return edited
     }
 
+    /// Deletes a section's heading: its rows stay where they are and join
+    /// the block above (the daemon's `remove` of a section).
+    public static func removeSection(_ document: SpaceSidebarDocument, _ id: String) -> SpaceSidebarDocument? {
+        guard let index = document.items.firstIndex(where: { $0.id == id && $0.kind == .section }) else { return nil }
+        var edited = document
+        edited.items.remove(at: index)
+        return edited
+    }
+
     /// Renames a section's heading.
     public static func relabel(_ document: SpaceSidebarDocument, _ id: String, label: String) -> SpaceSidebarDocument? {
         guard let index = document.items.firstIndex(where: { $0.id == id && $0.kind == .section }) else { return nil }

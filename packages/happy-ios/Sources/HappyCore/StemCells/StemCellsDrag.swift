@@ -10,6 +10,9 @@ import Foundation
 /// separator, and its peers are the other blocks. Rows are the drawn ones:
 /// Search and Create are never peers and never move, and a drop at the very
 /// top lands right after them.
+///
+/// A nested row (a subtask, or work set under a row) is carried among its
+/// family alone: the rows nested under the same parent, each with its own.
 public struct StemCellsDrag: Equatable, Sendable {
     /// The node carried.
     public let moving: String
@@ -19,15 +22,38 @@ public struct StemCellsDrag: Equatable, Sendable {
     public let from: Int
     /// Slots a drop would hide a row in (desktop's `dragSlotsBlocked`).
     public let blocked: [Bool]
+    /// A nested row's parent: it moves only among its family, the rows
+    /// nested under the same row. Nil at the top level.
+    public let parent: String?
     private let drawn: [StemCellsRow]
     private let all: [StemCellsRow]
+    /// The drawn rows before and after the family, which stay where they are.
+    private let before: [Int]
+    private let afterFamily: [Int]
 
-    /// Nil when `rowId` can't be carried: a hidden row, Happy's, a session, a
+    /// Nil when `rowId` can't be carried: a hidden row, Happy's, a lone
     /// nested row, or one inside a section's block it can't leave alone.
     public init?(holding rowId: String, drawn: [StemCellsRow], all: [StemCellsRow], document: SpaceSidebarDocument) {
         guard let index = drawn.firstIndex(where: { $0.id == rowId }) else { return nil }
         let row = drawn[index]
-        guard row.depth == 0, StemCellsDrop.canMove(row) else { return nil }
+        if row.depth > 0 {
+            guard let family = Self.family(drawn, index) else { return nil }
+            moving = row.nodeId
+            parent = drawn[family.parent].nodeId
+            units = family.units
+            from = family.units.firstIndex { $0.first == index }!
+            self.drawn = drawn
+            self.all = all
+            before = Array(0...family.parent)
+            afterFamily = Array((family.units.last!.last! + 1)..<drawn.count)
+            // Among its own siblings nothing folds or unfolds.
+            blocked = Array(repeating: false, count: family.units.count)
+            return
+        }
+        guard StemCellsDrop.canMove(row) else { return nil }
+        parent = nil
+        before = []
+        afterFamily = []
         let units = row.kind == .section ? Self.sectionBlocks(drawn) : Self.blocks(drawn)
         guard let from = units.firstIndex(where: { $0.first == index }) else { return nil }
         self.moving = row.nodeId
@@ -44,6 +70,24 @@ public struct StemCellsDrag: Equatable, Sendable {
             blocked[to] = !shown.isSubset(of: Self.shownTop(moved))
         }
         self.blocked = blocked
+    }
+
+    /// A nested row's family: its parent's index, and each sibling with
+    /// what is nested under it. Nil for a row with no sibling to pass, or
+    /// one that can't move (a widget, a hidden row).
+    static func family(_ rows: [StemCellsRow], _ index: Int) -> (parent: Int, units: [[Int]])? {
+        let depth = rows[index].depth
+        guard rows[index].kind == .space || rows[index].kind == .session else { return nil }
+        var parent = index - 1
+        while parent >= 0, rows[parent].depth >= depth { parent -= 1 }
+        guard parent >= 0, rows[parent].depth == depth - 1 else { return nil }
+        var units: [[Int]] = []
+        var next = parent + 1
+        while next < rows.count, rows[next].depth >= depth {
+            if rows[next].depth == depth { units.append([next]) } else { units[units.count - 1].append(next) }
+            next += 1
+        }
+        return units.count > 1 ? (parent, units) : nil
     }
 
     /// Top-level rows with what is nested under them.
@@ -110,7 +154,7 @@ public struct StemCellsDrag: Equatable, Sendable {
         var peers = units
         let held = peers.remove(at: from)
         peers.insert(held, at: to)
-        return peers.flatMap { $0.map { drawn[$0] } }
+        return (before + peers.flatMap { $0 } + afterFamily).map { drawn[$0] }
     }
 
     /// The rows carried.
@@ -119,7 +163,14 @@ public struct StemCellsDrag: Equatable, Sendable {
     /// The node it is set down after in slot `to`, nil for first; nil
     /// overall where nothing changes.
     public func after(to: Int) -> String?? {
-        to == from ? nil : Self.anchor(to: to, units: units, from: from, drawn: drawn, all: all, moving: moving)
+        guard to != from else { return nil }
+        // In a family: after a sibling, or first under the parent.
+        if parent != nil {
+            var remaining = units
+            remaining.remove(at: from)
+            return .some(to > 0 ? drawn[remaining[to - 1][0]].nodeId : nil)
+        }
+        return Self.anchor(to: to, units: units, from: from, drawn: drawn, all: all, moving: moving)
     }
 
     private static func anchor(to: Int, units: [[Int]], from: Int, drawn: [StemCellsRow], all: [StemCellsRow], moving: String) -> String?? {

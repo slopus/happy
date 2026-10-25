@@ -158,9 +158,10 @@ final class StemCellsRowView: UIView {
     private func applyTrailing(_ row: StemCellsRow) {
         trailing.isHidden = true
         dot.isHidden = true
-        chevron.isHidden = row.kind != .section
+        let folds = row.kind == .section || ((row.kind == .space || row.kind == .session) && row.collapsed != nil)
+        chevron.isHidden = !folds
         rule.isHidden = row.kind != .separator
-        if row.kind == .section {
+        if folds {
             chevron.image = StemCellsGlyphs.image(row.collapsed == true ? "chevron-right" : "chevron-down", size: 12)
             // Shown while folded; faint while open, so it is found without hovering.
             chevron.alpha = row.collapsed == true ? 1 : 0.45

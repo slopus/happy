@@ -29,6 +29,8 @@ extension Strings {
         public static let leaveTask = "Leave task"
         public static let archiveTask = "Archive task"
         public static let archiveBot = "Archive bot"
+        public static let archiveSubtask = "Archive subtask"
+        public static let deleteSection = "Delete section"
         public static let tidyNow = "Tidy sidebar now"
         public static let showSubtasks = "Show subtasks"
         public static let hideSubtasks = "Hide subtasks"

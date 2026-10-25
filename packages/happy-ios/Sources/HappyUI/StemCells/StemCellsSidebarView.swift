@@ -161,7 +161,14 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
         switch row.kind {
         case .section: onFold?(row)
         case .separator: break
-        default: onSelect?(row)
+        default:
+            // A row's fold is its chevron, with a finger's room around it;
+            // a row that opens nothing (a proposal's) folds wherever it's tapped.
+            if let chevron = view.frames?.chevron, onSelect == nil || gesture.location(in: self).x >= chevron.minX - 14 {
+                onFold?(row)
+            } else {
+                onSelect?(row)
+            }
         }
     }
 
@@ -187,7 +194,7 @@ final class StemCellsSidebarView: UIScrollView, UIContextMenuInteractionDelegate
             case .widget: .widget
             default: .row
             }
-            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.status == .waiting || row.status == .awaitingInput || row.unread)
+            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.status == .waiting || row.status == .awaitingInput || row.unread, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil)
         }
     }
 
@@ -617,7 +624,8 @@ extension StemCellsSidebarView: UIDropInteractionDelegate {
         let head = order[start]
         var held = [head]
         for row in order[(start + 1)...] {
-            let breaks = row.depth == 0 && (head.kind != .section || row.kind == .section || row.kind == .separator)
+            // A section holds its block; any other row what is nested under it.
+            let breaks = head.kind == .section ? row.depth == 0 && (row.kind == .section || row.kind == .separator) : row.depth <= head.depth
             if breaks { break }
             held.append(row)
         }
