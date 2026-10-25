@@ -151,17 +151,16 @@ final class StoriesStoreTests: XCTestCase {
         XCTAssertTrue(paths.contains("PUT /v0/user-settings/\(DirectAgentClient.escape(DirectAgentClient.storiesSettingKey))"))
     }
 
-    func testTheRowIsTheFeedsOrderWithMyStoryFirst() async throws {
+    func testTheRowIsTheFeedsOrder() async throws {
         let transport = StoriesTransport()
         await transport.configure(feed: twoAuthors())
         let store = make(transport)
         await store.start()
         let snapshot = try await next(store) { $0.feed != nil }
         let items = StoriesRow.items(snapshot.feed, myStory: "My Story")
-        XCTAssertEqual(items.map(\.title), ["My Story", "Steve"])
-        XCTAssertEqual(items[1].segments, 2)
-        XCTAssertEqual(items[1].unseen, 2)
-        XCTAssertTrue(items[0].showsPlus)
+        XCTAssertEqual(items.map(\.title), ["Steve"])
+        XCTAssertEqual(items[0].segments, 2)
+        XCTAssertEqual(items[0].unseen, 2)
         XCTAssertEqual(snapshot.recents, [StickerRef(packId: "p", stickerId: "s")])
     }
 
@@ -177,7 +176,7 @@ final class StoriesStoreTests: XCTestCase {
         let seen = try await next(store) { $0.feed?.authors[1].unseenCount == 0 }
         XCTAssertEqual(seen.stories["s1"]?.seen, true)
         XCTAssertEqual(seen.stories["s2"]?.seen, true)
-        XCTAssertTrue(StoriesRow.items(seen.feed, myStory: "My Story")[1].allSeen)
+        XCTAssertTrue(StoriesRow.items(seen.feed, myStory: "My Story")[0].allSeen)
     }
 
     func testAnotherDevicesSeenEventMarksTheRing() async throws {
@@ -369,7 +368,7 @@ final class StoriesStoreTests: XCTestCase {
         await second.start()
         let kept = try await next(second) { $0.feed != nil }
         XCTAssertEqual(kept.availability, .on)
-        XCTAssertEqual(StoriesRow.items(kept.feed, myStory: "My Story").map(\.title), ["My Story", "Steve"])
+        XCTAssertEqual(StoriesRow.items(kept.feed, myStory: "My Story").map(\.title), ["Steve"])
         XCTAssertEqual(kept.stories.count, 2)
     }
 

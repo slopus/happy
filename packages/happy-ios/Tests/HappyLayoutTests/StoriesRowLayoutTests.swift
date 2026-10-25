@@ -16,8 +16,6 @@ final class StoriesRowLayoutTests: XCTestCase {
         // 30.66 out from the avatar's centre.
         XCTAssertEqual(item.ring.minX, -0.66, accuracy: 0.0001)
         XCTAssertEqual(item.ring.width, 61.32, accuracy: 0.0001)
-        XCTAssertEqual(item.plus, rect(39, 38, 16, 16))
-        XCTAssertEqual(item.cutout, rect(38, 37, 18, 18))
         // 2 under the ring's 68 pt square; a long name is held to 70.
         XCTAssertEqual(item.title(width: 39.4, height: 13.2), rect(10, 66, 40, 14))
         XCTAssertEqual(item.title(width: 120, height: 13.2), rect(-5, 66, 70, 14))
@@ -57,15 +55,15 @@ final class StoriesRowLayoutTests: XCTestCase {
         XCTAssertEqual(StoriesRowLayout.segments(count: 80).count, 30)
     }
 
-    func testHomeKeepsTheRowAboveTheFirstRow() {
-        let layout = StemCellsHomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, bannerHeight: 0, storiesHeight: 98)
-        XCTAssertEqual(layout.listInsets, LayoutInsets(top: 218, left: 0, bottom: 90, right: 0))
-        XCTAssertEqual(layout.stories, rect(0, -98, 390, 98))
+    /// The open stories push the banner and the list down by their room.
+    func testHomeMakesRoomForTheOpenStories() {
+        let layout = StemCellsHomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, bannerHeight: 40, storiesHeight: 96)
+        XCTAssertEqual(layout.banner, rect(0, 216, 390, 40))
+        XCTAssertEqual(layout.listInsets, LayoutInsets(top: 256, left: 0, bottom: 90, right: 0))
         XCTAssertEqual(layout.indicatorInsets, LayoutInsets(top: 110, left: 0, bottom: 90, right: 0))
-        // Off: home exactly as it was.
+        // Closed or off: home exactly as it was.
         let off = StemCellsHomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, bannerHeight: 0, storiesHeight: 0)
         XCTAssertEqual(off, StemCellsHomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, bannerHeight: 0))
-        XCTAssertEqual(off.stories, .zero)
         XCTAssertEqual(off.listInsets.top, 120)
     }
 }

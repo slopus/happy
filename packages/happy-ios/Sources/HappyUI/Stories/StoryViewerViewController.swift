@@ -11,6 +11,8 @@ import UIKit
 final class StoryViewerViewController: UIViewController, UIGestureRecognizerDelegate {
     /// The person asked for a story's conversation (their own).
     var onOpenConversation: ((StorySource) -> Void)?
+    /// The viewer went away.
+    var onClose: (() -> Void)?
     /// The circle the viewer opened from, which it closes into.
     weak var origin: UIView?
 
@@ -139,6 +141,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         super.viewDidDisappear(animated)
         guard isBeingDismissed || presentingViewController == nil else { return }
         finish()
+        onClose?()
+        onClose = nil
     }
 
     private func finish() {

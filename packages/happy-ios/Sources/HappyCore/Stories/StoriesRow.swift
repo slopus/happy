@@ -14,23 +14,20 @@ public struct StoriesRowItem: Equatable, Sendable, Identifiable {
     /// One ring segment per story, the unseen ones last and coloured.
     public var segments: Int
     public var unseen: Int
-    /// The blue "+" at the bottom right: always on My Story.
-    public var showsPlus: Bool
 
     /// Everything in its circle is seen: a grey ring, the name dimmed.
     public var allSeen: Bool { segments > 0 && unseen == 0 }
 }
 
-/// The row from the feed, in the daemon's order. My Story is always first,
-/// even before the feed has been read.
+/// The row from the feed, in the daemon's order: the person's own stories
+/// first when they have any, then everyone with a story. Nothing here makes
+/// a story; that happens in a conversation.
 public enum StoriesRow {
     public static func items(_ feed: StoryFeed?, myStory: String) -> [StoriesRowItem] {
         let authors = feed?.authors ?? []
         var items: [StoriesRowItem] = []
-        if let me = authors.first(where: \.isSelf) {
+        if let me = authors.first(where: \.isSelf), !me.storyIds.isEmpty {
             items.append(item(me, myStory: myStory))
-        } else {
-            items.append(StoriesRowItem(id: "self", title: myStory, isSelf: true, photo: nil, thumbhash: nil, initials: "", segments: 0, unseen: 0, showsPlus: true))
         }
         var keys: Set<String> = ["self"]
         for author in authors where !author.isSelf && !author.storyIds.isEmpty && keys.insert(author.key).inserted {
@@ -43,9 +40,19 @@ public enum StoriesRow {
         StoriesRowItem(
             id: author.key, title: author.isSelf ? myStory : firstName(author.name), isSelf: author.isSelf,
             photo: author.photo, thumbhash: author.thumbhash, initials: initials(author.name),
-            segments: author.storyIds.count, unseen: author.isSelf ? 0 : min(author.unseenCount, author.storyIds.count),
-            showsPlus: author.isSelf
+            segments: author.storyIds.count, unseen: author.isSelf ? 0 : min(author.unseenCount, author.storyIds.count)
         )
+    }
+
+    /// The first circle that closes into the title: the person's own is
+    /// left out, as it never has anything new.
+    public static func collapseStart(_ items: [StoriesRowItem]) -> Int {
+        items.first?.isSelf == true ? 1 : 0
+    }
+
+    /// Something in the row is still to be seen.
+    public static func hasUnseen(_ items: [StoriesRowItem]) -> Bool {
+        items.contains { $0.unseen > 0 }
     }
 
     public static func firstName(_ name: String) -> String {

@@ -4,8 +4,7 @@ import Foundation
 /// chat list draws its expanded stories row (`StoryPeerListComponent`,
 /// `StoryPeerListItemComponent`): 60 × 77 items 14 apart, a 52 avatar 4 in
 /// from the item's top, its ring on a 30.66 radius (2.33 wide unseen, 1.33
-/// seen), the name in 11 pt 2 under the ring, and My Story's 16 pt "+" at
-/// the avatar's bottom right.
+/// seen), and the name in 11 pt 2 under the ring.
 public struct StoriesRowLayout: Equatable, Sendable {
     public enum Metrics {
         public static let height: CGFloat = 98
@@ -25,11 +24,6 @@ public struct StoriesRowLayout: Equatable, Sendable {
         public static let titleOverhang: CGFloat = 10
         /// The ring's indicator square (Telegram's avatar inset by 8).
         public static let indicator: CGFloat = 68
-        public static let plus: CGFloat = 16
-        /// The "+" sits this far in from the avatar's right and bottom.
-        public static let plusInset = CGSize(width: 1, height: 2)
-        /// The avatar is cut around the "+" by a circle this much larger.
-        public static let plusCutout: CGFloat = 18
         /// Telegram widens the spacing so the edge never shows a sliver of a ring.
         public static let ringOutset: CGFloat = 0.66
         public static let maximumSliver: CGFloat = 4
@@ -40,8 +34,6 @@ public struct StoriesRowLayout: Equatable, Sendable {
         public var avatar: CGRect
         /// The ring's square: the avatar grown to the ring's outer radius.
         public var ring: CGRect
-        public var plus: CGRect
-        public var cutout: CGRect
         /// The title's line, centred 2 under the ring's 68 pt square, at
         /// most 10 wider than the item.
         public func title(width: CGFloat, height: CGFloat) -> CGRect {
@@ -60,9 +52,7 @@ public struct StoriesRowLayout: Equatable, Sendable {
         typealias M = Metrics
         let avatar = CGRect(x: floor((M.item.width - M.avatar) / 2), y: M.avatarTop, width: M.avatar, height: M.avatar)
         let ring = avatar.insetBy(dx: -(M.ringRadius - M.avatar / 2), dy: -(M.ringRadius - M.avatar / 2))
-        let plus = CGRect(x: avatar.maxX - M.plusInset.width - M.plus, y: avatar.maxY - M.plusInset.height - M.plus, width: M.plus, height: M.plus)
-        let cutout = plus.insetBy(dx: -(M.plusCutout - M.plus) / 2, dy: -(M.plusCutout - M.plus) / 2)
-        return Item(avatar: avatar, ring: ring, plus: plus, cutout: cutout)
+        return Item(avatar: avatar, ring: ring)
     }()
 
     public init(width: CGFloat, count: Int) {

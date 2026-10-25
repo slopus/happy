@@ -25,8 +25,16 @@ final class StemCellsHomeViewController: UIViewController {
     private var carryWork: Task<Void, Never>?
     private var snapshot = StemCellsSnapshot()
     private var creating = false
-    /// Stories' row above the sidebar; no height while Stories are off.
+    /// Stories, in home's header: open under it, or closed into its title.
+    /// Nothing at all while Stories are off.
     private lazy var stories = StoriesHomeController(host: self)
+    /// How the stories last changed the list's room, while it is applied.
+    private var storiesChange: StoriesHomeController.Change?
+
+    /// The header home floats over this screen, for the stories to live in.
+    weak var header: HomeHeaderView? {
+        didSet { if header !== oldValue { stories.install(in: header) } }
+    }
 
     /// Every snapshot shown, for the screen around this one.
     var onSnapshot: ((StemCellsSnapshot) -> Void)?
@@ -70,8 +78,8 @@ final class StemCellsHomeViewController: UIViewController {
         sidebar.onDrop = { [weak self] drag, to in self?.drop(drag, to: to) }
         sidebar.onDragging = { [weak self] active in self?.dragging(active) }
         sidebar.delegate = self
-        sidebar.addSubview(stories.row)
-        stories.onHeightChange = { [weak self] in self?.view.setNeedsLayout() }
+        stories.onInsetChange = { [weak self] change in self?.storiesMoved(change) }
+        stories.list = sidebar
         empty.onPair = { [weak self] in
             guard let self else { return }
             DirectPairingFlow.scan(context: context, on: self)
@@ -138,6 +146,7 @@ final class StemCellsHomeViewController: UIViewController {
         empty.message = !hasComputer ? Strings.StemCells.noComputer : Strings.StemCells.unsupported
         empty.showsPair = !hasComputer
         sidebar.isHidden = !empty.isHidden
+        stories.isSuppressed = sidebar.isHidden
         let reason = { (text: String) in text.isEmpty ? Strings.StemCells.unanswered : text }
         let notice = snapshot.stemCellError.map { Strings.StemCells.newWorkFailed(reason($0)) } ?? snapshot.error.map(reason)
         // Prioritizing being off is Settings' business: home says nothing of it.
@@ -182,19 +191,50 @@ final class StemCellsHomeViewController: UIViewController {
         dockText.prepare(HomeDockController.textKey(width: bounds.width, text: TextEnvironment(traitCollection)))
         let bannerHeight = banner.isEmpty ? 0 : banner.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height
         dockView.frame = bounds
-        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.height)
+        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset)
         banner.frame = layout.banner
         sidebar.frame = bounds
-        stories.row.frame = layout.stories
         let insets = UIEdgeInsets(layout.listInsets)
         if sidebar.contentInset != insets {
             let atTop = sidebar.contentOffset.y <= -sidebar.contentInset.top + 1
             sidebar.contentInset = insets
             sidebar.verticalScrollIndicatorInsets = UIEdgeInsets(layout.indicatorInsets)
-            // A shrinking top (Stories turned off) leaves nothing scrolled past it.
-            if atTop || (!sidebar.isDragging && sidebar.contentOffset.y < -insets.top) { sidebar.contentOffset.y = -insets.top }
+            switch storiesChange {
+            case .held:
+                // The stories opened or closed under the finger: the list stays.
+                break
+            case .animated:
+                // They opened or closed on their own: the list goes to its new top.
+                sidebar.contentOffset.y = -insets.top
+            case .immediate, nil:
+                // A shrinking top (Stories turned off) leaves nothing scrolled past it.
+                if atTop || (!sidebar.isDragging && sidebar.contentOffset.y < -insets.top) { sidebar.contentOffset.y = -insets.top }
+            }
         }
         empty.frame = layout.empty
+    }
+
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        if parent == nil { header = nil }
+    }
+
+    /// The stories' room above the list changed: the list keeps still under
+    /// a finger, and otherwise moves to its new top, animated as Telegram's
+    /// chat list scrolls to its stories.
+    private func storiesMoved(_ change: StoriesHomeController.Change) {
+        storiesChange = change
+        defer { storiesChange = nil }
+        view.setNeedsLayout()
+        switch change {
+        case .held, .immediate:
+            view.layoutIfNeeded()
+        case .animated:
+            let animator = UIViewPropertyAnimator(duration: 0.3, controlPoint1: CGPoint(x: 0.33, y: 0.52), controlPoint2: CGPoint(x: 0.25, y: 0.99)) { [weak self] in
+                self?.view.layoutIfNeeded()
+            }
+            animator.startAnimation()
+        }
     }
 
     // MARK: Acts
@@ -383,6 +423,8 @@ final class StemCellsHomeViewController: UIViewController {
     }
 
     private func dragging(_ active: Bool) {
+        // A carry scrolls the list near its edges: not a pull on the stories.
+        stories.carrying = active
         guard let store = session?.store else { return }
         inOrder {
             if active { await store.attentionInput() }
@@ -404,8 +446,25 @@ final class StemCellsHomeViewController: UIViewController {
 extension StemCellsHomeViewController: UIScrollViewDelegate {
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         sidebar.closeSwipe(animated: true)
+        stories.listWillBeginDragging()
         // Scrolling is being in the list: Prioritizing's batches wait.
         if let store = session?.store { Task { await store.attentionInput() } }
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        stories.listDidScroll()
+    }
+
+    func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+        stories.listWillEndDragging(target: targetContentOffset)
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        stories.listDidEndDragging(decelerate: decelerate)
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        stories.listDidEndDecelerating()
     }
 }
 

@@ -10,11 +10,14 @@ extension Strings {
         public static func author(_ name: String, unseen: Int) -> String {
             unseen > 0 ? "\(name), \(unseen) new" : name
         }
-        public static let addStory = "Add story"
+        /// The avatars closed into the header's title.
+        public static func collapsed(_ names: [String]) -> String {
+            names.isEmpty ? "Stories" : "Stories: \(names.joined(separator: ", "))"
+        }
 
         // Settings.
         public static let setting = "Stories"
-        public static let settingDetail = "Experimental. Share what your work looks like in a row of circles above the sidebar."
+        public static let settingDetail = "Experimental. Share what your work looks like in a row of circles in the header."
 
         // The viewer.
         public static let close = "Close"

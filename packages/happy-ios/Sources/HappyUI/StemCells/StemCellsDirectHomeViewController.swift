@@ -35,6 +35,7 @@ final class StemCellsDirectHomeViewController: UIViewController {
         stemCells.didMove(toParent: self)
         view.addSubview(header)
         header.stemCellsActions = true
+        stemCells.header = header
         header.searchButton.accessibilityIdentifier = "stem-search"
         header.searchButton.addAction(UIAction { [weak self] _ in self?.stemCells.openSearch() }, for: .primaryActionTriggered)
         header.logoControl.isUserInteractionEnabled = true

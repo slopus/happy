@@ -268,6 +268,22 @@ final class HomeHeaderView: UIView {
     let statusDot = StatusDotView()
     let statusLabel = StyledLabel(style: TextStyles.homeHeaderStatus, color: Palette.textSecondary, lines: 1, alignment: .center)
     var showsAccountAvatar = false { didSet { setNeedsLayout() } }
+    /// Drawn over the scrim and under the controls, as big as the header
+    /// and free to hang below it: the stories, which close into the title
+    /// and open under the header. It takes the touches its own
+    /// `point(inside:with:)` takes.
+    var accessory: UIView? {
+        didSet {
+            guard accessory !== oldValue else { return }
+            oldValue?.removeFromSuperview()
+            if let accessory { insertSubview(accessory, aboveSubview: scrim) }
+            setNeedsLayout()
+        }
+    }
+    /// Where the title starts while the accessory places it; nil centres it.
+    var titleX: CGFloat? { didSet { if titleX != oldValue { setNeedsLayout() } } }
+    /// How much deeper the scrim reaches, under the accessory's open row.
+    var backdropExtension: CGFloat = 0 { didSet { if backdropExtension != oldValue { setNeedsLayout() } } }
 
     var status: RealtimeStatus = HomeConnectionStatus.initial {
         didSet { if status != oldValue { applyStatus() } }
@@ -299,9 +315,12 @@ final class HomeHeaderView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
-    /// Only the controls take touches; the rest lets the list scroll.
+    /// Only the controls and what the accessory takes; the rest lets the
+    /// list scroll.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        logoControl.frame.contains(point) || actions.frame.contains(point)
+        if logoControl.frame.contains(point) || actions.frame.contains(point) { return true }
+        guard let accessory, !accessory.isHidden else { return false }
+        return accessory.point(inside: convert(point, to: accessory), with: event)
     }
 
     private var showsStatus: Bool {
@@ -334,6 +353,8 @@ final class HomeHeaderView: UIView {
             status: showsStatus ? statusLabel.measurable : nil
         )
         input.showsAccountAvatar = showsAccountAvatar
+        input.titleX = titleX
+        input.backdropExtension = backdropExtension
         return HomeHeaderLayout(input)
     }
 
@@ -345,6 +366,7 @@ final class HomeHeaderView: UIView {
         super.layoutSubviews()
         let layout = layout(width: bounds.width)
         scrim.setLayoutFrame(layout.backdrop)
+        accessory?.frame = bounds
         logoControl.setLayoutFrame(layout.logoControl)
         logo.setLayoutFrame(layout.logo.offsetBy(dx: -layout.logoControl.minX, dy: -layout.logoControl.minY))
         logo.clipsToBounds = showsAccountAvatar

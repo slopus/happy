@@ -69,6 +69,20 @@ final class StoriesUITests: XCTestCase {
         add(attachment)
     }
 
+    private func drag(from y0: CGFloat, to y1: CGFloat, hold: TimeInterval = 0.4) {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y0)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y1)), withVelocity: .slow, thenHoldForDuration: hold)
+    }
+
+    /// Opens the stories under the header, as a pull on the list at its
+    /// top does, unless they are open already.
+    private func openStories(_ circle: XCUIElement) {
+        for _ in 0..<3 where !circle.isHittable {
+            drag(from: 0.3, to: 0.62)
+            pause(1)
+        }
+        XCTAssertTrue(circle.isHittable, "pulling the list down didn't open the stories")
+    }
+
     /// "Post it", with real inference: new work makes and presents a chart,
     /// the person says "post it", the agent drafts a story that appears
     /// inline with Post and Edit, Post turns it "Posted", and tapping it
@@ -132,8 +146,11 @@ final class StoriesUITests: XCTestCase {
         pause(1.5)
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(element("story-circle:self").waitForExistence(timeout: 8))
-        pause(2)
+        let mine = element("story-circle:self")
+        XCTAssertTrue(mine.waitForExistence(timeout: 8))
+        pause(1)
+        openStories(mine)
+        pause(1.5)
         capture("post-it-home")
     }
 
@@ -254,9 +271,10 @@ final class StoriesUITests: XCTestCase {
     /// overlays, its views, and deleting it from "more" takes it away.
     func testViewer() {
         home()
-        let mine = element("story-circle:self")
-        XCTAssertTrue(mine.waitForExistence(timeout: 10), "no stories row")
         step("post-sample", wait: 5)
+        let mine = element("story-circle:self")
+        XCTAssertTrue(mine.waitForExistence(timeout: 10), "no stories")
+        openStories(mine)
         mine.tap()
         let canvas = element("story-canvas")
         XCTAssertTrue(canvas.waitForExistence(timeout: 6), "the viewer never opened")
@@ -293,32 +311,35 @@ final class StoriesUITests: XCTestCase {
         if canvas.exists {
             canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(forDuration: 0.05, thenDragTo: canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)), withVelocity: .fast, thenHoldForDuration: 0)
         }
-        XCTAssertTrue(mine.waitForExistence(timeout: 5))
         pause(1.5)
         capture("viewer-closed")
     }
 
-    /// The row above the sidebar: My Story first with its "+", a story
-    /// posted on the computer gives it a ring live, and Settings' switch
-    /// takes the row away and brings it back without the list jumping.
+    /// The stories in home's header: nothing on home starts a story; a
+    /// story posted on the computer is My Story, which opens under the
+    /// header when the list is pulled down and closes into it as the list
+    /// scrolls up, the sidebar keeping clear of it; Settings' switch takes
+    /// the stories away, home as it was, and brings them back.
     func testRow() {
         home()
-        let mine = element("story-circle:self")
-        XCTAssertTrue(mine.waitForExistence(timeout: 10), "no stories row")
-        pause(1.5)
-        capture("row-my-story")
-        let firstRow = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:")).firstMatch
-        let rowTop = firstRow.frame.minY
-        XCTAssertGreaterThan(rowTop, mine.frame.maxY, "the sidebar runs under the row")
-
+        XCTAssertFalse(app.buttons["Add story"].exists, "home still offers to start a story")
         step("post-sample", wait: 5)
-        capture("row-my-story-ring")
-
-        // The list scrolls the row away with it, and back.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)), withVelocity: .slow, thenHoldForDuration: 0.4)
+        let mine = element("story-circle:self")
+        XCTAssertTrue(mine.waitForExistence(timeout: 10), "no stories")
         pause(1)
+        capture("row-closed")
+        openStories(mine)
+        pause(1.5)
+        capture("row-open")
+        let firstRow = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:")).firstMatch
+        XCTAssertGreaterThan(firstRow.frame.minY, mine.frame.maxY, "the sidebar runs under the stories")
+
+        // Scrolling the list up closes them into the header.
+        drag(from: 0.65, to: 0.4)
+        pause(1)
+        XCTAssertFalse(mine.isHittable, "scrolling up left the stories open")
         capture("row-scrolled")
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)), withVelocity: .slow, thenHoldForDuration: 0.4)
+        drag(from: 0.35, to: 0.8)
         pause(1.5)
 
         // Off in Settings: home is as it was. On: the row returns.
@@ -339,8 +360,10 @@ final class StoriesUITests: XCTestCase {
         toggle.tap()
         pause(1.5)
         app.swipeDown(velocity: .fast)
-        XCTAssertTrue(element("story-circle:self").waitForExistence(timeout: 8), "the row never came back")
-        pause(2)
+        XCTAssertTrue(element("story-circle:self").waitForExistence(timeout: 8), "the stories never came back")
+        pause(1)
+        openStories(element("story-circle:self"))
+        pause(1.5)
         capture("home-stories-back")
     }
 }

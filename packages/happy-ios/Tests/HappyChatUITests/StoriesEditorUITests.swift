@@ -65,9 +65,10 @@ final class StoriesEditorUITests: XCTestCase {
         pause(0.8)
     }
 
-    /// My Story's "+" (its posted story opens on the rest of the circle).
-    private func addStory() {
-        element("story-circle:self").coordinate(withNormalizedOffset: CGVector(dx: 47.0 / 60, dy: 46.0 / 77)).tap()
+    /// The newest draft's Edit, as a conversation's story card has it.
+    private func editDraft() {
+        element("harness-edit-draft").tap()
+        wait("editor", "1", "the draft didn't open")
     }
 
     private func pickSticker(_ id: String) {
@@ -179,7 +180,7 @@ final class StoriesEditorUITests: XCTestCase {
     }
 
     /// Closing with changes asks first; Save draft keeps them, the draft
-    /// opens again from Drafts, and its next save edits it.
+    /// opens again from its Edit, and its next save edits it.
     func testSaveAndEdit() {
         openEditor()
         pickSticker("sticker-tab-emoji")
@@ -195,15 +196,8 @@ final class StoriesEditorUITests: XCTestCase {
         wait("editor", "0")
         wait("saved", "draft:1:1", "the draft wasn't made")
 
-        // Again, from Drafts.
-        addStory()
-        let drafts = app.buttons["Drafts"]
-        XCTAssertTrue(drafts.waitForExistence(timeout: 4), "no sources sheet")
-        drafts.tap()
-        let first = app.cells.firstMatch
-        XCTAssertTrue(first.waitForExistence(timeout: 4), "no drafts")
-        first.tap()
-        wait("editor", "1", "the draft didn't open")
+        // Again, from its Edit.
+        editDraft()
         wait("overlays", "emoji")
         pickSticker("sticker:shapes/heart")
         wait("overlays", "emoji,sticker")
@@ -213,11 +207,7 @@ final class StoriesEditorUITests: XCTestCase {
         wait("saved", "draft:2:2", "the edit didn't make a second version")
 
         // A change, then close and discard: the draft stays as saved.
-        addStory()
-        XCTAssertTrue(drafts.waitForExistence(timeout: 4))
-        drafts.tap()
-        XCTAssertTrue(first.waitForExistence(timeout: 4))
-        first.tap()
+        editDraft()
         wait("overlays", "emoji,sticker")
         pickSticker("sticker:shapes/circle")
         wait("overlays", "emoji,sticker,sticker")

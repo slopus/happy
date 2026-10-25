@@ -53,6 +53,13 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         /// The status text, when the socket is not connected.
         public var status: Measurable?
         public var showsAccountAvatar: Bool = false
+        /// Where the title starts when something beside it places it (the
+        /// stories closed into the header); nil centres it. The status
+        /// line stays centred under it.
+        public var titleX: CGFloat?
+        /// How much deeper the scrim reaches, over what hangs under the
+        /// header (the stories' open row).
+        public var backdropExtension: CGFloat = 0
 
         public init(width: CGFloat, safeTop: CGFloat, hairline: CGFloat, title: Measurable, status: Measurable?) {
             self.width = width
@@ -85,7 +92,7 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         let rowHeight = M.contentHeight
 
         size = CGSize(width: width, height: top + rowHeight)
-        backdrop = CGRect(x: 0, y: 0, width: width, height: top + rowHeight + M.backdropOverhang)
+        backdrop = CGRect(x: 0, y: 0, width: width, height: top + rowHeight + M.backdropOverhang + max(0, input.backdropExtension))
 
         logoControl = CGRect(x: M.paddingHorizontal, y: top + (rowHeight - M.controlSize) / 2, width: M.controlSize, height: M.controlSize)
         let logoSize = input.showsAccountAvatar ? M.logoBox : M.logoSize
@@ -109,7 +116,8 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         let slotWidth = max(0, width - 2 * M.titleInset)
         let titleSize = input.title.size(fitting: slotWidth)
         let titleY = top + (rowHeight - titleSize.height) / 2
-        title = CGRect(x: slotX + (slotWidth - titleSize.width) / 2, y: titleY, width: titleSize.width, height: titleSize.height)
+        let titleX = input.titleX ?? slotX + (slotWidth - titleSize.width) / 2
+        title = CGRect(x: titleX, y: titleY, width: titleSize.width, height: titleSize.height)
 
         if let status = input.status {
             let text = status.size(fitting: max(0, slotWidth - M.statusDotSize - M.statusDotGap))
@@ -117,7 +125,7 @@ public struct HomeHeaderLayout: Equatable, Sendable {
             let slotHeight = max(M.statusMinHeight, rowHeight)
             let slotY = titleY + titleSize.height + M.statusMarginTop
             let rowWidth = M.statusDotSize + M.statusDotGap + text.width
-            let rowX = slotX + (slotWidth - rowWidth) / 2
+            let rowX = title.midX - rowWidth / 2
             let rowY = slotY + (slotHeight - rowHeight) / 2
             statusDot = CGRect(x: rowX, y: rowY + (rowHeight - M.statusDotSize) / 2, width: M.statusDotSize, height: M.statusDotSize)
             self.status = CGRect(x: rowX + M.statusDotSize + M.statusDotGap, y: rowY + (rowHeight - text.height) / 2, width: text.width, height: text.height)

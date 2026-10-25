@@ -10,9 +10,6 @@ extension Palette {
     public static let storiesUnseenBottom = ColorToken("#3DA1FD")
     /// A seen ring.
     public static let storiesSeen = ColorToken("#D8D8E1", "#48484A")
-    /// My Story's "+" and its glyph.
-    public static let storiesPlus = ColorToken("#007AFF", "#3E88F7")
-    public static let storiesPlusGlyph = ColorToken("#FFFFFF")
     /// An avatar without a photo, under its initials.
     public static let storiesAvatarFill = ColorToken("#B8BBC4", "#5A5A5F")
     public static let storiesAvatarText = ColorToken("#FFFFFF")

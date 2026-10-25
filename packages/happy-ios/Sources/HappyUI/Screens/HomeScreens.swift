@@ -221,6 +221,7 @@ public final class HomeViewController: UIViewController {
             list.contentInsets = insets
             setAdditionalSafeArea(.zero, on: list)
         } else if let stemCells = content as? StemCellsHomeViewController {
+            stemCells.header = header
             stemCells.contentInsets = insets
             setAdditionalSafeArea(.zero, on: stemCells)
         } else {

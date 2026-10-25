@@ -7,17 +7,22 @@ final class StoriesRowTests: XCTestCase {
         StoryFeedAuthor(userId: id, name: name, photo: nil, thumbhash: nil, isSelf: isSelf, storyIds: stories, unseenCount: unseen, draftCount: isSelf ? 0 : nil, latestPostedAt: nil)
     }
 
-    func testMyStoryIsFirstBeforeTheFeedIsRead() {
-        let items = StoriesRow.items(nil, myStory: "My Story")
-        XCTAssertEqual(items.count, 1)
-        XCTAssertEqual(items[0].title, "My Story")
-        XCTAssertTrue(items[0].isSelf)
-        XCTAssertTrue(items[0].showsPlus)
-        XCTAssertEqual(items[0].segments, 0)
+    /// Nothing to start a story from: no circle before the feed, and none
+    /// for the person until they have a story.
+    func testNoMyStoryWithoutAStory() {
+        XCTAssertEqual(StoriesRow.items(nil, myStory: "My Story"), [])
+        let feed = StoryFeed(authors: [
+            author("u1", "Kirill Dubovitskiy", isSelf: true),
+            author("u2", "Ada Lovelace", stories: ["b"], unseen: 1),
+        ], stories: [:], cursor: "c")
+        let items = StoriesRow.items(feed, myStory: "My Story")
+        XCTAssertEqual(items.map(\.title), ["Ada"])
+        XCTAssertEqual(StoriesRow.collapseStart(items), 0)
+        XCTAssertTrue(StoriesRow.hasUnseen(items))
     }
 
-    /// The daemon's order, never sorted again; My Story first, with a ring
-    /// only when it has a story, and never unseen.
+    /// The daemon's order, never sorted again; My Story first when it has a
+    /// story, never unseen, and left out of what closes into the title.
     func testTheFeedsOrderIsKept() {
         let feed = StoryFeed(authors: [
             author("u1", "Kirill Dubovitskiy", isSelf: true, stories: ["a"], unseen: 3),
@@ -33,6 +38,8 @@ final class StoriesRowTests: XCTestCase {
         XCTAssertTrue(items[1].allSeen)
         XCTAssertFalse(items[2].allSeen)
         XCTAssertEqual(items[2].initials, "AL")
+        XCTAssertEqual(StoriesRow.collapseStart(items), 1)
+        XCTAssertTrue(StoriesRow.hasUnseen(items))
     }
 
     func testInitials() {

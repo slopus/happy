@@ -25,6 +25,11 @@ enum StoriesHaptics {
         case trash = "overlay.trash"
         /// A refused post or deletion.
         case refused
+        /// Home's stories open under the header, or close into the title,
+        /// under the person's finger (Telegram's chat list: a tap, then a
+        /// very light impact).
+        case headerOpen = "stories.header.open"
+        case headerClose = "stories.header.close"
     }
 
     enum Feedback: Equatable {
@@ -45,6 +50,8 @@ enum StoriesHaptics {
         case .snap: .impact(.rigid, intensity: 0.5)
         case .trash: .impact(.heavy, intensity: 1)
         case .refused: .notification(.error)
+        case .headerOpen: .selection
+        case .headerClose: .impact(.medium, intensity: 0.3)
         }
     }
 

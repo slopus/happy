@@ -15,13 +15,14 @@ import UIKit
 /// or the editor: `editor=1 frames=1 overlays=sticker,text trail=… saved=draft:2`.
 /// `-storiesCompose` opens the editor on a picture of the harness's own,
 /// which the Photos source hands back in place of the system picker.
+/// The stories sit in a home header over a list of the harness's own, as
+/// Stem Cells home has them; `header=open` or `header=closed` in the probe.
 @MainActor
 final class StoriesHarness {
     private let window: UIWindow
     private let transport = StoriesHarnessTransport()
     private let session: StoriesSession
-    private let host = UIViewController()
-    private let row = StoriesRowView()
+    private let host: StoriesHarnessHome
     private let probe = UILabel()
     private let recorder = StoriesHarnessHaptics()
     private var watch: StemCellsWatch?
@@ -38,15 +39,19 @@ final class StoriesHarness {
         session = StoriesSession(accountID: "stories-harness", client: client, images: StemCellsImages(client: client), offline: nil) {
             AsyncStream { _ in }
         }
-        host.view.backgroundColor = .systemGroupedBackground
-        host.view.addSubview(row)
+        host = StoriesHarnessHome(session: session)
+        let session = session
+        host.onEditDraft = { [weak host] in
+            guard let host else { return }
+            let drafts = session.snapshot.stories.values.filter { $0.status == .draft }
+            guard let newest = drafts.max(by: { $0.updatedAt < $1.updatedAt }) else { return }
+            StoriesEditorPresenter.present(session: session, draft: newest, from: host)
+        }
         probe.accessibilityIdentifier = "stories-probe"
         probe.isAccessibilityElement = true
         probe.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
         probe.alpha = 0.02
         host.view.addSubview(probe)
-        row.onOpen = { [weak self] item in self?.open(item) }
-        row.onAdd = { [weak self] in self?.compose() }
         StoriesMediaChooser.library = { await Self.library() }
         window.rootViewController = host
         Task { await transport.drawFrames(Self.frames()) }
@@ -54,8 +59,6 @@ final class StoriesHarness {
         watch = session.watch { [weak self] snapshot in
             guard let self else { return }
             self.snapshot = snapshot
-            row.apply(StoriesRow.items(snapshot.feed, myStory: Strings.Stories.myStory))
-            layout()
         }
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.report() }
@@ -101,18 +104,7 @@ final class StoriesHarness {
         return nil
     }
 
-    private func layout() {
-        let top = window.safeAreaInsets.top + 20
-        row.frame = CGRect(x: 0, y: top, width: host.view.bounds.width, height: StoriesRowLayout.Metrics.height)
-    }
-
-    private func open(_ item: StoriesRowItem) {
-        guard let feed = snapshot.feed, let index = feed.authors.firstIndex(where: { $0.key == item.id }) else { return }
-        StoriesViewerPresenter.present(session: session, feed: feed, authorIndex: index, from: host, origin: row.circle(item.id))
-    }
-
     private func report() {
-        layout()
         // Over everything, so a full-screen editor doesn't take it away.
         if probe.superview !== window { window.addSubview(probe) }
         window.bringSubviewToFront(probe)
@@ -136,7 +128,7 @@ final class StoriesHarness {
             return
         }
         guard let viewer = host.presentedViewController as? StoryViewerViewController else {
-            probe.accessibilityValue = "viewer=0 editor=0 saved=\(made) haptics=\(recorder.played.joined(separator: ","))"
+            probe.accessibilityValue = "viewer=0 editor=0 header=\(host.stories.unlocked ? "open" : "closed") title=\(host.titleX) saved=\(made) haptics=\(recorder.played.joined(separator: ","))"
             return
         }
         let reaction = viewer.current?.story.myReaction ?? "nil"
@@ -507,5 +499,115 @@ actor StoriesHarnessTransport: DirectTransport {
 
     func reset() async {}
     func close() async {}
+}
+
+/// Home for the harness: Stem Cells home's header with the stories in it,
+/// over a list of rows of its own, wired as `StemCellsHomeViewController`
+/// wires its sidebar.
+@MainActor
+final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
+    private(set) lazy var stories = StoriesHomeController(host: self)
+    private let header = HomeHeaderView()
+    private let list = UIScrollView()
+    private var rows: [UILabel] = []
+    private let session: StoriesSession
+    private var change: StoriesHomeController.Change?
+    /// A draft's Edit, as a conversation's story card has it.
+    var onEditDraft: (() -> Void)?
+    private let editDraft = UIButton(type: .custom)
+
+    init(session: StoriesSession) {
+        self.session = session
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Where the header's title starts, rounded, for the probe.
+    var titleX: String { String(format: "%.0f", header.titleLabel.frame.minX) }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor(Palette.groupedBackground)
+        list.contentInsetAdjustmentBehavior = .never
+        list.alwaysBounceVertical = true
+        list.delegate = self
+        list.accessibilityIdentifier = "harness-list"
+        view.addSubview(list)
+        for index in 0..<30 {
+            let row = UILabel()
+            row.text = "  Session \(index + 1)"
+            row.font = .systemFont(ofSize: 16)
+            row.backgroundColor = UIColor(Palette.groupedBackground)
+            rows.append(row)
+            list.addSubview(row)
+        }
+        header.titleLabel.string = "Harness"
+        header.status = .connected
+        header.stemCellsActions = true
+        view.addSubview(header)
+        stories.onInsetChange = { [weak self] change in self?.moved(change) }
+        stories.list = list
+        stories.attach(session, images: session.images)
+        stories.install(in: header)
+        // The header's blurs are paused animations, which keep a UI test
+        // waiting for the app to idle: without `-storiesBlur` the harness
+        // goes without them.
+        if !ProcessInfo.processInfo.arguments.contains("-storiesBlur") {
+            func unblur(_ view: UIView) {
+                for subview in view.subviews {
+                    if subview is PartialBlurView { subview.removeFromSuperview() } else { unblur(subview) }
+                }
+            }
+            unblur(header)
+        }
+        editDraft.accessibilityIdentifier = "harness-edit-draft"
+        editDraft.backgroundColor = UIColor.black.withAlphaComponent(0.02)
+        editDraft.addAction(UIAction { [weak self] _ in self?.onEditDraft?() }, for: .touchUpInside)
+        view.addSubview(editDraft)
+    }
+
+    private func moved(_ change: StoriesHomeController.Change) {
+        self.change = change
+        defer { self.change = nil }
+        view.setNeedsLayout()
+        switch change {
+        case .held, .immediate: view.layoutIfNeeded()
+        case .animated:
+            UIViewPropertyAnimator(duration: 0.3, controlPoint1: CGPoint(x: 0.33, y: 0.52), controlPoint2: CGPoint(x: 0.25, y: 0.99)) { [weak self] in
+                self?.view.layoutIfNeeded()
+            }.startAnimation()
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let layout = HomeScreenLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), dock: 0)
+        header.frame = layout.header
+        list.frame = view.bounds
+        editDraft.frame = CGRect(x: 0, y: view.bounds.height - 60, width: 44, height: 44)
+        for (index, row) in rows.enumerated() { row.frame = CGRect(x: 0, y: CGFloat(index) * 52, width: view.bounds.width, height: 51) }
+        list.contentSize = CGSize(width: view.bounds.width, height: CGFloat(rows.count) * 52)
+        let home = StemCellsHomeLayout(size: view.bounds.size, contentTop: layout.insets.contentTop, chromeTop: layout.insets.chromeTop, listBottom: layout.insets.listBottom, bannerHeight: 0, storiesHeight: stories.inset)
+        let insets = UIEdgeInsets(home.listInsets)
+        guard list.contentInset != insets else { return }
+        let atTop = list.contentOffset.y <= -list.contentInset.top + 1
+        list.contentInset = insets
+        switch change {
+        case .held: break
+        case .animated: list.contentOffset.y = -insets.top
+        case .immediate, nil: if atTop || (!list.isDragging && list.contentOffset.y < -insets.top) { list.contentOffset.y = -insets.top }
+        }
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) { stories.listWillBeginDragging() }
+    func scrollViewDidScroll(_ scrollView: UIScrollView) { stories.listDidScroll() }
+    func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+        stories.listWillEndDragging(target: targetContentOffset)
+    }
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        stories.listDidEndDragging(decelerate: decelerate)
+    }
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { stories.listDidEndDecelerating() }
 }
 #endif
