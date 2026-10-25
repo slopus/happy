@@ -341,7 +341,7 @@ actor StoriesHarnessTransport: DirectTransport {
             frame("f-s2", width: 720, height: 1280, background: ["#602080", "#A02020"], overlays: [
                 text("o6", "Second from Steve", fill: "semi", color: "#000000", font: "georgia", t(0.5, 0.3, 1.1, 0.1)),
             ]),
-        ], caption: "Late night")
+        ], caption: "Late night at the studio, finally got the last of the boulder problems set for the weekend comp. Six new routes on the overhang, two slabs that will humble everyone, and a dyno I am weirdly proud of. Huge thanks to Maya for holding the ladder for three hours straight and to whoever left the pizza in the break room. Doors open at nine, bring chalk, bring friends, and please stretch first this time.")
         stories["a1"] = story("a1", author: "u3", postedAgo: 30, frames: [
             frame("f-a1", width: 720, height: 1280, background: ["#C0A010", "#604020"], overlays: [
                 text("o7", "Ana's story", fill: "stroke", color: "#2040FF", font: "noteworthy", t(0.5, 0.3, 1.4)),

@@ -65,19 +65,48 @@ public enum StoryCanvasLayout {
         return CGSize(width: side, height: side)
     }
 
-    /// The caption's fade and text at the bottom of the canvas.
+    /// The caption at the bottom of the canvas, folded to a few lines under
+    /// its fade, and opened in full over the darkened frame (Telegram's
+    /// story caption): the open text keeps its last line where the folded
+    /// one ended and grows up to `topInset`; longer, it starts there and
+    /// scrolls.
     public struct Caption: Equatable, Sendable {
         public var fade: CGRect
+        /// The folded text.
         public var text: CGRect
+        /// The box the caption scrolls in, its bottom just under the text.
+        public var scroll: CGRect
+        /// The open text, in the scroll box's content.
+        public var openText: CGRect
+        /// The shade an open caption rises with: from 64 above its text (or
+        /// the top) to the foot, as the fold's fade.
+        public var shade: CGRect
+        public var content: CGSize
+        /// The open text is taller than the room it has.
+        public var scrolls: Bool
     }
 
-    /// The caption sits 16 in from the sides and the bottom, under a fade
-    /// that begins 64 above it.
-    public static func caption(textHeight: CGFloat, canvas size: CGSize, bottomInset: CGFloat = 16) -> Caption {
+    /// 16 in from the sides and from `bottomInset`, under a fade that
+    /// begins 64 above it; the scroll box reaches 8 below the text.
+    public static func caption(textHeight: CGFloat, fullHeight: CGFloat? = nil, canvas size: CGSize, bottomInset: CGFloat = 16, topInset: CGFloat = 72) -> Caption {
         let inset: CGFloat = 16
-        let text = CGRect(x: inset, y: size.height - bottomInset - ceil(textHeight), width: max(0, size.width - 2 * inset), height: ceil(textHeight))
+        let pad: CGFloat = 8
+        let width = max(0, size.width - 2 * inset)
+        let foot = size.height - bottomInset
+        let text = CGRect(x: inset, y: foot - ceil(textHeight), width: width, height: ceil(textHeight))
         let fadeTop = max(0, text.minY - 64)
-        return Caption(fade: CGRect(x: 0, y: fadeTop, width: size.width, height: size.height - fadeTop), text: text)
+        let scroll = CGRect(x: 0, y: 0, width: size.width, height: min(size.height, foot + pad))
+        let full = ceil(fullHeight ?? textHeight)
+        let room = max(0, foot - topInset)
+        let scrolls = full > room
+        let openText = CGRect(x: inset, y: scrolls ? topInset : foot - full, width: width, height: full)
+        let content = CGSize(width: size.width, height: scrolls ? openText.maxY + pad : scroll.height)
+        return Caption(
+            fade: CGRect(x: 0, y: fadeTop, width: size.width, height: size.height - fadeTop), text: text,
+            scroll: scroll, openText: openText,
+            shade: CGRect(x: 0, y: max(0, openText.minY - 64), width: size.width, height: size.height - max(0, openText.minY - 64)),
+            content: content, scrolls: scrolls
+        )
     }
 }
 

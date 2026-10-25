@@ -21,6 +21,8 @@ extension Strings {
 
         // The viewer.
         public static let close = "Close"
+        /// What ends a folded caption (Telegram's Story.CaptionShowMore).
+        public static let captionShowMore = "Show more"
         public static let photoUnavailable = "This photo is no longer available"
         public static let videoUnavailable = "This video is no longer available"
         public static let open = "Open"
