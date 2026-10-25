@@ -183,4 +183,19 @@ final class StoriesHeaderLayoutTests: XCTestCase {
         XCTAssertTrue(opening.isFinished(at: 10.35))
         XCTAssertEqual(StoriesHeaderMotion.curve(0.5), 0.966, accuracy: 0.001)
     }
+
+    /// Let go of part way into the row's room, the list rests at the row as
+    /// it will be: a glide past 61 up has closed it, so a short flick up puts
+    /// it away and a nudge leaves it open; closed, it rests closed.
+    func testRestingWhereTheRowWillBe() {
+        XCTAssertEqual(StoriesHeaderLayout.resting(unlocked: true, glide: 80), 96)
+        XCTAssertEqual(StoriesHeaderLayout.resting(unlocked: true, glide: 62), 96)
+        XCTAssertEqual(StoriesHeaderLayout.resting(unlocked: true, glide: 61), 0)
+        XCTAssertEqual(StoriesHeaderLayout.resting(unlocked: true, glide: 20), 0)
+        XCTAssertEqual(StoriesHeaderLayout.resting(unlocked: false, glide: 80), 0)
+        // Outside the room, the glide is left alone.
+        XCTAssertEqual(StoriesHeaderLayout.resting(unlocked: true, glide: -300), -300)
+        XCTAssertEqual(StoriesHeaderLayout.resting(unlocked: true, glide: 96), 96)
+        XCTAssertEqual(StoriesHeaderLayout.resting(unlocked: false, glide: 0), 0)
+    }
 }

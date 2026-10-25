@@ -2,6 +2,7 @@
 @testable import HappyCore
 import HappyLayout
 @testable import HappyUI
+import HappyWire
 import UIKit
 
 /// Stories over a computer of the harness's own (`-screen stories`): three
@@ -17,7 +18,9 @@ import UIKit
 /// a conversation's draft would; its "+" opens the real library sheet over
 /// the simulator's photos.
 /// The stories sit in a home header over a list of the harness's own, as
-/// Stem Cells home has them; `header=open` or `header=closed` in the probe.
+/// Stem Cells home has them; `header=open` or `header=closed` in the probe,
+/// and `stories=N` how many the row has. `harness-new-story` posts another
+/// of Ana's, unseen, as a `story.posted` event brings it.
 @MainActor
 final class StoriesHarness {
     private let window: UIWindow
@@ -37,11 +40,19 @@ final class StoriesHarness {
             StoryViewerViewController.showScale = scale
         }
         let client = DirectAgentClient(transport: transport, token: "harness")
+        let (events, arrive) = AsyncStream.makeStream(of: StemCellsStore.ConversationEvent.self)
         session = StoriesSession(accountID: "stories-harness", client: client, images: StemCellsImages(client: client), offline: nil) {
-            AsyncStream { _ in }
+            events
         }
         host = StoriesHarnessHome(session: session)
         let session = session
+        let transport = transport
+        host.onNewStory = {
+            Task {
+                guard let data = await transport.postNew(), let event = try? JSONDecoder().decode(JSONValue.self, from: data) else { return }
+                arrive.yield(.event(event))
+            }
+        }
         host.onEditDraft = { [weak host] in
             guard let host else { return }
             let drafts = session.snapshot.stories.values.filter { $0.status == .draft }
@@ -109,7 +120,7 @@ final class StoriesHarness {
         // Over everything, so a full-screen editor doesn't take it away.
         if probe.superview !== window { window.addSubview(probe) }
         window.bringSubviewToFront(probe)
-        let made = snapshot.stories.values.filter { !["m1", "s1", "s2", "a1"].contains($0.id) }
+        let made = snapshot.stories.values.filter { !["m1", "s1", "s2", "a1"].contains($0.id) && !$0.id.hasPrefix("new-") }
             .sorted { $0.createdAt < $1.createdAt }
             .map { "\($0.status.rawValue):\($0.artifactVersion):\($0.frames.first?.overlays.count ?? 0)" }.joined(separator: ",")
         if let editor {
@@ -129,7 +140,8 @@ final class StoriesHarness {
             return
         }
         guard let viewer = host.presentedViewController as? StoryViewerViewController else {
-            probe.accessibilityValue = "viewer=0 editor=0 header=\(host.stories.unlocked ? "open" : "closed") title=\(host.titleX) saved=\(made) haptics=\(recorder.played.joined(separator: ","))"
+            let count = snapshot.feed?.authors.reduce(0) { $0 + $1.storyIds.count } ?? 0
+            probe.accessibilityValue = "viewer=0 editor=0 header=\(host.stories.unlocked ? "open" : "closed") stories=\(count) title=\(host.titleX) saved=\(made) haptics=\(recorder.played.joined(separator: ","))"
             return
         }
         let reaction = viewer.current?.story.myReaction ?? "nil"
@@ -339,6 +351,25 @@ actor StoriesHarnessTransport: DirectTransport {
 
     func drawFrames(_ frames: [String: Data]) { self.frames = frames }
 
+    /// Another of Ana's stories, posted now and unseen: the `story.posted`
+    /// event that brings it, the feed already counting it.
+    func postNew() -> Data? {
+        guard var story = stories["a1"] else { return nil }
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        revision += 1
+        let id = "new-\(revision)"
+        story["id"] = id
+        story["postedAt"] = now
+        story["createdAt"] = now
+        story["updatedAt"] = now
+        story["expiresAt"] = now + 86_400_000
+        story["seen"] = false
+        story["version"] = "v\(revision)"
+        stories[id] = story
+        order["u3", default: []].append(id)
+        return try? JSONSerialization.data(withJSONObject: ["type": "story.posted", "payload": ["story": story]])
+    }
+
     private func author(_ key: String) -> [String: Any] {
         let names = ["self": "Kirill Dubovitskiy", "u2": "Steve Korshakov", "u3": "Ana Lima"]
         let ids = order[key] ?? []
@@ -516,6 +547,9 @@ final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
     /// A draft's Edit, as a conversation's story card has it.
     var onEditDraft: (() -> Void)?
     private let editDraft = UIButton(type: .custom)
+    /// Somebody posts a story while home is up.
+    var onNewStory: (() -> Void)?
+    private let newStory = UIButton(type: .custom)
 
     init(session: StoriesSession) {
         self.session = session
@@ -566,6 +600,10 @@ final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
         editDraft.backgroundColor = UIColor.black.withAlphaComponent(0.02)
         editDraft.addAction(UIAction { [weak self] _ in self?.onEditDraft?() }, for: .touchUpInside)
         view.addSubview(editDraft)
+        newStory.accessibilityIdentifier = "harness-new-story"
+        newStory.backgroundColor = UIColor.black.withAlphaComponent(0.02)
+        newStory.addAction(UIAction { [weak self] _ in self?.onNewStory?() }, for: .touchUpInside)
+        view.addSubview(newStory)
     }
 
     private func moved(_ change: StoriesHomeController.Change) {
@@ -587,6 +625,7 @@ final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
         header.frame = layout.header
         list.frame = view.bounds
         editDraft.frame = CGRect(x: 0, y: view.bounds.height - 60, width: 44, height: 44)
+        newStory.frame = CGRect(x: view.bounds.width - 44, y: view.bounds.height - 60, width: 44, height: 44)
         for (index, row) in rows.enumerated() { row.frame = CGRect(x: 0, y: CGFloat(index) * 52, width: view.bounds.width, height: 51) }
         list.contentSize = CGSize(width: view.bounds.width, height: CGFloat(rows.count) * 52)
         let home = StemCellsHomeLayout(size: view.bounds.size, contentTop: layout.insets.contentTop, chromeTop: layout.insets.chromeTop, listBottom: layout.insets.listBottom, bannerHeight: 0, storiesHeight: stories.inset)

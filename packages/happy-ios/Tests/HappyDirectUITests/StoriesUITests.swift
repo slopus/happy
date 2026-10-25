@@ -348,4 +348,37 @@ final class StoriesUITests: XCTestCase {
         pause(1.5)
         capture("home-stories-back")
     }
+
+    /// Put away and kept away, as Telegram's chat list does: closed at
+    /// launch, a pull opens the stories, a short flick up puts them into the
+    /// title, a story posted meanwhile doesn't bring them back, and only a
+    /// deliberate pull does. Standalone, the row is the person's own
+    /// stories alone, which as in Telegram leave no avatars by the title.
+    func testSwipeAway() {
+        home()
+        step("post-sample", wait: 5)
+        let mine = element("story-circle:self")
+        XCTAssertTrue(mine.waitForExistence(timeout: 10), "no stories")
+        pause(1.5)
+        XCTAssertFalse(mine.isHittable, "the stories opened on their own at launch")
+        capture("swipe-launch")
+
+        openStories(mine)
+        pause(1)
+        capture("swipe-open")
+
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).press(forDuration: 0.02, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.54)), withVelocity: .fast, thenHoldForDuration: 0)
+        pause(1.2)
+        XCTAssertFalse(mine.isHittable, "a short flick up left the stories open")
+        capture("swipe-flicked")
+
+        // Another story is posted on the computer: still put away.
+        step("post-sample", wait: 8)
+        XCTAssertFalse(mine.isHittable, "a new story opened the stories")
+        capture("swipe-new-story")
+
+        openStories(mine)
+        pause(1)
+        capture("swipe-pulled-open")
+    }
 }

@@ -35,6 +35,17 @@ final class StoriesViewerUITests: XCTestCase {
         add(attachment)
     }
 
+    /// The row starts closed into the title, as Telegram's does: its
+    /// avatars there open it.
+    private func openRow() {
+        guard field("header") != "open" else { return }
+        let collapsed = element("stories-collapsed")
+        XCTAssertTrue(collapsed.waitForExistence(timeout: 6))
+        collapsed.tap()
+        wait("header", "open", "tapping the avatars didn't open the row")
+        pause(0.6)
+    }
+
     private func tap(_ x: CGFloat, _ y: CGFloat) {
         app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)).tap()
     }
@@ -48,6 +59,7 @@ final class StoriesViewerUITests: XCTestCase {
         let steve = element("story-circle:Steve")
         XCTAssertTrue(steve.waitForExistence(timeout: 8), "no ring for Steve")
         pause(1)
+        openRow()
         capture("row")
         steve.tap()
         wait("viewer", "1", "the viewer never opened")
@@ -121,6 +133,7 @@ final class StoriesViewerUITests: XCTestCase {
         let mine = element("story-circle:self")
         XCTAssertTrue(mine.waitForExistence(timeout: 8))
         pause(1)
+        openRow()
         mine.tap()
         wait("viewer", "1")
         wait("author", "0")

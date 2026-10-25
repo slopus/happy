@@ -104,6 +104,16 @@ public struct StoriesHeaderLayout: Equatable, Sendable {
         return current
     }
 
+    /// Where a list let go of with the row `unlocked` comes to rest, given
+    /// where it would glide to: never part way into the row's room. As
+    /// Telegram's chat list ends a scroll there, it goes to whichever the
+    /// row will be once the glide is done (the glide closes it under 61, it
+    /// never opens it), so a short flick up puts the row away.
+    public static func resting(unlocked: Bool, glide: CGFloat) -> CGFloat {
+        guard glide > 0, glide < Metrics.scrollHeight else { return glide }
+        return unlocked && glide > Metrics.lockPull ? Metrics.scrollHeight : 0
+    }
+
     public struct Input: Equatable, Sendable {
         public var width: CGFloat
         /// The header's title where it would be centred alone.

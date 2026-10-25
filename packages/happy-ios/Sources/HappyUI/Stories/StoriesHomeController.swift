@@ -4,11 +4,13 @@ import HappyLayout
 import UIKit
 
 /// Stories on Stem Cells home, in the header as Telegram's chat list has
-/// them (`ChatListNavigationBar` over `StoryPeerListComponent`): open under
-/// the header while something is unseen, closed into the title once all of
-/// it is seen, and opened again by pulling the list down past 65 or tapping
-/// the avatars by the title. Nothing here makes a story: that is done in a
-/// conversation. With Stories off, or nobody with a story, home is as it was.
+/// them (`ChatListNavigationBar` over `StoryPeerListComponent`): closed into
+/// the title as small avatars, opened only by the person, pulling the list
+/// down past 65 or tapping the avatars, and put away again by scrolling the
+/// list up past 61 or by seeing everything. As in Telegram, nothing opens
+/// it on its own: not new stories, not the list coming back to its top, not
+/// a launch. Nothing here makes a story: that is done in a conversation.
+/// With Stories off, or nobody with a story, home is as it was.
 ///
 /// The open row takes 96 above the list (`inset`). The list's pull below
 /// its closed top drives everything; the host hands its scroll view over as
@@ -48,8 +50,6 @@ final class StoriesHomeController {
     private(set) var unlocked = false
     /// The room above the list as the host last laid it out.
     private(set) var inset: CGFloat = 0
-    /// Opened or closed for what the feed first showed.
-    private var placed = false
     /// The drag began, and has stayed, with the list at its top, so pulling
     /// it opens the row.
     private var expansionAllowed = false
@@ -110,7 +110,11 @@ final class StoriesHomeController {
         session = stories
         view.images = images
         snapshot = StoriesSnapshot()
-        placed = false
+        // Another computer's stories start put away, as at launch.
+        unlocked = false
+        motion = nil
+        settleWhenBack = false
+        applyInset(.immediate)
         if let session { watch = session.watch { [weak self] snapshot in self?.apply(snapshot) } }
         else { apply(StoriesSnapshot()) }
     }
@@ -123,14 +127,7 @@ final class StoriesHomeController {
         view.isHidden = !isShown
         let hasUnseen = StoriesRow.hasUnseen(items)
         if !isShown {
-            placed = false
             unlocked = false
-            motion = nil
-            applyInset(.immediate)
-        } else if !placed {
-            // Open for something new, closed for what was all seen before.
-            placed = true
-            unlocked = hasUnseen
             motion = nil
             applyInset(.immediate)
         } else if hasUnseen != hadUnseen || settleWhenBack {
@@ -162,9 +159,10 @@ final class StoriesHomeController {
         if dragging, pull < -1 { expansionAllowed = false }
         let next = StoriesHeaderLayout.unlocked(unlocked, pull: pull)
         // Opens only under a finger that began at the top; closes as the
-        // list goes up, however it moves. The room follows on release.
+        // list goes up, however it moves, a flick's glide too, with its tap
+        // of feedback as Telegram's. The room follows on release.
         if next != unlocked, !next || (dragging && expansionAllowed) {
-            change(to: next, haptic: dragging)
+            change(to: next, haptic: true)
         }
         layout()
     }
@@ -180,12 +178,20 @@ final class StoriesHomeController {
         var resting = -(target.pointee.y + closedTop)
         // Let go above the top it had: it would have gone back to that top.
         let bouncing = current > inset && abs(resting - inset) < 1
-        applyInset(.held)
         if bouncing { resting = current }
-        let height = StoriesHeaderLayout.Metrics.scrollHeight
-        if unlocked, resting > 0, resting < height {
-            resting = resting >= height / 2 ? height : 0
+        // A list too short to scroll can't glide past its top: where a flick
+        // up would have taken it, as a scroll view decelerates (0.998 a ms).
+        let velocity = -list.panGestureRecognizer.velocity(in: list).y / 1000
+        if unlocked, !bouncing, abs(resting - inset) < 1, velocity > 0 {
+            resting = min(resting, current - velocity * 499)
         }
+        // A glide that will put the row away puts it away now, so the list
+        // goes straight to its closed top rather than back to the row first.
+        if unlocked, resting <= StoriesHeaderLayout.Metrics.lockPull {
+            change(to: false, haptic: true)
+        }
+        applyInset(.held)
+        resting = StoriesHeaderLayout.resting(unlocked: unlocked, glide: resting)
         // Never past the top the room now has.
         resting = min(resting, inset)
         target.pointee.y = -(resting + closedTop)
@@ -205,7 +211,7 @@ final class StoriesHomeController {
         if pull < -1 { expansionAllowed = false }
         if inset != wanted {
             // Closing with the list in the open row's room: the list goes up.
-            applyInset(wanted < inset && pull > 0 ? .animated : .held)
+            applyInset(wanted < inset && pull > 1 ? .animated : .held)
         }
         if settleWhenBack { settle() }
         layout()
@@ -221,13 +227,10 @@ final class StoriesHomeController {
         view.ticking = true
     }
 
-    /// Open while something is unseen, closed once it's all seen, once the
-    /// list is at rest and the viewer gone. Closing happens wherever the
-    /// list is; opening only with the list at its top, so nothing moves
-    /// what the person is reading.
+    /// Closed once everything is seen, when the list is at rest and the
+    /// viewer gone, wherever the list is. Never opens: only the person does.
     private func settle() {
-        let wanted = StoriesRow.hasUnseen(items)
-        guard isShown, wanted != unlocked else {
+        guard isShown, unlocked, !StoriesRow.hasUnseen(items) else {
             settleWhenBack = false
             return
         }
@@ -236,15 +239,8 @@ final class StoriesHomeController {
             return
         }
         settleWhenBack = false
-        let pull = pull
-        if wanted {
-            guard abs(pull) < 1 else { return }
-            change(to: true, haptic: false)
-            applyInset(.animated)
-        } else {
-            change(to: false, haptic: false)
-            applyInset(pull > 0 ? .animated : .held)
-        }
+        change(to: false, haptic: false)
+        applyInset(pull > 1 ? .animated : .held)
     }
 
     /// The avatars by the title were tapped: the row opens, the list moving

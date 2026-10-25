@@ -2,10 +2,10 @@ import ObjectiveC
 import XCTest
 
 /// Home's stories in the header, over the harness's own computer (`-screen
-/// stories`), as Telegram's chat list has them: open under the header while
-/// something is unseen, closed into the title by scrolling the list, opened
-/// again by pulling it down or tapping the avatars, and closed on their own
-/// once everything is seen. `stories-probe` reports `header=open|closed`.
+/// stories`), as Telegram's chat list has them: closed into the title at
+/// launch, opened only by pulling the list down or tapping the avatars, put
+/// away by a short flick up and kept away when new stories come, and closed
+/// on their own once everything is seen. `stories-probe` reports `header=open|closed`.
 @MainActor
 final class StoriesHeaderUITests: XCTestCase {
     private let app = XCUIApplication()
@@ -61,41 +61,65 @@ final class StoriesHeaderUITests: XCTestCase {
         start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y1)), withVelocity: .slow, thenHoldForDuration: hold)
     }
 
+    /// A quick, short flick up, as a thumb puts something away.
+    private func flick(from y0: CGFloat, to y1: CGFloat) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y0))
+        start.press(forDuration: 0.02, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y1)), withVelocity: .fast, thenHoldForDuration: 0)
+    }
+
     func testHeaderOpensAndCloses() {
         let steve = element("story-circle:Steve")
         XCTAssertTrue(steve.waitForExistence(timeout: 8))
-        // Something unseen: open under the header.
-        wait("header", "open", "unseen stories didn't open the row")
-        XCTAssertFalse(element("stories-collapsed").isHittable)
-        pause(0.5)
-        capture("header-open")
-
-        // Scrolling the list up closes the row into the title.
-        drag(from: 0.7, to: 0.4)
-        wait("header", "closed", "scrolling up didn't close the row")
-        XCTAssertTrue(probe.contains("headerClose"), "closing under the finger plays no haptic: \(probe)")
-        pause(0.6)
-        capture("header-closed")
+        // As Telegram's chat list starts: closed into the title, unseen
+        // stories or not, the avatars by the title saying who.
+        wait("header", "closed", "the row opened on its own at launch")
+        pause(1)
+        XCTAssertEqual(field("header"), "closed", "the row opened on its own at launch")
+        let collapsed = element("stories-collapsed")
+        XCTAssertTrue(collapsed.isHittable)
+        XCTAssertTrue(collapsed.label.contains("Steve"), collapsed.label)
+        capture("header-launch")
         let titleClosed = field("title")
 
-        // Back at the top, pulling the list down past 65 opens it again,
-        // with a tap of feedback; a pull from further down doesn't.
-        drag(from: 0.3, to: 0.7)
-        wait("header", "closed", "a pull that began down the list opened the row")
+        // Pulling the list down past 65 opens it, with a tap of feedback.
         drag(from: 0.3, to: 0.6, hold: 0.6)
         wait("header", "open", "pulling down didn't open the row")
         XCTAssertTrue(probe.contains("headerOpen"), probe)
+        XCTAssertNotEqual(field("title"), titleClosed, "the title stayed beside the avatars")
+        pause(0.6)
+        capture("header-open")
+
+        // A short flick up puts it away, unseen stories and all.
+        flick(from: 0.6, to: 0.54)
+        wait("header", "closed", "a short flick up left the row open")
+        XCTAssertTrue(probe.contains("headerClose"), "closing under the finger plays no haptic: \(probe)")
+        pause(1)
+        capture("header-flicked")
+
+        // And it stays away: a new story arriving doesn't open it, nor does
+        // the list gliding back to its top, nor a pull from further down.
+        element("harness-new-story").tap()
+        wait("stories", "5", "the new story never arrived")
+        pause(1.5)
+        XCTAssertEqual(field("header"), "closed", "a new story opened the row")
+        drag(from: 0.7, to: 0.4)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 0.02, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)), withVelocity: .fast, thenHoldForDuration: 0)
+        pause(3)
+        XCTAssertEqual(field("header"), "closed", "the list coming back to its top opened the row")
+        capture("header-stays-closed")
+
+        // A deliberate pull, begun with the list at rest at its top, opens
+        // it again (as in Telegram, one begun mid-glide doesn't).
+        drag(from: 0.3, to: 0.6, hold: 0.6)
+        wait("header", "open", "pulling down didn't open the row again")
         pause(0.6)
         capture("header-reopened")
-        XCTAssertNotEqual(field("title"), titleClosed, "the title stayed beside the avatars")
 
-        // Closed again, the avatars by the title open it.
+        // Scrolled away, the avatars by the title open it.
         drag(from: 0.7, to: 0.4)
         wait("header", "closed")
         pause(0.5)
-        let collapsed = element("stories-collapsed")
         XCTAssertTrue(collapsed.isHittable)
-        XCTAssertTrue((collapsed.label).contains("Steve"), collapsed.label)
         collapsed.tap()
         wait("header", "open", "tapping the avatars didn't open the row")
         pause(0.6)
@@ -106,7 +130,10 @@ final class StoriesHeaderUITests: XCTestCase {
     func testSeeingEverythingCloses() {
         let steve = element("story-circle:Steve")
         XCTAssertTrue(steve.waitForExistence(timeout: 8))
+        wait("header", "closed")
+        element("stories-collapsed").tap()
         wait("header", "open")
+        pause(0.6)
         // Steve's, then Ana's, to the end, where the viewer closes.
         steve.tap()
         wait("viewer", "1")

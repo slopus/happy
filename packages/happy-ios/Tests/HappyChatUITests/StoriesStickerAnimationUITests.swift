@@ -29,6 +29,17 @@ final class StoriesStickerAnimationUITests: XCTestCase {
         XCTAssertEqual(field(name), value, "\(message) — probe: \(probe)")
     }
 
+    /// The row starts closed into the title, as Telegram's does: its
+    /// avatars there open it.
+    private func openRow() {
+        guard field("header") != "open" else { return }
+        let collapsed = element("stories-collapsed")
+        XCTAssertTrue(collapsed.waitForExistence(timeout: 6))
+        collapsed.tap()
+        wait("header", "open", "tapping the avatars didn't open the row")
+        pause(0.6)
+    }
+
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
@@ -56,10 +67,9 @@ final class StoriesStickerAnimationUITests: XCTestCase {
     }
 
     func testAnimatedSticker() {
-        let photos = app.buttons["Photos"]
-        XCTAssertTrue(photos.waitForExistence(timeout: 8), "no sources sheet")
-        photos.tap()
-        wait("editor", "1", "the editor never opened")
+        // `-storiesCompose` opens the editor on the harness's picture, as a
+        // conversation's draft does.
+        wait("editor", "1", timeout: 8, "the editor never opened")
         let canvas = element("story-editor-canvas")
         XCTAssertTrue(canvas.waitForExistence(timeout: 3))
         pause(0.8)
@@ -89,6 +99,7 @@ final class StoriesStickerAnimationUITests: XCTestCase {
         wait("editor", "0", timeout: 8, "the editor didn't close on post")
         wait("saved", "posted:1:1", "the story wasn't posted with its sticker")
         pause(1)
+        openRow()
         element("story-circle:self").coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.35)).tap()
         wait("viewer", "1", timeout: 8, "the viewer never opened")
         pause(0.8)
