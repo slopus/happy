@@ -785,13 +785,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         pause(.sheet, true)
         let list = StoriesViewersViewController(session: session, story: story)
         list.onClose = { [weak self] in self?.pause(.sheet, false) }
-        let navigation = UINavigationController(rootViewController: list)
-        if let sheet = navigation.sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.prefersGrabberVisible = true
-        }
-        navigation.presentationController?.delegate = list
-        present(navigation, animated: true)
+        // It presents itself as Telegram's sheet.
+        present(list, animated: true)
     }
 }
 

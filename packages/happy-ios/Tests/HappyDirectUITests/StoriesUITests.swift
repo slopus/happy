@@ -268,7 +268,8 @@ final class StoriesUITests: XCTestCase {
         XCTAssertTrue(element("story-viewers-list").waitForExistence(timeout: 5), "no viewers list")
         pause(1.5)
         capture("viewer-views")
-        app.buttons["Done"].tap()
+        // A tap above the sheet closes it.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
         pause(1)
 
         // Delete the story shown; the viewer moves on or closes.

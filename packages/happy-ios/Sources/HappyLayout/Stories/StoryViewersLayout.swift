@@ -1,5 +1,51 @@
 import Foundation
 
+/// The sheet listing who saw one's own story, measured as Telegram's
+/// (`StoryItemSetContainerComponent`, `StoryItemSetViewListComponent`): edge
+/// to edge and down to the screen's foot, its top corners rounded 10; half
+/// open it leaves the story 325 + 12 above its 12 pt inset, full it stops
+/// 60 + 12 under the top; a 56 header with the title centred in it and the
+/// list right under it.
+public struct StoryViewersSheetLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let header: CGFloat = 56
+        public static let corner: CGFloat = 10
+        /// What Telegram keeps of the story above the half-open list.
+        public static let story: CGFloat = 325 + 12
+        public static let minimumHeight: CGFloat = 100
+        /// The full list's distance from the top.
+        public static let fullTop: CGFloat = 60
+        /// The list's own top inset inside Telegram's container.
+        public static let inset: CGFloat = 12
+    }
+
+    /// All in the sheet's own space.
+    public var header: CGRect
+    public var title: CGRect
+    public var list: CGRect
+
+    /// How much of the sheet shows half open and full, for a container
+    /// this tall.
+    public static func half(_ height: CGFloat) -> CGFloat { max(Metrics.minimumHeight, height - Metrics.story) - Metrics.inset }
+    public static func full(_ height: CGFloat) -> CGFloat { height - Metrics.fullTop - Metrics.inset }
+
+    /// The sheet in its container with `shown` of it showing: between
+    /// `half` and `full` while dragged; less than `half` while it closes,
+    /// when it keeps its half height and slides down.
+    public static func sheet(container: CGSize, shown: CGFloat) -> CGRect {
+        CGRect(x: 0, y: container.height - shown, width: container.width, height: max(shown, half(container.height)))
+    }
+
+    /// Inside a sheet this big.
+    public init(size: CGSize, titleSize: CGSize) {
+        typealias M = Metrics
+        header = CGRect(x: 0, y: 0, width: size.width, height: M.header)
+        let titleWidth = min(ceil(titleSize.width), max(0, size.width - 32))
+        title = CGRect(x: floor((size.width - titleWidth) / 2), y: floor((M.header - ceil(titleSize.height)) / 2), width: titleWidth, height: ceil(titleSize.height))
+        list = CGRect(x: 0, y: M.header, width: size.width, height: max(0, size.height - M.header))
+    }
+}
+
 /// One row of the sheet listing who saw one's own story, measured as
 /// Telegram's story view list draws its rows (`PeerListItemComponent` in its
 /// `.generic` style): 60 tall with a subtitle and 50 without, 1 in from top

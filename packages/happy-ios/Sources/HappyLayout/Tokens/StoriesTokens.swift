@@ -27,9 +27,11 @@ extension Palette {
     /// The sticker sheet's ground and its interactive stickers' pills.
     public static let storiesStickerSheet = ColorToken("#1C1C1E")
     public static let storiesStickerPill = ColorToken(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.11), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.11))
-    /// The views sheet, as the dark theme's plain list: its ground, the
-    /// time under a name, and the line between rows.
-    public static let storiesViewersGround = ColorToken("#000000")
+    /// The views sheet, as the dark theme draws it: its ground (the
+    /// navigation bar's #1D1D1D at 0.9 over the black Telegram keeps under
+    /// the list, so the story never shows through), the time under a name,
+    /// and the lines under the header and between rows.
+    public static let storiesViewersGround = ColorToken("#1A1A1A")
     public static let storiesViewersSecondary = ColorToken("#98989E")
     public static let storiesViewersSeparator = ColorToken(light: RGBA(red: 84 / 255.0, green: 84 / 255.0, blue: 88 / 255.0, alpha: 0.55), dark: RGBA(red: 84 / 255.0, green: 84 / 255.0, blue: 88 / 255.0, alpha: 0.55))
 }

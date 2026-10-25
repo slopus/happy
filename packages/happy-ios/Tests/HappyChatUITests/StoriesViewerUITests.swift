@@ -153,15 +153,35 @@ final class StoriesViewerUITests: XCTestCase {
         wait("paused", "1")
         pause(1)
         capture("viewers")
-        app.buttons["Done"].tap()
+        // Telegram's sheet: edge to edge, down to the foot, half open, no Done.
+        let sheet = element("story-viewers")
+        let screen = app.windows.firstMatch.frame
+        XCTAssertEqual(sheet.frame.minX, 0)
+        XCTAssertEqual(sheet.frame.width, screen.width)
+        XCTAssertGreaterThanOrEqual(sheet.frame.maxY, screen.maxY)
+        XCTAssertEqual(sheet.frame.minY, screen.height - max(100, screen.height - 337) + 12, accuracy: 1)
+        XCTAssertFalse(app.buttons["Done"].exists, "the sheet still has a Done")
+        // Dragged up by its list it opens full, not scrolling the list, and
+        // by its header down again to half.
+        let title = element("story-viewers-title")
+        element("story-viewer:Maya Okafor").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)), withVelocity: .slow, thenHoldForDuration: 0.1)
+        pause(0.8)
+        XCTAssertEqual(sheet.frame.minY, 72, accuracy: 1, "a drag up didn't open the sheet full")
+        capture("viewers-full")
+        title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)), withVelocity: .slow, thenHoldForDuration: 0.1)
+        pause(0.8)
+        XCTAssertEqual(sheet.frame.minY, screen.height - max(100, screen.height - 337) + 12, accuracy: 1, "a drag down didn't bring the sheet back to half")
+        // A tap above it closes it.
+        tap(0.5, 0.2)
         wait("paused", "0", "closing the list didn't resume")
         // Swiped up, as Telegram's, the story opens who has seen it too.
         let story = element("story-canvas")
         story.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).press(forDuration: 0.05, thenDragTo: story.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)), withVelocity: .fast, thenHoldForDuration: 0)
         XCTAssertTrue(element("story-viewer:Steve Korshakov").waitForExistence(timeout: 4), "a swipe up didn't open the viewers — probe: \(probe)")
         pause(0.8)
-        app.buttons["Done"].tap()
-        wait("paused", "0", "closing the list didn't resume")
+        // A drag down closes it.
+        element("story-viewers-title").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)), withVelocity: .fast, thenHoldForDuration: 0)
+        wait("paused", "0", "dragging the list down didn't close it")
 
         // The link pill at (0.5, 0.82): its sheet first, never the browser.
         let canvas = element("story-canvas")

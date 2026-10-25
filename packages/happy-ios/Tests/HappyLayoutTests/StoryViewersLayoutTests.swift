@@ -2,6 +2,27 @@ import XCTest
 @testable import HappyLayout
 
 final class StoryViewersLayoutTests: XCTestCase {
+    func testTheHalfOpenSheetRunsEdgeToEdgeToTheFootUnderA56Header() {
+        let container = CGSize(width: 402, height: 874)
+        XCTAssertEqual(StoryViewersSheetLayout.half(874), 525)
+        XCTAssertEqual(StoryViewersSheetLayout.full(874), 802)
+        XCTAssertEqual(StoryViewersSheetLayout.sheet(container: container, shown: 525), CGRect(x: 0, y: 349, width: 402, height: 525))
+        XCTAssertEqual(StoryViewersSheetLayout.sheet(container: container, shown: 802), CGRect(x: 0, y: 72, width: 402, height: 802))
+        let inside = StoryViewersSheetLayout(size: CGSize(width: 402, height: 525), titleSize: CGSize(width: 61.4, height: 20.3))
+        XCTAssertEqual(inside.header, CGRect(x: 0, y: 0, width: 402, height: 56))
+        XCTAssertEqual(inside.title, CGRect(x: 170, y: 17, width: 62, height: 21))
+        XCTAssertEqual(inside.list, CGRect(x: 0, y: 56, width: 402, height: 469))
+    }
+
+    func testAClosingSheetKeepsItsHalfHeightAndSlidesDown() {
+        XCTAssertEqual(StoryViewersSheetLayout.sheet(container: CGSize(width: 402, height: 874), shown: 200), CGRect(x: 0, y: 674, width: 402, height: 525))
+        XCTAssertEqual(StoryViewersSheetLayout.sheet(container: CGSize(width: 402, height: 874), shown: 0).minY, 874)
+    }
+
+    func testAShortScreenStillShowsSomeOfTheList() {
+        XCTAssertEqual(StoryViewersSheetLayout.half(400), 88)
+    }
+
     func testAReactorsRowCentresNameAndTimeBesideTheAvatarWithTheReactionRight() {
         let row = StoryViewersRowLayout(width: 393, titleHeight: 20.3, subtitleHeight: 17.9, reacted: true)
         XCTAssertEqual(row.height, 60)
