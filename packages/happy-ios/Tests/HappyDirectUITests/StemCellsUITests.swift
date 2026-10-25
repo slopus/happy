@@ -1428,15 +1428,25 @@ final class StemCellsUITests: XCTestCase {
         pause(1)
         capture("paste-new-work")
 
-        // + opens the library at once.
+        // + opens the shared library sheet at once; a photo picked there waits in the composer.
         app.buttons["Add a picture"].tap()
-        pause(2)
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.buttons["Allow Full Access"]
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+        let library = app.descendants(matching: .any)["library-picker"]
+        XCTAssertTrue(library.waitForExistence(timeout: 5), "+ didn't open the library")
         XCTAssertFalse(app.alerts.firstMatch.exists, "+ asked first")
-        capture("paste-plus-library")
-        XCUIApplication(bundleIdentifier: "com.apple.springboard").activate()
-        app.activate()
+        let first = app.descendants(matching: .any)["library-cell:0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5), "the library shows no photo")
         pause(1)
-        if !composer.isHittable { app.swipeDown(velocity: .fast); pause(1) }
+        first.tap()
+        pause(0.5)
+        capture("paste-plus-library")
+        app.descendants(matching: .any)["library-add"].tap()
+        let attachments = app.descendants(matching: .any).matching(identifier: "composer-attachment")
+        XCTAssertTrue(attachments.firstMatch.waitForExistence(timeout: 8), "the picked photo didn't attach")
+        pause(1)
+        capture("paste-library-attached")
 
         // A copied picture: a long press, Paste, and it waits in the composer.
         let size = CGSize(width: 240, height: 160)
@@ -1450,11 +1460,11 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(paste.waitForExistence(timeout: 3), "a copied picture offered no Paste")
         capture("paste-menu")
         paste.tap()
-        let attachment = app.descendants(matching: .any)["composer-attachment"]
-        XCTAssertTrue(attachment.waitForExistence(timeout: 5), "the pasted picture didn't attach")
+        XCTAssertTrue(until(5) { attachments.count == 2 }, "the pasted picture didn't attach")
+        let attachment = attachments.firstMatch
         pause(1)
         capture("paste-attached")
-        composer.typeText("What colour is this picture? One word, no tools.")
+        composer.typeText("What colour is the plain picture? One word, no tools.")
         app.buttons["Send"].tap()
         XCTAssertTrue(until(4) { !attachment.exists }, "the picture stayed in the composer")
         let messages = app.descendants(matching: .any).matching(identifier: "stem-message")

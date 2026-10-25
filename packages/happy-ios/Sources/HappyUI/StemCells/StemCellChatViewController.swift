@@ -620,8 +620,16 @@ extension StemCellChatViewController: AgentInputCardDelegate {
 
     func agentInputCardDidPressSend(_ card: AgentInputCardView) { send() }
 
-    /// The add button opens the library at once: no question first.
-    func agentInputCardDidPressAdd(_ card: AgentInputCardView) { pictures.pick() }
+    /// The add button opens the shared library sheet at once: no question
+    /// first. Photos only: a message carries text and pictures alone.
+    func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
+        let pictures = pictures
+        let room = pictures.room()
+        guard room > 0 else { return }
+        LibraryPicker.present(from: self, options: .init(limit: room, videos: false)) { picks in
+            pictures.add(pictures: picks.compactMap { if case .image(let data, _) = $0.media { data } else { nil } })
+        }
+    }
 
     func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) { pictures.remove(id: id) }
 
