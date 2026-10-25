@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import AVFoundation
 import HappyCore
 import HappyLayout
 import UIKit
@@ -55,7 +56,16 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     /// open: one opened from a conversation may be out of the feed.
     private let opened: String?
 
-    private enum Pause: Hashable { case hold, drag, sheet, background, picker, appearing, caption }
+    private enum Pause: Hashable { case hold, drag, sheet, background, picker, appearing, caption, tooltip }
+    /// A recording's sound, as Telegram's viewer keeps it while open: at
+    /// first as the phone's ringer switch has it (and with other audio),
+    /// then off or on, past the switch, by the sound button or a volume
+    /// button.
+    enum Audio { case ambient, off, on }
+    private(set) var audio = Audio.ambient
+    private var volume: NSKeyValueObservation?
+    private var restoreCategory: AVAudioSession.Category?
+    private weak var tooltip: StoriesTooltipView?
     private enum Drag { case none, sideways(next: Int), down }
 
     /// The turn between two authors, run a frame at a time.
@@ -152,6 +162,10 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         guard isBeingDismissed || presentingViewController == nil else { return }
+        // However it goes, its sound stops as it starts to.
+        page.canvas.pause()
+        neighbor.canvas.pause()
+        tooltip?.dismiss()
         onClosing?()
         onClosing = nil
     }
@@ -166,9 +180,21 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
 
     private func finish() {
         link?.invalidate(); link = nil
+        volume?.invalidate(); volume = nil
         holdTimer?.invalidate(); holdTimer = nil
         page.canvas.stop()
         neighbor.canvas.stop()
+        // The players gone, the session goes back to what it was and lets
+        // other audio back; ambient for the default solo ambient, which
+        // would stop other apps' audio again.
+        if let restoreCategory {
+            self.restoreCategory = nil
+            let session = AVAudioSession.sharedInstance()
+            if ![.playAndRecord, .record].contains(session.category) {
+                try? session.setCategory(restoreCategory == .soloAmbient ? .ambient : restoreCategory)
+                try? session.setActive(false, options: .notifyOthersOnDeactivation)
+            }
+        }
         watch?.invalidate(); watch = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
@@ -194,6 +220,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         page.moreButton.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
         page.viewsButton.addTarget(self, action: #selector(viewsTapped), for: .touchUpInside)
         page.heartButton.addTarget(self, action: #selector(heartTapped), for: .touchUpInside)
+        page.soundButton.addTarget(self, action: #selector(soundTapped), for: .touchUpInside)
+        page.canvas.onAudioKnown = { [weak self] _ in self?.updateSound() }
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(heartHeld(_:)))
         hold.minimumPressDuration = 0.35
         page.heartButton.addGestureRecognizer(hold)
@@ -233,6 +261,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
 
     private func showCurrent() {
         burst?.removeFromSuperview()
+        tooltip?.dismiss()
         guard authors.indices.contains(authorIndex) else { return }
         let author = authors[authorIndex]
         let frames = frames(author)
@@ -261,6 +290,77 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         }
         if pauses.isEmpty { page.canvas.play() }
         preload(after: frames, position: position)
+        updateSound()
+    }
+
+    // MARK: Sound
+
+    /// The button and the players as the frame shown and `audio` have them.
+    private func updateSound() {
+        for page in [page, neighbor] {
+            page.canvas.isMuted = audio == .off
+            let video = page.canvas.shownFrame?.kind == .video
+            page.setSound(!video ? .none : page.canvas.hasAudio == false ? .silent : audio == .off ? .off : .on)
+        }
+        guard current?.frame.kind == .video else { return }
+        applyAudioSession()
+        // A volume button press turns the sound on, as Telegram's does.
+        if volume == nil {
+            volume = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
+                DispatchQueue.main.async { self?.volumeChanged() }
+            }
+        }
+    }
+
+    private func volumeChanged() {
+        guard audio != .on, !pauses.contains(.background), !isBeingDismissed, presentingViewController != nil,
+              current?.frame.kind == .video, page.canvas.hasAudio != false else { return }
+        audio = .on
+        note("sound:on")
+        updateSound()
+    }
+
+    /// Ambient follows the ringer switch and plays alongside other audio;
+    /// on plays past it. A call or a recording in progress is left alone.
+    private func applyAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        guard ![.playAndRecord, .record].contains(session.category) else { return }
+        let category: AVAudioSession.Category = audio == .on ? .playback : .ambient
+        guard session.category != category else { return }
+        if restoreCategory == nil { restoreCategory = session.category }
+        try? session.setCategory(category)
+        try? session.setActive(true)
+    }
+
+    @objc private func soundTapped() {
+        guard tooltip == nil else { return }
+        if page.canvas.hasAudio == false {
+            showNoSound()
+            return
+        }
+        audio = audio == .off ? .on : .off
+        note("sound:\(audio == .on ? "on" : "off")")
+        updateSound()
+    }
+
+    /// Telegram's "This video has no sound" under the button, holding the
+    /// story until a touch, which it takes.
+    private func showNoSound() {
+        let button = page.soundButton
+        let tooltip = StoriesTooltipView(text: Strings.Stories.videoHasNoSound, takesTouch: true)
+        tooltip.overrideUserInterfaceStyle = .dark
+        tooltip.frame = view.bounds
+        tooltip.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        tooltip.point(at: button.convert(CGPoint(x: button.bounds.midX + 1, y: button.bounds.maxY - 10), to: view))
+        tooltip.onDismiss = { [weak self] in
+            self?.tooltip = nil
+            self?.pause(.tooltip, false)
+        }
+        view.addSubview(tooltip)
+        tooltip.show()
+        self.tooltip = tooltip
+        pause(.tooltip, true)
+        note("sound:silent")
     }
 
     /// The next frame's picture, read while this one shows.
@@ -396,6 +496,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     private func turn(to index: Int, acted: Bool) {
         note("turn")
         burst?.removeFromSuperview()
+        tooltip?.dismiss()
         page.canvas.setCaptionExpanded(false, animated: false)
         guard cube == nil, authors.indices.contains(index) else { return }
         prepareNeighbor(index)
@@ -411,6 +512,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         neighbor.layoutIfNeeded()
         neighbor.show(author: author, frames: frames(author), position: startPosition(author), media: session.media, images: session.images, now: now)
         neighbor.canvas.pause()
+        updateSound()
         drag = .sideways(next: index)
     }
 
@@ -472,6 +574,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     // MARK: Gestures
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // A tooltip takes the touch that puts it away.
+        if let tooltip, touch.view?.isDescendant(of: tooltip) == true { return false }
         if gestureRecognizer is UIPanGestureRecognizer, page.canvas.passesDrag(touch) {
             return cube == nil && presentedViewController == nil && !isBeingDismissed
         }
@@ -645,6 +749,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         guard presentingViewController != nil, !isBeingDismissed else { return }
         link?.invalidate(); link = nil
         burst?.removeFromSuperview()
+        tooltip?.dismiss()
         page.canvas.pause()
         // From whatever it presents too: a sheet up mustn't keep it here.
         presentingViewController?.dismiss(animated: true)

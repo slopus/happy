@@ -44,6 +44,10 @@ extension Strings {
         public static let noViewers = "No views yet"
         public static func views(_ count: Int) -> String { count == 1 ? "1 view" : "\(count) views" }
         public static let react = "React"
+        /// A recording's sound (Telegram's Story.TooltipVideoHasNoSound).
+        public static let mute = "Mute"
+        public static let unmute = "Unmute"
+        public static let videoHasNoSound = "This video has no sound"
         public static let heart = "❤️"
         public static let reactions = ["❤️", "👍", "🔥", "🎉", "😂", "😮", "😢", "👏"]
         public static func ago(_ milliseconds: Int64) -> String {

@@ -6,8 +6,8 @@ import UIKit
 /// Telegram's one-time "Tap above to view stories from …" (`TooltipScreen`,
 /// default style): a blurred dark bubble under the closed avatars, its
 /// arrow pointing up at them, springing out of the arrow's tip. Laid over
-/// the whole screen, it takes no touch: the first one anywhere puts it away
-/// and goes on through to what is under it.
+/// the whole screen, the first touch anywhere puts it away, and goes on
+/// through to what is under it unless it `takesTouch`.
 final class StoriesTooltipView: UIView {
     var onDismiss: (() -> Void)?
     private let bubble = UIView()
@@ -17,8 +17,10 @@ final class StoriesTooltipView: UIView {
     private let shape = CAShapeLayer()
     private var tip: CGPoint = .zero
     private var dismissed = false
+    private let takesTouch: Bool
 
-    init(text: String) {
+    init(text: String, takesTouch: Bool = false) {
+        self.takesTouch = takesTouch
         super.init(frame: .zero)
         label.text = text
         label.font = .systemFont(ofSize: StoriesTooltipLayout.Metrics.fontSize)
@@ -79,8 +81,9 @@ final class StoriesTooltipView: UIView {
     }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard !dismissed else { return nil }
         if event?.type == .touches { DispatchQueue.main.async { [weak self] in self?.dismiss() } }
-        return nil
+        return takesTouch ? self : nil
     }
 
     /// Springs out of the arrow's tip, as Telegram's does.

@@ -5,7 +5,7 @@ import UIKit
 /// The editor's glyphs, drawn here in the shapes Telegram's media editor
 /// uses (white strokes on a 30pt square): back and next, add text, add a
 /// sticker, the text styles, alignment, the font's chevrons, the colour
-/// wheel, the link and the bin.
+/// wheel, the link and the bin; and the viewer's sound, on and off.
 enum StoryEditorIcons {
     private static let line: CGFloat = 1.66
 
@@ -210,6 +210,31 @@ enum StoryEditorIcons {
         cg.move(to: CGPoint(x: 14, y: 6)); cg.addLine(to: CGPoint(x: 14, y: 22))
         cg.move(to: CGPoint(x: 6, y: 14)); cg.addLine(to: CGPoint(x: 22, y: 14))
         cg.strokePath()
+    }
+
+    /// A speaker with its waves, or struck through.
+    static func sound(on: Bool) -> UIImage {
+        draw { cg in
+            cg.move(to: CGPoint(x: 5.5, y: 12))
+            cg.addLine(to: CGPoint(x: 9.5, y: 12))
+            cg.addLine(to: CGPoint(x: 15, y: 7))
+            cg.addLine(to: CGPoint(x: 15, y: 23))
+            cg.addLine(to: CGPoint(x: 9.5, y: 18))
+            cg.addLine(to: CGPoint(x: 5.5, y: 18))
+            cg.closePath()
+            cg.fillPath()
+            if on {
+                cg.addArc(center: CGPoint(x: 15, y: 15), radius: 4.5, startAngle: -.pi / 3.6, endAngle: .pi / 3.6, clockwise: false)
+                cg.strokePath()
+                cg.addArc(center: CGPoint(x: 15, y: 15), radius: 8.5, startAngle: -.pi / 3.4, endAngle: .pi / 3.4, clockwise: false)
+                cg.strokePath()
+            } else {
+                cg.setLineWidth(2)
+                cg.move(to: CGPoint(x: 18.5, y: 11.5)); cg.addLine(to: CGPoint(x: 25.5, y: 18.5))
+                cg.move(to: CGPoint(x: 25.5, y: 11.5)); cg.addLine(to: CGPoint(x: 18.5, y: 18.5))
+                cg.strokePath()
+            }
+        }
     }
 
     /// The reaction sticker in the sheet: a white round speech bubble.

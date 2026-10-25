@@ -13,6 +13,11 @@ final class StoryCanvasView: UIView {
     var onReady: (() -> Void)?
     /// A recording reached its end.
     var onVideoEnd: (() -> Void)?
+    /// Whether the recording shown has sound, once that is known.
+    var onAudioKnown: ((Bool) -> Void)?
+    private(set) var hasAudio: Bool?
+    var isMuted = false { didSet { player?.isMuted = isMuted } }
+    private var audioCheck: Task<Void, Never>?
     /// The caption opened in full or folded again. Set, a caption too long
     /// for its lines folds with "… Show more" and opens on a tap, as
     /// Telegram's do; unset (the editor, the inline story) it shows whole.
@@ -259,8 +264,16 @@ final class StoryCanvasView: UIView {
     }
 
     private func attach(_ player: AVPlayer) {
-        player.isMuted = false
+        player.isMuted = isMuted
         self.player = player
+        if let asset = player.currentItem?.asset {
+            audioCheck = Task { [weak self, weak player] in
+                let tracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+                guard let self, !Task.isCancelled, let player, self.player === player else { return }
+                hasAudio = !tracks.isEmpty
+                onAudioKnown?(!tracks.isEmpty)
+            }
+        }
         playerView.player = player
         playerView.isHidden = false
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { [weak self] _ in
@@ -278,6 +291,9 @@ final class StoryCanvasView: UIView {
     }
 
     private func stopPlayer() {
+        audioCheck?.cancel()
+        audioCheck = nil
+        hasAudio = nil
         player?.pause()
         player = nil
         playerView.player = nil

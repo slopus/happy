@@ -2,6 +2,7 @@
 @testable import HappyCore
 import HappyLayout
 @testable import HappyUI
+import AVFoundation
 import HappyWire
 import UIKit
 
@@ -24,7 +25,7 @@ import UIKit
 @MainActor
 final class StoriesHarness {
     private let window: UIWindow
-    private let transport = StoriesHarnessTransport()
+    private let transport = StoriesHarnessTransport(videos: ProcessInfo.processInfo.arguments.contains("-storiesVideo"))
     private let session: StoriesSession
     private let host: StoriesHarnessHome
     private let probe = UILabel()
@@ -155,7 +156,8 @@ final class StoriesHarness {
             return
         }
         let reaction = viewer.current?.story.myReaction ?? "nil"
-        probe.accessibilityValue = "viewer=1 author=\(viewer.authorIndex) position=\(viewer.position) paused=\(viewer.isPaused ? 1 : 0) chrome=\(viewer.currentPage.chromeHidden ? 0 : 1) reaction=\(reaction) trail=\(viewer.trail.joined(separator: ",")) haptics=\(recorder.played.joined(separator: ","))"
+        let sound = viewer.currentPage.soundButton.isHidden ? "none" : viewer.currentPage.soundButton.accessibilityValue ?? "none"
+        probe.accessibilityValue = "viewer=1 author=\(viewer.authorIndex) position=\(viewer.position) paused=\(viewer.isPaused ? 1 : 0) sound=\(sound) muted=\(viewer.currentPage.canvas.player?.isMuted == true ? 1 : 0) chrome=\(viewer.currentPage.chromeHidden ? 0 : 1) reaction=\(reaction) trail=\(viewer.trail.joined(separator: ",")) haptics=\(recorder.played.joined(separator: ","))"
     }
 
     /// The harness packs' files: each a shape in its colour, and the
@@ -257,6 +259,9 @@ actor StoriesHarnessTransport: DirectTransport {
     private var stories: [String: [String: Any]] = [:]
     private var frames: [String: Data] = [:]
     private var order = ["self": ["m1"], "u2": ["s1", "s2"], "u3": ["a1"]]
+    /// Ana's story as two recordings, the first with sound, the second
+    /// without (`-storiesVideo`).
+    private let videos: Bool
     private var uploads: [String: Data] = [:]
     private var recents: [[String: Any]] = []
     private var stickerFiles: [String: Data] = [:]
@@ -314,7 +319,8 @@ actor StoriesHarnessTransport: DirectTransport {
         return frame
     }
 
-    init() {
+    init(videos: Bool = false) {
+        self.videos = videos
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         func frame(_ id: String, width: Int, height: Int, background: [String], overlays: [[String: Any]]) -> [String: Any] {
             ["id": id, "kind": "image", "width": width, "height": height, "thumbhash": NSNull(), "durationMs": NSNull(),
@@ -357,6 +363,15 @@ actor StoriesHarnessTransport: DirectTransport {
                 text("o7", "Ana's story", fill: "stroke", color: "#2040FF", font: "noteworthy", t(0.5, 0.3, 1.4)),
             ]),
         ], caption: nil)
+        if videos {
+            func video(_ id: String) -> [String: Any] {
+                var made = frame(id, width: 360, height: 640, background: ["#202020", "#000000"], overlays: [])
+                made["kind"] = "video"
+                made["durationMs"] = 3000
+                return made
+            }
+            stories["a1"]?["frames"] = [video("f-a1-sound"), video("f-a1-silent")]
+        }
     }
 
     func drawFrames(_ frames: [String: Data]) { self.frames = frames }
@@ -476,7 +491,13 @@ actor StoriesHarnessTransport: DirectTransport {
         case ("GET", ""):
             return ok(["story": story])
         case ("GET", "frames"):
-            guard parts.count > 4, let data = frames[parts[4]] else { return DirectHTTPResponse(status: 404) }
+            guard parts.count > 4 else { return DirectHTTPResponse(status: 404) }
+            if videos, parts[4].hasPrefix("f-a1-") {
+                if frames[parts[4]] == nil { frames[parts[4]] = await StoriesHarnessVideo.make(sound: parts[4] == "f-a1-sound") }
+                guard let data = frames[parts[4]] else { return DirectHTTPResponse(status: 404) }
+                return DirectHTTPResponse(status: 200, headers: ["content-type": "video/mp4"], body: data)
+            }
+            guard let data = frames[parts[4]] else { return DirectHTTPResponse(status: 404) }
             return DirectHTTPResponse(status: 200, headers: ["content-type": "image/png"], body: data)
         case ("GET", "viewers"):
             // As the API orders them: reactors by latest reaction, then the rest by name.
@@ -673,5 +694,95 @@ final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
         stories.listDidEndDragging(decelerate: decelerate)
     }
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { stories.listDidEndDecelerating() }
+}
+/// A three second recording made here: colours going round under a
+/// counter, with a 440 Hz tone or no sound track at all.
+enum StoriesHarnessVideo {
+    static func make(sound: Bool) async -> Data? {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("stories-harness-\(sound ? "sound" : "silent")-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: url) }
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mp4) else { return nil }
+        let size = CGSize(width: 360, height: 640)
+        let video = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: size.width, AVVideoHeightKey: size.height,
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: size.width, kCVPixelBufferHeightKey as String: size.height,
+        ])
+        writer.add(video)
+        let rate = 44_100.0
+        var audio: AVAssetWriterInput?
+        if sound {
+            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 64_000,
+            ])
+            writer.add(input)
+            audio = input
+        }
+        guard writer.startWriting() else { return nil }
+        writer.startSession(atSourceTime: .zero)
+        let fps: Int32 = 15
+        let seconds = 3
+        for index in 0..<(Int(fps) * seconds) {
+            while !video.isReadyForMoreMediaData { try? await Task.sleep(for: .milliseconds(5)) }
+            guard let pool = adaptor.pixelBufferPool else { return nil }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+            guard let buffer else { return nil }
+            CVPixelBufferLockBaseAddress(buffer, [])
+            if let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: Int(size.width), height: Int(size.height), bitsPerComponent: 8,
+                                       bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: CGColorSpaceCreateDeviceRGB(),
+                                       bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) {
+                let hue = CGFloat(index) / CGFloat(Int(fps) * seconds)
+                context.setFillColor(UIColor(hue: hue, saturation: 0.6, brightness: 0.8, alpha: 1).cgColor)
+                context.fill(CGRect(origin: .zero, size: size))
+                UIGraphicsPushContext(context)
+                context.translateBy(x: 0, y: size.height)
+                context.scaleBy(x: 1, y: -1)
+                let label = NSAttributedString(string: "\(sound ? "sound" : "silent") \(index / Int(fps) + 1)", attributes: [
+                    .font: UIFont.systemFont(ofSize: 44, weight: .heavy), .foregroundColor: UIColor.white,
+                ])
+                label.draw(at: CGPoint(x: (size.width - label.size().width) / 2, y: size.height * 0.45))
+                UIGraphicsPopContext()
+            }
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(index), timescale: fps))
+            // The sound alongside, a frame's worth at a time, so the two interleave.
+            if let audio {
+                let chunk = Int(rate) / Int(fps)
+                while !audio.isReadyForMoreMediaData { try? await Task.sleep(for: .milliseconds(5)) }
+                guard let samples = tone(start: index * chunk, count: chunk, rate: rate) else { return nil }
+                audio.append(samples)
+            }
+        }
+        video.markAsFinished()
+        audio?.markAsFinished()
+        await writer.finishWriting()
+        guard writer.status == .completed else { return nil }
+        return try? Data(contentsOf: url)
+    }
+
+    /// `count` 16-bit mono samples of a quiet 440 Hz sine from `start`.
+    private static func tone(start: Int, count: Int, rate: Double) -> CMSampleBuffer? {
+        var description = AudioStreamBasicDescription(
+            mSampleRate: rate, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked,
+            mBytesPerPacket: 2, mFramesPerPacket: 1, mBytesPerFrame: 2, mChannelsPerFrame: 1, mBitsPerChannel: 16, mReserved: 0
+        )
+        var format: CMAudioFormatDescription?
+        guard CMAudioFormatDescriptionCreate(allocator: nil, asbd: &description, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &format) == noErr,
+              let format else { return nil }
+        var samples = (0..<count).map { Int16(sin(2 * .pi * 440 * Double(start + $0) / rate) * 6_000) }
+        var block: CMBlockBuffer?
+        let bytes = count * 2
+        guard CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: bytes, blockAllocator: nil, customBlockSource: nil, offsetToData: 0, dataLength: bytes, flags: 0, blockBufferOut: &block) == noErr,
+              let block else { return nil }
+        samples.withUnsafeMutableBytes { raw in _ = CMBlockBufferReplaceDataBytes(with: raw.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: bytes) }
+        var buffer: CMSampleBuffer?
+        guard CMAudioSampleBufferCreateReadyWithPacketDescriptions(allocator: nil, dataBuffer: block, formatDescription: format, sampleCount: count,
+                                                                   presentationTimeStamp: CMTime(value: CMTimeValue(start), timescale: CMTimeScale(rate)),
+                                                                   packetDescriptions: nil, sampleBufferOut: &buffer) == noErr else { return nil }
+        return buffer
+    }
 }
 #endif

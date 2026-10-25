@@ -4,8 +4,9 @@ import Foundation
 /// lays one author out: the canvas under the status bar with 12 rounded
 /// corners, the progress strip 8 inside its top (2 tall, 3 between
 /// segments), the author's 32 avatar 12 in and 18 down with their name and
-/// the time beside it, the 50 × 64 close button at the top right, and the
-/// bar below the canvas: the heart (or, on one's own story, its views).
+/// the time beside it, the 50 × 64 close button at the top right, the more
+/// button and, on a recording, the sound button left of it, and the bar
+/// below the canvas: the heart (or, on one's own story, its views).
 public struct StoryViewerLayout: Equatable, Sendable {
     public enum Metrics {
         public static let cornerRadius: CGFloat = 12
@@ -17,6 +18,9 @@ public struct StoryViewerLayout: Equatable, Sendable {
         public static let avatarOrigin = CGPoint(x: 12, y: 18)
         public static let nameGap: CGFloat = 10
         public static let close = CGSize(width: 50, height: 64)
+        /// The sound button's middle is this far left of the more button's
+        /// (Telegram's 33 wide buttons, 12 apart).
+        public static let soundPitch: CGFloat = 45
         public static let bar: CGFloat = 52
         public static let barButton: CGFloat = 44
         public static let barInset: CGFloat = 8
@@ -32,6 +36,8 @@ public struct StoryViewerLayout: Equatable, Sendable {
     public var titleWidth: CGFloat
     public var close: CGRect
     public var more: CGRect
+    /// A recording's sound button.
+    public var sound: CGRect
     /// The bar under the canvas; empty when the canvas reaches the bottom.
     public var bar: CGRect
     public var heart: CGRect
@@ -46,6 +52,7 @@ public struct StoryViewerLayout: Equatable, Sendable {
         avatar = CGRect(x: canvas.minX + M.avatarOrigin.x, y: canvas.minY + M.avatarOrigin.y, width: M.avatar, height: M.avatar)
         close = CGRect(x: canvas.maxX - M.close.width, y: canvas.minY + 2, width: M.close.width, height: M.close.height)
         more = close.offsetBy(dx: -M.close.width + 8, dy: 0)
+        sound = more.offsetBy(dx: -M.soundPitch, dy: 0)
         titleOrigin = CGPoint(x: avatar.maxX + M.nameGap, y: avatar.minY - 1)
         titleWidth = max(0, more.minX - titleOrigin.x)
         let barTop = canvas.maxY
@@ -53,6 +60,11 @@ public struct StoryViewerLayout: Equatable, Sendable {
         let buttonY = barTop + (min(bar.height, M.bar) - M.barButton) / 2
         heart = CGRect(x: canvas.maxX - M.barInset - M.barButton, y: buttonY, width: M.barButton, height: M.barButton)
         views = CGRect(x: canvas.minX + M.barInset, y: buttonY, width: max(0, canvas.width / 2), height: M.barButton)
+    }
+
+    /// The name's and time's width, up to the sound button when it shows.
+    public func titleWidth(withSound: Bool) -> CGFloat {
+        withSound ? max(0, sound.minX - titleOrigin.x) : titleWidth
     }
 
     /// The progress segments, one per frame, across `strip`.

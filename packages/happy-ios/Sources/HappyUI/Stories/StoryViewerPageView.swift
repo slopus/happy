@@ -14,6 +14,8 @@ final class StoryViewerPageView: UIView {
     let moreButton = UIButton(type: .system)
     let heartButton = UIButton(type: .custom)
     let viewsButton = UIButton(type: .system)
+    /// A recording's sound, on or off, at the top beside the more button.
+    let soundButton = UIButton(type: .custom)
     private let topFade = CAGradientLayer()
     private let strip = UIView()
     private var segments: [StoryProgressSegment] = []
@@ -23,7 +25,7 @@ final class StoryViewerPageView: UIView {
     private let timeLabel = UILabel()
     /// Shades the side of the cube turned away.
     let shade = UIView()
-    private var chrome: [UIView] { [strip, avatar, nameLabel, timeLabel, closeButton, moreButton, heartButton, viewsButton] }
+    private var chrome: [UIView] { [strip, avatar, nameLabel, timeLabel, closeButton, moreButton, soundButton, heartButton, viewsButton] }
 
     private(set) var author: StoryFeedAuthor?
     private var photoKey: String?
@@ -69,6 +71,10 @@ final class StoryViewerPageView: UIView {
             button.tintColor = .white
             addSubview(button)
         }
+        soundButton.accessibilityIdentifier = "story-sound"
+        soundButton.adjustsImageWhenHighlighted = false
+        soundButton.isHidden = true
+        addSubview(soundButton)
         heartButton.accessibilityIdentifier = "story-heart"
         heartButton.accessibilityLabel = Strings.Stories.react
         addSubview(heartButton)
@@ -128,6 +134,28 @@ final class StoryViewerPageView: UIView {
     func setProgress(_ progress: Double, at position: Int) {
         guard segments.indices.contains(position) else { return }
         segments[position].progress = CGFloat(progress)
+    }
+
+    /// What the sound button shows: nothing on a picture; on a recording
+    /// its sound on or off, or, with no sound at all, off and dimmed.
+    enum Sound: Equatable { case none, on, off, silent }
+
+    func setSound(_ sound: Sound) {
+        let hidden = sound == .none
+        if soundButton.isHidden != hidden {
+            soundButton.isHidden = hidden
+            setNeedsLayout()
+        }
+        soundButton.setImage(StoryEditorIcons.sound(on: sound == .on).withRenderingMode(.alwaysTemplate), for: .normal)
+        // Telegram's dims a recording without sound to half.
+        soundButton.tintColor = UIColor(white: 1, alpha: sound == .silent ? 0.5 : 1)
+        soundButton.accessibilityLabel = sound == .on ? Strings.Stories.mute : Strings.Stories.unmute
+        soundButton.accessibilityValue = switch sound {
+        case .none: nil
+        case .on: "on"
+        case .off: "off"
+        case .silent: "silent"
+        }
     }
 
     func setHeart(_ reaction: String?) {
@@ -198,10 +226,13 @@ final class StoryViewerPageView: UIView {
         place(avatar, layout.avatar)
         initials.frame = avatar.bounds
         let lineHeight: CGFloat = 17
-        nameLabel.frame = CGRect(x: layout.titleOrigin.x, y: layout.titleOrigin.y, width: layout.titleWidth, height: lineHeight)
-        timeLabel.frame = CGRect(x: layout.titleOrigin.x, y: layout.titleOrigin.y + lineHeight, width: layout.titleWidth, height: lineHeight)
+        // Without a more button the sound button takes its place.
+        let titleWidth = layout.titleWidth(withSound: !soundButton.isHidden && !moreButton.isHidden)
+        nameLabel.frame = CGRect(x: layout.titleOrigin.x, y: layout.titleOrigin.y, width: titleWidth, height: lineHeight)
+        timeLabel.frame = CGRect(x: layout.titleOrigin.x, y: layout.titleOrigin.y + lineHeight, width: titleWidth, height: lineHeight)
         closeButton.frame = layout.close
         moreButton.frame = layout.more
+        soundButton.frame = moreButton.isHidden ? layout.more : layout.sound
         place(heartButton, layout.heart)
         place(viewsButton, layout.views)
         shade.frame = bounds
@@ -260,7 +291,7 @@ final class StoryViewerPageView: UIView {
     /// not; the author's avatar too when it doesn't fly to the source.
     /// Called inside an animation block; the shade animates itself.
     func showOpeningControls(_ shown: Bool, opening: StoryOpeningLayout, duration: Double) {
-        var views = [strip, closeButton, moreButton, nameLabel, timeLabel]
+        var views = [strip, closeButton, moreButton, soundButton, nameLabel, timeLabel]
         if opening.avatar == nil { views.append(avatar) }
         for view in views { view.alpha = shown ? 1 : 0 }
         let from = topFade.presentation()?.opacity ?? topFade.opacity

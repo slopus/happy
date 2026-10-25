@@ -75,6 +75,50 @@ final class StoriesViewerUITests: XCTestCase {
         capture("closed")
     }
 
+    /// A recording's sound button, as Telegram's: on at first, off and on
+    /// again by a tap; a recording without sound dims it, and a tap says so
+    /// and holds the story until the next touch.
+    func testVideoSound() {
+        app.terminate()
+        app.launchArguments += ["-storiesVideo"]
+        app.launch()
+        let ana = element("story-circle:Ana")
+        XCTAssertTrue(ana.waitForExistence(timeout: 8))
+        openRow()
+        ana.tap()
+        wait("viewer", "1", "the viewer never opened")
+        wait("sound", "on", timeout: 8, "no sound button on a recording with sound")
+        XCTAssertEqual(field("muted"), "0")
+        let sound = element("story-sound")
+        pause(0.5)
+        capture("sound-on")
+        sound.tap()
+        wait("sound", "off", "a tap didn't turn the sound off")
+        XCTAssertEqual(field("muted"), "1", "the player still plays its sound")
+        capture("sound-off")
+        sound.tap()
+        wait("sound", "on", "a second tap didn't turn it on")
+        XCTAssertEqual(field("muted"), "0")
+
+        // The silent one.
+        tap(0.85, 0.5)
+        wait("position", "1")
+        wait("sound", "silent", timeout: 8, "a recording without sound isn't marked so")
+        sound.tap()
+        let tooltip = element("stories-tooltip")
+        XCTAssertTrue(tooltip.waitForExistence(timeout: 3), "no word that it has no sound")
+        XCTAssertEqual(tooltip.label, "This video has no sound")
+        wait("paused", "1", "the story ran on under the tooltip")
+        pause(0.5)
+        capture("no-sound")
+        // The touch that puts it away goes no further: still the same frame.
+        tap(0.85, 0.5)
+        pause(0.5)
+        XCTAssertFalse(tooltip.exists)
+        XCTAssertEqual(field("position"), "1", "the touch on the tooltip turned the frame")
+        wait("paused", "0")
+    }
+
     func testSomeoneElsesStories() {
         let steve = element("story-circle:Steve")
         XCTAssertTrue(steve.waitForExistence(timeout: 8), "no ring for Steve")
