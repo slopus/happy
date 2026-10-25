@@ -28,9 +28,10 @@ struct LibraryPick {
 
 /// The photo library as a sheet, after Telegram's attachment gallery: the
 /// camera roll newest first in a grid of our own, picked in order with
-/// numbered circles, and one button that hands the picks back. Library
-/// only: no camera, files or clipboard. Limited access is shown and managed
-/// as Telegram does; refused access offers Settings.
+/// numbered circles, and one button that hands the picks back. Their count
+/// after Cancel shows only the picks until Back. Library only: no camera,
+/// files or clipboard. Limited access is shown and managed as Telegram does;
+/// refused access offers Settings.
 ///
 ///     LibraryPicker.present(from: self, options: .init(limit: 10, action: "Add")) { picks in … }
 ///
@@ -185,6 +186,11 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
     private var reading = false
     private var readTask: Task<Void, Never>?
     private var registered = false
+    private let selectedButton = LibrarySelectedButton()
+    private var selectedShown = false
+    /// While set the grid shows only these: the picks as they were when the
+    /// count was tapped, so one unpicked there stays, unnumbered.
+    private var showingPicks: [PHAsset]?
 
     init(options: LibraryPicker.Options, onPick: @escaping ([LibraryPick]) -> Void) {
         self.options = options
@@ -222,9 +228,19 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
         cancelButton.titleLabel?.font = .systemFont(ofSize: 17)
         cancelButton.accessibilityIdentifier = "library-cancel"
         cancelButton.addAction(UIAction { [weak self] _ in
-            self?.readTask?.cancel()
-            self?.dismiss(animated: true)
+            guard let self else { return }
+            if showingPicks != nil {
+                showPicks(false)
+                return
+            }
+            readTask?.cancel()
+            dismiss(animated: true)
         }, for: .touchUpInside)
+        selectedButton.accessibilityIdentifier = "library-selected"
+        selectedButton.isHidden = true
+        selectedButton.alpha = 0
+        selectedButton.transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
+        selectedButton.addAction(UIAction { [weak self] _ in self?.showPicks(true) }, for: .touchUpInside)
 
         grid.backgroundColor = .clear
         grid.dataSource = self
@@ -283,7 +299,7 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
         spinner.hidesWhenStopped = true
         addButton.addSubview(spinner)
 
-        for subview in [grid, titleLabel, cancelButton, blocked, addButton] as [UIView] { view.addSubview(subview) }
+        for subview in [grid, titleLabel, cancelButton, selectedButton, blocked, addButton] as [UIView] { view.addSubview(subview) }
         authorize()
     }
 
@@ -305,7 +321,7 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
 
     private func load() {
         let allowed = status == .authorized || status == .limited
-        note.isHidden = status != .limited
+        note.isHidden = status != .limited || showingPicks != nil
         blocked.isHidden = allowed || status == .notDetermined
         blockedText.text = Strings.Library.denied
         blockedButton.isHidden = false
@@ -341,6 +357,10 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
             let live = Set((0..<still.count).map { still.object(at: $0) }.filter { result.contains($0) }.map(\.localIdentifier))
             let before = picked
             picked.removeAll { !live.contains($0) }
+            if let shown = showingPicks {
+                showingPicks = shown.filter { result.contains($0) }
+                if picked.isEmpty { showPicks(false) }
+            }
             if picked != before { updateButton() }
         }
         // An empty library says so where the refusal would be.
@@ -382,10 +402,11 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
     private func layout() -> LibraryPickerLayout {
         LibraryPickerLayout(.init(
             width: view.bounds.width, height: view.bounds.height, safeBottom: view.safeAreaInsets.bottom,
-            wide: traitCollection.verticalSizeClass == .compact, pixel: view.hairline, count: assets?.count ?? 0,
+            wide: traitCollection.verticalSizeClass == .compact, pixel: view.hairline, count: showingPicks?.count ?? assets?.count ?? 0,
             note: note.isHidden ? nil : noteText.measurable,
             noteButton: note.isHidden ? nil : noteButton.titleLabel?.intrinsicContentSize,
-            title: titleLabel.intrinsicContentSize, cancel: cancelButton.intrinsicContentSize, picking: !picked.isEmpty
+            title: titleLabel.intrinsicContentSize, cancel: cancelButton.intrinsicContentSize, picking: !picked.isEmpty,
+            selected: picked.isEmpty ? nil : selectedButton.numberSize
         ))
     }
 
@@ -394,6 +415,7 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
         let layout = layout()
         titleLabel.setLayoutFrame(layout.title)
         cancelButton.setLayoutFrame(layout.cancel)
+        place(selectedButton: layout)
         grid.frame = layout.grid
         gridLayout.layout = layout
         let inset = UIEdgeInsets(top: 0, left: 0, bottom: layout.bottomInset, right: 0)
@@ -419,7 +441,8 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
 
     /// Thumbnails a screen ahead and behind are made before they show.
     private func updateCaching(_ layout: LibraryPickerLayout) {
-        guard let assets, view.window != nil else { return }
+        // The picks alone are few, and asked for as they show.
+        guard let assets, showingPicks == nil, view.window != nil else { return }
         let size = thumbnailSize(layout)
         if size != cachedSize {
             images.stopCachingImagesForAllAssets()
@@ -451,12 +474,18 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
 
     // MARK: Grid
 
-    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { assets?.count ?? 0 }
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { showingPicks?.count ?? assets?.count ?? 0 }
+
+    /// The grid's `index`th: of the picks while only they show, else of the library.
+    private func asset(at index: Int) -> PHAsset? {
+        if let showingPicks { return showingPicks.indices.contains(index) ? showingPicks[index] : nil }
+        guard let assets, index < assets.count else { return nil }
+        return assets.object(at: index)
+    }
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: LibraryCell.id, for: indexPath) as! LibraryCell
-        guard let assets, let layout = gridLayout.layout, indexPath.item < assets.count else { return cell }
-        let asset = assets.object(at: indexPath.item)
+        guard let layout = gridLayout.layout, let asset = asset(at: indexPath.item) else { return cell }
         cell.show(asset, index: indexPath.item, images: images, size: thumbnailSize(layout))
         cell.number = number(asset.localIdentifier)
         cell.dimmed = cell.number == nil && picked.count >= options.limit
@@ -467,8 +496,65 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: false)
-        guard !reading, let assets, indexPath.item < assets.count else { return }
-        toggle(assets.object(at: indexPath.item).localIdentifier)
+        guard !reading, let asset = asset(at: indexPath.item) else { return }
+        toggle(asset.localIdentifier)
+    }
+
+    /// The grid shows only the picks, in the order picked, or everything
+    /// again; meanwhile Cancel is Back and the count hides, as Telegram's
+    /// selected media.
+    private func showPicks(_ on: Bool) {
+        guard (showingPicks != nil) != on, !reading else { return }
+        if on {
+            guard !picked.isEmpty else { return }
+            let found = PHAsset.fetchAssets(withLocalIdentifiers: picked, options: nil)
+            let byID = Dictionary((0..<found.count).map { (found.object(at: $0).localIdentifier, found.object(at: $0)) }, uniquingKeysWith: { a, _ in a })
+            showingPicks = picked.compactMap { byID[$0] }
+        } else {
+            showingPicks = nil
+        }
+        titleLabel.text = on ? Strings.Library.selected(picked.count) : Strings.Library.recents
+        cancelButton.setTitle(on ? Strings.Library.back : Strings.Library.cancel, for: .normal)
+        updateSelected()
+        UIView.transition(with: grid, duration: 0.25, options: [.transitionCrossDissolve, .allowUserInteraction]) {
+            self.note.isHidden = on || self.status != .limited
+            // The cells start under the note, so the grid learns first.
+            self.gridLayout.layout = self.layout()
+            self.grid.reloadData()
+            self.grid.contentOffset = CGPoint(x: 0, y: -self.grid.adjustedContentInset.top)
+        }
+        view.setNeedsLayout()
+    }
+
+    private func place(selectedButton layout: LibraryPickerLayout) {
+        guard let frame = layout.selected else { return }
+        // Its scale animates, so its frame is never set.
+        selectedButton.bounds = CGRect(origin: .zero, size: frame.size)
+        selectedButton.center = CGPoint(x: frame.midX, y: frame.midY)
+    }
+
+    /// The count shows while something is picked and the grid shows
+    /// everything, scaling in and out over 0.25 s as Telegram's.
+    private func updateSelected() {
+        // Shrinking out, it keeps the last count it had.
+        if !picked.isEmpty {
+            selectedButton.count = picked.count
+            place(selectedButton: layout())
+        }
+        if showingPicks != nil {
+            titleLabel.text = Strings.Library.selected(picked.count)
+            view.setNeedsLayout()
+        }
+        let shown = !picked.isEmpty && showingPicks == nil
+        guard shown != selectedShown else { return }
+        selectedShown = shown
+        if shown { selectedButton.isHidden = false }
+        UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseInOut, .beginFromCurrentState]) {
+            self.selectedButton.alpha = shown ? 1 : 0
+            self.selectedButton.transform = shown ? .identity : CGAffineTransform(scaleX: 0.01, y: 0.01)
+        } completion: { finished in
+            if finished, !self.selectedShown { self.selectedButton.isHidden = true }
+        }
     }
 
     private func number(_ id: String) -> Int? {
@@ -491,6 +577,7 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
             cell.setNumber(next, animated: cellID == id)
             cell.dimmed = next == nil && limitReached
         }
+        if picked.isEmpty { showPicks(false) }
         updateButton()
     }
 
@@ -500,6 +587,7 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.foregroundColor = UIColor(Palette.libraryCheckText)
         addButton.configuration?.attributedTitle = title
+        updateSelected()
         guard picking == addButton.isHidden || (picking && addButton.frame.minY > view.bounds.height) else { return }
         if picking { addButton.isHidden = false }
         UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0, options: [.beginFromCurrentState]) {
@@ -693,6 +781,63 @@ final class LibraryCell: UICollectionViewCell {
         picture.frame = contentView.bounds
         check.frame = LibraryPickerLayout.check(in: bounds.size)
         duration.frame = LibraryPickerLayout.duration(duration.intrinsicContentSize, in: bounds.size)
+    }
+}
+
+/// Telegram's count of the picks after Cancel (`SelectedButtonNode`): a
+/// blue pill with a check and the number, a little easier to hit than it looks.
+final class LibrarySelectedButton: UIControl {
+    private let check = CAShapeLayer()
+    private let number = UILabel()
+
+    var count = 0 {
+        didSet {
+            guard count != oldValue else { return }
+            number.text = String(count)
+            accessibilityLabel = Strings.Library.selected(count)
+            setNeedsLayout()
+        }
+    }
+
+    var numberSize: CGSize { number.intrinsicContentSize }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        typealias M = LibraryPickerLayout.Metrics
+        backgroundColor = UIColor(Palette.libraryCheckFill)
+        layer.cornerRadius = M.selectedHeight / 2
+        let box = M.selectedCheck
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: box.minX + 1.5, y: box.minY + 5.5))
+        path.addLine(to: CGPoint(x: box.minX + 5, y: box.minY + 9))
+        path.addLine(to: CGPoint(x: box.maxX - 1.5, y: box.minY + 1.5))
+        check.path = path.cgPath
+        check.fillColor = nil
+        check.lineWidth = 2
+        check.lineCap = .round
+        check.lineJoin = .round
+        layer.addSublayer(check)
+        let font = UIFont.monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+        number.font = font.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: 15) } ?? font
+        number.textColor = UIColor(Palette.libraryCheckText)
+        number.text = "0"
+        addSubview(number)
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.setNeedsLayout() }
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        check.strokeColor = UIColor(Palette.libraryCheckText).resolvedColor(with: traitCollection).cgColor
+        let size = number.intrinsicContentSize
+        number.frame = CGRect(x: LibraryPickerLayout.Metrics.selectedNumberX, y: floor((bounds.height - size.height) / 2), width: size.width, height: size.height)
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -8, dy: -12).contains(point)
     }
 }
 

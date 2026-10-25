@@ -6,7 +6,8 @@ import CoreGraphics
 /// The photo library sheet, measured as Telegram's attachment gallery
 /// (`MediaPickerScreen`, `MediaPickerGridItem`, `MediaPickerManageNode`):
 ///
-///     ( Cancel )        Recents
+///     ( Cancel ) (✓ 2)  Recents        the picks' count, once there are any:
+///                                      tapped, the grid shows only them
 ///     ┌ You have limited Happy from …   (MANAGE) ┐   only with limited access
 ///     ▢▢▢   three square cells a row (five turned), 1 apart,
 ///     ▢▢▢   each with its number circle at the top right
@@ -42,6 +43,15 @@ public struct LibraryPickerLayout: Equatable, Sendable {
         /// Refused access: its words and Settings button, 32 in, 48 down.
         public static let blockedInset: CGFloat = 32
         public static let blockedTop: CGFloat = 48
+        /// The picks' count after Cancel (`SelectedButtonNode`): 21 tall,
+        /// its check 14 × 11 at 5 in, the number from 21, 28 wider than it,
+        /// 12 after Cancel and never before Telegram's 72.
+        public static let selectedHeight: CGFloat = 21
+        public static let selectedPadding: CGFloat = 28
+        public static let selectedGap: CGFloat = 12
+        public static let selectedMinX: CGFloat = 72
+        public static let selectedCheck = CGRect(x: 5, y: 5, width: 14, height: 11)
+        public static let selectedNumberX: CGFloat = 21
     }
 
     public struct Input {
@@ -59,8 +69,10 @@ public struct LibraryPickerLayout: Equatable, Sendable {
         public var cancel: CGSize
         /// Something is picked, so the add button shows.
         public var picking: Bool
+        /// The picks' count's number, measured, while the count shows.
+        public var selected: CGSize?
 
-        public init(width: CGFloat, height: CGFloat, safeBottom: CGFloat, wide: Bool, pixel: CGFloat, count: Int, note: Measurable?, noteButton: CGSize?, title: CGSize, cancel: CGSize, picking: Bool) {
+        public init(width: CGFloat, height: CGFloat, safeBottom: CGFloat, wide: Bool, pixel: CGFloat, count: Int, note: Measurable?, noteButton: CGSize?, title: CGSize, cancel: CGSize, picking: Bool, selected: CGSize? = nil) {
             self.width = width
             self.height = height
             self.safeBottom = safeBottom
@@ -72,6 +84,7 @@ public struct LibraryPickerLayout: Equatable, Sendable {
             self.title = title
             self.cancel = cancel
             self.picking = picking
+            self.selected = selected
         }
     }
 
@@ -91,6 +104,8 @@ public struct LibraryPickerLayout: Equatable, Sendable {
     public var bottomInset: CGFloat
     /// The add button, shown or (with nothing picked) below the sheet.
     public var button: CGRect
+    /// The picks' count, when it shows.
+    public var selected: CGRect?
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -130,6 +145,10 @@ public struct LibraryPickerLayout: Equatable, Sendable {
             : input.height + M.buttonHeight
         button = CGRect(x: M.buttonInset, y: buttonY, width: max(0, width - 2 * M.buttonInset), height: M.buttonHeight)
         bottomInset = input.safeBottom + (input.picking ? M.buttonBottom + M.buttonHeight + M.buttonBottom : 0)
+        selected = input.selected.map { number in
+            CGRect(x: max(M.selectedMinX, cancel.maxX + M.selectedGap), y: floor((M.barHeight - M.selectedHeight) / 2),
+                   width: ceil(number.width) + M.selectedPadding, height: M.selectedHeight)
+        }
     }
 
     private var top: CGFloat

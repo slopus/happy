@@ -30,6 +30,20 @@ final class LibraryPickerLayoutTests: XCTestCase {
         XCTAssertEqual(layout(wide: true).columns, 5)
     }
 
+    /// The picks' count after Cancel, 21 tall, 28 wider than its number;
+    /// a wide Cancel pushes it along.
+    func testTheSelectedCount() {
+        func with(_ cancel: CGFloat) -> LibraryPickerLayout {
+            LibraryPickerLayout(.init(
+                width: 402, height: 800, safeBottom: 34, wide: false, pixel: 1.0 / 3, count: 10, note: nil, noteButton: nil,
+                title: CGSize(width: 64, height: 22), cancel: CGSize(width: cancel, height: 22), picking: true, selected: CGSize(width: 8.4, height: 18)
+            ))
+        }
+        XCTAssertEqual(with(44).selected, rect(72, 17, 37, 21))
+        XCTAssertEqual(with(56).selected, rect(84, 17, 37, 21))
+        XCTAssertNil(layout(picking: true).selected)
+    }
+
     /// Laid out before it has a width: empty cells, never negative ones.
     func testNoWidth() {
         let grid = layout(width: 0)

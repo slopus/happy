@@ -15,6 +15,9 @@ extension Strings {
         public static let couldntRead = "Couldn't read that photo or video"
         public static let done = "Done"
         public static let send = "Send"
+        public static let back = "Back"
+        /// The picks' count, and the title while the grid shows only them.
+        public static func selected(_ count: Int) -> String { "\(count) Selected" }
         public static func add(_ count: Int, action: String) -> String { count > 1 ? "\(action) \(count)" : action }
         public static func photo(_ index: Int?) -> String { index.map { "Photo, picked \($0)" } ?? "Photo" }
         public static func video(_ length: String, index: Int?) -> String { index.map { "Video, \(length), picked \($0)" } ?? "Video, \(length)" }
