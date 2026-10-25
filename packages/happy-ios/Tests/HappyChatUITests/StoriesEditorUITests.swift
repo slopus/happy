@@ -55,11 +55,7 @@ final class StoriesEditorUITests: XCTestCase {
     }
 
     private func openEditor() {
-        let photos = app.buttons["Photos"]
-        XCTAssertTrue(photos.waitForExistence(timeout: 8), "no sources sheet")
-        capture("sources")
-        photos.tap()
-        wait("editor", "1", "the editor never opened")
+        wait("editor", "1", timeout: 8, "the editor never opened")
         wait("frames", "1")
         XCTAssertTrue(canvas.waitForExistence(timeout: 3))
         pause(0.8)
@@ -219,8 +215,10 @@ final class StoriesEditorUITests: XCTestCase {
         wait("saved", "draft:2:2", "discarding changed the draft")
     }
 
-    /// The frames button opens the frames; a second frame is added from
-    /// Photos and selected, and its card selects the first again.
+    /// The frames button opens the frames; its "+" opens the library sheet,
+    /// two photos picked there in order (numbered 1 and 2, the first
+    /// unpicked and picked again as 2) become the second and third frames,
+    /// and a card selects the first again.
     func testFrames() {
         openEditor()
         XCTAssertEqual(element("story-editor-frames").value as? String, "1")
@@ -230,11 +228,39 @@ final class StoriesEditorUITests: XCTestCase {
         pause(0.4)
         capture("frames-panel")
         add.tap()
-        let photos = app.buttons["Photos"]
-        XCTAssertTrue(photos.waitForExistence(timeout: 4))
-        photos.tap()
-        wait("frames", "2")
-        wait("selected", "1")
+        // A fresh install asks for the library first, as a person sees it.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let full = springboard.buttons["Allow Full Access"]
+        if full.waitForExistence(timeout: 4) {
+            capture("library-access")
+            full.tap()
+        }
+        let first = element("library-cell:0")
+        let second = element("library-cell:1")
+        XCTAssertTrue(first.waitForExistence(timeout: 8), "the library sheet never showed photos")
+        XCTAssertFalse(element("library-add").isHittable, "Add showed with nothing picked")
+        pause(0.8)
+        capture("library")
+        first.tap()
+        XCTAssertEqual(first.value as? String, "1")
+        second.tap()
+        XCTAssertEqual(second.value as? String, "2")
+        first.tap()
+        XCTAssertEqual((first.value as? String) ?? "", "", "unpicking kept its number")
+        XCTAssertEqual(second.value as? String, "1", "the numbers didn't close up")
+        first.tap()
+        XCTAssertEqual(first.value as? String, "2")
+        pause(0.6)
+        capture("library-picked")
+        let addPicked = element("library-add")
+        XCTAssertTrue(addPicked.isHittable)
+        XCTAssertEqual(addPicked.label, "Add 2")
+        addPicked.tap()
+        wait("frames", "3", timeout: 15, "the two photos didn't become frames")
+        // The last one added is shown.
+        wait("selected", "2")
+        pause(1)
+        capture("two-photos-added")
         element("story-editor-frame:0").tap()
         wait("selected", "0")
         capture("two-frames")

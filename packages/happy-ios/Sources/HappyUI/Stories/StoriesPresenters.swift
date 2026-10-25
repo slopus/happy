@@ -142,35 +142,25 @@ final class StoriesViewerTransition: NSObject, UIViewControllerTransitioningDele
     }
 }
 
-/// Opens the editor on `draft`, or, for a new story, first asks where its
-/// media comes from (or which draft to go back to).
+/// Opens the editor on a draft: the story a conversation drafted, from its
+/// card's Edit. Stories are only ever started in a conversation.
 @MainActor
 enum StoriesEditorPresenter {
-    @discardableResult
-    static func present(session: StoriesSession, draft: Story?, from host: UIViewController) -> StoriesMediaChooser? {
-        if let draft {
-            open(StoryEditorViewController(session: session, draft: StoryDraft(editing: draft)), from: host)
-            return nil
+    static func present(session: StoriesSession, draft: Story, from host: UIViewController) {
+        open(StoryEditorViewController(session: session, draft: StoryDraft(editing: draft)), from: host)
+    }
+
+    /// A new story on what was picked, not yet on the computer.
+    static func present(session: StoriesSession, picked: [StoriesMediaChooser.Picked], from host: UIViewController) {
+        guard !picked.isEmpty else { return }
+        var draft = StoryDraft()
+        var local: [String: StoryLocalMedia] = [:]
+        for one in picked {
+            draft.add(one.frame)
+            local[one.frame.id] = one.local
         }
-        let chooser = StoriesMediaChooser(session: session, host: host, limit: StoryCanvas.maxFrames, drafts: true) { [weak host] choice in
-            guard let host else { return }
-            switch choice {
-            case .picked(let picked):
-                guard !picked.isEmpty else { return }
-                var draft = StoryDraft()
-                var local: [String: StoryLocalMedia] = [:]
-                for one in picked {
-                    draft.add(one.frame)
-                    local[one.frame.id] = one.local
-                }
-                draft.select(0)
-                open(StoryEditorViewController(session: session, draft: draft, local: local), from: host)
-            case .draft(let story):
-                open(StoryEditorViewController(session: session, draft: StoryDraft(editing: story)), from: host)
-            }
-        }
-        chooser.start(from: host.view)
-        return chooser
+        draft.select(0)
+        open(StoryEditorViewController(session: session, draft: draft, local: local), from: host)
     }
 
     /// Presents once what the host shows (a picker on its way out) is gone.

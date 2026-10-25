@@ -36,6 +36,8 @@
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow Happy to use your microphone to talk with your coding agents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow Happy to show your photos and videos so you can share them in stories and chats.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow Happy v2 (dev) to access your camera to scan QR codes and share photos with AI.</string>
 	<key>NSLocalNetworkUsageDescription</key>

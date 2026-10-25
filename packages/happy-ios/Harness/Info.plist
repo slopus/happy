@@ -4,6 +4,8 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow Happy Chat Harness to show your photos and videos so you can share them in stories and chats.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow Happy Chat Harness to access your camera to scan QR codes and share photos with AI.</string>
 	<key>NSMicrophoneUsageDescription</key>

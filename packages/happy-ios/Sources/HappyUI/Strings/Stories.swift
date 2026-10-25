@@ -56,10 +56,8 @@ extension Strings {
 
         // The editor.
         public static let newStory = "New Story"
-        public static let drafts = "Drafts"
-        public static let photos = "Photos"
-        public static let camera = "Camera"
-        public static let fromConversations = "From conversations"
+        /// The library sheet's button: "Add", "Add 2".
+        public static let add = "Add"
         public static let text = "Text"
         public static let link = "Link"
         public static let stickers = "Stickers"
@@ -74,7 +72,6 @@ extension Strings {
         public static let uploading = "Uploading…"
         public static let saveFailed = "Couldn't save the story"
         public static let addFrame = "Add frame"
-        public static let noMedia = "Nothing to choose from yet"
         public static let discardChanges = "Discard changes?"
         public static let discardDetail = "Your edits to this story will be lost."
         public static let discard = "Discard"

@@ -13,8 +13,9 @@ import UIKit
 /// `stories-probe`'s accessibility value reports the viewer:
 /// `viewer=1 author=1 position=0 paused=0 chrome=1 reaction=🔥 haptics=open,react`,
 /// or the editor: `editor=1 frames=1 overlays=sticker,text trail=… saved=draft:2`.
-/// `-storiesCompose` opens the editor on a picture of the harness's own,
-/// which the Photos source hands back in place of the system picker.
+/// `-storiesCompose` opens the editor on a picture of the harness's own, as
+/// a conversation's draft would; its "+" opens the real library sheet over
+/// the simulator's photos.
 /// The stories sit in a home header over a list of the harness's own, as
 /// Stem Cells home has them; `header=open` or `header=closed` in the probe.
 @MainActor
@@ -52,7 +53,6 @@ final class StoriesHarness {
         probe.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
         probe.alpha = 0.02
         host.view.addSubview(probe)
-        StoriesMediaChooser.library = { await Self.library() }
         window.rootViewController = host
         Task { await transport.drawFrames(Self.frames()) }
         Task { await transport.drawStickers(Self.stickers()) }
@@ -72,12 +72,13 @@ final class StoriesHarness {
     }
 
     private func compose() {
-        StoriesEditorPresenter.present(session: session, draft: nil, from: host)
+        let session = session
+        let host = host
+        Task { StoriesEditorPresenter.present(session: session, picked: await Self.picture(), from: host) }
     }
 
-    /// The harness's photo library: one tall picture with a grid to read
-    /// placement by.
-    static func library() async -> [StoriesMediaChooser.Picked] {
+    /// The story's first picture: tall, with a grid to read placement by.
+    static func picture() async -> [StoriesMediaChooser.Picked] {
         let size = CGSize(width: 1080, height: 1440)
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1

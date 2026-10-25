@@ -425,8 +425,14 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
     }
 
     private func addFrames() {
-        let chooser = StoriesMediaChooser(session: session, host: self, limit: StoryCanvas.maxFrames - draft.frames.count, drafts: false) { [weak self] choice in
-            guard let self, case .picked(let picked) = choice else { return }
+        StoriesMediaChooser.choose(from: self, limit: StoryCanvas.maxFrames - draft.frames.count) { [weak self] picked in
+            guard let self else {
+                // The editor closed while they were readied: nobody owns the files.
+                for one in picked {
+                    if case .local(let file, _) = one.frame.media { try? FileManager.default.removeItem(at: file) }
+                }
+                return
+            }
             for one in picked {
                 if case .local(let file, _) = one.frame.media { files.append(file) }
                 guard draft.add(one.frame) else { continue }
@@ -436,7 +442,6 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
             select(nil)
             render()
         }
-        chooser.start(from: addCard)
     }
 
     // MARK: Fingers
