@@ -120,7 +120,11 @@ final class StoriesViewerTransition: NSObject, UIViewControllerTransitioningDele
                     page.canvas.layer.cornerRadius = shrunkRadius
                     page.alpha = 0
                 } else {
-                    page.transform = CGAffineTransform(translationX: 0, y: container.bounds.height * 0.3).scaledBy(x: 0.85, y: 0.85)
+                    // On from where a drag left it, never back up or larger.
+                    let dragged = page.transform
+                    let y = max(container.bounds.height * 0.3, dragged.ty + container.bounds.height * 0.15)
+                    let s = min(0.85, hypot(dragged.a, dragged.c) * 0.9)
+                    page.transform = CGAffineTransform(translationX: 0, y: y).scaledBy(x: s, y: s)
                     page.alpha = 0
                 }
                 viewer.view.backgroundColor = ground.withAlphaComponent(0)

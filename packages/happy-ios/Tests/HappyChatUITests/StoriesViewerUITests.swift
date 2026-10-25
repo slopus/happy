@@ -73,6 +73,10 @@ final class StoriesViewerUITests: XCTestCase {
         XCTAssertTrue(canvas.waitForExistence(timeout: 3))
         canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.6)).tap()
         wait("reaction", "🔥", "the bubble didn't react")
+        // Thrown out around the bubble, as Telegram's reaction effect is.
+        XCTAssertTrue(field("trail")?.contains("burst") == true, probe)
+        pause(0.15)
+        capture("reacted-fire-burst")
         pause(1)
         capture("reacted-fire")
         // Tapped again, the reaction goes.
@@ -82,6 +86,8 @@ final class StoriesViewerUITests: XCTestCase {
         // The heart reacts with ❤️; held, it offers the others.
         element("story-heart").tap()
         wait("reaction", "❤️")
+        pause(0.15)
+        capture("reacted-heart-burst")
         pause(0.6)
         element("story-heart").press(forDuration: 0.6)
         XCTAssertTrue(element("story-reaction-picker").waitForExistence(timeout: 3))
@@ -147,6 +153,13 @@ final class StoriesViewerUITests: XCTestCase {
         wait("paused", "1")
         pause(1)
         capture("viewers")
+        app.buttons["Done"].tap()
+        wait("paused", "0", "closing the list didn't resume")
+        // Swiped up, as Telegram's, the story opens who has seen it too.
+        let story = element("story-canvas")
+        story.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).press(forDuration: 0.05, thenDragTo: story.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)), withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertTrue(element("story-viewer:Steve Korshakov").waitForExistence(timeout: 4), "a swipe up didn't open the viewers — probe: \(probe)")
+        pause(0.8)
         app.buttons["Done"].tap()
         wait("paused", "0", "closing the list didn't resume")
 

@@ -45,7 +45,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     /// open: one opened from a conversation may be out of the feed.
     private let opened: String?
 
-    private enum Pause: Hashable { case hold, drag, sheet, background, picker, appearing }
+    private enum Pause: Hashable { case hold, drag, sheet, background, picker, appearing, caption }
     private enum Drag { case none, sideways(next: Int), down }
 
     /// The turn between two authors, run a frame at a time.
@@ -86,6 +86,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     static var showScale: Double = 1
     /// The last few things the viewer did, for the harness to report.
     private(set) var trail: [String] = []
+    /// The reaction effect playing, over everything.
+    private weak var burst: StoryReactionBurstView?
 
     private func note(_ step: String) {
         trail.append(step)
@@ -169,6 +171,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     }
 
     private func wire(_ page: StoryViewerPageView) {
+        // The caption opened in full holds the story still, as Telegram's.
+        page.canvas.onCaptionExpanded = { [weak self] open in self?.pause(.caption, open) }
         page.closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         page.moreButton.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
         page.viewsButton.addTarget(self, action: #selector(viewsTapped), for: .touchUpInside)
@@ -211,6 +215,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     private var now: Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
     private func showCurrent() {
+        burst?.removeFromSuperview()
         guard authors.indices.contains(authorIndex) else { return }
         let author = authors[authorIndex]
         let frames = frames(author)
@@ -373,6 +378,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     /// Turns the cube to another author, from a tap or the end of a frame.
     private func turn(to index: Int, acted: Bool) {
         note("turn")
+        burst?.removeFromSuperview()
         guard cube == nil, authors.indices.contains(index) else { return }
         prepareNeighbor(index)
         let direction: CGFloat = index > authorIndex ? -1 : 1
@@ -453,7 +459,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
             if current is UIControl || current === picker { return false }
             view = current.superview
         }
-        return cube == nil
+        return cube == nil && presentedViewController == nil && !isBeingDismissed
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
@@ -464,7 +470,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
         let velocity = pan.velocity(in: view)
         if abs(velocity.x) > abs(velocity.y) { return authors.count > 1 }
-        return velocity.y > 0
+        // Down closes; up, on one's own story, shows who has seen it.
+        return velocity.y > 0 || (authors.indices.contains(authorIndex) && authors[authorIndex].isSelf)
     }
 
     /// Down, up: a tap by thirds or on an overlay; held past a moment, a pause.
@@ -503,9 +510,9 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         if page.canvas.bounds.contains(canvasPoint), let overlay = page.canvas.tappable(at: canvasPoint) {
             switch overlay {
             case .link(let id, let url, _, _, _, _): return openLink(url, from: page.canvas.overlayView(id))
-            case .reaction(_, let emoji, _, _, _):
+            case .reaction(let id, let emoji, _, _, _):
                 guard authors.indices.contains(authorIndex), !authors[authorIndex].isSelf else { break }
-                return react(emoji)
+                return react(emoji, from: page.canvas.overlayView(id))
             default: break
             }
         }
@@ -528,14 +535,19 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
                 drag = .sideways(next: -1)
             } else {
                 drag = .down
+                // Only the canvas shrinks away; the page's own black goes
+                // with the ground behind it.
+                page.backgroundColor = .clear
+                page.canvas.setCaptionExpanded(false)
             }
         case .changed:
             switch drag {
             case .down:
-                let y = max(0, translation.y)
-                let scale = 1 - min(0.25, y / max(1, view.bounds.height) * 0.5)
-                page.transform = CGAffineTransform(translationX: 0, y: y).scaledBy(x: scale, y: scale)
-                view.backgroundColor = UIColor(Palette.storiesViewerGround).withAlphaComponent(1 - min(0.8, y / 300))
+                // With the finger, shrinking towards 0.6 by a screen, as
+                // Telegram's: let go, it closes from here into its circle.
+                let state = StoryViewerDrag.state(translation: translation.y, height: view.bounds.height)
+                page.transform = CGAffineTransform(translationX: 0, y: state.offset).scaledBy(x: state.scale, y: state.scale)
+                view.backgroundColor = UIColor(Palette.storiesViewerGround).withAlphaComponent(state.groundAlpha)
             case .sideways(let next):
                 let offset = translation.x / max(1, view.bounds.width)
                 let wanted = offset < 0 ? authorIndex + 1 : authorIndex - 1
@@ -559,16 +571,28 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         case .ended, .cancelled, .failed:
             switch drag {
             case .down:
-                if pan.state == .ended, translation.y > 120 || velocity.y > 800 {
+                let own = authors.indices.contains(authorIndex) && authors[authorIndex].isSelf
+                let release = pan.state == .ended ? StoryViewerDrag.release(translation: translation.y, velocity: velocity.y, canShowViewers: own) : .stay
+                if release == .close {
+                    note("drag-close")
                     dismissViewer()
+                } else if page.transform == .identity {
+                    // Up only: nothing moved, nothing to spring back.
+                    page.backgroundColor = UIColor(Palette.storiesViewerGround)
+                    view.backgroundColor = UIColor(Palette.storiesViewerGround)
+                    drag = .none
+                    pause(.drag, false)
+                    if release == .viewers { viewsTapped() }
                 } else {
                     UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
                         self.page.transform = .identity
                         self.view.backgroundColor = UIColor(Palette.storiesViewerGround)
                     } completion: { _ in
+                        self.page.backgroundColor = UIColor(Palette.storiesViewerGround)
                         self.drag = .none
                         self.pause(.drag, false)
                     }
+                    if release == .viewers { viewsTapped() }
                 }
             case .sideways(let next):
                 let width = max(1, view.bounds.width)
@@ -597,11 +621,16 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     func dismissViewer() {
         guard presentingViewController != nil, !isBeingDismissed else { return }
         link?.invalidate(); link = nil
+        burst?.removeFromSuperview()
         page.canvas.pause()
-        dismiss(animated: true)
+        // From whatever it presents too: a sheet up mustn't keep it here.
+        presentingViewController?.dismiss(animated: true)
     }
 
-    private func react(_ emoji: String) {
+    /// Reacts with `emoji`, or takes it back when it's the reaction already.
+    /// Reacting throws the emoji out around `source` (the bubble tapped, or
+    /// the heart), as Telegram's reaction effect does.
+    private func react(_ emoji: String, from source: UIView? = nil) {
         note("react")
         guard let (story, _) = current else { return }
         let next = story.myReaction == emoji ? nil : emoji
@@ -609,6 +638,16 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         StoriesHaptics.play(.react)
         if let next, let reaction = page.canvas.overlayViewMatching(emoji: next) { Self.bounce(reaction) }
         Self.bounce(page.heartButton)
+        burst?.removeFromSuperview()
+        // On the page, so it goes with it as it turns, shrinks or closes.
+        if let next, !isBeingDismissed {
+            let around = source ?? page.heartButton
+            let shown = StoryReactionBurstView(emoji: next, burst: StoryReactionBurst(target: around.convert(around.bounds, to: page)))
+            page.addSubview(shown)
+            shown.play()
+            burst = shown
+            note("burst")
+        }
         let store = session.store
         Task { await store.react(story.id, emoji: next) }
     }
@@ -735,7 +774,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     }
 
     @objc private func viewsTapped() {
-        guard let (story, _) = current else { return }
+        guard presentedViewController == nil, let (story, _) = current else { return }
         note("viewers")
         pause(.sheet, true)
         let list = StoriesViewersViewController(session: session, story: story)
@@ -758,6 +797,67 @@ private final class StoryViewerTicker: NSObject {
     @objc func tick(_ link: CADisplayLink) {
         guard let viewer else { return link.invalidate() }
         viewer.tick(link)
+    }
+}
+
+/// Telegram's reaction effect drawn from `StoryReactionBurst`: copies of
+/// the emoji thrown out from what was tapped, rising and fading, once.
+/// Touches go through it.
+final class StoryReactionBurstView: UIView {
+    private let emoji: String
+    private let burst: StoryReactionBurst
+
+    init(emoji: String, burst: StoryReactionBurst) {
+        self.emoji = emoji
+        self.burst = burst
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        accessibilityIdentifier = "story-reaction-burst"
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        frame = superview?.bounds ?? .zero
+    }
+
+    func play() {
+        let side = StoryReactionBurst.Metrics.particle
+        let now = layer.convertTime(CACurrentMediaTime(), from: nil)
+        // Drawn once, shared by every copy.
+        let picture = StoryViewerPageView.emojiImage(emoji, size: side).cgImage
+        var longest = 0.0
+        for particle in burst.particles {
+            let copy = CALayer()
+            copy.contents = picture
+            copy.contentsGravity = .resizeAspect
+            copy.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+            copy.position = particle.end
+            copy.opacity = 0
+            layer.addSublayer(copy)
+
+            let move = CABasicAnimation(keyPath: "position")
+            move.fromValue = particle.start
+            move.toValue = particle.end
+            move.timingFunction = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
+            let grow = CAKeyframeAnimation(keyPath: "transform")
+            grow.values = [0.2, particle.peakScale, particle.peakScale * 0.55].enumerated().map { index, scale in
+                CATransform3DRotate(CATransform3DMakeScale(scale, scale, 1), particle.rotation * CGFloat(index), 0, 0, 1)
+            }
+            grow.keyTimes = [0, 0.3, 1]
+            let fade = CAKeyframeAnimation(keyPath: "opacity")
+            fade.values = [0, 1, 1, 0]
+            fade.keyTimes = [0, 0.12, 0.6, 1]
+            let group = CAAnimationGroup()
+            group.animations = [move, grow, fade]
+            group.duration = particle.duration
+            group.beginTime = now + particle.delay
+            group.fillMode = .backwards
+            copy.add(group, forKey: "burst")
+            longest = max(longest, particle.delay + particle.duration)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + longest) { [weak self] in self?.removeFromSuperview() }
     }
 }
 
