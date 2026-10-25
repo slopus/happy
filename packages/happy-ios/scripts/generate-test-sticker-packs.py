@@ -9,11 +9,14 @@ each named and checked by its SHA-256):
     generate-test-sticker-packs.py <agent home>/stickers
 
 - `happy-test-shapes` — six still `webp` shapes, kind `stickers`;
-- `happy-test-glyphs` — four still `webp` glyphs, kind `emoji`.
+- `happy-test-glyphs` — four still `webp` glyphs, kind `emoji`;
+- `happy-test-motion` — one animated `tgs` sticker, a Lottie made here:
+  a pink rounded square that turns and breathes, a white dot to see it turn.
 
 Needs Pillow with WebP.
 """
 
+import gzip
 import hashlib
 import json
 import math
@@ -87,6 +90,54 @@ def write_pack(root: Path, pack_id: str, title: str, kind: str, items: list, siz
     (folder / "pack.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1) + "\n")
 
 
+def spin_lottie() -> dict:
+    """Two seconds at 30 fps, looping: one turn, shrinking to 70% and back."""
+    ease = {"i": {"x": [0.5], "y": [1]}, "o": {"x": [0.5], "y": [0]}}
+    ease3 = {"i": {"x": [0.5] * 3, "y": [1] * 3}, "o": {"x": [0.5] * 3, "y": [0] * 3}}
+    still = lambda value: {"a": 0, "k": value}
+    transform = {"ty": "tr", "p": still([0, 0]), "a": still([0, 0]), "s": still([100, 100]), "r": still(0), "o": still(100)}
+    return {
+        "v": "5.7.4", "fr": 30, "ip": 0, "op": 60, "w": 512, "h": 512, "nm": "spin", "ddd": 0, "assets": [],
+        "layers": [{
+            "ddd": 0, "ind": 1, "ty": 4, "nm": "spin", "sr": 1, "ao": 0, "ip": 0, "op": 60, "st": 0, "bm": 0,
+            "ks": {
+                "o": still(100),
+                "r": {"a": 1, "k": [{"t": 0, "s": [0], **ease}, {"t": 60, "s": [360]}]},
+                "p": still([256, 256, 0]),
+                "a": still([0, 0, 0]),
+                "s": {"a": 1, "k": [{"t": 0, "s": [100, 100, 100], **ease3}, {"t": 30, "s": [70, 70, 100], **ease3}, {"t": 60, "s": [100, 100, 100]}]},
+            },
+            "shapes": [
+                {"ty": "gr", "nm": "dot", "it": [
+                    {"ty": "el", "nm": "e", "d": 1, "s": still([70, 70]), "p": still([0, -90])},
+                    {"ty": "fl", "nm": "f", "c": still([1, 1, 1, 1]), "o": still(100), "r": 1},
+                    transform,
+                ]},
+                {"ty": "gr", "nm": "square", "it": [
+                    {"ty": "rc", "nm": "r", "d": 1, "s": still([300, 300]), "p": still([0, 0]), "r": still(80)},
+                    {"ty": "fl", "nm": "f", "c": still([1, 0.216, 0.373, 1]), "o": still(100), "r": 1},
+                    transform,
+                ]},
+            ],
+        }],
+    }
+
+
+def write_lottie_pack(root: Path, pack_id: str, title: str) -> None:
+    folder = root / pack_id
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.iterdir():
+        old.unlink()
+    # gzip with no name and no time, so the file and its digest never change.
+    data = gzip.compress(json.dumps(spin_lottie(), separators=(",", ":")).encode(), mtime=0)
+    digest = hashlib.sha256(data).hexdigest()
+    (folder / f"{digest}.tgs").write_bytes(data)
+    sticker = {"id": "spin", "file": f"{digest}.tgs", "emoji": ["🌀"], "format": "tgs",
+               "width": 512, "height": 512, "size": len(data), "sha256": digest}
+    manifest = {"id": pack_id, "title": title, "kind": "stickers", "thumbnail": "spin", "stickers": [sticker]}
+    (folder / "pack.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1) + "\n")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -94,7 +145,8 @@ def main() -> None:
     root.mkdir(parents=True, exist_ok=True)
     write_pack(root, "happy-test-shapes", "Test Shapes", "stickers", SHAPES, 256)
     write_pack(root, "happy-test-glyphs", "Test Glyphs", "emoji", GLYPHS, 100)
-    print(f"wrote 2 packs to {root}")
+    write_lottie_pack(root, "happy-test-motion", "Test Motion")
+    print(f"wrote 3 packs to {root}")
 
 
 if __name__ == "__main__":

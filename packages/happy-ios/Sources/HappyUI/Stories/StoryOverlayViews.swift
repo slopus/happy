@@ -513,11 +513,15 @@ protocol StoryStickerAnimating: AnyObject {
     func setPlaying(_ playing: Bool)
 }
 
-/// Where animated sticker players come from (Lottie for `tgs`, VP9 for
-/// `webm`); nil draws nothing for them.
+/// Where animated sticker players come from: Lottie for `tgs`
+/// (`StoryStickerLottiePlayer`); `webm` has none on iOS (no VP9 with
+/// alpha in the platform, and no software decoder bundled), so those draw
+/// nothing. Replaceable for tests; nil draws nothing for any.
 @MainActor
 enum StoryStickerPlayers {
-    static var make: ((Sticker, StoriesMedia) -> StoryStickerAnimating?)?
+    static var make: ((Sticker, StoriesMedia) -> StoryStickerAnimating?)? = { sticker, media in
+        sticker.format == .tgs ? StoryStickerLottiePlayer(sticker: sticker, media: media) : nil
+    }
 }
 
 extension UIColor {

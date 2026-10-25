@@ -143,11 +143,16 @@ final class StoriesHarness {
         probe.accessibilityValue = "viewer=1 author=\(viewer.authorIndex) position=\(viewer.position) paused=\(viewer.isPaused ? 1 : 0) chrome=\(viewer.currentPage.chromeHidden ? 0 : 1) reaction=\(reaction) trail=\(viewer.trail.joined(separator: ",")) haptics=\(recorder.played.joined(separator: ","))"
     }
 
-    /// The harness packs' files: each a shape in its colour.
+    /// The harness packs' files: each a shape in its colour, and the
+    /// animated one its Lottie (as `?as=lottie` serves a `tgs`).
     static func stickers() -> [String: Data] {
         var files: [String: Data] = [:]
         for pack in StoriesHarnessTransport.packs {
             for sticker in pack.stickers {
+                if sticker.shape == "lottie" {
+                    files["\(pack.id)/\(sticker.id)"] = Data(spinLottie.utf8)
+                    continue
+                }
                 let size = CGSize(width: 256, height: 256)
                 let format = UIGraphicsImageRendererFormat()
                 format.scale = 1
@@ -181,6 +186,12 @@ final class StoriesHarness {
         }
         return files
     }
+
+    /// A pink rounded square that turns and breathes, with a white dot to
+    /// see it turn: the one `scripts/generate-test-sticker-packs.py` writes.
+    static let spinLottie = #"""
+{"v":"5.7.4","fr":30,"ip":0,"op":60,"w":512,"h":512,"nm":"spin","ddd":0,"assets":[],"layers":[{"ddd":0,"ind":1,"ty":4,"nm":"spin","sr":1,"ao":0,"ip":0,"op":60,"st":0,"bm":0,"ks":{"o":{"a":0,"k":100},"r":{"a":1,"k":[{"t":0,"s":[0],"i":{"x":[0.5],"y":[1]},"o":{"x":[0.5],"y":[0]}},{"t":60,"s":[360]}]},"p":{"a":0,"k":[256,256,0]},"a":{"a":0,"k":[0,0,0]},"s":{"a":1,"k":[{"t":0,"s":[100,100,100],"i":{"x":[0.5,0.5,0.5],"y":[1,1,1]},"o":{"x":[0.5,0.5,0.5],"y":[0,0,0]}},{"t":30,"s":[70,70,100],"i":{"x":[0.5,0.5,0.5],"y":[1,1,1]},"o":{"x":[0.5,0.5,0.5],"y":[0,0,0]}},{"t":60,"s":[100,100,100]}]}},"shapes":[{"ty":"gr","nm":"dot","it":[{"ty":"el","nm":"e","d":1,"s":{"a":0,"k":[70,70]},"p":{"a":0,"k":[0,-90]}},{"ty":"fl","nm":"f","c":{"a":0,"k":[1,1,1,1]},"o":{"a":0,"k":100},"r":1},{"ty":"tr","p":{"a":0,"k":[0,0]},"a":{"a":0,"k":[0,0]},"s":{"a":0,"k":[100,100]},"r":{"a":0,"k":0},"o":{"a":0,"k":100}}]},{"ty":"gr","nm":"square","it":[{"ty":"rc","nm":"r","d":1,"s":{"a":0,"k":[300,300]},"p":{"a":0,"k":[0,0]},"r":{"a":0,"k":80}},{"ty":"fl","nm":"f","c":{"a":0,"k":[1,0.216,0.373,1]},"o":{"a":0,"k":100},"r":1},{"ty":"tr","p":{"a":0,"k":[0,0]},"a":{"a":0,"k":[0,0]},"s":{"a":0,"k":[100,100]},"r":{"a":0,"k":0},"o":{"a":0,"k":100}}]}]}]}
+"""#
 
     /// Every frame's picture: a gradient, its name large, bands to read
     /// placement by.
@@ -247,13 +258,15 @@ actor StoriesHarnessTransport: DirectTransport {
         ("glyphs", "Glyphs", "emoji", [
             ("plus", "➕", .systemOrange, "square"), ("ring", "⭕️", .systemPurple, "circle"),
         ]),
+        ("motion", "Motion", "stickers", [("spin", "🌀", .systemPink, "lottie")]),
     ]
 
     func drawStickers(_ files: [String: Data]) { stickerFiles = files }
 
     private func stickerObject(_ packId: String, _ sticker: (id: String, emoji: String, color: UIColor, shape: String)) -> [String: Any] {
         let size = stickerFiles["\(packId)/\(sticker.id)"]?.count ?? 1
-        return ["packId": packId, "id": sticker.id, "emoji": [sticker.emoji], "format": "webp", "width": 256, "height": 256, "size": size,
+        let animated = sticker.shape == "lottie"
+        return ["packId": packId, "id": sticker.id, "emoji": [sticker.emoji], "format": animated ? "tgs" : "webp", "width": animated ? 512 : 256, "height": animated ? 512 : 256, "size": size,
                 "sha256": String(repeating: "0", count: 56) + String(format: "%08x", abs("\(packId)/\(sticker.id)".hashValue) % 0xFFFFFFF)]
     }
 
@@ -409,7 +422,14 @@ actor StoriesHarnessTransport: DirectTransport {
         }
         if parts.count >= 3, parts[1] == "stickers", parts[2] == "packs", parts.count >= 4, let pack = Self.packs.first(where: { $0.id == parts[3] }) {
             if parts.count == 4 { return ok(["pack": packObject(pack), "stickers": pack.stickers.map { stickerObject(pack.id, $0) }]) }
-            if parts.count == 7, let data = stickerFiles["\(pack.id)/\(parts[5])"] { return DirectHTTPResponse(status: 200, headers: ["content-type": "image/webp"], body: data) }
+            if parts.count == 7, let sticker = pack.stickers.first(where: { $0.id == parts[5] }), let data = stickerFiles["\(pack.id)/\(sticker.id)"] {
+                // A tgs is only ever served here as its Lottie, which the app must ask for.
+                if sticker.shape == "lottie" {
+                    guard path.contains("as=lottie") else { return DirectHTTPResponse(status: 406) }
+                    return DirectHTTPResponse(status: 200, headers: ["content-type": "application/json"], body: data)
+                }
+                return DirectHTTPResponse(status: 200, headers: ["content-type": "image/webp"], body: data)
+            }
             return DirectHTTPResponse(status: 404)
         }
         guard parts.count >= 3, parts[1] == "stories", var story = stories[parts[2]] else { return DirectHTTPResponse(status: 404) }

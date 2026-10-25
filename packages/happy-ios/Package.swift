@@ -47,6 +47,10 @@ let package = Package(
         // NodeRow and the custom keyframe scroller.
         .package(url: "https://github.com/slopus/ultraview.git", revision: "007316544874a8fec514e48261b5b19abfd087f2"),
         .package(url: "https://github.com/slopus/tailcat-swift.git", revision: "70a66d473b32e5c8217cf8652237d9848af4ce3e"),
+        // Animated (tgs) stickers in Stories. lottie-spm is Lottie's prebuilt
+        // xcframework, so it adds no source build; stickers play on its Core
+        // Animation engine, off the main thread's render loop.
+        .package(url: "https://github.com/airbnb/lottie-spm.git", exact: "4.5.2"),
     ],
     targets: [
         .target(name: "HappyGuest", dependencies: [cryptoBackend]),
@@ -91,6 +95,7 @@ let package = Package(
                 "HappyCore", "HappyCrypto", "HappyWire", "HappyStore", "HappyLayout", "HappyIcons",
                 .product(name: "ElevenLabs", package: "elevenlabs-swift-sdk", condition: .when(platforms: [.iOS])),
                 .product(name: "UltraView", package: "ultraview", condition: .when(platforms: [.iOS])),
+                .product(name: "Lottie", package: "lottie-spm", condition: .when(platforms: [.iOS])),
             ],
             // Fonts and images live with the code that draws them, so
             // `Bundle.module` resolves the same way under xtool and Xcode.
