@@ -36,6 +36,12 @@ final class StoriesHarness {
     init(window: UIWindow) {
         self.window = window
         let arguments = ProcessInfo.processInfo.arguments
+        // The one-time tooltip only for the test that looks at it.
+        if arguments.contains("-storiesTooltip") {
+            UserDefaults.standard.removeObject(forKey: StoriesHomeController.tooltipShownKey)
+        } else {
+            UserDefaults.standard.set(true, forKey: StoriesHomeController.tooltipShownKey)
+        }
         if let index = arguments.firstIndex(of: "-storiesShowScale"), arguments.indices.contains(index + 1), let scale = Double(arguments[index + 1]) {
             StoryViewerViewController.showScale = scale
         }

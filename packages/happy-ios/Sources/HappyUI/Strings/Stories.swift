@@ -14,6 +14,13 @@ extension Strings {
         public static func collapsed(_ names: [String]) -> String {
             names.isEmpty ? "Stories" : "Stories: \(names.joined(separator: ", "))"
         }
+        /// The one-time tooltip under them (ChatList.StoryFeedTooltipUsers),
+        /// naming up to three: "Ana", "Ana and Steve", "Ana, Steve, and Bo".
+        public static func tooltip(_ names: [String]) -> String {
+            let list = ListFormatter()
+            list.locale = Locale(identifier: "en_US")
+            return "Tap above to view stories from \(list.string(from: names) ?? names.joined(separator: ", "))"
+        }
 
         // Settings.
         public static let setting = "Stories"

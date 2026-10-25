@@ -74,6 +74,13 @@ final class StoriesHomeController {
     /// it's here, or after a few seconds regardless.
     private var opening: Task<Void, Never>?
     private weak var loadingCircle: StoriesCircleView?
+    /// Telegram's one-time "Tap above to view stories from …", looked for a
+    /// second after the stories come, shown once ever.
+    static let tooltipShownKey = "stories.feedTooltipShown"
+    private var tooltip: StoriesTooltipView?
+    private var tooltipCheck: Task<Void, Never>?
+    /// Where it points, in the header's space, as last laid out.
+    private var tooltipTip: CGPoint?
 
     init(host: UIViewController) {
         self.host = host
@@ -110,6 +117,7 @@ final class StoriesHomeController {
             previous.titleX = nil
             previous.backdropExtension = 0
         }
+        hideTooltip()
         self.header = header
         header?.accessory = view
         layout()
@@ -123,6 +131,7 @@ final class StoriesHomeController {
     func attach(_ stories: StoriesSession?, images: StemCellsImages?) {
         watch?.invalidate(); watch = nil
         stopOpening()
+        hideTooltip()
         viewer = nil
         held = nil
         session = stories
@@ -155,12 +164,14 @@ final class StoriesHomeController {
         let hasUnseen = StoriesRow.hasUnseen(items)
         if !isShown {
             stopOpening()
+            hideTooltip()
             unlocked = false
             motion = nil
             applyInset(.immediate)
         } else if hasUnseen != hadUnseen || settleWhenBack {
             settle()
         }
+        if isShown { lookForTooltip() }
         layout()
     }
 
@@ -174,6 +185,7 @@ final class StoriesHomeController {
     // MARK: The list
 
     func listWillBeginDragging() {
+        hideTooltip()
         dragging = true
         expansionAllowed = pull >= -1
     }
@@ -250,7 +262,7 @@ final class StoriesHomeController {
     private func change(to unlocked: Bool, haptic: Bool) {
         guard unlocked != self.unlocked else { return }
         self.unlocked = unlocked
-        if !unlocked { stopOpening() }
+        if !unlocked { stopOpening() } else { hideTooltip() }
         if haptic { StoriesHaptics.play(unlocked ? .headerOpen : .headerClose) }
         motion = StoriesHeaderMotion(from: drawn, start: CACurrentMediaTime(), opening: unlocked)
         view.ticking = true
@@ -328,6 +340,7 @@ final class StoriesHomeController {
         guard let session, let host, let feed = snapshot.feed,
               let index = feed.authors.firstIndex(where: { $0.key == item.id }) else { return }
         guard !viewerUp, let viewer = StoriesViewerPresenter.present(session: session, feed: feed, authorIndex: index, from: host, origin: view.circle(item.id)) else { return }
+        hideTooltip()
         self.viewer = viewer
         viewer.onClosing = { [weak self, weak viewer] in
             guard let self, let viewer, viewer === self.viewer else { return }
@@ -342,6 +355,49 @@ final class StoriesHomeController {
                 self.settle()
             }
         }
+    }
+
+    // MARK: The tooltip
+
+    /// As Telegram's chat list does each time its stories come: a second
+    /// later, if the tip was never shown, the row is closed and someone
+    /// else has a story, it shows under the avatars by the title.
+    private func lookForTooltip() {
+        guard tooltip == nil, tooltipCheck == nil, !UserDefaults.standard.bool(forKey: Self.tooltipShownKey) else { return }
+        tooltipCheck = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard let self, !Task.isCancelled else { return }
+            tooltipCheck = nil
+            showTooltip()
+        }
+    }
+
+    private func showTooltip() {
+        let names = items.filter { !$0.isSelf }.prefix(3).map(\.title)
+        guard tooltip == nil, isShown, !unlocked, !viewerUp, opening == nil, !names.isEmpty, listAtRest, !dragging,
+              !UserDefaults.standard.bool(forKey: Self.tooltipShownKey),
+              let host, host.presentedViewController == nil, host.view.window != nil,
+              let header, let container = header.superview, let tip = tooltipTip else { return }
+        // Over the header and everything else on the screen, so it sees
+        // the first touch anywhere, the header's buttons too.
+        let tooltip = StoriesTooltipView(text: Strings.Stories.tooltip(names))
+        tooltip.frame = container.bounds
+        tooltip.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        tooltip.point(at: header.convert(tip, to: container))
+        tooltip.onDismiss = { [weak self, weak tooltip] in
+            guard let self, self.tooltip === tooltip else { return }
+            self.tooltip = nil
+        }
+        container.addSubview(tooltip)
+        tooltip.show()
+        self.tooltip = tooltip
+        UserDefaults.standard.set(true, forKey: Self.tooltipShownKey)
+    }
+
+    private func hideTooltip() {
+        tooltipCheck?.cancel()
+        tooltipCheck = nil
+        tooltip?.dismiss()
     }
 
     /// The viewer goes: what came meanwhile is drawn, as it closes.
@@ -388,6 +444,10 @@ final class StoriesHomeController {
             scroll: view.pager.contentOffset.x, state: state
         ))
         view.place(layout, unlocked: unlocked, side: state.side)
+        tooltipTip = layout.tooltipTip
+        if let tooltip, let container = tooltip.superview {
+            if let tip = layout.tooltipTip { tooltip.point(at: header.convert(tip, to: container)) } else { hideTooltip() }
+        }
         header.titleX = layout.titleX
         header.backdropExtension = StoriesHeaderLayout.Metrics.scrollHeight * max(0, min(1, state.max))
     }

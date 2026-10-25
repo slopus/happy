@@ -63,6 +63,10 @@ public struct StoriesHeaderLayout: Equatable, Sendable {
         public static let balanceRamp: CGFloat = 20
         /// The closed avatars' target, as tall as a header button.
         public static let buttonHeight: CGFloat = 44
+        /// The one-time tooltip's arrow points up at the closed avatars'
+        /// middle from this far under their target, 1 right of it, as
+        /// Telegram places it (`anchorForTooltip`, nudged 6 down and 1 right).
+        public static let tooltipDrop: CGFloat = 8
         /// The ring's width grows toward this as a circle shrinks, so a small
         /// one still shows it.
         public static let minimizedRing: CGFloat = 4.3
@@ -169,6 +173,8 @@ public struct StoriesHeaderLayout: Equatable, Sendable {
     public var button: CGRect?
     /// How many avatars close into the title.
     public var collapsedCount: Int
+    /// Where the one-time tooltip under the closed avatars points.
+    public var tooltipTip: CGPoint?
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -242,6 +248,9 @@ public struct StoriesHeaderLayout: Equatable, Sendable {
         }
         button = count > 0 && state.side < 1
             ? CGRect(x: input.bandMinX, y: input.title.midY - M.buttonHeight / 2, width: Swift.max(0, input.bandMaxX - input.bandMinX), height: M.buttonHeight)
+            : nil
+        tooltipTip = count > 0
+            ? CGPoint(x: origin + collapsedWidth / 2 + 1, y: input.title.midY + M.buttonHeight / 2 + M.tooltipDrop)
             : nil
     }
 

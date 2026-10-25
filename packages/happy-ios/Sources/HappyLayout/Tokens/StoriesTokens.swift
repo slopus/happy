@@ -13,6 +13,11 @@ extension Palette {
     /// An avatar without a photo, under its initials.
     public static let storiesAvatarFill = ColorToken("#B8BBC4", "#5A5A5F")
     public static let storiesAvatarText = ColorToken("#FFFFFF")
+    /// The one-time tooltip under the closed avatars (`TooltipScreen`'s
+    /// default style): black at 0.6 over the blur by day, the dark
+    /// navigation bar's #1D1D1D at 0.9 by night, white text on both.
+    public static let storiesTooltipGround = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.6), dark: RGBA(red: 29 / 255.0, green: 29 / 255.0, blue: 29 / 255.0, alpha: 0.9))
+    public static let storiesTooltipText = ColorToken("#FFFFFF")
     /// The viewer's ground and chrome.
     public static let storiesViewerGround = ColorToken("#000000")
     public static let storiesViewerText = ColorToken("#FFFFFF")

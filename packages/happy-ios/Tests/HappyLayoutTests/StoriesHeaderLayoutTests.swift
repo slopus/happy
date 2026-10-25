@@ -52,6 +52,7 @@ final class StoriesHeaderLayoutTests: XCTestCase {
         for item in closed.items { XCTAssertEqual(item.scale, 24.0 / 52, accuracy: 0.0001) }
         XCTAssertEqual(closed.titleX, 190)
         XCTAssertEqual(closed.button, rect(60, 51, 224, 44))
+        XCTAssertEqual(closed.tooltipTip, CGPoint(x: 157, y: 103))
         XCTAssertNil(closed.items[0].neighbor)
         assertPoint(closed.items[1].neighbor!, -14, 0)
         assertPoint(closed.items[2].neighbor!, -14, 0)

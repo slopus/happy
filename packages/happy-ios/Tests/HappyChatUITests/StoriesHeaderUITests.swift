@@ -167,6 +167,40 @@ final class StoriesHeaderUITests: XCTestCase {
         wait("viewer", "1", timeout: 6, "the viewer never opened after loading")
     }
 
+    /// Telegram's one-time tip under the closed avatars: a second after the
+    /// stories come, naming who has them; the first touch puts it away and
+    /// goes on through, and it never comes back.
+    func testTooltip() {
+        app.terminate()
+        app.launchArguments.append("-storiesTooltip")
+        app.launch()
+        let tooltip = element("stories-tooltip")
+        XCTAssertTrue(tooltip.waitForExistence(timeout: 6), "no tooltip under the avatars")
+        XCTAssertEqual(tooltip.label, "Tap above to view stories from Steve and Ana")
+        let collapsed = element("stories-collapsed")
+        XCTAssertEqual(field("header"), "closed")
+        XCTAssertGreaterThan(tooltip.frame.minY, collapsed.frame.maxY, "the tooltip isn't under the avatars")
+        pause(0.6)
+        capture("tooltip")
+
+        // Any touch puts it away, one on the header's buttons too.
+        app.buttons["Search"].firstMatch.tap()
+        pause(0.5)
+        XCTAssertFalse(tooltip.exists, "the tooltip stayed after a touch on the header")
+        XCTAssertEqual(field("header"), "closed")
+        collapsed.tap()
+        wait("header", "open", "the tap on the avatars didn't reach them")
+        pause(0.5)
+
+        // Closed again, with a new story come: no tooltip a second time.
+        flick(from: 0.6, to: 0.54)
+        wait("header", "closed")
+        element("harness-new-story").tap()
+        wait("stories", "5", "the new story never arrived")
+        pause(2)
+        XCTAssertFalse(tooltip.exists, "the tooltip came back")
+    }
+
     /// Put away while its story loads, the row opens no viewer after all.
     func testClosingStopsLoading() {
         app.terminate()
