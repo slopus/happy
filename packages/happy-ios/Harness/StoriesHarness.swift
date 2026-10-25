@@ -42,6 +42,10 @@ final class StoriesHarness {
         } else {
             UserDefaults.standard.set(true, forKey: StoriesHomeController.tooltipShownKey)
         }
+        // Every animation N times slower, to film one.
+        if let index = arguments.firstIndex(of: "-storiesSlowMotion"), arguments.indices.contains(index + 1), let slower = Float(arguments[index + 1]), slower > 0 {
+            window.layer.speed = 1 / slower
+        }
         if let index = arguments.firstIndex(of: "-storiesShowScale"), arguments.indices.contains(index + 1), let scale = Double(arguments[index + 1]) {
             StoryViewerViewController.showScale = scale
         }

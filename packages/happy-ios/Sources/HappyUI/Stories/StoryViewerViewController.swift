@@ -15,8 +15,16 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     var onClose: (() -> Void)?
     /// The viewer starts going away, back into what it opened from.
     var onClosing: (() -> Void)?
-    /// The circle the viewer opened from, which it closes into.
+    /// The circle the viewer opened from.
     weak var origin: UIView?
+    /// The circle of an author by key, in the row it opened from: it closes
+    /// into the one of whoever it shows then, or falls away without one.
+    var originFor: ((String) -> UIView?)?
+
+    var closingOrigin: UIView? {
+        guard let originFor else { return origin }
+        return authors.indices.contains(authorIndex) ? originFor(authors[authorIndex].key) : nil
+    }
 
     private let session: StoriesSession
     private var authors: [StoryFeedAuthor]

@@ -55,6 +55,26 @@ final class StoriesViewerUITests: XCTestCase {
     /// the reaction bubble and the heart react, holding the heart offers
     /// other emoji, a swipe turns the cube to the next author and a drag
     /// down closes.
+    /// Filmed ten times slower: the story opens out of Ana's circle and
+    /// closes back into it, as Telegram's does.
+    func testOpeningFromTheCircle() {
+        app.terminate()
+        app.launchArguments += ["-storiesSlowMotion", "10"]
+        app.launch()
+        let ana = element("story-circle:Ana")
+        XCTAssertTrue(ana.waitForExistence(timeout: 8))
+        openRow()
+        pause(4)
+        ana.tap()
+        wait("viewer", "1", timeout: 10, "the viewer never opened")
+        pause(5)
+        capture("opened")
+        element("story-close").tap()
+        wait("viewer", "0", timeout: 10, "the viewer never closed")
+        pause(5)
+        capture("closed")
+    }
+
     func testSomeoneElsesStories() {
         let steve = element("story-circle:Steve")
         XCTAssertTrue(steve.waitForExistence(timeout: 8), "no ring for Steve")

@@ -342,6 +342,7 @@ final class StoriesHomeController {
         guard !viewerUp, let viewer = StoriesViewerPresenter.present(session: session, feed: feed, authorIndex: index, from: host, origin: view.circle(item.id)) else { return }
         hideTooltip()
         self.viewer = viewer
+        viewer.originFor = { [weak self] key in self?.view.circle(key) }
         viewer.onClosing = { [weak self, weak viewer] in
             guard let self, let viewer, viewer === self.viewer else { return }
             self.release()
