@@ -28,7 +28,8 @@ final class StemCellsDirectHomeViewController: UIViewController, StemCellsDockHo
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(Palette.groupedBackground)
+        // The conversation's own ground, light and dark.
+        view.backgroundColor = UIColor(Palette.surface)
         addChild(stemCells)
         stemCells.view.frame = view.bounds
         stemCells.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]

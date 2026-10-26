@@ -539,6 +539,43 @@ final class StemCellsUITests: XCTestCase {
         }
     }
 
+    /// Home as it looks: the sidebar on the chat's own ground, unread rows
+    /// bold and nothing red beside them. The harness runs it light and dark.
+    func testSidebarLook() {
+        home()
+        pause(2)
+        capture("sidebar-look")
+        app.descendants(matching: .any)["stem-new-work"].tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 5))
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        pause(1.5)
+        capture("sidebar-look-chat")
+        app.tapBack()
+        pause(1)
+        let fresh = row("space", "New").firstMatch
+        if fresh.exists {
+            fresh.press(forDuration: 1.0)
+            let discard = app.buttons["Close new work"]
+            if discard.waitForExistence(timeout: 3) { discard.tap() }
+            pause(1)
+        }
+    }
+
+    /// An unread conversation opened and left reads as read: its row's
+    /// title is no longer bold, here and on the computer (the harness
+    /// checks the daemon after).
+    func testUnreadClears() {
+        home()
+        pause(1.5)
+        capture("unread-before")
+        row("space", "Pasted from").firstMatch.tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 8))
+        pause(3)
+        app.tapBack()
+        pause(2)
+        capture("unread-after")
+    }
+
     /// Every modal sheet closes from a button at its top right, as far
     /// from the top as from the side: settings' QR sheet, the link sheet
     /// "+" opens, a model picker and the attach sheet. The link sheet's

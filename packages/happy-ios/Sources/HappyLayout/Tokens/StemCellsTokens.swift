@@ -159,7 +159,6 @@ public enum StemCellsMetrics {
     public static let trailing: CGFloat = 18 * phone
     public static let trailingGap: CGFloat = 8 * phone
     /// `.happy-sidebar__item-unread`.
-    public static let unreadDot: CGFloat = 6 * phone
     /// `--happy-hover-radius`.
     public static let cornerRadius: CGFloat = 6 * phone
     /// A picture's rounding in its lane: a rounded square, never a circle.

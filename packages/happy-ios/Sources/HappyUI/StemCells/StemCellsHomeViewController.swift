@@ -58,7 +58,8 @@ final class StemCellsHomeViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(Palette.groupedBackground)
+        // The conversation's own ground, light and dark.
+        view.backgroundColor = UIColor(Palette.surface)
         view.addSubview(sidebar)
         view.addSubview(empty)
         view.addSubview(banner)

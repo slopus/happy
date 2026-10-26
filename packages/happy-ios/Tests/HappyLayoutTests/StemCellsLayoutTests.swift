@@ -55,7 +55,7 @@ final class StemCellsLayoutTests: XCTestCase {
         typealias M = StemCellsMetrics
         XCTAssertEqual(M.phone, 1.5)
         XCTAssertEqual([M.rowHeight, M.sectionHeight, M.separatorHeight, M.rowGap, M.inset], [48, 42, 26, 3, 8])
-        XCTAssertEqual([M.mark, M.glyph, M.markGap, M.trailing, M.unreadDot, M.addGlyph], [30, 24, 12, 27, 9, 21])
+        XCTAssertEqual([M.mark, M.glyph, M.markGap, M.trailing, M.addGlyph], [30, 24, 12, 27, 21])
         XCTAssertEqual([M.labelSize, M.sectionLabelSize, M.chevronGlyph, M.questionGlyph, M.clockGlyph], [19.5, 16.5, 18, 22.5, 21])
         // Nesting and its lines aren't scaled: desktop's 28 a level, 1 thick.
         XCTAssertEqual([M.indent, M.line], [28, 1])

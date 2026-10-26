@@ -26,7 +26,8 @@ final class StemCellsSearchViewController: UIViewController, UISearchBarDelegate
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(Palette.groupedBackground)
+        // The conversation's own ground, light and dark.
+        view.backgroundColor = UIColor(Palette.surface)
         searchBar.searchBarStyle = .minimal
         searchBar.placeholder = Strings.StemCells.search
         searchBar.delegate = self

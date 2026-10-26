@@ -5,7 +5,8 @@ import UIKit
 
 /// One row of the Stem Cells sidebar as desktop's `Sidebar` draws it: a
 /// rounded box, the mark in its leading lane, the label, and the trailing
-/// square for a status, an unread dot or a section's fold. It applies the
+/// square for a status or a section's fold. Unread is the title in bold,
+/// nothing beside it. It applies the
 /// frames `StemCellsSidebarLayout` gives it and decides nothing about where
 /// anything goes.
 final class StemCellsRowView: UIView {
@@ -14,7 +15,6 @@ final class StemCellsRowView: UIView {
     private let picture = UIImageView()
     private let label = StemCellsShimmerLabel()
     private let trailing = UIImageView()
-    private let dot = UIView()
     private let chevron = UIImageView()
     private let add = UIImageView()
     private let rule = UIView()
@@ -58,13 +58,11 @@ final class StemCellsRowView: UIView {
         picture.clipsToBounds = true
         picture.layer.cornerCurve = .continuous
         trailing.contentMode = .center
-        dot.layer.cornerRadius = StemCellsMetrics.unreadDot / 2
-        dot.backgroundColor = UIColor(Palette.stemCellsQuestion)
         chevron.contentMode = .center
         add.contentMode = .center
         add.image = StemCellsGlyphs.image("add", size: StemCellsMetrics.addGlyph)
         rule.backgroundColor = UIColor(Palette.stemCellsDivider)
-        for view in [fill, stemCell, picture, label, trailing, dot, chevron, add, rule] { addSubview(view) }
+        for view in [fill, stemCell, picture, label, trailing, chevron, add, rule] { addSubview(view) }
         isAccessibilityElement = true
     }
 
@@ -163,7 +161,6 @@ final class StemCellsRowView: UIView {
 
     private func applyTrailing(_ row: StemCellsRow) {
         trailing.isHidden = true
-        dot.isHidden = true
         let folds = row.kind == .section || ((row.kind == .space || row.kind == .session) && row.collapsed != nil)
         chevron.isHidden = !folds
         rule.isHidden = row.kind != .separator
@@ -178,20 +175,20 @@ final class StemCellsRowView: UIView {
         case .awaitingInput:
             trailing.isHidden = false
             trailing.image = StemCellsGlyphs.image("question", size: StemCellsMetrics.questionGlyph)
-            trailing.tintColor = UIColor(Palette.stemCellsQuestion)
+            trailing.tintColor = UIColor(Palette.stemCellsRowText)
         case .waiting:
             trailing.isHidden = false
             trailing.image = StemCellsGlyphs.image("clock", size: StemCellsMetrics.clockGlyph)
             trailing.tintColor = UIColor(Palette.stemCellsRowText)
         case .working, .none:
-            dot.isHidden = !row.unread
+            break
         }
     }
 
     private func applyState() {
         let ink = UIColor(selected || row?.unread == true ? Palette.stemCellsRowTextActive : Palette.stemCellsRowText)
         label.textColor = ink
-        label.ground = UIColor(selected ? Palette.stemCellsRowSelected : Palette.groupedBackground)
+        label.ground = UIColor(selected ? Palette.stemCellsRowSelected : Palette.surface)
         picture.tintColor = picture.contentMode == .center ? ink : nil
         chevron.tintColor = UIColor(Palette.stemCellsRowText)
         add.tintColor = UIColor(Palette.stemCellsRowText)
@@ -218,10 +215,6 @@ final class StemCellsRowView: UIView {
         label.frame = local(frames.label)
         field?.frame = label.frame
         trailing.frame = frames.trailing.map(local) ?? .zero
-        dot.frame = trailing.frame.isEmpty ? .zero : CGRect(
-            x: trailing.frame.midX - StemCellsMetrics.unreadDot / 2, y: trailing.frame.midY - StemCellsMetrics.unreadDot / 2,
-            width: StemCellsMetrics.unreadDot, height: StemCellsMetrics.unreadDot
-        )
         chevron.frame = frames.chevron.map(local) ?? .zero
         add.frame = frames.add.map(local) ?? .zero
         add.isHidden = frames.add == nil
@@ -385,7 +378,7 @@ final class StemCellsShimmerLabel: UIView {
     }
 
     /// What the band goes toward: the surface behind the text.
-    var ground: UIColor = UIColor(Palette.groupedBackground) {
+    var ground: UIColor = UIColor(Palette.surface) {
         didSet { applyColors() }
     }
 
