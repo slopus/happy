@@ -77,12 +77,25 @@ final class StemCellsSettingsLayoutTests: XCTestCase {
         XCTAssertEqual(sheet.name, CGRect(x: 30, y: 353, width: 330, height: 28))
     }
 
-    func testTheLinkSheetCentresTheMarkOverTheTitleAndItsLine() {
-        let layout = StemCellsLinkContentLayout(width: 345, title: Measurable { _ in CGSize(width: 200, height: 34) }, body: Measurable { _ in CGSize(width: 345, height: 66) })
+    func testTheLinkSheetCentresTheMarkOverTheTitleThenNumbersItsSteps() {
+        let line = Measurable { _ in CGSize(width: 200, height: 22) }
+        let body = Measurable { _ in CGSize(width: 300, height: 42) }
+        let layout = StemCellsLinkContentLayout(width: 345, title: Measurable { _ in CGSize(width: 200, height: 34) }, steps: [
+            .init(title: line, body: body), .init(title: line, body: body), .init(title: line, body: body),
+        ])
         XCTAssertEqual(layout.mark, CGRect(x: 137, y: 0, width: 72, height: 72))
         XCTAssertEqual(layout.title, CGRect(x: 0, y: 92, width: 345, height: 34))
-        XCTAssertEqual(layout.body, CGRect(x: 0, y: 134, width: 345, height: 66))
-        XCTAssertEqual(layout.size, CGSize(width: 345, height: 212))
+        // The relay checklist's rows: the number in a 26 circle beside the
+        // step's line, centred on its 32 head, the line under it at 38.
+        XCTAssertEqual(layout.steps.map(\.box), [
+            CGRect(x: 0, y: 153, width: 26, height: 26),
+            CGRect(x: 0, y: 253, width: 26, height: 26),
+            CGRect(x: 0, y: 353, width: 26, height: 26),
+        ])
+        XCTAssertEqual(layout.steps[0].title, CGRect(x: 38, y: 155, width: 307, height: 22))
+        XCTAssertEqual(layout.steps[0].body, CGRect(x: 38, y: 188, width: 307, height: 42))
+        XCTAssertEqual(layout.steps[2].body?.maxY, 430)
+        XCTAssertEqual(layout.size, CGSize(width: 345, height: 442))
     }
 
     func testTheBetaTagSitsAstrideTheSwitchAtDirectsEnd() {

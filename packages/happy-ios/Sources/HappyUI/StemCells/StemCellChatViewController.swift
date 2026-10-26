@@ -30,6 +30,9 @@ final class StemCellChatViewController: UIViewController {
     var focusesOnOpen = true
     /// Opened on the "+" sheet: the first thing added brings the keyboard up, once.
     var focusesAfterPick = false
+    /// The keyboard was up as the "+" sheet opened: it comes back once the
+    /// sheet, and whatever was chosen on it, is done.
+    private var keyboardOwed = false
     /// New work from home's dock: it fades in and out over home with the
     /// composer where the dock is (`StemCellsNewWorkTransition`), and an
     /// edge swipe drives the way back.
@@ -415,12 +418,26 @@ final class StemCellChatViewController: UIViewController {
     }
     /// A pick made here, until the conversation's own mode says it back.
     private var picked: AgentWire.Mode?
-    /// A picker asked for before the models were read.
-    private var catalogWait: StemCellsWatch?
+    /// The "+" sheet while it is up: its permission menu follows the mode.
+    private weak var attachSheet: StemCellAttachSheetViewController?
+
+    private var menus: StemCellModelMenus? {
+        session.models.catalog.flatMap { catalog in mode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
+    }
 
     private func updateChips() {
-        let menus = session.models.catalog.flatMap { catalog in mode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
-        StemCellModelPickers.configure(card, menus: menus)
+        StemCellModelPickers.configure(card, menus: menus, usage: session.models.usage)
+        if let attachSheet {
+            attachSheet.permission = permissionName
+            attachSheet.permissionMenu = permissionMenu
+        }
+    }
+
+    /// The "+" sheet's permission menu; nil until the models are read.
+    private var permissionMenu: UIMenu? {
+        menus.map { menus in
+            UIMenu(StemCellModelPickers.permissionMenu(menus)) { [weak self] key in self?.choose(key) }
+        }
     }
 
     /// The "+" sheet over `host`: home's dock opens it over this screen as
@@ -428,7 +445,9 @@ final class StemCellChatViewController: UIViewController {
     /// takes the keyboard.
     func presentAttach(from host: UIViewController) {
         let sheet = StemCellAttachSheetViewController(limit: ComposerAttachmentRules.remaining(selected: pictures.images.count), permission: permissionName)
-        sheet.onAction = { [weak self, weak sheet] action in
+        sheet.permissionMenu = permissionMenu
+        if session.models.catalog == nil { session.models.load() }
+        sheet.onAction = { [weak self] action in
             guard let self else { return }
             switch action {
             case .photos: presentLibrary()
@@ -436,14 +455,18 @@ final class StemCellChatViewController: UIViewController {
             case .add(let ids): add(assets: ids)
             case .paste: pasteFromClipboard()
             case .files: presentFiles()
-            case .permission:
-                guard let sheet else { return }
-                pick(.permission, from: sheet) { [weak self, weak sheet] in
-                    guard let self else { return }
-                    sheet?.permission = permissionName
-                }
+            // Its menu waits for the models, read as the sheet opened.
+            case .permission: session.models.load()
             }
         }
+        // The keyboard goes while the sheet is up: a menu over the sheet
+        // gives the keys back to the composer as it opens, which would put
+        // the keyboard over the sheet. It comes back once the sheet is
+        // closed, or once what was chosen there is done.
+        keyboardOwed = card.textView.isFirstResponder
+        card.blur()
+        sheet.onGone = { [weak self] in self?.settleFocus(added: false) }
+        attachSheet = sheet
         host.present(sheet, animated: true)
     }
 
@@ -455,8 +478,9 @@ final class StemCellChatViewController: UIViewController {
     /// The whole library, photos only: a message carries text and pictures alone.
     private func presentLibrary() {
         let room = pictures.room()
-        guard room > 0 else { return }
-        LibraryPicker.present(from: self, options: .init(limit: room, videos: false)) { [weak self] picks in self?.take(picks) }
+        guard room > 0 else { return settleFocus(added: false) }
+        let picker = LibraryPicker.present(from: self, options: .init(limit: room, videos: false)) { [weak self] picks in self?.take(picks) }
+        picker.onCancel = { [weak self] in self?.settleFocus(added: false) }
     }
 
     /// Photos picked in the sheet's strip, read in full off the main thread.
@@ -475,7 +499,7 @@ final class StemCellChatViewController: UIViewController {
     }
 
     private func presentCamera() {
-        guard UIImagePickerController.isSourceTypeAvailable(.camera), pictures.room() > 0 else { return }
+        guard UIImagePickerController.isSourceTypeAvailable(.camera), pictures.room() > 0 else { return settleFocus(added: false) }
         let camera = UIImagePickerController()
         camera.sourceType = .camera
         camera.mediaTypes = [UTType.image.identifier]
@@ -484,7 +508,7 @@ final class StemCellChatViewController: UIViewController {
     }
 
     private func presentFiles() {
-        guard pictures.room() > 0 else { return }
+        guard pictures.room() > 0 else { return settleFocus(added: false) }
         let files = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
         files.allowsMultipleSelection = true
         files.delegate = self
@@ -504,18 +528,19 @@ final class StemCellChatViewController: UIViewController {
             guard let self else { return }
             switch clip {
             case .picture(let data):
-                guard pictures.room() > 0 else { return }
+                guard pictures.room() > 0 else { return settleFocus(added: false) }
                 pictures.add(pictures: [data])
-                focusAfterAdding()
+                settleFocus(added: true)
             case .text(let text):
                 focusesAfterPick = false
+                keyboardOwed = false
                 card.focus()
                 card.textView.insertText(text)
             case .other:
                 nothingToPaste()
             case nil:
                 // Refused, or gone since it was asked about.
-                break
+                settleFocus(added: false)
             }
         }
     }
@@ -543,9 +568,10 @@ final class StemCellChatViewController: UIViewController {
         return .text(text)
     }
 
+    /// Said, then the keyboard as it was, once it is read.
     private func nothingToPaste() {
         let alert = UIAlertController(title: Strings.StemCells.nothingToPaste, message: Strings.StemCells.filesNotSentDetail, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: Strings.StemCells.done, style: .default))
+        alert.addAction(UIAlertAction(title: Strings.StemCells.done, style: .default) { [weak self] _ in self?.settleFocus(added: false) })
         present(alert, animated: true)
     }
 
@@ -556,6 +582,7 @@ final class StemCellChatViewController: UIViewController {
         pictures.add(pictures: picks.compactMap { if case .image(let data, _) = $0.media { data } else { nil } })
         let others = picks.filter { if case .image = $0.media { false } else { true } }
         LibraryPicker.discard(others)
+        let added = picks.count > others.count
         if !others.isEmpty {
             let names = others.compactMap { pick -> String? in
                 switch pick.media {
@@ -564,40 +591,32 @@ final class StemCellChatViewController: UIViewController {
                 }
             }
             let alert = UIAlertController(title: Strings.StemCells.filesNotSent(names), message: Strings.StemCells.filesNotSentDetail, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: Strings.StemCells.done, style: .default))
+            alert.addAction(UIAlertAction(title: Strings.StemCells.done, style: .default) { [weak self] _ in self?.settleFocus(added: added) })
             present(alert, animated: true)
+        } else {
+            settleFocus(added: added)
         }
-        if picks.count > others.count { focusAfterAdding() }
     }
 
-    /// New work opened on the sheet takes the keyboard once something is in it.
-    private func focusAfterAdding() {
-        guard focusesAfterPick else { return }
+    /// What the "+" sheet started is over: the keyboard comes up if it was
+    /// up before, or, for new work opened on the sheet, once something is
+    /// in it. Either way it is owed no longer.
+    private func settleFocus(added: Bool) {
+        let focuses = keyboardOwed || (added && focusesAfterPick)
+        keyboardOwed = false
         focusesAfterPick = false
+        guard focuses, view.window != nil else { return }
         card.focus()
     }
 
-    private func pick(_ kind: StemCellModelPickers.Kind, from host: UIViewController? = nil, then: (() -> Void)? = nil) {
-        guard let mode, session.models.catalog != nil else {
-            // Asked before the computer's models were read: the picker
-            // opens once they are, if what asked is still showing.
-            let asked = host ?? self
-            catalogWait = session.models.watch { [weak self, weak asked] in
-                guard let self, session.models.catalog != nil else { return }
-                catalogWait = nil
-                guard let asked, asked.view.window != nil, asked.presentedViewController == nil else { return }
-                pick(kind, from: asked, then: then)
-            }
-            session.models.load()
-            return
-        }
+    /// A pick from the model control or the "+" sheet's permission.
+    private func choose(_ key: String) {
         let conversation = conversation
-        StemCellModelPickers.present(kind, from: host ?? self, state: session.models, mode: mode) { [weak self] next in
-            // Held here at once, so the sheet's row reads it before the conversation says so.
+        StemCellModelPickers.choose(key, state: session.models, mode: mode) { [weak self] next in
+            // Held here at once, so the chips read it before the conversation says so.
             self?.picked = next
             self?.updateChips()
             Task { await conversation.setMode(next) }
-            then?()
         }
     }
 
@@ -1046,15 +1065,16 @@ extension StemCellChatViewController: AgentInputCardDelegate {
     func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) { pictures.remove(id: id) }
 
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {
-        StemCellModelPickers.Kind(rawValue: key).map { pick($0) }
+        choose(key)
     }
 
+    /// A chip with no menu yet: the models are asked for again.
     func agentInputCard(_ card: AgentInputCardView, didPress chip: AgentInputChip) {
-        switch chip {
-        case .permission: pick(.provider)
-        case .model: pick(.model)
-        case .effort: pick(.effort)
-        }
+        session.models.load()
+    }
+
+    func agentInputCard(_ card: AgentInputCardView, didOpenMenuIn chip: AgentInputChip) {
+        StemCellModelPickers.opened(session.models, mode: mode)
     }
 
     func agentInputCardDidPressStop(_ card: AgentInputCardView) {
@@ -1067,13 +1087,18 @@ extension StemCellChatViewController: UIImagePickerControllerDelegate, UINavigat
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
         let image = info[.originalImage] as? UIImage
         picker.dismiss(animated: true)
-        guard let data = image?.jpegData(compressionQuality: 0.9) else { return }
+        guard let data = image?.jpegData(compressionQuality: 0.9) else { return settleFocus(added: false) }
         pictures.add(pictures: [data])
-        focusAfterAdding()
+        settleFocus(added: true)
     }
 
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
         picker.dismiss(animated: true)
+        settleFocus(added: false)
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        settleFocus(added: false)
     }
 
     /// Files' copies, pictures among them read as pictures, off the main thread.

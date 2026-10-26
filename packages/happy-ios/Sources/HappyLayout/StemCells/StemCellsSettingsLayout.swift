@@ -254,21 +254,31 @@ public struct StemCellsLinkContentLayout: Equatable, Sendable {
     public enum Metrics {
         public static let mark: CGFloat = 72
         public static let titleGap: CGFloat = 20
-        public static let bodyGap: CGFloat = 8
+        /// From the title to the first step, as the relay's checklist has it.
+        public static let stepsGap: CGFloat = LinkComputerContentLayout.Metrics.checklistMarginTop
         public static let bottom: CGFloat = 12
     }
 
     public var mark: CGRect
     public var title: CGRect
-    public var body: CGRect
+    /// Each step as a checklist row, its number where the box goes.
+    public var steps: [ChecklistRowLayout]
     public var size: CGSize
 
-    public init(width: CGFloat, title: Measurable, body: Measurable) {
+    public init(width: CGFloat, title: Measurable, steps: [LinkComputerContentLayout.Row]) {
         typealias M = Metrics
+        let width = max(0, width)
         mark = CGRect(x: ((width - M.mark) / 2).rounded(), y: 0, width: M.mark, height: M.mark)
         self.title = CGRect(x: 0, y: mark.maxY + M.titleGap, width: width, height: title.height(fitting: width))
-        self.body = CGRect(x: 0, y: self.title.maxY + M.bodyGap, width: width, height: body.height(fitting: width))
-        size = CGSize(width: width, height: self.body.maxY + M.bottom)
+        var y = self.title.maxY + M.stepsGap
+        var rows: [ChecklistRowLayout] = []
+        for (index, step) in steps.enumerated() {
+            let row = ChecklistRowLayout(origin: CGPoint(x: 0, y: y), width: width, title: step.title, body: step.body)
+            rows.append(row)
+            y = row.maxY + (index < steps.count - 1 ? ChecklistRowLayout.Metrics.marginBottom : 0)
+        }
+        self.steps = rows
+        size = CGSize(width: width, height: y + M.bottom)
     }
 }
 

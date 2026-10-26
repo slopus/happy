@@ -228,7 +228,7 @@ public final class OnboardingScreenView: UIView {
     }
     private var laidAccessory: CGRect?
     /// Offscreen copies measured for the reservation; never shown.
-    private let reservedContent: [UIView]
+    private var reservedContent: [UIView]
     private let reservedSecondary: [RoundButton]
 
     public init(content: UIView, primary: RoundButton, secondary: RoundButton, tertiary: RoundButton? = nil) {
@@ -261,6 +261,15 @@ public final class OnboardingScreenView: UIView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// Holds room for `view` too: screens that take turns in one place
+    /// (the link sheet's Relay and Direct) keep their buttons where they are.
+    public func reserve(_ view: UIView) {
+        view.isHidden = true
+        insertSubview(view, at: 0)
+        reservedContent.append(view)
+        setNeedsLayout()
     }
 
     /// Every secondary label the template can show.

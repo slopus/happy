@@ -260,39 +260,16 @@ extension Strings {
             case .session: "Session"
             }
         }
-        public static func percentLeft(_ percent: Int) -> String { "\(percent)% left" }
         public static let usageUnknown = "Usage unknown"
-        public static let updating = "Updating…"
-        public static let couldntRefresh = "Couldn’t refresh"
         public static let limitReached = "Limit reached"
-        public static func usageLeft(_ percent: Int) -> String { "\(percent)%" }
         public static func usageWindow(_ label: String, left: Int, resets: String?) -> String {
             resets.map { "\(label) · \(left)% left · resets \($0)" } ?? "\(label) · \(left)% left"
         }
         public static func limitResets(_ when: String) -> String { "Limit resets \(when)" }
-        public static func updated(_ age: String) -> String { "Updated \(age)" }
-        public static func updatedFailed(_ when: String) -> String { "Updated \(when) · couldn’t refresh" }
-        public static func windowAsOf(_ label: String, _ when: String) -> String { "\(label) as of \(when)" }
         public static func serviceAccount(_ service: String, _ account: String) -> String { "\(service) · \(account)" }
         /// Desktop's service header: "Claude (Current CLI)".
         public static func serviceHeader(_ service: String, _ account: String) -> String { "\(service) (\(account))" }
         public static func chipLabel(_ kind: String, _ value: String) -> String { "\(kind): \(value)" }
-
-        /// `usageAge`: how long ago, in a word.
-        public static func age(_ date: Date, now: Date) -> String {
-            let minutes = Int(now.timeIntervalSince(date) / 60)
-            if minutes < 1 { return "just now" }
-            if minutes < 60 { return "\(minutes) min ago" }
-            let hours = minutes / 60
-            if hours < 20 { return "\(hours) hr ago" }
-            return "at \(clock(date, now: now))"
-        }
-
-        /// `clockTime`: the time, with its weekday when it isn't within the day.
-        public static func clock(_ date: Date, now: Date) -> String {
-            let time = date.formatted(date: .omitted, time: .shortened)
-            return abs(now.timeIntervalSince(date)) < 20 * 3600 ? time : "\(date.formatted(.dateTime.weekday(.abbreviated))) \(time)"
-        }
 
         /// `localDayTime`: today's time alone; any other day leads with its weekday.
         public static func dayTime(_ date: Date, now: Date) -> String {

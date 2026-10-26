@@ -15,7 +15,9 @@ extension Strings.StemCells {
 
     // The link sheet: a computer straight to this phone, or by the relay.
     public static let linkTitle = "Link your computer"
-    public static let linkBody = "Open Happy on your computer and choose Link Mobile App. Scan the code it shows to connect this phone straight to it."
+    /// The last of its steps, after the relay checklist's two.
+    public static let linkScanStep = "Scan the QR code"
+    public static let linkScanBody = "This phone connects straight to your computer."
     public static let legacyRelay = "Connect through legacy relay"
     public static let experiments = "Experiments"
     public static let directConnection = "Direct connection"

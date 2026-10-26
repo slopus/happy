@@ -40,7 +40,8 @@ struct LibraryPick {
 ///     LibraryPicker.present(from: self, options: .init(limit: 10, action: "Add")) { picks in … }
 ///
 /// `onPick` gets the picks in the order they were picked, read in full,
-/// and is not called when the sheet is cancelled or swiped away.
+/// and is not called when the sheet is cancelled or swiped away; the
+/// sheet's `onCancel` is.
 @MainActor
 enum LibraryPicker {
     struct Options {
@@ -213,6 +214,9 @@ enum LibraryPicker {
 final class LibraryPickerViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate, PHPhotoLibraryChangeObserver, UICollectionViewDataSourcePrefetching {
     private let options: LibraryPicker.Options
     private let onPick: ([LibraryPick]) -> Void
+    /// Gone with nothing given: cancelled or swiped away.
+    var onCancel: (() -> Void)?
+    private var delivered = false
     private let titleLabel = UILabel()
     private let cancelButton = UIButton(type: .system)
     private let gridLayout = LibraryGridCollectionLayout()
@@ -261,7 +265,11 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if isBeingDismissed || presentingViewController == nil { readTask?.cancel() }
+        if isBeingDismissed || presentingViewController == nil {
+            readTask?.cancel()
+            if !delivered { onCancel?() }
+            onCancel = nil
+        }
     }
 
     override func viewDidLoad() {
@@ -681,6 +689,7 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
                 return
             }
             let onPick = onPick
+            delivered = true
             dismiss(animated: true) { onPick(picks) }
         }
     }

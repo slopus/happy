@@ -576,9 +576,33 @@ final class StemCellsUITests: XCTestCase {
         capture("unread-after")
     }
 
+    /// Into a conversation from the sidebar and back, slowly enough to
+    /// watch its header come in (the harness slows the recording).
+    func testOpenFromSidebar() {
+        // UIKit's own slow motion, the simulator's Slow Animations: 4 is 0.25x.
+        if let drag = ProcessInfo.processInfo.environment["STEM_ANIMATION_DRAG"] {
+            app.launchEnvironment["UIAnimationDragCoefficient"] = drag
+            app.launch()
+        }
+        home()
+        pause(1.5)
+        let target = row("space", "Pasted from").firstMatch
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        target.tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 8))
+        pause(2)
+        app.tapBack()
+        pause(1.5)
+        target.tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 8))
+        pause(2)
+        app.tapBack()
+        pause(1.5)
+    }
+
     /// Every modal sheet closes from a button at its top right, as far
     /// from the top as from the side: settings' QR sheet, the link sheet
-    /// "+" opens, a model picker and the attach sheet. The link sheet's
+    /// "+" opens and the attach sheet. The link sheet's
     /// Relay | Direct switch runs across the screen just above what it
     /// switches (the scan), tagged Beta.
     func testSheetsClose() {
@@ -603,6 +627,14 @@ final class StemCellsUITests: XCTestCase {
         let scan = app.buttons["Scan QR code"]
         XCTAssertTrue(scan.waitForExistence(timeout: 3))
         pause(1)
+        // What to do on the computer, in numbered steps, the scan last.
+        for (index, step) in ["Install Happy on your computer", "Open Happy and choose Link Mobile App", "Scan the QR code"].enumerated() {
+            let row = app.descendants(matching: .any)["stem-link-step-\(index + 1)"]
+            XCTAssertTrue(row.exists, "no step \(index + 1)")
+            // The localized lines may hold no-break spaces.
+            XCTAssertEqual(row.label.replacingOccurrences(of: "\u{00A0}", with: " "), "\(index + 1). \(step)")
+        }
+        XCTAssertTrue(app.descendants(matching: .any)["stem-link-paste"].exists, "the paste link is gone")
         capture("sheet-link-direct")
         let close = app.buttons["stem-glass-close"]
         assertCloses(close, in: link, "the link sheet")
@@ -612,26 +644,18 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertLessThan(control.frame.maxY, scan.frame.minY, "the switch isn't above the scan")
         XCTAssertTrue(app.descendants(matching: .any)["stem-link-beta"].exists, "no Beta tag")
         XCTAssertFalse(app.staticTexts["EXPERIMENTAL"].exists, "the tag still says Experimental")
+        let switchOnDirect = control.frame
         control.buttons["Relay"].tap()
         XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 5), "Relay didn't show Welcome")
         pause(1)
         capture("sheet-link-relay")
+        XCTAssertEqual(control.frame.minY, switchOnDirect.minY, accuracy: 0.5, "the switch moved between Direct and Relay")
         XCTAssertLessThan(control.frame.maxY, app.buttons["Create account"].frame.minY, "the switch isn't above Relay's buttons")
         control.buttons["Direct"].tap()
         pause(0.8)
         closeSheet(close, link)
         app.tapBack()
         pause(1.5)
-
-        // A model picker, from home's dock.
-        let dock = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
-        open(dock, 0)
-        let picker = app.descendants(matching: .any)["stem-picker"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        pause(1.5)
-        capture("sheet-picker")
-        assertCloses(app.buttons["stem-picker-close"], in: picker, "the picker")
-        closeSheet(app.buttons["stem-picker-close"], picker)
 
         // The attach sheet, over new work.
         app.descendants(matching: .any)["stem-new-work"].tap()
@@ -1454,23 +1478,53 @@ final class StemCellsUITests: XCTestCase {
         capture("settings-closed")
     }
 
-    /// The model control's short list (Model, Effort, Provider, each
-    /// showing its value), then its `index`th setting.
-    private func open(_ control: XCUIElement, _ index: Int) {
+    /// A row of the menu that is up, by the start of its label (a
+    /// submenu's label goes on with its value).
+    private func menuRow(_ label: String) -> XCUIElement {
+        app.collectionViews.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
+    }
+
+    /// The model control's menu (Model, then Effort, each with its value),
+    /// then `setting`'s list, stacked over it.
+    private func open(_ control: XCUIElement, _ setting: String) {
         XCTAssertTrue(control.waitForExistence(timeout: 5), "no \(control)")
         control.tap()
-        let entry = app.collectionViews.buttons.element(boundBy: index)
-        XCTAssertTrue(entry.waitForExistence(timeout: 3), "the model control lists no setting \(index)")
+        let entry = menuRow(setting)
+        XCTAssertTrue(entry.waitForExistence(timeout: 3), "the model control lists no \(setting)")
+        pause(1)
         entry.tap()
     }
 
-    private func pickIn(_ control: XCUIElement, _ index: Int, _ id: String, shot: String) {
-        open(control, index)
-        let row = app.descendants(matching: .any)["stem-pick:\(id)"]
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "the picker has no \(id)")
+    /// `label`'s row in the menu that is up, scrolled to in short steps: a
+    /// long list draws only the rows in view, its submenu's heading stays
+    /// over the top, and the keyboard may cut its bottom.
+    @discardableResult
+    private func revealRow(_ label: String) -> XCUIElement {
+        let row = menuRow(label)
+        _ = row.waitForExistence(timeout: 2)
+        let list = app.collectionViews.firstMatch
+        func shown() -> Bool {
+            guard row.exists, row.isHittable else { return false }
+            let bottom = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame.minY : app.frame.maxY
+            return row.frame.minY > list.frame.minY + 60 && row.frame.maxY < bottom - 8
+        }
+        for _ in 0..<16 where !shown() {
+            let window = app.windows.firstMatch.frame
+            let x = list.frame.midX / window.width
+            let from = app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: 0))
+                .withOffset(CGVector(dx: 0, dy: list.frame.minY + 160))
+            from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: -80)))
+            pause(0.5)
+        }
+        return row
+    }
+
+    private func pickIn(_ control: XCUIElement, _ setting: String, _ label: String, shot: String) {
+        open(control, setting)
+        let row = revealRow(label)
+        XCTAssertTrue(row.exists, "\(setting) has no \(label)")
         pause(1.5)
         capture(shot)
-        if !row.isHittable { app.descendants(matching: .any)["stem-picker"].swipeUp(); pause(1) }
         row.tap()
         pause(1.5)
     }
@@ -1485,15 +1539,23 @@ final class StemCellsUITests: XCTestCase {
         capture("dock-pickers")
         // Home holds one composer: its model chip, whatever it says now.
         let dock = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
-        // The provider sheet shows each account's usage; it is looked at and closed.
-        open(dock, 2)
-        XCTAssertTrue(app.descendants(matching: .any)["stem-pick:claude"].waitForExistence(timeout: 5))
-        pause(3)
-        capture("picker-provider")
-        app.descendants(matching: .any)["stem-picker"].swipeDown(velocity: .fast)
+        // The menu, then Model's list stacked over it, looked at and closed.
+        XCTAssertTrue(dock.waitForExistence(timeout: 5))
+        dock.tap()
+        XCTAssertTrue(menuRow("Model").waitForExistence(timeout: 3))
+        XCTAssertTrue(menuRow("Effort").exists, "the menu has no Effort")
         pause(1.5)
-        pickIn(dock, 0, "claude:anthropic/haiku-5-5", shot: "picker-model")
-        pickIn(dock, 1, "low", shot: "picker-effort")
+        capture("picker-menu")
+        menuRow("Model").tap()
+        XCTAssertTrue(menuRow("Opus 5.5 1M").waitForExistence(timeout: 3), "Model lists no Opus 5.5 1M")
+        // Stacked over the menu where it was, not pushed in beside it.
+        pause(1.5)
+        capture("picker-model-list")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+        pause(1.5)
+        XCTAssertFalse(menuRow("Haiku 5.5").exists, "a tap away left the menu up")
+        pickIn(dock, "Model", "Haiku 5.5", shot: "picker-model")
+        pickIn(dock, "Effort", "Low", shot: "picker-effort")
         pause(1)
         capture("dock-picked")
 
@@ -1516,10 +1578,10 @@ final class StemCellsUITests: XCTestCase {
 
         app.swipeDown(velocity: .slow)
         pause(1)
-        pickIn(app.buttons["Model: Haiku 5.5"], 0, "claude:anthropic/sonnet-5", shot: "chat-picker-model")
+        pickIn(app.buttons["Model: Haiku 5.5"], "Model", "Sonnet 5", shot: "chat-picker-model")
         // A new model starts on its own default effort.
         XCTAssertTrue(app.buttons["Effort: Medium"].waitForExistence(timeout: 3))
-        pickIn(app.buttons["Effort: Medium"], 1, "high", shot: "chat-picker-effort")
+        pickIn(app.buttons["Effort: Medium"], "Effort", "High", shot: "chat-picker-effort")
         XCTAssertTrue(app.buttons["Effort: High"].waitForExistence(timeout: 3))
         composer.tap()
         composer.typeText("And now? Five words or fewer.")
@@ -1940,14 +2002,16 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertEqual(attachments.count, 4)
 
         // Permission: Read only for the next message.
+        let typing = app.keyboards.firstMatch.exists
         openSheet()
         let permission = app.descendants(matching: .any)["attach-permission"]
         let before = permission.value as? String
         permission.tap()
-        let readOnly = app.descendants(matching: .any)["stem-pick:read_only"]
-        XCTAssertTrue(readOnly.waitForExistence(timeout: 5), "no permission picker")
+        let readOnly = menuRow("Read only")
+        XCTAssertTrue(readOnly.waitForExistence(timeout: 5), "no permission menu")
         pause(1)
         capture("attach-permission-picker")
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "the keyboard came up over the sheet with its menu")
         readOnly.tap()
         XCTAssertTrue(until(4) { permission.value as? String == "Read only" }, "the row still says \(before ?? "nothing")")
         XCTAssertTrue(sheet.exists, "picking the permission closed the sheet")
@@ -1955,6 +2019,8 @@ final class StemCellsUITests: XCTestCase {
         capture("attach-permission-read-only")
         app.buttons["attach-close"].tap()
         XCTAssertTrue(until(3) { !sheet.exists }, "the close circle didn't close the sheet")
+        // The keyboard the sheet put down comes back with it gone.
+        if typing { XCTAssertTrue(until(3) { app.keyboards.firstMatch.exists }, "the keyboard didn't come back") }
 
         // Sent: the daemon runs it Read only (checked from outside after the run).
         composer.tap()

@@ -83,12 +83,6 @@ final class StemCellModelState {
         }
     }
 
-    /// The sheet closed: no more readings.
-    func stopRefreshing() {
-        refreshing?.cancel()
-        refreshing = nil
-    }
-
     private func apply(_ usage: [String: StemCellAccountUsage]) {
         guard usage != self.usage else { return }
         self.usage = usage
@@ -96,10 +90,11 @@ final class StemCellModelState {
     }
 }
 
-/// The composer's three pickers on a phone. Desktop's ComposerModelControl
-/// is one pill whose menu nests the accounts in the model list and the
-/// effort as its second row; here Model, Provider and Effort are each a
-/// chip of their own that opens a sheet.
+/// The composer's model control as native menus, as desktop's
+/// ComposerModelControl: Model, then Effort, each opening its list over the
+/// menu. In the model list each service's accounts are a submenu of their
+/// own above its models, as desktop's account switch sits in the service's
+/// heading. The "+" sheet's permission is a menu of the same kind.
 @MainActor
 enum StemCellModelPickers {
     enum Kind: String { case model, provider, effort, permission }
@@ -117,28 +112,12 @@ enum StemCellModelPickers {
         return (provider, menus.current?.label ?? menus.selection.modelId, effort)
     }
 
-    /// The settings desktop's model control lists (ComposerModelControl.tsx's
-    /// Model and Effort rows), with the provider after them: each a name, its
-    /// current value and the sheet it opens. Nil where there is nothing to pick.
-    static func settings(_ menus: StemCellModelMenus?) -> [(kind: Kind, name: String, value: String)] {
-        guard menus != nil else { return [] }
-        let labels = chips(menus)
-        var rows: [(kind: Kind, name: String, value: String)] = [(.model, Strings.StemCells.model, labels.model)]
-        if let effort = labels.effort { rows.append((.effort, Strings.StemCells.effort, effort)) }
-        if !labels.provider.isEmpty { rows.append((.provider, Strings.StemCells.provider, labels.provider)) }
-        return rows
-    }
-
     /// The card's model control, in its own bar beside send as desktop's
     /// composer has it: the model and its effort, each opening the same
-    /// short list of settings. No provider chip by the add button.
-    static func configure(_ card: AgentInputCardView, menus: StemCellModelMenus?) {
+    /// menu. With nothing to list a chip asks for the models again.
+    static func configure(_ card: AgentInputCardView, menus: StemCellModelMenus?, usage: [String: StemCellAccountUsage], now: Date = Date()) {
         let labels = chips(menus)
-        let rows = settings(menus)
-        let menu = rows.isEmpty ? nil : AgentInputMenu(sections: rows.map { row in
-            AgentInputMenu.Section(title: row.name, options: [AgentInputMenu.Option(key: row.kind.rawValue, label: row.value)])
-        }, selectedKey: nil)
-        // With nothing to list a chip opens the model sheet, which asks again.
+        let menu = menus.map { Self.menu($0, usage: usage, now: now) }
         func chip(_ kind: String, _ value: String) -> AgentInputChipConfiguration {
             AgentInputChipConfiguration(content: .label(value), accessibilityLabel: Strings.StemCells.chipLabel(kind, value), menu: menu, opensPicker: menu == nil)
         }
@@ -147,132 +126,96 @@ enum StemCellModelPickers {
         card.configuration.effort = labels.effort.map { chip(Strings.StemCells.effort, $0) }
     }
 
-    static func content(_ kind: Kind, menus: StemCellModelMenus, usage: [String: StemCellAccountUsage], now: Date = Date()) -> StemCellPickerContent {
-        switch kind {
-        case .model: modelContent(menus)
-        case .provider: providerContent(menus, usage: usage, now: now)
-        case .effort: effortContent(menus)
-        case .permission: permissionContent(menus)
+    /// A pick's key: what it changes, then which.
+    static func key(_ kind: Kind, _ id: String) -> String { "\(kind.rawValue)\t\(id)" }
+
+    /// Model, with what it is now under it, then Effort the same way.
+    static func menu(_ menus: StemCellModelMenus, usage: [String: StemCellAccountUsage], now: Date = Date()) -> AgentInputMenu {
+        let labels = chips(menus)
+        var rows = [AgentInputMenu.Option(key: Kind.model.rawValue, label: Strings.StemCells.model, subtitle: labels.model, children: modelSections(menus, usage: usage, now: now))]
+        if let effort = labels.effort, let efforts = menus.current?.efforts {
+            rows.append(.init(key: Kind.effort.rawValue, label: Strings.StemCells.effort, subtitle: effort, children: [.init(options: efforts.map { level in
+                .init(key: key(.effort, level), label: StemCellModelMenus.effortName(level), isChecked: level == menus.effort)
+            })]))
         }
+        return AgentInputMenu(sections: [.init(options: rows)], selectedKey: nil)
     }
 
     /// The modes a message may run with, from least to most it may do.
     static let permissionModes = ["read_only", "workspace_write", "auto", "full_access"]
 
-    private static func permissionContent(_ menus: StemCellModelMenus) -> StemCellPickerContent {
-        StemCellPickerContent(
-            title: Strings.StemCells.permission, notice: nil,
-            sections: [.init(rows: permissionModes.map { mode in
-                .init(id: mode, title: Strings.StemCells.permissionName(mode), subtitle: Strings.StemCells.permissionDetail(mode), checked: mode == menus.selection.permissionMode)
-            })]
-        )
+    /// The permission the next message runs with, each with what it allows.
+    static func permissionMenu(_ menus: StemCellModelMenus) -> AgentInputMenu {
+        AgentInputMenu(sections: [.init(options: permissionModes.map { mode in
+            .init(key: key(.permission, mode), label: Strings.StemCells.permissionName(mode), subtitle: Strings.StemCells.permissionDetail(mode), isChecked: mode == menus.selection.permissionMode)
+        })], selectedKey: nil)
     }
 
-    /// Each service's models on the account it lists, under the service and
-    /// that account (desktop's "Claude (Current CLI)"), the selected one
-    /// checked; then the benchmarks link.
-    private static func modelContent(_ menus: StemCellModelMenus) -> StemCellPickerContent {
-        var sections = menus.services.map { service in
-            StemCellPickerContent.Section(
-                header: Strings.StemCells.serviceHeader(service.label, service.shown?.label ?? service.account),
-                rows: (service.shown?.models ?? []).map { model in
-                    let account = service.shown?.id ?? service.account
-                    return .init(
-                        id: "\(account)\n\(model.id)", title: model.label,
-                        checked: account == menus.selection.providerId && model.id == menus.selection.modelId,
-                        disabled: model.disabled
-                    )
-                }
-            )
+    /// Each service under its name and the account it lists (desktop's
+    /// "Claude (Current CLI)"): its accounts, when there is more than one,
+    /// then that account's models, the selected one checked; then the
+    /// benchmarks link. A notice about the account comes first.
+    private static func modelSections(_ menus: StemCellModelMenus, usage: [String: StemCellAccountUsage], now: Date) -> [AgentInputMenu.Section] {
+        var sections: [AgentInputMenu.Section] = []
+        if let notice = notice(menus) {
+            sections.append(.init(options: [.init(key: "notice", label: notice, isDisabled: true)]))
         }
-        // A selection the lists don't offer still names its model.
-        if let current = menus.current, !sections.contains(where: { $0.rows.contains(where: \.checked) }) {
-            sections.insert(.init(header: menus.selection.providerId, rows: [
-                .init(id: "\(menus.selection.providerId)\n\(current.id)", title: current.label, checked: true, disabled: true),
-            ]), at: 0)
-        }
-        return StemCellPickerContent(
-            title: Strings.StemCells.model, notice: notice(menus), sections: sections,
-            footer: .init(id: "benchmarks", title: Strings.StemCells.latestBenchmarks)
-        )
-    }
-
-    /// Every account under its service, with what is left of its week and
-    /// its readings under its name.
-    private static func providerContent(_ menus: StemCellModelMenus, usage: [String: StemCellAccountUsage], now: Date) -> StemCellPickerContent {
-        StemCellPickerContent(
-            title: Strings.StemCells.provider, notice: notice(menus),
-            sections: menus.services.map { service in
-                .init(header: service.label, rows: service.accounts.map { account in
-                    let reading = usage[account.id]
-                    return .init(
-                        id: account.id, title: account.label, subtitle: usageLines(reading, now: now),
-                        checked: account.id == menus.selection.providerId,
-                        disabled: menus.model(on: account) == nil,
-                        gauge: reading.flatMap { reading in
-                            reading.shown.map { window in
-                                .init(text: Strings.StemCells.usageLeft(window.left), left: window.left, tone: StemCellAccountUsage.tone(left: window.left, blocked: reading.limited))
-                            }
-                        }
+        for service in menus.services {
+            let account = service.shown?.id ?? service.account
+            var options: [AgentInputMenu.Option] = []
+            if service.accounts.count > 1 {
+                options.append(.init(key: "\(Kind.provider.rawValue)-menu\t\(service.id)", label: Strings.StemCells.account, subtitle: service.shown?.label, children: [.init(options: service.accounts.map { choice in
+                    .init(
+                        key: key(.provider, choice.id), label: choice.label, isDisabled: menus.model(on: choice) == nil,
+                        subtitle: usageLine(usage[choice.id], now: now), isChecked: choice.id == menus.selection.providerId
                     )
-                })
+                })]))
             }
-        )
+            options += (service.shown?.models ?? []).map { model in
+                .init(
+                    key: key(.model, "\(account)\n\(model.id)"), label: model.label, isDisabled: model.disabled,
+                    isChecked: account == menus.selection.providerId && model.id == menus.selection.modelId
+                )
+            }
+            sections.append(.init(title: Strings.StemCells.serviceHeader(service.label, service.shown?.label ?? service.account), options: options))
+        }
+        // A selection the lists don't offer still names its model, under
+        // the notice that says why.
+        if let current = menus.current, !sections.contains(where: { $0.options.contains(where: \.isChecked) }) {
+            sections.insert(.init(title: chips(menus).provider, options: [
+                .init(key: key(.model, "\(menus.selection.providerId)\n\(current.id)"), label: current.label, isDisabled: true, isChecked: true),
+            ]), at: notice(menus) == nil ? 0 : 1)
+        }
+        sections.append(.init(options: [.init(key: "benchmarks", label: Strings.StemCells.latestBenchmarks)]))
+        return sections
     }
 
-    /// The model's efforts, least to most.
-    private static func effortContent(_ menus: StemCellModelMenus) -> StemCellPickerContent {
-        let current = menus.effort
-        return StemCellPickerContent(
-            title: Strings.StemCells.effort, notice: nil,
-            sections: [.init(rows: (menus.current?.efforts ?? []).map { level in
-                .init(id: level, title: StemCellModelMenus.effortName(level), checked: level == current)
-            })]
-        )
-    }
-
-    private static func notice(_ menus: StemCellModelMenus) -> StemCellPickerContent.Notice? {
+    private static func notice(_ menus: StemCellModelMenus) -> String? {
         switch menus.notice {
-        case .hidden: .quiet(Strings.StemCells.hiddenAccount)
-        case .removed(let name): .warning(Strings.StemCells.accountRemoved(name))
-        case .off(let name): .warning(Strings.StemCells.accountOff(name))
+        case .hidden: Strings.StemCells.hiddenAccount
+        case .removed(let name): Strings.StemCells.accountRemoved(name)
+        case .off(let name): Strings.StemCells.accountOff(name)
         case nil: nil
         }
     }
 
-    /// `ComposerModelAccountUsageDetails` as lines: each window with when it
-    /// starts over, then how current the numbers are.
-    static func usageLines(_ usage: StemCellAccountUsage?, now: Date) -> String? {
+    /// An account's reading in a line: what is left of its week, or that it
+    /// is out, and when it starts over.
+    static func usageLine(_ usage: StemCellAccountUsage?, now: Date) -> String? {
         guard let usage else { return nil }
-        var lines: [String] = []
-        for window in [usage.week, usage.session].compactMap({ $0 }) {
-            lines.append(Strings.StemCells.usageWindow(Strings.StemCells.window(window.kind), left: window.left, resets: window.resetsAt.map { Strings.StemCells.dayTime($0, now: now) }))
-        }
-        if lines.isEmpty { lines.append(Strings.StemCells.usageUnknown) }
         if usage.limited {
-            lines.append(usage.limitResets.map { Strings.StemCells.limitResets(Strings.StemCells.dayTime($0, now: now)) } ?? Strings.StemCells.limitReached)
+            return usage.limitResets.map { Strings.StemCells.limitResets(Strings.StemCells.dayTime($0, now: now)) } ?? Strings.StemCells.limitReached
         }
-        if usage.refreshing {
-            lines.append(Strings.StemCells.updating)
-        } else if usage.refreshError != nil {
-            lines.append(usage.updatedAt.map { Strings.StemCells.updatedFailed(Strings.StemCells.clock($0, now: now)) } ?? Strings.StemCells.couldntRefresh)
-        } else if let updated = usage.updatedAt {
-            lines.append(Strings.StemCells.updated(Strings.StemCells.age(updated, now: now)))
-        }
-        // A window measured well before the rest says when it is from.
-        let windows = [usage.week, usage.session].compactMap { $0 }
-        let newest = max(usage.updatedAt ?? .distantPast, windows.compactMap(\.capturedAt).max() ?? .distantPast)
-        for window in windows {
-            if let captured = window.capturedAt, newest.timeIntervalSince(captured) > 600 {
-                lines.append(Strings.StemCells.windowAsOf(Strings.StemCells.window(window.kind), Strings.StemCells.clock(captured, now: now)))
-            }
-        }
-        return lines.joined(separator: "\n")
+        guard let window = usage.shown else { return Strings.StemCells.usageUnknown }
+        return Strings.StemCells.usageWindow(Strings.StemCells.window(window.kind), left: window.left, resets: window.resetsAt.map { Strings.StemCells.dayTime($0, now: now) })
     }
 
-    /// What a pick in `kind` makes the mode; nil leaves it as it is (the
-    /// benchmarks link).
-    static func pick(_ id: String, kind: Kind, menus: StemCellModelMenus, catalog: StemCellModelCatalog) -> AgentWire.Mode? {
+    /// What a pick makes the mode; nil leaves it as it is (the benchmarks
+    /// link, a key that isn't a pick).
+    static func pick(_ key: String, menus: StemCellModelMenus, catalog: StemCellModelCatalog) -> AgentWire.Mode? {
+        let parts = key.split(separator: "\t", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let kind = Kind(rawValue: parts[0]) else { return nil }
+        let id = parts[1]
         let current = menus.selection
         switch kind {
         case .model:
@@ -296,31 +239,25 @@ enum StemCellModelPickers {
 
     static let benchmarks = URL(string: "https://happy.engineering/model-benchmarks")!
 
-    /// Opens `kind`'s sheet over `host`; a pick comes back as the new mode.
-    static func present(_ kind: Kind, from host: UIViewController, state: StemCellModelState, mode: AgentWire.Mode, onPick: @escaping (AgentWire.Mode) -> Void) {
-        guard let catalog = state.catalog else {
-            state.load()
-            return
-        }
+    /// A pick from either menu: the benchmarks link opens, anything else
+    /// that changes the mode comes back as the new one.
+    static func choose(_ key: String, state: StemCellModelState, mode: AgentWire.Mode?, onPick: (AgentWire.Mode) -> Void) {
+        if key == "benchmarks" { return UIApplication.shared.open(benchmarks) }
+        guard let catalog = state.catalog, let mode else { return }
         let menus = StemCellModelMenus(catalog: catalog, selection: mode)
-        if kind == .provider { state.refreshUsage(menus.services.flatMap(\.accounts).map(\.id)) }
-        var watch: StemCellsWatch?
-        let sheet = StemCellPickerViewController(content: content(kind, menus: menus, usage: state.usage)) { id in
-            if id == "benchmarks" {
-                UIApplication.shared.open(benchmarks)
-                return
-            }
-            if let next = pick(id, kind: kind, menus: menus, catalog: catalog), next != mode { onPick(next) }
-        }
-        // Usage read while it is open lands in it.
-        watch = state.watch { [weak sheet] in
-            sheet?.update(content(kind, menus: menus, usage: state.usage))
-        }
-        sheet.onClose = {
-            watch?.invalidate()
-            state.stopRefreshing()
-        }
-        host.present(sheet, animated: true)
+        if let next = pick(key, menus: menus, catalog: catalog), next != mode { onPick(next) }
+    }
+
+    /// A menu opened: the readings of the accounts it lists are asked for
+    /// again, as desktop asks as its menu opens.
+    static func opened(_ state: StemCellModelState, mode: AgentWire.Mode?) {
+        guard let catalog = state.catalog, let mode else { return state.load() }
+        state.refreshUsage(listedAccounts(StemCellModelMenus(catalog: catalog, selection: mode)))
+    }
+
+    /// The accounts with a reading in the menu: those of a service that has more than one.
+    static func listedAccounts(_ menus: StemCellModelMenus) -> [String] {
+        menus.services.filter { $0.accounts.count > 1 }.flatMap(\.accounts).map(\.id)
     }
 }
 #endif

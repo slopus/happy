@@ -11,8 +11,8 @@ import UIKit
 /// clipboard, Add files, and the permission the next message runs with.
 ///
 /// It only says what was chosen: the sheet goes first, then `onAction`
-/// hears it, except for the permission, picked over the sheet, which
-/// stays with the value updated by whoever presents it.
+/// hears it, except for the permission, picked in a menu over the sheet,
+/// which stays with the value updated by whoever presents it.
 @MainActor
 final class StemCellAttachSheetViewController: UIViewController {
     enum Action: Equatable {
@@ -30,8 +30,19 @@ final class StemCellAttachSheetViewController: UIViewController {
     var permission: String {
         didSet { if permission != oldValue { rows[2].value.text = permission; view.setNeedsLayout() } }
     }
+    /// The permission row's menu, as the composer's model control opens
+    /// its own; nil until the models are read, the row dimmed meanwhile.
+    var permissionMenu: UIMenu? {
+        get { rows[2].menu }
+        set {
+            rows[2].menu = newValue
+            rows[2].alpha = newValue == nil ? 0.5 : 1
+        }
+    }
 
     private let limit: Int
+    /// Going because something was chosen.
+    private var chose = false
     private let closeGlass = StemCellChatHeaderView.glass()
     private let closeButton = UIButton(type: .system)
     private let titleLabel = UILabel()
@@ -219,8 +230,17 @@ final class StemCellAttachSheetViewController: UIViewController {
         }
     }
 
+    /// Closed or swiped away with nothing chosen (a choice is `onAction`).
+    var onGone: (() -> Void)?
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed, !chose { onGone?() }
+    }
+
     /// The sheet goes, then the choice is heard over what it covered.
     private func finish(_ action: Action) {
+        chose = true
         let onAction = onAction
         dismiss(animated: true) { onAction?(action) }
     }
@@ -361,6 +381,23 @@ final class StemCellAttachRow: UIControl {
 
     override var isHighlighted: Bool {
         didSet { backgroundColor = isHighlighted ? UIColor(Palette.stemCellsRowPressed) : .clear }
+    }
+
+    /// Opened by a tap, over the sheet; one set while it is open replaces it there.
+    var menu: UIMenu? {
+        didSet {
+            isContextMenuInteractionEnabled = menu != nil
+            showsMenuAsPrimaryAction = menu != nil
+            if let menu { contextMenuInteraction?.updateVisibleMenu { menu.replacing($0) } }
+        }
+    }
+
+    override func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
+        guard let menu else { return nil }
+        let configuration = UIContextMenuConfiguration(actionProvider: { _ in menu })
+        // Top-down in the order given, whichever way it opens.
+        configuration.preferredMenuElementOrder = .fixed
+        return configuration
     }
 
     /// Placed by the sheet's layout, its parts in its own space.

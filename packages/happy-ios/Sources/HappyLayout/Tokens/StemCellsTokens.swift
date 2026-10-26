@@ -37,12 +37,6 @@ extension Palette {
     /// the "·" between them (`--input-placeholder`).
     public static let stemCellsWorkingText = ColorToken("#49454f", "#cac4d0")
     public static let stemCellsWorkingSeparator = ColorToken("#999999", "#8e8e93")
-    /// A usage ring (`UsageRing`): its quiet track, its arc, and the arc
-    /// when little or almost nothing is left.
-    public static let stemCellsUsageTrack = ColorToken("#c0c0c0", "#48484a")
-    public static let stemCellsUsageArc = ColorToken("#49454f", "#cac4d0")
-    public static let stemCellsUsageLow = ColorToken("#ff9500", "#ffab00")
-    public static let stemCellsUsageCritical = ColorToken("#ff3b30", "#ff453a")
     /// A recording's play button over its first frame, and its glyph.
     public static let stemCellsPlayFill = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.55), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.55))
     public static let stemCellsPlayGlyph = ColorToken("#ffffff")

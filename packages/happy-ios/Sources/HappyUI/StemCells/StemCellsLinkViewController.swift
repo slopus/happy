@@ -51,6 +51,8 @@ final class StemCellsLinkViewController: UIViewController {
     private var shown: UIViewController?
     private lazy var directScreen = StemCellsDirectLinkViewController(context: context)
     private var relayScreen: UIViewController?
+    /// Relay screens already holding the room of Direct's steps.
+    private var reservesSteps: Set<ObjectIdentifier> = []
     private var loggedShown = false
 
     private var surface: PairingSurface { inSheet ? .addComputer : .onboarding }
@@ -150,6 +152,11 @@ final class StemCellsLinkViewController: UIViewController {
         let screen = next.view as? OnboardingScreenView
         screen?.usesGlass = true
         screen?.accessoryHeight = StemCellsLinkSwitchLayout.Metrics.height
+        // Direct's steps are the tallest: Relay's screens hold their room
+        // too, so the switch and the buttons stay put as the two cross.
+        if method == .relay, let screen, reservesSteps.insert(ObjectIdentifier(screen)).inserted {
+            screen.reserve(StemCellsLinkContentView())
+        }
         screen?.onLayout = { [weak self, weak next] in
             guard let self, let next, next === shown else { return }
             placeSwitch()
@@ -243,6 +250,7 @@ final class StemCellsDirectLinkViewController: UIViewController {
         screen.primary.onTap = { [weak self] in self?.scan() }
         screen.secondary.onTap = { [weak self] in self?.paste() }
         screen.secondary.accessibilityIdentifier = "stem-link-paste"
+        content.onOpenWebsite = { UIApplication.shared.open(Strings.Onboarding.desktopURL) }
         screen.help.onTap = { [weak self] in
             guard let self else { return }
             Alerts.help(on: self)
@@ -299,11 +307,17 @@ final class StemCellsBetaTag: UILabel {
     }
 }
 
-/// Happy's mark, the title and what to do on the computer, centred.
+/// Happy's mark and the title, centred, then what to do on the computer
+/// in numbered steps: the relay checklist's two (install, open Link Mobile
+/// App), then the scan.
 final class StemCellsLinkContentView: UIView {
+    /// The install step's happy.engineering, tapped.
+    var onOpenWebsite: (() -> Void)?
     private let mark = UIImageView(image: UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate))
     private let title = StyledLabel(style: TextStyles.onboardingTitle, color: Palette.text, alignment: .center)
-    private let body = StyledLabel(style: TextStyles.checklistBody, color: Palette.textSecondary, alignment: .center)
+    private let numbers: [UILabel] = (1...3).map { _ in UILabel() }
+    private let stepTitles: [StyledLabel] = (1...3).map { _ in StyledLabel(style: TextStyles.checklistTitle, color: Palette.text) }
+    private let bodies: [StyledLabel] = (1...3).map { _ in StyledLabel(style: TextStyles.checklistBody, color: Palette.textSecondary) }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -311,14 +325,52 @@ final class StemCellsLinkContentView: UIView {
         mark.contentMode = .scaleAspectFit
         title.string = Strings.StemCells.linkTitle
         title.accessibilityTraits = .header
-        body.string = Strings.StemCells.linkBody
-        for view in [mark, title, body] as [UIView] { addSubview(view) }
+        addSubview(mark)
+        addSubview(title)
+        let steps = [
+            (Strings.Onboarding.installStep, Strings.Onboarding.installBodyPrefix + Strings.Onboarding.installBodyLink + Strings.Onboarding.installBodySuffix),
+            (Strings.Onboarding.openStep, Strings.Onboarding.openBody),
+            (Strings.StemCells.linkScanStep, Strings.StemCells.linkScanBody),
+        ]
+        for (index, step) in steps.enumerated() {
+            let number = numbers[index]
+            number.text = "\(index + 1)"
+            number.font = StemCellsFonts.ui(.semiBold, size: 14)
+            number.textColor = UIColor(Palette.text)
+            number.textAlignment = .center
+            number.layer.borderWidth = 1.5
+            number.layer.cornerRadius = ChecklistRowLayout.Metrics.boxSize / 2
+            number.isAccessibilityElement = false
+            stepTitles[index].string = step.0
+            stepTitles[index].accessibilityLabel = "\(index + 1). \(step.0)"
+            stepTitles[index].accessibilityIdentifier = "stem-link-step-\(index + 1)"
+            bodies[index].string = step.1
+            for view in [number, stepTitles[index], bodies[index]] as [UIView] { addSubview(view) }
+        }
+        bodies[0].decoration = { text in
+            let range = (text.string as NSString).range(of: Strings.Onboarding.installBodyLink)
+            guard range.location != NSNotFound else { return }
+            text.addAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue, .foregroundColor: UIColor(Palette.text)], range: range)
+        }
+        bodies[0].isUserInteractionEnabled = true
+        bodies[0].accessibilityTraits.insert(.link)
+        bodies[0].addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openWebsite)))
+        applyColors()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyColors() }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    @objc private func openWebsite() { onOpenWebsite?() }
+
+    private func applyColors() {
+        for number in numbers { number.layer.borderColor = UIColor(Palette.textSecondary).resolvedColor(with: traitCollection).cgColor }
+    }
+
     private func layout(width: CGFloat) -> StemCellsLinkContentLayout {
-        StemCellsLinkContentLayout(width: width, title: title.measurable, body: body.measurable)
+        StemCellsLinkContentLayout(width: width, title: title.measurable, steps: stepTitles.indices.map {
+            .init(title: stepTitles[$0].measurable, body: bodies[$0].measurable)
+        })
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize { layout(width: size.width).size }
@@ -328,7 +380,11 @@ final class StemCellsLinkContentView: UIView {
         let layout = layout(width: bounds.width)
         mark.frame = layout.mark
         title.setLayoutFrame(layout.title)
-        body.setLayoutFrame(layout.body)
+        for (index, step) in layout.steps.enumerated() {
+            numbers[index].frame = step.box
+            stepTitles[index].setLayoutFrame(step.title)
+            if let body = step.body { bodies[index].setLayoutFrame(body) }
+        }
     }
 }
 #endif

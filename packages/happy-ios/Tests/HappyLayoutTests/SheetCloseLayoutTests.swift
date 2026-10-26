@@ -16,7 +16,6 @@ final class SheetCloseLayoutTests: XCTestCase {
             assertSymmetric(SheetCloseLayout.frame(width: width), width: width, "the shared frame")
             assertSymmetric(StemCellAttachSheetLayout(width: width, titleWidth: 120, photosWidth: 52, tiles: 4, values: [nil, nil, 30]).close, width: width, "the attach sheet")
             assertSymmetric(StemCellsQRSheetLayout(size: CGSize(width: width, height: 844), safeTop: 47, safeBottom: 34, nameHeight: 28, text: .fixed(width: 300, height: 44)).close, width: width, "the QR sheet")
-            assertSymmetric(StemCellPickerLayout(width: width, safeBottom: 34, hairline: 0.5, title: .fixed(width: 120, height: 22), sections: []).close, width: width, "a picker")
             // The link sheet's glass bar, its row dropped to put the circle there.
             let bar = StemCellsGlassBarLayout(width: width, safeTop: 0, hairline: 1, hasLeading: false, actions: 0, titleWidth: 100, closes: true)
             assertSymmetric(bar.close, width: width, "the link sheet")

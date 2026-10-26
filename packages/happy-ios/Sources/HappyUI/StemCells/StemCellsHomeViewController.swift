@@ -184,18 +184,14 @@ final class StemCellsHomeViewController: UIViewController {
     private func updateModelBar() {
         let models = session?.models
         let menus = models?.catalog.flatMap { catalog in models?.newWorkMode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
-        StemCellModelPickers.configure(dock, menus: menus)
+        StemCellModelPickers.configure(dock, menus: menus, usage: models?.usage ?? [:])
         view.setNeedsLayout()
     }
 
     /// A pick here is what the next new work is sent with.
-    private func pick(_ kind: StemCellModelPickers.Kind) {
-        sidebar.disarm()
-        guard let models = session?.models, let mode = models.newWorkMode else {
-            session?.models.load()
-            return
-        }
-        StemCellModelPickers.present(kind, from: self, state: models, mode: mode) { next in
+    private func choose(_ key: String) {
+        guard let models = session?.models else { return }
+        StemCellModelPickers.choose(key, state: models, mode: models.newWorkMode) { next in
             models.dockMode = next
         }
     }
@@ -585,15 +581,19 @@ extension StemCellsHomeViewController: AgentInputCardDelegate, UIGestureRecogniz
     func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) { view.setNeedsLayout() }
 
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {
-        StemCellModelPickers.Kind(rawValue: key).map(pick)
+        choose(key)
     }
 
+    /// A chip with no menu yet: the models are asked for again.
     func agentInputCard(_ card: AgentInputCardView, didPress chip: AgentInputChip) {
-        switch chip {
-        case .permission: pick(.provider)
-        case .model: pick(.model)
-        case .effort: pick(.effort)
-        }
+        sidebar.disarm()
+        session?.models.load()
+    }
+
+    func agentInputCard(_ card: AgentInputCardView, didOpenMenuIn chip: AgentInputChip) {
+        sidebar.disarm()
+        guard let models = session?.models else { return }
+        StemCellModelPickers.opened(models, mode: models.newWorkMode)
     }
 
     /// The dock's own taps are its field's: its buttons and chips keep theirs.
