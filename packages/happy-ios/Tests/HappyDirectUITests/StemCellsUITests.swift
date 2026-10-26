@@ -80,9 +80,10 @@ final class StemCellsUITests: XCTestCase {
         }
     }
 
-    /// A tap on a row's chevron, at its trailing end: its centre 31 in from the row's end.
+    /// A tap on a row's chevron, at its trailing end: its centre half the
+    /// row's height in from the row's end.
     private func tapChevron(_ row: XCUIElement) {
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: row.frame.maxX - 31, dy: row.frame.midY)).tap()
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: row.frame.maxX - row.frame.height / 2, dy: row.frame.midY)).tap()
     }
 
     /// Opens every folded section, top to bottom.
@@ -144,6 +145,8 @@ final class StemCellsUITests: XCTestCase {
         let sections = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:section:"))
         if sections.count > 0 {
             let section = sections.element(boundBy: 0)
+            // Not under the dock, where a tap is the dock's.
+            bringIntoView(section)
             section.tap()
             pause(1.5)
             capture("folded")
@@ -180,6 +183,35 @@ final class StemCellsUITests: XCTestCase {
         app.tapBack()
         pause(4)
         capture("sidebar-after-new-work")
+    }
+
+    /// New work left with nothing in it goes: the sidebar comes back without
+    /// its row, never showing it on the way, and the computer drops it too
+    /// (it isn't there after a fresh launch either).
+    func testEmptyNewWorkGoes() {
+        home()
+        pause(1.5)
+        let untitled = app.descendants(matching: .any).matching(identifier: "stem-row:space:New")
+        let before = untitled.count
+        app.descendants(matching: .any)["stem-new-work"].tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 3))
+        pause(1)
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        capture("empty-new-work")
+        app.tapBack()
+        var most = 0
+        for _ in 0..<6 {
+            most = max(most, untitled.count)
+            pause(0.25)
+        }
+        XCTAssertEqual(most, before, "the empty new work's row showed as the sidebar came back")
+        capture("empty-new-work-gone")
+        pause(2)
+        app.terminate()
+        app.launch()
+        home()
+        pause(2)
+        XCTAssertEqual(untitled.count, before, "the computer kept the empty new work")
     }
 
     /// New work, then back to the sidebar to watch its stem cell hatch into
@@ -574,6 +606,31 @@ final class StemCellsUITests: XCTestCase {
         app.tapBack()
         pause(2)
         capture("unread-after")
+    }
+
+    /// A row that folds, selected: its mark and its fold each centred
+    /// half the row in from its ends, folded and open (the frames are
+    /// pinned in StemCellsLayoutTests; this is how it looks).
+    func testRowBalance() {
+        home()
+        pause(1.5)
+        let happy = row("space", "Happy")
+        XCTAssertTrue(happy.waitForExistence(timeout: 5))
+        happy.tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 8))
+        pause(1)
+        app.tapBack()
+        pause(1.5)
+        capture("balance-closed")
+        // The fold, at the row's end.
+        let rowsClosed = shownRows("stem-row:").count
+        tapChevron(happy)
+        XCTAssertTrue(until(3) { self.shownRows("stem-row:").count != rowsClosed }, "the fold didn't open")
+        pause(1.5)
+        capture("balance-open")
+        tapChevron(happy)
+        XCTAssertTrue(until(3) { self.shownRows("stem-row:").count == rowsClosed }, "the fold didn't close")
+        pause(1)
     }
 
     /// Into a conversation from the sidebar and back, slowly enough to

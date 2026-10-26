@@ -168,8 +168,6 @@ final class StemCellsRowView: UIView {
             // Closed while folded or while it has subtasks still to show.
             let closed = row.collapsed == true || row.hasHiddenSessions
             chevron.image = StemCellsGlyphs.image(closed ? "chevron-right" : "chevron-down", size: StemCellsMetrics.chevronGlyph)
-            // Shown while closed; faint while open, so it is found without hovering.
-            chevron.alpha = closed ? 1 : 0.45
         }
         switch row.status {
         case .awaitingInput:
@@ -215,7 +213,7 @@ final class StemCellsRowView: UIView {
         label.frame = local(frames.label)
         field?.frame = label.frame
         trailing.frame = frames.trailing.map(local) ?? .zero
-        chevron.frame = frames.chevron.map(local) ?? .zero
+        chevron.frame = frames.chevronGlyph.map(local) ?? .zero
         add.frame = frames.add.map(local) ?? .zero
         add.isHidden = frames.add == nil
         rule.frame = frames.rule.map(local) ?? .zero

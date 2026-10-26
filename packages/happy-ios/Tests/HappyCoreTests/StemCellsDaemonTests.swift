@@ -151,6 +151,38 @@ final class StemCellsDaemonTests: XCTestCase {
         await store.stop()
     }
 
+    /// New work left empty goes: off the sidebar at once, even while the
+    /// daemon is still making it, and off the computer once it is made.
+    func testEmptyNewWorkGoesEverywhere() async throws {
+        let credentials = try await credentials()
+        let (api, _) = try daemon()
+        let store = StemCellsStore(client: client(credentials))
+        await store.start()
+        var updates = store.updates.makeAsyncIterator()
+        let deadline = ContinuousClock.now + .seconds(20)
+        while ContinuousClock.now < deadline, let snapshot = await updates.next() {
+            if snapshot.live, snapshot.happySpaceId != nil { break }
+        }
+        let creation = await store.createStemCell()
+        let drawn = await updates.next()
+        XCTAssertTrue(drawn?.rows.contains { $0.spaceId == creation.spaceId } == true)
+        await store.discard(creation.spaceId)
+        // Gone in the very next snapshot, and never back.
+        let gone = await updates.next()
+        XCTAssertFalse(gone?.rows.contains { $0.spaceId == creation.spaceId } ?? true)
+        _ = try await creation.created.value
+        let until = ContinuousClock.now + .seconds(10)
+        var onComputer = true
+        while ContinuousClock.now < until {
+            let spaces = try call(api, ["GET", "/v0/spaces/sidebar"])["spaces"]?.arrayValue ?? []
+            onComputer = spaces.contains { $0["id"]?.stringValue == creation.spaceId }
+            if !onComputer { break }
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        XCTAssertFalse(onComputer, "the computer kept it")
+        await store.stop()
+    }
+
     /// The setting the banner follows reads as the daemon holds it.
     func testTheSettingReadsAsTheDaemonHoldsIt() async throws {
         let credentials = try await credentials()

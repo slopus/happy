@@ -260,7 +260,7 @@ final class StemCellsSidebarView: UIScrollView {
             case .widget: .widget
             default: .row
             }
-            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.status == .waiting || row.status == .awaitingInput, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section)
+            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.status == .waiting || row.status == .awaitingInput, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section, foldClosed: row.collapsed == true || row.hasHiddenSessions)
         }
     }
 
@@ -277,7 +277,7 @@ final class StemCellsSidebarView: UIScrollView {
     /// Lays `shown` out and moves each row to its place, gliding when asked.
     private func place(_ shown: [StemCellsRow], animated: Bool) {
         let input = layoutRows(shown)
-        let result = StemCellsSidebarLayout.layout(input, width: bounds.width)
+        let result = StemCellsSidebarLayout.layout(input, width: bounds.width, scale: traitCollection.displayScale)
         layoutResult = result
         laidOut = (bounds.width, input)
         let move = {
@@ -360,7 +360,7 @@ final class StemCellsSidebarView: UIScrollView {
         // A carry the lift warmed and never used is replaced.
         guard window != nil, !armed, carry?.link == nil, arranged == nil, editing == nil, let row = rows.first(where: { $0.id == rowId }),
               let drag = beginDrag?(row) else { return }
-        let frames = StemCellsSidebarLayout.layout(layoutRows(rows), width: bounds.width).frames
+        let frames = StemCellsSidebarLayout.layout(layoutRows(rows), width: bounds.width, scale: traitCollection.displayScale).frames
         guard let last = drag.units.last?.last, last < frames.count else { return }
         let rect = heldFrame(order: rows, held: drag.held)
         guard !rect.isNull else { return }
@@ -498,7 +498,7 @@ final class StemCellsSidebarView: UIScrollView {
 
     /// The drawn order's frames for the carried rows, and their union.
     private func heldFrame(order: [StemCellsRow], held: [StemCellsRow]) -> CGRect {
-        let result = StemCellsSidebarLayout.layout(layoutRows(order), width: bounds.width)
+        let result = StemCellsSidebarLayout.layout(layoutRows(order), width: bounds.width, scale: traitCollection.displayScale)
         let ids = Set(held.map(\.id))
         return zip(order, result.frames).reduce(CGRect.null) { union, pair in ids.contains(pair.0.id) ? union.union(pair.1.box) : union }
     }
@@ -577,7 +577,7 @@ extension StemCellsSidebarView: UIDragInteractionDelegate {
               let drag = beginDrag?(row) else { return [] }
         // The carry's indices are the document's drawn rows: measured on
         // those, never on an order still held from a drop.
-        let frames = StemCellsSidebarLayout.layout(layoutRows(rows), width: bounds.width).frames
+        let frames = StemCellsSidebarLayout.layout(layoutRows(rows), width: bounds.width, scale: traitCollection.displayScale).frames
         guard arranged == nil, let last = drag.units.last?.last, last < frames.count else { return [] }
         carry = Carry(drag: drag, start: point, hand: convert(point, to: superview), to: drag.from, heights: heights(drag, frames: frames))
         let item = UIDragItem(itemProvider: NSItemProvider())

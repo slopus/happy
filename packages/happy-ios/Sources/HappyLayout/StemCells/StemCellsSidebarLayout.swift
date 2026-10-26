@@ -24,14 +24,17 @@ public enum StemCellsSidebarLayout {
         /// A section heading's "+", which makes new work in it: one square
         /// before its fold, always shown.
         public var hasAdd: Bool
+        /// The fold points right ("›"), not down ("⌄"): its ink weighs elsewhere.
+        public var foldClosed: Bool
 
-        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasFold: Bool = false, hasAdd: Bool = false) {
+        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasFold: Bool = false, hasAdd: Bool = false, foldClosed: Bool = false) {
             self.kind = kind
             self.depth = depth
             self.hasMark = hasMark
             self.hasTrailing = hasTrailing
             self.hasFold = hasFold
             self.hasAdd = hasAdd
+            self.foldClosed = foldClosed
         }
     }
 
@@ -43,8 +46,12 @@ public enum StemCellsSidebarLayout {
         public var label: CGRect
         /// The status mark or unread dot.
         public var trailing: CGRect?
-        /// A section's fold chevron, on the same trailing column.
+        /// A section's fold chevron, on the same trailing column: its lane.
         public var chevron: CGRect?
+        /// The chevron's image (`chevronGlyph` square), placed so its ink's
+        /// optical centre is the fold's: `trailingCenter` from the right,
+        /// on the row's middle. On whole pixels at `scale`.
+        public var chevronGlyph: CGRect?
         /// A section's "+", one square before its fold.
         public var add: CGRect?
         /// A separator's hairline, across the row box's whole width.
@@ -67,7 +74,7 @@ public enum StemCellsSidebarLayout {
         }
     }
 
-    public static func layout(_ rows: [Row], width: CGFloat, top: CGFloat = StemCellsMetrics.contentTop, bottom: CGFloat = StemCellsMetrics.contentBottom) -> Result {
+    public static func layout(_ rows: [Row], width: CGFloat, top: CGFloat = StemCellsMetrics.contentTop, bottom: CGFloat = StemCellsMetrics.contentBottom, scale: CGFloat = 3) -> Result {
         typealias M = StemCellsMetrics
         var frames: [Frame] = []
         frames.reserveCapacity(rows.count)
@@ -79,18 +86,24 @@ public enum StemCellsSidebarLayout {
             let height = height(row.kind)
             let box = CGRect(x: boxX, y: y, width: boxWidth, height: height)
             let midY = y + height / 2
-            // On whole points: the square is odd at 1.5x.
-            let trailingRect = CGRect(x: (width - M.trailingCenter - M.trailing / 2).rounded(.down), y: (midY - M.trailing / 2).rounded(.down), width: M.trailing, height: M.trailing)
+            func pixel(_ value: CGFloat) -> CGFloat { (value * max(1, scale)).rounded() / max(1, scale) }
+            // Centred `trailingCenter` in, on the row's middle, on whole pixels.
+            let trailingRect = CGRect(x: pixel(width - M.trailingCenter - M.trailing / 2), y: pixel(midY - M.trailing / 2), width: M.trailing, height: M.trailing)
             let inkRight = trailingRect.maxX
-            var frame = Frame(box: box, mark: nil, label: .zero, trailing: nil, chevron: nil, add: nil, rule: nil)
+            var frame = Frame(box: box, mark: nil, label: .zero, trailing: nil, chevron: nil, chevronGlyph: nil, add: nil, rule: nil)
+            func fold() -> CGRect {
+                let ink = row.foldClosed ? M.chevronRightInk : M.chevronDownInk
+                let size = M.chevronGlyph
+                return CGRect(x: pixel(width - M.trailingCenter - size / 2 - ink.dx), y: pixel(midY - size / 2 - ink.dy), width: size, height: size)
+            }
             switch row.kind {
             case .separator:
                 frame.rule = CGRect(x: boxX, y: (midY - M.line / 2).rounded(.down), width: boxWidth, height: M.line)
             case .section:
-                // The title starts where a mark would, and keeps clear of the
-                // fold's lane (`padding-right: row padding + 22`), so showing
-                // the fold moves nothing.
-                let x = leadingX(depth: 0)
+                // The title starts where a top-level glyph's ink does, and keeps
+                // clear of the fold's lane (`padding-right: row padding + 22`),
+                // so showing the fold moves nothing.
+                let x = boxX + M.sectionTitleInset
                 var end = trailingRect.minX
                 if row.hasAdd {
                     let add = trailingRect.offsetBy(dx: -(M.trailing + M.trailingGap), dy: 0)
@@ -99,6 +112,7 @@ public enum StemCellsSidebarLayout {
                 }
                 frame.label = CGRect(x: x, y: y, width: max(0, end - sectionFoldGap - x), height: height)
                 frame.chevron = trailingRect
+                frame.chevronGlyph = fold()
             case .widget, .row:
                 var x = leadingX(depth: row.depth)
                 if row.hasMark {
@@ -109,6 +123,7 @@ public enum StemCellsSidebarLayout {
                 var slot = trailingRect
                 if row.hasFold, row.kind == .row {
                     frame.chevron = slot
+                    frame.chevronGlyph = fold()
                     right = slot.minX - M.trailingGap
                     slot = slot.offsetBy(dx: -(M.trailing + M.trailingGap), dy: 0)
                 }
@@ -116,7 +131,8 @@ public enum StemCellsSidebarLayout {
                     frame.trailing = slot
                     right = slot.minX - M.trailingGap
                 }
-                frame.label = CGRect(x: x, y: y, width: max(0, right - x), height: height)
+                // A row's title rides up to its marks' middle.
+                frame.label = CGRect(x: x, y: row.kind == .row ? y - M.titleLift : y, width: max(0, right - x), height: height)
             }
             frames.append(frame)
             y += height
@@ -128,7 +144,7 @@ public enum StemCellsSidebarLayout {
     static let sectionFoldGap: CGFloat = 4 * StemCellsMetrics.phone
 
     /// Where a row's mark (or, without one, its label) starts: a top-level
-    /// mark centred under the header's left control, `indent` more per level.
+    /// mark centred `endInset` in from the row box, `indent` more per level.
     static func leadingX(depth: Int) -> CGFloat {
         typealias M = StemCellsMetrics
         return M.markCenter - M.mark / 2 + CGFloat(depth) * M.indent

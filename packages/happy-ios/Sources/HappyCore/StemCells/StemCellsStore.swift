@@ -85,6 +85,14 @@ public actor StemCellsStore {
     /// New work drawn where it was made until the held document has it.
     private var inserts: [(spaceId: String, sectionId: String?, happySpaceId: String?)] = []
     private var creating: Set<String> = []
+    /// New work being made, by space: what putting it away waits for.
+    private var creations: [String: Task<String, Error>] = [:]
+    /// New work put away here: off the sidebar at once, before the daemon
+    /// hears, and back if it refuses.
+    private var awayIds: Set<String> = []
+    /// Of those, the ones the computer has closed: let go once its
+    /// document no longer has them.
+    private var closedIds: Set<String> = []
     private var writes = 0
     private var dragging = false
     /// An event or read waited for the hand to lift.
@@ -400,7 +408,10 @@ public actor StemCellsStore {
         case "space.created", "space.updated":
             if let space = payload["space"].flatMap(Self.decodeSpace) { adopt(space) }
         case "space.removed":
-            if let id = payload["spaceId"]?.stringValue { spaces.removeValue(forKey: id) }
+            if let id = payload["spaceId"]?.stringValue {
+                spaces.removeValue(forKey: id)
+                inserts.removeAll { $0.spaceId == id }
+            }
         case "space.sidebar.changed":
             sidebarChanged(payload)
         case "agent.updated":
@@ -505,9 +516,16 @@ public actor StemCellsStore {
     /// What is on screen: the confirmed document and new work where it was made.
     private func shown() -> SpaceSidebarDocument? {
         guard var document = confirmedShown() else { return nil }
+        for id in closedIds where SpaceSidebar.locate(document, id) == nil {
+            closedIds.remove(id)
+            awayIds.remove(id)
+        }
         inserts.removeAll { insert in !creating.contains(insert.spaceId) && SpaceSidebar.locate(document, insert.spaceId) != nil }
         for insert in inserts where SpaceSidebar.locate(document, insert.spaceId) == nil {
             document = SidebarDocumentEdits.insert(document, spaceId: insert.spaceId, sectionId: insert.sectionId, happySpaceId: insert.happySpaceId) ?? document
+        }
+        for id in awayIds {
+            if let applied = try? SpaceSidebar.apply(document, [.remove(id)]) { document = applied.document }
         }
         return document
     }
@@ -689,11 +707,13 @@ public actor StemCellsStore {
                 throw error
             }
         }
+        creations[spaceId] = created
         return StemCellCreation(spaceId: spaceId, agentId: identity.agentId, workspaceId: identity.workspaceId, created: created)
     }
 
     private func created(_ spaceId: String, _ response: AgentWire.CreateStemCellResponse) {
         creating.remove(spaceId)
+        creations.removeValue(forKey: spaceId)
         adopt(response.space)
         agents.absorb((try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(response.agent))) ?? .null)
         schedulePlacesReload()
@@ -702,6 +722,7 @@ public actor StemCellsStore {
 
     private func refused(_ spaceId: String, _ error: Error) {
         creating.remove(spaceId)
+        creations.removeValue(forKey: spaceId)
         inserts.removeAll { $0.spaceId == spaceId }
         if spaces[spaceId]?.version == 0 { spaces.removeValue(forKey: spaceId) }
         // The reason alone; the screen says what failed.
@@ -716,18 +737,46 @@ public actor StemCellsStore {
         publish()
     }
 
-    /// Closes new work nobody wrote in. The daemon refuses once its chat has
-    /// a message, which leaves it alone.
+    /// Takes new work off the sidebar here only, or puts it back: leaving
+    /// it, while the leaving may still be undone.
+    public func putAway(_ spaceId: String, _ away: Bool) {
+        guard awayIds.contains(spaceId) != away else { return }
+        if away { awayIds.insert(spaceId) } else { awayIds.remove(spaceId) }
+        publish()
+    }
+
+    /// Closes new work nobody wrote in: off the sidebar at once, then off
+    /// the computer, once it is made there if it is still being made. The
+    /// daemon refuses once its chat has a message, which brings it back.
     public func discard(_ spaceId: String) {
+        putAway(spaceId, true)
         let mutationId = ClientID.make()
         let client = client
+        let creation = creations[spaceId]
         Task {
+            // Never made there: nothing to close.
+            if let creation, (try? await creation.value) == nil { return }
             for attempt in 0..<3 {
-                do { try await client.removeSpace(spaceId, mutationId: mutationId); return }
-                catch let error as DirectAgentError where (error.status ?? 500) < 500 { return }
-                catch { try? await Task.sleep(for: .milliseconds(500 * (attempt + 1))) }
+                do {
+                    try await client.removeSpace(spaceId, mutationId: mutationId)
+                    return await self.closed(spaceId)
+                } catch let error as DirectAgentError where error.status == 404 {
+                    // An earlier try closed it.
+                    return await self.closed(spaceId)
+                } catch let error as DirectAgentError where (error.status ?? 500) < 500 {
+                    break
+                } catch {
+                    try? await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
+                }
             }
+            await self.putAway(spaceId, false)
         }
+    }
+
+    private func closed(_ spaceId: String) {
+        inserts.removeAll { $0.spaceId == spaceId }
+        closedIds.insert(spaceId)
+        publish()
     }
 
     /// Leaves a task, or archives a task or bot; the row goes when the daemon says so.

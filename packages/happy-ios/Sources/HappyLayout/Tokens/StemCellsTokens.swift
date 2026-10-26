@@ -114,21 +114,36 @@ public enum StemCellsMetrics {
     public static let sheenDuration: Double = 1.6
     // Desktop's sidebar at its own pixels (`Sidebar.tsx`: `SIDEBAR_ROW_HEIGHT`
     // and the rest, `styles/sidebar.css`, `theme.css`), half again as big on
-    // the phone: rows, gaps, type and marks all `phone` times desktop's. The
-    // edges are the phone's own: marks stand under the header's left
-    // control, folds under its right one, and nesting stays tight.
+    // the phone: rows, gaps, type and marks all `phone` times desktop's.
+    // Nesting stays tight.
     /// How much bigger than desktop's the phone draws the sidebar.
     public static let phone: CGFloat = 1.5
     /// The row box's inset from the screen's edges.
     public static let inset: CGFloat = 8
-    /// A top-level mark's centre: the header's left control's
-    /// (`HomeHeaderLayout`: 16 in, 44 wide).
-    public static let markCenter: CGFloat = HomeHeaderLayout.Metrics.paddingHorizontal + HomeHeaderLayout.Metrics.controlSize / 2
-    /// The trailing square's centre from the right edge: the header's
-    /// right-most button's (16 in, a 1 rim, 44 wide).
-    public static let trailingCenter: CGFloat = HomeHeaderLayout.Metrics.paddingHorizontal + HomeHeaderLayout.Metrics.controlBorder + HomeHeaderLayout.Metrics.controlSize / 2
     /// `SIDEBAR_ROW_HEIGHT`.
     public static let rowHeight: CGFloat = 32 * phone
+    /// Each end of a row holds its mark in a square the row's height: the
+    /// mark's optical centre half the row in from the row box's side, as
+    /// far as it is from the box's top (desktop's 16 in a 32 row).
+    public static let endInset: CGFloat = rowHeight / 2
+    /// A top-level mark's centre, from the screen's left edge.
+    public static let markCenter: CGFloat = inset + endInset
+    /// The fold's optical centre, and the trailing square's, from the right edge.
+    public static let trailingCenter: CGFloat = inset + endInset
+    /// A row's title, lifted so its x-height's middle is the row's middle,
+    /// where the end marks' centres are. Figtree 19.5 centred in the row
+    /// sets its baseline at 30.83 (line 23.4, ascender 18.53) and its
+    /// x-height (9.75) from 21.08: middle 25.95, 1.95 below the row's 24.
+    /// On whole pixels at 3x, 2 (`StemCellsRowInkTests` measures it).
+    public static let titleLift: CGFloat = 2
+    /// Where a fold chevron's ink weighs, from its image's centre, at
+    /// `chevronGlyph` (alpha-weighted at 3x; `StemCellsRowInkTests`):
+    /// a "⌄" is heavier at its top, a "›" at its left.
+    public static let chevronDownInk = CGVector(dx: 0, dy: -0.34)
+    public static let chevronRightInk = CGVector(dx: -0.21, dy: -0.13)
+    /// A section heading's title: desktop's row padding 10 in, which is
+    /// where a top-level glyph's ink starts.
+    public static let sectionTitleInset: CGFloat = 10 * phone
     /// `.happy-sidebar__section-item`.
     public static let sectionHeight: CGFloat = 28 * phone
     /// `.happy-sidebar__separator`.

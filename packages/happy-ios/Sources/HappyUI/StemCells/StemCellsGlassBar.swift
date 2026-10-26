@@ -398,8 +398,9 @@ final class StemCellsGlassChrome: UIViewController {
         // screen under the new one while it goes.
         let stack = navigation.viewControllers.map(ObjectIdentifier.init)
         if !stackShown.isEmpty, stack.count > stackShown.count, Array(stack.prefix(stackShown.count)) == stackShown { Self.dress(top, over: screen) }
-        // Otherwise it has the bar it expects (home hides it again itself).
-        if Self.chrome(of: top) == nil { navigation.setNavigationBarHidden(false, animated: animated) }
+        // Otherwise it has the bar it expects (home hides it again itself);
+        // a chat has its own header.
+        if Self.chrome(of: top) == nil, !(top is StemCellChatViewController) { navigation.setNavigationBarHidden(false, animated: animated) }
     }
 }
 #endif
