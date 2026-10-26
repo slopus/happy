@@ -16,6 +16,7 @@ final class StemCellsRowView: UIView {
     private let trailing = UIImageView()
     private let dot = UIView()
     private let chevron = UIImageView()
+    private let add = UIImageView()
     private let rule = UIView()
     private var pictureJob: Task<Void, Never>?
 
@@ -60,8 +61,10 @@ final class StemCellsRowView: UIView {
         dot.layer.cornerRadius = StemCellsMetrics.unreadDot / 2
         dot.backgroundColor = UIColor(Palette.stemCellsQuestion)
         chevron.contentMode = .center
+        add.contentMode = .center
+        add.image = StemCellsGlyphs.image("add", size: StemCellsMetrics.addGlyph)
         rule.backgroundColor = UIColor(Palette.stemCellsDivider)
-        for view in [fill, stemCell, picture, label, trailing, dot, chevron, rule] { addSubview(view) }
+        for view in [fill, stemCell, picture, label, trailing, dot, chevron, add, rule] { addSubview(view) }
         isAccessibilityElement = true
     }
 
@@ -165,18 +168,20 @@ final class StemCellsRowView: UIView {
         chevron.isHidden = !folds
         rule.isHidden = row.kind != .separator
         if folds {
-            chevron.image = StemCellsGlyphs.image(row.collapsed == true ? "chevron-right" : "chevron-down", size: 12)
-            // Shown while folded; faint while open, so it is found without hovering.
-            chevron.alpha = row.collapsed == true ? 1 : 0.45
+            // Closed while folded or while it has subtasks still to show.
+            let closed = row.collapsed == true || row.hasHiddenSessions
+            chevron.image = StemCellsGlyphs.image(closed ? "chevron-right" : "chevron-down", size: StemCellsMetrics.chevronGlyph)
+            // Shown while closed; faint while open, so it is found without hovering.
+            chevron.alpha = closed ? 1 : 0.45
         }
         switch row.status {
         case .awaitingInput:
             trailing.isHidden = false
-            trailing.image = StemCellsGlyphs.image("question", size: 15)
+            trailing.image = StemCellsGlyphs.image("question", size: StemCellsMetrics.questionGlyph)
             trailing.tintColor = UIColor(Palette.stemCellsQuestion)
         case .waiting:
             trailing.isHidden = false
-            trailing.image = StemCellsGlyphs.image("clock", size: 14)
+            trailing.image = StemCellsGlyphs.image("clock", size: StemCellsMetrics.clockGlyph)
             trailing.tintColor = UIColor(Palette.stemCellsRowText)
         case .working, .none:
             dot.isHidden = !row.unread
@@ -189,6 +194,7 @@ final class StemCellsRowView: UIView {
         label.ground = UIColor(selected ? Palette.stemCellsRowSelected : Palette.groupedBackground)
         picture.tintColor = picture.contentMode == .center ? ink : nil
         chevron.tintColor = UIColor(Palette.stemCellsRowText)
+        add.tintColor = UIColor(Palette.stemCellsRowText)
         if let row, row.kind != .section, row.kind != .separator { applyText(row) }
         let carryable = row?.kind != .section && row?.kind != .separator
         fill.backgroundColor = lifted ? UIColor(Palette.stemCellsBackground) : selected ? UIColor(Palette.stemCellsRowSelected) : pressed && carryable ? UIColor(Palette.stemCellsRowPressed) : .clear
@@ -217,6 +223,8 @@ final class StemCellsRowView: UIView {
             width: StemCellsMetrics.unreadDot, height: StemCellsMetrics.unreadDot
         )
         chevron.frame = frames.chevron.map(local) ?? .zero
+        add.frame = frames.add.map(local) ?? .zero
+        add.isHidden = frames.add == nil
         rule.frame = frames.rule.map(local) ?? .zero
     }
 

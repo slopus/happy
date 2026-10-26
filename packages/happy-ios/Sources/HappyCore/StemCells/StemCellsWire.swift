@@ -371,14 +371,29 @@ extension AgentWire {
         public var content: [Block]
         public var status: String?
         public var runId: String?
+        public var metadata: MessageMetadata?
 
-        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil) {
+        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil) {
             self.id = id
             self.role = role
             self.createdAt = createdAt
             self.content = content
             self.status = status
             self.runId = runId
+            self.metadata = metadata
+        }
+    }
+
+    /// A message's public provenance (`metadata`): the agent that sent a
+    /// message the daemon wrote on its behalf, and that agent's one line on
+    /// what it is.
+    public struct MessageMetadata: Equatable, Sendable, Codable {
+        public var senderAgentId: String?
+        public var senderAgentExplanation: String?
+
+        public init(senderAgentId: String? = nil, senderAgentExplanation: String? = nil) {
+            self.senderAgentId = senderAgentId
+            self.senderAgentExplanation = senderAgentExplanation
         }
     }
 
@@ -421,6 +436,8 @@ extension AgentWire {
         public var mode: Mode?
         public var pending: [Message]?
         public var cursor: String?
+        /// Every child the agent spawned, hidden collaborators included.
+        public var subagents: [Agent]?
     }
 
     public struct Setting: Equatable, Sendable, Codable {

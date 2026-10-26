@@ -17,6 +17,8 @@ import UIKit
 final class StemCellsSidebarView: UIScrollView {
     var onSelect: ((StemCellsRow) -> Void)?
     var onFold: ((StemCellsRow) -> Void)?
+    /// A section's "+": new work in that section. Sections show it only when set.
+    var onAdd: ((StemCellsRow) -> Void)?
     /// What a hold on the row offers, in groups; nil for a row that has nothing.
     var menu: ((StemCellsRow) -> [[StemCellsMenuItem]]?)?
     /// What a hold shows of the row over its menu: its conversation, read
@@ -57,7 +59,18 @@ final class StemCellsSidebarView: UIScrollView {
     /// The hold showed the row at the lift, so the lift showed nothing and
     /// the carry draws its own card (`floating`), under the finger.
     private var liftHidden = false
-    private var floating: (card: UIView, grab: CGPoint, held: [StemCellsRow], session: any UIDragSession)?
+    private var floating: (card: UIView, grab: CGPoint, held: [StemCellsRow], hand: (UIWindow) -> CGPoint)?
+    /// Reorder from the menu: the row is lifted and waits for a finger, which
+    /// carries it wherever it goes down (`reorderPan`).
+    private var armed = false
+    private let reorderPan = UIPanGestureRecognizer()
+    /// A tap anywhere outside the list while armed (the header, the dock) puts the row back.
+    private lazy var outside: UITapGestureRecognizer = {
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tappedOutside(_:)))
+        tap.cancelsTouchesInView = false
+        tap.delegate = PressRecognizer.simultaneous
+        return tap
+    }()
     private var editing: (id: String, commit: (String) -> Void)?
 
     private struct Carry {
@@ -89,6 +102,10 @@ final class StemCellsSidebarView: UIScrollView {
         drag.isEnabled = true
         addInteraction(drag)
         addInteraction(UIDropInteraction(delegate: self))
+        reorderPan.addTarget(self, action: #selector(reorderPanned(_:)))
+        reorderPan.maximumNumberOfTouches = 1
+        reorderPan.isEnabled = false
+        addGestureRecognizer(reorderPan)
         let away = UITapGestureRecognizer(target: self, action: #selector(tappedAway(_:)))
         away.cancelsTouchesInView = false
         away.delegate = PressRecognizer.simultaneous
@@ -109,7 +126,13 @@ final class StemCellsSidebarView: UIScrollView {
         // in the window, and the display link lets go of the list.
         hold?.close(animated: false)
         liftHidden = false
-        land(in: nil, with: nil)
+        armed = false
+        isScrollEnabled = true
+        reorderPan.isEnabled = false
+        outside.view?.removeGestureRecognizer(outside)
+        floating?.card.removeFromSuperview()
+        floating = nil
+        for view in views.values { view.isHidden = false }
         if carry != nil { endCarry(); settle() }
     }
 
@@ -144,6 +167,8 @@ final class StemCellsSidebarView: UIScrollView {
             if editing?.id == id { editing = nil }
             touched += 1
         }
+        // A lifted row that went away (archived elsewhere) is put down.
+        if armed, let held = carry?.drag.held, held.contains(where: { !live.contains($0.id) }) { disarm() }
         setNeedsLayout()
         return touched
     }
@@ -159,8 +184,15 @@ final class StemCellsSidebarView: UIScrollView {
         view.addGestureRecognizer(press)
         // VoiceOver reaches the hold's menu as the row's actions.
         view.actions = { [weak self, weak view] in
-            guard let self, editing == nil, let row = view?.row, let items = menu?(row) else { return nil }
-            return items.joined().map { item in
+            guard let self, editing == nil, let row = view?.row else { return nil }
+            var actions: [UIAccessibilityCustomAction] = []
+            if row.kind == .section, let onAdd {
+                actions.append(UIAccessibilityCustomAction(name: Strings.StemCells.newWorkIn(row.label), image: StemCellsGlyphs.image("add")) { _ in
+                    onAdd(row)
+                    return true
+                })
+            }
+            return actions + (menu?(row) ?? []).joined().map { item in
                 UIAccessibilityCustomAction(name: item.title, image: StemCellsGlyphs.image(item.icon)) { _ in
                     item.run()
                     return true
@@ -173,6 +205,8 @@ final class StemCellsSidebarView: UIScrollView {
     @objc private func rowTapped(_ gesture: UITapGestureRecognizer) {
         // The touch that opened a hold, let go: the hold stays and that is all.
         guard hold == nil, let view = gesture.view as? StemCellsRowView, let row = view.row else { return }
+        // A lifted row put back by a tap that didn't move it.
+        if armed { return disarm() }
         // A tap while something is open closes it and does nothing else; a
         // tap in the title being edited is the field's.
         if editing != nil {
@@ -180,7 +214,13 @@ final class StemCellsSidebarView: UIScrollView {
             return
         }
         switch row.kind {
-        case .section: onFold?(row)
+        case .section:
+            // Its "+", with a finger's room around it, makes new work in it.
+            if let add = view.frames?.add, let onAdd, gesture.location(in: self).x >= add.minX - 7, gesture.location(in: self).x < add.maxX + StemCellsMetrics.trailingGap / 2 {
+                onAdd(row)
+            } else {
+                onFold?(row)
+            }
         case .separator: break
         default:
             // A row's fold is its chevron, with a finger's room around it;
@@ -195,6 +235,8 @@ final class StemCellsSidebarView: UIScrollView {
 
     @objc private func tappedAway(_ gesture: UITapGestureRecognizer) {
         let point = gesture.location(in: self)
+        // The lifted row's own slot is hidden and takes no tap: any tap puts it back.
+        if armed { return disarm() }
         // A row's own tap closes what is open, and only that.
         guard row(at: point) == nil else { return }
         if editing != nil { finishRename() }
@@ -206,7 +248,11 @@ final class StemCellsSidebarView: UIScrollView {
         view.pressed = opens && hold == nil && (gesture.state == .began || gesture.state == .changed)
     }
 
-    nonisolated static func layoutRows(_ rows: [StemCellsRow]) -> [StemCellsSidebarLayout.Row] {
+    private func layoutRows(_ rows: [StemCellsRow]) -> [StemCellsSidebarLayout.Row] {
+        Self.layoutRows(rows, adds: onAdd != nil)
+    }
+
+    nonisolated static func layoutRows(_ rows: [StemCellsRow], adds: Bool = false) -> [StemCellsSidebarLayout.Row] {
         rows.map { row in
             let kind: StemCellsSidebarLayout.Kind = switch row.kind {
             case .section: .section
@@ -214,14 +260,14 @@ final class StemCellsSidebarView: UIScrollView {
             case .widget: .widget
             default: .row
             }
-            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.status == .waiting || row.status == .awaitingInput || row.unread, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil)
+            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.status == .waiting || row.status == .awaitingInput || row.unread, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section)
         }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         let shown = arranged ?? rows
-        let input = Self.layoutRows(shown)
+        let input = layoutRows(shown)
         let width = bounds.width
         if laidOut?.width != width || laidOut?.rows != input || layoutResult?.frames.count != shown.count {
             place(shown, animated: false)
@@ -230,7 +276,7 @@ final class StemCellsSidebarView: UIScrollView {
 
     /// Lays `shown` out and moves each row to its place, gliding when asked.
     private func place(_ shown: [StemCellsRow], animated: Bool) {
-        let input = Self.layoutRows(shown)
+        let input = layoutRows(shown)
         let result = StemCellsSidebarLayout.layout(input, width: bounds.width)
         layoutResult = result
         laidOut = (bounds.width, input)
@@ -282,7 +328,7 @@ final class StemCellsSidebarView: UIScrollView {
     /// Telegram's hold: the screen blurs, the row's conversation grows out
     /// of it with the menu under it, and a light tap is felt.
     private func openHold(at point: CGPoint) {
-        guard hold == nil, carry?.link == nil, let window, let target = holdTarget(at: point) else { return }
+        guard hold == nil, !armed, carry?.link == nil, let window, let target = holdTarget(at: point) else { return }
         // Warmed as the hold begins: a carry may follow at once.
         StemCellsHaptics.prepare(.lift)
         StemCellsHaptics.prepare(.slot)
@@ -303,6 +349,102 @@ final class StemCellsSidebarView: UIScrollView {
         panGestureRecognizer.isEnabled = false
         panGestureRecognizer.isEnabled = true
         overlay.present()
+    }
+
+    // MARK: Reorder from the menu
+
+    /// Lifts `rowId` where it is, as if just picked up: the next finger to
+    /// go down and move carries it, and where it is let go it stays. A tap
+    /// that doesn't move puts it back.
+    func armReorder(_ rowId: String) {
+        // A carry the lift warmed and never used is replaced.
+        guard window != nil, !armed, carry?.link == nil, arranged == nil, editing == nil, let row = rows.first(where: { $0.id == rowId }),
+              let drag = beginDrag?(row) else { return }
+        let frames = StemCellsSidebarLayout.layout(layoutRows(rows), width: bounds.width).frames
+        guard let last = drag.units.last?.last, last < frames.count else { return }
+        let rect = heldFrame(order: rows, held: drag.held)
+        guard !rect.isNull else { return }
+        scrollRectToVisible(rect.insetBy(dx: 0, dy: -24), animated: false)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        carry = Carry(drag: drag, start: center, hand: convert(center, to: superview), to: drag.from, heights: heights(drag, frames: frames))
+        // Lifted in place, holding still until a finger takes it.
+        let home = convert(center, to: nil)
+        float { _ in home }
+        // What a test (and VoiceOver's screen) finds while it waits for a finger.
+        floating?.card.isAccessibilityElement = true
+        floating?.card.accessibilityIdentifier = "stem-lifted"
+        floating?.card.accessibilityLabel = row.label
+        for row in drag.held { views[row.id]?.isHidden = true }
+        armed = true
+        isScrollEnabled = false
+        reorderPan.isEnabled = true
+        window?.addGestureRecognizer(outside)
+        // The list holds still under the lifted row until it's set down.
+        onDragging?(true)
+        StemCellsHaptics.play(.lift)
+        UIAccessibility.post(notification: .announcement, argument: Strings.StemCells.reorderHint)
+    }
+
+    /// Put back where it was, nothing moved; at once when the screen is going.
+    func disarm(animated: Bool = true) {
+        guard armed else { return }
+        unarm()
+        if animated {
+            land(in: nil, home: true)
+        } else {
+            floating?.card.removeFromSuperview()
+            floating = nil
+            for view in views.values { view.isHidden = false }
+        }
+        endCarry()
+        settle()
+    }
+
+    private func unarm() {
+        armed = false
+        isScrollEnabled = true
+        reorderPan.isEnabled = false
+        outside.view?.removeGestureRecognizer(outside)
+    }
+
+    /// The header and the dock sit over the list, so any tap counts: a tap
+    /// on a row was the list's own and disarmed already.
+    @objc private func tappedOutside(_ gesture: UITapGestureRecognizer) {
+        disarm()
+    }
+
+    @objc private func reorderPanned(_ gesture: UIPanGestureRecognizer) {
+        guard armed, var carry else { return }
+        let point = gesture.location(in: self)
+        switch gesture.state {
+        case .began:
+            // Wherever the finger went down, the row moves with it from there.
+            let travel = gesture.translation(in: self)
+            let down = CGPoint(x: point.x - travel.x, y: point.y - travel.y)
+            if let floating {
+                let window = floating.card.window
+                let downInWindow = window.map { convert(down, to: $0) } ?? down
+                self.floating?.grab = CGPoint(x: floating.card.center.x - downInWindow.x, y: floating.card.center.y - downInWindow.y)
+                self.floating?.hand = { [weak gesture] window in gesture?.location(in: window) ?? .zero }
+            }
+            carry.start = down
+            carry.hand = convert(point, to: superview)
+            startCarry(&carry)
+            self.carry = carry
+            updateCarry()
+        case .changed:
+            self.carry?.hand = convert(point, to: superview)
+            updateCarry()
+        case .ended:
+            self.carry?.hand = convert(point, to: superview)
+            updateCarry()
+            unarm()
+            guard let to = self.carry?.to, let drag = self.carry?.drag else { return land(in: nil, home: true) }
+            drop()
+            land(in: drag.order(to: to), home: false)
+        default:
+            disarm()
+        }
     }
 
     // MARK: Rename in place
@@ -356,7 +498,7 @@ final class StemCellsSidebarView: UIScrollView {
 
     /// The drawn order's frames for the carried rows, and their union.
     private func heldFrame(order: [StemCellsRow], held: [StemCellsRow]) -> CGRect {
-        let result = StemCellsSidebarLayout.layout(Self.layoutRows(order), width: bounds.width)
+        let result = StemCellsSidebarLayout.layout(layoutRows(order), width: bounds.width)
         let ids = Set(held.map(\.id))
         return zip(order, result.frames).reduce(CGRect.null) { union, pair in ids.contains(pair.0.id) ? union.union(pair.1.box) : union }
     }
@@ -431,11 +573,11 @@ extension StemCellsSidebarView: UIDragInteractionDelegate {
         let point = session.location(in: self)
         // Asked at the lift, which may only ever show the menu: a carry not
         // yet under way is replaced.
-        guard carry?.link == nil, editing == nil, let view = row(at: point), let row = view.row,
+        guard !armed, carry?.link == nil, editing == nil, let view = row(at: point), let row = view.row,
               let drag = beginDrag?(row) else { return [] }
         // The carry's indices are the document's drawn rows: measured on
         // those, never on an order still held from a drop.
-        let frames = StemCellsSidebarLayout.layout(Self.layoutRows(rows), width: bounds.width).frames
+        let frames = StemCellsSidebarLayout.layout(layoutRows(rows), width: bounds.width).frames
         guard arranged == nil, let last = drag.units.last?.last, last < frames.count else { return [] }
         carry = Carry(drag: drag, start: point, hand: convert(point, to: superview), to: drag.from, heights: heights(drag, frames: frames))
         let item = UIDragItem(itemProvider: NSItemProvider())
@@ -483,7 +625,7 @@ extension StemCellsSidebarView: UIDragInteractionDelegate {
 
     /// The carried card the carry draws itself, with a lifted row's shadow,
     /// over everything in the window where the rows are.
-    private func float(_ session: any UIDragSession) {
+    private func float(hand: @escaping (UIWindow) -> CGPoint) {
         guard let window, let held = carry?.drag.held, let carried = carriedCard() else { return }
         let card = carried.card
         let room: CGFloat = 24
@@ -502,8 +644,8 @@ extension StemCellsSidebarView: UIDragInteractionDelegate {
         float.center = center
         floating?.card.removeFromSuperview()
         window.addSubview(float)
-        let hand = session.location(in: window)
-        floating = (float, CGPoint(x: center.x - hand.x, y: center.y - hand.y), held, session)
+        let at = hand(window)
+        floating = (float, CGPoint(x: center.x - at.x, y: center.y - at.y), held, hand)
         float.alpha = 0
         UIView.animate(withDuration: 0.15) { float.alpha = 1 }
     }
@@ -511,7 +653,7 @@ extension StemCellsSidebarView: UIDragInteractionDelegate {
     /// The floating card follows the finger.
     private func moveFloat() {
         guard let floating, let window = floating.card.window else { return }
-        let hand = floating.session.location(in: window)
+        let hand = floating.hand(window)
         floating.card.center = CGPoint(x: hand.x + floating.grab.x, y: hand.y + floating.grab.y)
     }
 
@@ -535,6 +677,23 @@ extension StemCellsSidebarView: UIDragInteractionDelegate {
         }
     }
 
+    /// The floating card flies to where its rows are drawn in `order` (or
+    /// back home) on its own, and the rows show once it's there.
+    private func land(in order: [StemCellsRow]?, home: Bool) {
+        guard let floating else { return }
+        self.floating = nil
+        let card = floating.card
+        let rect = heldFrame(order: order ?? rows, held: floating.held)
+        let target = rect.isNull ? nil : card.window.map { convert(CGPoint(x: rect.midX, y: rect.midY), to: $0) }
+        UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut]) {
+            if let target { card.center = target } else { card.alpha = 0 }
+        } completion: { [weak self] _ in
+            card.removeFromSuperview()
+            guard let self else { return }
+            if home { for view in views.values { view.isHidden = false } } else { landed() }
+        }
+    }
+
     func dragInteraction(_ interaction: UIDragInteraction, willAnimateLiftWith animator: any UIDragAnimating, session: any UIDragSession) {
         openHold(at: session.location(in: self))
     }
@@ -545,18 +704,23 @@ extension StemCellsSidebarView: UIDragInteractionDelegate {
         guard var carry else { return }
         if liftHidden {
             liftHidden = false
-            float(session)
+            float { session.location(in: $0) }
         }
-        onDragging?(true)
         StemCellsHaptics.play(.lift)
-        // The carried rows leave their slot; the gap is where they'll land.
+        startCarry(&carry)
+        self.carry = carry
+    }
+
+    /// The carried rows leave their slot (the gap is where they'll land) and
+    /// the list starts scrolling at its edges.
+    private func startCarry(_ carry: inout Carry) {
+        onDragging?(true)
         for row in carry.drag.held { views[row.id]?.isHidden = true }
         arrangedUntil?.cancel()
         arranged = carry.drag.order(to: carry.to)
         let link = CADisplayLink(target: self, selector: #selector(autoscroll(_:)))
         link.add(to: .main, forMode: .common)
         carry.link = link
-        self.carry = carry
     }
 
     func dragInteraction(_ interaction: UIDragInteraction, sessionIsRestrictedToDraggingApplication session: any UIDragSession) -> Bool { true }
@@ -609,6 +773,11 @@ extension StemCellsSidebarView: UIDropInteractionDelegate {
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, performDrop session: any UIDropSession) {
+        drop()
+    }
+
+    /// Set down where the gap is.
+    private func drop() {
         guard let carry else { return }
         let drag = carry.drag
         let to = carry.to

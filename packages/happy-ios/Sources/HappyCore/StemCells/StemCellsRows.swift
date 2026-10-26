@@ -228,7 +228,9 @@ public enum StemCellsRows {
         if row.workspaceId == nil, let agentId = row.agentId { row.workspaceId = places.agent(agentId)?.workspaceId }
         row.targetId = space.target.id
         row.sessions = sessionTree(conversation?.subtasks ?? [])
-        row.hasHiddenSessions = hasMissing(row.sessions, held: held)
+        row.hasHiddenSessions = hasMissing(row.sessions, under: node, held: held)
+        // Subtasks not yet in the sidebar: folded, and unfolding brings them.
+        if row.collapsed == nil, row.hasHiddenSessions { row.collapsed = true }
         row.hasShownSessions = node.children.contains { spaces[$0.id] == nil && places.agent($0.id) != nil }
         if space.target.kind == "surface" { row.surfaceType = places.surface(space.target.id)?.type }
         // A bot can always be archived; a task only where the daemon says so.
@@ -240,8 +242,16 @@ public enum StemCellsRows {
         agents.filter { $0.archivedAt == nil }.map { SidebarDocumentEdits.SessionTree(id: $0.id, children: sessionTree($0.subtasks ?? [])) }
     }
 
-    static func hasMissing(_ trees: [SidebarDocumentEdits.SessionTree], held: Set<String>) -> Bool {
-        trees.contains { !held.contains($0.id) || hasMissing($0.children, held: held) }
+    /// Whether showing `node`'s sessions would bring any, as
+    /// `revealSessions` walks them: one the document doesn't hold, or one
+    /// missing under a session nested here. A session held elsewhere is
+    /// that place's to show.
+    static func hasMissing(_ trees: [SidebarDocumentEdits.SessionTree], under node: SpaceSidebarNode, held: Set<String>) -> Bool {
+        trees.contains { tree in
+            guard held.contains(tree.id) else { return true }
+            guard let child = node.children.first(where: { $0.id == tree.id }) else { return false }
+            return hasMissing(tree.children, under: child, held: held)
+        }
     }
 
     private static func nested(_ nodes: [SpaceSidebarNode], depth: Int, spaces: [String: AgentWire.Space], places: StemCellsPlaces, agentIcons: [String: AgentWire.LibraryIcon], labels: Labels, held: Set<String>) -> [StemCellsRow] {
@@ -266,7 +276,9 @@ public enum StemCellsRows {
             )
             // A subtask's own subtasks show and hide under it as a row's do.
             row.sessions = sessionTree(agent.subtasks ?? [])
-            row.hasHiddenSessions = hasMissing(row.sessions, held: held)
+            row.hasHiddenSessions = hasMissing(row.sessions, under: node, held: held)
+            // Subtasks not yet in the sidebar: folded, and unfolding brings them.
+            if row.collapsed == nil, row.hasHiddenSessions { row.collapsed = true }
             row.hasShownSessions = node.children.contains { spaces[$0.id] == nil && places.agent($0.id) != nil }
             rows.append(row)
             rows.append(contentsOf: children)

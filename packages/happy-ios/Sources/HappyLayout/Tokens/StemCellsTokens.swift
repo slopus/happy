@@ -111,54 +111,76 @@ public enum StemCellsMetrics {
     /// into its ground; one sweep takes 1.6s.
     public static let sheenInk: CGFloat = 0.15
     public static let sheenDuration: Double = 1.6
-    // Desktop's sidebar at its own pixels, a point for a pixel: `Sidebar.tsx`
-    // (`SIDEBAR_ROW_HEIGHT` and the rest), `styles/sidebar.css`, `theme.css`.
+    // Desktop's sidebar at its own pixels (`Sidebar.tsx`: `SIDEBAR_ROW_HEIGHT`
+    // and the rest, `styles/sidebar.css`, `theme.css`), each twice over on
+    // the phone: rows, gaps, type, marks and lines all `phone` times desktop's.
+    /// How much bigger than desktop's the phone draws the sidebar.
+    public static let phone: CGFloat = 2
     /// The row box's inset from the screen's edges (`--happy-panel-inset`).
-    public static let inset: CGFloat = 6
+    public static let inset: CGFloat = 6 * phone
     /// Ink's inset inside the row box (`--happy-panel-row-padding`, `SIDEBAR_ROW_PADDING_X`).
-    public static let padding: CGFloat = 10
+    public static let padding: CGFloat = 10 * phone
     /// `SIDEBAR_ROW_HEIGHT`.
-    public static let rowHeight: CGFloat = 32
+    public static let rowHeight: CGFloat = 32 * phone
     /// `.happy-sidebar__section-item`.
-    public static let sectionHeight: CGFloat = 28
+    public static let sectionHeight: CGFloat = 28 * phone
     /// `.happy-sidebar__separator`.
-    public static let separatorHeight: CGFloat = 17
-    public static let widgetMinHeight: CGFloat = 32
+    public static let separatorHeight: CGFloat = 17 * phone
+    public static let widgetMinHeight: CGFloat = 32 * phone
     /// Between one row and the next (`SIDEBAR_ROW_GAP`).
-    public static let rowGap: CGFloat = 2
+    public static let rowGap: CGFloat = 2 * phone
     /// The leading lane every mark stands in (`SIDEBAR_LEADING_SLOT`, the `xs` avatar).
-    public static let mark: CGFloat = 20
+    public static let mark: CGFloat = 20 * phone
     /// A glyph's size in that lane.
-    public static let glyph: CGFloat = 16
+    public static let glyph: CGFloat = 16 * phone
     /// The row's flex gap: mark to label, label to trailing lane.
-    public static let markGap: CGFloat = 8
+    public static let markGap: CGFloat = 8 * phone
     /// Added per nesting level (`SIDEBAR_ROW_INDENT`).
-    public static let indent: CGFloat = 16
+    public static let indent: CGFloat = 16 * phone
     /// A nested row's branch box (`.happy-sidebar__item-branch`): 20 wide,
     /// pulled back 16, so its centre is the parent's stem; the elbow runs 9.
-    public static let branch: CGFloat = 20
-    public static let branchPull: CGFloat = 16
-    public static let elbow: CGFloat = 9
+    public static let branch: CGFloat = 20 * phone
+    public static let branchPull: CGFloat = 16 * phone
+    public static let elbow: CGFloat = 9 * phone
     /// How far under the parent's middle its stem starts (`SIDEBAR_BRANCH_STEM_INSET`).
-    public static let stemInset: CGFloat = 10
+    public static let stemInset: CGFloat = 10 * phone
     /// The trailing square a status mark, an unread dot or a fold stands in (`SIDEBAR_SLOT_CELL`).
-    public static let trailing: CGFloat = 18
-    public static let trailingGap: CGFloat = 8
+    public static let trailing: CGFloat = 18 * phone
+    public static let trailingGap: CGFloat = 8 * phone
     /// `.happy-sidebar__item-unread`.
-    public static let unreadDot: CGFloat = 6
+    public static let unreadDot: CGFloat = 6 * phone
     /// `--happy-hover-radius`.
-    public static let cornerRadius: CGFloat = 6
+    public static let cornerRadius: CGFloat = 6 * phone
     /// A picture's rounding in its lane: a rounded square, never a circle.
-    public static let pictureRadius: CGFloat = 6
+    public static let pictureRadius: CGFloat = 6 * phone
     /// `.happy-sidebar__item-label`: 13, weight 500, line 16.
-    public static let labelSize: CGFloat = 13
+    public static let labelSize: CGFloat = 13 * phone
     /// `.happy-sidebar__section-item-label`: mono 11, bold.
-    public static let sectionLabelSize: CGFloat = 11
+    public static let sectionLabelSize: CGFloat = 11 * phone
     /// `letter-spacing: 0.08em`.
     public static let sectionTracking: CGFloat = 0.08
+    /// The tree's lines and a separator's rule.
+    public static let line: CGFloat = 1 * phone
+    /// The fold's chevron, the question and the clock in the trailing square.
+    public static let chevronGlyph: CGFloat = 12 * phone
+    public static let questionGlyph: CGFloat = 15 * phone
+    public static let clockGlyph: CGFloat = 14 * phone
+    /// A section's "+".
+    public static let addGlyph: CGFloat = 14 * phone
     /// The tree's lines, at 0.28 of the row ink.
     public static let connectorAlpha: CGFloat = 0.28
     /// Room above the first row and below the last (`.happy-sidebar__body-content`).
-    public static let contentTop: CGFloat = 6
-    public static let contentBottom: CGFloat = 6
+    public static let contentTop: CGFloat = 6 * phone
+    public static let contentBottom: CGFloat = 6 * phone
+}
+
+extension ChatTextStyles {
+    /// A message from another agent (`agent-activity-row.css`): its sender,
+    /// what it said it is, and the message opened under them.
+    public static let stemCellsActivityVerb = ChatTextStyle(.figtree(.medium), size: 14, lineHeight: 20)
+    public static let stemCellsActivityText = ChatTextStyle(.figtree(.regular), size: 14, lineHeight: 20)
+    public static let stemCellsActivityBody = ChatTextStyle(.figtree(.regular), size: 12, lineHeight: 18)
+    public static func stemCellsActivityHeader(_ level: Int) -> ChatTextStyle {
+        ChatTextStyle(.figtree(.semibold), size: 12, lineHeight: 18)
+    }
 }

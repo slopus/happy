@@ -6,8 +6,9 @@ import Foundation
 /// regular width, and the screen's height less 12 above and below, the top
 /// inset and the bottom safe area, at most 460. In it the conversation's
 /// newest messages rest at the foot under its name in a capsule, 10 from
-/// the top, 44 tall and 16 in on either side of the name. Older messages
-/// fade out going up under the capsule, so none shows cut above it.
+/// the top, 44 tall and 16 in on either side of the name. Above the list
+/// the card's own ground covers the messages down to the capsule's foot and
+/// lets them in over the next 24, so older ones go into the card unseen.
 public struct StemCellsPreviewLayout: Equatable, Sendable {
     public enum Metrics {
         public static let inset: CGFloat = 12
@@ -38,7 +39,8 @@ public struct StemCellsPreviewLayout: Equatable, Sendable {
     /// The messages' insets inside the card.
     public var listTop: CGFloat
     public var listBottom: CGFloat
-    /// Where the messages are gone (the capsule's foot) and where they are whole.
+    /// The ground over the messages: whole down to `fadeClear` (the
+    /// capsule's foot), gone by `fadeOpaque`.
     public var fadeClear: CGFloat
     public var fadeOpaque: CGFloat
 

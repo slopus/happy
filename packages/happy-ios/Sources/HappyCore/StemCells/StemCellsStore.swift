@@ -677,14 +677,15 @@ public actor StemCellsStore {
     /// Makes new work right below Happy's row. The row and its conversation
     /// exist here at once and the daemon is told after; the first message
     /// waits for `created`.
-    public func createStemCell() -> StemCellCreation {
+    /// New work: below Happy, or at the top of the section `sectionId`.
+    public func createStemCell(sectionId: String? = nil) -> StemCellCreation {
         let spaceId = ClientID.make()
         let mutationId = ClientID.make()
         let identity = StemCellIdentity.make()
         let happySpaceId = snapshot.happySpaceId
         let named = capabilities.stemCellIdentities == true
         creating.insert(spaceId)
-        inserts.append((spaceId, nil, happySpaceId))
+        inserts.append((spaceId, sectionId, happySpaceId))
         let now = Date().timeIntervalSince1970 * 1000
         // Version 0 is older than anything the daemon says about it.
         spaces[spaceId] = AgentWire.Space(
@@ -700,7 +701,7 @@ public actor StemCellsStore {
                 var response: AgentWire.CreateStemCellResponse?
                 for attempt in 0..<4 {
                     do {
-                        response = try await client.createStemCell(id: spaceId, mutationId: mutationId, sectionId: nil, identity: named ? identity : nil)
+                        response = try await client.createStemCell(id: spaceId, mutationId: mutationId, sectionId: sectionId, identity: named ? identity : nil)
                         break
                     } catch let error as DirectAgentError where (error.status ?? 500) < 500 {
                         throw error

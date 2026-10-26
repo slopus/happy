@@ -21,13 +21,17 @@ public enum StemCellsSidebarLayout {
         /// Rows nested under it fold: its chevron takes the trailing square,
         /// and a status or dot stands just before it.
         public var hasFold: Bool
+        /// A section heading's "+", which makes new work in it: one square
+        /// before its fold, always shown.
+        public var hasAdd: Bool
 
-        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasFold: Bool = false) {
+        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasFold: Bool = false, hasAdd: Bool = false) {
             self.kind = kind
             self.depth = depth
             self.hasMark = hasMark
             self.hasTrailing = hasTrailing
             self.hasFold = hasFold
+            self.hasAdd = hasAdd
         }
     }
 
@@ -41,13 +45,15 @@ public enum StemCellsSidebarLayout {
         public var trailing: CGRect?
         /// A section's fold chevron, on the same trailing column.
         public var chevron: CGRect?
+        /// A section's "+", one square before its fold.
+        public var add: CGRect?
         /// A separator's hairline, across the row box's whole width.
         public var rule: CGRect?
     }
 
     public struct Result: Equatable, Sendable {
         public var frames: [Frame]
-        /// The tree's lines: vertical stems and the elbows into nested rows, 1pt wide.
+        /// The tree's lines: vertical stems and the elbows into nested rows, `line` wide.
         public var connectors: [CGRect]
         public var contentHeight: CGFloat
     }
@@ -75,15 +81,21 @@ public enum StemCellsSidebarLayout {
             let midY = y + height / 2
             let inkRight = boxX + boxWidth - M.padding
             let trailingRect = CGRect(x: inkRight - M.trailing, y: midY - M.trailing / 2, width: M.trailing, height: M.trailing)
-            var frame = Frame(box: box, mark: nil, label: .zero, trailing: nil, chevron: nil, rule: nil)
+            var frame = Frame(box: box, mark: nil, label: .zero, trailing: nil, chevron: nil, add: nil, rule: nil)
             switch row.kind {
             case .separator:
-                frame.rule = CGRect(x: boxX, y: (midY - 0.5).rounded(.down), width: boxWidth, height: 1)
+                frame.rule = CGRect(x: boxX, y: (midY - M.line / 2).rounded(.down), width: boxWidth, height: M.line)
             case .section:
                 // The title keeps clear of the fold's lane (`padding-right:
                 // row padding + 22`), so showing the fold moves nothing.
                 let x = boxX + M.padding
-                frame.label = CGRect(x: x, y: y, width: max(0, trailingRect.minX - sectionFoldGap - x), height: height)
+                var end = trailingRect.minX
+                if row.hasAdd {
+                    let add = trailingRect.offsetBy(dx: -(M.trailing + M.trailingGap), dy: 0)
+                    frame.add = add
+                    end = add.minX
+                }
+                frame.label = CGRect(x: x, y: y, width: max(0, end - sectionFoldGap - x), height: height)
                 frame.chevron = trailingRect
             case .widget, .row:
                 var x = leadingX(depth: row.depth)
@@ -111,7 +123,7 @@ public enum StemCellsSidebarLayout {
     }
 
     /// Between a section's title and its fold: `22 − 18`.
-    static let sectionFoldGap: CGFloat = 4
+    static let sectionFoldGap: CGFloat = 4 * StemCellsMetrics.phone
 
     /// Where a row's mark (or, without one, its label) starts. A nested row is
     /// padded `SIDEBAR_ROW_INDENT` per level and leads with its branch box,
@@ -144,10 +156,10 @@ public enum StemCellsSidebarLayout {
             let kids = children[parent] ?? []
             let stemX = M.inset + M.padding + CGFloat(rows[parent].depth) * M.indent + M.branch / 2
             let top = frames[parent].box.midY + M.stemInset
-            let bottom = (kids.map { frames[$0].box.midY }.max() ?? top) + 1
-            lines.append(CGRect(x: stemX - 0.5, y: top, width: 1, height: max(0, bottom - top)))
+            let bottom = (kids.map { frames[$0].box.midY }.max() ?? top) + M.line
+            lines.append(CGRect(x: stemX - M.line / 2, y: top, width: M.line, height: max(0, bottom - top)))
             for kid in kids {
-                lines.append(CGRect(x: stemX + 0.5, y: frames[kid].box.midY, width: M.elbow, height: 1))
+                lines.append(CGRect(x: stemX + M.line / 2, y: frames[kid].box.midY, width: M.elbow, height: M.line))
             }
         }
         return lines

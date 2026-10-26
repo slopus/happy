@@ -26,6 +26,8 @@ final class StemCellChatViewController: UIViewController {
     private let opensFocused: Bool
     private let previewing: Bool
     private let previewPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+    /// The card's ground over the messages above the list, fading out under the capsule.
+    private let previewFade = StemCellsPreviewFadeView()
     private let previewTitle = UILabel()
     private var intro: Intro?
     private let planner: StemCellChatPlanner
@@ -43,7 +45,9 @@ final class StemCellChatViewController: UIViewController {
     private var chat = StemCellChatSnapshot()
     private var following: Task<Void, Never>?
     private var planning: Task<Void, Never>?
-    private var planned: (items: [StemCellChatItem], key: StemCellChatPlanner.Key, copied: String?, proposals: [String: StemCellProposalShown])?
+    private var planned: (items: [StemCellChatItem], key: StemCellChatPlanner.Key, copied: String?, opened: Set<String>, proposals: [String: StemCellProposalShown])?
+    /// Other agents' messages opened to read, for this screen's life.
+    private var opened = Set<String>()
     /// The sidebar proposals the transcript shows, and their cards by row.
     private let proposals: StemCellSidebarProposals
     private var proposalViews: [String: StemCellSidebarProposalView] = [:]
@@ -52,8 +56,6 @@ final class StemCellChatViewController: UIViewController {
     private var sidebarRows: [StemCellsRow] = []
     /// What the references messages make read as and open.
     private var references = StemCellReferences()
-    /// A preview's messages fading out under its name.
-    private let previewFade = CAGradientLayer()
     private var watch: StemCellsWatch?
     private var modelsWatch: StemCellsWatch?
     private var copied: (id: String, until: Task<Void, Never>)?
@@ -289,7 +291,7 @@ final class StemCellChatViewController: UIViewController {
     }
 
     private var planKey: StemCellChatPlanner.Key {
-        StemCellChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: references)
+        StemCellChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: references, subagentTitles: chat.subagentTitles)
     }
 
     /// Plans the rows off the main thread, then shows them in one frame.
@@ -305,12 +307,13 @@ final class StemCellChatViewController: UIViewController {
         }
         let copiedId = copied?.id
         let shown = proposals.shown
-        if let planned, planned.items == items, planned.key == key, planned.copied == copiedId, planned.proposals == shown { return }
-        planned = (items, key, copiedId, shown)
+        let opened = opened
+        if let planned, planned.items == items, planned.key == key, planned.copied == copiedId, planned.opened == opened, planned.proposals == shown { return }
+        planned = (items, key, copiedId, opened, shown)
         planning?.cancel()
         let planner = planner
         planning = Task { [weak self] in
-            let plans = await planner.plans(items, key: key, copied: copiedId, proposals: shown)
+            let plans = await planner.plans(items, key: key, copied: copiedId, opened: opened, proposals: shown)
             guard !Task.isCancelled, let self else { return }
             self.shownProposals = shown
             self.show(plans)
@@ -441,6 +444,7 @@ final class StemCellChatViewController: UIViewController {
         previewTitle.textAlignment = .center
         previewTitle.lineBreakMode = .byTruncatingTail
         previewPill.contentView.addSubview(previewTitle)
+        view.addSubview(previewFade)
         view.addSubview(previewPill)
     }
 
@@ -453,22 +457,19 @@ final class StemCellChatViewController: UIViewController {
         let insets = UIEdgeInsets(top: layout.listTop, left: 0, bottom: layout.listBottom, right: 0)
         if scrollView.contentInset != insets { scrollView.contentInset = insets }
         layoutTranscript()
-        let height = max(1, view.bounds.height)
-        previewFade.colors = [UIColor.clear.cgColor, UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor]
-        previewFade.locations = [0, layout.fadeClear / height, layout.fadeOpaque / height, 1].map { NSNumber(value: Double($0)) }
-        placePreviewFade()
+        previewFade.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: layout.fadeOpaque)
+        previewFade.clearFrom = layout.fadeClear / max(1, layout.fadeOpaque)
     }
 
-    /// The fade sits still over the card while the messages move under it:
-    /// the mask is in the scroll view's own (scrolling) coordinates.
-    private func placePreviewFade() {
+    /// The newest message, taller than the card, shows from its start.
+    private func showNewestFromItsStart() {
         guard previewing else { return }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        previewFade.frame = scrollView.bounds
-        // Only when there is more above than fits: a short conversation shows whole.
-        scrollView.layer.mask = scrollView.contentOffset.y > -scrollView.contentInset.top + 0.5 ? previewFade : nil
-        CATransaction.commit()
+        let views: [UIView] = [introView] + plans.compactMap { rowViews[$0.id] }
+        if let newest = views.last(where: { $0.frame.height > 0 }), newest.frame.minY - scrollView.contentOffset.y < scrollView.contentInset.top {
+            scrollView.contentOffset.y = newest.frame.minY - scrollView.contentInset.top
+        }
+        // Nothing scrolled under the title: nothing to fade, and the first line stays whole.
+        previewFade.isHidden = scrollView.contentOffset.y <= -scrollView.contentInset.top + 0.5
     }
 
     private func layoutTranscript() {
@@ -503,6 +504,7 @@ final class StemCellChatViewController: UIViewController {
             // Shorter than the place it was read at (a section folded): no gap under the end.
             scrollView.contentOffset.y = newestOffset
         }
+        showNewestFromItsStart()
     }
 
     private var newestOffset: CGFloat {
@@ -608,11 +610,22 @@ final class StemCellChatViewController: UIViewController {
                 open(key)
             case .openArtifact(let artifact):
                 navigationController?.pushViewController(StemCellArtifactViewController(session: session, artifact: artifact), animated: true)
+            case .toggleTool(let messageId):
+                toggle(messageId)
             default:
                 break
             }
             return
         }
+    }
+
+    /// Opens or closes another agent's message where it is, as the
+    /// conversation grows anywhere: read at the newest, it stays there.
+    private func toggle(_ messageId: String) {
+        if opened.remove(messageId) == nil { opened.insert(messageId) }
+        // It opens where the finger is, not pulled up after the newest line.
+        followsNewest = false
+        replan()
     }
 
     /// What a message names, opened over this one: a conversation, or an
@@ -789,7 +802,6 @@ private extension ChatDrawItem {
 
 extension StemCellChatViewController: UIScrollViewDelegate {
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        placePreviewFade()
         guard scrollView.isTracking || scrollView.isDecelerating else { return }
         followsNewest = scrollView.contentOffset.y >= newestOffset - 24
         if scrollView.contentOffset.y < 200 - scrollView.contentInset.top, chat.hasMore {
@@ -799,4 +811,33 @@ extension StemCellChatViewController: UIScrollViewDelegate {
     }
 }
 
+/// The preview card's own ground, whole and then none of it: the same
+/// colour to its own clear, so it draws nothing but the messages going.
+final class StemCellsPreviewFadeView: UIView {
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+
+    /// Where, from 0 at the top to 1 at the foot, the ground starts to go.
+    var clearFrom: CGFloat = 0 {
+        didSet { if clearFrom != oldValue { update() } }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        update()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
+            self.update()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func update() {
+        guard let layer = layer as? CAGradientLayer else { return }
+        let ground = UIColor(Palette.surface).resolvedColor(with: traitCollection)
+        layer.colors = [ground.cgColor, ground.cgColor, ground.withAlphaComponent(0).cgColor]
+        layer.locations = [0, NSNumber(value: Double(clearFrom)), 1]
+    }
+}
 #endif

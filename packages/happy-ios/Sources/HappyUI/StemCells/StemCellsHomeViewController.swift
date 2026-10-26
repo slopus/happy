@@ -72,6 +72,7 @@ final class StemCellsHomeViewController: UIViewController {
         }
         sidebar.onSelect = { [weak self] row in self?.open(row) }
         sidebar.onFold = { [weak self] row in self?.fold(row) }
+        sidebar.onAdd = { [weak self] row in self?.makeNewWork(in: row.nodeId) }
         sidebar.menu = { [weak self] row in self?.menu(for: row) }
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
@@ -94,6 +95,12 @@ final class StemCellsHomeViewController: UIViewController {
         attach()
         sidebar.selectedRowId = session?.selectedRowId
         if let store = session?.store { Task { await store.attentionVisibleUpdate(true) } }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // A row lifted from its menu goes back before another screen covers it.
+        sidebar.disarm(animated: false)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -171,6 +178,7 @@ final class StemCellsHomeViewController: UIViewController {
 
     /// A pick here is what the next new work is sent with.
     private func pick(_ kind: StemCellModelPickers.Kind) {
+        sidebar.disarm()
         guard let models = session?.models, let mode = models.newWorkMode else {
             session?.models.load()
             return
@@ -290,18 +298,23 @@ final class StemCellsHomeViewController: UIViewController {
     private func fold(_ row: StemCellsRow) {
         guard let store = session?.store else { return }
         StemCellsHaptics.play(.fold)
+        // A row with subtasks the sidebar doesn't hold yet brings them, open.
+        if row.hasHiddenSessions {
+            Task { await store.attentionInput(); await store.revealSessions(row.nodeId, sessions: row.sessions) }
+            return
+        }
         Task { await store.attentionInput(); await store.fold(row.nodeId) }
     }
 
     /// New work, right below Happy: the row and its empty conversation exist
     /// at once, and the conversation opens on the intro with the composer up.
-    func makeNewWork() {
+    func makeNewWork(in sectionId: String? = nil) {
         guard let session, !creating, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         creating = true
         StemCellsHaptics.play(.newWork)
         let store = session.store
         Task { @MainActor in
-            let creation = await store.createStemCell()
+            let creation = await store.createStemCell(sectionId: sectionId)
             creating = false
             let rowId = "space:\(creation.spaceId)"
             session.selectedRowId = rowId
@@ -313,54 +326,34 @@ final class StemCellsHomeViewController: UIViewController {
 
     // MARK: Menus
 
-    /// What a hold on `row` offers, in groups as Telegram parts them. Each
-    /// runs once the preview has gone (a rename needs the keyboard).
+    /// What a hold on `row` offers: renaming it, moving it, and putting it
+    /// away (leaving or archiving, a section's heading deleted), each run
+    /// once the preview has gone (a rename needs the keyboard).
     private func menu(for row: StemCellsRow) -> [[StemCellsMenuItem]]? {
-        guard let session else { return nil }
+        guard let session, [.space, .session, .section].contains(row.kind) else { return nil }
         let store = session.store
-        let fold = StemCellsMenuItem(title: row.collapsed == true ? Strings.StemCells.unfold : Strings.StemCells.fold, icon: row.collapsed == true ? "chevron-down" : "chevron-right") { [weak self] in self?.fold(row) }
-        let rename = renaming(row).map { rename in StemCellsMenuItem(title: rename.title, icon: "pencil", run: rename.begin) }
-        let subtasks = [
-            row.hasHiddenSessions ? StemCellsMenuItem(title: Strings.StemCells.showSubtasks, icon: "eye") { Task { await store.revealSessions(row.nodeId, sessions: row.sessions) } } : nil,
-            row.hasShownSessions ? StemCellsMenuItem(title: Strings.StemCells.hideSubtasks, icon: "eye-off") { Task { await store.hideSessions(row.nodeId) } } : nil,
-        ].compactMap { $0 }
+        var first: [StemCellsMenuItem] = []
+        if let rename = renaming(row) { first.append(StemCellsMenuItem(title: rename.title, icon: "pencil", run: rename.begin)) }
+        if beginDrag(row) != nil {
+            first.append(StemCellsMenuItem(title: Strings.StemCells.reorder, icon: "reorder") { [weak self] in self?.sidebar.armReorder(row.id) })
+        }
         // HappyAgentSpacesSidebar's menus: new work closes from here and
         // only from here; other work is left or archived.
-        let leaving = closing(row).map { act in
+        var leaving = closing(row).map { act in
             StemCellsMenuItem(title: act.title, icon: act.icon, destructive: act.destructive) {
                 StemCellsHaptics.play(.putAway)
                 act.run()
             }
         }
-        var groups: [[StemCellsMenuItem]]
-        switch row.kind {
-        case .section:
+        if row.kind == .section {
             // Only the heading goes: its rows join the block above.
-            groups = [[fold] + [rename].compactMap { $0 }, [
-                StemCellsMenuItem(title: Strings.StemCells.deleteSection, icon: "trash", destructive: true) {
-                    StemCellsHaptics.play(.putAway)
-                    Task { await store.attentionInput(); await store.removeSection(row.nodeId) }
-                },
-            ]]
-        case .space:
-            // Opening comes first, then what the row shows under it.
-            let open = StemCellsMenuItem(title: row.targetKind == "bot" ? Strings.StemCells.openBot : Strings.StemCells.open, icon: "open") { [weak self] in self?.open(row) }
-            var first = [open] + (row.collapsed != nil ? [fold] : []) + subtasks
-            if row.isHappy {
-                groups = [first, [StemCellsMenuItem(title: Strings.StemCells.tidyNow, icon: "list") { Task { await store.tidy() } }]]
-                break
-            }
-            if let rename { first.append(rename) }
-            groups = [first, leaving]
-        case .session:
-            // A subtask as desktop offers it: no rename (its title is the
-            // agent's own), its subtasks, and archiving it.
-            let open = StemCellsMenuItem(title: Strings.StemCells.open, icon: "open") { [weak self] in self?.open(row) }
-            groups = [[open] + (row.collapsed != nil ? [fold] : []) + subtasks, leaving]
-        default:
-            return nil
+            leaving.append(StemCellsMenuItem(title: Strings.StemCells.deleteSection, icon: "trash", destructive: true) {
+                StemCellsHaptics.play(.putAway)
+                Task { await store.attentionInput(); await store.removeSection(row.nodeId) }
+            })
         }
-        return groups.filter { !$0.isEmpty }
+        let groups = [first, leaving].filter { !$0.isEmpty }
+        return groups.isEmpty ? nil : groups
     }
 
     /// A row's rename, when it has one: a section's heading, a task's or a

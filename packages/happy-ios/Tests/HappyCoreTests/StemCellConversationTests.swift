@@ -36,6 +36,25 @@ final class StemCellConversationTests: XCTestCase {
         XCTAssertNil(StemCellConversation.grow(message("Hel"), block: 2, offset: 0, append: "x"))
     }
 
+    func testAnotherAgentsMessageIsACollaboratorsButNeverItsOwnOrItsParents() throws {
+        let json = #"{"id":"m","role":"agent","createdAt":1,"content":[{"type":"text","text":"Collaborator c1 finished working."}],"metadata":{"senderAgentId":"c1","senderAgentExplanation":"Finished: final answer"}}"#
+        let message = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))
+        XCTAssertEqual(message.metadata, AgentWire.MessageMetadata(senderAgentId: "c1", senderAgentExplanation: "Finished: final answer"))
+        let sender = StemCellConversation.collaborator(message, agentId: "me", parentAgentId: "boss")
+        XCTAssertEqual(sender?.agentId, "c1")
+        XCTAssertEqual(sender?.explanation, "Finished: final answer")
+        // Driving itself, or the agent that manages it: dialogue, not a row.
+        XCTAssertNil(StemCellConversation.collaborator(message, agentId: "c1", parentAgentId: nil))
+        XCTAssertNil(StemCellConversation.collaborator(message, agentId: "me", parentAgentId: "c1"))
+        // Typed by the person: no sender at all.
+        XCTAssertNil(StemCellConversation.collaborator(self.message("hi"), agentId: "me", parentAgentId: nil))
+    }
+
+    func testTheDaemonsAddressingLineIsTrimmed() {
+        XCTAssertEqual(StemCellConversation.inboundText("Message from agent c1:\n\nDone.", agentId: "c1"), "Done.")
+        XCTAssertEqual(StemCellConversation.inboundText("Message from agent c2: Done.", agentId: "c1"), "Message from agent c2: Done.")
+    }
+
     func testAMessageWithoutAPictureBytesStillDecodes() throws {
         let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"},{"type":"image","mimeType":"image/png"}],"metadata":{}}"#
         let decoded = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))

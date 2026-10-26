@@ -78,6 +78,47 @@ final class StemCellsUITests: XCTestCase {
         }
     }
 
+    /// A tap on a row's chevron, at its trailing end.
+    private func tapChevron(_ row: XCUIElement) {
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: row.frame.maxX - 25, dy: row.frame.midY)).tap()
+    }
+
+    /// Opens every folded section, top to bottom.
+    private func openFoldedSections() {
+        let sections = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:section:"))
+        for id in sections.allElementsBoundByIndex.map(\.identifier) {
+            let section = app.descendants(matching: .any)[id]
+            bringIntoView(section)
+            pause(0.5)
+            let under = rowUnder(section)
+            if under == nil || under!.identifier.hasPrefix("stem-row:section:") || under!.identifier.hasPrefix("stem-row:separator") {
+                tapChevron(section)
+                pause(1)
+            }
+        }
+    }
+
+    /// The row drawn right under `row`, if any.
+    private func rowUnder(_ row: XCUIElement) -> XCUIElement? {
+        let bottom = row.frame.maxY
+        guard let under = shownRows("stem-row:").filter({ $0.frame.minY >= bottom - 1 }).min(by: { $0.frame.minY < $1.frame.minY }) else { return nil }
+        return app.descendants(matching: .any)[under.identifier].firstMatch
+    }
+
+    /// The drawn rows whose identifier starts with `prefix`, read from one
+    /// snapshot: the sidebar moves rows while they are read one by one, and an
+    /// element gone by its turn fails the test.
+    private func shownRows(_ prefix: String) -> [(identifier: String, frame: CGRect)] {
+        guard let root = try? app.snapshot() else { return [] }
+        var rows: [(identifier: String, frame: CGRect)] = []
+        func walk(_ node: XCUIElementSnapshot) {
+            if node.identifier.hasPrefix(prefix), node.frame.height > 0 { rows.append((node.identifier, node.frame)) }
+            node.children.forEach(walk)
+        }
+        walk(root)
+        return rows
+    }
+
     private func pause(_ seconds: TimeInterval) {
         Thread.sleep(forTimeInterval: seconds)
     }
@@ -241,7 +282,12 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(menu.exists, "no menu under the preview")
         XCTAssertEqual(menu.frame.minY, preview.frame.maxY + 10, accuracy: 0.5)
         XCTAssertEqual(menu.frame.maxX, preview.frame.maxX, accuracy: 0.5)
-        XCTAssertTrue(menu.buttons["Open"].exists, "no Open in the menu")
+        // Only what changes the row: its name, its place, putting it away.
+        XCTAssertTrue(menu.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Rename")).count == 1, "no Rename in the menu")
+        XCTAssertTrue(menu.buttons["Reorder"].exists, "no Reorder in the menu")
+        for gone in ["Open", "Show subtasks", "Hide subtasks", "Collapse", "Expand", "Mark as read", "Mark as unread"] {
+            XCTAssertFalse(menu.buttons[gone].exists, "the menu still offers \(gone)")
+        }
         pause(1.5)
         capture("hold-preview")
         // Let go, it stayed; a tap on it opens the conversation.
@@ -340,12 +386,19 @@ final class StemCellsUITests: XCTestCase {
         let sections = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:section:"))
         // A section, carried over the section above it (past its whole block,
         // as desktop asks: a neighbour is passed by half its height).
-        let shown = sections.allElementsBoundByIndex.filter { $0.frame.minY > app.frame.height * 0.12 && $0.frame.maxY < app.frame.height * 0.75 }.sorted { $0.frame.minY < $1.frame.minY }
-        // Far enough apart that the hold turns into a carry (a small move keeps the menu).
-        if let index = shown.indices.dropFirst().first(where: { shown[$0].frame.minY - shown[$0 - 1].frame.minY > 100 }) {
+        // Twice desktop's size, two open sections rarely share the screen:
+        // the upper one folded brings the lower up under it.
+        let heads = sections.allElementsBoundByIndex.filter { $0.frame.height > 0 }.sorted { $0.frame.minY < $1.frame.minY }
+        if heads.count > 1 {
             // By identifier: an element bound by index is another row once the order changes.
-            let section = app.descendants(matching: .any)[shown[index].identifier]
-            let top = app.descendants(matching: .any)[shown[index - 1].identifier]
+            let section = app.descendants(matching: .any)[heads[heads.count - 1].identifier]
+            let top = app.descendants(matching: .any)[heads[heads.count - 2].identifier]
+            bringIntoView(top)
+            pause(1)
+            let folded = rowUnder(top)?.identifier != section.identifier
+            if folded { tapChevron(top); pause(1.5) }
+            bringIntoView(section)
+            pause(1)
             capture("reorder-section-before")
             section.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2, thenDragTo: top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)), withVelocity: .slow, thenHoldForDuration: 0.8)
             capture("reorder-section-held")
@@ -353,8 +406,93 @@ final class StemCellsUITests: XCTestCase {
             // Checked at once: Prioritizing may tidy the sidebar again after.
             capture("reorder-section")
             XCTAssertLessThan(section.frame.minY, top.frame.minY, "the section did not land over the one above")
+            // Opened again, as the run found it.
+            if folded { tapChevron(top); pause(1) }
         } else {
-            XCTFail("no two sections on screen far enough apart")
+            XCTFail("no two sections")
+        }
+    }
+
+    /// Reorder from the menu: the menu goes and the row stays lifted where
+    /// it was; a finger put down anywhere then carries it, and where it's
+    /// let go it stays. A tap instead puts it back.
+    func testReorderFromMenu() {
+        home()
+        pause(1)
+        let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:space:"))
+        func order() -> [String] {
+            let ids = rows.allElementsBoundByIndex.filter { $0.frame.height > 0 && $0.frame.minY > app.frame.height * 0.12 && $0.frame.maxY < app.frame.height * 0.8 }.sorted { $0.frame.minY < $1.frame.minY }.map { $0.identifier }
+            return ids.filter { id in ids.filter { $0 == id }.count == 1 }
+        }
+        let all = order()
+        guard all.count > 4 else { return XCTFail("too few rows to reorder: \(all)") }
+        let moving = app.descendants(matching: .any)[all[3]]
+        let target = app.descendants(matching: .any)[all[1]]
+        let from = moving.frame
+        let to = target.frame
+
+        // A tap puts it back where it was.
+        moving.press(forDuration: 1.0)
+        let reorder = app.buttons["Reorder"]
+        XCTAssertTrue(reorder.waitForExistence(timeout: 3), "no Reorder in the menu")
+        reorder.tap()
+        XCTAssertTrue(until(2) { !app.descendants(matching: .any)["stem-hold-menu"].exists }, "the menu stayed")
+        XCTAssertTrue(app.descendants(matching: .any)["stem-lifted"].waitForExistence(timeout: 2), "Reorder lifted nothing")
+        pause(0.8)
+        capture("reorder-armed")
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: from.midX, dy: from.midY)).tap()
+        pause(1)
+        XCTAssertEqual(order(), all, "a tap moved the lifted row")
+
+        // Lifted again: a finger down on it, moved up two rows, let go.
+        moving.press(forDuration: 1.0)
+        XCTAssertTrue(reorder.waitForExistence(timeout: 3))
+        reorder.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-lifted"].waitForExistence(timeout: 2), "Reorder lifted nothing")
+        pause(1)
+        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: from.midX, dy: from.midY))
+        let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: to.midX, dy: to.minY + to.height * 0.2))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.5)
+        pause(2)
+        capture("reorder-menu-dropped")
+        let after = order()
+        let landed = after.firstIndex(of: all[3]) ?? -1
+        XCTAssertTrue(landed >= 0 && landed < (after.firstIndex(of: all[1]) ?? -1) && landed > (after.firstIndex(of: all[0]) ?? -1), "the row didn't stay where it was let go: \(after)")
+        pause(3)
+        XCTAssertEqual(order().firstIndex(of: all[3]), landed, "the row went back")
+    }
+
+    /// A section's "+" makes new work right under its heading.
+    func testSectionAdd() {
+        home()
+        pause(1)
+        let sections = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:section:"))
+        guard let shown = sections.allElementsBoundByIndex.filter({ $0.frame.height > 0 }).min(by: { $0.frame.minY < $1.frame.minY }) else {
+            return XCTFail("no section")
+        }
+        let section = app.descendants(matching: .any)[shown.identifier]
+        bringIntoView(section)
+        pause(1)
+        // Open, so what's made under it shows.
+        if let under = rowUnder(section), under.identifier.hasPrefix("stem-row:section:") || under.frame.minY > section.frame.maxY + 40 { tapChevron(section); pause(1) }
+        capture("section-add-before")
+        // The "+" stands just before the chevron: 102 points in from the row's end.
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: section.frame.maxX - 102, dy: section.frame.midY)).tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 6), "the + opened no new work")
+        pause(1)
+        capture("section-add-opened")
+        app.navigationBars.buttons.firstMatch.tap()
+        pause(1.5)
+        let made = rowUnder(section)
+        XCTAssertEqual(made?.identifier, "stem-row:space:New", "the new work isn't right under its section")
+        capture("section-add-made")
+        // Put away again.
+        if let made {
+            made.press(forDuration: 1.0)
+            let close = app.buttons["Close new work"]
+            XCTAssertTrue(close.waitForExistence(timeout: 3), "new work offered no close")
+            close.tap()
+            pause(2)
         }
     }
 
@@ -499,22 +637,24 @@ final class StemCellsUITests: XCTestCase {
         pause(1.5)
         for label in ["Plan Lisbon trip", "Refactor billing service"] {
             let task = row("space", label)
-            XCTAssertTrue(task.waitForExistence(timeout: 5))
+            // Prioritizing may have filed it under a folded section.
+            if !task.waitForExistence(timeout: 3) { openFoldedSections() }
+            XCTAssertTrue(task.waitForExistence(timeout: 5), "no \(label)")
             // Into the middle of the screen, clear of the dock, and still.
             bringIntoView(task)
-            task.press(forDuration: 1.0)
-            let show = app.buttons["Show subtasks"]
-            // Already shown from an earlier run: hide them, then show them again.
-            if !show.waitForExistence(timeout: 2), app.buttons["Hide subtasks"].exists {
-                pause(1)
-                app.buttons["Hide subtasks"].tap()
-                pause(2)
-                task.press(forDuration: 1.0)
-            }
-            XCTAssertTrue(show.waitForExistence(timeout: 3), "\(label) offered no subtasks")
             pause(1)
-            show.tap()
-            pause(2)
+            // Its chevron unfolds it, bringing subtasks the sidebar didn't
+            // hold yet; open from an earlier run, it folds and opens again.
+            // (A closure over `task`: a local function in a loop keeps the first turn's.)
+            // Open: a subtask among the rows right under it (a task set under it may come first).
+            let open: (XCUIElement) -> Bool = { [unowned self] task in
+                let below = task.frame
+                return shownRows("stem-row:session:").contains { $0.frame.minY >= below.maxY - 1 && $0.frame.minY < below.maxY + below.height * 3 }
+            }
+            if open(task) { tapChevron(task); XCTAssertTrue(until(2) { !open(task) }, "\(label) didn't fold") }
+            tapChevron(task)
+            XCTAssertTrue(until(5) { open(task) }, "\(label)'s chevron showed no subtasks")
+            pause(1.5)
         }
         let sessions = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:session:"))
         XCTAssertTrue(sessions.firstMatch.waitForExistence(timeout: 5), "no subtask showed under its task")
@@ -1348,16 +1488,11 @@ final class StemCellsUITests: XCTestCase {
         let fixture = row("space", "Family fixture")
         let holder = row("session", "Fixture plan")
         let leaf = row("session", "Fixture leaf")
-        /// Its subtasks shown, from its menu: Show subtasks, or Expand when they're folded.
+        /// Its subtasks shown by its chevron, whether folded or not yet in the sidebar.
         func reveal(_ owner: XCUIElement, _ name: String) {
             bringIntoView(owner)
             pause(1)
-            owner.press(forDuration: 1.0)
-            let show = app.buttons["Show subtasks"]
-            let expand = app.buttons["Expand"]
-            XCTAssertTrue(show.waitForExistence(timeout: 3) || expand.exists, "\(name) offered neither Show subtasks nor Expand")
-            capture("family-subtask-menu")
-            (show.exists ? show : expand).tap()
+            fold(owner)
         }
         XCTAssertTrue(fixture.waitForExistence(timeout: 5), "no Family fixture task (run family_fixture.py)")
         bringIntoView(fixture)
@@ -1453,6 +1588,35 @@ final class StemCellsUITests: XCTestCase {
         pause(1)
     }
 
+
+    /// A collaborator's report ("Collaborator <id> finished working…"),
+    /// as desktop's AgentMessageActivity: one line naming who it came from
+    /// and what it said it is, with a chevron; a tap opens the message under
+    /// it and another closes it. The fixture is collab_fixture.py's task.
+    func testCollaborator() {
+        home()
+        let task = row("space", "Collaborator fixture")
+        XCTAssertTrue(task.waitForExistence(timeout: 10), "collab_fixture.py's task is missing")
+        bringIntoView(task)
+        task.tap()
+        let message = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Finished: final answer")).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 15), "no collaborator row")
+        XCTAssertFalse(message.label.contains("Banana"), "the message shows before it is opened")
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "finished working. Its answer follows")).firstMatch.exists, "the report shows as plain text")
+        pause(1)
+        capture("collaborator-closed")
+        // The line itself opens it.
+        let line = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: message.frame.minX + 80, dy: message.frame.minY + 16))
+        line.tap()
+        XCTAssertTrue(until(3) { message.label.contains("Banana") }, "a tap didn't open the message")
+        pause(1)
+        capture("collaborator-open")
+        // Where the line is now: the message opened under it may have lifted it.
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: message.frame.minX + 80, dy: message.frame.minY + 16)).tap()
+        XCTAssertTrue(until(3) { !message.label.contains("Banana") }, "a second tap didn't close it")
+        pause(1)
+        capture("collaborator-closed-again")
+    }
 
     /// The composer with nothing in between: new work opens straight on its
     /// composer, + goes straight to the library, and a long press's Paste

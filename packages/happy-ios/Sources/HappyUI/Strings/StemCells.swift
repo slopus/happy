@@ -17,8 +17,6 @@ extension Strings {
         public static let prioritizing = "Prioritizing"
 
         // Menus.
-        public static let open = "Open"
-        public static let openBot = "Open bot"
         public static let renameTask = "Rename task"
         public static let renameBot = "Rename bot"
         public static let renameSection = "Rename section"
@@ -30,11 +28,20 @@ extension Strings {
         public static let archiveBot = "Archive bot"
         public static let archiveSubtask = "Archive subtask"
         public static let deleteSection = "Delete section"
-        public static let tidyNow = "Tidy sidebar now"
-        public static let showSubtasks = "Show subtasks"
-        public static let hideSubtasks = "Hide subtasks"
-        public static let fold = "Collapse"
-        public static let unfold = "Expand"
+        public static let reorder = "Reorder"
+
+        // A message from another agent (happy-desktop's AgentMessageActivity).
+        public static let agentMessage = "Message"
+        public static func agentMessageFrom(_ name: String) -> String { "from \(name)" }
+        /// An agent this one spawned that has no title yet (`projectSubagents`).
+        public static let subagent = "Subagent"
+        public static let untitledAgent = "Untitled agent"
+        public static let agentMessageOpenHint = "Shows the message"
+        public static let agentMessageCloseHint = "Hides the message"
+        /// A section's "+", for VoiceOver.
+        public static func newWorkIn(_ section: String) -> String { "New work in \(section)" }
+        /// Said once a row is lifted from its menu.
+        public static let reorderHint = "Lifted. Drag to move it, or tap to put it back."
         /// The blurred screen behind a held row's menu, for VoiceOver.
         public static let closeMenu = "Close menu"
         public static let cancel = "Cancel"

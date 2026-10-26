@@ -6,7 +6,13 @@ import HappyWire
 /// daemon's housekeeping are never shown; a tool call is kept only for the
 /// pictures and videos it presented.
 public struct StemCellChatItem: Equatable, Sendable, Identifiable {
-    public enum Role: Equatable, Sendable { case user, agent }
+    public enum Role: Equatable, Sendable {
+        case user, agent
+        /// Another agent reporting to this one (a collaborator, a subtask),
+        /// not the one that manages it: one compact row naming the sender,
+        /// opened to read what it said (happy-desktop's `agentMessage` activity).
+        case collaborator(agentId: String, explanation: String?)
+    }
 
     public enum Delivery: Equatable, Sendable {
         case sent
@@ -184,6 +190,9 @@ public struct StemCellChatSnapshot: Equatable, Sendable {
     public var activity: StemCellActivity?
     /// Older runs exist before the first one shown.
     public var hasMore = false
+    /// The agents this one spawned, by ID, as titled (a sender a
+    /// collaborator row names when the sidebar doesn't hold it).
+    public var subagentTitles: [String: String] = [:]
     /// Why the conversation could not be read.
     public var error: String?
     /// The model, account and effort the next message goes with: the last
@@ -232,6 +241,8 @@ public actor StemCellConversation {
     private var retrying: AgentWire.AgentRetrying?
     private var question = false
     private var subagentsRunning = 0
+    /// The agent that manages this one: its messages are dialogue, never a collaborator's row.
+    private var parentAgentId: String?
     /// The running turn and when it began (or when a send was taken, before
     /// its run is known).
     private var activeRun: (id: String?, startedAt: Double?)?
@@ -357,6 +368,10 @@ public actor StemCellConversation {
             activeRun = nil
         }
         snapshot.hasMore = history.hasMore
+        if let subagents = start.subagents {
+            // desktop's `projectSubagents`: an untitled child is "Subagent".
+            snapshot.subagentTitles = Dictionary(subagents.map { ($0.id, $0.title ?? "") }, uniquingKeysWith: { first, _ in first })
+        }
         snapshot.loaded = true
         snapshot.error = nil
         let held = heldEvents ?? []
@@ -683,10 +698,13 @@ public actor StemCellConversation {
     }
 
     /// The running turn has shown something of the agent's: a thought, a
-    /// line, a tool call.
+    /// line, a tool call. What another agent sent it is work coming in, not
+    /// its own.
     private var produced: Bool {
         guard let id = activeRun?.id, let run = runs.first(where: { $0.id == id }) else { return false }
-        return run.messageIds.contains { messages[$0].map { $0.role != "user" && !$0.content.isEmpty } ?? false }
+        return run.messageIds.contains { id in
+            messages[id].map { $0.role != "user" && !$0.content.isEmpty && ($0.metadata?.senderAgentId ?? agentId) == agentId } ?? false
+        }
     }
 
     /// The turn is over: nothing of it carries into the next one.
@@ -705,6 +723,25 @@ public actor StemCellConversation {
         retrying = agent.retrying
         question = agent.pendingQuestionId != nil
         subagentsRunning = agent.subagents?.running ?? 0
+        if agent.id == agentId { parentAgentId = agent.parentAgentId }
+    }
+
+    /// The agent that sent `message`, when it is neither this one nor the
+    /// one that manages it (desktop's `senderAgentOf`, relation "other"),
+    /// and its one line on what it sent.
+    static func collaborator(_ message: AgentWire.Message, agentId: String, parentAgentId: String?) -> (agentId: String, explanation: String?)? {
+        guard let sender = message.metadata?.senderAgentId, sender != agentId, sender != parentAgentId else { return nil }
+        let explanation = message.metadata?.senderAgentExplanation
+        return (sender, explanation?.isEmpty == true ? nil : explanation)
+    }
+
+    /// What another agent said, without the line the daemon puts ahead of
+    /// it for the receiving model (`inboundAgentText`): the row names the
+    /// sender already.
+    static func inboundText(_ text: String, agentId: String) -> String {
+        let lead = "Message from agent \(agentId):"
+        guard text.hasPrefix(lead) else { return text }
+        return String(text.dropFirst(lead.count).drop(while: \.isWhitespace))
     }
 
     private static func decode<T: Decodable>(_ type: T.Type, _ value: JSONValue) -> T? {
@@ -713,17 +750,28 @@ public actor StemCellConversation {
     }
 
     private func item(_ message: AgentWire.Message, shown: inout [String: StemCellMedia], streaming: Bool) -> StemCellChatItem? {
+        if message.role == "user" || message.role == "agent", let sender = Self.collaborator(message, agentId: agentId, parentAgentId: parentAgentId) {
+            // Its words as they came, read only when opened; desktop trims the
+            // daemon's addressing line from an agent-role message alone.
+            let text = message.content.compactMap { block -> String? in if case .text(let text) = block { text } else { nil } }.joined(separator: "\n")
+            let body = message.role == "agent" ? Self.inboundText(text, agentId: sender.agentId) : text
+            let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            return StemCellChatItem(id: message.id, role: .collaborator(agentId: sender.agentId, explanation: sender.explanation), pieces: trimmed.isEmpty ? [] : [.text(trimmed)], delivery: .sent)
+        }
+        // The agent that manages this one gives it its work: desktop reads
+        // that as dialogue, in the lane the person's own words take.
+        let manager = message.role == "agent" ? message.metadata?.senderAgentId.flatMap { $0 == agentId ? nil : $0 } : nil
         let role: StemCellChatItem.Role
         switch message.role {
         case "user": role = .user
-        case "agent": role = .agent
+        case "agent": role = manager == nil ? .agent : .user
         default: return nil
         }
         var pieces: [StemCellChatItem.Piece] = []
         for (index, block) in message.content.enumerated() {
             switch block {
             case .text(let text):
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmed = (manager.map { Self.inboundText(text, agentId: $0) } ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
                 pieces += role == .agent ? Self.pieces(trimmed, shown: shown, streaming: streaming || message.status == "streaming") : [.text(trimmed)]
             case .image(let mimeType, let data):

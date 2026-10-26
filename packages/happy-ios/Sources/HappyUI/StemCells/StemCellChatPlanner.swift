@@ -16,37 +16,44 @@ actor StemCellChatPlanner {
         var environment: TextEnvironment?
         /// What the references messages make read as now.
         var references = StemCellReferences()
+        /// The agents this one spawned, by ID, as titled.
+        var subagentTitles: [String: String] = [:]
     }
 
     private let syntax: CodeSyntaxService
-    private var cache: [String: (item: StemCellChatItem, key: Key, copied: Bool, proposals: [StemCellProposalShown?], plan: ChatRowPlan)] = [:]
+    private var cache: [String: (item: StemCellChatItem, key: Key, copied: Bool, opened: Bool, proposals: [StemCellProposalShown?], plan: ChatRowPlan)] = [:]
 
     init(syntax: CodeSyntaxService) {
         self.syntax = syntax
     }
 
-    /// `proposals` are the sidebar proposals the items show, as they stand.
-    func plans(_ items: [StemCellChatItem], key: Key, copied: String?, proposals: [String: StemCellProposalShown] = [:]) -> [ChatRowPlan] {
-        var next: [String: (item: StemCellChatItem, key: Key, copied: Bool, proposals: [StemCellProposalShown?], plan: ChatRowPlan)] = [:]
+    /// `proposals` are the sidebar proposals the items show, as they stand;
+    /// `opened` the other agents' messages opened to read.
+    func plans(_ items: [StemCellChatItem], key: Key, copied: String?, opened: Set<String> = [], proposals: [String: StemCellProposalShown] = [:]) -> [ChatRowPlan] {
+        var next: [String: (item: StemCellChatItem, key: Key, copied: Bool, opened: Bool, proposals: [StemCellProposalShown?], plan: ChatRowPlan)] = [:]
         var plans: [ChatRowPlan] = []
         for item in items {
             let isCopied = copied == item.id
+            let isOpened = opened.contains(item.id)
             let shown = item.proposalIds.map { proposals[$0] }
             let plan: ChatRowPlan
-            if let cached = cache[item.id], cached.item == item, cached.key == key, cached.copied == isCopied, cached.proposals == shown {
+            if let cached = cache[item.id], cached.item == item, cached.key == key, cached.copied == isCopied, cached.opened == isOpened, cached.proposals == shown {
                 plan = cached.plan
             } else {
-                plan = Self.plan(item, key: key, copied: isCopied, syntax: syntax, proposals: proposals)
+                plan = Self.plan(item, key: key, copied: isCopied, opened: isOpened, syntax: syntax, proposals: proposals)
             }
-            next[item.id] = (item, key, isCopied, shown, plan)
+            next[item.id] = (item, key, isCopied, isOpened, shown, plan)
             if plan.size.height > 0 { plans.append(plan) }
         }
         cache = next
         return plans
     }
 
-    static func plan(_ item: StemCellChatItem, key: Key, copied: Bool, syntax: CodeSyntaxService, proposals: [String: StemCellProposalShown] = [:]) -> ChatRowPlan {
+    static func plan(_ item: StemCellChatItem, key: Key, copied: Bool, opened: Bool = false, syntax: CodeSyntaxService, proposals: [String: StemCellProposalShown] = [:]) -> ChatRowPlan {
         let (width, environment) = (key.width, key.environment)
+        if case .collaborator(let agentId, let explanation) = item.role {
+            return collaborator(item, agentId: agentId, explanation: explanation, key: key, opened: opened, syntax: syntax)
+        }
         guard !item.pieces.isEmpty else { return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: []) }
         typealias M = StemCellMessageLayout.Metrics
         let text = HappyReferences.plain(item.text, view: key.references.view)
@@ -188,7 +195,61 @@ actor StemCellChatPlanner {
             let alpha: CGFloat = item.delivery == .sending || item.delivery == .pending ? 0.6 : 1
             let label = [text, failure ? Strings.StemCells.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
             return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, alpha: alpha, accessibilityLabel: label)
+        case .collaborator:
+            // Planned above.
+            return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])
         }
+    }
+
+    /// happy-desktop's `AgentMessageActivity`: who it came from on one line,
+    /// the message itself behind it. With the sender's one line on what it
+    /// is, the line is the sender's name and that; without, "Message from"
+    /// the sender. A sender nobody here can name shows by its ID's start.
+    static func collaborator(_ item: StemCellChatItem, agentId: String, explanation: String?, key: Key, opened: Bool, syntax: CodeSyntaxService) -> ChatRowPlan {
+        let environment = key.environment
+        let name = key.references.agents[agentId].map { $0.label.isEmpty ? Strings.StemCells.untitledAgent : $0.label }
+            ?? key.subagentTitles[agentId].map { $0.isEmpty ? Strings.StemCells.subagent : $0 }
+            ?? (agentId.count > 10 ? "\(agentId.prefix(8))…" : agentId)
+        let verb: String? = switch explanation {
+        case nil: Strings.StemCells.agentMessage
+        // A line that names its sender already says who it is from.
+        case let explanation? where explanation.contains(agentId): nil
+        default: name
+        }
+        // Desktop names a bare ID in the line by its agent's title.
+        let line = explanation.map { HappyReferences.plain($0, view: key.references.view).replacingOccurrences(of: agentId, with: name) }
+            ?? Strings.StemCells.agentMessageFrom(name)
+        let body = item.text
+        let opens = !body.isEmpty
+        let verbText = verb.map { ChatTextStyles.stemCellsActivityVerb.string($0, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment) }
+        let lineText = ChatTextStyles.stemCellsActivityText.string(line, color: Palette.text, lineBreakMode: .byTruncatingTail, in: environment)
+        let markdown = opened && opens ? MarkdownPiece(
+            StemCellMarkdown.joiningSoftBreaks(HappyReferences.markdown(body, view: key.references.view)), color: Palette.textSecondary,
+            diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment,
+            body: ChatTextStyles.stemCellsActivityBody, header: ChatTextStyles.stemCellsActivityHeader
+        ) : nil
+        let layout = StemCellAgentMessageLayout(
+            width: key.width, maxContentWidth: key.maxContentWidth,
+            verbWidth: verbText.map { ChatTextLayout(unwrapped: $0).size.width },
+            textWidth: ChatTextLayout(unwrapped: lineText).size.width,
+            opens: opens, body: markdown?.blocks
+        )
+        var items: [ChatDrawItem] = [.icon(StemCellsGlyphs.icon("agents"), size: StemCellAgentMessageLayout.Metrics.glyph, frame: layout.glyph, tint: Palette.textSecondary)]
+        if let verbText, let frame = layout.verb { items.append(.text(ChatTextLayout(verbText, width: frame.width, maxLines: 1), frame)) }
+        items.append(.text(ChatTextLayout(lineText, width: layout.text.width, maxLines: 1), layout.text))
+        if let frame = layout.chevron {
+            items.append(.icon(StemCellsGlyphs.icon(opened ? "chevron-down" : "chevron-right"), size: StemCellAgentMessageLayout.Metrics.chevron, frame: frame, tint: Palette.textSecondary))
+        }
+        var hits: [ChatHit] = []
+        if let markdown, let placed = layout.body {
+            let drawn = markdown.draw(placed, origin: layout.bodyOrigin)
+            items += drawn.items
+            hits += drawn.hits
+        }
+        // The whole line opens and closes it, a finger's room above and below.
+        if opens { hits.insert(ChatHit(frame: layout.header.insetBy(dx: 0, dy: -StemCellAgentMessageLayout.Metrics.paddingV), action: .toggleTool(item.id)), at: 0) }
+        let spoken = [verb, line].compactMap { $0 }.joined(separator: " ") + (opened && opens ? "\n\n" + HappyReferences.plain(body, view: key.references.view) : "")
+        return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken)
     }
 
     /// What the flow knows of a presented item before its bytes arrive.
