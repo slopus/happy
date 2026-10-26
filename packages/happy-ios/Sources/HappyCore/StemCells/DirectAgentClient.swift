@@ -315,6 +315,12 @@ public final class DirectAgentClient: Sendable {
 
     // MARK: Artifacts
 
+    /// An artifact object, a deleted one's too (`GET /v0/artifacts/:artifactId`).
+    public func artifact(_ artifactId: String) async throws -> JSONValue {
+        guard let artifact = try await decode(JSONValue.self, "GET", "/v0/artifacts/\(Self.escape(artifactId))")["artifact"] else { throw DirectAgentError.invalidResponse }
+        return artifact
+    }
+
     /// One version of an artifact, `nil` for the latest: its entry, its files
     /// and how it wants to be shown.
     public func artifactVersion(_ artifactId: String, version: Int?) async throws -> AgentWire.ArtifactVersion {

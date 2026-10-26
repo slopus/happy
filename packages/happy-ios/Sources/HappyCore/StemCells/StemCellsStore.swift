@@ -31,6 +31,8 @@ public struct StemCellsSnapshot: Equatable, Sendable {
     public var stemCellError: String?
     /// What new work offers to make at once instead (desktop's `createOffers`).
     public var offers: [StemCellOffer] = []
+    /// What the references in messages read as and open.
+    public var references = StemCellReferences()
 
     public init() {}
 }
@@ -127,6 +129,9 @@ public actor StemCellsStore {
     private var tasks: [JSONValue] = []
     private var surfaces: [AgentWire.Surface] = []
     private var agents = StemCellsAgents()
+    /// Artifact titles references asked for, as read; and those being read.
+    private var artifactTitles: [String: StemCellReferences.Artifact] = [:]
+    private var artifactReads: Set<String> = []
     private var places = StemCellsPlaces()
     private var placesReload: Task<Void, Never>?
     /// Names given here whose rename no read has carried yet.
@@ -310,6 +315,8 @@ public actor StemCellsStore {
             rebuildPlaces()
             let pending = heldEvents ?? []
             heldEvents = nil
+            // What changed while away is read again when next asked for.
+            artifactTitles = [:]
             for event in pending { receive(event) }
             publish()
             keeping?.cancel()
@@ -354,6 +361,44 @@ public actor StemCellsStore {
         self.bots = bots; self.tasks = tasks
         for owner in bots + tasks { if let agent = owner["agent"] { agents.absorb(agent) } }
         rebuildPlaces()
+        publish()
+    }
+
+    /// The bots and tasks, each with its conversation composed from the newest copies.
+    private var composedOwners: [JSONValue] {
+        (bots + tasks).map { owner in
+            guard var object = owner.objectValue, let id = object["agent"]?["id"]?.stringValue else { return owner }
+            if let tree = agents.tree(id) { object["agent"] = tree }
+            return .object(object)
+        }
+    }
+
+    /// Reads the titles of artifacts messages name, once each; what is
+    /// read is published with the references.
+    public func readArtifacts(_ ids: [String]) {
+        let wanted = ids.filter { artifactTitles[$0] == nil && !artifactReads.contains($0) }
+        guard !wanted.isEmpty else { return }
+        artifactReads.formUnion(wanted)
+        let client = client
+        Task {
+            for id in wanted {
+                let read: StemCellReferences.Artifact?
+                do {
+                    read = StemCellReferences.artifact(try await client.artifact(id))
+                } catch DirectAgentError.status(404, _, _) {
+                    read = .missing
+                } catch {
+                    read = nil
+                }
+                await artifactRead(id, read)
+            }
+        }
+    }
+
+    private func artifactRead(_ id: String, _ read: StemCellReferences.Artifact?) {
+        artifactReads.remove(id)
+        guard let read else { return }
+        artifactTitles[id] = read
         publish()
     }
 
@@ -407,6 +452,16 @@ public actor StemCellsStore {
                let index = surfaces.firstIndex(where: { $0.id == id }) {
                 surfaces[index].name = name
                 rebuildPlaces()
+            }
+        case "artifact.updated", "artifact.deleted":
+            // Only the ones a message named are kept.
+            guard let id = payload["artifactId"]?.stringValue, let held = artifactTitles[id] else { return }
+            let changes = payload["changes"] ?? .null
+            if type == "artifact.deleted" || changes["status"]?.stringValue == "deleted" {
+                let title: String = if case .active(let title, _, _) = held { title } else if case .deleted(let title) = held { title } else { "" }
+                artifactTitles[id] = .deleted(title: title)
+            } else if case .active(let title, let kind, let latest) = held {
+                artifactTitles[id] = .active(title: changes["title"]?.stringValue ?? title, type: kind, latestVersion: changes["latestVersion"]?.numberValue.map { Int($0) } ?? latest)
             }
         case "user_settings.updated":
             if payload["setting"]?["key"]?.stringValue == Self.settingKey {
@@ -494,6 +549,9 @@ public actor StemCellsStore {
             snapshot.document = document
         }
         snapshot.happySpaceId = spaces.values.first { places.isHappy($0) }?.id
+        var references = StemCellReferences.entities(owners: composedOwners)
+        references.artifacts = artifactTitles
+        snapshot.references = references
         continuation.yield(snapshot)
         // What the events changed is kept too, once they settle.
         if snapshot.live, held != nil { keepSoon() }

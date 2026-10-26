@@ -50,6 +50,10 @@ final class StemCellChatViewController: UIViewController {
     /// The proposals as the rows on screen were planned with them.
     private var shownProposals: [String: StemCellProposalShown] = [:]
     private var sidebarRows: [StemCellsRow] = []
+    /// What the references messages make read as and open.
+    private var references = StemCellReferences()
+    /// A preview's messages fading out under its name.
+    private let previewFade = CAGradientLayer()
     private var watch: StemCellsWatch?
     private var modelsWatch: StemCellsWatch?
     private var copied: (id: String, until: Task<Void, Never>)?
@@ -199,6 +203,11 @@ final class StemCellChatViewController: UIViewController {
         live = snapshot.live
         // A proposal's rows name the spaces as the sidebar does now, folded
         // ones too.
+        // References in messages read as the names they have now.
+        if snapshot.references != references {
+            references = snapshot.references
+            replan()
+        }
         if snapshot.allRows != sidebarRows {
             sidebarRows = snapshot.allRows
             proposals.spacesChanged()
@@ -280,7 +289,7 @@ final class StemCellChatViewController: UIViewController {
     }
 
     private var planKey: StemCellChatPlanner.Key {
-        StemCellChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment)
+        StemCellChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: references)
     }
 
     /// Plans the rows off the main thread, then shows them in one frame.
@@ -288,6 +297,12 @@ final class StemCellChatViewController: UIViewController {
         let key = planKey
         guard key.width > 0 else { return }
         let items = chat.items
+        // Artifacts the messages name are read for their titles, once each.
+        let unread = items.flatMap { references.unread(in: $0.text) }
+        if !unread.isEmpty {
+            let store = session.store
+            Task { await store.readArtifacts(unread) }
+        }
         let copiedId = copied?.id
         let shown = proposals.shown
         if let planned, planned.items == items, planned.key == key, planned.copied == copiedId, planned.proposals == shown { return }
@@ -438,6 +453,22 @@ final class StemCellChatViewController: UIViewController {
         let insets = UIEdgeInsets(top: layout.listTop, left: 0, bottom: layout.listBottom, right: 0)
         if scrollView.contentInset != insets { scrollView.contentInset = insets }
         layoutTranscript()
+        let height = max(1, view.bounds.height)
+        previewFade.colors = [UIColor.clear.cgColor, UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.black.cgColor]
+        previewFade.locations = [0, layout.fadeClear / height, layout.fadeOpaque / height, 1].map { NSNumber(value: Double($0)) }
+        placePreviewFade()
+    }
+
+    /// The fade sits still over the card while the messages move under it:
+    /// the mask is in the scroll view's own (scrolling) coordinates.
+    private func placePreviewFade() {
+        guard previewing else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        previewFade.frame = scrollView.bounds
+        // Only when there is more above than fits: a short conversation shows whole.
+        scrollView.layer.mask = scrollView.contentOffset.y > -scrollView.contentInset.top + 0.5 ? previewFade : nil
+        CATransaction.commit()
     }
 
     private func layoutTranscript() {
@@ -558,6 +589,10 @@ final class StemCellChatViewController: UIViewController {
         for (id, row) in rowViews {
             let point = recognizer.location(in: row)
             guard row.bounds.contains(point) else { continue }
+            if let link = row.link(at: point), let reference = HappyReferences.reference(link: link) {
+                open(reference)
+                return
+            }
             if let link = row.link(at: point), let url = URL(string: link) {
                 UIApplication.shared.open(url)
                 return
@@ -578,6 +613,35 @@ final class StemCellChatViewController: UIViewController {
             }
             return
         }
+    }
+
+    /// What a message names, opened over this one: a conversation, or an
+    /// artifact at the version the reference pinned.
+    private func open(_ reference: HappyReferences.Reference) {
+        if reference.kind == "artifact" {
+            // Still being read, the viewer reads it itself.
+            var known: (title: String, type: String, latest: Int) = ("", "", 1)
+            switch references.artifacts[reference.id] {
+            case .active(let title, let type, let latest)?: known = (title, type, latest)
+            case nil: let store = session.store; Task { await store.readArtifacts([reference.id]) }
+            default: return
+            }
+            var artifact = StemCellArtifact(id: reference.id, version: reference.version ?? known.latest, type: known.type, title: known.title, followsLatest: reference.version == nil)
+            artifact.pinned = reference.version != nil
+            navigationController?.pushViewController(StemCellArtifactViewController(session: session, artifact: artifact), animated: true)
+            return
+        }
+        guard let entity = references.entity(reference) else { return }
+        // A bot's or task's own conversation opens as its row opens it: renamed in its bar, its mark in the intro.
+        let row = sidebarRows.first { $0.kind == .space && $0.agentId == entity.agentId }
+        let intro: Intro? = switch row?.mark {
+        case .stemCell(let seed)?: .stemCell(seed: seed)
+        case .clay(let slug)?: .clay(slug)
+        default: nil
+        }
+        let title = references.view(reference).label
+        let chat = StemCellChatViewController(session: session, agentId: entity.agentId, title: title, spaceId: row?.spaceId, stemCell: intro)
+        navigationController?.pushViewController(chat, animated: true)
     }
 
     @objc private func held(_ recognizer: UILongPressGestureRecognizer) {
@@ -725,6 +789,7 @@ private extension ChatDrawItem {
 
 extension StemCellChatViewController: UIScrollViewDelegate {
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        placePreviewFade()
         guard scrollView.isTracking || scrollView.isDecelerating else { return }
         followsNewest = scrollView.contentOffset.y >= newestOffset - 24
         if scrollView.contentOffset.y < 200 - scrollView.contentInset.top, chat.hasMore {

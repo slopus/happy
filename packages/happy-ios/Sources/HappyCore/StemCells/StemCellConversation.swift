@@ -108,6 +108,8 @@ public struct StemCellArtifact: Equatable, Sendable {
     public var type: String
     public var title: String
     public var followsLatest: Bool
+    /// A reference named this version: it opens that one, never the latest.
+    public var pinned = false
 
     public init(id: String, version: Int, type: String, title: String, followsLatest: Bool) {
         self.id = id
@@ -119,7 +121,7 @@ public struct StemCellArtifact: Equatable, Sendable {
 
     /// Desktop's card follows the artifact from the call that created it,
     /// whose files are written after it.
-    public var opensLatest: Bool { followsLatest || version == 1 }
+    public var opensLatest: Bool { followsLatest || (version == 1 && !pinned) }
 }
 
 /// What desktop's working line reports (`AgentWorkingStatus`), projected
@@ -625,6 +627,8 @@ public actor StemCellConversation {
             guard !trimmed.isEmpty else { return }
             if case .text(let previous)? = pieces.last { pieces[pieces.count - 1] = .text(previous + "\n\n" + trimmed) } else { pieces.append(.text(trimmed)) }
         }
+        // A reference tag still arriving is held back, not flashed as raw text.
+        let text = streaming ? HappyReferences.droppingPartialTag(text) : text
         for segment in StemCellMediaBlocks.split(text) {
             switch segment {
             case .markdown(let text):

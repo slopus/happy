@@ -14,6 +14,8 @@ actor StemCellChatPlanner {
         /// `ContentWidth.maxWidth`, read on the main thread.
         var maxContentWidth: CGFloat
         var environment: TextEnvironment?
+        /// What the references messages make read as now.
+        var references = StemCellReferences()
     }
 
     private let syntax: CodeSyntaxService
@@ -47,7 +49,7 @@ actor StemCellChatPlanner {
         let (width, environment) = (key.width, key.environment)
         guard !item.pieces.isEmpty else { return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: []) }
         typealias M = StemCellMessageLayout.Metrics
-        let text = item.text
+        let text = HappyReferences.plain(item.text, view: key.references.view)
         switch item.role {
         case .agent:
             // Desktop's agent text: Figtree 16/24 markdown, soft breaks as spaces, blocks 8
@@ -69,7 +71,8 @@ actor StemCellChatPlanner {
             for piece in item.pieces {
                 switch piece {
                 case .text(let text):
-                    let markdown = MarkdownPiece(StemCellMarkdown.joiningSoftBreaks(text), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.stemCellsText, header: ChatTextStyles.stemCellsHeader)
+                    let resolved = HappyReferences.markdown(text, view: key.references.view)
+                    let markdown = MarkdownPiece(StemCellMarkdown.joiningSoftBreaks(resolved), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.stemCellsText, header: ChatTextStyles.stemCellsHeader)
                     drafts.append(.markdown(markdown))
                     parts.append(.markdown(markdown.blocks))
                 case .gallery(let media, let columns):

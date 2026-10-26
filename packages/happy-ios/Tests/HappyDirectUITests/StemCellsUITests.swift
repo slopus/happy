@@ -229,6 +229,9 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(preview.staticTexts["Birthday party for Maya"].exists, "the preview's name is not the row's")
         let messages = preview.descendants(matching: .any).matching(NSPredicate(format: "label != %@ AND label != %@", "", "Birthday party for Maya"))
         XCTAssertTrue(until(8) { messages.count > 0 }, "the preview shows no messages")
+        // References read as names, as desktop shows them: no raw tag.
+        let raw = NSPredicate(format: "label CONTAINS %@", "<happy-")
+        XCTAssertEqual(preview.descendants(matching: .any).matching(raw).count, 0, "the preview shows a raw reference tag")
         // Telegram's size: 12 from either edge, at most 460 tall, the menu 10 under it.
         XCTAssertEqual(preview.frame.minX, 12, accuracy: 0.5)
         XCTAssertEqual(preview.frame.width, screen.width - 24, accuracy: 0.5)
@@ -244,6 +247,8 @@ final class StemCellsUITests: XCTestCase {
         // Let go, it stayed; a tap on it opens the conversation.
         preview.tap()
         XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 4), "tapping the preview didn't open the conversation")
+        XCTAssertTrue(until(4) { app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Guest list")).count > 0 }, "the conversation doesn't name its subtask")
+        XCTAssertEqual(app.descendants(matching: .any).matching(raw).count, 0, "the conversation shows a raw reference tag")
         XCTAssertFalse(preview.exists)
         pause(1)
         capture("hold-opened")
@@ -1346,32 +1351,40 @@ final class StemCellsUITests: XCTestCase {
         pause(1.5)
         print("STEM_FAMILY_READ unfolded-here")
 
-        // A subtask's own subtasks, shown under it and folded with it.
-        // Whatever the plan's own subtasks are called: subtask rows that are none of the others.
-        let others = ["Billing test plan", "Invoice deps", "Day Trips", "Neighbourhoods", "Best train day trip"].map { "stem-row:session:\($0)" }
-        let grandchildren = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND NOT (identifier IN %@)", "stem-row:session:", others))
-        if !grandchildren.allElementsBoundByIndex.contains(where: shows) {
-            // Not shown yet: Show subtasks. Shown but folded: Expand. Both from its menu.
-            bringIntoView(plan)
+        // A subtask's own subtasks, shown under it and folded with it: the
+        // family the run keeps for itself (`family_fixture.py` makes
+        // whatever a run used up: Family fixture › Fixture plan › Fixture leaf).
+        let fixture = row("space", "Family fixture")
+        let holder = row("session", "Fixture plan")
+        let leaf = row("session", "Fixture leaf")
+        /// Its subtasks shown, from its menu: Show subtasks, or Expand when they're folded.
+        func reveal(_ owner: XCUIElement, _ name: String) {
+            bringIntoView(owner)
             pause(1)
-            plan.press(forDuration: 1.0)
+            owner.press(forDuration: 1.0)
             let show = app.buttons["Show subtasks"]
             let expand = app.buttons["Expand"]
-            XCTAssertTrue(show.waitForExistence(timeout: 3) || expand.exists, "a subtask with subtasks offered neither Show subtasks nor Expand")
+            XCTAssertTrue(show.waitForExistence(timeout: 3) || expand.exists, "\(name) offered neither Show subtasks nor Expand")
             capture("family-subtask-menu")
             (show.exists ? show : expand).tap()
         }
-        XCTAssertTrue(until(6) { grandchildren.allElementsBoundByIndex.contains(where: shows) }, "a subtask's subtasks didn't show under it")
+        XCTAssertTrue(fixture.waitForExistence(timeout: 5), "no Family fixture task (run family_fixture.py)")
+        bringIntoView(fixture)
+        if !until(1, { shows(holder) }) { reveal(fixture, "the fixture task") }
+        XCTAssertTrue(until(6) { shows(holder) }, "the fixture task's subtask didn't show under it")
+        if !until(1, { shows(leaf) }) { reveal(holder, "a subtask with subtasks") }
+        XCTAssertTrue(until(6) { shows(leaf) }, "a subtask's subtasks didn't show under it")
+        XCTAssertGreaterThan(leaf.frame.minY, holder.frame.minY, "the subtask's subtask isn't under it")
         pause(1)
         capture("family-nested")
-        fold(plan)
-        XCTAssertTrue(until(0.6) { !grandchildren.allElementsBoundByIndex.contains(where: shows) }, "a subtask didn't fold")
+        fold(holder)
+        XCTAssertTrue(until(0.6) { !shows(leaf) }, "a subtask didn't fold")
         pause(1.5)
-        fold(plan)
-        XCTAssertTrue(until(2) { grandchildren.allElementsBoundByIndex.contains(where: shows) })
+        fold(holder)
+        XCTAssertTrue(until(2) { shows(leaf) })
         pause(1.5)
 
-        // Siblings: the upper one, with its own subtasks, carried down past the
+        // Siblings: the upper one carried down past the
         // lower one. Clear of the dock, and away from the menu over the row.
         bringIntoView(plan)
         pause(1)
@@ -1387,7 +1400,9 @@ final class StemCellsUITests: XCTestCase {
         pause(1)
 
         // A subtask's subtask archived from its menu: gone once the computer says.
-        if let leaf = grandchildren.allElementsBoundByIndex.first(where: shows) {
+        bringIntoView(leaf)
+        pause(1)
+        if shows(leaf) {
             let id = leaf.identifier
             leaf.press(forDuration: 1.0)
             let archive = app.buttons["Archive subtask"]
@@ -1397,10 +1412,15 @@ final class StemCellsUITests: XCTestCase {
             archive.tap()
             XCTAssertTrue(until(10) { !shows(app.descendants(matching: .any)[id]) }, "the archived subtask stayed")
             capture("family-archived")
+        } else {
+            XCTFail("the fixture's leaf isn't on screen to archive")
         }
 
         // A task set under a row renames in place, as at the top.
         let (from, to) = row("space", "Compare home insurance").waitForExistence(timeout: 2) ? ("Compare home insurance", "Compare insurance quotes") : ("Compare insurance quotes", "Compare home insurance")
+        // Back to the task: the fixture steps left the list at the top.
+        bringIntoView(task)
+        pause(1)
         print("STEM_FAMILY_NEST \(from) | \(parent)")
         let nested = row("space", from)
         XCTAssertTrue(until(8) { shows(nested) && nested.frame.minY > task.frame.minY && nested.frame.minX >= task.frame.minX }, "the task wasn't set under the row")

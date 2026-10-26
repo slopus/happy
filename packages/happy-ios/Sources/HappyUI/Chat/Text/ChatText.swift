@@ -118,7 +118,8 @@ enum ChatSpans {
                 spanStyle = style.with(style.emphasisFace)
             }
             var attributes = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
-            if let url = span.url, Markdown.isHTTPLink(url) {
+            // An http(s) link, or a reference this phone wrote (never one an agent typed).
+            if let url = span.url, Markdown.isHTTPLink(url) || HappyReferences.reference(link: url) != nil {
                 attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
                 attributes[.chatLink] = url
             }

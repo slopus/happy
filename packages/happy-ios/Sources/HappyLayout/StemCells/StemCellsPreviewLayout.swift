@@ -6,7 +6,8 @@ import Foundation
 /// regular width, and the screen's height less 12 above and below, the top
 /// inset and the bottom safe area, at most 460. In it the conversation's
 /// newest messages rest at the foot under its name in a capsule, 10 from
-/// the top, 44 tall and 16 in on either side of the name.
+/// the top, 44 tall and 16 in on either side of the name. Older messages
+/// fade out going up under the capsule, so none shows cut above it.
 public struct StemCellsPreviewLayout: Equatable, Sendable {
     public enum Metrics {
         public static let inset: CGFloat = 12
@@ -19,6 +20,8 @@ public struct StemCellsPreviewLayout: Equatable, Sendable {
         public static let pillMargin: CGFloat = 16
         /// Between the capsule and the messages under it, and under the last.
         public static let listGap: CGFloat = 8
+        /// How far under the capsule the messages take to come in whole.
+        public static let fade: CGFloat = 24
     }
 
     /// The card's size on a screen this big.
@@ -35,6 +38,9 @@ public struct StemCellsPreviewLayout: Equatable, Sendable {
     /// The messages' insets inside the card.
     public var listTop: CGFloat
     public var listBottom: CGFloat
+    /// Where the messages are gone (the capsule's foot) and where they are whole.
+    public var fadeClear: CGFloat
+    public var fadeOpaque: CGFloat
 
     public init(size: CGSize, titleSize: CGSize) {
         typealias M = Metrics
@@ -46,5 +52,7 @@ public struct StemCellsPreviewLayout: Equatable, Sendable {
         title = CGRect(x: pill.minX + M.pillPadding, y: pill.minY + floor((M.pillHeight - titleHeight) / 2), width: titleWidth, height: titleHeight)
         listTop = pill.maxY + M.listGap
         listBottom = M.listGap
+        fadeClear = pill.maxY
+        fadeOpaque = pill.maxY + M.fade
     }
 }

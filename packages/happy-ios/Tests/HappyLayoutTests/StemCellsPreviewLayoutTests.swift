@@ -18,6 +18,9 @@ final class StemCellsPreviewLayoutTests: XCTestCase {
         XCTAssertEqual(layout.pill, CGRect(x: 112, y: 10, width: 153, height: 44))
         XCTAssertEqual(layout.title, CGRect(x: 128, y: 21, width: 121, height: 21))
         XCTAssertEqual(layout.listTop, 62)
+        // Gone by the capsule's foot, whole 24 under it.
+        XCTAssertEqual(layout.fadeClear, 54)
+        XCTAssertEqual(layout.fadeOpaque, 78)
         XCTAssertEqual(layout.listBottom, 8)
     }
 
