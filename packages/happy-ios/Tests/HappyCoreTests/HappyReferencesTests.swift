@@ -70,6 +70,16 @@ final class HappyReferencesTests: XCTestCase {
         XCTAssertEqual(references.entity(.init(kind: "agent", id: "as")), .init(label: "Guest list template", agentId: "as"))
     }
 
+    func testAHiddenSubagentReadsAsItsTitleAndOpensNothing() {
+        var references = StemCellReferences.entities(owners: Self.owners)
+        references.subagents = ["c1": "Find flights", "c2": " ", "as": "Not this"]
+        XCTAssertEqual(markdown("Dispatched to <happy-agent id=\"c1\"/>.", references), "Dispatched to Find flights.")
+        XCTAssertEqual(markdown("<happy-agent id=\"c2\"/>", references), "Subagent")
+        // A subtask the lists hold still opens as itself.
+        XCTAssertEqual(markdown("<happy-agent id=\"as\"/>", references), "[Guest list template](ref:agent/as)")
+        XCTAssertNil(references.entity(.init(kind: "agent", id: "c1")))
+    }
+
     func testAWorkspaceReadsAsWhatItHolds() {
         let references = StemCellReferences.entities(owners: Self.owners)
         XCTAssertEqual(markdown("<happy-workspace id=\"wb\"/>", references), "[Chef](ref:workspace/wb)")

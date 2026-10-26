@@ -215,10 +215,15 @@ public actor StemCellConversation {
 
     private var snapshot = StemCellChatSnapshot()
     private var following: Task<Void, Never>?
+    /// The agents this one spawns or retitles while it is open.
+    private var children: Task<Void, Never>?
     private var reading: Task<Void, Never>?
     private var reloadSoon: Task<Void, Never>?
     /// Events that came while history was being read, applied after it.
     private var heldEvents: [JSONValue]?
+    /// Subagents made or retitled while history was being read, applied over
+    /// the bootstrap's list.
+    private var heldChildren: [JSONValue] = []
 
     private var runs: [(id: String, messageIds: [String])] = []
     private var messages: [String: AgentWire.Message] = [:]
@@ -271,7 +276,7 @@ public actor StemCellConversation {
             publish()
             defaultMode = Task { [client] in try await client.defaultMode() }
             following = Task {
-                guard let id = try? await creation.value else { return }
+                guard let id = try? await creation.value, !Task.isCancelled else { return }
                 await self.created(id)
             }
             return
@@ -281,6 +286,7 @@ public actor StemCellConversation {
 
     public func stop() {
         following?.cancel(); following = nil
+        children?.cancel(); children = nil
         reading?.cancel(); reading = nil
         reloadSoon?.cancel(); reloadSoon = nil
         continuation.finish()
@@ -300,6 +306,17 @@ public actor StemCellConversation {
 
     private func follow() async {
         let events = await store.conversationEvents(agentId)
+        let spawned = await store.events(matching: ["agent.created", "agent.updated"])
+        // Stopped while those were asked for: nothing is followed.
+        if Task.isCancelled { return }
+        children?.cancel()
+        children = Task { [weak self] in
+            for await event in spawned {
+                guard let self, !Task.isCancelled else { return }
+                guard case .event(let envelope) = event else { continue }
+                await child(envelope)
+            }
+        }
         heldEvents = []
         reload()
         for await event in events {
@@ -377,6 +394,9 @@ public actor StemCellConversation {
         let held = heldEvents ?? []
         heldEvents = nil
         for event in held { receive(event, publishes: false) }
+        let early = heldChildren
+        heldChildren = []
+        for event in early { child(event, publishes: false) }
         publish()
         if visible { markRead() }
     }
@@ -461,6 +481,26 @@ public actor StemCellConversation {
             if let value = changes["retrying"] { retrying = value == .null ? nil : Self.decode(AgentWire.AgentRetrying.self, value) }
             if let value = changes["pendingQuestionId"] { question = value.stringValue != nil }
             if let running = changes["subagents"]?["running"]?.numberValue { subagentsRunning = Int(running) }
+        default:
+            return
+        }
+        if publishes { publish() }
+    }
+
+    /// A subagent of this one made or retitled: what its references and
+    /// its messages are called by, without reading the conversation again.
+    private func child(_ event: JSONValue, publishes: Bool = true) {
+        // Mid-read, the bootstrap's list would replace it: it waits for it.
+        if heldEvents != nil { return heldChildren.append(event) }
+        let payload = event["payload"] ?? .null
+        switch event["type"]?.stringValue {
+        case "agent.created":
+            guard let agent = payload["agent"], agent["parentAgentId"]?.stringValue == agentId, let id = agent["id"]?.stringValue else { return }
+            snapshot.subagentTitles[id] = agent["title"]?.stringValue ?? ""
+        case "agent.updated":
+            guard let id = payload["agentId"]?.stringValue, snapshot.subagentTitles[id] != nil,
+                  let title = payload["changes"]?["title"] else { return }
+            snapshot.subagentTitles[id] = title.stringValue ?? ""
         default:
             return
         }

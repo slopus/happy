@@ -167,33 +167,6 @@ public struct StemCellUsageGaugeLayout: Equatable, Sendable {
     }
 }
 
-/// The home dock's model control (ComposerModelControl.tsx's trigger): the
-/// summary, then a chevron, in a 32-tall pill. Given less room than it
-/// wants, the summary is cut and the chevron stays.
-///
-///     |10| Sonnet 5 Medium |2| ⌄ |6|
-public struct StemCellModelControlLayout: Equatable, Sendable {
-    public static let height: CGFloat = 32
-    public static let paddingLeading: CGFloat = 10
-    public static let paddingTrailing: CGFloat = 6
-    public static let chevronGap: CGFloat = 2
-    public static let chevron: CGFloat = 14
-
-    /// What it wants: the whole summary.
-    public var size: CGSize
-    public var summary: CGRect
-    public var chevron: CGRect?
-
-    /// `summary` is its one line; `width`, when given, the room it got.
-    public init(summary text: CGSize, chevron hasChevron: Bool, width: CGFloat? = nil) {
-        let chevronWidth = hasChevron ? Self.chevronGap + Self.chevron : 0
-        size = CGSize(width: ceil(Self.paddingLeading + text.width + chevronWidth + Self.paddingTrailing), height: Self.height)
-        let room = max(0, (width ?? size.width) - Self.paddingLeading - chevronWidth - Self.paddingTrailing)
-        summary = CGRect(x: Self.paddingLeading, y: ((Self.height - text.height) / 2).rounded(), width: min(text.width, room), height: text.height)
-        chevron = hasChevron ? CGRect(x: summary.maxX + Self.chevronGap, y: (Self.height - Self.chevron) / 2, width: Self.chevron, height: Self.chevron) : nil
-    }
-}
-
 /// What a picker row shows at its end: its usage gauge, then its check when
 /// it is the current choice, `gap` apart and centred on each other.
 public struct StemCellPickerTrailingLayout: Equatable, Sendable {

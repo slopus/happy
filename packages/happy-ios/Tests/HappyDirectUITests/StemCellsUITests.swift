@@ -1369,14 +1369,16 @@ final class StemCellsUITests: XCTestCase {
         pause(1.5)
     }
 
-    /// The pickers: the model control in the dock before new work exists,
-    /// then in its conversation's bar; each send goes with what was picked.
-    /// The driver reads the modes back from the daemon.
+    /// The pickers: the dock's model chip before new work exists (the same
+    /// composer new work opens on), then in its conversation's bar; each
+    /// send goes with what was picked. The driver reads the modes back from
+    /// the daemon.
     func testPickers() {
         home()
         pause(1.5)
         capture("dock-pickers")
-        let dock = app.descendants(matching: .any)["stem-dock-model"]
+        // Home holds one composer: its model chip, whatever it says now.
+        let dock = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
         // The provider sheet shows each account's usage; it is looked at and closed.
         open(dock, 2)
         XCTAssertTrue(app.descendants(matching: .any)["stem-pick:claude"].waitForExistence(timeout: 5))
@@ -1694,6 +1696,41 @@ final class StemCellsUITests: XCTestCase {
         capture("paste-video")
         XCTAssertFalse(app.menuItems["Paste"].exists, "a recording offered Paste")
         XCTAssertFalse(attachment.exists)
+    }
+
+    /// Home's dock is new work's own composer, in the same place: its "+"
+    /// goes to new work with the library coming up over it, and what is
+    /// picked waits in that composer.
+    func testDockAdd() {
+        home()
+        pause(1.5)
+        let field = app.descendants(matching: .any)["stem-new-work"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "no dock")
+        let dockFrame = field.frame
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch.exists, "the dock has no model chip")
+        capture("dock-home")
+        app.buttons["Add a picture"].tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.buttons["Allow Full Access"]
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+        let library = app.descendants(matching: .any)["library-picker"]
+        XCTAssertTrue(library.waitForExistence(timeout: 5), "the dock's + didn't open the library")
+        pause(1)
+        capture("dock-add-library")
+        let first = app.descendants(matching: .any)["library-cell:0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5), "the library shows no photo")
+        first.tap()
+        pause(0.5)
+        app.descendants(matching: .any)["library-add"].tap()
+        let attachments = app.descendants(matching: .any).matching(identifier: "composer-attachment")
+        XCTAssertTrue(attachments.firstMatch.waitForExistence(timeout: 8), "the picked photo didn't attach")
+        XCTAssertTrue(app.textViews["stem-composer"].exists, "the library didn't open over new work")
+        pause(1.5)
+        capture("dock-add-attached")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        pause(1.5)
+        // Back home, the dock is where it was.
+        XCTAssertEqual(field.frame.minY, dockFrame.minY, accuracy: 1)
     }
 
     private func until(_ seconds: TimeInterval, _ condition: () -> Bool) -> Bool {

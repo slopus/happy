@@ -5,9 +5,11 @@ import UIKit
 
 /// Home in Stem Cells mode: one paired computer's sidebar, as desktop's
 /// `HappyAgentSpacesSidebar` draws it, under home's header and over the
-/// dock. The dock's field stays; tapping it makes new work, sent with what
-/// the pickers over it hold. Desktop's Search and Create rows aren't drawn:
-/// search is the header's button and create is the dock.
+/// dock. The dock is the new-work screen's own composer, drawn the same and
+/// in the same place: a tap in it makes new work, sent with the model its
+/// chips hold, and its "+" makes new work with the library open over it.
+/// Desktop's Search and Create rows aren't drawn: search is the header's
+/// button and create is the dock.
 final class StemCellsHomeViewController: UIViewController {
     private let context: AppContext
     /// The computer this screen always shows; nil to follow the choice.
@@ -15,10 +17,9 @@ final class StemCellsHomeViewController: UIViewController {
     private let sidebar = StemCellsSidebarView()
     private let banner = StemCellsBannerView()
     private let empty = StemCellsEmptyView()
-    let dockView = HomeDockView()
-    private let modelControl = StemCellModelControl()
+    private let dock = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.StemCells.composerPlaceholder))
+    private let dockScrim = HeaderScrimView(edge: .bottom)
     private var modelsWatch: StemCellsWatch?
-    private let dockText = HomeDockTextStore()
     private var session: StemCellsSession?
     private var watch: StemCellsWatch?
     private var accountsObservation: AccountsObservation?
@@ -58,18 +59,24 @@ final class StemCellsHomeViewController: UIViewController {
         view.addSubview(sidebar)
         view.addSubview(empty)
         view.addSubview(banner)
-        view.addSubview(dockView)
-        dockView.accessory = modelControl
-        modelControl.onPick = { [weak self] kind in self?.pick(kind) }
-        dockView.showsScrim = true
-        dockView.prompt = ""
-        dockView.entryButton.accessibilityIdentifier = "stem-new-work"
-        dockView.entryButton.addAction(UIAction { [weak self] _ in self?.makeNewWork() }, for: .touchUpInside)
-        dockView.sendButton.addAction(UIAction { [weak self] _ in self?.makeNewWork() }, for: .touchUpInside)
-        dockText.onChange = { [weak self] in
-            guard let self else { return }
-            dockView.text = dockText.current
-        }
+        view.addSubview(dockScrim)
+        dock.configuration.showsAdd = true
+        dock.configuration.addAccessibilityLabel = Strings.StemCells.addPicture
+        dock.configuration.primaryAction = AgentInputPrimaryAction.resolve(
+            hasComposerContent: false, isSendBlocked: false, isSendDisabled: false, showAbortButton: false, canAbort: false
+        )
+        dock.delegate = self
+        // Nothing is typed here: the field is where new work begins.
+        dock.textView.isUserInteractionEnabled = false
+        let entry = UITapGestureRecognizer(target: self, action: #selector(dockTapped(_:)))
+        entry.delegate = self
+        dock.addGestureRecognizer(entry)
+        dock.isAccessibilityElement = false
+        dock.textView.isAccessibilityElement = true
+        dock.textView.accessibilityTraits = .button
+        dock.textView.accessibilityLabel = Strings.StemCells.composerPlaceholder
+        dock.textView.accessibilityIdentifier = "stem-new-work"
+        view.addSubview(dock)
         sidebar.onSelect = { [weak self] row in self?.open(row) }
         sidebar.onFold = { [weak self] row in self?.fold(row) }
         sidebar.onAdd = { [weak self] row in self?.makeNewWork(in: row.nodeId) }
@@ -159,7 +166,8 @@ final class StemCellsHomeViewController: UIViewController {
         let notice = snapshot.stemCellError.map { Strings.StemCells.newWorkFailed(reason($0)) } ?? snapshot.error.map(reason)
         // Prioritizing being off is Settings' business: home says nothing of it.
         banner.configure(notice: notice)
-        dockView.isHidden = !hasComputer || snapshot.availability == .unsupported
+        dock.isHidden = !hasComputer || snapshot.availability == .unsupported
+        dockScrim.isHidden = dock.isHidden
         view.setNeedsLayout()
     }
 
@@ -172,7 +180,7 @@ final class StemCellsHomeViewController: UIViewController {
     private func updateModelBar() {
         let models = session?.models
         let menus = models?.catalog.flatMap { catalog in models?.newWorkMode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
-        modelControl.configure(menus)
+        StemCellModelPickers.configure(dock, menus: menus)
         view.setNeedsLayout()
     }
 
@@ -197,10 +205,12 @@ final class StemCellsHomeViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let bounds = view.bounds
-        dockText.prepare(HomeDockController.textKey(width: bounds.width, text: TextEnvironment(traitCollection)))
         let bannerHeight = banner.isEmpty ? 0 : banner.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height
-        dockView.frame = bounds
-        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset)
+        let docked = StemCellsDockLayout(size: bounds.size, safeArea: LayoutInsets(view.safeAreaInsets)) { [dock] width in dock.height(fitting: width) }
+        dock.setLayoutFrame(docked.card)
+        dockScrim.frame = docked.scrim
+        let listBottom = dock.isHidden ? contentInsets.listBottom : docked.listBottom
+        let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset)
         banner.frame = layout.banner
         sidebar.frame = bounds
         let insets = UIEdgeInsets(layout.listInsets)
@@ -307,8 +317,9 @@ final class StemCellsHomeViewController: UIViewController {
     }
 
     /// New work, right below Happy: the row and its empty conversation exist
-    /// at once, and the conversation opens on the intro with the composer up.
-    func makeNewWork(in sectionId: String? = nil) {
+    /// at once, and the conversation opens on the intro with the composer up,
+    /// or, from the dock's "+", with the library coming up over it as it opens.
+    func makeNewWork(in sectionId: String? = nil, library: Bool = false) {
         guard let session, !creating, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         creating = true
         StemCellsHaptics.play(.newWork)
@@ -320,8 +331,19 @@ final class StemCellsHomeViewController: UIViewController {
             session.selectedRowId = rowId
             sidebar.selectedRowId = rowId
             let chat = StemCellChatViewController(session: session, agentId: creation.agentId, title: Strings.StemCells.untitled, spaceId: creation.spaceId, stemCell: .stemCell(seed: creation.spaceId), creation: creation)
-            navigationController?.pushViewController(chat, animated: true)
+            chat.focusesOnOpen = !library
+            chat.focusesAfterPick = library
+            guard let navigation = navigationController else { return }
+            navigation.pushViewController(chat, animated: true)
+            // Over the screen it goes to, as that screen comes in.
+            if library { chat.presentLibrary(from: navigation) }
         }
+    }
+
+    @objc private func dockTapped(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        sidebar.disarm()
+        makeNewWork()
     }
 
     // MARK: Menus
@@ -542,6 +564,40 @@ final class StemCellsEmptyView: UIView {
         mark.frame = layout.mark
         label.frame = layout.label
         button.frame = layout.button ?? .zero
+    }
+}
+extension StemCellsHomeViewController: AgentInputCardDelegate, UIGestureRecognizerDelegate {
+    func agentInputCardDidPressPrimary(_ card: AgentInputCardView) { makeNewWork() }
+    func agentInputCardDidPressSend(_ card: AgentInputCardView) { makeNewWork() }
+
+    func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
+        sidebar.disarm()
+        makeNewWork(library: true)
+    }
+
+    func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) { view.setNeedsLayout() }
+
+    func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {
+        StemCellModelPickers.Kind(rawValue: key).map(pick)
+    }
+
+    func agentInputCard(_ card: AgentInputCardView, didPress chip: AgentInputChip) {
+        switch chip {
+        case .permission: pick(.provider)
+        case .model: pick(.model)
+        case .effort: pick(.effort)
+        }
+    }
+
+    /// The dock's own taps are its field's: its buttons and chips keep theirs.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        var view = touch.view
+        while let current = view, current !== dock {
+            // A disabled control (the empty send) takes no tap: the field's.
+            if let control = current as? UIControl, control.isEnabled { return false }
+            view = current.superview
+        }
+        return true
     }
 }
 #endif

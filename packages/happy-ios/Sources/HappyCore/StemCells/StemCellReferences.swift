@@ -38,6 +38,9 @@ public struct StemCellReferences: Equatable, Sendable {
     public var agents: [String: Entity] = [:]
     public var workspaces: [String: Entity] = [:]
     public var artifacts: [String: Artifact] = [:]
+    /// The conversation's own subagents, by ID, as titled ("" untitled):
+    /// a hidden one reads as its title, and opens nothing.
+    public var subagents: [String: String] = [:]
 
     public init(agents: [String: Entity] = [:], workspaces: [String: Entity] = [:], artifacts: [String: Artifact] = [:]) {
         self.agents = agents
@@ -110,7 +113,12 @@ public struct StemCellReferences: Equatable, Sendable {
                 return .link(title.isEmpty ? "Untitled artifact" : title)
             }
         case "agent", "workspace":
-            guard let entity = (reference.kind == "agent" ? agents : workspaces)[reference.id] else { return inert }
+            guard let entity = (reference.kind == "agent" ? agents : workspaces)[reference.id] else {
+                // desktop's `messageReferencesCreate`: a subagent is named, as "Subagent" untitled.
+                guard reference.kind == "agent", let title = subagents[reference.id] else { return inert }
+                let label = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                return .text(label.isEmpty ? "Subagent" : label)
+            }
             let label = entity.label.trimmingCharacters(in: .whitespacesAndNewlines)
             return .link(label.isEmpty ? "Untitled \(reference.kind)" : label)
         default:

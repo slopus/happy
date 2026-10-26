@@ -24,6 +24,10 @@ final class StemCellChatViewController: UIViewController {
     private let conversation: StemCellConversation
     private let spaceId: String?
     private let opensFocused: Bool
+    /// New work brings the keyboard up as it opens, unless it opens on the library.
+    var focusesOnOpen = true
+    /// Opened on the library: the first pick brings the keyboard up, once.
+    var focusesAfterPick = false
     private let previewing: Bool
     private let previewPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
     /// The card's ground over the messages above the list, fading out under the capsule.
@@ -56,6 +60,13 @@ final class StemCellChatViewController: UIViewController {
     private var sidebarRows: [StemCellsRow] = []
     /// What the references messages make read as and open.
     private var references = StemCellReferences()
+    /// The references with this conversation's own subagents, which the
+    /// sidebar's lists never hold.
+    private var subagentReferences: StemCellReferences {
+        var known = references
+        known.subagents = chat.subagentTitles
+        return known
+    }
     private var watch: StemCellsWatch?
     private var modelsWatch: StemCellsWatch?
     private var copied: (id: String, until: Task<Void, Never>)?
@@ -159,7 +170,7 @@ final class StemCellChatViewController: UIViewController {
         session.models.load()
         updateChips()
         // New work: the keyboard comes up with the screen.
-        if opensFocused { card.focus() }
+        if opensFocused, focusesOnOpen { card.focus() }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -279,6 +290,21 @@ final class StemCellChatViewController: UIViewController {
         StemCellModelPickers.configure(card, menus: menus)
     }
 
+    /// The library over `host`: home's dock opens it over this screen as
+    /// the screen comes in. What's picked waits in the composer, which then
+    /// takes the keyboard.
+    func presentLibrary(from host: UIViewController) {
+        let pictures = pictures
+        let room = pictures.room()
+        guard room > 0 else { return }
+        LibraryPicker.present(from: host, options: .init(limit: room, videos: false)) { [weak self] picks in
+            pictures.add(pictures: picks.compactMap { if case .image(let data, _) = $0.media { data } else { nil } })
+            guard let self, focusesAfterPick else { return }
+            focusesAfterPick = false
+            if !picks.isEmpty { card.focus() }
+        }
+    }
+
     private func pick(_ kind: StemCellModelPickers.Kind) {
         guard let mode else {
             session.models.load()
@@ -291,7 +317,7 @@ final class StemCellChatViewController: UIViewController {
     }
 
     private var planKey: StemCellChatPlanner.Key {
-        StemCellChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: references, subagentTitles: chat.subagentTitles)
+        StemCellChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles)
     }
 
     /// Plans the rows off the main thread, then shows them in one frame.
@@ -752,12 +778,7 @@ extension StemCellChatViewController: AgentInputCardDelegate {
     /// The add button opens the shared library sheet at once: no question
     /// first. Photos only: a message carries text and pictures alone.
     func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
-        let pictures = pictures
-        let room = pictures.room()
-        guard room > 0 else { return }
-        LibraryPicker.present(from: self, options: .init(limit: room, videos: false)) { picks in
-            pictures.add(pictures: picks.compactMap { if case .image(let data, _) = $0.media { data } else { nil } })
-        }
+        presentLibrary(from: self)
     }
 
     func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) { pictures.remove(id: id) }

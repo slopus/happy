@@ -65,23 +65,6 @@ final class StemCellPickerLayoutTests: XCTestCase {
         XCTAssertEqual(gauge.size, CGSize(width: 48, height: 16))
     }
 
-    func testTheDockModelControlIsItsSummaryThenAChevron() {
-        let control = StemCellModelControlLayout(summary: CGSize(width: 110.4, height: 18), chevron: true)
-        XCTAssertEqual(control.size, CGSize(width: 143, height: 32))
-        XCTAssertEqual(control.summary, CGRect(x: 10, y: 7, width: 110.4, height: 18))
-        XCTAssertEqual(control.chevron, CGRect(x: 122.4, y: 9, width: 14, height: 14))
-
-        // Cut to the room it got: the summary gives way, the chevron stays.
-        let cut = StemCellModelControlLayout(summary: CGSize(width: 110, height: 18), chevron: true, width: 80)
-        XCTAssertEqual(cut.summary, CGRect(x: 10, y: 7, width: 48, height: 18))
-        XCTAssertEqual(cut.chevron, CGRect(x: 60, y: 9, width: 14, height: 14))
-
-        // Nothing to pick: no chevron.
-        let bare = StemCellModelControlLayout(summary: CGSize(width: 150, height: 18), chevron: false)
-        XCTAssertEqual(bare.size, CGSize(width: 166, height: 32))
-        XCTAssertNil(bare.chevron)
-    }
-
     func testARowsEndIsItsGaugeThenItsCheck() {
         let both = StemCellPickerTrailingLayout(gauge: CGSize(width: 48, height: 16), checked: true)
         XCTAssertEqual(both.gauge, CGRect(x: 0, y: 1, width: 48, height: 16))

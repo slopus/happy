@@ -24,6 +24,24 @@ public struct StemCellsHomeLayout: Equatable, Sendable {
     }
 }
 
+/// Home's dock: the new-work screen's own composer card, where that screen
+/// puts it with the keyboard down (`StemCellChatScreenLayout`), over a
+/// scrim that rises from the screen's foot to the card's middle. The list
+/// keeps clear of it as the transcript does.
+public struct StemCellsDockLayout: Equatable, Sendable {
+    public var card: CGRect
+    public var scrim: CGRect
+    /// The room under the list, from the screen's foot.
+    public var listBottom: CGFloat
+
+    public init(size: CGSize, safeArea: LayoutInsets, cardHeight: (CGFloat) -> CGFloat) {
+        let screen = StemCellChatScreenLayout(size: size, safeArea: safeArea, keyboardTop: size.height, cardHeight: cardHeight)
+        card = screen.card
+        scrim = CGRect(x: 0, y: card.midY, width: max(0, size.width), height: max(0, size.height - card.midY))
+        listBottom = screen.listBottom
+    }
+}
+
 /// The note above the Stem Cells list: a card 12 in from the sides, its
 /// title and detail 14 inside it, and the Turn on button at its right,
 /// centred; 8 of room under the card.
