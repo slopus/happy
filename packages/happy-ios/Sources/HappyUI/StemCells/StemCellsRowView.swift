@@ -34,9 +34,12 @@ final class StemCellsRowView: UIView {
     var lifted = false {
         didSet { if lifted != oldValue { applyState() } }
     }
-    /// Pulled sideways over its actions: its box is filled so they stay under it.
-    var swiping = false {
-        didSet { if swiping != oldValue { applyState() } }
+    /// What a hold on the row offers, as VoiceOver's actions on it.
+    var actions: (() -> [UIAccessibilityCustomAction]?)?
+
+    override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
+        get { actions?() ?? super.accessibilityCustomActions }
+        set { super.accessibilityCustomActions = newValue }
     }
     private var field: StemCellsRenameField?
     private var finish: ((String?) -> Void)?
@@ -188,7 +191,7 @@ final class StemCellsRowView: UIView {
         chevron.tintColor = UIColor(Palette.stemCellsRowText)
         if let row, row.kind != .section, row.kind != .separator { applyText(row) }
         let carryable = row?.kind != .section && row?.kind != .separator
-        fill.backgroundColor = lifted || swiping ? UIColor(Palette.stemCellsBackground) : selected ? UIColor(Palette.stemCellsRowSelected) : pressed && carryable ? UIColor(Palette.stemCellsRowPressed) : .clear
+        fill.backgroundColor = lifted ? UIColor(Palette.stemCellsBackground) : selected ? UIColor(Palette.stemCellsRowSelected) : pressed && carryable ? UIColor(Palette.stemCellsRowPressed) : .clear
         layer.shadowColor = UIColor.black.cgColor
         layer.shadowOpacity = lifted ? 0.14 : 0
         layer.shadowRadius = 12

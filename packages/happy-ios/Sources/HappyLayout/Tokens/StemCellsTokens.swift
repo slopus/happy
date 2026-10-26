@@ -69,10 +69,6 @@ extension Palette {
     public static let stemCellsPrimaryButtonInk = ColorToken("#ffffff")
     public static let stemCellsPrimaryButtonDisabled = ColorToken("#c0c0c0")
     public static let stemCellsNotice = ColorToken("#ff3b30", "#ff453a")
-    /// A row pulled open: its quiet action, its destructive one, and their ink.
-    public static let stemCellsSwipeAction = ColorToken("#8e8e93", "#636366")
-    public static let stemCellsSwipeDestructive = ColorToken("#ff3b30", "#ff453a")
-    public static let stemCellsSwipeInk = ColorToken("#ffffff")
 
     /// Settings, after Telegram's: the ground under the cards, a card, its
     /// separators, a row's title and quieter value, and the red of leaving.
@@ -97,6 +93,17 @@ extension Palette {
     public static let stemCellsSettingsSecondaryFill = ColorToken(light: RGBA(red: 0, green: 0.478, blue: 1, alpha: 0.1), dark: RGBA(red: 0.039, green: 0.518, blue: 1, alpha: 0.15))
     /// The "+" circle at the end of the profiles.
     public static let stemCellsSettingsAddFill = ColorToken("#e5e5ea", "#2c2c2e")
+
+    /// A held row, as Telegram's context menu themes it (day and night
+    /// `PresentationThemeContextMenu`): the dim over the blurred sidebar,
+    /// the menu's tint over its blur, its lines, a pressed item, its ink,
+    /// and the red of putting away.
+    public static let stemCellsHoldDim = ColorToken(light: RGBA(red: 0, green: 10 / 255.0, blue: 38 / 255.0, alpha: 0.2), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.6))
+    public static let stemCellsHoldMenu = ColorToken(light: RGBA(red: 249 / 255.0, green: 249 / 255.0, blue: 249 / 255.0, alpha: 0.78), dark: RGBA(red: 37 / 255.0, green: 37 / 255.0, blue: 37 / 255.0, alpha: 0.78))
+    public static let stemCellsHoldSeparator = ColorToken(light: RGBA(red: 138 / 255.0, green: 138 / 255.0, blue: 138 / 255.0, alpha: 0.2), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.15))
+    public static let stemCellsHoldHighlight = ColorToken(light: RGBA(red: 60 / 255.0, green: 60 / 255.0, blue: 67 / 255.0, alpha: 0.2), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.15))
+    public static let stemCellsHoldInk = ColorToken("#000000", "#ffffff")
+    public static let stemCellsHoldDestructive = ColorToken("#ff3b30", "#eb5545")
 }
 
 public enum StemCellsMetrics {

@@ -13,6 +13,10 @@ import UIKit
 ///
 /// New work opens here before the daemon has made it: the intro and the
 /// composer are up at once, and a first message waits for the work to exist.
+///
+/// Previewing, it is what a hold on the row shows over the sidebar, as
+/// Telegram previews a chat: the newest messages under the name in a
+/// capsule, nothing to type in or tap, and nothing marked read.
 final class StemCellChatViewController: UIViewController {
     typealias Intro = StemCellIntroView.Mark
 
@@ -20,6 +24,9 @@ final class StemCellChatViewController: UIViewController {
     private let conversation: StemCellConversation
     private let spaceId: String?
     private let opensFocused: Bool
+    private let previewing: Bool
+    private let previewPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+    private let previewTitle = UILabel()
     private var intro: Intro?
     private let planner: StemCellChatPlanner
     private let media: StemCellMediaLoader
@@ -55,10 +62,11 @@ final class StemCellChatViewController: UIViewController {
     /// The name in the bar, renamed where it stands.
     private let titleView = StemCellChatTitleView()
 
-    init(session: StemCellsSession, agentId: String, title: String, spaceId: String?, stemCell intro: Intro?, creation: StemCellCreation? = nil) {
+    init(session: StemCellsSession, agentId: String, title: String, spaceId: String?, stemCell intro: Intro?, creation: StemCellCreation? = nil, previewing: Bool = false) {
         self.session = session
         self.spaceId = spaceId
         self.intro = intro
+        self.previewing = previewing
         opensFocused = creation != nil
         conversation = StemCellConversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created, mode: creation == nil ? nil : session.models.newWorkMode)
         planner = StemCellChatPlanner(syntax: session.syntax)
@@ -128,6 +136,7 @@ final class StemCellChatViewController: UIViewController {
         scrollView.addGestureRecognizer(tap)
         scrollView.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(held(_:))))
 
+        if previewing { setUpPreview() }
         applyIntro()
         proposals.onChange = { [weak self] in self?.replan() }
         let updates = conversation.updates
@@ -149,6 +158,8 @@ final class StemCellChatViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // A preview is only looked at: what it shows stays unread.
+        if previewing { return }
         navigationController?.setNavigationBarHidden(false, animated: animated)
         // Before the bar first places the name, so it isn't placed at no width.
         titleView.barWidth = navigationController?.navigationBar.bounds.width ?? view.bounds.width
@@ -199,6 +210,11 @@ final class StemCellChatViewController: UIViewController {
         guard let spaceId, let row = snapshot.rows.first(where: { $0.spaceId == spaceId }) else { return }
         if title != row.label { title = row.label }
         titleView.text = row.label
+        if previewing, previewTitle.text != row.label {
+            previewTitle.text = row.label
+            previewPill.accessibilityLabel = row.label
+            view.setNeedsLayout()
+        }
         // A task or a bot is renamed as its row is; Happy never.
         if !row.isHappy, row.targetKind == "task" || row.targetKind == "bot" {
             titleView.editableText = row.label == Strings.StemCells.untitled ? "" : row.label
@@ -355,6 +371,9 @@ final class StemCellChatViewController: UIViewController {
 
     private func makeProposal(_ artifactId: String, key: String) -> StemCellSidebarProposalView {
         let card = StemCellSidebarProposalView(images: session.images)
+        proposalViews[key] = card
+        // A preview is only looked at: nothing in it is decided from there.
+        if previewing { return card }
         let proposals = proposals
         card.onAccept = { proposals.accept(artifactId) }
         card.onDecline = { proposals.decline(artifactId) }
@@ -364,7 +383,6 @@ final class StemCellChatViewController: UIViewController {
             StemCellsHaptics.play(.fold)
             proposals.turn(artifactId, rowId: rowId)
         }
-        proposalViews[key] = card
         return card
     }
 
@@ -372,6 +390,7 @@ final class StemCellChatViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        if previewing { return layoutPreview() }
         titleView.barWidth = navigationController?.navigationBar.bounds.width ?? view.bounds.width
         replan()
         let screen = StemCellChatScreenLayout(
@@ -385,6 +404,39 @@ final class StemCellChatViewController: UIViewController {
             scrollView.contentInset = insets
             scrollView.verticalScrollIndicatorInsets = insets
         }
+        layoutTranscript()
+    }
+
+    // MARK: Preview
+
+    private func setUpPreview() {
+        card.isHidden = true
+        scrollView.isUserInteractionEnabled = false
+        view.accessibilityIdentifier = "stem-preview"
+        previewPill.layer.cornerRadius = StemCellsPreviewLayout.Metrics.pillHeight / 2
+        previewPill.layer.cornerCurve = .continuous
+        previewPill.clipsToBounds = true
+        previewPill.isAccessibilityElement = true
+        previewPill.accessibilityTraits = .header
+        previewPill.accessibilityIdentifier = "stem-preview-title"
+        previewPill.accessibilityLabel = title
+        previewTitle.text = title
+        previewTitle.font = .systemFont(ofSize: 17, weight: .semibold)
+        previewTitle.textColor = .label
+        previewTitle.textAlignment = .center
+        previewTitle.lineBreakMode = .byTruncatingTail
+        previewPill.contentView.addSubview(previewTitle)
+        view.addSubview(previewPill)
+    }
+
+    private func layoutPreview() {
+        replan()
+        let layout = StemCellsPreviewLayout(size: view.bounds.size, titleSize: previewTitle.sizeThatFits(view.bounds.size))
+        previewPill.frame = layout.pill
+        previewTitle.frame = layout.title.offsetBy(dx: -layout.pill.minX, dy: -layout.pill.minY)
+        scrollView.frame = view.bounds
+        let insets = UIEdgeInsets(top: layout.listTop, left: 0, bottom: layout.listBottom, right: 0)
+        if scrollView.contentInset != insets { scrollView.contentInset = insets }
         layoutTranscript()
     }
 

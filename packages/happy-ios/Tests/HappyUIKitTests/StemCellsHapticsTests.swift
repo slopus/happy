@@ -30,10 +30,10 @@ final class StemCellsHapticsTests: XCTestCase {
         let recorder = Recorder()
         StemCellsHaptics.player = recorder
         let expected: [(StemCellsHaptics.Moment, StemCellsHaptics.Feedback)] = [
+            (.hold, .impact(.light)),
             (.lift, .impact(.medium)),
             (.slot, .selection),
             (.drop, .impact(.light)),
-            (.swipeThreshold, .selection),
             (.putAway, .notification(.success)),
             (.renamed, .impact(.light)),
             (.send, .impact(.light)),

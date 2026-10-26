@@ -8,14 +8,14 @@ import UIKit
 /// acts play one, never a change that arrived from the computer.
 enum StemCellsHaptics {
     enum Moment: CaseIterable {
-        /// A hold lifted a row (with its menu).
+        /// A hold opened a row's preview and menu (Telegram's light tap).
+        case hold
+        /// A held row was lifted to be carried.
         case lift
         /// A carried row's landing slot changed.
         case slot
         /// A carried row was set down.
         case drop
-        /// A pulled row passed the point where letting go opens its actions.
-        case swipeThreshold
         /// Work was archived, left or closed.
         case putAway
         /// A rename was kept.
@@ -39,8 +39,8 @@ enum StemCellsHaptics {
     static func feedback(_ moment: Moment) -> Feedback {
         switch moment {
         case .lift: .impact(.medium)
-        case .slot, .swipeThreshold, .pick: .selection
-        case .drop, .renamed, .send, .newWork, .fold: .impact(.light)
+        case .slot, .pick: .selection
+        case .hold, .drop, .renamed, .send, .newWork, .fold: .impact(.light)
         case .putAway: .notification(.success)
         }
     }

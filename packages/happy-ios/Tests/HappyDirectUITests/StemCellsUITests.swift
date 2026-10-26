@@ -211,63 +211,90 @@ final class StemCellsUITests: XCTestCase {
         capture("renamed")
     }
 
-    /// A row pulled sideways shows Rename and how it's put away; Rename
-    /// edits in place, a tap outside keeps it; Archive puts a bot away.
-    func testSwipe() {
+    /// A hold on a row previews its conversation as Telegram's chat list
+    /// does: the real newest messages under its name in a card at
+    /// Telegram's size, the menu under it. It stays when let go; a tap on
+    /// it opens the conversation; Rename edits the row in place; Archive
+    /// puts a bot away. A sideways pull does nothing any more.
+    func testHoldPreview() {
         home()
-        let (from, to) = row("space", "Weekly meal plan").waitForExistence(timeout: 3) ? ("Weekly meal plan", "Meals this week") : ("Meals this week", "Weekly meal plan")
+        let screen = app.windows.firstMatch.frame
+        let chat = row("space", "Birthday party for Maya")
+        bringIntoView(chat)
+        pause(1)
+        chat.press(forDuration: 1.0)
+        let preview = app.descendants(matching: .any)["stem-preview"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 3), "a hold showed no preview")
+        XCTAssertTrue(preview.descendants(matching: .any)["stem-preview-title"].exists, "the preview has no name")
+        XCTAssertTrue(preview.staticTexts["Birthday party for Maya"].exists, "the preview's name is not the row's")
+        let messages = preview.descendants(matching: .any).matching(NSPredicate(format: "label != %@ AND label != %@", "", "Birthday party for Maya"))
+        XCTAssertTrue(until(8) { messages.count > 0 }, "the preview shows no messages")
+        // Telegram's size: 12 from either edge, at most 460 tall, the menu 10 under it.
+        XCTAssertEqual(preview.frame.minX, 12, accuracy: 0.5)
+        XCTAssertEqual(preview.frame.width, screen.width - 24, accuracy: 0.5)
+        XCTAssertLessThanOrEqual(preview.frame.height, 460.5)
+        XCTAssertGreaterThan(preview.frame.height, 300)
+        let menu = app.descendants(matching: .any)["stem-hold-menu"]
+        XCTAssertTrue(menu.exists, "no menu under the preview")
+        XCTAssertEqual(menu.frame.minY, preview.frame.maxY + 10, accuracy: 0.5)
+        XCTAssertEqual(menu.frame.maxX, preview.frame.maxX, accuracy: 0.5)
+        XCTAssertTrue(menu.buttons["Open"].exists, "no Open in the menu")
+        pause(1.5)
+        capture("hold-preview")
+        // Let go, it stayed; a tap on it opens the conversation.
+        preview.tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 4), "tapping the preview didn't open the conversation")
+        XCTAssertFalse(preview.exists)
+        pause(1)
+        capture("hold-opened")
+        app.navigationBars.buttons.firstMatch.tap()
+        pause(1)
+
+        // Rename from the menu: the preview goes and the row's title is a field.
+        let (from, to) = row("space", "Organize garage sale").waitForExistence(timeout: 3) ? ("Organize garage sale", "Garage sale prep") : ("Garage sale prep", "Organize garage sale")
         let task = row("space", from)
         bringIntoView(task)
         pause(1)
-        pull(task)
-        let rename = app.buttons["stem-swipe:rename"]
+        task.press(forDuration: 1.0)
+        let rename = app.buttons["Rename task"]
         XCTAssertTrue(rename.waitForExistence(timeout: 3))
-        pause(1)
-        capture("swipe-open")
         rename.tap()
         let field = app.textFields["stem-rename"]
-        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        XCTAssertTrue(field.waitForExistence(timeout: 3), "Rename didn't edit the row")
+        XCTAssertFalse(app.descendants(matching: .any)["stem-preview"].exists)
         field.typeText(to)
-        pause(0.8)
-        capture("swipe-rename-typed")
-        // A tap on empty list below the rows keeps it.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+        pause(0.6)
+        capture("hold-rename-typed")
+        field.typeText("\n")
         XCTAssertTrue(row("space", to).waitForExistence(timeout: 2))
         pause(3)
         XCTAssertTrue(row("space", to).exists, "the name went back")
-        capture("swipe-renamed")
 
-        // Happy has no actions.
-        let happy = row("space", "Happy")
-        bringIntoView(happy)
-        pull(happy)
+        // A sideways pull opens nothing and moves nothing.
+        let renamed = row("space", to)
+        let before = renamed.frame
+        renamed.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).press(forDuration: 0.01, thenDragTo: renamed.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)), withVelocity: .fast, thenHoldForDuration: 0)
         pause(1)
-        XCTAssertFalse(app.buttons["stem-swipe:rename"].exists)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-swipe")).count, 0, "a pull still uncovers actions")
+        XCTAssertEqual(renamed.frame.minX, before.minX, accuracy: 0.5)
 
-        // A throwaway bot the run made, archived from its row.
-        let bot = row("space", "Swipe Me")
+        // A throwaway bot the run made, archived from its menu.
+        let bot = row("space", "Hold Me")
         if bot.waitForExistence(timeout: 2) {
-            do {
-                bringIntoView(bot)
-                pull(bot)
-                let archive = app.buttons["stem-swipe:archive"]
-                XCTAssertTrue(archive.waitForExistence(timeout: 3))
-                pause(1)
-                capture("swipe-archive")
-                archive.tap()
-                let deadline = Date().addingTimeInterval(10)
-                while Date() < deadline, bot.exists { pause(0.5) }
-                XCTAssertFalse(bot.exists, "the archived bot stayed")
-                pause(1)
-                capture("swipe-archived")
-            }
+            bringIntoView(bot)
+            pause(1)
+            bot.press(forDuration: 1.0)
+            let archive = app.buttons["Archive bot"]
+            XCTAssertTrue(archive.waitForExistence(timeout: 3))
+            pause(1)
+            capture("hold-archive")
+            archive.tap()
+            XCTAssertTrue(until(10) { !bot.exists }, "the archived bot stayed")
+            pause(1)
+            capture("hold-archived")
+        } else {
+            XCTFail("no Hold Me bot to archive")
         }
-    }
-
-    /// A leftward pull across a row.
-    private func pull(_ element: XCUIElement) {
-        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
-        start.press(forDuration: 0.01, thenDragTo: element.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)), withVelocity: .fast, thenHoldForDuration: 0)
     }
 
     /// A hold lifts a row with its menu; moving carries it (the menu goes),
@@ -278,7 +305,9 @@ final class StemCellsUITests: XCTestCase {
         pause(1)
         let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:space:"))
         func order() -> [String] {
-            rows.allElementsBoundByIndex.filter { $0.frame.height > 0 }.sorted { $0.frame.minY < $1.frame.minY }.map { $0.identifier }
+            // Rows named alike (two "Trip notes") can't be told apart by name: left out.
+            let ids = rows.allElementsBoundByIndex.filter { $0.frame.height > 0 }.sorted { $0.frame.minY < $1.frame.minY }.map { $0.identifier }
+            return ids.filter { id in ids.filter { $0 == id }.count == 1 }
         }
         // A task a few rows down, carried up two rows.
         let all = order()
@@ -295,9 +324,9 @@ final class StemCellsUITests: XCTestCase {
         // Just over the row it was let go on (a section heading may stand between).
         let landed = after.firstIndex(of: all[4]) ?? -1
         XCTAssertTrue(landed < after.firstIndex(of: all[2])! && landed > after.firstIndex(of: all[0])!, "the row did not land over \(all[2]): \(after)")
-        // Released without moving: the menu stays open.
+        // Released without moving: the preview and menu stay open.
         moving.press(forDuration: 1.2)
-        XCTAssertTrue(app.collectionViews.firstMatch.waitForExistence(timeout: 2) || app.buttons["Open"].exists, "the menu did not stay")
+        XCTAssertTrue(app.descendants(matching: .any)["stem-hold-menu"].waitForExistence(timeout: 2), "the menu did not stay")
         pause(1)
         capture("reorder-menu-stays")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
