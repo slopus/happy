@@ -40,6 +40,9 @@ final class StemCellsHomeViewController: UIViewController {
     /// Every snapshot shown, for the screen around this one.
     var onSnapshot: ((StemCellsSnapshot) -> Void)?
 
+    /// The dock, which new work's own composer stands in for as it opens.
+    var newWorkDock: UIView { dock }
+
     /// The header and dock home lays its content between.
     var contentInsets = HomeContentInsets(safeArea: .zero, dock: 0) {
         didSet { if contentInsets != oldValue { view.setNeedsLayout() } }
@@ -317,8 +320,10 @@ final class StemCellsHomeViewController: UIViewController {
     }
 
     /// New work, right below Happy: the row and its empty conversation exist
-    /// at once, and the conversation opens on the intro with the composer up,
-    /// or, from the dock's "+", with the library coming up over it as it opens.
+    /// at once, and the conversation opens over home without going anywhere
+    /// (`StemCellsNewWorkTransition`): the composer rides the keyboard up from
+    /// the dock as the intro fades in, or, from the dock's "+", stays and the
+    /// library comes up over it.
     func makeNewWork(in sectionId: String? = nil, library: Bool = false) {
         guard let session, !creating, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         creating = true
@@ -333,6 +338,7 @@ final class StemCellsHomeViewController: UIViewController {
             let chat = StemCellChatViewController(session: session, agentId: creation.agentId, title: Strings.StemCells.untitled, spaceId: creation.spaceId, stemCell: .stemCell(seed: creation.spaceId), creation: creation)
             chat.focusesOnOpen = !library
             chat.focusesAfterPick = library
+            chat.opensOverHome = true
             guard let navigation = navigationController else { return }
             navigation.pushViewController(chat, animated: true)
             // Over the screen it goes to, as that screen comes in.

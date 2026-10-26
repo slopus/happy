@@ -8,7 +8,7 @@ import UIKit
 /// picture at the left opens settings, where another computer or the Happy
 /// account is chosen; its name is plain in the middle; search alone is the
 /// pill at the right.
-final class StemCellsDirectHomeViewController: UIViewController {
+final class StemCellsDirectHomeViewController: UIViewController, StemCellsDockHosting {
     private let context: AppContext
     private let id: String
     private let header = HomeHeaderView()
@@ -104,6 +104,8 @@ final class StemCellsDirectHomeViewController: UIViewController {
         header.frame = layout.header
         stemCells.contentInsets = layout.insets
     }
+
+    var newWorkDock: UIView { stemCells.newWorkDock }
 
     @objc private func openSettings() {
         StemCellsSettingsNavigationController.present(context: context, computer: id, from: self)

@@ -1830,6 +1830,58 @@ final class StemCellsUITests: XCTestCase {
         capture("glass-header-swiped-home")
     }
 
+    /// New work from the dock isn't a screen pushed over home: the
+    /// composer stays where it is and rides up on the keyboard while new
+    /// work fades in around it. The back circle and an edge swipe fade it
+    /// out again, the keyboard going down with the composer to the dock.
+    func testDockTransition() {
+        home()
+        pause(1.5)
+        let field = app.descendants(matching: .any)["stem-new-work"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "no dock")
+        let dockFrame = field.frame
+        let back = app.buttons["stem-chat-back"]
+        for leaving in ["button", "swipe"] {
+            field.tap()
+            let composer = app.textViews["stem-composer"]
+            XCTAssertTrue(composer.waitForExistence(timeout: 3), "no new work")
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "no keyboard")
+            if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+            XCTAssertTrue(back.waitForExistence(timeout: 3), "no back circle")
+            pause(1)
+            XCTAssertEqual(composer.frame.minX, dockFrame.minX, accuracy: 1, "the composer moved sideways")
+            XCTAssertEqual(composer.frame.width, dockFrame.width, accuracy: 1, "the composer changed width")
+            capture("dock-transition-open-\(leaving)")
+            if leaving == "button" {
+                back.tap()
+            } else {
+                // Let go a fifth of the way: still new work, the keyboard back up.
+                let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.4))
+                edge.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4)), withVelocity: .slow, thenHoldForDuration: 0.3)
+                pause(1.5)
+                XCTAssertTrue(back.isHittable, "a swipe let go of left new work")
+                XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "the keyboard didn't come back after a swipe let go of")
+                XCTAssertEqual(composer.frame.minX, dockFrame.minX, accuracy: 1)
+                capture("dock-transition-swipe-cancelled")
+                edge.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.4)), withVelocity: .fast, thenHoldForDuration: 0)
+            }
+            XCTAssertTrue(until(4) { !back.exists }, "the \(leaving) didn't go back")
+            XCTAssertTrue(until(3) { !app.keyboards.firstMatch.exists }, "the keyboard stayed after the \(leaving)")
+            pause(1)
+            XCTAssertEqual(field.frame.minY, dockFrame.minY, accuracy: 1, "the dock isn't where it was")
+            capture("dock-transition-closed-\(leaving)")
+        }
+        // Put away: never sent, they would wait in the sidebar as "New".
+        for _ in 0..<2 {
+            let made = app.descendants(matching: .any)["stem-row:space:New"].firstMatch
+            guard made.waitForExistence(timeout: 3) else { break }
+            made.press(forDuration: 1.0)
+            let close = app.buttons["Close new work"]
+            if close.waitForExistence(timeout: 3) { close.tap() }
+            pause(1.5)
+        }
+    }
+
     private func until(_ seconds: TimeInterval, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while Date() < deadline { if condition() { return true }; pause(0.2) }

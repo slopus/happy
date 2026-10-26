@@ -28,6 +28,14 @@ final class StemCellChatViewController: UIViewController {
     var focusesOnOpen = true
     /// Opened on the library: the first pick brings the keyboard up, once.
     var focusesAfterPick = false
+    /// New work from home's dock: it fades in and out over home with the
+    /// composer where the dock is (`StemCellsNewWorkTransition`), and an
+    /// edge swipe drives the way back.
+    var opensOverHome = false
+    /// The keyboard new work opens with, not yet asked for.
+    private var focusPending = false
+    private var swipeHome: UIPercentDrivenInteractiveTransition?
+    private var focusedBeforeSwipe = false
     private let previewing: Bool
     private let previewPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
     /// The card's ground over the messages above the list, fading out under the capsule.
@@ -45,6 +53,13 @@ final class StemCellChatViewController: UIViewController {
     private let working = StemCellWorkingView()
     private let card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.Composer.inputPlaceholder))
     private let keyboardTracker = UIView()
+    /// The keyboard's top as its notifications last said (down: past any
+    /// screen), which the composer rides on the keyboard's own curve. The
+    /// guide (`keyboardTracker`) moves a layout pass ahead of them, so it
+    /// is followed only while a finger may be dragging the keyboard down:
+    /// from a drag's start until they say where it went.
+    private var keyboardTop = CGFloat.greatestFiniteMagnitude
+    private var fingerOnKeyboard = false
 
     private var chat = StemCellChatSnapshot()
     private var following: Task<Void, Never>?
@@ -88,6 +103,7 @@ final class StemCellChatViewController: UIViewController {
         self.intro = intro
         self.previewing = previewing
         opensFocused = creation != nil
+        focusPending = creation != nil
         conversation = StemCellConversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created, mode: creation == nil ? nil : session.models.newWorkMode)
         planner = StemCellChatPlanner(syntax: session.syntax)
         proposals = StemCellSidebarProposals(client: session.client, store: session.store)
@@ -137,7 +153,12 @@ final class StemCellChatViewController: UIViewController {
             updatePrimary()
         }
         view.addSubview(card)
-        header.onBack = { [weak self] in self?.navigationController?.popViewController(animated: true) }
+        header.onBack = { [weak self] in
+            guard let self else { return }
+            // The keyboard goes down with the composer as the screen goes.
+            if opensOverHome { card.blur() }
+            navigationController?.popViewController(animated: true)
+        }
         view.addSubview(header)
 
         keyboardTracker.isHidden = true
@@ -151,6 +172,8 @@ final class StemCellChatViewController: UIViewController {
             keyboardTracker.topAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
             keyboardTracker.heightAnchor.constraint(equalToConstant: 1),
         ])
+
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         tap.cancelsTouchesInView = false
@@ -173,14 +196,21 @@ final class StemCellChatViewController: UIViewController {
         modelsWatch = session.models.watch { [weak self] in self?.updateChips() }
         session.models.load()
         updateChips()
-        // New work: the keyboard comes up with the screen.
-        if opensFocused, focusesOnOpen { card.focus() }
+        if opensOverHome {
+            let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(swipedHome(_:)))
+            edge.edges = .left
+            view.addGestureRecognizer(edge)
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // A preview is only looked at: what it shows stays unread.
         if previewing { return }
+        // What the keyboard did while another screen was over this one
+        // went unheard: down, unless it is still this composer's.
+        fingerOnKeyboard = false
+        if !card.textView.isFirstResponder { keyboardTop = .greatestFiniteMagnitude }
         // The header is the screen's own glass.
         navigationController?.setNavigationBarHidden(true, animated: animated)
         let conversation = conversation
@@ -190,7 +220,14 @@ final class StemCellChatViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         guard !previewing, let navigationController else { return }
-        swipeBack.attach(to: navigationController)
+        // New work: the keyboard comes up with the screen, if nothing asked yet.
+        takeOpeningFocus()
+        // Over home, the way back is this screen's own swipe.
+        if opensOverHome, navigationController.viewControllers.first is StemCellsDockHosting {
+            navigationController.interactivePopGestureRecognizer?.isEnabled = false
+        } else {
+            swipeBack.attach(to: navigationController)
+        }
         // A swipe back let go of halfway gives the bar back to the screen
         // under it after this one appeared: hidden again.
         if !navigationController.isNavigationBarHidden { navigationController.setNavigationBarHidden(true, animated: false) }
@@ -201,6 +238,7 @@ final class StemCellChatViewController: UIViewController {
         // Leaving keeps a name being typed, as a tap away does.
         titleView.finishEditing()
         swipeBack.detach()
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         // A screen pushed over this one has the bar it expects.
         if !previewing, !isMovingFromParent, let top = navigationController?.topViewController, top !== self, !(top is StemCellChatViewController) {
             navigationController?.setNavigationBarHidden(false, animated: animated)
@@ -218,6 +256,80 @@ final class StemCellChatViewController: UIViewController {
             modelsWatch?.invalidate()
             proposals.stop()
             Task { await conversation.stop() }
+        }
+    }
+
+    // MARK: Keyboard
+
+    /// The composer goes with the keyboard: to the same place, in the same
+    /// time, on the same curve.
+    @objc private func keyboardWillChange(_ note: Notification) {
+        guard !previewing, let screen = view.window?.screen,
+              let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
+        let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
+        let curve = (note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
+        let local = view.convert(end, from: screen.coordinateSpace)
+        let top = local.minY >= view.bounds.maxY || local.isEmpty ? CGFloat.greatestFiniteMagnitude : local.minY
+        keyboardTop = top
+        fingerOnKeyboard = false
+        guard duration > 0 else { return view.setNeedsLayout() }
+        UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction]) {
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+        }
+    }
+
+    // MARK: Over home
+
+    /// The keyboard new work opens with: asked for once, as the screen comes in.
+    func takeOpeningFocus() {
+        guard focusPending else { return }
+        focusPending = false
+        guard focusesOnOpen else { return }
+        card.focus()
+    }
+
+    /// New work over home, from 0 (only the composer, where the dock is) to
+    /// 1 (all of it). A composer holding something the dock doesn't fades too.
+    func newWorkFade(_ alpha: CGFloat) {
+        view.backgroundColor = UIColor(Palette.surface).withAlphaComponent(alpha)
+        scrollView.alpha = alpha
+        header.alpha = alpha
+        card.alpha = composerIsEmpty ? 1 : alpha
+    }
+
+    /// Nothing typed or picked: the composer is the dock's very picture.
+    var composerIsEmpty: Bool { card.text.isEmpty && pictures.images.isEmpty }
+
+    /// A swipe home let go of: the keyboard comes back if it was up.
+    func newWorkPopCancelled() {
+        if focusedBeforeSwipe { card.focus() }
+        focusedBeforeSwipe = false
+    }
+
+    @objc private func swipedHome(_ pan: UIScreenEdgePanGestureRecognizer) {
+        let progress = min(1, max(0, pan.translation(in: view).x / max(1, view.bounds.width)))
+        switch pan.state {
+        case .began:
+            guard let navigationController, navigationController.transitionCoordinator == nil, navigationController.viewControllers.count > 1 else { return }
+            titleView.finishEditing()
+            swipeHome = UIPercentDrivenInteractiveTransition()
+            focusedBeforeSwipe = card.textView.isFirstResponder
+            card.blur()
+            navigationController.popViewController(animated: true)
+        case .changed:
+            swipeHome?.update(progress)
+        case .ended, .cancelled, .failed:
+            // Past a third and still going right, or flung: home. Flicked back: stays.
+            let velocity = pan.velocity(in: view).x
+            if pan.state == .ended, velocity > 600 || (progress > 0.35 && velocity >= -100) {
+                swipeHome?.finish()
+            } else {
+                swipeHome?.cancel()
+            }
+            swipeHome = nil
+        default:
+            break
         }
     }
 
@@ -484,7 +596,7 @@ final class StemCellChatViewController: UIViewController {
         header.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: header.layout.backdrop.height)
         let screen = StemCellChatScreenLayout(
             size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets),
-            keyboardTop: keyboardTracker.frame.minY
+            keyboardTop: fingerOnKeyboard ? keyboardTracker.frame.minY : keyboardTop
         ) { [card] width in card.height(fitting: width) }
         card.setLayoutFrame(screen.card)
         scrollView.frame = view.bounds
@@ -848,6 +960,13 @@ extension StemCellChatViewController: AgentInputCardDelegate {
     }
 }
 
+extension StemCellChatViewController: NavigationTransitionProviding {
+    func navigationTransition(_ operation: UINavigationController.Operation, other: UIViewController) -> UIViewControllerAnimatedTransitioning? {
+        guard opensOverHome, let home = other as? StemCellsDockHosting else { return nil }
+        return StemCellsNewWorkTransition(operation, chat: self, home: home, interaction: operation == .pop ? swipeHome : nil)
+    }
+}
+
 extension StemCellChatViewController: ChatMediaProviding {
     var chatMedia: ChatMediaSource? { media }
 }
@@ -869,6 +988,15 @@ private extension ChatDrawItem {
 }
 
 extension StemCellChatViewController: UIScrollViewDelegate {
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        fingerOnKeyboard = true
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        // No keyboard up, or one the finger never moved: nothing will say where it went.
+        if !card.textView.isFirstResponder || abs(keyboardTracker.frame.minY - min(keyboardTop, view.bounds.maxY)) < 1 { fingerOnKeyboard = false }
+    }
+
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         guard scrollView.isTracking || scrollView.isDecelerating else { return }
         followsNewest = scrollView.contentOffset.y >= newestOffset - 24
