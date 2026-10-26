@@ -175,7 +175,7 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(messages.count, 2, "the agent never answered")
         pause(2)
         capture("new-work-answered")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(4)
         capture("sidebar-after-new-work")
     }
@@ -195,7 +195,7 @@ final class StemCellsUITests: XCTestCase {
         app.buttons["Send"].tap()
         if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
         pause(2)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         XCTAssertGreaterThan(cells.count, before, "no stem cell row")
         capture("hatch-waiting")
         let deadline = Date().addingTimeInterval(150)
@@ -215,7 +215,7 @@ final class StemCellsUITests: XCTestCase {
         row("space", "Happy").tap()
         pause(4)
         capture("happy-chat")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(2)
         capture("happy-selected")
     }
@@ -298,7 +298,7 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertFalse(preview.exists)
         pause(1)
         capture("hold-opened")
-        app.navigationBars.buttons.firstMatch.tap()
+        app.tapBack()
         pause(1)
 
         // Rename from the menu: the preview goes and the row's title is a field.
@@ -482,7 +482,7 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 6), "the + opened no new work")
         pause(1)
         capture("section-add-opened")
-        app.navigationBars.buttons.firstMatch.tap()
+        app.tapBack()
         pause(1.5)
         let made = rowUnder(section)
         XCTAssertEqual(made?.identifier, "stem-row:space:New", "the new work isn't right under its section")
@@ -505,7 +505,7 @@ final class StemCellsUITests: XCTestCase {
         app.typeText("happy")
         pause(2)
         capture("search")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(1)
     }
 
@@ -532,38 +532,39 @@ final class StemCellsUITests: XCTestCase {
         field.typeText("Water the cactus\n")
         pause(2)
         capture("todo-list")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(1)
 
         offer("New document", name: "Trip notes")
         XCTAssertTrue(app.descendants(matching: .any)["stem-document"].waitForExistence(timeout: 10))
         pause(2)
         capture("document")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(1)
 
         app.descendants(matching: .any)["stem-offer:New bot"].tap()
         XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 20))
         pause(2)
         capture("new-bot")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(1)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         XCTAssertTrue(row("space", "Weekend errands").waitForExistence(timeout: 15), "the todo list never joined the sidebar")
         XCTAssertTrue(row("space", "Trip notes").waitForExistence(timeout: 15), "the document never joined the sidebar")
         pause(2)
         capture("sidebar-with-surfaces")
-        let fresh = row("space", "New")
+        let fresh = row("space", "New").firstMatch
         if fresh.exists {
             fresh.press(forDuration: 1.0)
             let close = app.buttons["Close new work"]
             if close.waitForExistence(timeout: 3) { close.tap() }
             pause(2)
         }
-        row("space", "Weekend errands").tap()
+        // Each run makes one more: the newest is any of them.
+        row("space", "Weekend errands").firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["stem-todo"].waitForExistence(timeout: 10))
         pause(2)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(1)
     }
 
@@ -601,7 +602,7 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(messages.count, 2, "the agent never answered")
         pause(2)
         capture("prioritizing-chat")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         // The sidebar, untouched, while Prioritizing works: the stem cell
         // grows its icon and name at once, and the batch moves the row once
         // Prioritizing's turn ends.
@@ -664,7 +665,7 @@ final class StemCellsUITests: XCTestCase {
         sessions.firstMatch.tap()
         pause(4)
         capture("subtask-chat")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(1.5)
         for _ in 0..<3 { app.swipeDown(); pause(0.3) }
         let prioritizing = row("space", "Prioritizing")
@@ -672,7 +673,7 @@ final class StemCellsUITests: XCTestCase {
             prioritizing.tap()
             pause(4)
             capture("prioritizing-notes")
-            app.navigationBars.buttons.element(boundBy: 0).tap()
+            app.tapBack()
             pause(1.5)
         }
     }
@@ -748,21 +749,19 @@ final class StemCellsUITests: XCTestCase {
 
         // A photo from the library (the newest: the swatch the run put
         // there with `simctl addmedia`), with a question about it.
+        // "+" is the shared library sheet, at once.
         app.buttons["Add a picture"].tap()
-        let library = app.alerts.buttons["Photo Library"]
-        XCTAssertTrue(library.waitForExistence(timeout: 3))
-        library.tap()
-        let photos = app.images.matching(NSPredicate(format: "label BEGINSWITH %@", "Photo"))
-        XCTAssertTrue(photos.firstMatch.waitForExistence(timeout: 10), "the photo picker never showed the library")
+        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Full Access"]
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+        let newest = app.descendants(matching: .any)["library-cell:0"]
+        XCTAssertTrue(newest.waitForExistence(timeout: 10), "the library sheet never showed a photo")
         pause(1)
         capture("media-library")
         // Newest first.
-        photos.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        newest.tap()
         pause(0.8)
-        for name in ["Add", "Done"] where app.buttons[name].exists {
-            app.buttons[name].tap()
-            break
-        }
+        app.descendants(matching: .any)["library-add"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["composer-attachment"].waitForExistence(timeout: 8), "the photo didn't attach")
         pause(2)
         capture("media-picked")
         composer.tap()
@@ -841,7 +840,7 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["stem-artifact-document"].waitForExistence(timeout: 15), "the artifact never opened")
         pause(2)
         capture("layout-artifact")
-        app.navigationBars.buttons.firstMatch.tap()
+        app.tapBack()
         pause(1.5)
 
         bringIntoView(file)
@@ -1013,7 +1012,7 @@ final class StemCellsUITests: XCTestCase {
                 capture("rename-after")
                 print("STEM_RENAMED \(to)")
             }
-            app.navigationBars.buttons.element(boundBy: 0).tap()
+            app.tapBack()
             XCTAssertTrue(row("space", to).waitForExistence(timeout: 5), "the sidebar row never showed \(to)")
             if to == new {
                 pause(1)
@@ -1099,7 +1098,7 @@ final class StemCellsUITests: XCTestCase {
             print("STEM_PROPOSAL \(take ? "accepted" : "declined")")
             pause(1)
         }
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(2)
         capture("proposal-sidebar")
     }
@@ -1124,7 +1123,7 @@ final class StemCellsUITests: XCTestCase {
             XCTAssertGreaterThan(loaded.count, 0)
             pause(2)
             capture("open-\(pass)")
-            app.navigationBars.buttons.element(boundBy: 0).tap()
+            app.tapBack()
             pause(2)
         }
     }
@@ -1175,7 +1174,7 @@ final class StemCellsUITests: XCTestCase {
         composer.typeText("Run sleep 8 with your shell tool, then say done.")
         app.buttons["Send"].tap()
         XCTAssertTrue(working.waitForExistence(timeout: 10))
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(6)
         capture("working-row")
     }
@@ -1254,7 +1253,7 @@ final class StemCellsUITests: XCTestCase {
         app.typeText("lisbon")
         pause(2)
         capture("header-search")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(1.5)
     }
 
@@ -1335,7 +1334,7 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["stem-settings-more"].waitForExistence(timeout: 3))
         pause(1.5)
         capture("settings-more")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(1)
 
         // Back to the first name, so the next run starts the same.
@@ -1423,7 +1422,7 @@ final class StemCellsUITests: XCTestCase {
         while Date() < deadline, messages.count < 4 || working.exists { pause(1) }
         pause(2)
         capture("chat-picked")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(2)
         // The dock keeps its own pick for the next new work.
         XCTAssertTrue(dock.label.contains("Haiku 5.5"))
@@ -1727,15 +1726,62 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(app.textViews["stem-composer"].exists, "the library didn't open over new work")
         pause(1.5)
         capture("dock-add-attached")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         pause(1.5)
         // Back home, the dock is where it was.
         XCTAssertEqual(field.frame.minY, dockFrame.minY, accuracy: 1)
+        // Put away: never sent, it would wait in the sidebar as "New".
+        let made = app.descendants(matching: .any)["stem-row:space:New"].firstMatch
+        if made.waitForExistence(timeout: 3) {
+            made.press(forDuration: 1.0)
+            let close = app.buttons["Close new work"]
+            if close.waitForExistence(timeout: 3) { close.tap() }
+            pause(1.5)
+        }
+    }
+
+    /// A conversation's header is its own glass, the system bar gone: a
+    /// back circle and the name in a capsule over the transcript. A swipe
+    /// back let go halfway leaves it as it was; a whole one goes home.
+    func testGlassHeader() {
+        home()
+        pause(1)
+        let task = row("space", "Collaborator fixture")
+        if !task.waitForExistence(timeout: 3) { openFoldedSections() }
+        bringIntoView(task)
+        task.tap()
+        let back = app.buttons["stem-chat-back"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "no glass back button")
+        XCTAssertTrue(app.descendants(matching: .any)["stem-chat-title"].exists, "no name in the header")
+        pause(1.5)
+        XCTAssertFalse(app.navigationBars.firstMatch.exists && app.navigationBars.firstMatch.isHittable, "the system bar shows over the glass header")
+        capture("glass-header")
+        // Let go a third of the way: still here, still glass.
+        let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+        edge.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        pause(1.5)
+        XCTAssertTrue(back.isHittable, "a cancelled swipe left the conversation")
+        XCTAssertFalse(app.navigationBars.firstMatch.exists && app.navigationBars.firstMatch.isHittable, "a cancelled swipe brought the system bar back")
+        capture("glass-header-after-cancelled-swipe")
+        // All the way: home.
+        edge.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)), withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertTrue(until(4) { !back.exists }, "the swipe didn't go back")
+        XCTAssertTrue(app.descendants(matching: .any)["stem-new-work"].waitForExistence(timeout: 3), "not home after the swipe")
+        pause(1)
+        capture("glass-header-swiped-home")
     }
 
     private func until(_ seconds: TimeInterval, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while Date() < deadline { if condition() { return true }; pause(0.2) }
         return condition()
+    }
+}
+
+extension XCUIApplication {
+    /// Back: a conversation's glass circle, else the bar's own button.
+    func tapBack() {
+        let glass = buttons["stem-chat-back"]
+        if glass.exists, glass.isHittable { glass.tap() } else { navigationBars.buttons.element(boundBy: 0).tap() }
     }
 }

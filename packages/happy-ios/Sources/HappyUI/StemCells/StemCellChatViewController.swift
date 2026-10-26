@@ -76,8 +76,11 @@ final class StemCellChatViewController: UIViewController {
     /// while it wasn't are asked for again when it is back.
     private var live = true
     private var preview: StemCellFilePreview?
-    /// The name in the bar, renamed where it stands.
-    private let titleView = StemCellChatTitleView()
+    /// The glass header: back, and the name, renamed where it stands.
+    private let header = StemCellChatHeaderView()
+    private var titleView: StemCellChatTitleView { header.titleView }
+    /// The edge swipe back, which the hidden bar would otherwise take with it.
+    private let swipeBack = StemCellsSwipeBack()
 
     init(session: StemCellsSession, agentId: String, title: String, spaceId: String?, stemCell intro: Intro?, creation: StemCellCreation? = nil, previewing: Bool = false) {
         self.session = session
@@ -94,7 +97,6 @@ final class StemCellChatViewController: UIViewController {
         super.init(nibName: nil, bundle: nil)
         self.title = title
         titleView.text = title
-        navigationItem.titleView = titleView
         navigationItem.largeTitleDisplayMode = .never
         // New work's media is under the ID the daemon gives it.
         if let created = creation?.created {
@@ -135,6 +137,8 @@ final class StemCellChatViewController: UIViewController {
             updatePrimary()
         }
         view.addSubview(card)
+        header.onBack = { [weak self] in self?.navigationController?.popViewController(animated: true) }
+        view.addSubview(header)
 
         keyboardTracker.isHidden = true
         keyboardTracker.isUserInteractionEnabled = false
@@ -177,17 +181,30 @@ final class StemCellChatViewController: UIViewController {
         super.viewWillAppear(animated)
         // A preview is only looked at: what it shows stays unread.
         if previewing { return }
-        navigationController?.setNavigationBarHidden(false, animated: animated)
-        // Before the bar first places the name, so it isn't placed at no width.
-        titleView.barWidth = navigationController?.navigationBar.bounds.width ?? view.bounds.width
+        // The header is the screen's own glass.
+        navigationController?.setNavigationBarHidden(true, animated: animated)
         let conversation = conversation
         Task { await conversation.setVisible(true) }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard !previewing, let navigationController else { return }
+        swipeBack.attach(to: navigationController)
+        // A swipe back let go of halfway gives the bar back to the screen
+        // under it after this one appeared: hidden again.
+        if !navigationController.isNavigationBarHidden { navigationController.setNavigationBarHidden(true, animated: false) }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         // Leaving keeps a name being typed, as a tap away does.
         titleView.finishEditing()
+        swipeBack.detach()
+        // A screen pushed over this one has the bar it expects.
+        if !previewing, !isMovingFromParent, let top = navigationController?.topViewController, top !== self, !(top is StemCellChatViewController) {
+            navigationController?.setNavigationBarHidden(false, animated: animated)
+        }
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -270,6 +287,7 @@ final class StemCellChatViewController: UIViewController {
         media.register(snapshot.items)
         proposals.want(snapshot.items.flatMap(\.proposalIds))
         working.show(snapshot.activity)
+        header.status = Self.status(snapshot.activity)
         if wasSettled != !snapshot.items.isEmpty, let intro { introView.configure(intro, settled: !snapshot.items.isEmpty) }
         updatePrimary()
         updateChips()
@@ -430,20 +448,32 @@ final class StemCellChatViewController: UIViewController {
         return card
     }
 
+    /// The header's grey line: what the agent is at, in a word, while it is.
+    private static func status(_ activity: StemCellActivity?) -> String? {
+        guard let activity else { return nil }
+        return switch activity.phase {
+        case .thinking, .waitingForModel: Strings.StemCells.phaseThinking
+        case .awaitingAnswer: Strings.StemCells.phaseAwaitingAnswer
+        default: Strings.StemCells.phaseWorking
+        }
+    }
+
     // MARK: Layout
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         if previewing { return layoutPreview() }
-        titleView.barWidth = navigationController?.navigationBar.bounds.width ?? view.bounds.width
         replan()
+        header.safeTop = view.safeAreaInsets.top
+        header.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: header.layout.backdrop.height)
         let screen = StemCellChatScreenLayout(
             size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets),
             keyboardTop: keyboardTracker.frame.minY
         ) { [card] width in card.height(fitting: width) }
         card.setLayoutFrame(screen.card)
         scrollView.frame = view.bounds
-        let insets = UIEdgeInsets(top: screen.listTop, left: 0, bottom: screen.listBottom, right: 0)
+        // The transcript starts under the header's row and scrolls under it.
+        let insets = UIEdgeInsets(top: header.layout.listTop, left: 0, bottom: screen.listBottom, right: 0)
         if scrollView.contentInset != insets {
             scrollView.contentInset = insets
             scrollView.verticalScrollIndicatorInsets = insets
@@ -455,6 +485,7 @@ final class StemCellChatViewController: UIViewController {
 
     private func setUpPreview() {
         card.isHidden = true
+        header.isHidden = true
         scrollView.isUserInteractionEnabled = false
         view.accessibilityIdentifier = "stem-preview"
         previewPill.layer.cornerRadius = StemCellsPreviewLayout.Metrics.pillHeight / 2
@@ -859,6 +890,33 @@ final class StemCellsPreviewFadeView: UIView {
         let ground = UIColor(Palette.surface).resolvedColor(with: traitCollection)
         layer.colors = [ground.cgColor, ground.cgColor, ground.withAlphaComponent(0).cgColor]
         layer.locations = [0, NSNumber(value: Double(clearFrom)), 1]
+    }
+}
+/// The navigation controller's edge swipe back while a screen hides the
+/// bar: it begins whenever there is a screen to go back to, and the
+/// system's own delegate is given back on leaving.
+@MainActor
+final class StemCellsSwipeBack: NSObject, UIGestureRecognizerDelegate {
+    private weak var navigation: UINavigationController?
+    private weak var system: (any UIGestureRecognizerDelegate)?
+
+    func attach(to navigation: UINavigationController) {
+        guard self.navigation == nil, let gesture = navigation.interactivePopGestureRecognizer else { return }
+        self.navigation = navigation
+        system = gesture.delegate
+        gesture.delegate = self
+        gesture.isEnabled = true
+    }
+
+    func detach() {
+        guard let navigation else { return }
+        if navigation.interactivePopGestureRecognizer?.delegate === self { navigation.interactivePopGestureRecognizer?.delegate = system }
+        self.navigation = nil
+        system = nil
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        (navigation?.viewControllers.count ?? 0) > 1 && navigation?.transitionCoordinator == nil
     }
 }
 #endif

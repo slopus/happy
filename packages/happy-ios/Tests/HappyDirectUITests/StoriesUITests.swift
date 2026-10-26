@@ -153,7 +153,7 @@ final class StoriesUITests: XCTestCase {
         element("story-close").tap()
         pause(1.5)
 
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         let mine = element("story-circle:self")
         XCTAssertTrue(mine.waitForExistence(timeout: 8))
         pause(1)
@@ -246,7 +246,7 @@ final class StoriesUITests: XCTestCase {
         pause(2)
         capture("editor-posted")
 
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tapBack()
         let mine = element("story-circle:self")
         XCTAssertTrue(mine.waitForExistence(timeout: 8), "no My Story at home")
         pause(1)
