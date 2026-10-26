@@ -160,7 +160,8 @@ final class StoriesHarness {
         // Over everything, so a full-screen editor doesn't take it away.
         if probe.superview !== window { window.addSubview(probe) }
         window.bringSubviewToFront(probe)
-        let made = snapshot.stories.values.filter { !["m1", "s1", "s2", "a1", "a2"].contains($0.id) && !$0.id.hasPrefix("new-") }
+        // The harness's own stories (`d1` is the story card's draft) aren't made here.
+        let made = snapshot.stories.values.filter { !["m1", "s1", "s2", "a1", "a2", "d1"].contains($0.id) && !$0.id.hasPrefix("new-") }
             .sorted { $0.createdAt < $1.createdAt }
             .map { "\($0.status.rawValue):\($0.artifactVersion):\($0.frames.first?.overlays.count ?? 0)" }.joined(separator: ",")
         if let editor {
