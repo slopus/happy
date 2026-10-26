@@ -17,6 +17,9 @@ import { Typography } from '@/constants/Typography';
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
 import { resolveUserMessageBubbleColor } from '@/utils/userMessageBubbleColor';
 import { LongPressCopyable } from './LongPressCopyable';
+import { formatSessionListTimestamp } from '@/utils/sessionListTimestamp';
+import { formatLastSeen } from '@/utils/sessionUtils';
+import { useElapsedTime } from '@/hooks/useElapsedTime';
 
 
 export const MessageView = React.memo((props: {
@@ -24,6 +27,9 @@ export const MessageView = React.memo((props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  // true only for the session's most recently received agent reply, see
+  // ChatList.tsx latestAgentMessageId.
+  isLatestAgentMessage?: boolean;
 }) => {
   return (
     <View
@@ -36,6 +42,7 @@ export const MessageView = React.memo((props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
+          isLatestAgentMessage={props.isLatestAgentMessage}
         />
       </View>
     </View>
@@ -48,6 +55,7 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  isLatestAgentMessage?: boolean;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -60,7 +68,7 @@ function RenderBlock(props: {
       );
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} isLatest={!!props.isLatestAgentMessage} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -259,6 +267,7 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
+  isLatest: boolean;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
@@ -272,7 +281,11 @@ function AgentTextBlock(props: {
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-      <MessageCopyButton text={props.message.text} />
+      <View style={styles.messageActionsRow}>
+        <MessageCopyButton text={props.message.text} />
+        {props.isLatest && <MessageTimestamp createdAt={props.message.createdAt} relative />}
+        <MessageTimestamp createdAt={props.message.createdAt} relative={false} />
+      </View>
     </View>
   );
 }
@@ -321,6 +334,25 @@ function MessageCopyButton(props: { text: string }) {
         color={theme.colors.text}
       />
     </Pressable>
+  );
+}
+
+/**
+ * Absolute time on every agent reply (the same corner-timestamp formatting
+ * the session list uses), plus a relative age (formatLastSeen, "4 minutes
+ * ago") only on the most recently received one - that's the one whose
+ * freshness you actually check. useElapsedTime just ticks the re-render.
+ */
+function MessageTimestamp(props: { createdAt: number; relative: boolean }) {
+  const { theme } = useUnistyles();
+  useElapsedTime(props.relative ? props.createdAt : null);
+  const label = props.relative
+    ? formatLastSeen(props.createdAt)
+    : formatSessionListTimestamp(props.createdAt);
+  return (
+    <Text style={[styles.messageTimestamp, { color: theme.colors.textSecondary }]}>
+      {label}
+    </Text>
   );
 }
 
@@ -463,6 +495,17 @@ const styles = StyleSheet.create((theme) => ({
     marginVertical: 10,
     borderRadius: 16,
     maxWidth: '100%',
+  },
+  messageActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    alignSelf: 'flex-start',
+    marginTop: 0,
+  },
+  messageTimestamp: {
+    fontSize: 12,
+    ...Typography.default(),
   },
   copyAction: {
     // No width, so the box shrink-wraps the glyph and its left edge lands on the
