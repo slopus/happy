@@ -10,9 +10,10 @@ final class StemCellAttachSheetLayoutTests: XCTestCase {
     func testTheSheetOnAnIPhone17Pro() {
         // 402 wide; "Add to message" 120.4, "Photos" 52.3; the camera and
         // three photos; Paste and Add files without a value, Permission "Auto".
-        let layout = StemCellAttachSheetLayout(width: 402, titleWidth: 120.4, trailingWidth: 52.3, tiles: 4, values: [nil, nil, 30.2])
-        XCTAssertEqual(layout.close, rect(16, 16, 44, 44))
-        XCTAssertEqual(layout.trailing, rect(333, 16, 53, 44))
+        let layout = StemCellAttachSheetLayout(width: 402, titleWidth: 120.4, photosWidth: 52.3, tiles: 4, values: [nil, nil, 30.2])
+        // Photos at the left, the close circle at the right.
+        XCTAssertEqual(layout.photos, rect(16, 16, 53, 44))
+        XCTAssertEqual(layout.close, rect(342, 16, 44, 44))
         // Centred on the sheet, as the header's middle.
         XCTAssertEqual(layout.title, rect(141, 27, 121, 22))
         XCTAssertEqual(layout.strip, rect(0, 76, 402, 104))
@@ -42,17 +43,17 @@ final class StemCellAttachSheetLayoutTests: XCTestCase {
 
     func testALongTitleKeepsClearOfTheControls() {
         // "Add 12" is wider than the circle: the room is kept from it on both sides.
-        let layout = StemCellAttachSheetLayout(width: 402, titleWidth: 400, trailingWidth: 60, tiles: 1, values: [])
-        XCTAssertEqual(layout.trailing, rect(326, 16, 60, 44))
+        let layout = StemCellAttachSheetLayout(width: 402, titleWidth: 400, photosWidth: 60, tiles: 1, values: [])
+        XCTAssertEqual(layout.photos, rect(16, 16, 60, 44))
         XCTAssertEqual(layout.title, rect(84, 27, 234, 22))
-        XCTAssertEqual(layout.title.minX - layout.close.maxX, 24)
-        XCTAssertEqual(layout.trailing.minX - layout.title.maxX, 8)
+        XCTAssertEqual(layout.title.minX - layout.photos.maxX, 8)
+        XCTAssertEqual(layout.close.minX - layout.title.maxX, 24)
         XCTAssertEqual(layout.stripContentWidth, 136)
         XCTAssertEqual(layout.group, rect(16, 196, 370, 0))
     }
 
     func testALongValueTakesAtMostHalfTheRoom() {
-        let layout = StemCellAttachSheetLayout(width: 402, titleWidth: 100, trailingWidth: 50, tiles: 1, values: [500])
+        let layout = StemCellAttachSheetLayout(width: 402, titleWidth: 100, photosWidth: 50, tiles: 1, values: [500])
         let row = layout.rows[0]
         // From the title's start to the chevron's gap: 282, half of it 141.
         XCTAssertEqual(row.value, rect(193, 15, 141, 22))

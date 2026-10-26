@@ -209,8 +209,7 @@ public struct StemCellsQRSheetLayout: Equatable, Sendable {
         public static let nameGap: CGFloat = 16
         /// Telegram's sheet: 38 round, its title in a 54 band.
         public static let radius: CGFloat = 38
-        public static let close: CGFloat = 44
-        public static let closeInset: CGFloat = 16
+        public static let close: CGFloat = SheetCloseLayout.size
         public static let titleBand: CGFloat = 54
         public static let titleCenter: CGFloat = 36
         public static let titleHeight: CGFloat = 22
@@ -235,7 +234,7 @@ public struct StemCellsQRSheetLayout: Equatable, Sendable {
     public init(size: CGSize, safeTop: CGFloat, safeBottom: CGFloat, nameHeight: CGFloat, text: Measurable) {
         typealias M = Metrics
         let inner = max(0, size.width - 2 * M.textSide)
-        close = CGRect(x: M.closeInset, y: M.closeInset, width: M.close, height: M.close)
+        close = SheetCloseLayout.frame(width: size.width)
         title = CGRect(x: M.textSide + M.close, y: M.titleCenter - M.titleHeight / 2, width: max(0, size.width - 2 * (M.textSide + M.close)), height: M.titleHeight)
         self.text = CGRect(x: M.textSide, y: M.titleBand + M.textGap, width: inner, height: text.height(fitting: inner))
         primary = CGRect(x: M.textSide, y: self.text.maxY + M.buttonsGap, width: inner, height: M.button)
@@ -273,37 +272,22 @@ public struct StemCellsLinkContentLayout: Equatable, Sendable {
     }
 }
 
-/// The link screen's switch between the two ways to link a computer,
-/// under its glass bar: a segmented control, Relay then Direct, centred,
-/// with Direct's "Experimental" tag riding its top edge over that half's
-/// right end; what each way shows starts under it.
-///
-///     (  Relay  |  Direct  )
-///                    [EXPERIMENTAL]
+/// The link sheet's Relay | Direct switch: as wide as the screen's buttons,
+/// just above the primary one (`OnboardingLayout.accessory`), with the Beta
+/// tag astride its top edge at Direct's end.
 public struct StemCellsLinkSwitchLayout: Equatable, Sendable {
     public enum Metrics {
-        public static let side: CGFloat = 16
-        public static let top: CGFloat = 8
         public static let height: CGFloat = 36
-        public static let maxWidth: CGFloat = 360
         /// From the control's right end to the tag's.
         public static let tagInset: CGFloat = 10
-        public static let bottom: CGFloat = 8
     }
 
-    public var control: CGRect
     public var tag: CGRect
-    /// Where the chosen way's screen starts.
-    public var contentTop: CGFloat
 
-    /// `top` is where the bar's row ends.
-    public init(width: CGFloat, top: CGFloat, tag size: CGSize) {
+    public init(control: CGRect, tag size: CGSize) {
         typealias M = Metrics
-        let controlWidth = min(M.maxWidth, max(0, width - 2 * M.side))
-        control = CGRect(x: ((width - controlWidth) / 2).rounded(), y: top + M.top, width: controlWidth, height: M.height)
         let tagSize = CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up))
         tag = CGRect(x: control.maxX - M.tagInset - tagSize.width, y: (control.minY - tagSize.height / 2).rounded(), width: tagSize.width, height: tagSize.height)
-        contentTop = control.maxY + M.bottom
     }
 }
 

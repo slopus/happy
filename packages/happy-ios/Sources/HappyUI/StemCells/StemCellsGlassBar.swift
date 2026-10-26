@@ -17,7 +17,6 @@ import UIKit
 final class StemCellsGlassBar: UIView {
     enum Leading {
         case back
-        case close
     }
 
     struct Action {
@@ -32,6 +31,16 @@ final class StemCellsGlassBar: UIView {
     }
 
     var onLeading: (() -> Void)?
+    /// A sheet's first screen: a close circle at the right, the row
+    /// dropped to put it as far from the sheet's top as from its side.
+    var closes = false {
+        didSet {
+            guard closes != oldValue else { return }
+            owner?.additionalSafeAreaInsets.top = StemCellsGlassBarLayout.Metrics.span(closes: closes)
+            setNeedsLayout()
+        }
+    }
+    var onClose: (() -> Void)?
     var title: String? {
         didSet {
             guard title != oldValue else { return }
@@ -62,6 +71,8 @@ final class StemCellsGlassBar: UIView {
     private let scrim = HeaderScrimView()
     private let leadingGlass = StemCellsGlassBar.glass()
     private let leadingButton = UIButton(type: .system)
+    private let closeGlass = StemCellsGlassBar.glass()
+    private let closeButton = UIButton(type: .system)
     private let pillGlass = StemCellsGlassBar.glass()
     private let titleLabel = UILabel()
     private let actionsGlass = StemCellsGlassBar.glass()
@@ -78,6 +89,13 @@ final class StemCellsGlassBar: UIView {
         leadingButton.addAction(UIAction { [weak self] _ in self?.onLeading?() }, for: .touchUpInside)
         leadingGlass.contentView.addSubview(leadingButton)
         addSubview(leadingGlass)
+        closeButton.tintColor = UIColor(Palette.headerTint)
+        closeButton.setImage(Self.icon("close-outline", size: 28), for: .normal)
+        closeButton.accessibilityLabel = Strings.StemCells.close
+        closeButton.accessibilityIdentifier = "stem-glass-close"
+        closeButton.addAction(UIAction { [weak self] _ in self?.onClose?() }, for: .touchUpInside)
+        closeGlass.contentView.addSubview(closeButton)
+        addSubview(closeGlass)
         let attributes = AppCoordinator.nativeTitleAttributes
         titleLabel.font = attributes[.font] as? UIFont
         titleLabel.textColor = attributes[.foregroundColor] as? UIColor
@@ -124,10 +142,6 @@ final class StemCellsGlassBar: UIView {
             leadingButton.setImage(Self.icon("chevron-back", size: 28), for: .normal)
             leadingButton.accessibilityLabel = Strings.StemCells.back
             leadingButton.accessibilityIdentifier = "stem-glass-back"
-        case .close:
-            leadingButton.setImage(Self.icon("close-outline", size: 28), for: .normal)
-            leadingButton.accessibilityLabel = Strings.StemCells.close
-            leadingButton.accessibilityIdentifier = "stem-glass-close"
         case nil:
             break
         }
@@ -196,7 +210,7 @@ final class StemCellsGlassBar: UIView {
         // The screen's safe area, which a scroll view's content doesn't share.
         let safeTop = (owner?.view ?? self).safeAreaInsets.top - (owner?.additionalSafeAreaInsets.top ?? 0)
         let titleWidth = title.map { _ in titleLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 22)).width }
-        return StemCellsGlassBarLayout(width: bounds.width, safeTop: max(0, safeTop), hairline: 1 / traitCollection.displayScale.clamped(min: 1), hasLeading: leading != nil, actions: actions.count, titleWidth: titleWidth, searching: isSearching)
+        return StemCellsGlassBarLayout(width: bounds.width, safeTop: max(0, safeTop), hairline: 1 / traitCollection.displayScale.clamped(min: 1), hasLeading: leading != nil, actions: actions.count, titleWidth: titleWidth, searching: isSearching, closes: closes)
     }
 
     override func layoutSubviews() {
@@ -204,9 +218,11 @@ final class StemCellsGlassBar: UIView {
         let layout = layout
         scrim.frame = layout.backdrop
         // Nothing on the row, nothing to keep legible.
-        scrim.isHidden = leading == nil && title == nil && actions.isEmpty && !isSearching
+        scrim.isHidden = leading == nil && !closes && title == nil && actions.isEmpty && !isSearching
         place(leadingGlass, layout.leading)
         leadingButton.frame = leadingGlass.bounds
+        place(closeGlass, layout.close)
+        closeButton.frame = closeGlass.bounds
         place(pillGlass, layout.pill)
         if let pill = layout.pill, let title = layout.title {
             titleLabel.frame = title.offsetBy(dx: -pill.minX, dy: -pill.minY)
@@ -254,7 +270,7 @@ private extension CGFloat {
 /// covered by a screen of the system bar's, the bar comes back for it.
 /// Settings and the link sheet make their own bars; the screens pushed
 /// from them, at any depth, get one made from their navigation item: back
-/// (close at the foot of a sheet), the title, and the bar buttons that are
+/// (a sheet's first screen closes at the right instead), the title, and the bar buttons that are
 /// pictures. A screen searching in the system bar, or a conversation,
 /// keeps its own; so does everything on a tablet, beside the sidebar's
 /// header.
@@ -289,7 +305,8 @@ final class StemCellsGlassChrome: UIViewController {
     /// before it's pushed, `over` is the screen it goes over, whose traits
     /// it will have.
     static func dress(_ controller: UIViewController, over: UIViewController? = nil) {
-        guard chrome(of: controller) == nil, wearsGlass(controller, traits: (over ?? controller).traitCollection) else { return }
+        let host = over ?? controller
+        guard chrome(of: controller) == nil, wearsGlass(controller, inShell: inShell(host.navigationController, traits: host.traitCollection)) else { return }
         let chrome = StemCellsGlassChrome(bar: StemCellsGlassBar(), made: true)
         attach(chrome, to: controller)
         chrome.refresh()
@@ -299,10 +316,16 @@ final class StemCellsGlassChrome: UIViewController {
         controller.children.lazy.compactMap { $0 as? StemCellsGlassChrome }.first
     }
 
-    private static func wearsGlass(_ controller: UIViewController, traits: UITraitCollection) -> Bool {
+    /// Under a tablet's shell, whose header stands in for the bar. A sheet
+    /// presented over it has no such header, though it shares the trait.
+    static func inShell(_ navigation: UINavigationController?, traits: UITraitCollection) -> Bool {
+        traits.isTabletLayout && navigation?.presentingViewController == nil
+    }
+
+    private static func wearsGlass(_ controller: UIViewController, inShell: Bool) -> Bool {
         // Loaded, so a search controller set up with the view counts.
         controller.loadViewIfNeeded()
-        return !traits.isTabletLayout
+        return !inShell
             && controller.navigationItem.searchController == nil
             && !(controller is StemCellChatViewController)
             && !(controller is ChatViewController)
@@ -317,7 +340,7 @@ final class StemCellsGlassChrome: UIViewController {
         chrome.view.frame = view.bounds
         view.addSubview(chrome.view)
         chrome.didMove(toParent: controller)
-        let row = StemCellsGlassBarLayout.Metrics.rowHeight
+        let row = StemCellsGlassBarLayout.Metrics.span(closes: chrome.bar.closes)
         if controller.additionalSafeAreaInsets.top != row { controller.additionalSafeAreaInsets.top = row }
         (view as? OnboardingScreenView)?.usesGlass = true
     }
@@ -327,11 +350,11 @@ final class StemCellsGlassChrome: UIViewController {
         guard made, let screen = parent else { return }
         let navigation = screen.navigationController
         let first = navigation?.viewControllers.first === screen
-        bar.leading = screen.traitCollection.isTabletLayout ? nil : !first ? .back : navigation?.presentingViewController != nil ? .close : nil
-        bar.onLeading = { [weak screen] in
-            guard let screen, let navigation = screen.navigationController else { return }
-            if navigation.viewControllers.first === screen { navigation.dismiss(animated: true) } else { navigation.popViewController(animated: true) }
-        }
+        let tablet = Self.inShell(navigation, traits: screen.traitCollection)
+        bar.leading = tablet || first ? nil : .back
+        bar.closes = !tablet && first && navigation?.presentingViewController != nil
+        bar.onLeading = { [weak screen] in screen?.navigationController?.popViewController(animated: true) }
+        bar.onClose = { [weak screen] in screen?.navigationController?.dismiss(animated: true) }
         bar.title = screen.navigationItem.title ?? screen.title
         let items = (screen.navigationItem.rightBarButtonItems ?? []).reversed().filter { $0.image != nil }
         bar.actions = items.map { item in
@@ -358,7 +381,7 @@ final class StemCellsGlassChrome: UIViewController {
         super.viewDidAppear(animated)
         guard let navigation = parent?.navigationController else { return }
         // A tablet's stack keeps its shell's own swipe.
-        if !traitCollection.isTabletLayout { swipeBack.attach(to: navigation) }
+        if !Self.inShell(navigation, traits: traitCollection) { swipeBack.attach(to: navigation) }
         stackShown = navigation.viewControllers.map(ObjectIdentifier.init)
         // A swipe back let go of halfway gives the bar back to the screen
         // under this one after it appeared: hidden again.

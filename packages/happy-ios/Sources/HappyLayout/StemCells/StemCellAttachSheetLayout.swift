@@ -4,8 +4,8 @@ import CoreGraphics
 #endif
 
 /// The composer's "+" sheet, as Claude's "Add to session" is laid out: a
-/// close circle at the left of a header row with the title in its middle
-/// and Photos at its right; under it a strip of square tiles (the camera,
+/// header row with Photos at its left, the title in its middle and the
+/// close circle at its right (`SheetCloseLayout`); under it a strip of square tiles (the camera,
 /// then the newest photos) scrolling sideways; then one rounded group of
 /// rows. Frames are in the sheet's own space; the strip's tiles and the
 /// rows are in the strip's content and the group's own space.
@@ -47,7 +47,8 @@ public struct StemCellAttachSheetLayout: Equatable, Sendable {
 
     public var close: CGRect
     public var title: CGRect
-    public var trailing: CGRect
+    /// Photos, or "Add N", at the left.
+    public var photos: CGRect
     /// The strip, the sheet's whole width.
     public var strip: CGRect
     public var stripContentWidth: CGFloat
@@ -58,16 +59,16 @@ public struct StemCellAttachSheetLayout: Equatable, Sendable {
     public var height: CGFloat
 
     /// `values` holds each row's trailing value width, nil for a row
-    /// without one (it then has no chevron either). `trailingWidth` is the
-    /// header's right button measured; `scale` rounds the hairline.
-    public init(width: CGFloat, titleWidth: CGFloat, trailingWidth: CGFloat, tiles count: Int, values: [CGFloat?], scale: CGFloat = 3) {
+    /// without one (it then has no chevron either). `photosWidth` is the
+    /// header's left button measured; `scale` rounds the hairline.
+    public init(width: CGFloat, titleWidth: CGFloat, photosWidth: CGFloat, tiles count: Int, values: [CGFloat?], scale: CGFloat = 3) {
         typealias M = Metrics
         let width = max(0, width)
-        close = CGRect(x: M.padding, y: M.top, width: M.control, height: M.control)
-        let trailingWidth = ceil(max(0, trailingWidth))
-        trailing = CGRect(x: width - M.padding - trailingWidth, y: M.top, width: trailingWidth, height: M.control)
+        close = SheetCloseLayout.frame(width: width)
+        let photosWidth = ceil(max(0, photosWidth))
+        photos = CGRect(x: M.padding, y: close.minY, width: photosWidth, height: M.control)
         // Centred on the sheet, never under the controls either side.
-        let room = max(0, width - 2 * (M.padding + max(M.control, trailingWidth) + M.titleGap))
+        let room = max(0, width - 2 * (M.padding + max(M.control, photosWidth) + M.titleGap))
         let shown = min(ceil(max(0, titleWidth)), room)
         title = CGRect(x: ((width - shown) / 2).rounded(), y: close.midY - M.titleHeight / 2, width: shown, height: M.titleHeight)
 

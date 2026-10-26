@@ -126,6 +126,21 @@ final class OnboardingLayoutTests: XCTestCase {
         XCTAssertNil(OnboardingLayout(.init(size: phone, safeArea: phoneUnderBar, content: block(height: 300), primary: block(height: 50), secondary: block(height: 44), help: help.size)).tertiary)
     }
 
+    /// The link sheet's Relay | Direct switch: across the block, just above
+    /// the primary button, 16 clear of what is above and below it.
+    func testAnAccessorySitsJustAboveThePrimaryAcrossTheBlock() {
+        var input = OnboardingLayout.Input(size: phone, safeArea: phoneUnderBar, content: block(height: 300), primary: block(height: 50), secondary: block(height: 44), help: help.size)
+        input.accessory = 36
+        let layout = OnboardingLayout(input)
+        // Block 300 + 16 + 36 + 16 + 50 + 4 + 44 = 466; (667 - 16 - 466) / 2 = 92.5.
+        assertFrame(layout.content, rect(24, 100.5, 345, 300))
+        XCTAssertEqual(layout.accessory, rect(24, 416.5, 345, 36))
+        assertFrame(layout.primary, rect(24, 468.5, 345, 50))
+        XCTAssertEqual(layout.accessory?.width, layout.primary.width)
+        XCTAssertEqual(layout.accessory?.minX, layout.primary.minX)
+        assertFrame(layout.secondary, rect(24, 522.5, 345, 44))
+    }
+
     func testGlassActionsAreSpacedAsPills() {
         var input = OnboardingLayout.Input(
             size: phone,

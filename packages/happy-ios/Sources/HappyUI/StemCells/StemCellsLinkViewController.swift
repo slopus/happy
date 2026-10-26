@@ -25,9 +25,10 @@ final class StemCellsLinkNavigationController: UINavigationController {
 
 /// Linking a computer, as Telegram adds an account (its techniques, none
 /// of its code): the first screen when nothing is paired, and the sheet
-/// "+" opens over settings. A switch at the top chooses the way: Relay,
+/// "+" opens over settings. A switch just above the screen's buttons,
+/// across them, chooses the way: Relay,
 /// the default, through a Happy account (Welcome, or Link Your Computer
-/// once one is signed in); or Direct, the experiment, whose code scanned
+/// once one is signed in); or Direct, the experiment (tagged Beta), whose code scanned
 /// or link pasted connects this phone straight to the computer. Choosing
 /// Direct turns the experiment on (`StemCellsExperiments`), and the
 /// switch shows it as it stands; choosing Relay turns it off too, unless
@@ -40,7 +41,12 @@ final class StemCellsLinkViewController: UIViewController {
     private let inSheet: Bool
     private let bar = StemCellsGlassBar()
     private let control = UISegmentedControl(items: [Strings.StemCells.relay, Strings.StemCells.direct])
-    private let tag = StemCellsExperimentalTag()
+    private let tag = StemCellsBetaTag()
+    /// Holds the switch and its tag clipped to the shown screen's scroll
+    /// area, under the glass bar: they scroll with the screen, never over
+    /// the bar or Get help. Touches off them go through.
+    private let switchClip = PassthroughView()
+    private var scrollWatch: NSKeyValueObservation?
     private var method: PairingMethod
     private var shown: UIViewController?
     private lazy var directScreen = StemCellsDirectLinkViewController(context: context)
@@ -66,11 +72,13 @@ final class StemCellsLinkViewController: UIViewController {
         view.accessibilityIdentifier = "stem-link"
         control.accessibilityIdentifier = "stem-link-method"
         control.addAction(UIAction { [weak self] _ in self?.chosen() }, for: .valueChanged)
-        view.addSubview(control)
-        view.addSubview(tag)
+        switchClip.clipsToBounds = true
+        switchClip.addSubview(control)
+        switchClip.addSubview(tag)
+        view.addSubview(switchClip)
         if inSheet {
-            bar.leading = .close
-            bar.onLeading = { [weak self] in self?.dismiss(animated: true) }
+            bar.closes = true
+            bar.onClose = { [weak self] in self?.dismiss(animated: true) }
         } else {
             bar.actions = [StemCellsGlassBar.Action(image: .icon(.ionicons("settings-outline"), size: 22), label: Strings.Onboarding.settingsTitle, id: "stem-link-settings") { [weak self] in self?.openSettings() }]
         }
@@ -98,11 +106,16 @@ final class StemCellsLinkViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let layout = StemCellsLinkSwitchLayout(width: view.bounds.width, top: view.safeAreaInsets.top, tag: tag.intrinsicContentSize)
-        control.frame = layout.control
-        tag.frame = layout.tag
-        shown?.view.frame = CGRect(x: 0, y: layout.contentTop, width: view.bounds.width, height: max(0, view.bounds.height - layout.contentTop))
-        view.bringSubviewToFront(tag)
+        shown?.view.frame = view.bounds
+        placeSwitch()
+    }
+
+    /// Where the shown screen keeps room for it, as that screen scrolls.
+    private func placeSwitch() {
+        guard let screen = shown?.view as? OnboardingScreenView, let frame = screen.accessoryFrame else { return }
+        switchClip.frame = screen.convert(screen.scrollView.frame, to: view)
+        control.frame = screen.convert(frame, to: switchClip)
+        tag.frame = StemCellsLinkSwitchLayout(control: control.frame, tag: tag.intrinsicContentSize).tag
     }
 
     private func chosen() {
@@ -134,23 +147,44 @@ final class StemCellsLinkViewController: UIViewController {
         let previous = shown
         shown = next
         addChild(next)
-        (next.view as? OnboardingScreenView)?.usesGlass = true
-        view.insertSubview(next.view, belowSubview: control)
+        let screen = next.view as? OnboardingScreenView
+        screen?.usesGlass = true
+        screen?.accessoryHeight = StemCellsLinkSwitchLayout.Metrics.height
+        screen?.onLayout = { [weak self, weak next] in
+            guard let self, let next, next === shown else { return }
+            placeSwitch()
+        }
+        scrollWatch = screen?.scrollView.observe(\.contentOffset) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.placeSwitch() }
+        }
+        let from = view.convert(control.frame, from: switchClip)
+        view.insertSubview(next.view, belowSubview: switchClip)
+        // Laid out through this view, so the new screen has its safe area
+        // (the bar's row included) before the switch is placed on it.
         view.setNeedsLayout()
         view.layoutIfNeeded()
         next.didMove(toParent: self)
         previous?.willMove(toParent: nil)
-        let finish = {
-            previous?.view.removeFromSuperview()
-            previous?.removeFromParent()
+        let finish = { [weak self, weak previous] in
+            // Chosen again while it faded out: it stays.
+            guard let previous, previous !== self?.shown else { return }
+            previous.view.removeFromSuperview()
+            previous.removeFromParent()
         }
         guard animated, let previous else { return finish() }
         next.view.alpha = 0
+        // The switch moves to where this screen keeps it as the screens cross.
+        let to = (control.frame, tag.frame)
+        let start = switchClip.convert(from, from: view)
+        control.frame = start
+        tag.frame = StemCellsLinkSwitchLayout(control: start, tag: tag.intrinsicContentSize).tag
         UIView.animate(withDuration: 0.25, animations: {
             next.view.alpha = 1
             previous.view.alpha = 0
-        }, completion: { _ in
-            previous.view.alpha = 1
+            self.control.frame = to.0
+            self.tag.frame = to.1
+        }, completion: { [weak self] _ in
+            if previous !== self?.shown { previous.view.alpha = 1 }
             finish()
         })
     }
@@ -241,11 +275,11 @@ final class StemCellsDirectLinkViewController: UIViewController {
     }
 }
 
-/// Direct's "Experimental" tag on the switch: small capitals in a capsule.
-final class StemCellsExperimentalTag: UILabel {
+/// Direct's "Beta" tag on the switch: small capitals in a capsule.
+final class StemCellsBetaTag: UILabel {
     override init(frame: CGRect) {
         super.init(frame: frame)
-        text = Strings.StemCells.experimental.uppercased()
+        text = Strings.StemCells.beta.uppercased()
         font = StemCellsFonts.ui(.semiBold, size: 10)
         textColor = .white
         textAlignment = .center
@@ -253,7 +287,8 @@ final class StemCellsExperimentalTag: UILabel {
         layer.cornerRadius = 9
         layer.cornerCurve = .continuous
         clipsToBounds = true
-        isAccessibilityElement = false
+        accessibilityLabel = Strings.StemCells.beta
+        accessibilityIdentifier = "stem-link-beta"
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

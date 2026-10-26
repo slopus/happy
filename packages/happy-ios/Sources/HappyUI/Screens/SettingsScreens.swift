@@ -365,7 +365,7 @@ public final class OnboardingSettingsViewController: UIViewController {
             let context = context
             let direct = ItemRowView.toggle(
                 title: Strings.StemCells.directConnection,
-                subtitle: Strings.StemCells.experimental,
+                subtitle: Strings.StemCells.beta,
                 icon: ItemIcon(.ionicons("flask-outline"), tint: Palette.textSecondary, size: 28),
                 isOn: preference.directConnection
             ) { on in

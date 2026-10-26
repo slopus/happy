@@ -114,6 +114,7 @@ final class StemCellsQRSheetViewController: UIViewController {
         sheet.layer.cornerRadius = StemCellsQRSheetLayout.Metrics.radius
         sheet.layer.cornerCurve = .continuous
         sheet.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        sheet.accessibilityIdentifier = "stem-qr-sheet"
         view.addSubview(sheet)
         close.setImage(StemCellsGlyphs.image("close", size: 24), for: .normal)
         close.tintColor = UIColor(Palette.stemCellsSettingsText)

@@ -214,6 +214,19 @@ public final class OnboardingScreenView: UIView {
     /// A second text action under the first (the link sheet's relay).
     public let tertiary: RoundButton?
     public let help = GetHelpButton()
+    /// Room for a control just above the primary button, as wide as it;
+    /// whoever holds the control places it in `accessoryFrame`.
+    public var accessoryHeight: CGFloat? {
+        didSet { if accessoryHeight != oldValue { setNeedsLayout() } }
+    }
+    /// Each layout, for whoever places the accessory.
+    public var onLayout: (() -> Void)?
+    /// Where the accessory goes, in this view's coordinates as it scrolls:
+    /// from the last layout, so a scroll measures nothing.
+    public var accessoryFrame: CGRect? {
+        laidAccessory.map { scrollView.convert($0, to: self) }
+    }
+    private var laidAccessory: CGRect?
     /// Offscreen copies measured for the reservation; never shown.
     private let reservedContent: [UIView]
     private let reservedSecondary: [RoundButton]
@@ -279,6 +292,7 @@ public final class OnboardingScreenView: UIView {
             help: help.layout.size
         )
         input.glass = usesGlass
+        input.accessory = accessoryHeight
         return OnboardingLayout(input)
     }
 
@@ -294,6 +308,8 @@ public final class OnboardingScreenView: UIView {
         secondary.setLayoutFrame(layout.secondary)
         if let tertiary, let frame = layout.tertiary { tertiary.setLayoutFrame(frame) }
         help.setLayoutFrame(layout.help)
+        laidAccessory = layout.accessory
+        onLayout?()
     }
 }
 

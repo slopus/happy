@@ -539,6 +539,97 @@ final class StemCellsUITests: XCTestCase {
         }
     }
 
+    /// Every modal sheet closes from a button at its top right, as far
+    /// from the top as from the side: settings' QR sheet, the link sheet
+    /// "+" opens, a model picker and the attach sheet. The link sheet's
+    /// Relay | Direct switch runs across the screen just above what it
+    /// switches (the scan), tagged Beta.
+    func testSheetsClose() {
+        home()
+        app.descendants(matching: .any)["stem-settings-mark"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-settings-qr"].waitForExistence(timeout: 5))
+        pause(1)
+
+        app.descendants(matching: .any)["stem-settings-qr"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-qr"].waitForExistence(timeout: 3))
+        pause(1)
+        capture("sheet-qr")
+        assertCloses(app.descendants(matching: .any)["stem-qr-close"], in: app.descendants(matching: .any)["stem-qr-sheet"], "the QR sheet")
+        closeSheet(app.descendants(matching: .any)["stem-qr-close"], app.descendants(matching: .any)["stem-qr"])
+        XCTAssertTrue(app.descendants(matching: .any)["stem-profile-add"].waitForExistence(timeout: 3))
+
+        app.descendants(matching: .any)["stem-profile-add"].tap()
+        let link = app.descendants(matching: .any)["stem-link"]
+        XCTAssertTrue(link.waitForExistence(timeout: 5), "+ didn't open the link sheet")
+        let control = app.segmentedControls["stem-link-method"]
+        if !control.buttons["Direct"].isSelected { control.buttons["Direct"].tap() }
+        let scan = app.buttons["Scan QR code"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 3))
+        pause(1)
+        capture("sheet-link-direct")
+        let close = app.buttons["stem-glass-close"]
+        assertCloses(close, in: link, "the link sheet")
+        XCTAssertEqual(control.frame.minX, scan.frame.minX, accuracy: 0.5, "the switch doesn't start where the scan does")
+        XCTAssertEqual(control.frame.maxX, scan.frame.maxX, accuracy: 0.5, "the switch isn't as wide as the scan")
+        XCTAssertGreaterThan(control.frame.minY, link.frame.midY, "the switch isn't down over the scan")
+        XCTAssertLessThan(control.frame.maxY, scan.frame.minY, "the switch isn't above the scan")
+        XCTAssertTrue(app.descendants(matching: .any)["stem-link-beta"].exists, "no Beta tag")
+        XCTAssertFalse(app.staticTexts["EXPERIMENTAL"].exists, "the tag still says Experimental")
+        control.buttons["Relay"].tap()
+        XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 5), "Relay didn't show Welcome")
+        pause(1)
+        capture("sheet-link-relay")
+        XCTAssertLessThan(control.frame.maxY, app.buttons["Create account"].frame.minY, "the switch isn't above Relay's buttons")
+        control.buttons["Direct"].tap()
+        pause(0.8)
+        closeSheet(close, link)
+        app.tapBack()
+        pause(1.5)
+
+        // A model picker, from home's dock.
+        let dock = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
+        open(dock, 0)
+        let picker = app.descendants(matching: .any)["stem-picker"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        pause(1.5)
+        capture("sheet-picker")
+        assertCloses(app.buttons["stem-picker-close"], in: picker, "the picker")
+        closeSheet(app.buttons["stem-picker-close"], picker)
+
+        // The attach sheet, over new work.
+        app.descendants(matching: .any)["stem-new-work"].tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 5))
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        openSheet()
+        capture("sheet-attach")
+        let sheet = app.descendants(matching: .any)["attach-sheet"]
+        assertCloses(app.buttons["attach-close"], in: sheet, "the attach sheet")
+        closeSheet(app.buttons["attach-close"], sheet)
+        app.tapBack()
+        pause(1)
+        let fresh = row("space", "New").firstMatch
+        if fresh.exists {
+            fresh.press(forDuration: 1.0)
+            let discard = app.buttons["Close new work"]
+            if discard.waitForExistence(timeout: 3) { discard.tap() }
+            pause(1)
+        }
+    }
+
+    /// `close` at `sheet`'s top right, as far from its top as from its side.
+    private func assertCloses(_ close: XCUIElement, in sheet: XCUIElement, _ name: String) {
+        guard close.waitForExistence(timeout: 3), sheet.exists else { return XCTFail("\(name) has no close button") }
+        let button = close.frame, frame = sheet.frame
+        XCTAssertGreaterThan(button.midX, frame.midX, "\(name)'s close button isn't at the right")
+        XCTAssertEqual(button.minY - frame.minY, frame.maxX - button.maxX, accuracy: 0.5, "\(name)'s close button: \(button) in \(frame) isn't as far from the top as from the side")
+    }
+
+    private func closeSheet(_ close: XCUIElement, _ sheet: XCUIElement) {
+        if close.exists, close.isHittable { close.tap() } else { app.swipeDown(velocity: .fast) }
+        XCTAssertTrue(until(4) { !sheet.exists }, "the sheet didn't close")
+        pause(0.8)
+    }
+
     /// Surfaces made elsewhere open from the sidebar: a todo list that takes
     /// a todo, a document with its heading. The harness makes them first.
     func testSurfaces() {

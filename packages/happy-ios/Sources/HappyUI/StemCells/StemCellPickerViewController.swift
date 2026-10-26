@@ -48,6 +48,8 @@ final class StemCellPickerViewController: UIViewController {
     var onClose: (() -> Void)?
     private let scrollView = UIScrollView()
     private let titleLabel = UILabel()
+    private let closeGlass = StemCellChatHeaderView.glass()
+    private let closeButton = UIButton(type: .system)
     private let noticeBox = UIView()
     private let noticeLabel = UILabel()
     private var headers: [UILabel] = []
@@ -84,6 +86,14 @@ final class StemCellPickerViewController: UIViewController {
         noticeLabel.font = StemCellsFonts.ui(.regular, size: 13)
         scrollView.addSubview(noticeBox)
         scrollView.addSubview(noticeLabel)
+        closeButton.setImage(.icon(.ionicons("close"), size: 24), for: .normal)
+        closeButton.tintColor = UIColor(Palette.headerTint)
+        closeButton.accessibilityLabel = Strings.StemCells.close
+        closeButton.accessibilityIdentifier = "stem-picker-close"
+        closeButton.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
+        closeGlass.cornerConfiguration = .capsule()
+        closeGlass.contentView.addSubview(closeButton)
+        view.addSubview(closeGlass)
         apply(content)
     }
 
@@ -185,6 +195,8 @@ final class StemCellPickerViewController: UIViewController {
             sections: sections, footer: footer
         )
         titleLabel.frame = layout.title
+        closeGlass.frame = layout.close
+        closeButton.frame = closeGlass.bounds
         if let box = layout.notice, let text = layout.noticeText {
             noticeBox.frame = box
             noticeLabel.frame = text

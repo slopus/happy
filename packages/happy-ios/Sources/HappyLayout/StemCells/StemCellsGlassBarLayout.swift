@@ -12,6 +12,10 @@ import CoreGraphics
 ///
 ///     ( ‹ )        ( Appearance )        ( ⌕ │ ▦ )
 ///
+/// The first screen of a sheet closes from a glass circle at the right
+/// (`SheetCloseLayout`): the row drops so the circle is as far from the
+/// sheet's top as from its side, and the actions go left of it.
+///
 /// The title's capsule keeps 8 clear of whatever is beside it, on both
 /// sides alike, so it stays centred. Searching, a field in a glass capsule
 /// takes the row, with a glass circle at the right that ends the search.
@@ -30,10 +34,18 @@ public struct StemCellsGlassBarLayout: Equatable, Sendable {
         public static let backdropOverhang: CGFloat = StemCellChatHeaderLayout.Metrics.backdropOverhang
         /// The search field inside its capsule.
         public static let fieldInset: CGFloat = 12
+        /// How far a sheet's row drops, for its close circle to sit
+        /// `SheetCloseLayout.inset` from the sheet's top.
+        public static let sheetDrop: CGFloat = SheetCloseLayout.inset - (rowHeight - control) / 2
+
+        /// The height the bar adds to its screen's safe area.
+        public static func span(closes: Bool) -> CGFloat { rowHeight + (closes ? sheetDrop : 0) }
     }
 
-    /// Back or close; nil for a screen with neither.
+    /// Back; nil for a screen without it.
     public var leading: CGRect?
+    /// A sheet's close circle, at the right; nil elsewhere.
+    public var close: CGRect?
     /// The actions' capsule, rim included; nil without actions.
     public var actions: CGRect?
     /// Each action, in the screen.
@@ -55,10 +67,10 @@ public struct StemCellsGlassBarLayout: Equatable, Sendable {
 
     /// `titleWidth` is the title's single line's width, nil for none;
     /// `hairline` is one device pixel.
-    public init(width: CGFloat, safeTop: CGFloat, hairline: CGFloat, hasLeading: Bool, actions count: Int, titleWidth: CGFloat?, searching: Bool = false) {
+    public init(width: CGFloat, safeTop: CGFloat, hairline: CGFloat, hasLeading: Bool, actions count: Int, titleWidth: CGFloat?, searching: Bool = false, closes: Bool = false) {
         typealias M = Metrics
         let width = max(0, width)
-        let rowTop = safeTop
+        let rowTop = safeTop + (closes ? M.sheetDrop : 0)
         let circle = { (x: CGFloat) in CGRect(x: x, y: rowTop + (M.rowHeight - M.control) / 2, width: M.control, height: M.control) }
         backdrop = CGRect(x: 0, y: 0, width: width, height: rowTop + M.rowHeight + M.backdropOverhang)
         contentTop = rowTop + M.rowHeight
@@ -74,12 +86,15 @@ public struct StemCellsGlassBarLayout: Equatable, Sendable {
             return
         }
         leading = hasLeading ? circle(M.padding) : nil
+        let close = closes ? circle(width - M.padding - M.control) : nil
+        self.close = close
+        let end = close.map { $0.minX - M.gap } ?? width - M.padding
         var buttons: [CGRect] = []
         var dividers: [CGRect] = []
         if count > 0 {
             let n = CGFloat(count)
             let capsule = CGSize(width: 2 * M.border + n * M.control + (n - 1) * hairline, height: 2 * M.border + M.control)
-            let actions = CGRect(x: width - M.padding - capsule.width, y: rowTop + (M.rowHeight - capsule.height) / 2, width: capsule.width, height: capsule.height)
+            let actions = CGRect(x: end - capsule.width, y: rowTop + (M.rowHeight - capsule.height) / 2, width: capsule.width, height: capsule.height)
             let y = actions.minY + M.border
             var x = actions.minX + M.border
             for index in 0..<count {
@@ -96,7 +111,7 @@ public struct StemCellsGlassBarLayout: Equatable, Sendable {
         self.dividers = dividers
         // As wide a margin on both sides as the wider of the two needs.
         let left = M.padding + M.control + M.gap
-        let right = actions.map { width - $0.minX + M.gap } ?? left
+        let right = (actions?.minX ?? close?.minX).map { width - $0 + M.gap } ?? left
         let side = max(left, right)
         let pillMax = max(0, width - 2 * side)
         titleMaxWidth = max(0, pillMax - 2 * M.pillPadding)

@@ -1,15 +1,18 @@
 import CoreGraphics
 
 /// One of the composer's pickers (Model, Provider, Effort) in its sheet:
-/// the title, a notice when the selection isn't an ordinary choice, then
+/// the title at the left level with the close circle at the right
+/// (`SheetCloseLayout`), a notice when the selection isn't an ordinary choice, then
 /// each section's heading over its rows in a rounded group, and an optional
 /// footer row in a group of its own. A row is its title, an optional
 /// subtitle under it, and what it shows at its end (a check, a usage gauge),
 /// centred on the row.
 public struct StemCellPickerLayout: Equatable, Sendable {
     public enum Metrics {
-        public static let titleTop: CGFloat = 22
-        public static let titleBottom: CGFloat = 14
+        /// Under the close circle, to what follows.
+        public static let titleBottom: CGFloat = 6
+        /// Between the title and the close circle.
+        public static let titleGap: CGFloat = 8
         public static let side: CGFloat = 16
         public static let noticePadding: CGFloat = 12
         public static let noticeRadius: CGFloat = 10
@@ -66,6 +69,7 @@ public struct StemCellPickerLayout: Equatable, Sendable {
         public var rows: [PlacedRow]
     }
 
+    public var close: CGRect
     public var title: CGRect
     public var notice: CGRect?
     public var noticeText: CGRect?
@@ -77,10 +81,10 @@ public struct StemCellPickerLayout: Equatable, Sendable {
     public init(width: CGFloat, safeBottom: CGFloat, hairline: CGFloat, title: Measurable, notice: Measurable? = nil, sections: [Section], footer: Row? = nil) {
         typealias M = Metrics
         let inner = max(0, width - 2 * M.side)
-        var y = M.titleTop
-        let titleSize = title.size(fitting: inner)
-        self.title = CGRect(x: M.side, y: y, width: titleSize.width, height: titleSize.height)
-        y = self.title.maxY + M.titleBottom
+        close = SheetCloseLayout.frame(width: width)
+        let titleSize = title.size(fitting: max(0, close.minX - M.titleGap - M.side))
+        self.title = CGRect(x: M.side, y: (close.midY - titleSize.height / 2).rounded(), width: titleSize.width, height: titleSize.height)
+        var y = max(close.maxY, self.title.maxY) + M.titleBottom
 
         if let notice {
             let text = notice.size(fitting: max(0, inner - 2 * M.noticePadding))

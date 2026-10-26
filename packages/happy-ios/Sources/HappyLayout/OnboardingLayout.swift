@@ -22,6 +22,8 @@ public struct OnboardingLayout: Equatable, Sendable {
         public static let glassActionGap: CGFloat = 12
         public static let footerPaddingHorizontal: CGFloat = 16
         public static let footerPaddingBottom: CGFloat = 12
+        /// Above and below an accessory over the primary button.
+        public static let accessoryGap: CGFloat = 16
     }
 
     public struct Input {
@@ -37,6 +39,9 @@ public struct OnboardingLayout: Equatable, Sendable {
         public var help: CGSize
         /// The actions are glass pills, spaced as pills.
         public var glass = false
+        /// The height of a control the screen holds just above its primary
+        /// button, across the block (the link sheet's Relay | Direct).
+        public var accessory: CGFloat?
 
         public init(size: CGSize, safeArea: LayoutInsets, content: Measurable, primary: Measurable, secondary: Measurable, tertiary: Measurable? = nil, help: CGSize) {
             self.size = size
@@ -56,6 +61,8 @@ public struct OnboardingLayout: Equatable, Sendable {
     public var content: CGRect
     public var primary: CGRect
     public var secondary: CGRect
+    /// The accessory, as wide as the buttons, in the scroll view's coordinates.
+    public var accessory: CGRect?
     /// Under the secondary, as far below it as it is below the primary.
     public var tertiary: CGRect?
     /// Get help, in the screen's coordinates.
@@ -90,7 +97,8 @@ public struct OnboardingLayout: Equatable, Sendable {
         let secondaryHeight = input.secondary.height(fitting: innerWidth)
         let tertiaryHeight = input.tertiary?.height(fitting: innerWidth)
         let gap = input.glass ? M.glassActionGap : M.secondaryMarginTop
-        let blockHeight = contentHeight + M.primaryMarginTop + primaryHeight + gap + secondaryHeight
+        let accessoryBand = input.accessory.map { M.accessoryGap + $0 + M.accessoryGap } ?? M.primaryMarginTop
+        let blockHeight = contentHeight + accessoryBand + primaryHeight + gap + secondaryHeight
             + (tertiaryHeight.map { gap + $0 } ?? 0)
 
         // Two growing spacers centre the block; when it does not fit, the
@@ -98,7 +106,14 @@ public struct OnboardingLayout: Equatable, Sendable {
         let free = max(0, scroll.height - M.bodyPaddingVertical * 2 - blockHeight)
         var y = M.bodyPaddingVertical + free / 2
         content = CGRect(x: innerX, y: y, width: innerWidth, height: contentHeight)
-        y = content.maxY + M.primaryMarginTop
+        if let height = input.accessory {
+            let accessory = CGRect(x: innerX, y: content.maxY + M.accessoryGap, width: innerWidth, height: height)
+            self.accessory = accessory
+            y = accessory.maxY + M.accessoryGap
+        } else {
+            accessory = nil
+            y = content.maxY + M.primaryMarginTop
+        }
         primary = CGRect(x: innerX, y: y, width: innerWidth, height: primaryHeight)
         y = primary.maxY + gap
         let secondary = CGRect(x: innerX, y: y, width: innerWidth, height: secondaryHeight)

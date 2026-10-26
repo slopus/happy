@@ -68,7 +68,7 @@ final class StemCellsSettingsLayoutTests: XCTestCase {
     func testTheQRSheetSitsAtTheFootWithThePictureCentredAboveIt() {
         let sheet = StemCellsQRSheetLayout(size: CGSize(width: 390, height: 844), safeTop: 47, safeBottom: 34, nameHeight: 28, text: .fixed(width: 300, height: 44))
         XCTAssertEqual(sheet.sheet, CGRect(x: 0, y: 570, width: 390, height: 274))
-        XCTAssertEqual(sheet.close, CGRect(x: 16, y: 16, width: 44, height: 44))
+        XCTAssertEqual(sheet.close, CGRect(x: 330, y: 16, width: 44, height: 44))
         XCTAssertEqual(sheet.title, CGRect(x: 74, y: 25, width: 242, height: 22))
         XCTAssertEqual(sheet.text, CGRect(x: 30, y: 58, width: 330, height: 44))
         XCTAssertEqual(sheet.primary, CGRect(x: 30, y: 126, width: 330, height: 52))
@@ -85,13 +85,8 @@ final class StemCellsSettingsLayoutTests: XCTestCase {
         XCTAssertEqual(layout.size, CGSize(width: 345, height: 212))
     }
 
-    func testTheLinkSwitchIsCentredUnderTheBarWithItsTagOnDirectsEdge() {
-        let layout = StemCellsLinkSwitchLayout(width: 402, top: 114, tag: CGSize(width: 79.2, height: 17.5))
-        XCTAssertEqual(layout.control, CGRect(x: 21, y: 122, width: 360, height: 36))
-        XCTAssertEqual(layout.tag, CGRect(x: 291, y: 113, width: 80, height: 18))
-        XCTAssertEqual(layout.contentTop, 166)
-        // Narrow: 16 in either side.
-        let narrow = StemCellsLinkSwitchLayout(width: 320, top: 72, tag: CGSize(width: 80, height: 18))
-        XCTAssertEqual(narrow.control, CGRect(x: 16, y: 80, width: 288, height: 36))
+    func testTheBetaTagSitsAstrideTheSwitchAtDirectsEnd() {
+        let layout = StemCellsLinkSwitchLayout(control: CGRect(x: 24, y: 400, width: 354, height: 36), tag: CGSize(width: 40.2, height: 17.5))
+        XCTAssertEqual(layout.tag, CGRect(x: 327, y: 391, width: 41, height: 18))
     }
 }

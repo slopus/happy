@@ -24,5 +24,5 @@ extension Strings.StemCells {
     public static let turnOn = "Turn on"
     public static let relay = "Relay"
     public static let direct = "Direct"
-    public static let experimental = "Experimental"
+    public static let beta = "Beta"
 }
