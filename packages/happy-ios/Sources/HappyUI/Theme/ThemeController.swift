@@ -46,7 +46,14 @@ public enum ThemeController {
         context.account.localSettings.themePreference = preference
         let stored = context.account.localSettings.themePreference
         for window in allWindows {
-            apply(stored, to: window)
+            // UIKit's own windows (the keyboard's, text effects) take the
+            // style, never the ground: they lie over the app's, and once
+            // the keyboard has shown, a ground there covers the whole screen.
+            if type(of: window) == UIWindow.self {
+                apply(stored, to: window)
+            } else {
+                window.overrideUserInterfaceStyle = style(for: stored)
+            }
         }
     }
 

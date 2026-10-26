@@ -1,52 +1,36 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyLayout
+import HappyStore
 import UIKit
 
-/// Settings in a stack of its own, shown as a sheet over home. Home's root
-/// changes when another profile is chosen; this sheet stays up through it
-/// while it shows only its own page (`AppCoordinator.install`).
-final class StemCellsSettingsNavigationController: UINavigationController {
-    private var context: AppContext?
-
-    static func present(context: AppContext, computer: String?, from controller: UIViewController) {
-        let navigation = StemCellsSettingsNavigationController(rootViewController: StemCellsSettingsViewController(context: context, computer: computer))
-        navigation.context = context
-        AppCoordinator.applyAppearance(to: navigation.navigationBar)
-        navigation.modalPresentationStyle = .pageSheet
-        controller.present(navigation, animated: true)
-    }
-
-    /// Kept up through a root change only on its own page with nothing
-    /// over it; a pushed flow that ends in a root change (pairing, signing
-    /// in, signing out) goes with the old root.
-    var keepsThroughRootChange: Bool {
-        viewControllers.count == 1 && presentedViewController == nil
-    }
-
-    /// Adding a Happy account ends when the sheet goes, signed in or not.
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        if isBeingDismissed, context?.account.isAddingAccount == true { context?.account.cancelAddingAccount() }
-    }
-}
-
-/// Stem Cells settings, opened from the computer's picture in home's
-/// header, laid out as Telegram's settings are (its techniques, none of
-/// its code): a bar with the QR button at the left and a capsule of search
-/// and Edit at the right; every computer and account as story circles,
-/// the chosen one centred and ringed, its name and line under it; then a
-/// few grouped cards. Swiping a profile to the middle makes it the active
-/// one and turns the page to it; tapping its circle makes it the active one
-/// and goes back home, which shows it: a computer's Stem Cells, or the Happy
-/// account's sessions. "+" adds a computer, by its code or its link.
+/// Stem Cells settings, pushed from the picture in either home's header,
+/// laid out as Telegram's settings are (its techniques, none of its code):
+/// a glass bar (`StemCellsGlassBar`) with back at the left, and search then
+/// the QR button in one capsule at the right; every computer and account as story circles, the chosen one
+/// centred and ringed, its name and line under it; then every setting the
+/// chosen profile has, in grouped cards, none of it behind a "More".
+/// Direct connection to computers is an experiment, off until turned on
+/// here; off, the computers are hidden and "+" links through the relay.
+/// Swiping a profile to the middle makes it the active one and turns the
+/// page to it, while home changes underneath (`AppCoordinator.install`
+/// keeps this page on top); tapping its circle makes it the active one and
+/// goes back to its home. "+" adds a computer in the link sheet.
 ///
-/// Kept sparse on purpose. On a computer: Prioritizing, More, Disconnect.
-/// On a Happy account: Account, Appearance, Language, More, Sign out.
-/// The computer's status, adding a Happy account and Happy's whole
-/// settings went under More; switching and adding went into the circles;
-/// pairing into the QR button; renaming into Edit.
-final class StemCellsSettingsViewController: UIViewController, UIScrollViewDelegate {
+/// A computer's page: its name and status; Prioritizing and Stories; the
+/// theme, which each profile keeps on this phone; adding a computer or a
+/// Happy account; About; Disconnect. A Happy account's: its own pages
+/// (Account, Appearance, Language, Voice, Agents), its connected services,
+/// connecting a terminal, Support us, adding; About; Sign out. Those pages
+/// write to that account's synced settings, so they are on its page alone.
+final class StemCellsSettingsViewController: UIViewController, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+    /// Pushes settings over `controller`, on `computer`'s page (the active
+    /// profile's when nil). Once: a second tap meanwhile does nothing.
+    static func open(context: AppContext, computer: String?, from controller: UIViewController) {
+        guard let navigation = controller.navigationController, navigation.topViewController === controller else { return }
+        navigation.pushViewController(StemCellsSettingsViewController(context: context, computer: computer), animated: true)
+    }
+
     private struct Profile: Equatable {
         var id: String
         var name: String
@@ -67,12 +51,7 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     private var heldName: (id: String, name: String)?
     private var cards: [StemCellsSettingsCardView] = []
     private var rows: [[StemCellsSettingsRow]] = []
-    private let qr = StemCellsGlassView()
-    private let capsule = StemCellsGlassView()
-    private let searchButton = UIButton(type: .system)
-    private let editButton = UIButton(type: .system)
-    private let searchField = UISearchTextField()
-    private let cancelSearch = UIButton(type: .system)
+    private let bar = StemCellsGlassBar()
     private var query: String?
     private let empty = UILabel()
     private var observation: AccountsObservation?
@@ -81,10 +60,15 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     private var storiesWatch: StemCellsWatch?
     /// Whether the computer offers Stories and the person has them on.
     private var stories: StoriesSnapshot.Availability?
+    /// The Happy account's own settings, while its page shows.
+    private var settingsObservation: StoreObservation?
+    private var snapshot = SettingsSnapshot()
     private var images: [String: UIImage] = [:]
     private var imageKeys: [String: String] = [:]
     private var imageJobs: [String: Task<Void, Never>] = [:]
     private var busy = false
+    private var connecting = false
+    private var versionClicks = MultiClickCounter()
     private var switching: Task<Void, Never>?
     /// The profile last chosen, which the switches in line end on.
     private var wanted: String?
@@ -99,7 +83,6 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = Strings.Settings.title
         view.backgroundColor = UIColor(Palette.stemCellsSettingsGround)
         view.accessibilityIdentifier = "stem-settings"
         scroll.alwaysBounceVertical = true
@@ -107,14 +90,15 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         scroll.delegate = self
         view.addSubview(scroll)
         carousel.onSelect = { [weak self] index in self?.choose(index) }
-        carousel.onTap = { [weak self] index in self?.chooseAndClose(index) }
-        carousel.onAdd = { [weak self] source in self?.addComputer(from: source) }
+        carousel.onTap = { [weak self] index in self?.choose(index, closing: true) }
+        carousel.onAdd = { [weak self] _ in self?.addComputer() }
         scroll.addSubview(carousel)
         name.font = StemCellsFonts.ui(.medium, size: 28)
         name.textColor = UIColor(Palette.stemCellsSettingsText)
         name.textAlignment = .center
         name.accessibilityIdentifier = "stem-settings-name"
         name.isUserInteractionEnabled = true
+        name.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(nameTapped)))
         subtitle.font = StemCellsFonts.ui(.regular, size: 17)
         subtitle.textColor = UIColor(Palette.stemCellsSettingsSecondary)
         subtitle.textAlignment = .center
@@ -129,8 +113,7 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         scroll.addGestureRecognizer({
             let tap = UITapGestureRecognizer(target: self, action: #selector(tappedAway))
             tap.cancelsTouchesInView = false
-            // Beside the circles' and rows' own taps, never instead of them.
-            tap.delegate = PressRecognizer.simultaneous
+            tap.delegate = self
             return tap
         }())
         setUpBar()
@@ -140,63 +123,39 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(true, animated: animated)
+        // Back from Welcome without signing in: no account is being added.
+        if context.account.isAddingAccount, presentedViewController == nil { context.account.cancelAddingAccount() }
     }
 
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        if navigationController?.topViewController !== self { navigationController?.setNavigationBarHidden(false, animated: animated) }
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        guard parent == nil else { return }
+        // Gone with Welcome over it, its account was never added.
+        if context.account.isAddingAccount { context.account.cancelAddingAccount() }
     }
 
     // MARK: Bar
 
+    /// Back; no title, as Telegram's has none; search, then the QR button
+    /// at the far right, in one capsule.
     private func setUpBar() {
-        let qrButton = UIButton(type: .system)
-        qrButton.setImage(StemCellsGlyphs.image("qr-code-outline", size: 22), for: .normal)
-        qrButton.tintColor = UIColor(Palette.stemCellsSettingsRing)
-        qrButton.accessibilityLabel = Strings.StemCells.showQR
-        qrButton.accessibilityIdentifier = "stem-settings-qr"
-        qrButton.addAction(UIAction { [weak self] _ in self?.showQR() }, for: .touchUpInside)
-        qr.content.addSubview(qrButton)
-        qrButton.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.addSubview(qr)
-        searchButton.setImage(StemCellsGlyphs.image("search-outline", size: 20), for: .normal)
-        searchButton.tintColor = UIColor(Palette.stemCellsSettingsRing)
-        searchButton.accessibilityLabel = Strings.StemCells.searchSettings
-        searchButton.accessibilityIdentifier = "stem-settings-search"
-        searchButton.addAction(UIAction { [weak self] _ in self?.beginSearch() }, for: .touchUpInside)
-        capsule.content.addSubview(searchButton)
-        editButton.setTitle(Strings.StemCells.edit, for: .normal)
-        editButton.titleLabel?.font = StemCellsFonts.ui(.semiBold, size: 17)
-        editButton.setTitleColor(UIColor(Palette.stemCellsSettingsRing), for: .normal)
-        editButton.contentHorizontalAlignment = .left
-        editButton.accessibilityIdentifier = "stem-settings-edit"
-        editButton.addAction(UIAction { [weak self] _ in self?.editTapped() }, for: .touchUpInside)
-        capsule.content.addSubview(editButton)
-        view.addSubview(capsule)
-        searchField.placeholder = Strings.StemCells.searchSettings
-        searchField.font = StemCellsFonts.ui(.regular, size: 17)
-        searchField.returnKeyType = .search
-        searchField.accessibilityIdentifier = "stem-settings-search-field"
-        searchField.addAction(UIAction { [weak self] _ in
+        // On a tablet the shell's header holds back.
+        bar.leading = traitCollection.isTabletLayout ? nil : .back
+        bar.onLeading = { [weak self] in self?.navigationController?.popViewController(animated: true) }
+        bar.actions = [
+            StemCellsGlassBar.Action(image: StemCellsGlyphs.image("search", size: 22), label: Strings.StemCells.searchSettings, id: "stem-settings-search") { [weak self] in self?.beginSearch() },
+            StemCellsGlassBar.Action(image: StemCellsGlyphs.image("qr-code-outline", size: 22), label: Strings.StemCells.showQR, id: "stem-settings-qr") { [weak self] in self?.showQR() },
+        ]
+        let field = bar.searchField
+        field.placeholder = Strings.StemCells.searchSettings
+        field.accessibilityIdentifier = "stem-settings-search-field"
+        field.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            query = searchField.text ?? ""
+            query = bar.searchField.text ?? ""
             rebuild(animated: false)
         }, for: .editingChanged)
-        searchField.isHidden = true
-        view.addSubview(searchField)
-        cancelSearch.setTitle(Strings.Common.cancel, for: .normal)
-        cancelSearch.titleLabel?.font = StemCellsFonts.ui(.regular, size: 17)
-        cancelSearch.setTitleColor(UIColor(Palette.stemCellsSettingsPrimary), for: .normal)
-        cancelSearch.isHidden = true
-        cancelSearch.addAction(UIAction { [weak self] _ in self?.endSearch() }, for: .touchUpInside)
-        view.addSubview(cancelSearch)
-    }
-
-    private var editWidth: CGFloat? {
-        guard shown?.isDirect == true else { return nil }
-        let title = nameField == nil ? Strings.StemCells.edit : Strings.StemCells.done
-        return (title as NSString).size(withAttributes: [.font: StemCellsFonts.ui(.semiBold, size: 17)]).width
+        bar.onEndSearch = { [weak self] in self?.endSearch() }
+        StemCellsGlassChrome.install(bar, on: self)
     }
 
     // MARK: Profiles
@@ -213,16 +172,15 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
                 return Profile(id: account.id, name: name, subtitle: computer.status.title, isDirect: true, isActive: account.isActive)
             }
             let name = account.name ?? account.username ?? Strings.StemCells.happyAccount
-            return Profile(id: account.id, name: name, subtitle: account.username.map { "@\($0)" } ?? account.serverURL.host ?? Strings.StemCells.happyAccount, isDirect: false, isActive: account.isActive)
+            return Profile(id: account.id, name: name, subtitle: account.username.map { "@\($0)" } ?? Strings.StemCells.happyAccount, isDirect: false, isActive: account.isActive)
         }
         if let held = heldName, direct.first(where: { $0.id == held.id })?.name == held.name { heldName = nil }
-        guard !profiles.isEmpty else {
-            presentingViewController?.dismiss(animated: true)
-            return
-        }
+        // With none left, the window's root is the link screen and this
+        // page goes with the old one (`AppCoordinator.install`).
+        guard !profiles.isEmpty else { return }
         if shown == nil { shownID = (profiles.first(where: \.isActive) ?? profiles[0]).id }
         for account in accounts { loadImage(account) }
-        watchPrioritizing()
+        watchShown()
         showCarousel()
         rebuild(animated: false)
     }
@@ -247,74 +205,85 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         }
     }
 
-    /// The circle that came to rest: the page turns to it and it becomes
-    /// the active profile (home changes under this sheet).
-    private func choose(_ index: Int, failureHost: UIViewController? = nil) {
+    /// The circle that came to rest, or was tapped: the page turns to it
+    /// and it becomes the active profile, home changing under this page.
+    /// `closing` (a tap) then goes back to that home, once it is there.
+    private func choose(_ index: Int, closing: Bool = false) {
         guard profiles.indices.contains(index) else { return }
         let profile = profiles[index]
         endEditingName(keep: true)
-        shownID = profile.id
-        watchPrioritizing()
-        rebuild(animated: true)
+        if shownID != profile.id {
+            shownID = profile.id
+            watchShown()
+            rebuild(animated: true)
+        }
         // One switch at a time, and only the last choice still wanted (one
         // back to the active profile too, behind a switch away from it); a
-        // failed one turns the page back to the profile that is active. It
-        // goes on when the sheet has gone: a tap closes it at once.
+        // failed one turns the page back to the profile that is active.
         let previous = switching
         let account = context.account
         wanted = profile.id
+        // The home under this page now: unless it is already the profile's,
+        // back waits for the one that replaces it, even when a switch in
+        // line before this one is what makes the profile active.
+        let home = account.accounts.first(where: { $0.id == profile.id })?.isActive == true ? nil : navigationController?.viewControllers.first
         switching = Task { [weak self] in
             await previous?.value
-            guard self?.wanted ?? profile.id == profile.id,
-                  account.accounts.first(where: { $0.id == profile.id })?.isActive == false else { return }
-            do { try await account.switchAccount(to: profile.id) }
-            catch {
-                if let self, self.view.window != nil, shownID == profile.id {
+            guard self?.wanted ?? profile.id == profile.id else { return }
+            if account.accounts.first(where: { $0.id == profile.id })?.isActive == false {
+                do {
+                    try await account.switchAccount(to: profile.id)
+                } catch {
+                    guard let self, view.window != nil, shownID == profile.id else { return }
                     shownID = account.accounts.first(where: \.isActive)?.id
                     reload()
                     Alerts.show(Strings.StemCells.couldNotSwitch, error.localizedDescription, on: self)
-                } else if let failureHost {
-                    // Home, once the sheet is all the way down.
-                    for _ in 0..<20 where failureHost.presentedViewController != nil { try? await Task.sleep(for: .milliseconds(100)) }
-                    Alerts.show(Strings.StemCells.couldNotSwitch, error.localizedDescription, on: failureHost)
+                    return
                 }
             }
+            // The new home is built in its language first: back goes to it.
+            for _ in 0..<60 where closing && home != nil && self?.navigationController?.viewControllers.first === home {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            guard closing, let self, wanted == profile.id, navigationController?.topViewController === self else { return }
+            navigationController?.popViewController(animated: true)
         }
     }
 
-    /// A tapped circle: that profile is home, at once.
-    private func chooseAndClose(_ index: Int) {
-        guard profiles.indices.contains(index) else { return }
-        let host = presentingViewController
-        choose(index, failureHost: host)
-        host?.dismiss(animated: true)
+    /// Telegram's "Add Account", for a computer: the link sheet.
+    private func addComputer() {
+        endEditingName(keep: true)
+        StemCellsLinkNavigationController.present(context: context, from: self)
     }
 
-    /// Telegram's "Add Account", for a computer: its code, or its link.
-    private func addComputer(from source: UIView) {
-        let sheet = UIAlertController(title: Strings.StemCells.addProfile, message: nil, preferredStyle: .actionSheet)
-        sheet.addAction(UIAlertAction(title: Strings.StemCells.scanQRCode, style: .default) { [weak self] _ in
-            guard let self else { return }
-            StemCellsScan.scan(context: context, on: self)
-        })
-        sheet.addAction(UIAlertAction(title: Strings.StemCells.enterLink, style: .default) { [weak self] _ in
-            guard let self else { return }
-            StemCellsScan.enterLink(context: context, on: self)
-        })
-        sheet.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
-        sheet.popoverPresentationController?.sourceView = source
-        sheet.popoverPresentationController?.sourceRect = source.bounds
-        present(sheet, animated: true)
+    /// Another Happy account, beside the profiles there are.
+    private func addHappyAccount() {
+        guard isTop else { return }
+        context.account.beginAddingAccount()
+        show(WelcomeViewController(context: context, offersPairing: false))
     }
 
-    private func watchPrioritizing() {
+    private func watchShown() {
         prioritizingWatch?.invalidate()
         prioritizingWatch = nil
         prioritizing = nil
         storiesWatch?.invalidate()
         storiesWatch = nil
         stories = nil
-        guard let profile = shown, profile.isDirect, let session = StemCellsSession.session(for: profile.id, context: context) else { return }
+        settingsObservation = nil
+        snapshot = SettingsSnapshot()
+        guard let profile = shown else { return }
+        if !profile.isDirect {
+            // Only the active account has a session to read.
+            guard let session = context.account.session, session.keys.anonID == profile.id else { return }
+            settingsObservation = session.store.observeSettings { [weak self] snapshot in
+                guard let self, self.snapshot != snapshot else { return }
+                self.snapshot = snapshot
+                rebuild(animated: false)
+            }
+            return
+        }
+        guard let session = StemCellsSession.session(for: profile.id, context: context) else { return }
         prioritizingWatch = session.watch { [weak self] snapshot in
             guard let self, prioritizing != snapshot.prioritizing else { return }
             prioritizing = snapshot.prioritizing
@@ -330,27 +299,79 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     // MARK: Rows
 
     private func rowsFor(_ profile: Profile) -> [[StemCellsSettingsRow]] {
+        typealias Row = StemCellsSettingsRow
         let id = profile.id
+        let adding = [
+            Row(id: "add-computer", title: Strings.StemCells.addComputer, icon: ("laptop-outline", .blue), action: { [weak self] in self?.addComputer() }),
+            Row(id: "add-account", title: Strings.StemCells.addHappyAccount, icon: ("person-add-outline", .gray), action: { [weak self] in self?.addHappyAccount() }),
+        ]
         if profile.isDirect {
-            var experiments = [StemCellsSettingsRow(id: "prioritizing", title: Strings.StemCells.prioritizing, icon: ("pulse-outline", .orange), accessory: .toggle, isOn: prioritizing == true, toggled: { [weak self] on in self?.setPrioritizing(on) })]
+            var experiments = [Row(id: "prioritizing", title: Strings.StemCells.prioritizing, icon: ("pulse-outline", .orange), accessory: .toggle, isOn: prioritizing == true, toggled: { [weak self] on in self?.setPrioritizing(on) })]
             // Stories: only where the computer offers them.
             if stories == .on || stories == .off {
-                experiments.append(StemCellsSettingsRow(id: "stories", title: Strings.Stories.setting, icon: ("sparkles-outline", .blue), accessory: .toggle, isOn: stories == .on, toggled: { [weak self] on in self?.setStories(on) }))
+                experiments.append(Row(id: "stories", title: Strings.Stories.setting, icon: ("sparkles-outline", .blue), accessory: .toggle, isOn: stories == .on, toggled: { [weak self] on in self?.setStories(on) }))
             }
+            experiments.append(directConnectionRow())
             return [
+                [
+                    Row(id: "edit-name", title: Strings.StemCells.editName, icon: ("create-outline", .blue), action: { [weak self] in self?.beginRename() }),
+                    Row(id: "status", title: Strings.StemCells.status, icon: ("desktop-outline", .green), value: profile.subtitle, accessory: .none),
+                ],
                 experiments,
-                [StemCellsSettingsRow(id: "more", title: Strings.StemCells.more, icon: ("more", .gray), action: { [weak self] in self?.openMore(profile) })],
-                [StemCellsSettingsRow(id: "disconnect", title: Strings.StemCells.disconnect, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) })],
+                [themeRow()],
+                adding,
+                aboutRows(),
+                [Row(id: "disconnect", title: Strings.StemCells.disconnect, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) })],
             ]
         }
+        let model = SettingsIndexModel(profile: snapshot.profile)
         return [
             [
-                StemCellsSettingsRow(id: "account", title: Strings.StemCells.account, icon: ("person-outline", .blue), action: { [weak self] in self?.push(.settingsAccount, for: id) }),
-                StemCellsSettingsRow(id: "appearance", title: Strings.StemCells.appearance, icon: ("color-palette-outline", .purple), action: { [weak self] in self?.push(.settingsAppearance, for: id) }),
-                StemCellsSettingsRow(id: "language", title: Strings.StemCells.language, icon: ("language-outline", .green), action: { [weak self] in self?.push(.settingsLanguage, for: id) }),
+                Row(id: "account", title: Strings.Settings.account, icon: ("person-circle-outline", .blue), action: { [weak self] in self?.push(.settingsAccount, for: id) }),
+                Row(id: "appearance", title: Strings.Settings.appearance, icon: ("color-palette-outline", .purple), action: { [weak self] in self?.push(.settingsAppearance, for: id) }),
+                Row(id: "language", title: Strings.StemCells.language, icon: ("language-outline", .green), action: { [weak self] in self?.push(.settingsLanguage, for: id) }),
+                Row(id: "voice", title: Strings.StemCells.voice, icon: ("mic-outline", .orange), action: { [weak self] in self?.push(.settingsVoice, for: id) }),
+                Row(id: "agents", title: Strings.Settings.agents, icon: ("options-outline", .teal), action: { [weak self] in self?.push(.settingsAgents, for: id) }),
             ],
-            [StemCellsSettingsRow(id: "more", title: Strings.StemCells.more, icon: ("more", .gray), action: { [weak self] in self?.push(.settings, for: id) })],
-            [StemCellsSettingsRow(id: "sign-out", title: Strings.StemCells.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: false) })],
+            [
+                Row(id: "claude", title: Strings.Settings.claudeCode, icon: ("code-slash-outline", .orange), value: model.claudeConnected ? Strings.StemCells.connected : Strings.StemCells.connect, accessory: .none, action: { [weak self] in self?.claude(connected: model.claudeConnected) }),
+                Row(id: "github", title: Strings.Settings.github, icon: ("logo-github", .gray), value: model.githubLogin.map { "@\($0)" } ?? Strings.StemCells.connect, accessory: .none, action: { [weak self] in self?.github(connected: model.githubLogin != nil) }),
+            ],
+            [
+                Row(id: "scan-terminal", title: Strings.StemCells.connectTerminal, icon: ("qr-code-outline", .indigo), accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: true) }),
+                Row(id: "enter-terminal", title: Strings.StemCells.enterTerminalURL, icon: ("link-outline", .indigo), accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: false) }),
+            ],
+            [directConnectionRow()],
+            [Row(id: "support-us", title: Strings.SupportUs.title, icon: ("heart-outline", .red), action: { [weak self] in self?.show(SupportUsViewController()) })],
+            adding,
+            aboutRows(),
+            [Row(id: "sign-out", title: Strings.StemCells.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: false) })],
+        ]
+    }
+
+    /// The Direct connection experiment, on this phone.
+    private func directConnectionRow() -> StemCellsSettingsRow {
+        let context = context
+        return StemCellsSettingsRow(id: "direct-connection", title: Strings.StemCells.directConnection, icon: ("flask-outline", .purple), accessory: .toggle, isOn: StemCellsPreference(variant: context.variant).directConnection, toggled: { on in
+            StemCellsExperiments.turn(on, context: context, surface: .settings)
+        })
+    }
+
+    /// The profile's theme on this phone: a tap goes Adaptive, Light, Dark.
+    private func themeRow() -> StemCellsSettingsRow {
+        StemCellsSettingsRow(id: "theme", title: Strings.SettingsAppearance.theme, icon: ("contrast-outline", .indigo), value: Self.themeName(context.account.localSettings.themePreference), accessory: .none, action: { [weak self] in self?.cycleTheme() })
+    }
+
+    private func aboutRows() -> [StemCellsSettingsRow] {
+        typealias Row = StemCellsSettingsRow
+        return [
+            Row(id: "whats-new", title: Strings.Settings.whatsNew, icon: ("sparkles-outline", .orange), action: { [weak self] in self?.show(ChangelogViewController()) }),
+            Row(id: "github-repo", title: Strings.Settings.github, icon: ("logo-github", .gray), value: Strings.Links.githubDetail, action: { UIApplication.shared.open(Strings.Links.github) }),
+            Row(id: "report-issue", title: Strings.Settings.reportIssue, icon: ("bug-outline", .red), action: { UIApplication.shared.open(Strings.Links.issues) }),
+            Row(id: "privacy", title: Strings.Settings.privacyPolicy, icon: ("shield-checkmark-outline", .blue), action: { UIApplication.shared.open(Strings.Links.privacy) }),
+            Row(id: "terms", title: Strings.Settings.termsOfService, icon: ("document-text-outline", .gray), action: { UIApplication.shared.open(Strings.Links.terms) }),
+            Row(id: "eula", title: Strings.Settings.eula, icon: ("document-text-outline", .gray), action: { UIApplication.shared.open(Strings.Links.eula) }),
+            Row(id: "version", title: Strings.Common.version, icon: ("information-circle-outline", .gray), value: SettingsIndexModel.versionDetail(version: context.version, variant: context.variant), accessory: .none, action: { [weak self] in self?.versionTapped() }),
         ]
     }
 
@@ -380,6 +401,19 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         } else {
             rows = rowsFor(profile)
         }
+        // A row tapped keeps a name being typed first.
+        rows = rows.map { card in
+            card.map { row in
+                var row = row
+                if let action = row.action {
+                    row.action = { [weak self] in
+                        self?.endEditingName(keep: true)
+                        action()
+                    }
+                }
+                return row
+            }
+        }
         let searching = query != nil
         carousel.isHidden = searching
         name.isHidden = searching || nameField != nil
@@ -393,6 +427,7 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
                 label.text = value
             }
         }
+        name.accessibilityTraits = profile.isDirect ? .button : .staticText
         while cards.count < rows.count { let card = StemCellsSettingsCardView(); scroll.addSubview(card); cards.append(card) }
         while cards.count > rows.count { cards.removeLast().removeFromSuperview() }
         view.setNeedsLayout()
@@ -407,29 +442,13 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        // On a tablet the shell's header holds back, as the window resizes too.
+        let leading: StemCellsGlassBar.Leading? = traitCollection.isTabletLayout ? nil : .back
+        if bar.leading != leading { bar.leading = leading }
         let width = view.bounds.width
         let searching = query != nil
-        let bar = StemCellsSettingsBarLayout(width: width, safeTop: view.safeAreaInsets.top, editWidth: editWidth, cancelWidth: searching ? cancelSearch.intrinsicContentSize.width : nil)
-        qr.frame = bar.qr
-        capsule.frame = bar.capsule
-        searchButton.frame = bar.search
-        editButton.isHidden = bar.edit == nil
-        editButton.setTitle(nameField == nil ? Strings.StemCells.edit : Strings.StemCells.done, for: .normal)
-        if let edit = bar.edit { editButton.frame = edit }
-        qr.isHidden = searching
-        capsule.isHidden = searching
-        searchField.isHidden = !searching
-        cancelSearch.isHidden = !searching
-        if let field = bar.field, let cancel = bar.cancel {
-            searchField.frame = field
-            cancelSearch.frame = cancel
-        }
+        // Under the bar, whose row is in the safe area: the cards scroll under it.
         scroll.frame = view.bounds
-        let top = bar.bottom
-        if scroll.contentInset.top != top {
-            scroll.contentInset.top = top
-            scroll.verticalScrollIndicatorInsets.top = top
-        }
         let specs = rows.map { card in
             card.map { StemCellsSettingsLayout.RowSpec(hasIcon: $0.icon != nil, valueWidth: StemCellsSettingsCardView.valueWidth($0.value), accessory: $0.accessory) }
         }
@@ -449,28 +468,30 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
 
     // MARK: Search
 
+    /// A field takes the bar's row, as Telegram's does.
     private func beginSearch() {
         endEditingName(keep: true)
         query = ""
-        searchField.text = ""
+        bar.searchField.text = ""
         rebuild(animated: false)
-        view.setNeedsLayout()
-        view.layoutIfNeeded()
-        searchField.becomeFirstResponder()
+        UIView.animate(withDuration: 0.25) { self.bar.isSearching = true }
+        bar.searchField.becomeFirstResponder()
     }
 
     private func endSearch() {
         query = nil
-        searchField.resignFirstResponder()
+        bar.searchField.resignFirstResponder()
         rebuild(animated: false)
-        view.setNeedsLayout()
+        UIView.animate(withDuration: 0.25) { self.bar.isSearching = false }
     }
 
-    // MARK: Rename (Edit)
+    // MARK: Rename
 
-    private func editTapped() {
-        if nameField != nil { endEditingName(keep: true); return }
-        guard let profile = shown, profile.isDirect else { return }
+    @objc private func nameTapped() { beginRename() }
+
+    /// The name, in place, as a field; Return or a tap away keeps it.
+    private func beginRename() {
+        guard nameField == nil, query == nil, let profile = shown, profile.isDirect else { return }
         let field = StemCellsRenameField()
         field.font = name.font
         field.textColor = name.textColor
@@ -492,12 +513,23 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
 
     private func endEditingName(keep: Bool) {
         guard let field = nameField else { return }
-        if field.isFirstResponder { field.resignFirstResponder() } else { finishRename(shownID ?? "", kept: keep ? field.text : nil) }
+        // Its own profile's, whichever shows now.
+        if field.isFirstResponder { field.resignFirstResponder() } else { field.onFinish?(keep ? field.text : nil) }
     }
 
     @objc private func tappedAway() {
         endEditingName(keep: true)
     }
+
+    /// Beside the circles' and rows' own taps, never instead of them; not
+    /// on the name, whose tap starts the rename, or the rows.
+    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let view = touch.view else { return true }
+        if view === name || cards.contains(where: { view.isDescendant(of: $0) }) { return false }
+        return nameField.map { !view.isDescendant(of: $0) } ?? true
+    }
+
+    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 
     private func finishRename(_ id: String, kept: String?) {
         guard let field = nameField else { return }
@@ -541,18 +573,90 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         Task { await store.setEnabled(on) }
     }
 
-    /// A Happy account's page, once that account is the active one.
-    private func push(_ route: Route, for id: String) {
-        guard context.account.session != nil, context.account.accounts.first(where: { $0.id == id })?.isActive == true else { return }
-        push(route, context: context)
+    /// Adaptive, Light, Dark, and round again, as Happy's Appearance page
+    /// does. A sheet of the three would be dismissing as the whole window
+    /// changes style under it, which UIKit leaves drawn.
+    private func cycleTheme() {
+        ThemeController.set(context.account.localSettings.themePreference.next, in: context)
+        rebuild(animated: false)
     }
 
-    private func openMore(_ profile: Profile) {
-        navigationController?.pushViewController(StemCellsMoreViewController(context: context, computer: profile.id), animated: true)
+    private static func themeName(_ theme: ThemePreference) -> String {
+        switch theme {
+        case .adaptive: Strings.SettingsAppearance.themeAdaptive
+        case .light: Strings.SettingsAppearance.themeLight
+        case .dark: Strings.SettingsAppearance.themeDark
+        }
+    }
+
+    /// Ten taps toggle developer mode, as on Happy's settings.
+    private func versionTapped() {
+        guard versionClicks.click(at: Date()) else { return }
+        let enabled = !context.account.localSettings.devModeEnabled
+        context.account.localSettings.devModeEnabled = enabled
+        Alerts.show(Strings.Modals.developerMode, enabled ? Strings.Modals.developerModeEnabled : Strings.Modals.developerModeDisabled, on: self)
+    }
+
+    /// A Happy account's page, once that account is the active one.
+    private func push(_ route: Route, for id: String) {
+        guard isTop, let session = context.account.session, session.keys.anonID == id else { return }
+        show(Screens.make(route, context: context, session: session))
+    }
+
+    /// Pushed in the glass bar this page wears.
+    private func show(_ controller: UIViewController) {
+        guard isTop else { return }
+        StemCellsGlassChrome.dress(controller, over: self)
+        navigationController?.pushViewController(controller, animated: true)
+    }
+
+    /// Nothing pushed or on its way: a second tap meanwhile opens nothing.
+    private var isTop: Bool {
+        navigationController?.topViewController === self && navigationController?.transitionCoordinator == nil && presentedViewController == nil
+    }
+
+    private var activeSession: AccountSession? {
+        guard let session = context.account.session, session.keys.anonID == shownID else { return nil }
+        return session
+    }
+
+    private func claude(connected: Bool) {
+        guard !connecting, let session = activeSession else { return }
+        guard connected else { return push(.settingsConnectClaude, for: session.keys.anonID) }
+        connecting = true
+        Task { @MainActor in
+            await SettingsConnections.disconnectClaude(session: session, on: self)
+            connecting = false
+        }
+    }
+
+    private func github(connected: Bool) {
+        guard !connecting, let session = activeSession else { return }
+        connecting = true
+        Task { @MainActor in
+            if connected {
+                await SettingsConnections.disconnectGitHub(session: session, on: self)
+            } else {
+                await SettingsConnections.connectGitHub(session: session, on: self)
+            }
+            connecting = false
+        }
+    }
+
+    private func connectTerminal(scanning: Bool) {
+        guard !connecting, let session = activeSession else { return }
+        connecting = true
+        Task { @MainActor in
+            defer { connecting = false }
+            let text = scanning ? await SettingsConnections.scanTerminal(on: self) : await SettingsConnections.promptTerminalURL(on: self)
+            guard let text else { return }
+            await SettingsConnections.approveTerminal(text, session: session, on: self)
+        }
     }
 
     private func showQR() {
         guard let profile = shown else { return }
+        endEditingName(keep: true)
         let sheet = StemCellsQRSheetViewController(name: profile.name, image: images[profile.id], isDirect: profile.isDirect)
         sheet.onScan = { [weak self] in
             guard let self else { return }
@@ -584,56 +688,29 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         }
     }
 }
-
-/// What a computer's page keeps out of the way: its status, adding a
-/// Happy account, and Happy's whole settings when one is signed in.
-final class StemCellsMoreViewController: UIViewController {
-    private let context: AppContext
-    private let computer: String
-    private let list = GroupedListView()
-    private var observation: AccountsObservation?
-
-    init(context: AppContext, computer: String) {
-        self.context = context
-        self.computer = computer
-        super.init(nibName: nil, bundle: nil)
+/// The Direct connection experiment: computers paired straight to this
+/// phone. Turned off, they stay paired but hidden, and a computer open
+/// gives way to the Happy account, or Welcome.
+@MainActor
+enum StemCellsExperiments {
+    static func setDirectConnection(_ on: Bool, context: AppContext, surface: PairingSurface) async {
+        guard record(on, context: context, surface: surface) else { return }
+        await context.account.setShowsComputers(StemCellsPreference(variant: context.variant).showsComputers)
     }
 
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override func loadView() { view = list }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        title = Strings.StemCells.more
-        view.accessibilityIdentifier = "stem-settings-more"
-        observation = context.account.observeAccounts { [weak self] _ in self?.update() }
+    /// From a switch: the choice is kept at once, so the page drawn again
+    /// meanwhile shows it; the computers follow.
+    static func turn(_ on: Bool, context: AppContext, surface: PairingSurface) {
+        guard record(on, context: context, surface: surface) else { return }
+        Task { await context.account.setShowsComputers(StemCellsPreference(variant: context.variant).showsComputers) }
     }
 
-    /// Back from signing in without finishing: no account is being added.
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        if context.account.isAddingAccount { context.account.cancelAddingAccount() }
-    }
-
-    private func update() {
-        let status = context.account.direct.accounts.first { $0.id == computer }?.status.title
-        let state = ItemRowView(title: Strings.StemCells.status, subtitle: status, icon: ItemIcon(.ionicons("desktop-outline"), tint: Palette.iconBlue))
-        state.showsChevron = false
-        let add = ItemRowView(title: Strings.StemCells.addHappyAccount, icon: ItemIcon(.ionicons("person-add-outline"), tint: Palette.iconBlue)) { [weak self] in
-            guard let self else { return }
-            context.account.beginAddingAccount()
-            navigationController?.pushViewController(WelcomeViewController(context: context), animated: true)
-        }
-        var sections: [UIView] = [ItemGroupView(rows: [state]), ItemGroupView(rows: [add])]
-        if context.account.session != nil {
-            let happy = ItemRowView(title: Strings.StemCells.happySettings, icon: ItemIcon(.ionicons("settings-outline"), tint: Palette.iconBlue)) { [weak self] in
-                guard let self else { return }
-                push(.settings, context: context)
-            }
-            sections.append(ItemGroupView(rows: [happy]))
-        }
-        list.sections = sections
+    private static func record(_ on: Bool, context: AppContext, surface: PairingSurface) -> Bool {
+        let preference = StemCellsPreference(variant: context.variant)
+        guard preference.isAvailable, preference.directConnection != on else { return false }
+        preference.directConnection = on
+        PairingAnalytics.shared.log(.experimentToggled(on: on, surface: surface))
+        return true
     }
 }
 #endif

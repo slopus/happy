@@ -6,6 +6,7 @@ import XCTest
 final class DirectPairingUITests: XCTestCase {
     func testTwoDirectComputersAndSwitcher() {
         let app = XCUIApplication()
+        app.launchEnvironment["STEM_DIRECT"] = "1"
         app.launch()
         // This simulator contains only accounts created by this isolated
         // interop job. Exercise removal before repeating the two-account run.

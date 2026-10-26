@@ -29,6 +29,8 @@ final class StoriesUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         print("StoriesUITests skips quiescence: \(Self.skipsQuiescence)")
+        // Direct connection is an experiment, off on a fresh install.
+        app.launchEnvironment["STEM_DIRECT"] = "1"
         app.launch()
     }
 
@@ -343,7 +345,7 @@ final class StoriesUITests: XCTestCase {
         toggle.tap()
         pause(1.5)
         capture("settings-stories-off")
-        app.swipeDown(velocity: .fast)
+        app.tapBack()
         pause(2)
         XCTAssertFalse(element("story-circle:self").exists, "the row stayed with Stories off")
         capture("home-stories-off")
@@ -351,7 +353,7 @@ final class StoriesUITests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         toggle.tap()
         pause(1.5)
-        app.swipeDown(velocity: .fast)
+        app.tapBack()
         XCTAssertTrue(element("story-circle:self").waitForExistence(timeout: 8), "the stories never came back")
         pause(1)
         openStories(element("story-circle:self"))

@@ -6,6 +6,11 @@ import UIKit
 /// Signed out: create an account or restore one. app/(app)/index.tsx.
 public final class WelcomeViewController: UIViewController {
     private let context: AppContext
+    /// Root, Welcome offers pairing a computer itself; pushed from the
+    /// link sheet or settings, that is the screen behind it.
+    private let offersPairing: Bool
+    /// The gear to the server; the link sheet has no settings in it.
+    private let offersServer: Bool
     private let titleView = NavigationTitleView()
     private lazy var screen = OnboardingScreenView(
         content: WelcomeContentView(),
@@ -13,8 +18,10 @@ public final class WelcomeViewController: UIViewController {
         secondary: RoundButton(title: Strings.Onboarding.restoreExisting, size: .normal, display: .inverted)
     )
 
-    public init(context: AppContext) {
+    public init(context: AppContext, offersPairing: Bool = true, offersServer: Bool = true) {
         self.context = context
+        self.offersPairing = offersPairing
+        self.offersServer = offersServer
         super.init(nibName: nil, bundle: nil)
         followsTextSize()
     }
@@ -35,12 +42,19 @@ public final class WelcomeViewController: UIViewController {
         showsBackTitle()
         // Signed out, the gear leads straight to the server: self-hosters
         // set it before creating an account.
-        navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openServer), label: Strings.Server.title)
+        if offersServer {
+            navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openServer), label: Strings.Server.title)
+        }
         let pairComputer = UIBarButtonItem(title: "Pair computer", primaryAction: UIAction { [weak self] _ in
             guard let self else { return }; DirectPairingFlow.scan(context: context, on: self)
         })
-        if navigationItem.leftBarButtonItem == nil { navigationItem.leftBarButtonItem = pairComputer }
-        else if let settings = navigationItem.rightBarButtonItem { navigationItem.rightBarButtonItems = [settings, pairComputer] }
+        if !offersPairing {
+            // The screen behind offers it.
+        } else if navigationItem.leftBarButtonItem == nil {
+            navigationItem.leftBarButtonItem = pairComputer
+        } else if let settings = navigationItem.rightBarButtonItem {
+            navigationItem.rightBarButtonItems = [settings, pairComputer]
+        }
         screen.primary.action = { [weak self] in await self?.createAccount() }
         screen.secondary.onTap = { [weak self] in self?.openRestore() }
         screen.help.onTap = { [weak self] in
@@ -51,7 +65,7 @@ public final class WelcomeViewController: UIViewController {
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        titleView.subtitle = context.customServerHost
+        titleView.subtitle = offersServer ? context.customServerHost : nil
         // Not `sizeToFit`, which would hold a server chosen meanwhile to the
         // width of the one before it.
         titleView.frame.size = titleView.intrinsicContentSize
@@ -157,8 +171,9 @@ public final class RestoreQRViewController: UIViewController {
     public override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         // Popped back to Welcome: stop polling. Pushing the secret key
-        // screen on top keeps it running, so either way can finish.
-        if isMovingFromParent || navigationController == nil {
+        // screen on top keeps it running, so either way can finish. A
+        // sheet swiped away takes it with it.
+        if isMovingFromParent || navigationController == nil || navigationController?.isBeingDismissed == true {
             task?.cancel()
         }
     }

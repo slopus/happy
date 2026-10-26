@@ -86,6 +86,9 @@ extension Palette {
     public static let stemCellsSettingsTileBlue = ColorToken("#007aff")
     public static let stemCellsSettingsTilePurple = ColorToken("#af52de")
     public static let stemCellsSettingsTileGreen = ColorToken("#34c759")
+    public static let stemCellsSettingsTileRed = ColorToken("#ff3b30")
+    public static let stemCellsSettingsTileTeal = ColorToken("#30b0c7")
+    public static let stemCellsSettingsTileIndigo = ColorToken("#5856d6")
     public static let stemCellsSettingsGlyph = ColorToken("#ffffff")
     /// The QR sheet's first button and its ink; the second's tint.
     public static let stemCellsSettingsPrimary = ColorToken("#007aff", "#0a84ff")

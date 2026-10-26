@@ -47,19 +47,38 @@ final class PairingEmojiLabel: UILabel {
 @MainActor
 enum DirectPairingFlow {
     @discardableResult
-    static func openIfDirect(_ text: String, context: AppContext, on controller: UIViewController) -> Bool {
+    /// `start`: how the link came, for the pairing's events.
+    static func openIfDirect(_ text: String, context: AppContext, on controller: UIViewController, start: PairingStart = .openedLink) -> Bool {
         guard DirectPairingLink.isDirect(text) else { return false }
+        // The Direct connection experiment off: it says so, and offers to
+        // turn it on and go on.
+        let preference = StemCellsPreference(variant: context.variant)
+        guard preference.showsComputers else {
+            Task { @MainActor in
+                guard await Alerts.confirm(Strings.StemCells.directExperimentTitle, Strings.StemCells.directExperimentDetail, confirmTitle: Strings.StemCells.turnOn, on: controller) else {
+                    return PairingAnalytics.shared.log(.cancelled(method: .direct, start: start))
+                }
+                await StemCellsExperiments.setDirectConnection(true, context: context, surface: .onboarding)
+                _ = openIfDirect(text, context: context, on: controller, start: start)
+            }
+            return true
+        }
         do {
             let link = try DirectPairingLink(text)
-            controller.navigationController?.pushViewController(DirectPairingViewController(context: context, link: link), animated: true)
-        } catch { Alerts.show("Could not pair", error.localizedDescription, on: controller) }
+            let pairing = DirectPairingViewController(context: context, link: link, start: start)
+            StemCellsGlassChrome.dress(pairing, over: controller)
+            controller.navigationController?.pushViewController(pairing, animated: true)
+        } catch {
+            PairingAnalytics.shared.log(.failed(method: .direct, start: start))
+            Alerts.show("Could not pair", error.localizedDescription, on: controller)
+        }
         return true
     }
 
     static func scan(context: AppContext, on controller: UIViewController) {
         Task { @MainActor in
             guard let text = await PairingFlow.scan(.terminal, from: controller) else { return }
-            if openIfDirect(text, context: context, on: controller) { return }
+            if openIfDirect(text, context: context, on: controller, start: .scan) { return }
             guard let session = context.account.session else {
                 Alerts.show("Sign in to Happy", "Sign in to a Happy account before connecting this kind of computer code.", on: controller)
                 return
@@ -80,9 +99,12 @@ final class DirectPairingViewController: UIViewController {
     private var expiry: Task<Void, Never>?
     private var ready = false
     private var finished = false
+    private let start: PairingStart
+    /// Its ending, once logged.
+    private var reported = false
 
-    init(context: AppContext, link: DirectPairingLink) {
-        self.context = context; self.link = link; service = DirectPairingService(link: link)
+    init(context: AppContext, link: DirectPairingLink, start: PairingStart = .openedLink) {
+        self.context = context; self.link = link; self.start = start; service = DirectPairingService(link: link)
         super.init(nibName: nil, bundle: nil)
         followsTextSize()
     }
@@ -137,13 +159,20 @@ final class DirectPairingViewController: UIViewController {
             screen.primary.title = "Loading computer…"
             try await context.account.addDirect(credentials, name: link.name)
             finished = true
+            report(.completed(method: .direct, start: start))
         } catch {
             finished = false
             fail(error)
         }
     }
+    private func report(_ event: PairingEvent) {
+        guard !reported else { return }
+        reported = true
+        PairingAnalytics.shared.log(event)
+    }
     private func fail(_ error: Error) {
         guard !finished else { return }
+        report(.failed(method: .direct, start: start))
         finished = true; job?.cancel(); expiry?.cancel()
         let service = service; Task { await service.cancel() }
         screen.primary.isLoading = false; screen.primary.isEnabled = false; screen.primary.title = "Pairing ended"
@@ -152,6 +181,7 @@ final class DirectPairingViewController: UIViewController {
         view.setNeedsLayout()
     }
     private func cancel() {
+        if !finished { report(.cancelled(method: .direct, start: start)) }
         job?.cancel(); expiry?.cancel(); finished = true
         let service = service; Task { await service.cancel() }
         navigationController?.popViewController(animated: true)
@@ -159,7 +189,9 @@ final class DirectPairingViewController: UIViewController {
     @objc private func backgrounded() { fail(DirectPairingError.expired) }
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if isMovingFromParent || navigationController == nil {
+        if isMovingFromParent || navigationController == nil || navigationController?.isBeingDismissed == true {
+            // Left before it ended: back, or the sheet swiped away.
+            if !finished { report(.cancelled(method: .direct, start: start)) }
             job?.cancel(); expiry?.cancel()
             let service = service; Task { await service.cancel() }
         }

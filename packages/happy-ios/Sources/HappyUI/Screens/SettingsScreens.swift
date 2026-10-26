@@ -213,21 +213,14 @@ public final class SettingsViewController: UIViewController {
 
     private func scanTerminal() {
         Task { @MainActor in
-            guard let text = await PairingFlow.scan(.terminal, from: self) else { return }
+            guard let text = await SettingsConnections.scanTerminal(on: self) else { return }
             await approve(text)
         }
     }
 
     private func enterTerminalURL() {
         Task { @MainActor in
-            let text = await Alerts.prompt(
-                Strings.Modals.authenticateTerminal,
-                Strings.Modals.pasteUrlFromTerminal,
-                placeholder: "happy://terminal?...",
-                confirmTitle: Strings.Common.authenticate,
-                on: self
-            )
-            guard let url = text?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else { return }
+            guard let url = await SettingsConnections.promptTerminalURL(on: self) else { return }
             await approve(url)
         }
     }
@@ -236,10 +229,9 @@ public final class SettingsViewController: UIViewController {
         guard let session = context.account.session, !connectingTerminal else { return }
         connectingTerminal = true
         rebuild()
-        let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)
+        await SettingsConnections.approveTerminal(text, session: session, on: self)
         connectingTerminal = false
         rebuild()
-        PairingFlow.report(outcome, kind: .terminal, on: self)
     }
 
     // MARK: Connected accounts
@@ -253,25 +245,9 @@ public final class SettingsViewController: UIViewController {
         claudeBusy = true
         rebuild()
         Task { @MainActor in
-            defer {
-                claudeBusy = false
-                rebuild()
-            }
-            let service = "Claude"
-            let confirmed = await Alerts.confirm(
-                Strings.Modals.disconnectService(service),
-                Strings.Modals.disconnectServiceConfirm(service),
-                confirmTitle: Strings.Modals.disconnect,
-                destructive: true,
-                on: self
-            )
-            guard confirmed else { return }
-            do {
-                try await session.api.disconnectService("anthropic")
-                await session.sync.invalidate(.profile)
-            } catch {
-                SettingsAlerts.unknownError(on: self)
-            }
+            await SettingsConnections.disconnectClaude(session: session, on: self)
+            claudeBusy = false
+            rebuild()
         }
     }
 
@@ -280,17 +256,9 @@ public final class SettingsViewController: UIViewController {
         githubBusy = true
         rebuild()
         Task { @MainActor in
-            defer {
-                githubBusy = false
-                rebuild()
-            }
-            do {
-                let params = try await session.api.githubOAuthParams()
-                guard let url = URL(string: params.url) else { throw APIError.decoding("GitHub OAuth URL") }
-                await UIApplication.shared.open(url)
-            } catch {
-                SettingsAlerts.unknownError(on: self)
-            }
+            await SettingsConnections.connectGitHub(session: session, on: self)
+            githubBusy = false
+            rebuild()
         }
     }
 
@@ -299,26 +267,9 @@ public final class SettingsViewController: UIViewController {
         githubBusy = true
         rebuild()
         Task { @MainActor in
-            defer {
-                githubBusy = false
-                rebuild()
-            }
-            let confirmed = await Alerts.confirm(
-                Strings.Modals.disconnectGithub,
-                Strings.Modals.disconnectGithubConfirm,
-                confirmTitle: Strings.Modals.disconnect,
-                destructive: true,
-                on: self
-            )
-            guard confirmed else { return }
-            do {
-                try await session.api.disconnectGitHub()
-                // The server also sends an account update; pulling the
-                // profile covers a socket that is down.
-                await session.sync.invalidate(.profile)
-            } catch {
-                SettingsAlerts.unknownError(on: self)
-            }
+            await SettingsConnections.disconnectGitHub(session: session, on: self)
+            githubBusy = false
+            rebuild()
         }
     }
 
@@ -407,10 +358,27 @@ public final class OnboardingSettingsViewController: UIViewController {
             self?.logout()
         }
         logout.showsChevron = false
-        list.sections = [
-            ItemGroupView(rows: [server]),
-            ItemGroupView(footer: Strings.Onboarding.logoutFooter, rows: [logout]),
-        ]
+        var sections = [ItemGroupView(rows: [server])]
+        // Where a computer can be a home: the Direct connection experiment.
+        let preference = StemCellsPreference(variant: context.variant)
+        if preference.isAvailable {
+            let context = context
+            let direct = ItemRowView.toggle(
+                title: Strings.StemCells.directConnection,
+                subtitle: Strings.StemCells.experimental,
+                icon: ItemIcon(.ionicons("flask-outline"), tint: Palette.textSecondary, size: 28),
+                isOn: preference.directConnection
+            ) { on in
+                StemCellsExperiments.turn(on, context: context, surface: .settings)
+            }
+            direct.trailingView?.accessibilityIdentifier = "stem-settings-toggle:direct-connection"
+            sections.append(ItemGroupView(title: Strings.StemCells.experiments, rows: [direct]))
+        }
+        // Signed out, there is nothing to log out of.
+        if context.account.session != nil {
+            sections.append(ItemGroupView(footer: Strings.Onboarding.logoutFooter, rows: [logout]))
+        }
+        list.sections = sections
     }
 
     private func openServer() {

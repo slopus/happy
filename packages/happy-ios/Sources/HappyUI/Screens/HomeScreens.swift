@@ -76,7 +76,7 @@ public final class HomeViewController: UIViewController {
         if StemCellsPreference(variant: context.variant).isAvailable {
             accountControl?.opensSettings = { [weak self] in
                 guard let self else { return }
-                StemCellsSettingsNavigationController.present(context: context, computer: nil, from: self)
+                StemCellsSettingsViewController.open(context: context, computer: nil, from: self)
             }
         }
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
@@ -163,8 +163,8 @@ public final class HomeViewController: UIViewController {
 
     public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        // Screens pushed from here have the ordinary bar.
-        if navigationController?.topViewController !== self {
+        // Screens pushed from here have the ordinary bar; settings, its glass one.
+        if let top = navigationController?.topViewController, top !== self, !(top is StemCellsSettingsViewController) {
             navigationController?.setNavigationBarHidden(false, animated: animated)
         }
     }
@@ -402,6 +402,9 @@ final class LoadingViewController: UIViewController {
 final class LinkComputerViewController: UIViewController {
     static let machineArrivalTimeout: Duration = .seconds(10)
 
+    /// A link that went through, where this screen is a step of adding a
+    /// computer rather than the account's home (the link sheet).
+    var onLinked: (() -> Void)?
     private let context: AppContext
     private let session: AccountSession
     private let content = LinkComputerContentView()
@@ -473,8 +476,10 @@ final class LinkComputerViewController: UIViewController {
     private func scan() {
         content.error = nil
         Task { @MainActor in
-            guard let text = await PairingFlow.scan(.terminal, from: self) else { return }
-            await link(text)
+            guard let text = await PairingFlow.scan(.terminal, from: self) else {
+                return PairingAnalytics.shared.log(.cancelled(method: .relay, start: .scan))
+            }
+            await link(text, start: .scan)
         }
     }
 
@@ -488,21 +493,29 @@ final class LinkComputerViewController: UIViewController {
                 confirmTitle: Strings.Onboarding.pasteLinkConfirm,
                 on: self
             )
-            guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
-            await link(text)
+            guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+                return PairingAnalytics.shared.log(.cancelled(method: .relay, start: .pasteLink))
+            }
+            await link(text, start: .pasteLink)
         }
     }
 
-    private func link(_ text: String) async {
+    private func link(_ text: String, start: PairingStart) async {
         guard !busy else { return }
-        if DirectPairingFlow.openIfDirect(text, context: context, on: self) { return }
+        if DirectPairingFlow.openIfDirect(text, context: context, on: self, start: start) { return }
         linking = true
         update()
         let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)
         linking = false
+        if case .approved = outcome {
+            PairingAnalytics.shared.log(.completed(method: .relay, start: start))
+        } else {
+            PairingAnalytics.shared.log(.failed(method: .relay, start: start))
+        }
         switch outcome {
         case .approved:
             PairingFlow.report(outcome, kind: .terminal, on: self)
+            if let onLinked { return onLinked() }
             approved = true
             approvalTimeout?.cancel()
             approvalTimeout = Task { @MainActor [weak self] in

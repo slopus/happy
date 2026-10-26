@@ -59,7 +59,8 @@ final class StemCellsDirectHomeViewController: UIViewController, StemCellsDockHo
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if navigationController?.topViewController !== self {
+        // Settings has its own glass bar.
+        if let top = navigationController?.topViewController, top !== self, !(top is StemCellsSettingsViewController) {
             navigationController?.setNavigationBarHidden(false, animated: animated)
         }
     }
@@ -108,7 +109,7 @@ final class StemCellsDirectHomeViewController: UIViewController, StemCellsDockHo
     var newWorkDock: UIView { stemCells.newWorkDock }
 
     @objc private func openSettings() {
-        StemCellsSettingsNavigationController.present(context: context, computer: id, from: self)
+        StemCellsSettingsViewController.open(context: context, computer: id, from: self)
     }
 }
 #endif

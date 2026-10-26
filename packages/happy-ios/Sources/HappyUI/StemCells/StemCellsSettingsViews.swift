@@ -42,8 +42,10 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
 
     /// A profile came to rest in the middle.
     var onSelect: ((Int) -> Void)?
-    /// A profile's circle was tapped: it is chosen and the sheet goes.
+    /// A profile's circle was tapped: it is chosen and settings goes.
     var onTap: ((Int) -> Void)?
+    /// The circle last tapped, until the strip comes to rest on it.
+    private var tapped: Int?
     /// The "+" was tapped, with where it is for a menu to point at.
     var onAdd: ((UIView) -> Void)?
     private(set) var items: [Item] = []
@@ -133,6 +135,7 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
     }
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        tapped = nil
         StemCellsHaptics.prepare(.pick)
     }
 
@@ -148,12 +151,14 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) { rest() }
 
     private func rest() {
-        let index = StemCellsProfileCarousel.index(at: scroll.contentOffset.x, count: items.count)
+        // A circle tapped while the strip still glided is where it rests.
+        let index = tapped ?? StemCellsProfileCarousel.index(at: scroll.contentOffset.x, count: items.count)
         let target = StemCellsProfileCarousel.offset(for: index)
         // Far enough off to animate there (and come back here when it
         // ends); a sliver off may never report an end, so it is set at once.
         if abs(scroll.contentOffset.x - target) >= 1 { scroll.setContentOffset(CGPoint(x: target, y: 0), animated: true); return }
         if scroll.contentOffset.x != target { scroll.setContentOffset(CGPoint(x: target, y: 0), animated: false) }
+        tapped = nil
         guard index != selected, items.indices.contains(index) else { return }
         selected = index
         for (i, circle) in circles.enumerated() { circle.accessibilityTraits = i == index ? [.button, .selected] : .button }
@@ -161,12 +166,13 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
     }
 
     /// A tap chooses the profile at once, as Telegram's account list does:
-    /// it comes to the middle as the sheet goes.
+    /// it comes to the middle, then settings goes back to its home.
     @objc private func circleTapped(_ gesture: UITapGestureRecognizer) {
         guard let circle = gesture.view as? Circle, let index = circles.firstIndex(where: { $0 === circle }) else { return }
         let target = StemCellsProfileCarousel.offset(for: index)
         StemCellsHaptics.play(.pick)
         centered = index
+        tapped = index
         if index != selected {
             selected = index
             for (i, circle) in circles.enumerated() { circle.accessibilityTraits = i == index ? [.button, .selected] : .button }
@@ -176,6 +182,16 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
     }
 
     @objc private func addTapped() { onAdd?(add) }
+
+    /// A touch on a circle while the strip still glides is a tap on it, not
+    /// only a stop: the glide ends before the touch begins.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        if let hit, hit !== scroll, scroll.isDecelerating {
+            scroll.setContentOffset(scroll.contentOffset, animated: false)
+        }
+        return hit
+    }
 
     /// One circle: the picture clipped round, and a ring around it as far
     /// out as it is chosen.
@@ -244,7 +260,7 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
 
 /// A row in a settings card: what it says and does.
 struct StemCellsSettingsRow {
-    enum Tile { case orange, gray, blue, purple, green }
+    enum Tile { case orange, gray, blue, purple, green, red, teal, indigo }
     var id: String
     var title: String
     var icon: (glyph: String, tile: Tile)?
@@ -345,7 +361,8 @@ final class StemCellsSettingsCardView: UIView {
             toggle.isHidden = frames.toggle == nil
             if let frame = frames.toggle {
                 toggle.frame = local(frame)
-                if toggle.isOn != row.isOn { toggle.setOn(row.isOn, animated: window != nil) }
+                // Not under a finger: a layout mid-tap would undo the tap.
+                if toggle.isOn != row.isOn, !toggle.isTracking { toggle.setOn(row.isOn, animated: window != nil) }
             }
             separator.isHidden = frames.separator == nil
             if let frame = frames.separator { separator.frame = local(frame) }
@@ -365,6 +382,9 @@ final class StemCellsSettingsCardView: UIView {
             case .blue: Palette.stemCellsSettingsTileBlue
             case .purple: Palette.stemCellsSettingsTilePurple
             case .green: Palette.stemCellsSettingsTileGreen
+            case .red: Palette.stemCellsSettingsTileRed
+            case .teal: Palette.stemCellsSettingsTileTeal
+            case .indigo: Palette.stemCellsSettingsTileIndigo
             }
         }
 

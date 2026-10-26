@@ -5,25 +5,7 @@ import XCTest
 /// Stem Cells settings on a 390-wide phone: the bar, the profile strip,
 /// the cards and the QR sheet, frame by frame.
 final class StemCellsSettingsLayoutTests: XCTestCase {
-    func testTheBarHoldsQRAtTheLeftAndTheCapsuleAtTheRight() {
-        let bar = StemCellsSettingsBarLayout(width: 390, safeTop: 47, editWidth: 30.4)
-        XCTAssertEqual(bar.qr, CGRect(x: 16, y: 53, width: 44, height: 44))
-        XCTAssertEqual(bar.capsule, CGRect(x: 283, y: 53, width: 91, height: 44))
-        XCTAssertEqual(bar.search, CGRect(x: 0, y: 0, width: 44, height: 44))
-        XCTAssertEqual(bar.edit, CGRect(x: 44, y: 0, width: 31, height: 44))
-        XCTAssertEqual(bar.bottom, 97)
-        // Nothing to edit: the capsule is search alone, a circle.
-        let plain = StemCellsSettingsBarLayout(width: 390, safeTop: 47, editWidth: nil)
-        XCTAssertEqual(plain.capsule, CGRect(x: 330, y: 53, width: 44, height: 44))
-        XCTAssertNil(plain.edit)
-        XCTAssertNil(plain.field)
-        XCTAssertNil(plain.cancel)
-    }
-
-    func testSearchingTheFieldAndCancelTakeTheBarAndTheCardsMoveUp() {
-        let bar = StemCellsSettingsBarLayout(width: 390, safeTop: 47, editWidth: nil, cancelWidth: 52.3)
-        XCTAssertEqual(bar.cancel, CGRect(x: 321, y: 53, width: 53, height: 44))
-        XCTAssertEqual(bar.field, CGRect(x: 16, y: 57, width: 293, height: 36))
+    func testSearchingTheCardsMoveUpUnderTheField() {
         typealias L = StemCellsSettingsLayout
         let layout = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: true, accessory: .chevron)]], searching: true)
         XCTAssertEqual(layout.cards[0].frame, CGRect(x: 16, y: 8, width: 358, height: 52))
@@ -93,5 +75,23 @@ final class StemCellsSettingsLayoutTests: XCTestCase {
         XCTAssertEqual(sheet.secondary, CGRect(x: 30, y: 188, width: 330, height: 52))
         XCTAssertEqual(sheet.avatar, CGRect(x: 145, y: 237, width: 100, height: 100))
         XCTAssertEqual(sheet.name, CGRect(x: 30, y: 353, width: 330, height: 28))
+    }
+
+    func testTheLinkSheetCentresTheMarkOverTheTitleAndItsLine() {
+        let layout = StemCellsLinkContentLayout(width: 345, title: Measurable { _ in CGSize(width: 200, height: 34) }, body: Measurable { _ in CGSize(width: 345, height: 66) })
+        XCTAssertEqual(layout.mark, CGRect(x: 137, y: 0, width: 72, height: 72))
+        XCTAssertEqual(layout.title, CGRect(x: 0, y: 92, width: 345, height: 34))
+        XCTAssertEqual(layout.body, CGRect(x: 0, y: 134, width: 345, height: 66))
+        XCTAssertEqual(layout.size, CGSize(width: 345, height: 212))
+    }
+
+    func testTheLinkSwitchIsCentredUnderTheBarWithItsTagOnDirectsEdge() {
+        let layout = StemCellsLinkSwitchLayout(width: 402, top: 114, tag: CGSize(width: 79.2, height: 17.5))
+        XCTAssertEqual(layout.control, CGRect(x: 21, y: 122, width: 360, height: 36))
+        XCTAssertEqual(layout.tag, CGRect(x: 291, y: 113, width: 80, height: 18))
+        XCTAssertEqual(layout.contentTop, 166)
+        // Narrow: 16 in either side.
+        let narrow = StemCellsLinkSwitchLayout(width: 320, top: 72, tag: CGSize(width: 80, height: 18))
+        XCTAssertEqual(narrow.control, CGRect(x: 16, y: 80, width: 288, height: 36))
     }
 }

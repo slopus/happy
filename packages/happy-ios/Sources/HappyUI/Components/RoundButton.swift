@@ -42,7 +42,19 @@ public final class RoundButton: UIControl {
         (TextStyles.roundButton(size, display: display), display == .filled ? 1 : 0, .center)
     }
 
+    /// Liquid glass instead of the fill: prominent, tinted the fill's
+    /// colour, for the main action; regular for the others.
+    public enum Glass: Sendable {
+        case prominent
+        case regular
+    }
+
+    public var glass: Glass? {
+        didSet { if glass != oldValue { applyGlass() } }
+    }
+
     let background = UIView()
+    private var glassView: UIVisualEffectView?
     let label: StyledLabel
     let spinner = UIActivityIndicatorView(style: .medium)
 
@@ -99,6 +111,10 @@ public final class RoundButton: UIControl {
         let layout = layout(width: bounds.width)
         background.setLayoutFrame(CGRect(origin: .zero, size: layout.size))
         background.layer.cornerRadius = layout.cornerRadius
+        if let glassView {
+            glassView.frame = background.frame
+            glassView.cornerConfiguration = .corners(radius: .fixed(Double(layout.cornerRadius)))
+        }
         label.setLayoutFrame(layout.label)
         if let frame = layout.spinner { spinner.setLayoutFrame(frame) }
     }
@@ -117,7 +133,30 @@ public final class RoundButton: UIControl {
         return bounds.insetBy(dx: -slop, dy: -slop).contains(point)
     }
 
+    private func applyGlass() {
+        glassView?.removeFromSuperview()
+        glassView = nil
+        let prominent = glass == .prominent || (glass == nil && display == .filled)
+        label.color = prominent ? Palette.roundButtonText : glass == .regular ? Palette.text : Palette.textSecondary
+        spinner.color = UIColor(label.color)
+        if let glass {
+            let effect = UIGlassEffect(style: .regular)
+            if glass == .prominent { effect.tintColor = UIColor(Palette.roundButtonFill) }
+            let view = UIVisualEffectView(effect: effect)
+            view.isUserInteractionEnabled = false
+            insertSubview(view, aboveSubview: background)
+            glassView = view
+        }
+        updateBackground()
+        setNeedsLayout()
+    }
+
     private func updateBackground() {
+        if let glassView {
+            background.backgroundColor = .clear
+            glassView.alpha = isHighlighted ? 0.7 : 1
+            return
+        }
         switch display {
         case .filled:
             background.backgroundColor = UIColor(isHighlighted ? Palette.roundButtonFillPressed : Palette.roundButtonFill)

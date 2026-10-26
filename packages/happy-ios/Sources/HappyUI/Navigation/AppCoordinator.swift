@@ -55,7 +55,14 @@ public final class AppCoordinator {
         // Where a computer is a home of its own, the profile chosen last
         // opens; with none, a paired computer rather than Welcome.
         let stemCells = StemCellsPreference(variant: context.variant)
+        #if DEBUG || HAPPY_FIXTURES
+        // UI tests choose the Direct connection experiment's state.
+        if let direct = ProcessInfo.processInfo.environment["STEM_DIRECT"] { stemCells.directConnection = direct == "1" }
+        #endif
         context.account.fallsBackToComputer = stemCells.isAvailable
+        // Paired computers stay hidden while the experiment is off.
+        context.account.showsComputers = stemCells.showsComputers
+        PairingAnalytics.shared.variant = context.variant
         Task { @MainActor [weak self] in
             guard let account = self?.context.account else { return }
             // The Happy account's filter showed a computer's Stem Cells: that
@@ -164,13 +171,14 @@ public final class AppCoordinator {
     public func open(_ url: URL) -> Bool {
         let text = url.absoluteString
         if DirectPairingLink.isDirect(text) {
-            if accountRestored, let top = navigation.topViewController {
+            if accountRestored, let top = linkHost {
                 return DirectPairingFlow.openIfDirect(text, context: context, on: top)
             }
             pendingDirectLink = text
             return true
         }
-        guard let link = PairingLink(text), let top = navigation.topViewController else { return false }
+        guard let link = PairingLink(text) else { return false }
+        let top = presenter
         guard context.account.session != nil else {
             Alerts.show(Strings.Common.error, Strings.Modals.failedToConnectTerminal, on: top)
             return true
@@ -262,6 +270,11 @@ public final class AppCoordinator {
     }
 
     private func install(session: AccountSession?, pending: AccountSummary?, animated: Bool) {
+        // A swipe back under way (from settings, say) ends first.
+        if let transition = navigation.transitionCoordinator {
+            transition.animate(alongsideTransition: nil) { [weak self] _ in self?.install(session: session, pending: pending, animated: animated) }
+            return
+        }
         let root: UIViewController
         if let direct = context.account.direct.active {
             // Stem Cells is a preview feature; a production build keeps the computer's page.
@@ -270,24 +283,56 @@ public final class AppCoordinator {
                 : DirectHomeViewController(context: context, id: direct.id)
         } else if let pending {
             root = AccountServerConfirmationViewController(context: context, account: pending)
+        } else if let session {
+            root = HomeViewController(context: context, session: session)
         } else {
-            root = session.map { HomeViewController(context: context, session: $0) }
-                ?? WelcomeViewController(context: context)
+            // Nothing paired or signed in: where a computer can be a home,
+            // the first screen links one, through the relay unless the
+            // Direct connection experiment is on.
+            root = StemCellsPreference(variant: context.variant).isAvailable
+                ? StemCellsLinkViewController(context: context, inSheet: false)
+                : WelcomeViewController(context: context)
         }
-        // Stem Cells' settings stays up while the profile it chose takes
-        // over underneath; anything else presented goes with the old root,
-        // and so does settings once a flow pushed in it caused the change.
-        let keepsSettings = (navigation.presentedViewController as? StemCellsSettingsNavigationController)?.keepsThroughRootChange == true
-            && (context.account.direct.active != nil || session != nil)
-        if !keepsSettings { navigation.presentedViewController?.dismiss(animated: false) }
-        navigation.setViewControllers([root], animated: animated && !keepsSettings)
+        // Stem Cells' settings stays on top while the profile it chose
+        // takes over underneath. Anything presented goes with the old root,
+        // and so does settings once a flow pushed over it or presented from
+        // it (pairing, signing in, signing out) caused the change.
+        let settings = navigation.viewControllers.count == 2 ? navigation.viewControllers.last as? StemCellsSettingsViewController : nil
+        // A confirmation already going counts as gone.
+        let presented = navigation.presentedViewController.flatMap { $0.isBeingDismissed ? nil : $0 }
+        let kept = settings.flatMap { settings in
+            presented == nil && (context.account.direct.active != nil || session != nil) ? settings : nil
+        }
+        navigation.presentedViewController?.dismiss(animated: false)
+        navigation.setViewControllers([root] + [kept].compactMap { $0 }, animated: animated && kept == nil)
         shell.rootDidChange() // Tablet: the sidebar follows the account.
         openPendingDirectLink()
         openNotificationSession()
     }
 
+    /// Where a computer's link opens: in the link sheet when it is up,
+    /// else on top of the window's stack, with anything over it (a QR
+    /// sheet, a scanner, an alert) put away so the pairing pushed there
+    /// shows.
+    private var linkHost: UIViewController? {
+        if let sheet = navigation.presentedViewController as? StemCellsLinkNavigationController, !sheet.isBeingDismissed {
+            sheet.presentedViewController?.dismiss(animated: false)
+            return sheet.topViewController
+        }
+        navigation.presentedViewController?.dismiss(animated: false)
+        return navigation.topViewController
+    }
+
+    /// What an alert about a link shows over: the topmost screen presented,
+    /// not one going or an alert already up.
+    private var presenter: UIViewController {
+        var top: UIViewController = navigation
+        while let next = top.presentedViewController, !next.isBeingDismissed, !(next is UIAlertController) { top = next }
+        return top
+    }
+
     private func openPendingDirectLink() {
-        guard accountRestored, let text = pendingDirectLink, let top = navigation.topViewController else { return }
+        guard accountRestored, let text = pendingDirectLink, let top = linkHost else { return }
         pendingDirectLink = nil
         _ = DirectPairingFlow.openIfDirect(text, context: context, on: top)
     }

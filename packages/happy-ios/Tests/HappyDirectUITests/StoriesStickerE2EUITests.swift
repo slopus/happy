@@ -30,6 +30,8 @@ final class StoriesStickerE2EUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         print("StoriesStickerE2EUITests skips quiescence: \(Self.skipsQuiescence)")
+        // Direct connection is an experiment, off on a fresh install.
+        app.launchEnvironment["STEM_DIRECT"] = "1"
         app.launch()
     }
 

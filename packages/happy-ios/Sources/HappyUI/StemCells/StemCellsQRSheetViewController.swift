@@ -18,7 +18,7 @@ enum StemCellsScan {
                 controller.present(scanner, animated: true)
             }
             guard let text else { return }
-            open(text, context: context, on: controller)
+            open(text, context: context, on: controller, start: .scan)
         }
     }
 
@@ -26,7 +26,7 @@ enum StemCellsScan {
         Task { @MainActor in
             let text = await Alerts.prompt(Strings.StemCells.enterLink, placeholder: "happy://…", confirmTitle: Strings.Common.continueAction, on: controller)
             guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
-            open(text, context: context, on: controller)
+            open(text, context: context, on: controller, start: .pasteLink)
         }
     }
 
@@ -34,8 +34,8 @@ enum StemCellsScan {
         DirectPairingLink.isDirect(text) || PairingLink(text) != nil
     }
 
-    static func open(_ text: String, context: AppContext, on controller: UIViewController) {
-        if DirectPairingFlow.openIfDirect(text, context: context, on: controller) { return }
+    static func open(_ text: String, context: AppContext, on controller: UIViewController, start: PairingStart) {
+        if DirectPairingFlow.openIfDirect(text, context: context, on: controller, start: start) { return }
         guard let link = PairingLink(text) else {
             Alerts.show(Strings.Common.error, Strings.Modals.invalidAuthUrl, on: controller)
             return

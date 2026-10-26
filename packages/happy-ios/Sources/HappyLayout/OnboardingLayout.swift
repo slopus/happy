@@ -18,6 +18,8 @@ public struct OnboardingLayout: Equatable, Sendable {
         public static let bodyPaddingVertical: CGFloat = 8
         public static let primaryMarginTop: CGFloat = 12
         public static let secondaryMarginTop: CGFloat = 4
+        /// Between glass buttons, which are pills where text actions are not.
+        public static let glassActionGap: CGFloat = 12
         public static let footerPaddingHorizontal: CGFloat = 16
         public static let footerPaddingBottom: CGFloat = 12
     }
@@ -30,14 +32,19 @@ public struct OnboardingLayout: Equatable, Sendable {
         public var content: Measurable
         public var primary: Measurable
         public var secondary: Measurable
+        /// A second text action under the first, where a screen has one.
+        public var tertiary: Measurable?
         public var help: CGSize
+        /// The actions are glass pills, spaced as pills.
+        public var glass = false
 
-        public init(size: CGSize, safeArea: LayoutInsets, content: Measurable, primary: Measurable, secondary: Measurable, help: CGSize) {
+        public init(size: CGSize, safeArea: LayoutInsets, content: Measurable, primary: Measurable, secondary: Measurable, tertiary: Measurable? = nil, help: CGSize) {
             self.size = size
             self.safeArea = safeArea
             self.content = content
             self.primary = primary
             self.secondary = secondary
+            self.tertiary = tertiary
             self.help = help
         }
     }
@@ -49,6 +56,8 @@ public struct OnboardingLayout: Equatable, Sendable {
     public var content: CGRect
     public var primary: CGRect
     public var secondary: CGRect
+    /// Under the secondary, as far below it as it is below the primary.
+    public var tertiary: CGRect?
     /// Get help, in the screen's coordinates.
     public var help: CGRect
 
@@ -79,7 +88,10 @@ public struct OnboardingLayout: Equatable, Sendable {
         let contentHeight = input.content.height(fitting: innerWidth)
         let primaryHeight = input.primary.height(fitting: innerWidth)
         let secondaryHeight = input.secondary.height(fitting: innerWidth)
-        let blockHeight = contentHeight + M.primaryMarginTop + primaryHeight + M.secondaryMarginTop + secondaryHeight
+        let tertiaryHeight = input.tertiary?.height(fitting: innerWidth)
+        let gap = input.glass ? M.glassActionGap : M.secondaryMarginTop
+        let blockHeight = contentHeight + M.primaryMarginTop + primaryHeight + gap + secondaryHeight
+            + (tertiaryHeight.map { gap + $0 } ?? 0)
 
         // Two growing spacers centre the block; when it does not fit, the
         // body scrolls instead.
@@ -88,9 +100,12 @@ public struct OnboardingLayout: Equatable, Sendable {
         content = CGRect(x: innerX, y: y, width: innerWidth, height: contentHeight)
         y = content.maxY + M.primaryMarginTop
         primary = CGRect(x: innerX, y: y, width: innerWidth, height: primaryHeight)
-        y = primary.maxY + M.secondaryMarginTop
-        secondary = CGRect(x: innerX, y: y, width: innerWidth, height: secondaryHeight)
-        contentSize = CGSize(width: size.width, height: max(scroll.height, secondary.maxY + M.bodyPaddingVertical))
+        y = primary.maxY + gap
+        let secondary = CGRect(x: innerX, y: y, width: innerWidth, height: secondaryHeight)
+        let tertiary = tertiaryHeight.map { CGRect(x: innerX, y: secondary.maxY + gap, width: innerWidth, height: $0) }
+        self.secondary = secondary
+        self.tertiary = tertiary
+        contentSize = CGSize(width: size.width, height: max(scroll.height, (tertiary ?? secondary).maxY + M.bodyPaddingVertical))
     }
 }
 

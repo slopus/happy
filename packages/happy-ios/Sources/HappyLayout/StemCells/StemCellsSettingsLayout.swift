@@ -3,53 +3,10 @@ import Foundation
 import CoreGraphics
 #endif
 
-/// Stem Cells settings, after Telegram's settings (techniques only): a bar
-/// that stays put with the QR button at its left and a capsule holding
-/// search and Edit at its right; under it, scrolling, the profiles as a
+/// Stem Cells settings, after Telegram's settings (techniques only): under
+/// the glass bar (`StemCellsGlassBarLayout`), scrolling, the profiles as a
 /// strip of circles, the chosen one's name and line, and grouped cards.
-public struct StemCellsSettingsBarLayout: Equatable, Sendable {
-    public enum Metrics {
-        /// Telegram's glass bar buttons: 44 round, 16 from the sides.
-        public static let button: CGFloat = 44
-        public static let side: CGFloat = 16
-        public static let top: CGFloat = 6
-        /// Edit's text inside the capsule, after the search slot.
-        public static let editPadding: CGFloat = 16
-        /// Searching: the field inside the button band, then Cancel.
-        public static let fieldInset: CGFloat = 4
-        public static let cancelGap: CGFloat = 12
-    }
-
-    public var qr: CGRect
-    public var capsule: CGRect
-    /// In the capsule's own space.
-    public var search: CGRect
-    public var edit: CGRect?
-    /// Searching, the field and Cancel take the bar.
-    public var field: CGRect?
-    public var cancel: CGRect?
-    /// Where the scrolling content starts.
-    public var bottom: CGFloat
-
-    /// `editWidth` is Edit's text width, nil where there is nothing to edit;
-    /// `cancelWidth` is Cancel's while searching.
-    public init(width: CGFloat, safeTop: CGFloat, editWidth: CGFloat?, cancelWidth: CGFloat? = nil) {
-        typealias M = Metrics
-        let y = safeTop + M.top
-        qr = CGRect(x: M.side, y: y, width: M.button, height: M.button)
-        search = CGRect(x: 0, y: 0, width: M.button, height: M.button)
-        let capsuleWidth = M.button + (editWidth.map { $0.rounded(.up) + M.editPadding } ?? 0)
-        edit = editWidth.map { CGRect(x: M.button, y: 0, width: $0.rounded(.up), height: M.button) }
-        capsule = CGRect(x: width - M.side - capsuleWidth, y: y, width: capsuleWidth, height: M.button)
-        if let cancelWidth {
-            let cancel = CGRect(x: width - M.side - cancelWidth.rounded(.up), y: y, width: cancelWidth.rounded(.up), height: M.button)
-            self.cancel = cancel
-            field = CGRect(x: M.side, y: y + M.fieldInset, width: max(0, cancel.minX - M.cancelGap - M.side), height: M.button - 2 * M.fieldInset)
-        }
-        bottom = y + M.button
-    }
-}
-
+///
 /// The profiles as story circles: the chosen one centred, larger and
 /// ringed, the others smaller either side; each grows as it nears the
 /// middle, so a drag scales them continuously and a stop snaps to one.
@@ -291,3 +248,62 @@ public struct StemCellsQRSheetLayout: Equatable, Sendable {
         name = CGRect(x: M.textSide, y: avatar.maxY + M.nameGap, width: inner, height: nameHeight)
     }
 }
+
+/// The link sheet's content, over its buttons: Happy's mark, the title and
+/// a line on what to do on the computer, centred.
+public struct StemCellsLinkContentLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let mark: CGFloat = 72
+        public static let titleGap: CGFloat = 20
+        public static let bodyGap: CGFloat = 8
+        public static let bottom: CGFloat = 12
+    }
+
+    public var mark: CGRect
+    public var title: CGRect
+    public var body: CGRect
+    public var size: CGSize
+
+    public init(width: CGFloat, title: Measurable, body: Measurable) {
+        typealias M = Metrics
+        mark = CGRect(x: ((width - M.mark) / 2).rounded(), y: 0, width: M.mark, height: M.mark)
+        self.title = CGRect(x: 0, y: mark.maxY + M.titleGap, width: width, height: title.height(fitting: width))
+        self.body = CGRect(x: 0, y: self.title.maxY + M.bodyGap, width: width, height: body.height(fitting: width))
+        size = CGSize(width: width, height: self.body.maxY + M.bottom)
+    }
+}
+
+/// The link screen's switch between the two ways to link a computer,
+/// under its glass bar: a segmented control, Relay then Direct, centred,
+/// with Direct's "Experimental" tag riding its top edge over that half's
+/// right end; what each way shows starts under it.
+///
+///     (  Relay  |  Direct  )
+///                    [EXPERIMENTAL]
+public struct StemCellsLinkSwitchLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let side: CGFloat = 16
+        public static let top: CGFloat = 8
+        public static let height: CGFloat = 36
+        public static let maxWidth: CGFloat = 360
+        /// From the control's right end to the tag's.
+        public static let tagInset: CGFloat = 10
+        public static let bottom: CGFloat = 8
+    }
+
+    public var control: CGRect
+    public var tag: CGRect
+    /// Where the chosen way's screen starts.
+    public var contentTop: CGFloat
+
+    /// `top` is where the bar's row ends.
+    public init(width: CGFloat, top: CGFloat, tag size: CGSize) {
+        typealias M = Metrics
+        let controlWidth = min(M.maxWidth, max(0, width - 2 * M.side))
+        control = CGRect(x: ((width - controlWidth) / 2).rounded(), y: top + M.top, width: controlWidth, height: M.height)
+        let tagSize = CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up))
+        tag = CGRect(x: control.maxX - M.tagInset - tagSize.width, y: (control.minY - tagSize.height / 2).rounded(), width: tagSize.width, height: tagSize.height)
+        contentTop = control.maxY + M.bottom
+    }
+}
+

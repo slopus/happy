@@ -32,6 +32,8 @@ final class StemCellsUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         print("StemCellsUITests skips quiescence: \(skipsQuiescence)")
+        // Direct connection is an experiment, off on a fresh install.
+        app.launchEnvironment["STEM_DIRECT"] = "1"
         app.launch()
     }
 
@@ -1229,11 +1231,9 @@ final class StemCellsUITests: XCTestCase {
     }
 
     /// Closes the settings sheet with a pull down from its top.
+    /// Settings is a push: back goes home.
     private func closeSettings() {
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).press(
-            forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)),
-            withVelocity: .fast, thenHoldForDuration: 0
-        )
+        app.tapBack()
         pause(1.5)
     }
 
@@ -1257,9 +1257,10 @@ final class StemCellsUITests: XCTestCase {
         pause(1.5)
     }
 
-    /// Settings from the picture: the QR sheet and its Scan, Edit renaming
-    /// the computer in place, Prioritizing's switch, the profiles' circles
-    /// ("+" adding a computer by its code or link), and More.
+    /// Settings from the picture: the QR sheet and its Scan, Edit name
+    /// renaming the computer in place, Prioritizing's switch, and "+"
+    /// opening the link sheet. Every row, the push and the sheet's
+    /// relay and pairing: SettingsUITests.
     func testSettings() {
         home()
         pause(1)
@@ -1283,12 +1284,12 @@ final class StemCellsUITests: XCTestCase {
         closeScanner.tap()
         pause(1)
 
-        // Edit renames the computer in place; Return keeps it.
-        let name = app.staticTexts["stem-settings-name"]
+        // Edit name renames the computer in place; Return keeps it.
+        let name = app.descendants(matching: .any)["stem-settings-name"]
         XCTAssertTrue(name.waitForExistence(timeout: 3))
         let from = name.label
         let to = from == "Studio Mac" ? "Mac Studio" : "Studio Mac"
-        app.buttons["stem-settings-edit"].tap()
+        app.descendants(matching: .any)["stem-settings:edit-name"].tap()
         let field = app.textFields["stem-settings-rename"]
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         pause(1)
@@ -1296,9 +1297,9 @@ final class StemCellsUITests: XCTestCase {
         field.typeText(to)
         pause(0.8)
         field.typeText("\n")
-        XCTAssertTrue(app.staticTexts["stem-settings-name"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["stem-settings-name"].waitForExistence(timeout: 2))
         pause(2)
-        XCTAssertEqual(app.staticTexts["stem-settings-name"].label, to, "the name went back")
+        XCTAssertEqual(app.descendants(matching: .any)["stem-settings-name"].label, to, "the name went back")
         capture("settings-renamed")
         print("STEM_RENAMED \(from) -> \(to)")
 
@@ -1316,11 +1317,11 @@ final class StemCellsUITests: XCTestCase {
 
         // A tapped circle switches and goes home: InstanceSwitchUITests.
 
-        // "+" adds a computer: its code or its link; the code opens the scanner.
+        // "+" opens the link sheet; its Scan opens the scanner.
         app.descendants(matching: .any)["stem-profile-add"].tap()
-        let scanCode = app.buttons["Scan QR Code"]
+        let scanCode = app.buttons["Scan QR code"]
         XCTAssertTrue(scanCode.waitForExistence(timeout: 3), "+ offered no way to add a computer")
-        XCTAssertTrue(app.buttons["Enter link manually"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["stem-link-paste"].exists)
         pause(1)
         capture("settings-add-computer")
         scanCode.tap()
@@ -1328,17 +1329,11 @@ final class StemCellsUITests: XCTestCase {
         pause(1)
         closeScanner.tap()
         pause(1)
-
-        // More holds the status and Happy's settings.
-        app.descendants(matching: .any)["stem-settings:more"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["stem-settings-more"].waitForExistence(timeout: 3))
-        pause(1.5)
-        capture("settings-more")
-        app.tapBack()
+        app.descendants(matching: .any)["stem-glass-close"].tap()
         pause(1)
 
         // Back to the first name, so the next run starts the same.
-        app.buttons["stem-settings-edit"].tap()
+        name.tap()
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.typeText(from + "\n")
         pause(2)
@@ -1890,9 +1885,13 @@ final class StemCellsUITests: XCTestCase {
 }
 
 extension XCUIApplication {
-    /// Back: a conversation's glass circle, else the bar's own button.
+    /// Back: a conversation's glass circle or settings', else the bar's
+    /// own button.
     func tapBack() {
-        let glass = buttons["stem-chat-back"]
-        if glass.exists, glass.isHittable { glass.tap() } else { navigationBars.buttons.element(boundBy: 0).tap() }
+        for id in ["stem-chat-back", "stem-glass-back"] {
+            let glass = buttons[id].firstMatch
+            if glass.exists, glass.isHittable { return glass.tap() }
+        }
+        navigationBars.buttons.element(boundBy: 0).tap()
     }
 }

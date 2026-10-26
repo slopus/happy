@@ -211,15 +211,18 @@ public final class OnboardingScreenView: UIView {
     public let content: UIView
     public let primary: RoundButton
     public let secondary: RoundButton
+    /// A second text action under the first (the link sheet's relay).
+    public let tertiary: RoundButton?
     public let help = GetHelpButton()
     /// Offscreen copies measured for the reservation; never shown.
     private let reservedContent: [UIView]
     private let reservedSecondary: [RoundButton]
 
-    public init(content: UIView, primary: RoundButton, secondary: RoundButton) {
+    public init(content: UIView, primary: RoundButton, secondary: RoundButton, tertiary: RoundButton? = nil) {
         self.content = content
         self.primary = primary
         self.secondary = secondary
+        self.tertiary = tertiary
         reservedContent = [WelcomeContentView(), LinkComputerContentView()]
         reservedSecondary = OnboardingScreenView.secondaryTitles.map {
             RoundButton(title: $0, size: .normal, display: .inverted)
@@ -236,7 +239,7 @@ public final class OnboardingScreenView: UIView {
         scrollView.alwaysBounceVertical = false
         scrollView.keyboardDismissMode = .interactive
         addSubview(scrollView)
-        for view in [content, primary, secondary] {
+        for view in [content, primary, secondary] + [tertiary].compactMap({ $0 }) {
             scrollView.addSubview(view)
         }
         addSubview(help)
@@ -254,15 +257,29 @@ public final class OnboardingScreenView: UIView {
         Strings.Onboarding.pasteLink,
     ]
 
+    /// Liquid glass buttons, under a glass bar: the primary prominent, the
+    /// text actions regular glass pills.
+    public var usesGlass = false {
+        didSet {
+            guard usesGlass != oldValue else { return }
+            primary.glass = usesGlass ? .prominent : nil
+            for button in [secondary] + [tertiary].compactMap({ $0 }) { button.glass = usesGlass ? .regular : nil }
+            setNeedsLayout()
+        }
+    }
+
     public func layout() -> OnboardingLayout {
-        OnboardingLayout(.init(
+        var input = OnboardingLayout.Input(
             size: bounds.size,
             safeArea: LayoutInsets(safeAreaInsets),
             content: .largest(of: ([content] + reservedContent).map(\.measurable)),
             primary: primary.measurable,
             secondary: .largest(of: ([secondary] + reservedSecondary).map(\.measurable)),
+            tertiary: tertiary?.measurable,
             help: help.layout.size
-        ))
+        )
+        input.glass = usesGlass
+        return OnboardingLayout(input)
     }
 
     public override func layoutSubviews() {
@@ -275,6 +292,7 @@ public final class OnboardingScreenView: UIView {
         content.setLayoutFrame(layout.content)
         primary.setLayoutFrame(layout.primary)
         secondary.setLayoutFrame(layout.secondary)
+        if let tertiary, let frame = layout.tertiary { tertiary.setLayoutFrame(frame) }
         help.setLayoutFrame(layout.help)
     }
 }
