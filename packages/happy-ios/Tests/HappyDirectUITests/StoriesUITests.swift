@@ -359,36 +359,51 @@ final class StoriesUITests: XCTestCase {
         capture("home-stories-back")
     }
 
-    /// Put away and kept away, as Telegram's chat list does: closed at
-    /// launch, a pull opens the stories, a short flick up puts them into the
-    /// title, a story posted meanwhile doesn't bring them back, and only a
-    /// deliberate pull does. Standalone, the row is the person's own
-    /// stories alone, which as in Telegram leave no avatars by the title.
+    /// Put away and kept away: home starts with the stories open until the
+    /// person puts them away with a short flick up; then they stay away,
+    /// across launches and a story posted meanwhile, until a launch after a
+    /// story posted since. Standalone, the row is the person's own stories
+    /// alone, which as in Telegram leave no avatars by the title.
     func testSwipeAway() {
         home()
         step("post-sample", wait: 5)
         let mine = element("story-circle:self")
         XCTAssertTrue(mine.waitForExistence(timeout: 10), "no stories")
-        pause(1.5)
-        XCTAssertFalse(mine.isHittable, "the stories opened on their own at launch")
-        capture("swipe-launch")
 
-        openStories(mine)
-        pause(1)
-        capture("swipe-open")
+        // Never put away: open at launch.
+        app.terminate()
+        step("forget-put-away", wait: 2)
+        relaunch()
+        XCTAssertTrue(mine.isHittable, "never put away, the stories started closed")
+        capture("swipe-launch-open")
 
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).press(forDuration: 0.02, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.54)), withVelocity: .fast, thenHoldForDuration: 0)
         pause(1.2)
         XCTAssertFalse(mine.isHittable, "a short flick up left the stories open")
         capture("swipe-flicked")
 
-        // Another story is posted on the computer: still put away.
+        // Put away: still away at the next launch.
+        relaunch()
+        XCTAssertFalse(mine.isHittable, "put away, the stories opened again at launch")
+        capture("swipe-relaunch-closed")
+
+        // Another story is posted on the computer: still put away now…
         step("post-sample", wait: 8)
         XCTAssertFalse(mine.isHittable, "a new story opened the stories")
         capture("swipe-new-story")
 
-        openStories(mine)
-        pause(1)
-        capture("swipe-pulled-open")
+        // …and open at the next launch, as it was posted since.
+        relaunch()
+        XCTAssertTrue(mine.isHittable, "a story posted since didn't open the stories at launch")
+        capture("swipe-relaunch-open")
+    }
+
+    /// The app again from cold, waiting for home and its stories to settle.
+    private func relaunch() {
+        app.terminate()
+        app.launch()
+        home()
+        XCTAssertTrue(element("story-circle:self").waitForExistence(timeout: 10), "no stories after launch")
+        pause(3)
     }
 }

@@ -2,10 +2,11 @@ import ObjectiveC
 import XCTest
 
 /// Home's stories in the header, over the harness's own computer (`-screen
-/// stories`), as Telegram's chat list has them: closed into the title at
-/// launch, opened only by pulling the list down or tapping the avatars, put
-/// away by a short flick up and kept away when new stories come, and closed
-/// on their own once everything is seen. `stories-probe` reports `header=open|closed`.
+/// stories`), as Telegram's chat list has them: opened by pulling the list
+/// down or tapping the avatars, put away by a short flick up and kept away
+/// when new stories come, and closed on their own once everything is seen.
+/// The harness starts them put away long ago, closed at launch, but for the
+/// test of how home starts. `stories-probe` reports `header=open|closed`.
 @MainActor
 final class StoriesHeaderUITests: XCTestCase {
     private let app = XCUIApplication()
@@ -124,6 +125,48 @@ final class StoriesHeaderUITests: XCTestCase {
         wait("header", "open", "tapping the avatars didn't open the row")
         pause(0.6)
         capture("header-tapped-open")
+    }
+
+    /// Never put away, home starts with the row open; put away, it stays
+    /// away across a launch, and a launch with a story posted since opens it.
+    func testStartsOpenUntilPutAway() {
+        let epoch = String(Int64(Date().timeIntervalSince1970 * 1000))
+        let base = ["-screen", "stories", "-storiesShowScale", "1", "-storiesBlur", "-storiesEpoch", epoch]
+        func relaunch(_ flags: [String]) {
+            app.terminate()
+            app.launchArguments = base + flags
+            app.launch()
+            XCTAssertTrue(element("story-circle:Steve").waitForExistence(timeout: 8))
+        }
+
+        relaunch(["-storiesFresh"])
+        wait("header", "open", "unseen stories, never put away, and the row started closed")
+        XCTAssertTrue(element("story-circle:Steve").isHittable)
+        XCTAssertFalse(probe.contains("headerOpen"), "opening at launch played a haptic: \(probe)")
+        pause(0.8)
+        capture("launch-open")
+
+        flick(from: 0.6, to: 0.54)
+        wait("header", "closed", "a short flick up left the row open")
+        pause(0.6)
+
+        relaunch(["-storiesKept"])
+        pause(2)
+        XCTAssertEqual(field("header"), "closed", "put away, the row opened again at launch")
+        capture("launch-kept-closed")
+
+        relaunch(["-storiesKept", "-storiesNewer"])
+        wait("header", "open", "a story posted since didn't open the row at launch")
+        pause(0.8)
+        capture("launch-newer-open")
+
+        // Opened by the person, it is no longer put away.
+        flick(from: 0.6, to: 0.54)
+        wait("header", "closed")
+        element("stories-collapsed").tap()
+        wait("header", "open")
+        relaunch(["-storiesKept"])
+        wait("header", "open", "opened again by the person, the row started closed")
     }
 
     /// Seeing everyone's stories closes the row once the viewer is gone.

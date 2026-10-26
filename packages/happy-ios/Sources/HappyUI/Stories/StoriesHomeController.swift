@@ -4,13 +4,19 @@ import HappyLayout
 import UIKit
 
 /// Stories on Stem Cells home, in the header as Telegram's chat list has
-/// them (`ChatListNavigationBar` over `StoryPeerListComponent`): closed into
-/// the title as small avatars, opened only by the person, pulling the list
-/// down past 65 or tapping the avatars, and put away again by scrolling the
-/// list up past 61 or by seeing everything. As in Telegram, nothing opens
-/// it on its own: not new stories, not the list coming back to its top, not
-/// a launch. Nothing here makes a story: that is done in a conversation.
-/// With Stories off, or nobody with a story, home is as it was.
+/// them (`ChatListNavigationBar` over `StoryPeerListComponent`): open above
+/// the list, or closed into the title as small avatars; opened by pulling
+/// the list down past 65 or tapping the avatars, and put away by scrolling
+/// the list up past 61 or by seeing everything.
+///
+/// Home starts with them open when there is something to look at, until
+/// the person puts them away; that is remembered, and only a launch with a
+/// story posted since opens them again. Telegram keeps no such memory (its
+/// row starts closed on every launch and stays as left only while the app
+/// lives); this is ours. While home is up nothing else opens them: not new
+/// stories, not the list coming back to its top. Nothing here makes a
+/// story: that is done in a conversation. With Stories off, or nobody with
+/// a story, home is as it was.
 ///
 /// The open row takes 96 above the list (`inset`). The list's pull below
 /// its closed top drives everything; the host hands its scroll view over as
@@ -77,6 +83,12 @@ final class StoriesHomeController {
     /// Telegram's one-time "Tap above to view stories from …", looked for a
     /// second after the stories come, shown once ever.
     static let tooltipShownKey = "stories.feedTooltipShown"
+    /// Per computer, the newest story's posting time when the person last
+    /// put the row away (`StoriesRow.newest`).
+    static let putAwayKey = "stories.putAway"
+    /// Whether the row starts open is still to be decided: until a fresh
+    /// feed from the computer is drawn, the list is touched or a viewer opens.
+    private var launching = false
     private var tooltip: StoriesTooltipView?
     private var tooltipCheck: Task<Void, Never>?
     /// Where it points, in the header's space, as last laid out.
@@ -137,8 +149,9 @@ final class StoriesHomeController {
         session = stories
         view.images = images
         snapshot = StoriesSnapshot()
-        // Another computer's stories start put away, as at launch.
+        // Another computer's stories start closed, and decide again.
         unlocked = false
+        launching = stories != nil
         motion = nil
         settleWhenBack = false
         applyInset(.immediate)
@@ -171,8 +184,42 @@ final class StoriesHomeController {
         } else if hasUnseen != hadUnseen || settleWhenBack {
             settle()
         }
+        if launching { openAtLaunch() }
         if isShown { lookForTooltip() }
         layout()
+    }
+
+    /// Opens the row as home first shows it, if it should, with the list at
+    /// rest at its top: at once before home is on screen, else as a tap on
+    /// the avatars would.
+    private func openAtLaunch() {
+        if isShown, !unlocked, listAtRest, !dragging, !viewerUp, abs(pull) < 1,
+           StoriesRow.opensAtLaunch(snapshot.feed, stories: snapshot.stories, putAwayThrough: putAwayThrough) {
+            launching = false
+            change(to: true, haptic: false)
+            let offScreen = host?.view.window == nil
+            if offScreen {
+                motion = nil
+                view.ticking = false
+            }
+            applyInset(offScreen ? .immediate : .animated)
+            return
+        }
+        if snapshot.live { launching = false }
+    }
+
+    /// The newest story's time when the person last put the row away here.
+    private var putAwayThrough: Int64? {
+        guard let account = session?.accountID else { return nil }
+        return (UserDefaults.standard.dictionary(forKey: Self.putAwayKey)?[account] as? NSNumber)?.int64Value
+    }
+
+    /// The person put the row away, or opened it: remembered for the next launch.
+    private func remember(putAway: Bool) {
+        guard let account = session?.accountID else { return }
+        var all = UserDefaults.standard.dictionary(forKey: Self.putAwayKey) ?? [:]
+        all[account] = putAway ? NSNumber(value: StoriesRow.newest(snapshot.feed, stories: snapshot.stories)) : nil
+        UserDefaults.standard.set(all, forKey: Self.putAwayKey)
     }
 
     /// Lays the list out for the room the row now wants.
@@ -186,6 +233,7 @@ final class StoriesHomeController {
 
     func listWillBeginDragging() {
         hideTooltip()
+        launching = false
         dragging = true
         expansionAllowed = pull >= -1
     }
@@ -203,6 +251,7 @@ final class StoriesHomeController {
         // of feedback as Telegram's. The room follows on release.
         if next != unlocked, !next || (dragging && expansionAllowed) {
             change(to: next, haptic: true)
+            remember(putAway: !next)
         }
         layout()
     }
@@ -229,6 +278,7 @@ final class StoriesHomeController {
         // goes straight to its closed top rather than back to the row first.
         if unlocked, resting <= StoriesHeaderLayout.Metrics.lockPull {
             change(to: false, haptic: true)
+            remember(putAway: true)
         }
         applyInset(.held)
         resting = StoriesHeaderLayout.resting(unlocked: unlocked, glide: resting)
@@ -288,7 +338,9 @@ final class StoriesHomeController {
     /// down to make room.
     private func expand() {
         guard isShown, !unlocked else { return }
+        launching = false
         change(to: true, haptic: false)
+        remember(putAway: false)
         applyInset(.animated)
     }
 
@@ -341,6 +393,7 @@ final class StoriesHomeController {
               let index = feed.authors.firstIndex(where: { $0.key == item.id }) else { return }
         guard !viewerUp, let viewer = StoriesViewerPresenter.present(session: session, feed: feed, authorIndex: index, from: host, origin: view.circle(item.id)) else { return }
         hideTooltip()
+        launching = false
         self.viewer = viewer
         viewer.originFor = { [weak self] key in self?.view.circle(key) }
         viewer.onClosing = { [weak self, weak viewer] in
@@ -435,6 +488,8 @@ final class StoriesHomeController {
             } else {
                 state = motion.state(toward: target, at: now)
             }
+        } else {
+            view.ticking = false
         }
         drawn = state
         let width = header.bounds.width

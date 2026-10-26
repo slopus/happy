@@ -25,7 +25,16 @@ import UIKit
 @MainActor
 final class StoriesHarness {
     private let window: UIWindow
-    private let transport = StoriesHarnessTransport(videos: ProcessInfo.processInfo.arguments.contains("-storiesVideo"))
+    private let transport = StoriesHarnessTransport(videos: ProcessInfo.processInfo.arguments.contains("-storiesVideo"), epoch: StoriesHarness.epoch,
+                                                    newer: ProcessInfo.processInfo.arguments.contains("-storiesNewer"))
+
+    /// The stories' clock: `-storiesEpoch MS` dates them from the same
+    /// moment across launches, else now.
+    private static var epoch: Int64 {
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "-storiesEpoch"), arguments.indices.contains(index + 1), let value = Int64(arguments[index + 1]) { return value }
+        return Int64(Date().timeIntervalSince1970 * 1000)
+    }
     private let session: StoriesSession
     private let host: StoriesHarnessHome
     private let probe = UILabel()
@@ -42,6 +51,14 @@ final class StoriesHarness {
             UserDefaults.standard.removeObject(forKey: StoriesHomeController.tooltipShownKey)
         } else {
             UserDefaults.standard.set(true, forKey: StoriesHomeController.tooltipShownKey)
+        }
+        // The row starts closed, as put away long ago, but for the tests of
+        // how it starts: `-storiesFresh` never put away, `-storiesKept` as
+        // the last run left it.
+        if arguments.contains("-storiesFresh") {
+            UserDefaults.standard.removeObject(forKey: StoriesHomeController.putAwayKey)
+        } else if !arguments.contains("-storiesKept") {
+            UserDefaults.standard.set(["stories-harness": NSNumber(value: Int64.max)], forKey: StoriesHomeController.putAwayKey)
         }
         // Every animation N times slower, to film one.
         if let index = arguments.firstIndex(of: "-storiesSlowMotion"), arguments.indices.contains(index + 1), let slower = Float(arguments[index + 1]), slower > 0 {
@@ -133,11 +150,17 @@ final class StoriesHarness {
         return nil
     }
 
+    /// What the row remembers of being put away, for the probe.
+    private static var putAway: String {
+        guard let value = UserDefaults.standard.dictionary(forKey: StoriesHomeController.putAwayKey)?["stories-harness"] as? NSNumber else { return "none" }
+        return value.int64Value == .max ? "always" : String(value.int64Value)
+    }
+
     private func report() {
         // Over everything, so a full-screen editor doesn't take it away.
         if probe.superview !== window { window.addSubview(probe) }
         window.bringSubviewToFront(probe)
-        let made = snapshot.stories.values.filter { !["m1", "s1", "s2", "a1"].contains($0.id) && !$0.id.hasPrefix("new-") }
+        let made = snapshot.stories.values.filter { !["m1", "s1", "s2", "a1", "a2"].contains($0.id) && !$0.id.hasPrefix("new-") }
             .sorted { $0.createdAt < $1.createdAt }
             .map { "\($0.status.rawValue):\($0.artifactVersion):\($0.frames.first?.overlays.count ?? 0)" }.joined(separator: ",")
         if let editor {
@@ -163,7 +186,7 @@ final class StoriesHarness {
         }
         guard let viewer = host.presentedViewController as? StoryViewerViewController else {
             let count = snapshot.feed?.authors.reduce(0) { $0 + $1.storyIds.count } ?? 0
-            probe.accessibilityValue = "viewer=0 editor=0 header=\(host.stories.unlocked ? "open" : "closed") stories=\(count) title=\(host.titleX) saved=\(made) haptics=\(recorder.played.joined(separator: ","))"
+            probe.accessibilityValue = "viewer=0 editor=0 header=\(host.stories.unlocked ? "open" : "closed") putAway=\(Self.putAway) stories=\(count) title=\(host.titleX) saved=\(made) haptics=\(recorder.played.joined(separator: ","))"
             return
         }
         let reaction = viewer.current?.story.myReaction ?? "nil"
@@ -331,9 +354,10 @@ actor StoriesHarnessTransport: DirectTransport {
         return frame
     }
 
-    init(videos: Bool = false) {
+    /// `newer`: one more of Ana's, posted a minute after the rest.
+    init(videos: Bool = false, epoch: Int64, newer: Bool = false) {
         self.videos = videos
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let now = epoch
         func frame(_ id: String, width: Int, height: Int, background: [String], overlays: [[String: Any]]) -> [String: Any] {
             ["id": id, "kind": "image", "width": width, "height": height, "thumbhash": NSNull(), "durationMs": NSNull(),
              "asset": ["type": "chat_media", "agentId": "a1", "toolCallId": "t1", "index": 0], "available": true,
@@ -375,6 +399,14 @@ actor StoriesHarnessTransport: DirectTransport {
                 text("o7", "Ana's story", fill: "stroke", color: "#2040FF", font: "noteworthy", t(0.5, 0.3, 1.4)),
             ]),
         ], caption: nil)
+        if newer {
+            stories["a2"] = story("a2", author: "u3", postedAgo: -1, frames: [
+                frame("f-a1", width: 720, height: 1280, background: ["#C0A010", "#604020"], overlays: [
+                    text("o9", "Ana's newer one", fill: "stroke", color: "#2040FF", font: "noteworthy", t(0.5, 0.3, 1.4)),
+                ]),
+            ], caption: nil)
+            order["u3", default: []].append("a2")
+        }
         // A draft of the person's, for the story card.
         var draft = story("d1", author: nil, postedAgo: 5, frames: [
             frame("f-d1", width: 720, height: 1280, background: ["#203040", "#405060"], overlays: [
@@ -421,8 +453,9 @@ actor StoriesHarnessTransport: DirectTransport {
         let names = ["self": "Kirill Dubovitskiy", "u2": "Steve Korshakov", "u3": "Ana Lima"]
         let ids = order[key] ?? []
         let unseen = key == "self" ? 0 : ids.filter { (stories[$0]?["seen"] as? Bool) == false }.count
+        let latest = ids.compactMap { stories[$0]?["postedAt"] as? Int64 }.max()
         return ["userId": key == "self" ? NSNull() as Any : key, "name": names[key] ?? key, "photo": NSNull(), "thumbhash": NSNull(),
-                "isSelf": key == "self", "storyIds": ids, "unseenCount": unseen, "draftCount": key == "self" ? 0 : NSNull(), "latestPostedAt": NSNull()]
+                "isSelf": key == "self", "storyIds": ids, "unseenCount": unseen, "draftCount": key == "self" ? 0 : NSNull(), "latestPostedAt": (latest as Any?) ?? NSNull()]
     }
 
     private func ok(_ object: Any) -> DirectHTTPResponse {

@@ -42,6 +42,52 @@ final class StoriesRowTests: XCTestCase {
         XCTAssertTrue(StoriesRow.hasUnseen(items))
     }
 
+    /// Open at launch with something to look at, until put away; after
+    /// that only a story posted since brings it back.
+    func testOpensAtLaunchUntilPutAway() {
+        let story = { (id: String, posted: Int64) in
+            Story(id: id, status: .posted, authorUserId: "u", createdBy: .user(userId: "u"), caption: nil, frames: [], artifactVersion: 1, createdAt: posted, updatedAt: posted, postedAt: posted, expiresAt: posted + 10, seen: false, viewCount: nil, myReaction: nil, reactions: [], version: "v")
+        }
+        let stories = ["a": story("a", 100), "b": story("b", 200), "m": story("m", 150)]
+        let unseen = StoryFeed(authors: [author("u1", "Me", isSelf: true), author("u2", "Ada", stories: ["a", "b"], unseen: 1)], stories: stories, cursor: "c")
+        let seen = StoryFeed(authors: [author("u1", "Me", isSelf: true), author("u2", "Ada", stories: ["a", "b"], unseen: 0)], stories: stories, cursor: "c")
+        let mine = StoryFeed(authors: [author("u1", "Me", isSelf: true, stories: ["m"])], stories: stories, cursor: "c")
+        XCTAssertTrue(StoriesRow.opensAtLaunch(unseen, putAwayThrough: nil))
+        XCTAssertFalse(StoriesRow.opensAtLaunch(seen, putAwayThrough: nil), "everything seen opened it")
+        XCTAssertTrue(StoriesRow.opensAtLaunch(mine, putAwayThrough: nil), "the person's own story didn't")
+        XCTAssertFalse(StoriesRow.opensAtLaunch(nil, putAwayThrough: nil))
+
+        XCTAssertEqual(StoriesRow.newest(unseen), 200)
+        XCTAssertEqual(StoriesRow.newest(mine), 150)
+        XCTAssertEqual(StoriesRow.newest(nil), 0)
+        XCTAssertFalse(StoriesRow.opensAtLaunch(unseen, putAwayThrough: 200), "put away, it came back with nothing new")
+        XCTAssertTrue(StoriesRow.opensAtLaunch(unseen, putAwayThrough: 199))
+        XCTAssertFalse(StoriesRow.opensAtLaunch(mine, putAwayThrough: 150))
+        XCTAssertTrue(StoriesRow.opensAtLaunch(mine, putAwayThrough: 149))
+        // Something newer, but seen: still put away.
+        XCTAssertFalse(StoriesRow.opensAtLaunch(seen, putAwayThrough: 0))
+
+        // The feed's own date counts when its stories aren't carried.
+        var dated = author("u2", "Ada", stories: ["x"], unseen: 1)
+        dated.latestPostedAt = 300
+        let bare = StoryFeed(authors: [dated], stories: [:], cursor: "c")
+        XCTAssertEqual(StoriesRow.newest(bare), 300)
+        XCTAssertTrue(StoriesRow.opensAtLaunch(bare, putAwayThrough: 299))
+
+        // Stories known besides the feed's count too.
+        let elsewhere = StoryFeed(authors: [author("u2", "Ada", stories: ["a", "b"], unseen: 1)], stories: [:], cursor: "c")
+        XCTAssertEqual(StoriesRow.newest(elsewhere, stories: stories), 200)
+        XCTAssertTrue(StoriesRow.opensAtLaunch(elsewhere, stories: stories, putAwayThrough: 199))
+        XCTAssertFalse(StoriesRow.opensAtLaunch(elsewhere, stories: stories, putAwayThrough: 200))
+
+        // A deleted story's date, left on its author, counts for nothing.
+        var emptied = author("u1", "Me", isSelf: true)
+        emptied.latestPostedAt = 500
+        var stale = author("u2", "Ada", stories: ["a"], unseen: 1)
+        stale.latestPostedAt = 500
+        XCTAssertEqual(StoriesRow.newest(StoryFeed(authors: [emptied, stale], stories: stories, cursor: "c")), 100)
+    }
+
     func testInitials() {
         XCTAssertEqual(StoriesRow.initials("Kirill Dubovitskiy"), "KD")
         XCTAssertEqual(StoriesRow.initials("steve"), "S")

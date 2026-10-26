@@ -55,6 +55,31 @@ public enum StoriesRow {
         items.contains { $0.unseen > 0 }
     }
 
+    /// When the newest story in the row was posted, as the daemon dates it:
+    /// what putting the row away remembers. `stories` are those known
+    /// besides the feed's own.
+    public static func newest(_ feed: StoryFeed?, stories: [String: Story] = [:]) -> Int64 {
+        (feed?.authors ?? []).compactMap { latest($0, feed, stories) }.max() ?? 0
+    }
+
+    /// The row starts open as home first shows it when it has something to
+    /// look at (someone else's unseen story, or the person's own) and was
+    /// never put away, or something of that was posted since it last was.
+    public static func opensAtLaunch(_ feed: StoryFeed?, stories: [String: Story] = [:], putAwayThrough: Int64?) -> Bool {
+        let showing = (feed?.authors ?? []).filter { !$0.storyIds.isEmpty && ($0.isSelf || $0.unseenCount > 0) }
+        guard let putAwayThrough else { return !showing.isEmpty }
+        return showing.contains { (latest($0, feed, stories) ?? 0) > putAwayThrough }
+    }
+
+    /// An author's newest posted story: the newest of the stories known,
+    /// else the feed's own date (which a deletion leaves stale until the
+    /// feed is read again).
+    private static func latest(_ author: StoryFeedAuthor, _ feed: StoryFeed?, _ stories: [String: Story]) -> Int64? {
+        guard !author.storyIds.isEmpty else { return nil }
+        let posted = author.storyIds.compactMap { (feed?.stories[$0] ?? stories[$0])?.postedAt }
+        return posted.max() ?? author.latestPostedAt
+    }
+
     public static func firstName(_ name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? trimmed
