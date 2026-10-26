@@ -1740,6 +1740,65 @@ final class StemCellsUITests: XCTestCase {
         }
     }
 
+    /// The composer's library sheet has Telegram's attachment bar: Paste
+    /// takes a copied picture at once, and File opens Files.
+    func testAttachSources() {
+        home()
+        pause(1)
+        app.descendants(matching: .any)["stem-new-work"].tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        // A copied picture, for Paste.
+        let size = CGSize(width: 240, height: 160)
+        UIPasteboard.general.image = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        app.buttons["Add a picture"].tap()
+        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Full Access"]
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+        XCTAssertTrue(app.descendants(matching: .any)["library-picker"].waitForExistence(timeout: 5), "+ didn't open the library")
+        let paste = app.descendants(matching: .any)["library-source:paste"]
+        XCTAssertTrue(app.descendants(matching: .any)["library-source:gallery"].waitForExistence(timeout: 3), "no attachment bar")
+        XCTAssertTrue(paste.exists, "no Paste in the attachment bar")
+        pause(1.5)
+        capture("attach-sources")
+        XCTAssertTrue(paste.isEnabled, "Paste is off with a picture copied")
+        paste.tap()
+        // Reading another app's copy is the system's to allow.
+        let allowPaste = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Paste"]
+        if allowPaste.waitForExistence(timeout: 3) { allowPaste.tap() }
+        let attachments = app.descendants(matching: .any).matching(identifier: "composer-attachment")
+        XCTAssertTrue(attachments.firstMatch.waitForExistence(timeout: 8), "Paste attached nothing")
+        pause(1)
+        capture("attach-pasted")
+
+        // File: Files' own picker, over the sheet; Cancel comes back to it.
+        app.buttons["Add a picture"].tap()
+        let file = app.descendants(matching: .any)["library-source:file"]
+        XCTAssertTrue(file.waitForExistence(timeout: 5))
+        file.tap()
+        let cancel = app.buttons["Cancel"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 8), "File opened no Files picker")
+        pause(2)
+        capture("attach-files")
+        cancel.tap()
+        pause(1)
+        XCTAssertTrue(app.descendants(matching: .any)["library-picker"].exists, "cancelling Files closed the library")
+        app.descendants(matching: .any)["library-cancel"].tap()
+        pause(1)
+        XCTAssertEqual(attachments.count, 1)
+        app.tapBack()
+        pause(1)
+        let made = app.descendants(matching: .any)["stem-row:space:New"].firstMatch
+        if made.waitForExistence(timeout: 3) {
+            made.press(forDuration: 1.0)
+            let close = app.buttons["Close new work"]
+            if close.waitForExistence(timeout: 3) { close.tap() }
+            pause(1.5)
+        }
+    }
+
     /// A conversation's header is its own glass, the system bar gone: a
     /// back circle and the name in a capsule over the transcript. A swipe
     /// back let go halfway leaves it as it was; a whole one goes home.

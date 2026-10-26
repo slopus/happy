@@ -45,6 +45,8 @@ enum StoriesMediaChooser {
         switch pick.media {
         case .image(let data, let type): await image(data, type: type)
         case .video(let file): await video(file)
+        // A story is pictures and recordings; nothing else is offered it.
+        case .file: nil
         }
     }
 

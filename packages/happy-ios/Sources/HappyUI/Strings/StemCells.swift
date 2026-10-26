@@ -23,6 +23,11 @@ extension Strings {
         /// The conversation's name in its bar, for VoiceOver.
         public static let renameHint = "Renames it"
         public static let back = "Back"
+        /// A file picked for a message, which carries text and pictures alone.
+        public static func filesNotSent(_ names: [String]) -> String {
+            names.count == 1 ? "\(names[0]) wasn't attached" : "\(names.count) files weren't attached"
+        }
+        public static let filesNotSentDetail = "A message to an agent carries text and pictures only for now."
         public static let closeNewWork = "Close new work"
         public static let leaveTask = "Leave task"
         public static let archiveTask = "Archive task"

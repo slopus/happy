@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyIcons
 import HappyLayout
 import UIKit
 
@@ -36,7 +37,7 @@ final class StemCellChatHeaderView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         addSubview(scrim)
-        backButton.setImage(UIImage(systemName: "chevron.backward", withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .semibold)), for: .normal)
+        backButton.setImage(.icon(.ionicons("chevron-back"), size: 28), for: .normal)
         backButton.tintColor = UIColor(Palette.headerTint)
         backButton.accessibilityLabel = Strings.StemCells.back
         backButton.accessibilityIdentifier = "stem-chat-back"

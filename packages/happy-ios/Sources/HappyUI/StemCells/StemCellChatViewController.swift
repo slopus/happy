@@ -315,11 +315,27 @@ final class StemCellChatViewController: UIViewController {
         let pictures = pictures
         let room = pictures.room()
         guard room > 0 else { return }
-        LibraryPicker.present(from: host, options: .init(limit: room, videos: false)) { [weak self] picks in
+        LibraryPicker.present(from: host, options: .init(limit: room, videos: false, sources: true)) { [weak self] picks in
             pictures.add(pictures: picks.compactMap { if case .image(let data, _) = $0.media { data } else { nil } })
-            guard let self, focusesAfterPick else { return }
+            // A message carries text and pictures alone (the daemon takes
+            // text and image blocks): any other file is said, not sent.
+            let others = picks.filter { if case .image = $0.media { false } else { true } }
+            LibraryPicker.discard(others)
+            guard let self else { return }
+            if !others.isEmpty {
+                let names = others.compactMap { pick -> String? in
+                    switch pick.media {
+                    case .file(let url, _), .video(let url): url.lastPathComponent
+                    case .image: nil
+                    }
+                }
+                let alert = UIAlertController(title: Strings.StemCells.filesNotSent(names), message: Strings.StemCells.filesNotSentDetail, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: Strings.StemCells.done, style: .default))
+                present(alert, animated: true)
+            }
+            guard focusesAfterPick else { return }
             focusesAfterPick = false
-            if !picks.isEmpty { card.focus() }
+            if picks.count > others.count { card.focus() }
         }
     }
 
