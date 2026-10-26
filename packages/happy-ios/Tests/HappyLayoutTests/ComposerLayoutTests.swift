@@ -37,7 +37,7 @@ final class MobileComposerGeometryTests: XCTestCase {
             effortWidth: 64,
             primaryActionSize: 42,
             primaryActionMarginLeft: 8,
-            attachmentExtraHeight: 72
+            attachmentExtraHeight: 82
         ))
         XCTAssertEqual(metrics.baseHeight, 102)
         XCTAssertEqual(metrics.chromeHeight, 58)
@@ -59,7 +59,7 @@ final class MobileComposerGeometryTests: XCTestCase {
         XCTAssertEqual(metrics.composerHeight(inputHeight: 30), 102)
         XCTAssertEqual(metrics.composerHeight(inputHeight: 52), 118)
         XCTAssertEqual(metrics.composerHeight(inputHeight: 120), 186)
-        XCTAssertEqual(metrics.composerHeight(inputHeight: 30, hasAttachments: true), 174)
+        XCTAssertEqual(metrics.composerHeight(inputHeight: 30, hasAttachments: true), 184)
     }
 
     func testIconMenuGeometry() {
@@ -290,10 +290,45 @@ final class AgentInputCardLayoutTests: XCTestCase {
 
     func testAttachmentStripAboveTheInput() {
         let layout = card(attachments: 3)
-        assertFrame(layout.attachments, rect(18, 8, 341, 64))
-        assertFrame(layout.inputContainer, rect(10, 80, 357, 44))
-        assertFrame(layout.actionRow, rect(10, 124, 357, 42))
-        XCTAssertEqual(layout.size.height, 174)
+        assertFrame(layout.attachments, rect(0, 12, 377, 70))
+        XCTAssertEqual(layout.attachmentInsets, .init(leading: 18, top: 6, trailing: 18))
+        assertFrame(layout.inputContainer, rect(10, 90, 357, 44))
+        assertFrame(layout.actionRow, rect(10, 134, 357, 42))
+        XCTAssertEqual(layout.size.height, 184)
+        XCTAssertEqual(layout.size.height, MobileComposerMetrics.mobile.composerHeight(inputHeight: 30, hasAttachments: true))
+    }
+
+    /// The photos start at the text's left edge, as far down from the
+    /// card's top as that edge is in from its side, and every remove
+    /// button is inside the strip and the card: nothing is cut.
+    func testPhotosLineUpWithTheTextAndNothingIsCut() throws {
+        for border in [CGFloat(0), 0.5] {
+            let layout = card(text: 52, attachments: 3, border: border)
+            let strip = try XCTUnwrap(layout.attachments)
+            let placed = AgentInputCardLayout.attachmentThumbnails(count: 3, insets: layout.attachmentInsets)
+            let photos = placed.frames.map { $0.offsetBy(dx: strip.minX, dy: strip.minY) }
+            XCTAssertEqual(photos[0].minX, layout.text.minX, accuracy: 1e-9)
+            XCTAssertEqual(photos[0].minY, layout.text.minX, accuracy: 1e-9)
+            for photo in placed.frames {
+                let remove = AgentInputCardLayout.attachmentRemoveButton.offsetBy(dx: photo.minX, dy: photo.minY)
+                XCTAssertGreaterThanOrEqual(remove.minY, 0)
+                XCTAssertLessThanOrEqual(remove.maxY, strip.height)
+                XCTAssertLessThanOrEqual(remove.maxX, placed.contentWidth)
+                let inCard = remove.offsetBy(dx: strip.minX, dy: strip.minY)
+                XCTAssertGreaterThanOrEqual(inCard.minY, border)
+                XCTAssertLessThanOrEqual(inCard.maxY, layout.inputContainer.minY)
+            }
+            XCTAssertGreaterThanOrEqual(strip.minX, border)
+            XCTAssertLessThanOrEqual(strip.maxX, layout.size.width - border)
+        }
+        let layout = card(attachments: 3)
+        let placed = AgentInputCardLayout.attachmentThumbnails(count: 3, insets: layout.attachmentInsets)
+        assertFrame(placed.frames[0], rect(18, 6, 64, 64))
+        assertFrame(placed.frames[1], rect(90, 6, 64, 64))
+        assertFrame(placed.frames[2], rect(162, 6, 64, 64))
+        // The last button ends 12 before the content does.
+        XCTAssertEqual(placed.contentWidth, 244)
+        assertFrame(AgentInputCardLayout.attachmentRemoveButton.offsetBy(dx: placed.frames[2].minX, dy: placed.frames[2].minY), rect(214, 0, 18, 18))
     }
 
     func testBorderInsetsEverything() {
@@ -341,11 +376,11 @@ final class AgentInputCardLayoutTests: XCTestCase {
             zenMode: true
         )
         XCTAssertNil(layout.add)
-        assertFrame(layout.middle, rect(10, 124, 305, 42))
-        assertFrame(layout.primary, rect(325, 124, 42, 42))
+        assertFrame(layout.middle, rect(10, 134, 305, 42))
+        assertFrame(layout.primary, rect(325, 134, 42, 42))
         XCTAssertEqual(layout.middleContent, AgentInputCardLayout.MiddleContent())
         // Pictures already picked stay, and the height doesn't move.
-        assertFrame(layout.attachments, rect(18, 8, 341, 64))
+        assertFrame(layout.attachments, rect(0, 12, 377, 70))
         XCTAssertEqual(layout.size.height, card(attachments: 1, showsAdd: true).size.height)
         XCTAssertEqual(card(zenMode: true), card())
     }

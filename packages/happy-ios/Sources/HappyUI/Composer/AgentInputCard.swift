@@ -972,6 +972,7 @@ public final class AgentInputCardView: UIView {
 
         if let strip = layout.attachments {
             attachmentStrip.isHidden = false
+            attachmentStrip.insets = layout.attachmentInsets
             attachmentStrip.setLayoutFrame(strip)
         } else {
             attachmentStrip.isHidden = true
@@ -1011,6 +1012,7 @@ public final class AgentInputCardView: UIView {
         layer.shadowPath = nil
         if let strip = layout.attachments {
             attachmentStrip.isHidden = false
+            attachmentStrip.insets = .panel
             attachmentStrip.setLayoutFrame(strip)
         } else {
             attachmentStrip.isHidden = true
@@ -1550,9 +1552,13 @@ final class PassthroughView: UIView {
 
 /// AgentInputAttachmentStrip: 64pt thumbnails in a horizontal scroll, each
 /// with a remove button hanging over its corner. The scroll view clips, as
-/// React Native's does.
+/// React Native's does; `insets` leave the buttons room inside it.
 final class AttachmentStripView: UIScrollView {
     var onRemove: ((String) -> Void)?
+
+    var insets: AgentInputCardLayout.AttachmentInsets = .panel {
+        didSet { if insets != oldValue { setNeedsLayout() } }
+    }
 
     var attachments: [AgentInputAttachmentPreview] = [] {
         didSet {
@@ -1599,7 +1605,7 @@ final class AttachmentStripView: UIScrollView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let placed = AgentInputCardLayout.attachmentThumbnails(count: thumbnails.count)
+        let placed = AgentInputCardLayout.attachmentThumbnails(count: thumbnails.count, insets: insets)
         for (view, frame) in zip(thumbnails, placed.frames) {
             view.setLayoutFrame(frame)
         }
@@ -1613,20 +1619,27 @@ final class AttachmentThumbnailView: UIView {
     let attachment: AgentInputAttachmentPreview
     var onRemove: ((String) -> Void)?
     private let imageView = UIImageView()
+    /// The ring is a view of its own under the remove button: a layer's
+    /// border is drawn over its sublayers, and would cross the button.
+    private let ring = UIView()
     private let removeButton = ComposerIconButton(icon: .ionicons("close"), size: AgentInputCardLayout.Metrics.attachmentRemoveIconSize)
 
     init(attachment: AgentInputAttachmentPreview) {
         self.attachment = attachment
         super.init(frame: .zero)
         layer.cornerRadius = AgentInputCardLayout.Metrics.attachmentRadius
-        layer.borderWidth = AgentInputCardLayout.Metrics.attachmentBorder
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
         imageView.layer.cornerRadius = AgentInputCardLayout.Metrics.attachmentRadius
         imageView.alpha = 0
         addSubview(imageView)
+        ring.layer.cornerRadius = AgentInputCardLayout.Metrics.attachmentRadius
+        ring.layer.borderWidth = AgentInputCardLayout.Metrics.attachmentBorder
+        ring.isUserInteractionEnabled = false
+        addSubview(ring)
         removeButton.backgroundColor = UIColor(Palette.surfaceHigh)
         removeButton.addTarget(self, action: #selector(removeTapped), for: .touchUpInside)
+        removeButton.accessibilityIdentifier = "composer-attachment-remove"
         addSubview(removeButton)
         accessibilityIdentifier = "composer-attachment"
         applyColors()
@@ -1642,7 +1655,7 @@ final class AttachmentThumbnailView: UIView {
     }
 
     private func applyColors() {
-        layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        ring.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
     }
 
     private func load() {
@@ -1665,6 +1678,7 @@ final class AttachmentThumbnailView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         imageView.frame = bounds
+        ring.frame = bounds
         removeButton.frame = AgentInputCardLayout.attachmentRemoveButton
     }
 

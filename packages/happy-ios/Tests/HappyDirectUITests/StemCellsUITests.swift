@@ -1798,6 +1798,20 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(until(8) { attachments.count == 4 }, "the picture from Files didn't attach")
         pause(1)
         capture("attach-file-picture")
+        // The photos start where the text does, as far down from the box's
+        // top as that is in from its side, and every remove button is inside.
+        let box = app.descendants(matching: .any)["stem-input"].frame
+        let text = app.textViews["stem-composer"].frame
+        let photo = attachments.element(boundBy: 0).frame
+        XCTAssertEqual(photo.minX, text.minX, accuracy: 0.5, "the photos don't start where the text does")
+        XCTAssertEqual(photo.minY - box.minY, text.minX - box.minX, accuracy: 0.5, "the photos' top inset isn't the text's left one")
+        let removes = app.descendants(matching: .any).matching(identifier: "composer-attachment-remove")
+        XCTAssertEqual(removes.count, 4)
+        for index in 0..<removes.count {
+            let remove = removes.element(boundBy: index).frame
+            XCTAssertTrue(box.contains(remove), "remove button \(index) at \(remove) is cut by \(box)")
+            XCTAssertGreaterThan(remove.minY, box.minY)
+        }
         // A text file is said, not sent.
         openSheet()
         app.descendants(matching: .any)["attach-files"].tap()

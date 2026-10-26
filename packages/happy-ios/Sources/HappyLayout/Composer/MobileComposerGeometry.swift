@@ -87,7 +87,8 @@ public struct MobileComposerMetrics: Equatable, Sendable {
         effortWidth: 64,
         primaryActionSize: 42,
         primaryActionMarginLeft: 8,
-        attachmentExtraHeight: 72
+        // The photos 18 down instead of the 8 the text starts at, 64, 8 below.
+        attachmentExtraHeight: 82
     )
 
     /// `MOBILE_COMPOSER_BASE_HEIGHT`: an empty one-line composer.

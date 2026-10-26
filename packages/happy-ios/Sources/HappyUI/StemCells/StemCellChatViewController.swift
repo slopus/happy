@@ -146,6 +146,7 @@ final class StemCellChatViewController: UIViewController {
         card.configuration.addAccessibilityLabel = Strings.StemCells.addPicture
         card.delegate = self
         card.textView.accessibilityIdentifier = "stem-composer"
+        card.accessibilityIdentifier = "stem-input"
         // A long press's Paste attaches a copied picture.
         card.textView.onPasteAttachment = { [weak self] in self?.pictures.paste() }
         pictures.host = { [weak self] in self }
