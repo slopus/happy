@@ -16,10 +16,6 @@ extension Strings {
         public static let done = "Done"
         public static let send = "Send"
         public static let back = "Back"
-        /// The attachment bar's tabs.
-        public static let gallery = "Gallery"
-        public static let file = "File"
-        public static let paste = "Paste"
         /// The picks' count, and the title while the grid shows only them.
         public static func selected(_ count: Int) -> String { "\(count) Selected" }
         public static func add(_ count: Int, action: String) -> String { count > 1 ? "\(action) \(count)" : action }

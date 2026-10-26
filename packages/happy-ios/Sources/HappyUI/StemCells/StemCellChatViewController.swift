@@ -2,8 +2,10 @@
 import AVKit
 import HappyCore
 import HappyLayout
+import Photos
 import QuickLook
 import UIKit
+import UniformTypeIdentifiers
 
 /// One Stem Cells conversation, simplified from desktop's: the work's
 /// intro at the top (its stem cell, or the clay icon it grew into, over
@@ -24,9 +26,9 @@ final class StemCellChatViewController: UIViewController {
     private let conversation: StemCellConversation
     private let spaceId: String?
     private let opensFocused: Bool
-    /// New work brings the keyboard up as it opens, unless it opens on the library.
+    /// New work brings the keyboard up as it opens, unless it opens on the "+" sheet.
     var focusesOnOpen = true
-    /// Opened on the library: the first pick brings the keyboard up, once.
+    /// Opened on the "+" sheet: the first thing added brings the keyboard up, once.
     var focusesAfterPick = false
     /// New work from home's dock: it fades in and out over home with the
     /// composer where the dock is (`StemCellsNewWorkTransition`), and an
@@ -396,6 +398,7 @@ final class StemCellChatViewController: UIViewController {
     private func apply(_ snapshot: StemCellChatSnapshot) {
         let wasSettled = !chat.items.isEmpty
         chat = snapshot
+        if picked == snapshot.mode { picked = nil }
         media.register(snapshot.items)
         proposals.want(snapshot.items.flatMap(\.proposalIds))
         working.show(snapshot.activity)
@@ -412,53 +415,193 @@ final class StemCellChatViewController: UIViewController {
     /// What the next message goes with: the conversation's, else what new
     /// work starts on, else the computer's default.
     private var mode: AgentWire.Mode? {
-        chat.mode ?? (opensFocused ? session.models.newWorkMode : nil) ?? session.models.catalog?.defaultMode()
+        picked ?? chat.mode ?? (opensFocused ? session.models.newWorkMode : nil) ?? session.models.catalog?.defaultMode()
     }
+    /// A pick made here, until the conversation's own mode says it back.
+    private var picked: AgentWire.Mode?
+    /// A picker asked for before the models were read.
+    private var catalogWait: StemCellsWatch?
 
     private func updateChips() {
         let menus = session.models.catalog.flatMap { catalog in mode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
         StemCellModelPickers.configure(card, menus: menus)
     }
 
-    /// The library over `host`: home's dock opens it over this screen as
-    /// the screen comes in. What's picked waits in the composer, which then
+    /// The "+" sheet over `host`: home's dock opens it over this screen as
+    /// the screen comes in. What it adds waits in the composer, which then
     /// takes the keyboard.
-    func presentLibrary(from host: UIViewController) {
-        let pictures = pictures
+    func presentAttach(from host: UIViewController) {
+        let sheet = StemCellAttachSheetViewController(limit: ComposerAttachmentRules.remaining(selected: pictures.images.count), permission: permissionName)
+        sheet.onAction = { [weak self, weak sheet] action in
+            guard let self else { return }
+            switch action {
+            case .photos: presentLibrary()
+            case .camera: presentCamera()
+            case .add(let ids): add(assets: ids)
+            case .paste: pasteFromClipboard()
+            case .files: presentFiles()
+            case .permission:
+                guard let sheet else { return }
+                pick(.permission, from: sheet) { [weak self, weak sheet] in
+                    guard let self else { return }
+                    sheet?.permission = permissionName
+                }
+            }
+        }
+        host.present(sheet, animated: true)
+    }
+
+    /// The mode the next message runs with, by its name.
+    private var permissionName: String {
+        Strings.StemCells.permissionName(mode?.permissionMode ?? session.models.catalog?.defaultPermissionMode ?? "auto")
+    }
+
+    /// The whole library, photos only: a message carries text and pictures alone.
+    private func presentLibrary() {
         let room = pictures.room()
         guard room > 0 else { return }
-        LibraryPicker.present(from: host, options: .init(limit: room, videos: false, sources: true)) { [weak self] picks in
-            pictures.add(pictures: picks.compactMap { if case .image(let data, _) = $0.media { data } else { nil } })
-            // A message carries text and pictures alone (the daemon takes
-            // text and image blocks): any other file is said, not sent.
-            let others = picks.filter { if case .image = $0.media { false } else { true } }
-            LibraryPicker.discard(others)
-            guard let self else { return }
-            if !others.isEmpty {
-                let names = others.compactMap { pick -> String? in
-                    switch pick.media {
-                    case .file(let url, _), .video(let url): url.lastPathComponent
-                    case .image: nil
-                    }
-                }
-                let alert = UIAlertController(title: Strings.StemCells.filesNotSent(names), message: Strings.StemCells.filesNotSentDetail, preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: Strings.StemCells.done, style: .default))
-                present(alert, animated: true)
+        LibraryPicker.present(from: self, options: .init(limit: room, videos: false)) { [weak self] picks in self?.take(picks) }
+    }
+
+    /// Photos picked in the sheet's strip, read in full off the main thread.
+    private func add(assets ids: [String]) {
+        Task { [weak self] in
+            let found = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+            let byID = Dictionary((0..<found.count).map { (found.object(at: $0).localIdentifier, found.object(at: $0)) }, uniquingKeysWith: { a, _ in a })
+            var picks: [LibraryPick] = []
+            for id in ids {
+                guard let asset = byID[id], let pick = await LibraryPicker.read(asset) else { continue }
+                picks.append(pick)
             }
-            guard focusesAfterPick else { return }
-            focusesAfterPick = false
-            if picks.count > others.count { card.focus() }
+            guard let self else { return LibraryPicker.discard(picks) }
+            take(picks)
         }
     }
 
-    private func pick(_ kind: StemCellModelPickers.Kind) {
-        guard let mode else {
+    private func presentCamera() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera), pictures.room() > 0 else { return }
+        let camera = UIImagePickerController()
+        camera.sourceType = .camera
+        camera.mediaTypes = [UTType.image.identifier]
+        camera.delegate = self
+        present(camera, animated: true)
+    }
+
+    private func presentFiles() {
+        guard pictures.room() > 0 else { return }
+        let files = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+        files.allowsMultipleSelection = true
+        files.delegate = self
+        present(files, animated: true)
+    }
+
+    /// The clipboard, read as the system allows: a picture attaches, text
+    /// goes in where the cursor is, anything else is said, not sent. What
+    /// it holds is asked without a prompt; reading it may prompt, and a
+    /// prompt waits on the thread that reads, so that is never this one.
+    private func pasteFromClipboard() {
+        let board = UIPasteboard.general
+        let picture = board.hasImages
+        guard picture || board.hasStrings || board.hasURLs else { return nothingToPaste() }
+        Task { [weak self] in
+            let clip = await Task.detached(priority: .userInitiated) { Self.readClipboard(picture: picture) }.value
+            guard let self else { return }
+            switch clip {
+            case .picture(let data):
+                guard pictures.room() > 0 else { return }
+                pictures.add(pictures: [data])
+                focusAfterAdding()
+            case .text(let text):
+                focusesAfterPick = false
+                card.focus()
+                card.textView.insertText(text)
+            case .other:
+                nothingToPaste()
+            case nil:
+                // Refused, or gone since it was asked about.
+                break
+            }
+        }
+    }
+
+    private enum Clip: Sendable {
+        case picture(Data)
+        case text(String)
+        /// A file copied in Files, say: its name is not what was meant.
+        case other
+    }
+
+    /// The picture as it was copied (so its orientation comes along), else
+    /// re-encoded; else the text. Nil when the paste was refused.
+    nonisolated private static func readClipboard(picture: Bool) -> Clip? {
+        let board = UIPasteboard.general
+        if picture {
+            for type in board.types {
+                guard let uti = UTType(type), uti.conforms(to: .image), let data = board.data(forPasteboardType: type), !data.isEmpty else { continue }
+                return .picture(data)
+            }
+            if let data = board.image?.pngData() { return .picture(data) }
+        }
+        if board.types.contains(UTType.fileURL.identifier) { return .other }
+        guard let text = board.string ?? board.url?.absoluteString, !text.isEmpty else { return nil }
+        return .text(text)
+    }
+
+    private func nothingToPaste() {
+        let alert = UIAlertController(title: Strings.StemCells.nothingToPaste, message: Strings.StemCells.filesNotSentDetail, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: Strings.StemCells.done, style: .default))
+        present(alert, animated: true)
+    }
+
+    /// What the sheet, the library or Files gave: pictures wait in the
+    /// composer; any other file is said, not sent (the daemon takes text
+    /// and image blocks alone).
+    private func take(_ picks: [LibraryPick]) {
+        pictures.add(pictures: picks.compactMap { if case .image(let data, _) = $0.media { data } else { nil } })
+        let others = picks.filter { if case .image = $0.media { false } else { true } }
+        LibraryPicker.discard(others)
+        if !others.isEmpty {
+            let names = others.compactMap { pick -> String? in
+                switch pick.media {
+                case .file(let url, _), .video(let url): url.lastPathComponent
+                case .image: nil
+                }
+            }
+            let alert = UIAlertController(title: Strings.StemCells.filesNotSent(names), message: Strings.StemCells.filesNotSentDetail, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: Strings.StemCells.done, style: .default))
+            present(alert, animated: true)
+        }
+        if picks.count > others.count { focusAfterAdding() }
+    }
+
+    /// New work opened on the sheet takes the keyboard once something is in it.
+    private func focusAfterAdding() {
+        guard focusesAfterPick else { return }
+        focusesAfterPick = false
+        card.focus()
+    }
+
+    private func pick(_ kind: StemCellModelPickers.Kind, from host: UIViewController? = nil, then: (() -> Void)? = nil) {
+        guard let mode, session.models.catalog != nil else {
+            // Asked before the computer's models were read: the picker
+            // opens once they are, if what asked is still showing.
+            let asked = host ?? self
+            catalogWait = session.models.watch { [weak self, weak asked] in
+                guard let self, session.models.catalog != nil else { return }
+                catalogWait = nil
+                guard let asked, asked.view.window != nil, asked.presentedViewController == nil else { return }
+                pick(kind, from: asked, then: then)
+            }
             session.models.load()
             return
         }
         let conversation = conversation
-        StemCellModelPickers.present(kind, from: self, state: session.models, mode: mode) { next in
+        StemCellModelPickers.present(kind, from: host ?? self, state: session.models, mode: mode) { [weak self] next in
+            // Held here at once, so the sheet's row reads it before the conversation says so.
+            self?.picked = next
+            self?.updateChips()
             Task { await conversation.setMode(next) }
+            then?()
         }
     }
 
@@ -934,16 +1077,16 @@ extension StemCellChatViewController: AgentInputCardDelegate {
 
     func agentInputCardDidPressSend(_ card: AgentInputCardView) { send() }
 
-    /// The add button opens the shared library sheet at once: no question
-    /// first. Photos only: a message carries text and pictures alone.
+    /// The add button opens the "+" sheet: photos, the clipboard, files
+    /// and the permission the next message runs with.
     func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
-        presentLibrary(from: self)
+        presentAttach(from: self)
     }
 
     func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) { pictures.remove(id: id) }
 
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {
-        StemCellModelPickers.Kind(rawValue: key).map(pick)
+        StemCellModelPickers.Kind(rawValue: key).map { pick($0) }
     }
 
     func agentInputCard(_ card: AgentInputCardView, didPress chip: AgentInputChip) {
@@ -957,6 +1100,32 @@ extension StemCellChatViewController: AgentInputCardDelegate {
     func agentInputCardDidPressStop(_ card: AgentInputCardView) {
         let conversation = conversation
         Task { await conversation.abort() }
+    }
+}
+
+extension StemCellChatViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate, UIDocumentPickerDelegate {
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        let image = info[.originalImage] as? UIImage
+        picker.dismiss(animated: true)
+        guard let data = image?.jpegData(compressionQuality: 0.9) else { return }
+        pictures.add(pictures: [data])
+        focusAfterAdding()
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
+    }
+
+    /// Files' copies, pictures among them read as pictures, off the main thread.
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        let room = max(1, ComposerAttachmentRules.remaining(selected: pictures.images.count))
+        for extra in urls.dropFirst(room) { try? FileManager.default.removeItem(at: extra) }
+        let urls = Array(urls.prefix(room))
+        Task { [weak self] in
+            let picks = await Task.detached(priority: .userInitiated) { urls.compactMap { LibraryPicker.document($0, videos: false) } }.value
+            guard let self else { return LibraryPicker.discard(picks) }
+            take(picks)
+        }
     }
 }
 

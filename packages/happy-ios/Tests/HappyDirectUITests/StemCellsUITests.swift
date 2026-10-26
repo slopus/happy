@@ -751,10 +751,8 @@ final class StemCellsUITests: XCTestCase {
 
         // A photo from the library (the newest: the swatch the run put
         // there with `simctl addmedia`), with a question about it.
-        // "+" is the shared library sheet, at once.
-        app.buttons["Add a picture"].tap()
-        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Full Access"]
-        if allow.waitForExistence(timeout: 3) { allow.tap() }
+        // "+" is the "+" sheet; its Photos, the shared library sheet.
+        openLibrary()
         let newest = app.descendants(matching: .any)["library-cell:0"]
         XCTAssertTrue(newest.waitForExistence(timeout: 10), "the library sheet never showed a photo")
         pause(1)
@@ -1631,13 +1629,10 @@ final class StemCellsUITests: XCTestCase {
         pause(1)
         capture("paste-new-work")
 
-        // + opens the shared library sheet at once; a photo picked there waits in the composer.
-        app.buttons["Add a picture"].tap()
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let allow = springboard.buttons["Allow Full Access"]
-        if allow.waitForExistence(timeout: 3) { allow.tap() }
+        // The "+" sheet's Photos opens the shared library sheet; a photo picked there waits in the composer.
+        openLibrary()
         let library = app.descendants(matching: .any)["library-picker"]
-        XCTAssertTrue(library.waitForExistence(timeout: 5), "+ didn't open the library")
+        XCTAssertTrue(library.waitForExistence(timeout: 5), "Photos didn't open the library")
         XCTAssertFalse(app.alerts.firstMatch.exists, "+ asked first")
         let first = app.descendants(matching: .any)["library-cell:0"]
         XCTAssertTrue(first.waitForExistence(timeout: 5), "the library shows no photo")
@@ -1704,18 +1699,16 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch.exists, "the dock has no model chip")
         capture("dock-home")
         app.buttons["Add a picture"].tap()
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let allow = springboard.buttons["Allow Full Access"]
-        if allow.waitForExistence(timeout: 3) { allow.tap() }
-        let library = app.descendants(matching: .any)["library-picker"]
-        XCTAssertTrue(library.waitForExistence(timeout: 5), "the dock's + didn't open the library")
+        allowPhotos()
+        let sheet = app.descendants(matching: .any)["attach-sheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5), "the dock's + didn't open the + sheet")
         pause(1)
-        capture("dock-add-library")
-        let first = app.descendants(matching: .any)["library-cell:0"]
-        XCTAssertTrue(first.waitForExistence(timeout: 5), "the library shows no photo")
+        capture("dock-add-sheet")
+        let first = app.descendants(matching: .any)["attach-photo:0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5), "the strip shows no photo")
         first.tap()
         pause(0.5)
-        app.descendants(matching: .any)["library-add"].tap()
+        app.buttons["attach-photos"].tap()
         let attachments = app.descendants(matching: .any).matching(identifier: "composer-attachment")
         XCTAssertTrue(attachments.firstMatch.waitForExistence(timeout: 8), "the picked photo didn't attach")
         XCTAssertTrue(app.textViews["stem-composer"].exists, "the library didn't open over new work")
@@ -1735,63 +1728,186 @@ final class StemCellsUITests: XCTestCase {
         }
     }
 
-    /// The composer's library sheet has Telegram's attachment bar: Paste
-    /// takes a copied picture at once, and File opens Files.
-    func testAttachSources() {
+    /// The composer's "+" is Claude's "Add to session": the dock's opens it
+    /// over new work with the keyboard down; two photos picked in its strip
+    /// attach in order; Paste from clipboard puts text in at the cursor and
+    /// attaches a picture; Add files takes a picture from Files and says a
+    /// text file can't go; Permission sets the mode the next message runs
+    /// with (checked against the daemon after the run).
+    func testAttachSheet() {
         home()
         pause(1)
-        app.descendants(matching: .any)["stem-new-work"].tap()
+        UIPasteboard.general.string = "Pasted from the clipboard."
+        app.buttons["Add a picture"].tap()
+        allowPhotos()
+        let sheet = app.descendants(matching: .any)["attach-sheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5), "the dock's + didn't open the + sheet")
+        let first = app.descendants(matching: .any)["attach-photo:0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5), "no photos in the strip")
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "the keyboard came up under the sheet")
+        let camera = app.descendants(matching: .any)["attach-camera"]
+        XCTAssertTrue(camera.exists, "no camera tile")
+        XCTAssertFalse(camera.isEnabled, "a camera on the simulator")
+        for id in ["attach-paste", "attach-files", "attach-permission"] {
+            XCTAssertTrue(app.descendants(matching: .any)[id].exists, "no \(id) row")
+        }
+        let photos = app.buttons["attach-photos"]
+        XCTAssertEqual(photos.label, "Photos")
+        pause(1)
+        capture("attach-sheet")
+
+        // Two photos, picked in order: Photos turns into Add 2.
+        first.tap()
+        app.descendants(matching: .any)["attach-photo:1"].tap()
+        pause(0.5)
+        XCTAssertEqual(photos.label, "Add 2")
+        XCTAssertEqual(first.label, "Photo, picked 1")
+        capture("attach-picked")
+        photos.tap()
+        let attachments = app.descendants(matching: .any).matching(identifier: "composer-attachment")
+        XCTAssertTrue(until(8) { attachments.count == 2 }, "the two photos didn't attach")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "adding didn't bring the keyboard up")
         let composer = app.textViews["stem-composer"]
-        XCTAssertTrue(composer.waitForExistence(timeout: 5))
-        // A copied picture, for Paste.
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+
+        // Text on the clipboard goes in where the cursor is.
+        openSheet()
+        app.descendants(matching: .any)["attach-paste"].tap()
+        allowPaste()
+        XCTAssertTrue(until(5) { (composer.value as? String)?.contains("Pasted from the clipboard.") == true }, "the copied text didn't go in")
+        pause(1)
+        capture("attach-pasted-text")
+
+        // A copied picture attaches.
         let size = CGSize(width: 240, height: 160)
         UIPasteboard.general.image = UIGraphicsImageRenderer(size: size).image { context in
             UIColor.systemTeal.setFill()
             context.fill(CGRect(origin: .zero, size: size))
         }
-        app.buttons["Add a picture"].tap()
-        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Full Access"]
-        if allow.waitForExistence(timeout: 3) { allow.tap() }
-        XCTAssertTrue(app.descendants(matching: .any)["library-picker"].waitForExistence(timeout: 5), "+ didn't open the library")
-        let paste = app.descendants(matching: .any)["library-source:paste"]
-        XCTAssertTrue(app.descendants(matching: .any)["library-source:gallery"].waitForExistence(timeout: 3), "no attachment bar")
-        XCTAssertTrue(paste.exists, "no Paste in the attachment bar")
-        pause(1.5)
-        capture("attach-sources")
-        XCTAssertTrue(paste.isEnabled, "Paste is off with a picture copied")
-        paste.tap()
-        // Reading another app's copy is the system's to allow.
-        let allowPaste = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Paste"]
-        if allowPaste.waitForExistence(timeout: 3) { allowPaste.tap() }
-        let attachments = app.descendants(matching: .any).matching(identifier: "composer-attachment")
-        XCTAssertTrue(attachments.firstMatch.waitForExistence(timeout: 8), "Paste attached nothing")
+        openSheet()
+        app.descendants(matching: .any)["attach-paste"].tap()
+        allowPaste()
+        XCTAssertTrue(until(8) { attachments.count == 3 }, "the copied picture didn't attach")
         pause(1)
-        capture("attach-pasted")
+        capture("attach-pasted-picture")
 
-        // File: Files' own picker, over the sheet; Cancel comes back to it.
-        app.buttons["Add a picture"].tap()
-        let file = app.descendants(matching: .any)["library-source:file"]
-        XCTAssertTrue(file.waitForExistence(timeout: 5))
-        file.tap()
-        let cancel = app.buttons["Cancel"]
-        XCTAssertTrue(cancel.waitForExistence(timeout: 8), "File opened no Files picker")
-        pause(2)
-        capture("attach-files")
-        cancel.tap()
+        // Files: a picture goes through.
+        openSheet()
+        app.descendants(matching: .any)["attach-files"].tap()
+        XCTAssertTrue(pickInFiles("attach-swatch"), "Files didn't offer the picture")
+        XCTAssertTrue(until(8) { attachments.count == 4 }, "the picture from Files didn't attach")
         pause(1)
-        XCTAssertTrue(app.descendants(matching: .any)["library-picker"].exists, "cancelling Files closed the library")
-        app.descendants(matching: .any)["library-cancel"].tap()
+        capture("attach-file-picture")
+        // A text file is said, not sent.
+        openSheet()
+        app.descendants(matching: .any)["attach-files"].tap()
+        XCTAssertTrue(pickInFiles("attach-notes"), "Files didn't offer the text file")
+        let refused = app.alerts["attach-notes.txt wasn't attached"]
+        XCTAssertTrue(refused.waitForExistence(timeout: 8), "the text file wasn't said")
+        XCTAssertTrue(refused.staticTexts["A message to an agent carries text and pictures only for now."].exists)
+        capture("attach-file-refused")
+        refused.buttons["Done"].tap()
+        XCTAssertTrue(until(3) { !refused.exists })
+        pause(0.8)
+        XCTAssertEqual(attachments.count, 4)
+
+        // Permission: Read only for the next message.
+        openSheet()
+        let permission = app.descendants(matching: .any)["attach-permission"]
+        let before = permission.value as? String
+        permission.tap()
+        let readOnly = app.descendants(matching: .any)["stem-pick:read_only"]
+        XCTAssertTrue(readOnly.waitForExistence(timeout: 5), "no permission picker")
         pause(1)
-        XCTAssertEqual(attachments.count, 1)
+        capture("attach-permission-picker")
+        readOnly.tap()
+        XCTAssertTrue(until(4) { permission.value as? String == "Read only" }, "the row still says \(before ?? "nothing")")
+        XCTAssertTrue(sheet.exists, "picking the permission closed the sheet")
+        pause(1)
+        capture("attach-permission-read-only")
+        app.buttons["attach-close"].tap()
+        XCTAssertTrue(until(3) { !sheet.exists }, "the close circle didn't close the sheet")
+
+        // Sent: the daemon runs it Read only (checked from outside after the run).
+        composer.tap()
+        composer.typeText(" Say in five words what these pictures show. No tools.")
+        app.buttons["Send"].tap()
+        let messages = app.descendants(matching: .any).matching(identifier: "stem-message")
+        let working = app.descendants(matching: .any)["stem-working"]
+        let deadline = Date().addingTimeInterval(120)
+        while Date() < deadline, messages.count < 2 || working.exists { pause(1) }
+        XCTAssertGreaterThanOrEqual(messages.count, 2, "the agent never answered")
+        pause(1)
+        capture("attach-sent")
         app.tapBack()
         pause(1)
-        let made = app.descendants(matching: .any)["stem-row:space:New"].firstMatch
-        if made.waitForExistence(timeout: 3) {
-            made.press(forDuration: 1.0)
-            let close = app.buttons["Close new work"]
-            if close.waitForExistence(timeout: 3) { close.tap() }
-            pause(1.5)
+    }
+
+    private func openSheet() {
+        app.buttons["Add a picture"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["attach-sheet"].waitForExistence(timeout: 5), "+ didn't open its sheet")
+        pause(0.8)
+    }
+
+    /// The "+" sheet's Photos: the whole library.
+    private func openLibrary() {
+        app.buttons["Add a picture"].tap()
+        allowPhotos()
+        let photos = app.buttons["attach-photos"]
+        XCTAssertTrue(photos.waitForExistence(timeout: 5), "+ didn't open its sheet")
+        photos.tap()
+        allowPhotos()
+    }
+
+    private func allowPhotos() {
+        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Full Access"]
+        if allow.waitForExistence(timeout: 2) { allow.tap() }
+    }
+
+    /// Reading another app's copy is the system's to allow.
+    private func allowPaste() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Paste"]
+        let here = app.buttons["Allow Paste"]
+        let deadline = Date().addingTimeInterval(6)
+        var seen = false
+        while Date() < deadline {
+            let shown = springboard.exists ? springboard : here.exists ? here : nil
+            if let shown {
+                seen = true
+                // Taken only once it has finished coming up.
+                pause(0.6)
+                if shown.exists, shown.isHittable { shown.tap() }
+            } else if seen {
+                return
+            }
+            pause(0.3)
         }
+    }
+
+    /// `name` in Files' picker, found in On My iPhone if it isn't already
+    /// shown, and opened.
+    private func pickInFiles(_ name: String) -> Bool {
+        let item = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
+        if !item.waitForExistence(timeout: 4) {
+            let browse = app.buttons["Browse"]
+            if browse.waitForExistence(timeout: 2) {
+                browse.tap()
+                pause(0.8)
+                if !item.exists { browse.tap(); pause(0.8) }
+            }
+            let local = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "On My iPhone")).firstMatch
+            if !item.exists, local.waitForExistence(timeout: 3) {
+                local.tap()
+                pause(1)
+            }
+        }
+        guard item.waitForExistence(timeout: 5) else { return false }
+        pause(0.8)
+        capture("attach-files-\(name)")
+        item.tap()
+        let open = app.buttons["Open"]
+        if open.waitForExistence(timeout: 2), open.isEnabled { open.tap() }
+        return true
     }
 
     /// A conversation's header is its own glass, the system bar gone: a

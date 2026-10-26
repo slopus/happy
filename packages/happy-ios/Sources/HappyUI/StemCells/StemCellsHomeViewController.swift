@@ -323,7 +323,7 @@ final class StemCellsHomeViewController: UIViewController {
     /// at once, and the conversation opens over home without going anywhere
     /// (`StemCellsNewWorkTransition`): the composer rides the keyboard up from
     /// the dock as the intro fades in, or, from the dock's "+", stays and the
-    /// library comes up over it.
+    /// "+" sheet comes up over it.
     func makeNewWork(in sectionId: String? = nil, library: Bool = false) {
         guard let session, !creating, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         creating = true
@@ -342,7 +342,7 @@ final class StemCellsHomeViewController: UIViewController {
             guard let navigation = navigationController else { return }
             navigation.pushViewController(chat, animated: true)
             // Over the screen it goes to, as that screen comes in.
-            if library { chat.presentLibrary(from: navigation) }
+            if library { chat.presentAttach(from: navigation) }
         }
     }
 

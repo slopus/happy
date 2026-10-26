@@ -59,7 +59,7 @@ final class StemCellChatHeaderView: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    private static func glass() -> UIVisualEffectView {
+    static func glass() -> UIVisualEffectView {
         let effect = UIGlassEffect(style: .regular)
         effect.isInteractive = true
         return UIVisualEffectView(effect: effect)

@@ -13,8 +13,6 @@ import CoreGraphics
 ///     ▢▢▢   each with its number circle at the top right
 ///     ▢▢▢   and a video's length at the bottom right
 ///           (     Add 2     )                        once something is picked
-///         ( ▣ Gallery  ▤ File  ⧉ Paste )            Telegram's attachment bar,
-///                                                    when the caller offers more
 public struct LibraryPickerLayout: Equatable, Sendable {
     public enum Metrics {
         /// The bar over the grid.
@@ -54,12 +52,6 @@ public struct LibraryPickerLayout: Equatable, Sendable {
         public static let selectedMinX: CGFloat = 72
         public static let selectedCheck = CGRect(x: 5, y: 5, width: 14, height: 11)
         public static let selectedNumberX: CGFloat = 21
-        /// The attachment bar (`AttachmentPanel`'s tabs): a capsule of
-        /// 76-wide tabs, 60 tall, 8 over the safe area; the add button
-        /// stands 8 over it.
-        public static let sourceWidth: CGFloat = 76
-        public static let sourceHeight: CGFloat = 60
-        public static let sourceBottom: CGFloat = 8
     }
 
     public struct Input {
@@ -79,10 +71,8 @@ public struct LibraryPickerLayout: Equatable, Sendable {
         public var picking: Bool
         /// The picks' count's number, measured, while the count shows.
         public var selected: CGSize?
-        /// The attachment bar's tabs; none, no bar.
-        public var sources: Int
 
-        public init(width: CGFloat, height: CGFloat, safeBottom: CGFloat, wide: Bool, pixel: CGFloat, count: Int, note: Measurable?, noteButton: CGSize?, title: CGSize, cancel: CGSize, picking: Bool, selected: CGSize? = nil, sources: Int = 0) {
+        public init(width: CGFloat, height: CGFloat, safeBottom: CGFloat, wide: Bool, pixel: CGFloat, count: Int, note: Measurable?, noteButton: CGSize?, title: CGSize, cancel: CGSize, picking: Bool, selected: CGSize? = nil) {
             self.width = width
             self.height = height
             self.safeBottom = safeBottom
@@ -95,7 +85,6 @@ public struct LibraryPickerLayout: Equatable, Sendable {
             self.cancel = cancel
             self.picking = picking
             self.selected = selected
-            self.sources = sources
         }
     }
 
@@ -117,9 +106,6 @@ public struct LibraryPickerLayout: Equatable, Sendable {
     public var button: CGRect
     /// The picks' count, when it shows.
     public var selected: CGRect?
-    /// The attachment bar and its tabs, left to right.
-    public var sourceBar: CGRect?
-    public var sources: [CGRect]
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -154,23 +140,11 @@ public struct LibraryPickerLayout: Equatable, Sendable {
         let rows = (input.count + columns - 1) / columns
         contentHeight = top + CGFloat(rows) * side + CGFloat(max(0, rows - 1)) * M.spacing
 
-        // The bar, when there is one, stands on the safe area; the add button on it.
-        var foot = input.height - input.safeBottom
-        if input.sources > 0 {
-            let barWidth = min(width, CGFloat(input.sources) * M.sourceWidth)
-            let bar = CGRect(x: ((width - barWidth) / 2).rounded(), y: foot - M.sourceBottom - M.sourceHeight, width: barWidth, height: M.sourceHeight)
-            sourceBar = bar
-            sources = (0..<input.sources).map { CGRect(x: bar.minX + CGFloat($0) * M.sourceWidth, y: bar.minY, width: M.sourceWidth, height: M.sourceHeight) }
-            foot = bar.minY
-        } else {
-            sourceBar = nil
-            sources = []
-        }
         let buttonY = input.picking
-            ? foot - M.buttonBottom - M.buttonHeight
+            ? input.height - input.safeBottom - M.buttonBottom - M.buttonHeight
             : input.height + M.buttonHeight
         button = CGRect(x: M.buttonInset, y: buttonY, width: max(0, width - 2 * M.buttonInset), height: M.buttonHeight)
-        bottomInset = input.height - foot + (input.picking ? M.buttonBottom + M.buttonHeight + M.buttonBottom : input.sources > 0 ? M.sourceBottom : 0)
+        bottomInset = input.safeBottom + (input.picking ? M.buttonBottom + M.buttonHeight + M.buttonBottom : 0)
         selected = input.selected.map { number in
             CGRect(x: max(M.selectedMinX, cancel.maxX + M.selectedGap), y: floor((M.barHeight - M.selectedHeight) / 2),
                    width: ceil(number.width) + M.selectedPadding, height: M.selectedHeight)

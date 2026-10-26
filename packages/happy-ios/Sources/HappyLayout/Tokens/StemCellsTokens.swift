@@ -18,6 +18,10 @@ extension Palette {
     public static let stemCellsRowPressed = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.08), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.08))
     /// A separator's hairline (`--divider`).
     public static let stemCellsDivider = ColorToken("#eaeaea", "#292929")
+    /// The composer's "+" sheet: its ground, and the fill of its rows'
+    /// group and camera tile, as iOS's grouped lists draw them.
+    public static let stemCellsAttachGround = ColorToken("#F2F2F7", "#1C1C1E")
+    public static let stemCellsAttachFill = ColorToken("#FFFFFF", "#2C2C2E")
     /// The stem cell (`--stem-cell-membrane`, `--stem-cell-core`).
     public static let stemCellMembrane = ColorToken("#f6cfe3", "#653c53")
     public static let stemCellCore = ColorToken("#ee9fcb")

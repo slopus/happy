@@ -102,7 +102,7 @@ final class StemCellModelState {
 /// chip of their own that opens a sheet.
 @MainActor
 enum StemCellModelPickers {
-    enum Kind: String { case model, provider, effort }
+    enum Kind: String { case model, provider, effort, permission }
 
     /// The chips' labels for a mode: provider, model, effort.
     static func chips(_ menus: StemCellModelMenus?) -> (provider: String, model: String, effort: String?) {
@@ -152,7 +152,20 @@ enum StemCellModelPickers {
         case .model: modelContent(menus)
         case .provider: providerContent(menus, usage: usage, now: now)
         case .effort: effortContent(menus)
+        case .permission: permissionContent(menus)
         }
+    }
+
+    /// The modes a message may run with, from least to most it may do.
+    static let permissionModes = ["read_only", "workspace_write", "auto", "full_access"]
+
+    private static func permissionContent(_ menus: StemCellModelMenus) -> StemCellPickerContent {
+        StemCellPickerContent(
+            title: Strings.StemCells.permission, notice: nil,
+            sections: [.init(rows: permissionModes.map { mode in
+                .init(id: mode, title: Strings.StemCells.permissionName(mode), subtitle: Strings.StemCells.permissionDetail(mode), checked: mode == menus.selection.permissionMode)
+            })]
+        )
     }
 
     /// Each service's models on the account it lists, under the service and
@@ -272,6 +285,11 @@ enum StemCellModelPickers {
         case .effort:
             var mode = current
             mode.effort = id
+            return mode
+        case .permission:
+            guard permissionModes.contains(id) else { return nil }
+            var mode = current
+            mode.permissionMode = id
             return mode
         }
     }

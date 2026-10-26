@@ -51,28 +51,6 @@ final class LibraryPickerLayoutTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(grid.contentHeight, 0)
     }
 
-    /// Telegram's attachment bar: a capsule of 76-wide tabs centred 8 over
-    /// the safe area; the add button stands 8 over it, the grid clear of both.
-    func testTheAttachmentBar() {
-        func with(picking: Bool) -> LibraryPickerLayout {
-            LibraryPickerLayout(.init(
-                width: 402, height: 800, safeBottom: 34, wide: false, pixel: 1.0 / 3, count: 10, note: nil, noteButton: nil,
-                title: CGSize(width: 64, height: 22), cancel: CGSize(width: 56, height: 22), picking: picking, sources: 3
-            ))
-        }
-        let idle = with(picking: false)
-        assertFrame(idle.sourceBar!, rect(87, 698, 228, 60))
-        XCTAssertEqual(idle.sources, [rect(87, 698, 76, 60), rect(163, 698, 76, 60), rect(239, 698, 76, 60)])
-        XCTAssertEqual(idle.bottomInset, 110)
-        XCTAssertGreaterThan(idle.button.minY, 800)
-        let picking = with(picking: true)
-        assertFrame(picking.button, rect(16, 640, 370, 50))
-        XCTAssertEqual(picking.bottomInset, 168)
-        // Without one, nothing moves.
-        XCTAssertNil(layout().sourceBar)
-        assertFrame(layout(picking: true).button, rect(16, 708, 370, 50))
-    }
-
     func testTheBar() {
         let grid = layout()
         assertFrame(grid.bar, rect(0, 0, 402, 56))

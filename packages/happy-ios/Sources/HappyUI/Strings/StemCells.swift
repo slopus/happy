@@ -242,6 +242,38 @@ extension Strings {
 
         // The composer's pickers (desktop's ComposerModelControl, flattened).
         public static let model = "Model"
+        /// The four permission modes a message runs with (API.md's `permissionMode`).
+        public static let permission = "Permission"
+        public static func permissionName(_ mode: String) -> String {
+            switch mode {
+            case "read_only": "Read only"
+            case "workspace_write": "Workspace write"
+            case "auto": "Auto"
+            case "full_access": "Full access"
+            default: mode
+            }
+        }
+        public static func permissionDetail(_ mode: String) -> String? {
+            switch mode {
+            case "read_only": "Reads files; changes nothing."
+            case "workspace_write": "Changes files in its workspace only."
+            case "auto": "Anything past its workspace is reviewed first."
+            case "full_access": "Acts on the whole computer without asking."
+            default: nil
+            }
+        }
+
+        // The composer's "+" sheet, as Claude's "Add to session".
+        public static let addToMessage = "Add to message"
+        public static let photos = "Photos"
+        public static let camera = "Camera"
+        public static let cameraUnavailable = "No camera on this device"
+        public static let pasteFromClipboard = "Paste from clipboard"
+        public static let addFiles = "Add files"
+        public static func addPhotos(_ count: Int) -> String { "Add \(count)" }
+        public static func photo(picked: Int?) -> String { picked.map { "Photo, picked \($0)" } ?? "Photo" }
+        /// The clipboard held nothing a message can carry.
+        public static let nothingToPaste = "Nothing to paste"
         public static let provider = "Provider"
         public static let effort = "Effort"
         public static let modelsNotConfigured = "Models not configured"

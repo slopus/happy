@@ -1,6 +1,5 @@
 #if canImport(UIKit)
 import AVFoundation
-import HappyIcons
 import HappyLayout
 import Photos
 import UIKit
@@ -34,10 +33,7 @@ struct LibraryPick {
 /// The photo library as a sheet, after Telegram's attachment gallery: the
 /// camera roll newest first in a grid of our own, picked in order with
 /// numbered circles, and one button that hands the picks back. Their count
-/// after Cancel shows only the picks until Back. With `sources`, Telegram's
-/// attachment bar under the grid adds File (the Files picker) and Paste
-/// (the clipboard's picture, offered while there is one); what either
-/// gives comes back at once. No camera. Limited
+/// after Cancel shows only the picks until Back. No camera. Limited
 /// access is shown and managed as Telegram does; refused access offers
 /// Settings.
 ///
@@ -54,15 +50,6 @@ enum LibraryPicker {
         var videos: Bool = true
         /// The button's word: "Add 2", "Send 2".
         var action: String = "Add"
-        /// The attachment bar: File and Paste beside the gallery.
-        var sources: Bool = false
-
-        init(limit: Int = 10, videos: Bool = true, action: String = "Add", sources: Bool = false) {
-            self.limit = limit
-            self.videos = videos
-            self.action = action
-            self.sources = sources
-        }
     }
 
     @discardableResult
@@ -223,7 +210,7 @@ enum LibraryPicker {
 
 /// The sheet itself; made by `LibraryPicker.present`.
 @MainActor
-final class LibraryPickerViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate, PHPhotoLibraryChangeObserver, UICollectionViewDataSourcePrefetching, UIDocumentPickerDelegate {
+final class LibraryPickerViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate, PHPhotoLibraryChangeObserver, UICollectionViewDataSourcePrefetching {
     private let options: LibraryPicker.Options
     private let onPick: ([LibraryPick]) -> Void
     private let titleLabel = UILabel()
@@ -249,11 +236,6 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
     private var registered = false
     private let selectedButton = LibrarySelectedButton()
     private var selectedShown = false
-    /// Telegram's attachment bar: Gallery (here), File, Paste.
-    private let sourceBar = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
-    private let galleryTab = UIButton(type: .custom)
-    private let fileTab = UIButton(type: .custom)
-    private let pasteTab = UIButton(type: .custom)
     /// While set the grid shows only these: the picks as they were when the
     /// count was tapped, so one unpicked there stays, unnumbered.
     private var showingPicks: [PHAsset]?
@@ -366,121 +348,7 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
         addButton.addSubview(spinner)
 
         for subview in [grid, titleLabel, cancelButton, selectedButton, blocked, addButton] as [UIView] { view.addSubview(subview) }
-        if options.sources { setUpSources() }
         authorize()
-    }
-
-    // MARK: Sources
-
-    private func setUpSources() {
-        func tab(_ button: UIButton, icon: Icon, title: String, id: String, tint: UIColor) {
-            var configuration = UIButton.Configuration.plain()
-            configuration.image = .icon(icon, size: 24)
-            configuration.imagePlacement = .top
-            configuration.imagePadding = 4
-            var label = AttributedString(title)
-            label.font = .systemFont(ofSize: 11, weight: .medium)
-            configuration.attributedTitle = label
-            configuration.baseForegroundColor = tint
-            button.configuration = configuration
-            button.accessibilityIdentifier = id
-            sourceBar.contentView.addSubview(button)
-        }
-        let quiet = UIColor.secondaryLabel
-        tab(galleryTab, icon: .ionicons("image-outline"), title: Strings.Library.gallery, id: "library-source:gallery", tint: UIColor(Palette.libraryCheckFill))
-        galleryTab.accessibilityTraits.insert(.selected)
-        tab(fileTab, icon: .ionicons("document-outline"), title: Strings.Library.file, id: "library-source:file", tint: quiet)
-        fileTab.addAction(UIAction { [weak self] _ in self?.openFiles() }, for: .touchUpInside)
-        tab(pasteTab, icon: .ionicons("copy-outline"), title: Strings.Library.paste, id: "library-source:paste", tint: quiet)
-        pasteTab.addAction(UIAction { [weak self] _ in self?.pasteClipboard() }, for: .touchUpInside)
-        // Offered while the clipboard holds something it can take; asking
-        // what is there reads nothing, so nothing is asked of the person.
-        updatePaste()
-        NotificationCenter.default.addObserver(self, selector: #selector(pasteboardChanged), name: UIPasteboard.changedNotification, object: nil)
-        sourceBar.cornerConfiguration = .capsule()
-        view.addSubview(sourceBar)
-    }
-
-    private func openFiles() {
-        guard !reading else { return }
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
-        // File hands back only what Files gives, so the gallery's picks take no room.
-        picker.allowsMultipleSelection = options.limit > 1
-        picker.delegate = self
-        present(picker, animated: true)
-    }
-
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        let videos = options.videos
-        let room = max(1, options.limit)
-        for extra in urls.dropFirst(room) { try? FileManager.default.removeItem(at: extra) }
-        let urls = Array(urls.prefix(room))
-        hand(Task.detached(priority: .userInitiated) { urls.compactMap { LibraryPicker.document($0, videos: videos) } })
-    }
-
-    private var pasteTypes: [UTType] { [.image] + (options.videos ? [.movie] : []) }
-
-    @objc private func pasteboardChanged() { updatePaste() }
-
-    private func updatePaste() {
-        pasteTab.isEnabled = UIPasteboard.general.contains(pasteboardTypes: pasteTypes.map(\.identifier))
-    }
-
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        if options.sources { updatePaste() }
-    }
-
-    /// The clipboard's picture (or recording), read as the system allows.
-    private func pasteClipboard() {
-        guard !reading, let provider = UIPasteboard.general.itemProviders.first(where: { provider in
-            pasteTypes.contains { provider.hasItemConformingToTypeIdentifier($0.identifier) }
-        }) else { return updatePaste() }
-        nonisolated(unsafe) let given = provider
-        let videos = options.videos
-        hand(Task.detached(priority: .userInitiated) { () -> [LibraryPick] in
-            let image = given.registeredTypeIdentifiers.compactMap(UTType.init).first { $0.conforms(to: .image) }
-            if let image {
-                let data: Data? = await withCheckedContinuation { continuation in
-                    _ = given.loadDataRepresentation(for: image) { data, _ in continuation.resume(returning: data) }
-                }
-                if let data, let pick = LibraryPicker.picture(data, type: image) { return [pick] }
-            }
-            guard videos, let movie = given.registeredTypeIdentifiers.compactMap(UTType.init).first(where: { $0.conforms(to: .movie) }) else { return [] }
-            let copy: URL? = await withCheckedContinuation { continuation in
-                _ = given.loadFileRepresentation(for: movie, openInPlace: false) { url, _, _ in
-                    guard let url else { return continuation.resume(returning: nil) }
-                    let target = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension(url.pathExtension)
-                    continuation.resume(returning: (try? FileManager.default.copyItem(at: url, to: target)) != nil ? target : nil)
-                }
-            }
-            return copy.flatMap { LibraryPicker.document($0, videos: true) }.map { [$0] } ?? []
-        })
-    }
-
-    /// What File or Paste gave, handed back as the add button hands the
-    /// library's picks: the sheet goes and `onPick` has them.
-    private func hand(_ reading: Task<[LibraryPick], Never>) {
-        self.reading = true
-        isModalInPresentation = true
-        readTask = Task { [weak self] in
-            let picks = await withTaskCancellationHandler { await reading.value } onCancel: { reading.cancel() }
-            guard let self, !Task.isCancelled, presentingViewController != nil, !isBeingDismissed else {
-                LibraryPicker.discard(picks)
-                return
-            }
-            self.reading = false
-            readTask = nil
-            isModalInPresentation = false
-            guard !picks.isEmpty else {
-                let alert = UIAlertController(title: Strings.Library.couldntRead, message: nil, preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: Strings.Library.done, style: .default))
-                present(alert, animated: true)
-                return
-            }
-            let onPick = onPick
-            dismiss(animated: true) { onPick(picks) }
-        }
     }
 
     // MARK: Access
@@ -586,7 +454,7 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
             note: note.isHidden ? nil : noteText.measurable,
             noteButton: note.isHidden ? nil : noteButton.titleLabel?.intrinsicContentSize,
             title: titleLabel.intrinsicContentSize, cancel: cancelButton.intrinsicContentSize, picking: !picked.isEmpty,
-            selected: picked.isEmpty ? nil : selectedButton.numberSize, sources: options.sources ? 3 : 0
+            selected: picked.isEmpty ? nil : selectedButton.numberSize
         ))
     }
 
@@ -610,13 +478,6 @@ final class LibraryPickerViewController: UIViewController, UICollectionViewDataS
         }
         addButton.frame = layout.button
         spinner.frame = addButton.bounds
-        if let bar = layout.sourceBar {
-            sourceBar.frame = bar
-            let tabs = layout.sources.map { $0.offsetBy(dx: -bar.minX, dy: -bar.minY) }
-            galleryTab.frame = tabs[0]
-            fileTab.frame = tabs[1]
-            pasteTab.frame = tabs[2]
-        }
         let size = blocked.systemLayoutSizeFitting(CGSize(width: layout.blockedWidth, height: .greatestFiniteMagnitude), withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)
         blocked.frame = layout.blocked(height: size.height)
         updateCaching(layout)
