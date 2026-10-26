@@ -312,15 +312,18 @@ describe('runClaude remote JSONL scanner', () => {
         expect(signal?.aborted).toBe(true);
     });
 
-    it('pins the native resolved model for remote takeover even when the launch used an alias', async () => {
-        const harness = await startRemoteRunClaudeHarness({ startOptions: { startingMode: 'local', model: 'opus' } });
+    it.each([
+        ['opus', 'claude-opus-5-5'],
+        ['claude-opus-5-5[1m]', 'claude-opus-5-5[1m]'],
+    ])('pins the native resolved model for remote takeover from %s', async (requested, expected) => {
+        const harness = await startRemoteRunClaudeHarness({ startOptions: { startingMode: 'local', model: requested } });
         const hookOptions = mockStartHookServer.mock.calls.at(-1)?.[0];
         hookOptions.onSessionHook('claude-session-1', { model: 'claude-opus-5-5' });
-        expect(harness.runtimeSession.model).toBe('claude-opus-5-5');
-        expect(harness.sessionClient.getMetadata().currentModelCode).toBe('claude-opus-5-5');
+        expect(harness.runtimeSession.model).toBe(expected);
+        expect(harness.sessionClient.getMetadata().currentModelCode).toBe(expected);
         const onUserMessage = harness.sessionClient.onUserMessage.mock.calls[0][0];
         await onUserMessage({ role: 'user', content: { type: 'text', text: 'hello' } });
-        expect(harness.loopOptions.messageQueue.queue[0].mode.model).toBe('claude-opus-5-5');
+        expect(harness.loopOptions.messageQueue.queue[0].mode.model).toBe(expected);
         await harness.finish();
     });
 
