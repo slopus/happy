@@ -33,6 +33,18 @@ final class HomeHeaderLayoutTests: XCTestCase {
         XCTAssertEqual(layout.settingsButton.maxX + 1, 393 - 16, accuracy: 0.001)
     }
 
+    /// One button alone: the pill hugs it at the right edge.
+    func testASingleActionPill() {
+        var input = HomeHeaderLayout.Input(width: 393, safeTop: 59, hairline: hairline, title: text("Mac", lineHeight: 20, maxLines: 1), status: nil)
+        input.singleAction = true
+        let layout = HomeHeaderLayout(input)
+        assertFrame(layout.actions, rect(331, 62, 46, 46))
+        assertFrame(layout.filterButton, rect(332, 63, 44, 44))
+        XCTAssertEqual(layout.actionDivider.width, 0)
+        XCTAssertEqual(layout.settingsButton.width, 0)
+        XCTAssertEqual(layout.title.midX, 393 / 2, accuracy: 0.001)
+    }
+
     func testTheTitleIsCentredOnTheScreenNotBetweenTheControls() {
         let layout = header()
         assertFrame(layout.title, rect(164.5, 75, 64, 20))

@@ -254,13 +254,16 @@ final class HomeHeaderView: UIView {
     let settingsButton = HeaderIconButton(.ionicons("settings-outline"), size: 22, label: Strings.Settings.title)
     /// Stem Cells' search, in the pill's first slot.
     let searchButton = HeaderIconButton(.ionicons("search-outline"), size: 22, label: Strings.StemCells.search)
-    /// Stem Cells: the pill is search then filter, and the logo is the way
-    /// to settings, so there is no gear.
+    /// A computer's home: the pill is search alone, and the picture is the
+    /// way to settings, so there is no gear (and no filter: a computer's
+    /// home has nothing to group).
     var stemCellsActions = false {
         didSet {
             guard stemCellsActions != oldValue else { return }
             searchButton.isHidden = !stemCellsActions
             settingsButton.isHidden = stemCellsActions
+            filterButton.isHidden = stemCellsActions
+            actionDivider.isHidden = stemCellsActions
             setNeedsLayout()
         }
     }
@@ -355,6 +358,7 @@ final class HomeHeaderView: UIView {
         input.showsAccountAvatar = showsAccountAvatar
         input.titleX = titleX
         input.backdropExtension = backdropExtension
+        input.singleAction = stemCellsActions
         return HomeHeaderLayout(input)
     }
 
@@ -373,12 +377,11 @@ final class HomeHeaderView: UIView {
         logo.layer.cornerRadius = showsAccountAvatar ? layout.logo.width / 2 : 0
         actions.setLayoutFrame(layout.actions)
         let origin = layout.actions.origin
-        // The pill's two slots: filter and settings, or in Stem Cells search
-        // and filter, so the filter sits at the far right.
+        // The pill's slots: filter and settings, or a computer's search alone.
         let first = layout.filterButton.offsetBy(dx: -origin.x, dy: -origin.y)
         let second = layout.settingsButton.offsetBy(dx: -origin.x, dy: -origin.y)
         searchButton.setLayoutFrame(first)
-        filterButton.setLayoutFrame(stemCellsActions ? second : first)
+        filterButton.setLayoutFrame(first)
         actionDivider.setLayoutFrame(layout.actionDivider.offsetBy(dx: -origin.x, dy: -origin.y))
         settingsButton.setLayoutFrame(second)
         titleLabel.setLayoutFrame(layout.title)

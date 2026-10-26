@@ -36,8 +36,10 @@ final class StemCellsSettingsNavigationController: UINavigationController {
 /// its code): a bar with the QR button at the left and a capsule of search
 /// and Edit at the right; every computer and account as story circles,
 /// the chosen one centred and ringed, its name and line under it; then a
-/// few grouped cards. Choosing a profile makes it the active one and
-/// turns the page to it.
+/// few grouped cards. Swiping a profile to the middle makes it the active
+/// one and turns the page to it; tapping its circle makes it the active one
+/// and goes back home, which shows it: a computer's Stem Cells, or the Happy
+/// account's sessions. "+" adds a computer, by its code or its link.
 ///
 /// Kept sparse on purpose. On a computer: Prioritizing, More, Disconnect.
 /// On a Happy account: Account, Appearance, Language, More, Sign out.
@@ -84,6 +86,8 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     private var imageJobs: [String: Task<Void, Never>] = [:]
     private var busy = false
     private var switching: Task<Void, Never>?
+    /// The profile last chosen, which the switches in line end on.
+    private var wanted: String?
 
     init(context: AppContext, computer: String?) {
         self.context = context
@@ -103,10 +107,8 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         scroll.delegate = self
         view.addSubview(scroll)
         carousel.onSelect = { [weak self] index in self?.choose(index) }
-        carousel.onAdd = { [weak self] in
-            guard let self else { return }
-            StemCellsScan.scan(context: context, on: self)
-        }
+        carousel.onTap = { [weak self] index in self?.chooseAndClose(index) }
+        carousel.onAdd = { [weak self] source in self?.addComputer(from: source) }
         scroll.addSubview(carousel)
         name.font = StemCellsFonts.ui(.medium, size: 28)
         name.textColor = UIColor(Palette.stemCellsSettingsText)
@@ -247,29 +249,62 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
 
     /// The circle that came to rest: the page turns to it and it becomes
     /// the active profile (home changes under this sheet).
-    private func choose(_ index: Int) {
+    private func choose(_ index: Int, failureHost: UIViewController? = nil) {
         guard profiles.indices.contains(index) else { return }
         let profile = profiles[index]
         endEditingName(keep: true)
         shownID = profile.id
         watchPrioritizing()
         rebuild(animated: true)
-        guard !profile.isActive else { return }
-        // One switch at a time, and only the last choice still wanted; a
-        // failed one turns the page back to the profile that is active.
+        // One switch at a time, and only the last choice still wanted (one
+        // back to the active profile too, behind a switch away from it); a
+        // failed one turns the page back to the profile that is active. It
+        // goes on when the sheet has gone: a tap closes it at once.
         let previous = switching
+        let account = context.account
+        wanted = profile.id
         switching = Task { [weak self] in
             await previous?.value
-            guard let self, shownID == profile.id,
-                  context.account.accounts.first(where: { $0.id == profile.id })?.isActive == false else { return }
-            do { try await context.account.switchAccount(to: profile.id) }
+            guard self?.wanted ?? profile.id == profile.id,
+                  account.accounts.first(where: { $0.id == profile.id })?.isActive == false else { return }
+            do { try await account.switchAccount(to: profile.id) }
             catch {
-                guard shownID == profile.id else { return }
-                shownID = context.account.accounts.first(where: \.isActive)?.id
-                reload()
-                Alerts.show(Strings.StemCells.couldNotSwitch, error.localizedDescription, on: self)
+                if let self, self.view.window != nil, shownID == profile.id {
+                    shownID = account.accounts.first(where: \.isActive)?.id
+                    reload()
+                    Alerts.show(Strings.StemCells.couldNotSwitch, error.localizedDescription, on: self)
+                } else if let failureHost {
+                    // Home, once the sheet is all the way down.
+                    for _ in 0..<20 where failureHost.presentedViewController != nil { try? await Task.sleep(for: .milliseconds(100)) }
+                    Alerts.show(Strings.StemCells.couldNotSwitch, error.localizedDescription, on: failureHost)
+                }
             }
         }
+    }
+
+    /// A tapped circle: that profile is home, at once.
+    private func chooseAndClose(_ index: Int) {
+        guard profiles.indices.contains(index) else { return }
+        let host = presentingViewController
+        choose(index, failureHost: host)
+        host?.dismiss(animated: true)
+    }
+
+    /// Telegram's "Add Account", for a computer: its code, or its link.
+    private func addComputer(from source: UIView) {
+        let sheet = UIAlertController(title: Strings.StemCells.addProfile, message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: Strings.StemCells.scanQRCode, style: .default) { [weak self] _ in
+            guard let self else { return }
+            StemCellsScan.scan(context: context, on: self)
+        })
+        sheet.addAction(UIAlertAction(title: Strings.StemCells.enterLink, style: .default) { [weak self] _ in
+            guard let self else { return }
+            StemCellsScan.enterLink(context: context, on: self)
+        })
+        sheet.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
+        sheet.popoverPresentationController?.sourceView = source
+        sheet.popoverPresentationController?.sourceRect = source.bounds
+        present(sheet, animated: true)
     }
 
     private func watchPrioritizing() {

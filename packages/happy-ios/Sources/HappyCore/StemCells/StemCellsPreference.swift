@@ -1,10 +1,11 @@
 import Foundation
 
-/// Whether home shows the Stem Cells sidebar instead of the session list.
-/// It is this phone's own choice, never synced, and exists only in
-/// development and preview builds: a production build cannot reach it,
-/// whatever is stored.
+/// Whether a paired computer is a home of its own, Stem Cells, beside the
+/// Happy account's session list: the profile chosen decides which shows.
+/// Only in development and preview builds: a production build cannot reach
+/// it, whatever is stored.
 public struct StemCellsPreference: Sendable {
+    /// The filter's old Stem Cells choice, read once to carry it over.
     public static let enabledKey = "stemCells.home"
     public static let computerKey = "stemCells.computer"
 
@@ -17,16 +18,16 @@ public struct StemCellsPreference: Sendable {
         self.storage = storage
     }
 
-    /// The filter offers Stem Cells at all.
+    /// A computer can be home at all.
     public var isAvailable: Bool { variant != .production }
 
-    /// Home shows Stem Cells. Never true in production.
-    public var isEnabled: Bool {
-        get { isAvailable && storage.bool(forKey: Self.enabledKey) }
-        nonmutating set {
-            guard isAvailable else { return }
-            storage.set(newValue, forKey: Self.enabledKey)
-        }
+    /// The Happy account's filter showed Stem Cells, before a computer was
+    /// a home of its own: true once, so that launch opens the computer.
+    /// Never true in production.
+    public func takeFilterChoice() -> Bool {
+        guard isAvailable, storage.object(forKey: Self.enabledKey) != nil else { return false }
+        defer { storage.removeObject(forKey: Self.enabledKey) }
+        return storage.bool(forKey: Self.enabledKey)
     }
 
     /// The paired computer Stem Cells shows when a Happy account is the
@@ -38,6 +39,4 @@ public struct StemCellsPreference: Sendable {
             storage.set(newValue, forKey: Self.computerKey)
         }
     }
-
-    public static let didChange = Notification.Name("StemCellsPreference.didChange")
 }

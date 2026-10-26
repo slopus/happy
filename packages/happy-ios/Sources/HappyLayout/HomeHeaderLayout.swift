@@ -60,6 +60,9 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         /// How much deeper the scrim reaches, over what hangs under the
         /// header (the stories' open row).
         public var backdropExtension: CGFloat = 0
+        /// The pill holds one button (a computer's home: search alone), in
+        /// the first slot; the divider and second slot are empty.
+        public var singleAction: Bool = false
 
         public init(width: CGFloat, safeTop: CGFloat, hairline: CGFloat, title: Measurable, status: Measurable?) {
             self.width = width
@@ -99,7 +102,7 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         let logoInset = (M.controlSize - logoSize) / 2
         logo = CGRect(x: logoControl.minX + logoInset, y: logoControl.minY + logoInset, width: logoSize, height: logoSize)
 
-        let pillWidth = 2 * M.controlBorder + 2 * M.controlSize + input.hairline
+        let pillWidth = input.singleAction ? 2 * M.controlBorder + M.controlSize : 2 * M.controlBorder + 2 * M.controlSize + input.hairline
         let pillHeight = 2 * M.controlBorder + M.controlSize
         actions = CGRect(x: width - M.paddingHorizontal - pillWidth, y: top + (rowHeight - pillHeight) / 2, width: pillWidth, height: pillHeight)
         let buttonY = actions.minY + M.controlBorder
@@ -107,10 +110,10 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         actionDivider = CGRect(
             x: filterButton.maxX,
             y: buttonY + (M.controlSize - M.actionDividerHeight) / 2,
-            width: input.hairline,
+            width: input.singleAction ? 0 : input.hairline,
             height: M.actionDividerHeight
         )
-        settingsButton = CGRect(x: actionDivider.maxX, y: buttonY, width: M.controlSize, height: M.controlSize)
+        settingsButton = CGRect(x: actionDivider.maxX, y: buttonY, width: input.singleAction ? 0 : M.controlSize, height: M.controlSize)
 
         let slotX = M.titleInset
         let slotWidth = max(0, width - 2 * M.titleInset)

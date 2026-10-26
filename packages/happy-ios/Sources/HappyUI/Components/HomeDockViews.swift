@@ -90,6 +90,7 @@ final class HomeDockView: UIView {
         entryButton.addSubview(entryLabel)
         entryButton.isAccessibilityElement = true
         entryButton.accessibilityTraits = .button
+        entryButton.accessibilityIdentifier = "home-dock-entry"
         entryClip.clipsToBounds = true
         entryClip.layer.cornerCurve = .continuous
         entryClip.addSubview(entryButton)

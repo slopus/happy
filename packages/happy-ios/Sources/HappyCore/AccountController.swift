@@ -27,6 +27,11 @@ public final class AccountController {
     public private(set) var localSettings: LocalSettings
     public private(set) var isAddingAccount = false
     public let direct: DirectAccounts
+    /// With no Happy account to open (none chosen at launch, or the last
+    /// one signed out), a paired computer opens instead of Welcome, at once.
+    /// Set by builds
+    /// where a computer is a home of its own (`StemCellsPreference.isAvailable`).
+    public var fallsBackToComputer = false
 
     private let accountCredentialStore: AccountCredentialStore
     private let rnServerImport: @Sendable () -> ImportedAccountServer
@@ -284,13 +289,20 @@ public final class AccountController {
         await ServerProbe(transport: transport).check(url)
     }
 
-    public func restore() async {
+    /// `openingComputer`: a paired computer opens rather than the Happy
+    /// account chosen last, `preferred` if it is one (carrying over the
+    /// filter that showed a computer's Stem Cells over the account's home).
+    public func restore(openingComputer: Bool = false, preferred: String? = nil) async {
         guard session == nil, !busy else { return }
         busy = true
         defer { finishOperation() }
         _ = await prepareStorageDirectory()
         do {
             try await direct.restore()
+            if openingComputer, direct.active == nil {
+                let computers = direct.accounts.filter { !$0.revoked }
+                if let computer = computers.first(where: { $0.id == preferred }) ?? computers.first { try await direct.select(computer.id) }
+            }
             if let active = direct.active {
                 _ = try await reconcile()
                 localSettings = settings(for: active.id)
@@ -299,6 +311,14 @@ public final class AccountController {
                 return
             }
         } catch { }
+        await restoreLegacy()
+        // Nothing chosen opens: a paired computer does.
+        if fallsBackToComputer, case .signedOut = state, pendingServerConfirmation == nil, let computer = direct.accounts.first(where: { !$0.revoked }) ?? direct.accounts.first {
+            try? await activateDirect(computer.id)
+        }
+    }
+
+    private func restoreLegacy() async {
         do {
             let values = try await reconcile()
             guard let id = registry.activeID,
@@ -407,6 +427,10 @@ public final class AccountController {
                 localSettings = settings(for: next.keys.anonID)
                 state = .signedIn(next)
                 observeProfile(of: next)
+            } else if fallsBackToComputer, let computer = direct.accounts.first(where: { !$0.revoked }) ?? direct.accounts.first {
+                // The last Happy account went: a paired computer opens at
+                // once, with no Welcome between.
+                try? await activateDirect(computer.id)
             } else {
                 localSettings = LocalSettings(storage: InMemoryKeyValueStore())
                 state = .signedOut
@@ -455,7 +479,7 @@ public final class AccountController {
         memoryStores.removeValue(forKey: id)
         if wasActive {
             await next?.start()
-            if next == nil, let following = direct.accounts.first { try await activateDirect(following.id) }
+            if next == nil, direct.activeID == nil, let following = direct.accounts.first { try await activateDirect(following.id) }
         }
         if let cleanupError { throw cleanupError }
     }

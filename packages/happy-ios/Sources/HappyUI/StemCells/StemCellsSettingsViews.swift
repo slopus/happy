@@ -42,8 +42,10 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
 
     /// A profile came to rest in the middle.
     var onSelect: ((Int) -> Void)?
-    /// The "+" was tapped.
-    var onAdd: (() -> Void)?
+    /// A profile's circle was tapped: it is chosen and the sheet goes.
+    var onTap: ((Int) -> Void)?
+    /// The "+" was tapped, with where it is for a menu to point at.
+    var onAdd: ((UIView) -> Void)?
     private(set) var items: [Item] = []
     private(set) var selected = 0
     private let scroll = UIScrollView()
@@ -158,17 +160,22 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
         onSelect?(index)
     }
 
+    /// A tap chooses the profile at once, as Telegram's account list does:
+    /// it comes to the middle as the sheet goes.
     @objc private func circleTapped(_ gesture: UITapGestureRecognizer) {
         guard let circle = gesture.view as? Circle, let index = circles.firstIndex(where: { $0 === circle }) else { return }
         let target = StemCellsProfileCarousel.offset(for: index)
-        // A tap back on the chosen circle mid-scroll still turns back to it.
-        guard index != selected || scroll.contentOffset.x != target else { return }
         StemCellsHaptics.play(.pick)
         centered = index
-        if abs(scroll.contentOffset.x - target) < 1 { rest() } else { scroll.setContentOffset(CGPoint(x: target, y: 0), animated: true) }
+        if index != selected {
+            selected = index
+            for (i, circle) in circles.enumerated() { circle.accessibilityTraits = i == index ? [.button, .selected] : .button }
+        }
+        if scroll.contentOffset.x != target { scroll.setContentOffset(CGPoint(x: target, y: 0), animated: true) }
+        onTap?(index)
     }
 
-    @objc private func addTapped() { onAdd?() }
+    @objc private func addTapped() { onAdd?(add) }
 
     /// One circle: the picture clipped round, and a ring around it as far
     /// out as it is chosen.

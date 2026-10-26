@@ -12,8 +12,8 @@ final class HomeAccountControl: NSObject {
     private var observation: AccountsObservation?
     private var imageJob: Task<Void, Never>?
     private var accounts: [AccountSummary] = []
-    /// Stem Cells: the mark is the Happy logo and opens settings, which is
-    /// where switching accounts went.
+    /// Where a computer is a home of its own: the active account's picture,
+    /// always, opens the profiles' settings, which is where switching went.
     var opensSettings: (() -> Void)? {
         didSet { update(accounts) }
     }
@@ -27,22 +27,14 @@ final class HomeAccountControl: NSObject {
 
     private func update(_ accounts: [AccountSummary]) {
         self.accounts = accounts
-        if opensSettings != nil {
-            imageJob?.cancel()
-            header?.showsAccountAvatar = false
-            header?.logoControl.isUserInteractionEnabled = true
-            header?.logoControl.isAccessibilityElement = true
-            header?.logoControl.accessibilityLabel = Strings.StemCells.openSettings
-            header?.logoControl.accessibilityTraits = .button
-            apply(UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate), multiple: false)
-            return
-        }
-        let multiple = accounts.count > 1
+        let settings = opensSettings != nil
+        let multiple = accounts.count > 1 || settings
         let active = accounts.first(where: \.isActive)
         header?.showsAccountAvatar = multiple
         header?.logoControl.isUserInteractionEnabled = multiple
         header?.logoControl.isAccessibilityElement = multiple
-        header?.logoControl.accessibilityLabel = "Switch account"
+        header?.logoControl.accessibilityLabel = settings ? Strings.StemCells.openSettings : "Switch account"
+        header?.logoControl.accessibilityIdentifier = settings ? "stem-settings-mark" : nil
         header?.logoControl.accessibilityTraits = .button
         imageJob?.cancel()
         let fallback = multiple ? UIImage(systemName: active?.isDirect == true ? "desktopcomputer" : "person.crop.circle.fill") : UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
@@ -73,7 +65,8 @@ final class HomeAccountControl: NSObject {
         }
         let item = UIBarButtonItem(image: icon, style: .plain, target: self, action: #selector(open))
         item.isEnabled = multiple
-        item.accessibilityLabel = multiple ? "Switch account" : "Happy"
+        item.accessibilityLabel = opensSettings != nil ? Strings.StemCells.openSettings : multiple ? "Switch account" : "Happy"
+        item.accessibilityIdentifier = opensSettings != nil ? "stem-settings-mark" : nil
         controller?.navigationItem.leftBarButtonItem = item
     }
 

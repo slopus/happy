@@ -18,19 +18,20 @@ final class StemCellsPreferenceTests: XCTestCase {
         defaults.set("direct-1", forKey: StemCellsPreference.computerKey)
         let production = StemCellsPreference(variant: .production, storage: defaults)
         XCTAssertFalse(production.isAvailable)
-        XCTAssertFalse(production.isEnabled)
+        XCTAssertFalse(production.takeFilterChoice())
         XCTAssertNil(production.computerID)
-        production.isEnabled = true
-        XCTAssertFalse(production.isEnabled)
     }
 
-    func testPreviewAndDevelopmentOfferItOffByDefault() {
+    /// The filter's old choice is carried over once.
+    func testPreviewAndDevelopmentOfferIt() {
         for variant in [AppVariant.preview, .development] {
-            let preference = StemCellsPreference(variant: variant, storage: storage())
+            let defaults = storage()
+            let preference = StemCellsPreference(variant: variant, storage: defaults)
             XCTAssertTrue(preference.isAvailable)
-            XCTAssertFalse(preference.isEnabled, "not the default")
-            preference.isEnabled = true
-            XCTAssertTrue(preference.isEnabled)
+            XCTAssertFalse(preference.takeFilterChoice(), "not the default")
+            defaults.set(true, forKey: StemCellsPreference.enabledKey)
+            XCTAssertTrue(preference.takeFilterChoice())
+            XCTAssertFalse(preference.takeFilterChoice(), "carried over twice")
             preference.computerID = "direct-2"
             XCTAssertEqual(preference.computerID, "direct-2")
         }

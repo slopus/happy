@@ -52,9 +52,15 @@ public final class AppCoordinator {
         // A stored account flips to signed in before restore() starts
         // syncing, so home appears without a flash of Welcome; without one,
         // Welcome appears as soon as restore() finds nothing.
+        // Where a computer is a home of its own, the profile chosen last
+        // opens; with none, a paired computer rather than Welcome.
+        let stemCells = StemCellsPreference(variant: context.variant)
+        context.account.fallsBackToComputer = stemCells.isAvailable
         Task { @MainActor [weak self] in
             guard let account = self?.context.account else { return }
-            await account.restore()
+            // The Happy account's filter showed a computer's Stem Cells: that
+            // computer is home now, from the first screen.
+            await account.restore(openingComputer: stemCells.takeFilterChoice(), preferred: stemCells.computerID)
             self?.show(account.state)
             self?.accountRestored = true
             self?.openPendingDirectLink()

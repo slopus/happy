@@ -18,7 +18,11 @@ import UIKit
 /// the home header floats over content that scrolls under it.
 ///
 /// The dock sits at the foot of every state but Link Your Computer, which
-/// is not MainView in happy-app; content leaves it 108pt.
+/// is not MainView in happy-app; content leaves it 108pt. Where a computer
+/// is a home of its own (`StemCellsPreference`), it leaves the offline
+/// checklist too: with no computer to reach there is nothing to start work
+/// on. There, the account's picture leads to the profiles' settings, where
+/// a computer is chosen instead.
 ///
 /// Screens pushed over it (settings, server, troubleshoot) stay where they
 /// are when a computer arrives, as they do in happy-app.
@@ -40,8 +44,6 @@ public final class HomeViewController: UIViewController {
     /// The home filter's choice, as last derived.
     private var grouping: SessionListGrouping = .flat
     private var content: UIViewController?
-    /// The last content derived, kept while Stem Cells shows instead of it.
-    private var lastUpdate: HomeUpdate?
     private var preparesArchives = false
     private var accountControl: HomeAccountControl?
 
@@ -64,10 +66,6 @@ public final class HomeViewController: UIViewController {
         showsBackTitle()
         header.isHidden = true
         header.settingsButton.addAction(UIAction { [weak self] _ in self?.openSettings() }, for: .primaryActionTriggered)
-        header.searchButton.accessibilityIdentifier = "stem-search"
-        header.searchButton.addAction(UIAction { [weak self] _ in
-            (self?.content as? StemCellsHomeViewController)?.openSearch()
-        }, for: .primaryActionTriggered)
         header.filterButton.menu = filterMenu()
         header.filterButton.showsMenuAsPrimaryAction = true
         header.filterButton.preferredMenuElementOrder = .fixed
@@ -75,6 +73,12 @@ public final class HomeViewController: UIViewController {
         view.addSubview(dockView)
         view.addSubview(header)
         accountControl = HomeAccountControl(context: context, controller: self, header: header)
+        if StemCellsPreference(variant: context.variant).isAvailable {
+            accountControl?.opensSettings = { [weak self] in
+                guard let self else { return }
+                StemCellsSettingsNavigationController.present(context: context, computer: nil, from: self)
+            }
+        }
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
             input: HomeDerivation.Input(
                 expandedProjects: context.account.localSettings.expandedProjects,
@@ -119,13 +123,16 @@ public final class HomeViewController: UIViewController {
         // written again, off the main thread.
         NotificationCenter.default.addObserver(self, selector: #selector(clockChanged), name: UIApplication.significantTimeChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(rendererChanged), name: HomeRendererPreference.didChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(stemCellsChanged), name: StemCellsPreference.didChange, object: nil)
     }
 
-    /// The filter's third choice, this phone's own and never in production:
-    /// a paired computer's Stem Cells sidebar instead of the session list.
-    private var showsStemCells: Bool {
-        StemCellsPreference(variant: context.variant).isEnabled
+    /// Something can be started from the dock: a computer is linked and,
+    /// where a computer is a home of its own, one is reachable.
+    private var showsDock: Bool {
+        switch state {
+        case nil, .link?: false
+        case .offline?: !StemCellsPreference(variant: context.variant).isAvailable
+        default: true
+        }
     }
 
     deinit {
@@ -167,7 +174,6 @@ public final class HomeViewController: UIViewController {
         // The dock's text heights for this width and text size, made off
         // the main thread before the composer opens.
         dock?.prepareText(width: view.bounds.width, text: TextEnvironment(traitCollection))
-        let showsDock = showsStemCells || (state != nil && state != .link)
         let layout = HomeScreenLayout(
             size: view.bounds.size,
             safeArea: LayoutInsets(view.safeAreaInsets),
@@ -216,14 +222,10 @@ public final class HomeViewController: UIViewController {
     /// padding as safe area, as SessionsListWrapper pads them.
     private func applyInsets(_ insets: HomeContentInsets) {
         guard let content else { return }
-        let floating = showsStemCells || state != .link
+        let floating = state != .link
         if let list = content as? SessionListViewController {
             list.contentInsets = insets
             setAdditionalSafeArea(.zero, on: list)
-        } else if let stemCells = content as? StemCellsHomeViewController {
-            stemCells.header = header
-            stemCells.contentInsets = insets
-            setAdditionalSafeArea(.zero, on: stemCells)
         } else {
             let extra = floating ? UIEdgeInsets(insets.additionalSafeArea(over: LayoutInsets(view.safeAreaInsets))) : .zero
             setAdditionalSafeArea(extra, on: content)
@@ -238,12 +240,6 @@ public final class HomeViewController: UIViewController {
         let state = update.content
         let previous = self.state
         self.state = state
-        lastUpdate = update
-        if showsStemCells {
-            if !(content is StemCellsHomeViewController) { embed(StemCellsHomeViewController(context: context), animated: previous != nil) }
-            if update.kindChanged || previous == nil { updateNavigation(animated: previous != nil) }
-            return 0
-        }
         // The scrim is for a list that scrolls under the dock.
         dockView.showsScrim = state.kind == .list
         var rows = 0
@@ -287,22 +283,6 @@ public final class HomeViewController: UIViewController {
         return controller
     }
 
-    @objc private func stemCellsChanged() {
-        guard let lastUpdate else { return }
-        if showsStemCells {
-            guard !(content is StemCellsHomeViewController) else { return }
-            embed(StemCellsHomeViewController(context: context), animated: true)
-        } else {
-            guard content is StemCellsHomeViewController else { return }
-            if case .list(let model) = lastUpdate.content {
-                embed(makeList(model, changeset: RowChangeset()), animated: true)
-            } else {
-                embed(makeContent(for: lastUpdate), animated: true)
-            }
-        }
-        updateNavigation(animated: false)
-    }
-
     @objc private func rendererChanged() {
         prepareArchivesIfNeeded()
         guard isCurrentAccount, let list = content as? SessionListViewController,
@@ -338,18 +318,13 @@ public final class HomeViewController: UIViewController {
     /// other state hides the bar for the floating home header.
     private func updateNavigation(animated: Bool) {
         guard let state else { return }
-        let floating = showsStemCells || state != .link
+        let floating = state != .link
         // Tablet (HappyUI/Tablet): beside the sidebar the index route draws
         // nothing, nor its header and dock (MainView.tsx `isTablet`).
         let blank = floating && traitCollection.isTabletLayout
         content?.view.isHidden = blank
         header.isHidden = !floating || blank
-        // Stem Cells: search and the filter in the pill, settings behind the mark.
-        header.stemCellsActions = showsStemCells
-        if showsStemCells != (accountControl?.opensSettings != nil) {
-            accountControl?.opensSettings = showsStemCells ? { [weak self] in self?.openSettings() } : nil
-        }
-        dock?.isAvailable = floating && !blank && !showsStemCells
+        dock?.isAvailable = showsDock && !blank
         if navigationController?.topViewController === self {
             navigationController?.setNavigationBarHidden(floating, animated: animated)
         }
@@ -385,24 +360,10 @@ public final class HomeViewController: UIViewController {
             (.flat, Strings.SessionsFilter.flatList),
             (.project, Strings.SessionsFilter.groupByProject),
         ]
-        // Stem Cells, where this build offers it, stands in for the list
-        // while it is on; picking a grouping goes back to the list.
-        let stemCells = StemCellsPreference(variant: context.variant)
-        var choices: [UIMenuElement] = options.map { mode, title in
-            UIAction(title: title, state: !stemCells.isEnabled && current == mode ? .on : .off) { [weak self] _ in
-                if stemCells.isEnabled {
-                    stemCells.isEnabled = false
-                    NotificationCenter.default.post(name: StemCellsPreference.didChange, object: nil)
-                }
+        let choices: [UIMenuElement] = options.map { mode, title in
+            UIAction(title: title, state: current == mode ? .on : .off) { [weak self] _ in
                 self?.session.updateSettings(["sessionListGrouping": .string(mode.rawValue)])
             }
-        }
-        if stemCells.isAvailable {
-            choices.append(UIAction(title: Strings.StemCells.filterTitle, state: stemCells.isEnabled ? .on : .off) { _ in
-                guard !stemCells.isEnabled else { return }
-                stemCells.isEnabled = true
-                NotificationCenter.default.post(name: StemCellsPreference.didChange, object: nil)
-            })
         }
         let grouping = UIMenu(
             title: Strings.SessionsFilter.groupingTitle,

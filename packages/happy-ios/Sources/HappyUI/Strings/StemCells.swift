@@ -7,7 +7,6 @@ import HappyCore
 extension Strings {
     public enum StemCells {
         /// The home filter's third choice.
-        public static let filterTitle = "Stem Cells"
 
         // Rows (HappyAgentSpacesSidebar.tsx, AppHappyAgentView.tsx).
         public static let search = "Search"
@@ -202,7 +201,7 @@ extension Strings {
         public static let done = "Done"
         public static let searchSettings = "Search settings"
         public static let showQR = "QR code"
-        public static let addProfile = "Add a computer or account"
+        public static let addProfile = "Add computer"
         public static let more = "More"
         public static let status = "Status"
         public static let account = "Account"

@@ -1,0 +1,195 @@
+import ObjectiveC
+import XCTest
+
+/// The profile chosen decides home, against a real throwaway Happy Agent and
+/// a local throwaway Happy server: a paired computer is Stem Cells, the
+/// Happy account its sessions (here, Link Your Computer, with no input box).
+/// Tapping a profile's circle in settings switches and goes home; a launch
+/// opens the profile chosen last. The driver pairs the simulator; the test
+/// signs a fresh Happy account up on the local server and out again.
+@MainActor
+final class InstanceSwitchUITests: XCTestCase {
+    private let app = XCUIApplication()
+    /// The local happy-server the driver runs (`.context/hs-data`).
+    private static let server = "http://127.0.0.1:3077"
+
+    private static let skipsQuiescence: Bool = {
+        guard let process = NSClassFromString("XCUIApplicationProcess") else { return false }
+        var replaced = false
+        let one: @convention(block) (AnyObject, Bool) -> Void = { _, _ in }
+        let two: @convention(block) (AnyObject, Bool, Bool) -> Void = { _, _, _ in }
+        for (name, block) in [
+            ("waitForQuiescenceIncludingAnimationsIdle:", one as Any),
+            ("waitForQuiescenceIncludingAnimationsIdle:isPreEvent:", two as Any),
+        ] {
+            guard let method = class_getInstanceMethod(process, NSSelectorFromString(name)) else { continue }
+            method_setImplementation(method, imp_implementationWithBlock(block))
+            replaced = true
+        }
+        return replaced
+    }()
+
+    override func setUp() {
+        continueAfterFailure = false
+        print("InstanceSwitchUITests skips quiescence: \(Self.skipsQuiescence)")
+        app.launch()
+    }
+
+    private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any)[id] }
+    private func pause(_ seconds: TimeInterval) { Thread.sleep(forTimeInterval: seconds) }
+
+    private func capture(_ name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private var anyRow: XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:")).firstMatch
+    }
+
+    /// Pairs if this simulator has no computer yet, then waits for Stem Cells.
+    private func computerHome() {
+        if anyRow.waitForExistence(timeout: 8) { return }
+        print("STEM_PAIR_READY")
+        let match = app.buttons["Emoji match"]
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let deadline = Date().addingTimeInterval(120)
+        while Date() < deadline, !match.exists {
+            for alert in [app.alerts.firstMatch, springboard.alerts.firstMatch] where alert.buttons["Open"].exists {
+                alert.buttons["Open"].tap()
+            }
+            _ = match.waitForExistence(timeout: 1)
+        }
+        XCTAssertTrue(match.exists, "pairing never showed its emoji")
+        pause(1.5)
+        match.tap()
+        XCTAssertTrue(anyRow.waitForExistence(timeout: 90))
+    }
+
+    /// A computer's home: its Stem Cells, search alone in the pill.
+    private func assertComputerHome(_ message: String) {
+        XCTAssertTrue(anyRow.waitForExistence(timeout: 15), message)
+        XCTAssertTrue(element("stem-search").exists, "no search on the computer's home")
+        XCTAssertFalse(app.buttons["Filter"].exists, "the computer's home still has a filter")
+        XCTAssertFalse(app.buttons["Scan QR code"].exists)
+    }
+
+    /// The Happy account's home with no computer linked: Link Your
+    /// Computer, the picture to settings, and no input box.
+    private func assertAccountHome(_ message: String) {
+        XCTAssertTrue(app.buttons["Scan QR code"].waitForExistence(timeout: 15), message)
+        XCTAssertFalse(anyRow.exists, "the computer's rows on the account's home")
+        XCTAssertTrue(element("stem-settings-mark").exists, "no way to settings from the account's home")
+        XCTAssertFalse(element("home-dock-entry").exists && element("home-dock-entry").isHittable, "an input box on the link screen")
+        XCTAssertFalse(element("stem-new-work").exists && element("stem-new-work").isHittable, "an input box on the link screen")
+    }
+
+    private func openSettings() {
+        let mark = element("stem-settings-mark")
+        XCTAssertTrue(mark.waitForExistence(timeout: 5), "no picture to open settings")
+        mark.tap()
+        XCTAssertTrue(element("stem-settings").waitForExistence(timeout: 5), "settings didn't open")
+        pause(1.2)
+    }
+
+    private func profiles() -> [XCUIElement] {
+        let all = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-profile:"))
+        return (0..<all.count).map { element("stem-profile:\($0)") }
+    }
+
+    private func relaunch() {
+        app.terminate()
+        app.launch()
+        pause(2)
+    }
+
+    func testSwitchingDecidesHome() {
+        computerHome()
+        assertComputerHome("not the computer's home at first")
+        pause(1)
+        capture("switch-computer-home")
+
+        // A fresh Happy account on the local server, added from settings.
+        openSettings()
+        capture("switch-settings-computer")
+        element("stem-settings:more").tap()
+        let add = app.buttons["Add Happy account"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        add.tap()
+        let server = app.buttons["Server"]
+        XCTAssertTrue(server.waitForExistence(timeout: 5), "Welcome has no server button")
+        server.tap()
+        let field = app.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        // A run before may have left it set.
+        if (field.value as? String)?.hasPrefix(Self.server) != true {
+            field.tap()
+            field.typeText(Self.server)
+            app.buttons["Save"].firstMatch.tap()
+            let confirm = app.alerts.buttons["Continue"]
+            XCTAssertTrue(confirm.waitForExistence(timeout: 10), "the local server wasn't accepted")
+            confirm.tap()
+            pause(1.5)
+        }
+        if !app.buttons["Create account"].exists { app.navigationBars.buttons.element(boundBy: 0).tap() }
+        let create = app.buttons["Create account"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        create.tap()
+        assertAccountHome("signing up didn't open the account's home")
+        pause(1.5)
+        capture("switch-account-link")
+
+        // Its picture: every profile, the account chosen; the computer's
+        // circle switches and goes home.
+        openSettings()
+        let circles = profiles()
+        XCTAssertGreaterThanOrEqual(circles.count, 2, "settings doesn't list the computer and the account")
+        XCTAssertTrue(circles.last?.isSelected == true, "the account isn't the chosen circle")
+        capture("switch-settings-account")
+        circles[0].tap()
+        XCTAssertTrue(element("stem-settings").waitForNonExistence(timeout: 5), "tapping a circle left settings up")
+        assertComputerHome("tapping the computer's circle didn't show its home")
+        pause(1)
+        capture("switch-to-computer")
+
+        relaunch()
+        assertComputerHome("a launch didn't keep the computer")
+        capture("switch-relaunch-computer")
+
+        openSettings()
+        profiles().last?.tap()
+        XCTAssertTrue(element("stem-settings").waitForNonExistence(timeout: 5))
+        assertAccountHome("tapping the account's circle didn't show its home")
+        pause(1)
+        capture("switch-to-account")
+
+        relaunch()
+        assertAccountHome("a launch didn't keep the account")
+        capture("switch-relaunch-account")
+
+        // Signed out of the only Happy account: the computer, not Welcome.
+        openSettings()
+        element("stem-settings:sign-out").tap()
+        let signOut = app.alerts.buttons["Sign out"]
+        XCTAssertTrue(signOut.waitForExistence(timeout: 5))
+        signOut.tap()
+        pause(2)
+        if element("stem-settings").exists {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).press(
+                forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)),
+                withVelocity: .fast, thenHoldForDuration: 0)
+        }
+        assertComputerHome("signing out didn't go back to the computer")
+        capture("switch-signed-out")
+    }
+}
+
+private extension XCUIElement {
+    func waitForNonExistence(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline, exists { Thread.sleep(forTimeInterval: 0.2) }
+        return !exists
+    }
+}

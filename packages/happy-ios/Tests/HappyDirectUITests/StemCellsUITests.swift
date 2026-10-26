@@ -1119,7 +1119,7 @@ final class StemCellsUITests: XCTestCase {
 
     /// Settings from the picture: the QR sheet and its Scan, Edit renaming
     /// the computer in place, Prioritizing's switch, the profiles' circles
-    /// (choosing one turns the page and makes it active), "+", and More.
+    /// ("+" adding a computer by its code or link), and More.
     func testSettings() {
         home()
         pause(1)
@@ -1174,25 +1174,16 @@ final class StemCellsUITests: XCTestCase {
         pause(1.5)
         XCTAssertEqual(prioritizing.value as? String, was)
 
-        // The other computer's circle: the page turns to it, then back.
-        // By place in the strip, not name: a computer paired twice wears one name.
-        let first = app.descendants(matching: .any)["stem-profile:0"]
-        let second = app.descendants(matching: .any)["stem-profile:1"]
-        if second.exists {
-            let (mine, other) = first.isSelected ? (first, second) : (second, first)
-            XCTAssertTrue(mine.isSelected, "the shown profile isn't the chosen circle")
-            other.tap()
-            pause(2.5)
-            XCTAssertTrue(other.isSelected, "the tapped circle didn't come to the middle")
-            capture("settings-other-profile")
-            mine.tap()
-            pause(2.5)
-            XCTAssertTrue(mine.isSelected)
-            XCTAssertEqual(app.staticTexts["stem-settings-name"].label, to)
-        }
+        // A tapped circle switches and goes home: InstanceSwitchUITests.
 
-        // "+" opens the scanner.
+        // "+" adds a computer: its code or its link; the code opens the scanner.
         app.descendants(matching: .any)["stem-profile-add"].tap()
+        let scanCode = app.buttons["Scan QR Code"]
+        XCTAssertTrue(scanCode.waitForExistence(timeout: 3), "+ offered no way to add a computer")
+        XCTAssertTrue(app.buttons["Enter link manually"].exists)
+        pause(1)
+        capture("settings-add-computer")
+        scanCode.tap()
         XCTAssertTrue(closeScanner.waitForExistence(timeout: 5))
         pause(1)
         closeScanner.tap()
