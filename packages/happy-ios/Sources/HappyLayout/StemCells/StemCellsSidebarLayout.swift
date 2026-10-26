@@ -79,16 +79,18 @@ public enum StemCellsSidebarLayout {
             let height = height(row.kind)
             let box = CGRect(x: boxX, y: y, width: boxWidth, height: height)
             let midY = y + height / 2
-            let inkRight = boxX + boxWidth - M.padding
-            let trailingRect = CGRect(x: inkRight - M.trailing, y: midY - M.trailing / 2, width: M.trailing, height: M.trailing)
+            // On whole points: the square is odd at 1.5x.
+            let trailingRect = CGRect(x: (width - M.trailingCenter - M.trailing / 2).rounded(.down), y: (midY - M.trailing / 2).rounded(.down), width: M.trailing, height: M.trailing)
+            let inkRight = trailingRect.maxX
             var frame = Frame(box: box, mark: nil, label: .zero, trailing: nil, chevron: nil, add: nil, rule: nil)
             switch row.kind {
             case .separator:
                 frame.rule = CGRect(x: boxX, y: (midY - M.line / 2).rounded(.down), width: boxWidth, height: M.line)
             case .section:
-                // The title keeps clear of the fold's lane (`padding-right:
-                // row padding + 22`), so showing the fold moves nothing.
-                let x = boxX + M.padding
+                // The title starts where a mark would, and keeps clear of the
+                // fold's lane (`padding-right: row padding + 22`), so showing
+                // the fold moves nothing.
+                let x = leadingX(depth: 0)
                 var end = trailingRect.minX
                 if row.hasAdd {
                     let add = trailingRect.offsetBy(dx: -(M.trailing + M.trailingGap), dy: 0)
@@ -125,19 +127,16 @@ public enum StemCellsSidebarLayout {
     /// Between a section's title and its fold: `22 − 18`.
     static let sectionFoldGap: CGFloat = 4 * StemCellsMetrics.phone
 
-    /// Where a row's mark (or, without one, its label) starts. A nested row is
-    /// padded `SIDEBAR_ROW_INDENT` per level and leads with its branch box,
-    /// pulled back under the parent's lane, then the row's gap.
+    /// Where a row's mark (or, without one, its label) starts: a top-level
+    /// mark centred under the header's left control, `indent` more per level.
     static func leadingX(depth: Int) -> CGFloat {
         typealias M = StemCellsMetrics
-        let padded = M.inset + M.padding + CGFloat(depth) * M.indent
-        return depth > 0 ? padded - M.branchPull + M.branch + M.markGap : padded
+        return M.markCenter - M.mark / 2 + CGFloat(depth) * M.indent
     }
 
-    /// `SidebarTreeConnectors`: one stem per parent at the centre of its
-    /// children's branch boxes, from `SIDEBAR_BRANCH_STEM_INSET` under the
-    /// parent's middle to a point past its last child's, and a 9-long elbow
-    /// into each child at its middle.
+    /// `SidebarTreeConnectors`: one stem per parent down its mark's centre,
+    /// from under the mark to a point past its last child's middle, and an
+    /// elbow into each child at its middle, stopping short of its mark.
     static func connectors(_ rows: [Row], _ frames: [Frame]) -> [CGRect] {
         typealias M = StemCellsMetrics
         var lines: [CGRect] = []
@@ -154,12 +153,13 @@ public enum StemCellsSidebarLayout {
         }
         for parent in order {
             let kids = children[parent] ?? []
-            let stemX = M.inset + M.padding + CGFloat(rows[parent].depth) * M.indent + M.branch / 2
+            let stemX = (leadingX(depth: rows[parent].depth) + M.mark / 2 - M.line / 2).rounded(.down)
             let top = frames[parent].box.midY + M.stemInset
             let bottom = (kids.map { frames[$0].box.midY }.max() ?? top) + M.line
-            lines.append(CGRect(x: stemX - M.line / 2, y: top, width: M.line, height: max(0, bottom - top)))
+            lines.append(CGRect(x: stemX, y: top, width: M.line, height: max(0, bottom - top)))
             for kid in kids {
-                lines.append(CGRect(x: stemX + M.line / 2, y: frames[kid].box.midY, width: M.elbow, height: M.line))
+                let end = leadingX(depth: rows[kid].depth) - M.elbowGap
+                lines.append(CGRect(x: stemX + M.line, y: (frames[kid].box.midY - M.line / 2).rounded(.down), width: max(0, end - stemX - M.line), height: M.line))
             }
         }
         return lines

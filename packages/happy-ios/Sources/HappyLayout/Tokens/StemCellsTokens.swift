@@ -112,20 +112,26 @@ public enum StemCellsMetrics {
     public static let sheenInk: CGFloat = 0.15
     public static let sheenDuration: Double = 1.6
     // Desktop's sidebar at its own pixels (`Sidebar.tsx`: `SIDEBAR_ROW_HEIGHT`
-    // and the rest, `styles/sidebar.css`, `theme.css`), each twice over on
-    // the phone: rows, gaps, type, marks and lines all `phone` times desktop's.
+    // and the rest, `styles/sidebar.css`, `theme.css`), half again as big on
+    // the phone: rows, gaps, type and marks all `phone` times desktop's. The
+    // edges are the phone's own: marks stand under the header's left
+    // control, folds under its right one, and nesting stays tight.
     /// How much bigger than desktop's the phone draws the sidebar.
-    public static let phone: CGFloat = 2
-    /// The row box's inset from the screen's edges (`--happy-panel-inset`).
-    public static let inset: CGFloat = 6 * phone
-    /// Ink's inset inside the row box (`--happy-panel-row-padding`, `SIDEBAR_ROW_PADDING_X`).
-    public static let padding: CGFloat = 10 * phone
+    public static let phone: CGFloat = 1.5
+    /// The row box's inset from the screen's edges.
+    public static let inset: CGFloat = 8
+    /// A top-level mark's centre: the header's left control's
+    /// (`HomeHeaderLayout`: 16 in, 44 wide).
+    public static let markCenter: CGFloat = HomeHeaderLayout.Metrics.paddingHorizontal + HomeHeaderLayout.Metrics.controlSize / 2
+    /// The trailing square's centre from the right edge: the header's
+    /// right-most button's (16 in, a 1 rim, 44 wide).
+    public static let trailingCenter: CGFloat = HomeHeaderLayout.Metrics.paddingHorizontal + HomeHeaderLayout.Metrics.controlBorder + HomeHeaderLayout.Metrics.controlSize / 2
     /// `SIDEBAR_ROW_HEIGHT`.
     public static let rowHeight: CGFloat = 32 * phone
     /// `.happy-sidebar__section-item`.
     public static let sectionHeight: CGFloat = 28 * phone
     /// `.happy-sidebar__separator`.
-    public static let separatorHeight: CGFloat = 17 * phone
+    public static let separatorHeight: CGFloat = (17 * phone).rounded()
     public static let widgetMinHeight: CGFloat = 32 * phone
     /// Between one row and the next (`SIDEBAR_ROW_GAP`).
     public static let rowGap: CGFloat = 2 * phone
@@ -135,15 +141,13 @@ public enum StemCellsMetrics {
     public static let glyph: CGFloat = 16 * phone
     /// The row's flex gap: mark to label, label to trailing lane.
     public static let markGap: CGFloat = 8 * phone
-    /// Added per nesting level (`SIDEBAR_ROW_INDENT`).
-    public static let indent: CGFloat = 16 * phone
-    /// A nested row's branch box (`.happy-sidebar__item-branch`): 20 wide,
-    /// pulled back 16, so its centre is the parent's stem; the elbow runs 9.
-    public static let branch: CGFloat = 20 * phone
-    public static let branchPull: CGFloat = 16 * phone
-    public static let elbow: CGFloat = 9 * phone
-    /// How far under the parent's middle its stem starts (`SIDEBAR_BRANCH_STEM_INSET`).
-    public static let stemInset: CGFloat = 10 * phone
+    /// A nested row's mark stands this far right of its parent's: desktop's
+    /// 28 (a mark and its gap), not scaled, so nesting stays narrow.
+    public static let indent: CGFloat = 28
+    /// The parent's stem runs down its mark's centre, from under the mark,
+    /// and an elbow runs from it to `elbowGap` short of the child's mark.
+    public static let stemInset: CGFloat = mark / 2
+    public static let elbowGap: CGFloat = 4
     /// The trailing square a status mark, an unread dot or a fold stands in (`SIDEBAR_SLOT_CELL`).
     public static let trailing: CGFloat = 18 * phone
     public static let trailingGap: CGFloat = 8 * phone
@@ -159,8 +163,8 @@ public enum StemCellsMetrics {
     public static let sectionLabelSize: CGFloat = 11 * phone
     /// `letter-spacing: 0.08em`.
     public static let sectionTracking: CGFloat = 0.08
-    /// The tree's lines and a separator's rule.
-    public static let line: CGFloat = 1 * phone
+    /// The tree's lines and a separator's rule: desktop's, not scaled.
+    public static let line: CGFloat = 1
     /// The fold's chevron, the question and the clock in the trailing square.
     public static let chevronGlyph: CGFloat = 12 * phone
     public static let questionGlyph: CGFloat = 15 * phone

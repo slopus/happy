@@ -78,9 +78,9 @@ final class StemCellsUITests: XCTestCase {
         }
     }
 
-    /// A tap on a row's chevron, at its trailing end.
+    /// A tap on a row's chevron, at its trailing end: its centre 31 in from the row's end.
     private func tapChevron(_ row: XCUIElement) {
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: row.frame.maxX - 25, dy: row.frame.midY)).tap()
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: row.frame.maxX - 31, dy: row.frame.midY)).tap()
     }
 
     /// Opens every folded section, top to bottom.
@@ -357,7 +357,7 @@ final class StemCellsUITests: XCTestCase {
         let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:space:"))
         func order() -> [String] {
             // Rows named alike (two "Trip notes") can't be told apart by name: left out.
-            let ids = rows.allElementsBoundByIndex.filter { $0.frame.height > 0 }.sorted { $0.frame.minY < $1.frame.minY }.map { $0.identifier }
+            let ids = shownRows("stem-row:space:").sorted { $0.frame.minY < $1.frame.minY }.map { $0.identifier }
             return ids.filter { id in ids.filter { $0 == id }.count == 1 }
         }
         // A task a few rows down, carried up two rows.
@@ -421,7 +421,8 @@ final class StemCellsUITests: XCTestCase {
         pause(1)
         let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:space:"))
         func order() -> [String] {
-            let ids = rows.allElementsBoundByIndex.filter { $0.frame.height > 0 && $0.frame.minY > app.frame.height * 0.12 && $0.frame.maxY < app.frame.height * 0.8 }.sorted { $0.frame.minY < $1.frame.minY }.map { $0.identifier }
+            let screen = app.frame.height
+            let ids = shownRows("stem-row:space:").filter { $0.frame.minY > screen * 0.12 && $0.frame.maxY < screen * 0.8 }.sorted { $0.frame.minY < $1.frame.minY }.map { $0.identifier }
             return ids.filter { id in ids.filter { $0 == id }.count == 1 }
         }
         let all = order()
@@ -476,8 +477,8 @@ final class StemCellsUITests: XCTestCase {
         // Open, so what's made under it shows.
         if let under = rowUnder(section), under.identifier.hasPrefix("stem-row:section:") || under.frame.minY > section.frame.maxY + 40 { tapChevron(section); pause(1) }
         capture("section-add-before")
-        // The "+" stands just before the chevron: 102 points in from the row's end.
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: section.frame.maxX - 102, dy: section.frame.midY)).tap()
+        // The "+" stands one square before the chevron: its centre 70 in from the row's end.
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: section.frame.maxX - 70, dy: section.frame.midY)).tap()
         XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 6), "the + opened no new work")
         pause(1)
         capture("section-add-opened")
@@ -1438,6 +1439,8 @@ final class StemCellsUITests: XCTestCase {
         pause(1.5)
         let parent = "Refactor billing service"
         let task = row("space", parent)
+        // Prioritizing may have filed it under a folded section.
+        if !task.waitForExistence(timeout: 3) { openFoldedSections() }
         XCTAssertTrue(task.waitForExistence(timeout: 5))
         bringIntoView(task)
         pause(1)
