@@ -210,27 +210,4 @@ final class StemCellsLayoutTests: XCTestCase {
         XCTAssertEqual(long.status, rect(16, 110, 358, 14))
         XCTAssertEqual(long.size.height, 132)
     }
-
-    func testTheIntroOffersWrapCentredUnderItsCaption() {
-        let line = text("Say what it is — it’ll find its place.", advance: 8, lineHeight: 20)
-        let caption = text("Or start one of these:", advance: 8, lineHeight: 20)
-        let layout = MakeStuffIntroLayout(width: 390, line: line, caption: caption, optionLabels: [80, 90, 100, 60, 120, 70])
-        XCTAssertEqual(layout.caption, rect(16, 120, 358, 20))
-        // Buttons are their label and 42 of chrome; each line is centred.
-        XCTAssertEqual(layout.options, [
-            rect(64, 156, 122, 28), rect(194, 156, 132, 28),
-            rect(69, 192, 142, 28), rect(219, 192, 102, 28),
-            rect(54, 228, 162, 28), rect(224, 228, 112, 28),
-        ])
-        // desktop's makeStuffIntroHeight: 116 + 4 + 20 + 16 + 3 × 28 + 2 × 8 + 16.
-        XCTAssertEqual(layout.size, CGSize(width: 390, height: 272))
-        // A wide screen wraps at 480.
-        let wide = MakeStuffIntroLayout(width: 1000, line: line, caption: caption, optionLabels: [180, 180, 180])
-        XCTAssertEqual(wide.options, [rect(274, 156, 222, 28), rect(504, 156, 222, 28), rect(389, 192, 222, 28)])
-        // Begun: the options give way and the row ends under its line.
-        let settled = MakeStuffIntroLayout(width: 390, line: line, caption: caption, optionLabels: [80], settled: true)
-        XCTAssertNil(settled.caption)
-        XCTAssertEqual(settled.options, [])
-        XCTAssertEqual(settled.size.height, 116)
-    }
 }

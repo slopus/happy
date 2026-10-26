@@ -29,38 +29,10 @@ public struct StemCellsSnapshot: Equatable, Sendable {
     public var error: String?
     /// Why the last new work could not be made, as `error`.
     public var stemCellError: String?
-    /// What new work offers to make at once instead (desktop's `createOffers`).
-    public var offers: [StemCellOffer] = []
     /// What the references in messages read as and open.
     public var references = StemCellReferences()
 
     public init() {}
-}
-
-/// One kind of thing new work can be made as directly: a Surface the daemon
-/// serves, or a bot.
-public enum StemCellOffer: Equatable, Sendable {
-    case surface(String)
-    case bot
-
-    /// Desktop's order: `SURFACE_CREATE_OFFERS`, then New bot.
-    public static let surfaceTypes = ["todo", "document", "calendar", "system_monitor", "chat"]
-
-    /// `surfaceCreateMenu`: a todo list wherever Surfaces are served; the
-    /// other kinds only where health says the daemon serves them.
-    static func available(surfaces: Bool, capabilities: AgentWire.Health.Capabilities) -> [StemCellOffer] {
-        guard surfaces else { return [.bot] }
-        let served = surfaceTypes.filter { type in
-            switch type {
-            case "document": capabilities.collaborativeDocuments == true
-            case "calendar": capabilities.calendarSurfaces == true
-            case "system_monitor": capabilities.systemMonitorSurfaces == true
-            case "chat": capabilities.chatSurfaces == true
-            default: true
-            }
-        }
-        return served.map { .surface($0) } + [.bot]
-    }
 }
 
 /// New work, named on this phone before the daemon answers.
@@ -298,7 +270,6 @@ public actor StemCellsStore {
             prioritizingDaemon = snapshot.prioritizing
             let served = (try? await surfaceList) ?? nil
             surfaces = served ?? []
-            snapshot.offers = StemCellOffer.available(surfaces: served != nil, capabilities: capabilities)
             self.bots = botList; self.tasks = taskList
             agents = StemCellsAgents()
             for owner in botList + taskList { if let agent = owner["agent"] { agents.absorb(agent) } }
@@ -740,49 +711,6 @@ public actor StemCellsStore {
         if creating.isEmpty { if dragging { stale = true } else { reloadSidebar() } }
     }
 
-    /// One of new work's offers: a Surface, which the daemon puts in the
-    /// sidebar once it holds something. A document starts with its name as
-    /// its heading, so it does at once.
-    public func createSurface(type: String, name: String) async throws -> AgentWire.Surface {
-        let id = ClientID.make()
-        let text = type == "document" ? "# \(name)\n" : nil
-        do {
-            let surface = try await retrying { [client] in try await client.createSurface(id: id, type: type, name: name, text: text) }
-            surfaces.removeAll { $0.id == surface.id }
-            surfaces.append(surface)
-            rebuildPlaces()
-            publish()
-            return surface
-        } catch {
-            failed(error)
-            throw error
-        }
-    }
-
-    /// A new bot, unnamed: its row comes with the daemon's events, and its
-    /// conversation is ready when this answers.
-    public func createBot() async throws -> AgentWire.Bot {
-        let (id, workspaceId, agentId) = (ClientID.make(), ClientID.make(), ClientID.make())
-        do {
-            let bot = try await retrying { [client] in try await client.createBot(id: id, workspaceId: workspaceId, agentId: agentId) }
-            schedulePlacesReload()
-            return bot
-        } catch {
-            failed(error)
-            throw error
-        }
-    }
-
-    /// Sends again only what was not heard; the caller's IDs make a repeat harmless.
-    private func retrying<T: Sendable>(_ request: @Sendable () async throws -> T) async throws -> T {
-        for attempt in 0..<3 {
-            do { return try await request() }
-            catch let error as DirectAgentError where (error.status ?? 500) < 500 { throw error }
-            catch { if attempt == 2 { throw error }; try await Task.sleep(for: .milliseconds(500 * (attempt + 1))) }
-        }
-        throw DirectAgentError.invalidResponse
-    }
-
     public func dismissStemCellError() {
         snapshot.stemCellError = nil
         publish()
@@ -952,10 +880,7 @@ public actor StemCellsStore {
         agentIcons = kept.agentIcons
         bots = kept.bots; tasks = kept.tasks
         surfaces = kept.surfaces ?? []
-        if let capabilities = kept.capabilities {
-            self.capabilities = capabilities
-            snapshot.offers = StemCellOffer.available(surfaces: kept.surfacesServed ?? false, capabilities: capabilities)
-        }
+        if let capabilities = kept.capabilities { self.capabilities = capabilities }
         if snapshot.prioritizing == nil { snapshot.prioritizing = kept.prioritizing }
         for owner in bots + tasks { if let agent = owner["agent"] { agents.absorb(agent) } }
         rebuildPlaces()
@@ -972,7 +897,6 @@ public actor StemCellsStore {
             artifactId: artifactId, version: held.version, html: held.html,
             spaces: spaces.values.filter { $0.version > 0 }.sorted { $0.id < $1.id },
             agentIcons: agentIcons, bots: bots, tasks: tasks, surfaces: surfaces,
-            surfacesServed: snapshot.offers.contains { if case .surface = $0 { true } else { false } },
             capabilities: capabilities, prioritizing: prioritizingDaemon
         )
         Task { await offline.update { $0.sidebar = sidebar } }

@@ -123,10 +123,6 @@ extension AgentWire {
             public var sidebarOperations: Bool?
             public var sidebarProposals: Bool?
             public var sidebarAttachments: Bool?
-            public var collaborativeDocuments: Bool?
-            public var calendarSurfaces: Bool?
-            public var systemMonitorSurfaces: Bool?
-            public var chatSurfaces: Bool?
             public var stories: Bool?
             public var stickers: Bool?
         }

@@ -139,7 +139,6 @@ final class StemCellChatViewController: UIViewController {
         working.isHidden = true
         scrollView.addSubview(working)
         introView.accessibilityIdentifier = "stem-intro"
-        introView.onOffer = { [weak self] offer in self?.make(offer) }
         // New work asks what it is; a conversation already going asks for the next message.
         if case .stemCell = intro { card.configuration.placeholder = Strings.StemCells.composerPlaceholder }
         card.configuration.showsAdd = true
@@ -356,10 +355,6 @@ final class StemCellChatViewController: UIViewController {
         if snapshot.allRows != sidebarRows {
             sidebarRows = snapshot.allRows
             proposals.spacesChanged()
-        }
-        if introView.offers != snapshot.offers {
-            introView.setOffers(snapshot.offers)
-            view.setNeedsLayout()
         }
         guard let spaceId, let row = snapshot.rows.first(where: { $0.spaceId == spaceId }) else { return }
         if title != row.label { title = row.label }
@@ -1001,42 +996,6 @@ final class StemCellChatViewController: UIViewController {
                 break
             }
             return
-        }
-    }
-
-    // MARK: Offers
-
-    /// Desktop's `createOfferSelect`: a Surface is named, then made and
-    /// opened; a bot is made at once and its conversation opened. The new
-    /// work stays where it is, under them.
-    private func make(_ offer: StemCellOffer) {
-        let store = session.store
-        switch offer {
-        case .bot:
-            Task { @MainActor [weak self] in
-                guard let bot = try? await store.createBot(), let agentId = bot.agent?.id, let self else { return }
-                let chat = StemCellChatViewController(session: session, agentId: agentId, title: bot.name, spaceId: nil, stemCell: nil)
-                navigationController?.pushViewController(chat, animated: true)
-            }
-        case .surface(let type):
-            let alert = UIAlertController(title: Strings.StemCells.offer(offer), message: nil, preferredStyle: .alert)
-            alert.addTextField { field in
-                field.text = Strings.StemCells.surfaceName(type)
-                field.placeholder = Strings.StemCells.nameIt
-                field.autocapitalizationType = .sentences
-                field.clearButtonMode = .whileEditing
-                field.accessibilityIdentifier = "stem-offer-name"
-            }
-            alert.addAction(UIAlertAction(title: Strings.StemCells.cancel, style: .cancel))
-            alert.addAction(UIAlertAction(title: Strings.StemCells.make, style: .default) { [weak self, weak alert] _ in
-                let typed = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let name = typed.isEmpty ? Strings.StemCells.surfaceName(type) : typed
-                Task { @MainActor [weak self] in
-                    guard let surface = try? await store.createSurface(type: type, name: name), let self else { return }
-                    navigationController?.pushViewController(StemCellsSurfaceViewController(session: session, surface: surface), animated: true)
-                }
-            })
-            present(alert, animated: true)
         }
     }
 

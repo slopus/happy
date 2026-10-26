@@ -6,7 +6,7 @@ import CoreGraphics
 import XCTest
 
 /// Exact frames for the Stem Cells screens around the sidebar: the banner,
-/// the empty state, search, a todo list, a document and an intro option.
+/// the empty state, search, a todo list and a document.
 final class StemCellsScreenLayoutTests: XCTestCase {
     func testHomeStacksTheBannerOverTheList() {
         let layout = StemCellsHomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, bannerHeight: 90)
@@ -69,12 +69,6 @@ final class StemCellsScreenLayoutTests: XCTestCase {
         XCTAssertEqual(layout.body, rect(0, 8, 390, 300))
         XCTAssertEqual(layout.contentHeight, 324)
         XCTAssertEqual(StemCellsSurfaceBodyLayout(width: 390, body: block(height: 20), inset: 16).body, rect(16, 8, 358, 20))
-    }
-
-    func testAnOptionHoldsItsIconThenItsLabel() {
-        let content = MakeStuffIntroLayout.optionContent(CGSize(width: 122, height: 28), label: CGSize(width: 80, height: 16))
-        XCTAssertEqual(content.icon, rect(11, 7, 14, 14))
-        XCTAssertEqual(content.label, rect(31, 6, 80, 16))
     }
 
     func testChatTitleIsItsTextWideAndAllOfItWhileEdited() {

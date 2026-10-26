@@ -4,8 +4,8 @@ import HappyWire
 
 /// What one paired computer last showed, kept on this phone so the app
 /// opens on it with the computer asleep or out of reach: the sidebar as
-/// last read (its document, spaces, bots, tasks, Surfaces, Prioritizing
-/// and what new work offers), the computer's model configuration for the
+/// last read (its document, spaces, bots, tasks, Surfaces and
+/// Prioritizing), the computer's model configuration for the
 /// pickers, the dock's pick, and the pictures the rows wear.
 ///
 /// One folder per computer, `StemCells/<account>/` under Application
@@ -22,7 +22,6 @@ public struct StemCellsOfflineSnapshot: Codable, Equatable, Sendable {
         public var tasks: [JSONValue]
         /// Absent in a copy written before they were kept.
         public var surfaces: [AgentWire.Surface]?
-        public var surfacesServed: Bool?
         public var capabilities: AgentWire.Health.Capabilities?
         public var prioritizing: Bool?
     }

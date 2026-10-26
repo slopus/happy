@@ -168,14 +168,6 @@ public final class DirectAgentClient: Sendable {
         }
     }
 
-    /// A bot under the phone's own IDs, unnamed: the daemon calls it New Bot
-    /// and names it from its first message. It answers once the bot is ready.
-    public func createBot(id: String, workspaceId: String, agentId: String) async throws -> AgentWire.Bot {
-        let body: JSONValue = .object(["id": .string(id), "workspaceId": .string(workspaceId), "agentId": .string(agentId), "mutationId": .string(ClientID.make())])
-        struct Response: Decodable { let bot: AgentWire.Bot }
-        return try await decode(Response.self, "POST", "/v0/bots", json: body).bot
-    }
-
     // MARK: Surfaces
 
     /// The joined Surfaces; nil where the daemon serves none (`404`, `501`).
@@ -183,14 +175,6 @@ public final class DirectAgentClient: Sendable {
         struct Response: Decodable { let surfaces: [Lossy<AgentWire.Surface>] }
         do { return try await decode(Response.self, "GET", "/v0/surfaces").surfaces.compactMap(\.value) }
         catch DirectAgentError.status(404, _, _), DirectAgentError.status(501, _, _) { return nil }
-    }
-
-    /// `id` is the retry key: a repeat returns the Surface already made.
-    public func createSurface(id: String, type: String, name: String, text: String? = nil) async throws -> AgentWire.Surface {
-        var body: [String: JSONValue] = ["id": .string(id), "type": .string(type), "name": .string(name), "mutationId": .string(ClientID.make())]
-        if let text { body["text"] = .string(text) }
-        struct Response: Decodable { let surface: AgentWire.Surface }
-        return try await decode(Response.self, "POST", "/v0/surfaces", json: .object(body)).surface
     }
 
     /// A todo list's active todos, then its completed ones.

@@ -23,7 +23,7 @@ protocol StemCellsDockHosting: UIViewController {
 
 /// New work from home's dock without going anywhere: the conversation's
 /// composer is drawn where the dock is and rides the keyboard up, while the
-/// rest of new work (its ground, intro, offers and glass header) fades in
+/// rest of new work (its ground, intro and glass header) fades in
 /// over the sidebar. Popping is the same backwards, the keyboard going down
 /// with the composer to the dock; an edge swipe drives it with the finger.
 @MainActor

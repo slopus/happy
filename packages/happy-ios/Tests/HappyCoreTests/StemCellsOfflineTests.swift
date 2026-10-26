@@ -22,7 +22,7 @@ final class StemCellsOfflineTests: XCTestCase {
         await file.update {
             $0.sidebar = StemCellsOfflineSnapshot.Sidebar(
                 artifactId: "a", version: 3, html: "<nav/>", spaces: [], agentIcons: [:], bots: [], tasks: [],
-                surfaces: [AgentWire.Surface(id: "s", type: "todo", name: "Groceries")], surfacesServed: true,
+                surfaces: [AgentWire.Surface(id: "s", type: "todo", name: "Groceries")],
                 capabilities: nil, prioritizing: true
             )
         }

@@ -151,9 +151,8 @@ final class StemCellsDaemonTests: XCTestCase {
         await store.stop()
     }
 
-    /// Each offer makes the real thing: a Surface through `POST /v0/surfaces`,
-    /// a bot through `POST /v0/bots`.
-    func testOffersMakeTheRealThing() async throws {
+    /// The setting the banner follows reads as the daemon holds it.
+    func testTheSettingReadsAsTheDaemonHoldsIt() async throws {
         let credentials = try await credentials()
         let client = client(credentials)
         let store = StemCellsStore(client: client)
@@ -164,31 +163,28 @@ final class StemCellsDaemonTests: XCTestCase {
         while ContinuousClock.now < deadline, let snapshot = await updates.next() {
             if snapshot.live, snapshot.availability == .available { ready = snapshot; break }
         }
-        // The setting the banner follows reads as the daemon holds it.
         let (api, _) = try daemon()
         let held = try call(api, ["GET", "/v0/user-settings/" + StemCellsStore.settingKey])["setting"]?["value"]
         let read = try await client.userSetting(StemCellsStore.settingKey)
         XCTAssertEqual(read, held == .null ? nil : held)
         XCTAssertEqual(ready?.prioritizing, held == .bool(true))
-        let offers = try XCTUnwrap(ready?.offers)
-        XCTAssertEqual(offers.first, .surface("todo"))
-        XCTAssertEqual(offers.last, .bot)
-
-        let list = try await store.createSurface(type: "todo", name: "Offer list")
-        XCTAssertEqual(list.type, "todo")
-        try await client.addTodo(list.id, id: ClientID.make(), text: "Buy oranges")
-        let todos = try await client.todos(list.id)
-        XCTAssertEqual(todos.map(\.text), ["Buy oranges"])
-
-        if offers.contains(.surface("document")) {
-            let document = try await store.createSurface(type: "document", name: "Offer notes")
-            let text = try await client.document(document.id)
-            XCTAssertTrue(text.contains("Offer notes"), text)
-        }
-
-        let bot = try await store.createBot()
-        XCTAssertNotNil(bot.agent?.id)
         await store.stop()
+    }
+
+    /// A Surface made elsewhere (desktop, an agent) reads here: a todo list
+    /// takes a todo, a document reads as its Markdown.
+    func testSurfacesMadeElsewhereRead() async throws {
+        let credentials = try await credentials()
+        let client = client(credentials)
+        let (api, _) = try daemon()
+        let list = try XCTUnwrap(call(api, ["POST", "/v0/surfaces", #"{"type":"todo","name":"Read list"}"#])["surface"]?["id"]?.stringValue)
+        try await client.addTodo(list, id: ClientID.make(), text: "Buy oranges")
+        let todos = try await client.todos(list)
+        XCTAssertEqual(todos.map(\.text), ["Buy oranges"])
+        let made = try call(api, ["POST", "/v0/surfaces", ##"{"type":"document","name":"Read notes","text":"# Read notes\n"}"##])
+        guard let document = made["surface"]?["id"]?.stringValue else { throw XCTSkip("This daemon serves no documents") }
+        let text = try await client.document(document)
+        XCTAssertTrue(text.contains("Read notes"), text)
     }
 
     /// Every task row whose conversation has subtasks offers to show them,

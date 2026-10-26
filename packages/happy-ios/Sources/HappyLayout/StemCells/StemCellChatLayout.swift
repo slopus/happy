@@ -5,82 +5,29 @@ import CoreGraphics
 
 /// MakeStuffView.tsx's intro, the first row of new work's conversation: the
 /// 64px mark centred over one line, 16 apart and 16 inside the row
-/// (`.happy-make-stuff__empty`, `__lead`), then what can be made at once
-/// (`__offer`): a caption 4 under the line and the options 16 under it,
-/// wrapping as flex does at 480 at most, 8 across and between lines, each
-/// line centred. Once the conversation has begun (`settled`) the options go,
-/// the line keeps its place, hidden, and the row ends right under it
-/// (`[data-settled] { padding-bottom: 0 }`), where the first message lands.
+/// (`.happy-make-stuff__empty`, `__lead`). Once the conversation has begun
+/// (`settled`) the line keeps its place, hidden, and the row ends right
+/// under it (`[data-settled] { padding-bottom: 0 }`), where the first
+/// message lands.
 public struct MakeStuffIntroLayout: Equatable, Sendable {
     public enum Metrics {
         public static let inset: CGFloat = 16
         public static let mark: CGFloat = 64
         public static let gap: CGFloat = 16
-        public static let captionGap: CGFloat = 4
-        public static let optionsMeasure: CGFloat = 480
-        public static let optionGap: CGFloat = 8
-        public static let optionHeight: CGFloat = 28
-        /// A small Button with an icon: 10 padding and a 1 border a side, a 14 icon, 6 gap.
-        public static let optionChrome: CGFloat = 22 + 14 + 6
     }
 
     public var size: CGSize
     public var mark: CGRect
     public var line: CGRect
-    public var caption: CGRect?
-    public var options: [CGRect]
 
-    /// `line` and `caption` are centred text wrapping inside the row;
-    /// `optionLabels` are the options' labels at their natural width.
-    public init(width: CGFloat, line: Measurable, caption: Measurable? = nil, optionLabels: [CGFloat] = [], settled: Bool = false) {
+    /// `line` is centred text wrapping inside the row.
+    public init(width: CGFloat, line: Measurable, settled: Bool = false) {
         typealias M = Metrics
         let measure = max(0, width - 2 * M.inset)
         let lineSize = line.size(fitting: measure)
         mark = CGRect(x: (width - M.mark) / 2, y: M.inset, width: M.mark, height: M.mark)
         self.line = CGRect(x: M.inset, y: mark.maxY + M.gap, width: measure, height: lineSize.height)
-        guard !settled, let caption, !optionLabels.isEmpty else {
-            self.caption = nil
-            options = []
-            size = CGSize(width: max(0, width), height: self.line.maxY + (settled ? 0 : M.inset))
-            return
-        }
-        let captionFrame = CGRect(x: M.inset, y: self.line.maxY + M.captionGap, width: measure, height: caption.size(fitting: measure).height)
-        self.caption = captionFrame
-        // Each option joins the line while it fits, as flex-wrap does.
-        let measureLine = min(M.optionsMeasure, measure)
-        var lines: [[CGFloat]] = []
-        var used: CGFloat = 0
-        for label in optionLabels {
-            let button = min(measureLine, label.rounded(.up) + M.optionChrome)
-            if lines.isEmpty || used + M.optionGap + button > measureLine + 1 / 64 {
-                lines.append([button])
-                used = button
-            } else {
-                lines[lines.count - 1].append(button)
-                used += M.optionGap + button
-            }
-        }
-        var frames: [CGRect] = []
-        var y = captionFrame.maxY + M.gap
-        for buttons in lines {
-            let total = buttons.reduce(0, +) + CGFloat(buttons.count - 1) * M.optionGap
-            var x = ((width - total) / 2).rounded(.down)
-            for button in buttons {
-                frames.append(CGRect(x: x, y: y, width: button, height: M.optionHeight))
-                x += button + M.optionGap
-            }
-            y += M.optionHeight + M.optionGap
-        }
-        options = frames
-        size = CGSize(width: max(0, width), height: y - M.optionGap + M.inset)
-    }
-
-    /// Inside one option: the 14 icon 11 in (10 padding and the border), the
-    /// label 6 after it, both centred on the button's height.
-    public static func optionContent(_ button: CGSize, label: CGSize) -> (icon: CGRect, label: CGRect) {
-        let icon = CGRect(x: 11, y: ((button.height - 14) / 2).rounded(), width: 14, height: 14)
-        let text = CGRect(x: icon.maxX + 6, y: ((button.height - label.height) / 2).rounded(), width: max(0, min(label.width, button.width - icon.maxX - 6 - 11)), height: label.height)
-        return (icon, text)
+        size = CGSize(width: max(0, width), height: self.line.maxY + (settled ? 0 : M.inset))
     }
 }
 

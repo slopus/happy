@@ -511,75 +511,61 @@ final class StemCellsUITests: XCTestCase {
         pause(1)
     }
 
-    /// New work's offers make the real thing: a todo list that takes a todo
-    /// and joins the sidebar, a document with its heading, and a bot whose
-    /// conversation opens. The untouched new work is closed after.
-    func testOffers() {
+    /// New work makes only new work: its intro offers no todo list,
+    /// document, calendar, chat or bot to make instead.
+    func testNoOffers() {
         home()
         pause(1.5)
         app.descendants(matching: .any)["stem-new-work"].tap()
-        XCTAssertTrue(app.staticTexts["Or start one of these:"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 5))
         if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        XCTAssertTrue(app.staticTexts["Say what it is — it’ll find its place."].waitForExistence(timeout: 5))
         pause(1.5)
-        capture("offers")
-
-        offer("New todo list", name: "Weekend errands")
-        let field = app.textFields["stem-todo-field"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10))
-        pause(1)
-        field.tap()
-        field.typeText("Buy oranges\n")
-        XCTAssertTrue(app.descendants(matching: .any)["stem-todo"].waitForExistence(timeout: 10))
-        field.tap()
-        field.typeText("Water the cactus\n")
-        pause(2)
-        capture("todo-list")
+        capture("no-offers")
+        XCTAssertFalse(app.staticTexts["Or start one of these:"].exists, "new work still offers things to start")
+        let offers = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-offer"))
+        XCTAssertEqual(offers.count, 0, "new work still offers things to make")
+        for gone in ["New todo list", "New document", "New calendar", "New system monitor", "New chat", "New bot"] {
+            XCTAssertFalse(app.buttons[gone].exists, "new work still offers \(gone)")
+        }
         app.tapBack()
         pause(1)
-
-        offer("New document", name: "Trip notes")
-        XCTAssertTrue(app.descendants(matching: .any)["stem-document"].waitForExistence(timeout: 10))
-        pause(2)
-        capture("document")
-        app.tapBack()
-        pause(1)
-
-        app.descendants(matching: .any)["stem-offer:New bot"].tap()
-        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 20))
-        pause(2)
-        capture("new-bot")
-        app.tapBack()
-        pause(1)
-        app.tapBack()
-        XCTAssertTrue(row("space", "Weekend errands").waitForExistence(timeout: 15), "the todo list never joined the sidebar")
-        XCTAssertTrue(row("space", "Trip notes").waitForExistence(timeout: 15), "the document never joined the sidebar")
-        pause(2)
-        capture("sidebar-with-surfaces")
         let fresh = row("space", "New").firstMatch
         if fresh.exists {
             fresh.press(forDuration: 1.0)
             let close = app.buttons["Close new work"]
             if close.waitForExistence(timeout: 3) { close.tap() }
-            pause(2)
+            pause(1)
         }
-        // Each run makes one more: the newest is any of them.
-        row("space", "Weekend errands").firstMatch.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["stem-todo"].waitForExistence(timeout: 10))
-        pause(2)
-        app.tapBack()
-        pause(1)
     }
 
-    private func offer(_ label: String, name: String) {
-        let button = app.descendants(matching: .any)["stem-offer:\(label)"]
-        XCTAssertTrue(button.waitForExistence(timeout: 5))
-        button.tap()
-        let field = app.alerts.textFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 3))
-        field.buttons["Clear text"].firstMatch.tap()
-        field.typeText(name)
-        pause(0.5)
-        app.alerts.buttons["Create"].tap()
+    /// Surfaces made elsewhere open from the sidebar: a todo list that takes
+    /// a todo, a document with its heading. The harness makes them first.
+    func testSurfaces() {
+        home()
+        let list = row("space", "Weekend errands").firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 15), "the todo list isn't in the sidebar")
+        list.tap()
+        let field = app.textFields["stem-todo-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        let todos = app.descendants(matching: .any).matching(identifier: "stem-todo")
+        XCTAssertTrue(todos.firstMatch.waitForExistence(timeout: 10))
+        let before = todos.count
+        field.tap()
+        field.typeText("Water the cactus\n")
+        XCTAssertTrue(until(10) { todos.count == before + 1 }, "the todo wasn't added")
+        pause(1)
+        capture("todo-list")
+        app.tapBack()
+        pause(1)
+        let notes = row("space", "Trip notes").firstMatch
+        XCTAssertTrue(notes.waitForExistence(timeout: 15), "the document isn't in the sidebar")
+        notes.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-document"].waitForExistence(timeout: 10))
+        pause(1)
+        capture("document")
+        app.tapBack()
+        pause(1)
     }
 
     /// Prioritizing on (home never mentions it off), then new work: live over the

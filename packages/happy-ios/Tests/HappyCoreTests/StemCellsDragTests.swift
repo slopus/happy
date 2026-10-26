@@ -48,6 +48,15 @@ final class StemCellsDragTests: XCTestCase {
         return try XCTUnwrap(SidebarDocumentEdits.move(document, drag.moving, after: after)).items.map(\.id)
     }
 
+    func testASurfaceRowWearsItsKindsGlyph() {
+        XCTAssertEqual(StemCellsRows.surfaceGlyph("todo"), "tasks")
+        XCTAssertEqual(StemCellsRows.surfaceGlyph("document"), "doc")
+        XCTAssertEqual(StemCellsRows.surfaceGlyph("calendar"), "calendar")
+        XCTAssertEqual(StemCellsRows.surfaceGlyph("system_monitor"), "pulse")
+        XCTAssertEqual(StemCellsRows.surfaceGlyph("chat"), "users")
+        XCTAssertEqual(StemCellsRows.surfaceGlyph(nil), "doc")
+    }
+
     func testARowsPeersAreTheTopLevelRowsWithTheirNestedOnes() throws {
         let (drag, document) = try setUp("c")
         // happy, a (+a1), work, b, c, sep, d, old: the folded section's run is not drawn.
