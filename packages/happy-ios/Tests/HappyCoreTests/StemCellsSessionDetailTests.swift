@@ -90,29 +90,44 @@ final class StemCellsSessionDetailTests: XCTestCase {
         XCTAssertEqual(family.map(\.collapsed), [nil, nil, nil, nil, nil], "nothing folds here")
     }
 
-    /// Filed under a section: the section is its parent, open, and the
-    /// siblings stay at its level; the next section's rows aren't family.
-    func testATopLevelConversationIsFiledUnderItsSection() {
-        let rows = [space("loose"), section("Work"), space("x"), space("me"), session("kid", depth: 1), space("y"), section("Home"), space("z")]
+    /// At the top level, filed under a section or not: itself over its
+    /// children, no section and no siblings.
+    func testATopLevelConversationShowsOnlyItsChildren() {
+        let rows = [space("loose"), section("Work"), space("x"), space("me"), session("kid", depth: 1), session("grandkid", depth: 2), space("y"), section("Home"), space("z")]
         let family = StemCellsFamily.of("me", in: rows)
-        XCTAssertEqual(family.map(\.id), ["Work", "x", "me", "kid", "y"])
-        XCTAssertEqual(family.map(\.depth), [0, 0, 0, 1, 0])
-        XCTAssertEqual(family.first?.collapsed, false, "the section shows open")
+        XCTAssertEqual(family.map(\.id), ["me", "kid"])
+        XCTAssertEqual(family.map(\.depth), [0, 1])
+        XCTAssertEqual(StemCellsFamily.of("loose", in: rows).map(\.id), ["loose"], "alone, with no children")
     }
 
     /// A surface's row opens no conversation: it isn't family.
     func testSurfacesAreNotFamily() {
-        let doc = StemCellsRow(id: "doc", nodeId: "doc", kind: .space, label: "doc", spaceId: "doc", targetKind: "surface")
-        XCTAssertEqual(StemCellsFamily.of("me", in: [space("a"), doc, space("me")]).map(\.id), ["a", "me"])
+        let doc = StemCellsRow(id: "doc", nodeId: "doc", kind: .session, depth: 1, label: "doc", spaceId: "doc", targetKind: "surface")
+        XCTAssertEqual(StemCellsFamily.of("me", in: [space("bot"), session("a", depth: 1), doc, session("me", depth: 1)]).map(\.id), ["bot", "a", "me"])
     }
 
-    /// Unfiled, it has no parent; of many siblings, the two either side,
-    /// five in all even at an end.
+    /// Nested among many siblings: the two either side, five in all even
+    /// at an end.
     func testManySiblingsAreTheNearestFive() {
-        let rows = (0..<12).map { space("s\($0)") }
-        XCTAssertEqual(StemCellsFamily.of("s6", in: rows).map(\.id), ["s4", "s5", "s6", "s7", "s8"])
-        XCTAssertEqual(StemCellsFamily.of("s0", in: rows).map(\.id), ["s0", "s1", "s2", "s3", "s4"])
-        XCTAssertEqual(StemCellsFamily.of("s11", in: rows).map(\.id), ["s7", "s8", "s9", "s10", "s11"])
+        let rows = [space("bot")] + (0..<12).map { session("s\($0)", depth: 1) }
+        XCTAssertEqual(StemCellsFamily.of("s6", in: rows).map(\.id), ["bot", "s4", "s5", "s6", "s7", "s8"])
+        XCTAssertEqual(StemCellsFamily.of("s0", in: rows).map(\.id), ["bot", "s0", "s1", "s2", "s3", "s4"])
+        XCTAssertEqual(StemCellsFamily.of("s11", in: rows).map(\.id), ["bot", "s7", "s8", "s9", "s10", "s11"])
         XCTAssertEqual(StemCellsFamily.of("missing", in: rows), [])
+    }
+
+    func testStartedReadsAsNearAsAPersonSaysIt() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = Date(timeIntervalSince1970: 1_793_000_000) // Mon 2026-10-26 07:33 UTC
+        func started(hoursAgo: Double) -> StemCellsDetailFormat.Started {
+            StemCellsDetailFormat.started(since: (now.timeIntervalSince1970 - hoursAgo * 3600) * 1000, now: now, calendar: calendar)
+        }
+        func at(_ hoursAgo: Double) -> Date { now.addingTimeInterval(-hoursAgo * 3600) }
+        XCTAssertEqual(started(hoursAgo: 2), .today(at(2)))
+        XCTAssertEqual(started(hoursAgo: 20), .yesterday(at(20)))
+        XCTAssertEqual(started(hoursAgo: 24 * 4), .weekday(at(24 * 4)))
+        XCTAssertEqual(started(hoursAgo: 24 * 40), .thisYear(at(24 * 40)))
+        XCTAssertEqual(started(hoursAgo: 24 * 400), .date(at(24 * 400)))
     }
 }

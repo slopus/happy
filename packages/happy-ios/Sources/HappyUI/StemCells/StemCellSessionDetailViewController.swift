@@ -1,17 +1,20 @@
 #if canImport(UIKit)
+import AVKit
 import HappyCore
 import HappyLayout
 import UIKit
 
 /// A conversation's detail, pushed from its header's capsule: the legacy
 /// app's session screen made over in Settings' glass style. Its mark and
-/// name (renamed where it stands, as Settings' name is), its numbers as
-/// tiles, where it sits in the sidebar's tree drawn by the sidebar's own
-/// rows, and desktop's Activity: the children at work and the terminals
-/// running, then the settled children under a fold. Every row opens its
-/// conversation. Frames are `StemCellSessionDetailLayout`'s; what it shows
-/// is read off the main thread (`StemCellsSessionDetailFeed`) and again as
-/// the conversation's events come.
+/// name (renamed where it stands, as Settings' name is), its model, effort
+/// and when it started as tiles; what it shared, Telegram's shared media in
+/// our style (its pictures, recordings and files in a grid, then the links
+/// written in it); where it sits in the sidebar's tree drawn by the
+/// sidebar's own rows, and desktop's Activity: the children at work and the
+/// terminals running, then the settled children under a fold. Every row
+/// opens its conversation. Frames are `StemCellSessionDetailLayout`'s; what
+/// it shows is read off the main thread (`StemCellsSessionDetailFeed`,
+/// `StemCellsSharedFeed`) and again as the conversation's events come.
 final class StemCellSessionDetailViewController: UIViewController, UIGestureRecognizerDelegate {
     private let session: StemCellsSession
     private let agentId: String
@@ -21,8 +24,25 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
     var onRenamed: (() -> Void)?
 
     private let feed: StemCellsSessionDetailFeed
-    /// The conversation as its screen holds it, for its message count.
+    /// The conversation as its screen holds it: what it shared, at once.
     private let warm: (chat: StemCellsWarmChats.Chat, token: UUID)
+    /// What it shared further back, a page of history at a time.
+    private let sharedFeed: StemCellsSharedFeed
+    private var sharedState = StemCellsSharedFeed.State()
+    /// The transcript's and the history's, newest first.
+    private var shared = StemCellsShared()
+    private var mediaLimit = StemCellSessionDetailViewController.mediaPage
+    private var linksLimit = StemCellSessionDetailViewController.linksPage
+    private var asking: Task<Void, Never>?
+    /// What a "Show more" asked while history was being read: asked once it's in.
+    private var pendingAsk = (media: false, links: false)
+    private var reader = StemCellsShared.Reader()
+    private var previewing: Task<Void, Never>?
+    private lazy var loader = StemCellMediaLoader(client: session.client, agentId: agentId)
+    private var preview: StemCellFilePreview?
+    /// Four rows of media, five links; each "Show more" as many again.
+    private static let mediaPage = 12
+    private static let linksPage = 5
     private var detail: StemCellsSessionDetail?
     private var chat = StemCellChatSnapshot()
     private var row: StemCellsRow?
@@ -36,16 +56,18 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
     private let name = UILabel()
     private var nameField: StemCellsRenameField?
     private let subtitle = UILabel()
-    private let tiles = (0..<6).map { _ in StemCellDetailTileView() }
+    private let tiles = (0..<3).map { _ in StemCellDetailTileView() }
     private let actions = StemCellsSettingsCardView()
+    private let mediaHeading = StemCellDetailTileView.heading()
+    private let mediaCard = StemCellDetailMediaCardView()
+    private let linksHeading = StemCellDetailTileView.heading()
+    private let linksCard = StemCellDetailActivityCardView()
     private let familyHeading = StemCellDetailTileView.heading()
     private let familyCard = StemCellDetailCardView()
     private let tree = StemCellsSidebarView()
     private let activityHeading = StemCellDetailTileView.heading()
     private let running = StemCellDetailActivityCardView()
     private let completed = StemCellDetailActivityCardView()
-    private let quiet = StemCellDetailCardView()
-    private let quietLabel = UILabel()
     private var watch: StemCellsWatch?
     private var following: Task<Void, Never>?
 
@@ -58,6 +80,7 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         self.spaceId = spaceId
         fallbackTitle = title.isEmpty ? nil : title
         feed = StemCellsSessionDetailFeed(client: session.client, store: session.store, agentId: agentId)
+        sharedFeed = StemCellsSharedFeed(client: session.client, agentId: agentId)
         warm = session.warm.hold(agentId)
         super.init(nibName: nil, bundle: nil)
     }
@@ -87,11 +110,23 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         subtitle.textAlignment = .center
         subtitle.accessibilityIdentifier = "stem-detail-subtitle"
         scroll.addSubview(subtitle)
-        for (tile, id) in zip(tiles, ["tokens", "messages", "subagents", "age", "model", "effort"]) {
+        for (tile, id) in zip(tiles, ["model", "effort", "started"]) {
             tile.accessibilityIdentifier = "stem-detail-tile:\(id)"
             scroll.addSubview(tile)
         }
         scroll.addSubview(actions)
+        mediaHeading.text = Strings.StemCells.media.uppercased()
+        scroll.addSubview(mediaHeading)
+        mediaCard.source = loader
+        mediaCard.accessibilityIdentifier = "stem-detail-media"
+        mediaCard.onSelect = { [weak self] index in self?.openMedia(index) }
+        mediaCard.onMore = { [weak self] in self?.showMore(media: true) }
+        scroll.addSubview(mediaCard)
+        linksHeading.text = Strings.StemCells.links.uppercased()
+        scroll.addSubview(linksHeading)
+        linksCard.accessibilityIdentifier = "stem-detail-links"
+        linksCard.onSelect = { [weak self] index in self?.openLink(index) }
+        scroll.addSubview(linksCard)
         familyHeading.text = Strings.StemCells.family.uppercased()
         scroll.addSubview(familyHeading)
         tree.scrolls = false
@@ -109,14 +144,6 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         completed.onSelect = { [weak self] index in self?.openChild(self?.detail?.completed, index) }
         completed.accessibilityIdentifier = "stem-detail-completed"
         scroll.addSubview(completed)
-        quietLabel.text = Strings.StemCells.quietActivity
-        quietLabel.font = StemCellsFonts.ui(.regular, size: 15)
-        quietLabel.textColor = UIColor(Palette.stemCellsSettingsSecondary)
-        quietLabel.textAlignment = .center
-        quietLabel.accessibilityIdentifier = "stem-detail-quiet"
-        quiet.addSubview(quietLabel)
-        quiet.isHidden = true
-        scroll.addSubview(quiet)
         scroll.addGestureRecognizer({
             let tap = UITapGestureRecognizer(target: self, action: #selector(tappedAway))
             tap.cancelsTouchesInView = false
@@ -130,8 +157,11 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
 
         watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
         session.warm.watch(warm.chat, token: warm.token) { [weak self] snapshot in
-            self?.chat = snapshot
-            self?.applyNumbers()
+            guard let self else { return }
+            let items = chat.items
+            chat = snapshot
+            applyNumbers()
+            if snapshot.items != items { applyShared() }
         }
         chat = warm.chat.snapshot
         let updates = feed.updates
@@ -148,6 +178,8 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         Task { await feed.start() }
         applyNumbers()
         applyActivity()
+        applyShared()
+        askShared(media: true, links: true)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -163,6 +195,8 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         guard !finished else { return }
         finished = true
         following?.cancel()
+        asking?.cancel()
+        previewing?.cancel()
         watch?.invalidate()
         let feed = feed
         Task { await feed.stop() }
@@ -237,21 +271,86 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         return [kind, status].compactMap { $0 }.joined(separator: " · ")
     }
 
-    /// The tiles: tokens, messages, subagents running, age, model, effort.
+    /// The tiles: model, effort, and when it started.
     private func applyNumbers() {
         let none = Strings.StemCells.none
         let mode = detail?.mode ?? chat.mode
         let menus = session.models.catalog.flatMap { catalog in mode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
-        let now = Date().timeIntervalSince1970 * 1000
         let values: [(String, String)] = [
-            (detail?.tokens.map(StemCellsDetailFormat.tokens) ?? none, Strings.StemCells.tokens),
-            (chat.loaded ? Strings.StemCells.messageCount(chat.items.count, more: chat.hasMore) : none, Strings.StemCells.messages),
-            (detail.map { Strings.StemCells.ofTotal($0.subagentsRunning, $0.subagentsTotal) } ?? none, Strings.StemCells.subagentsRunning),
-            (detail?.createdAt.map { Strings.StemCells.age(StemCellsDetailFormat.age(since: $0, now: now)) } ?? none, Strings.StemCells.age),
             (menus?.current?.label ?? mode?.modelId ?? none, Strings.StemCells.model),
             ((menus?.effort ?? mode?.effort).map(StemCellModelMenus.effortName) ?? none, Strings.StemCells.effort),
+            (detail?.createdAt.map { Strings.StemCells.started(StemCellsDetailFormat.started(since: $0, now: Date())) } ?? none, Strings.StemCells.started),
         ]
         for (tile, (value, label)) in zip(tiles, values) { tile.show(value: value, label: label) }
+    }
+
+    // MARK: Shared
+
+    /// What the transcript in hand shows, then what history adds behind it.
+    private func applyShared(force: Bool = false) {
+        let next = reader.read(chat.items).merged(older: sharedState.shared)
+        guard force || next != shared else { return }
+        shared = next
+        let media = shownMedia
+        // Every picture, for the viewer to page through; the bytes are
+        // the ones `shared` holds, not copied.
+        loader.register([StemCellChatItem(id: "shared", role: .agent, pieces: shared.media.map { one in
+            switch one {
+            case .picture(let id, let mimeType, let data): .picture(id: id, mimeType: mimeType, data: data)
+            case .tool(let media): media.isVisual ? .gallery([media], columns: 0) : .file(media)
+            }
+        }, delivery: .sent)])
+        mediaCard.show(media)
+        linksCard.show(shownLinks.map { link in
+            .init(glyph: "link-outline", tile: .blue, title: link.title ?? link.host, meta: Self.address(link.url), opens: true, id: "stem-detail-link:\(link.url)")
+        }, disclosure: nil, more: StemCellsSettingsRow(id: "links-more", title: Strings.StemCells.showMore, accessory: .none, action: { [weak self] in self?.showMore(media: false) }))
+        view.setNeedsLayout()
+    }
+
+    private var shownMedia: [StemCellsShared.Media] { Array(shared.media.prefix(mediaLimit)) }
+    private var shownLinks: [StemCellsShared.Link] { Array(shared.links.prefix(linksLimit)) }
+
+    /// More than is shown, or history still unread that may hold more.
+    private func hasMore(_ count: Int, limit: Int) -> Bool {
+        count > limit || sharedState.hasMore
+    }
+
+    /// History back far enough for one more than the asked sections show,
+    /// so each knows whether there is more. Asked while reading, it asks
+    /// again once that is in.
+    private func askShared(media: Bool, links: Bool) {
+        guard asking == nil else {
+            pendingAsk = (pendingAsk.media || media, pendingAsk.links || links)
+            return
+        }
+        let feed = sharedFeed
+        let targets = (media: media ? mediaLimit + 1 : nil, links: links ? linksLimit + 1 : nil)
+        asking = Task { [weak self] in
+            let state = await feed.load(media: targets.media, links: targets.links)
+            guard let self, !Task.isCancelled else { return }
+            asking = nil
+            sharedState = state
+            applyShared(force: true)
+            let next = pendingAsk
+            pendingAsk = (false, false)
+            if next.media || next.links { askShared(media: next.media, links: next.links) }
+        }
+    }
+
+    private func showMore(media: Bool) {
+        StemCellsHaptics.play(.fold)
+        if media { mediaLimit += Self.mediaPage } else { linksLimit += 2 * Self.linksPage }
+        applyShared(force: true)
+        askShared(media: media, links: !media)
+    }
+
+    /// A link as it reads under its title: no scheme, no `www.`, no slash at its end.
+    static func address(_ url: String) -> String {
+        var text = url
+        for prefix in ["https://", "http://"] where text.hasPrefix(prefix) { text.removeFirst(prefix.count) }
+        if text.hasPrefix("www.") { text.removeFirst(4) }
+        if text.hasSuffix("/") { text.removeLast() }
+        return text
     }
 
     private func applyActivity() {
@@ -294,8 +393,10 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         let settled = detail?.completed.count ?? 0
         let layout = StemCellSessionDetailLayout(
             width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight),
-            tiles: tiles.count, actions: actionRows.count, family: familyHeight,
-            running: workCount, completed: settled,
+            tiles: tiles.count, actions: actionRows.count,
+            media: .init(count: shownMedia.count, more: hasMore(shared.media.count, limit: mediaLimit)),
+            links: .init(count: shownLinks.count, more: hasMore(shared.links.count, limit: linksLimit)),
+            family: familyHeight, running: workCount, completed: settled,
             countWidth: StemCellsSettingsCardView.valueWidth("\(settled)") ?? 0, open: completedOpen
         )
         mark.frame = layout.mark
@@ -306,6 +407,14 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         actions.isHidden = actionRows.isEmpty
         actions.frame = layout.actions.frame
         actions.show(actionRows, layout: layout.actions)
+        mediaHeading.isHidden = layout.media == nil
+        mediaCard.isHidden = layout.media == nil
+        if let frame = layout.mediaHeading { mediaHeading.frame = frame }
+        if let card = layout.media { mediaCard.place(card) }
+        linksHeading.isHidden = layout.links == nil
+        linksCard.isHidden = layout.links == nil
+        if let frame = layout.linksHeading { linksHeading.frame = frame }
+        if let card = layout.links { linksCard.place(frame: card.frame, disclosure: nil, rows: card.rows, more: card.more) }
         familyHeading.isHidden = layout.family == nil
         familyCard.isHidden = layout.family == nil
         if let frame = layout.familyHeading { familyHeading.frame = frame }
@@ -313,17 +422,12 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
             familyCard.frame = frame
             tree.frame = familyCard.bounds
         }
-        activityHeading.frame = layout.activityHeading
-        activityHeading.isHidden = detail == nil
+        activityHeading.isHidden = layout.activityHeading == nil
+        if let frame = layout.activityHeading { activityHeading.frame = frame }
         running.isHidden = layout.running == nil
         if let card = layout.running { running.place(card) }
         completed.isHidden = layout.completed == nil
         if let card = layout.completed { completed.place(card) }
-        quiet.isHidden = layout.empty == nil || detail == nil
-        if let frame = layout.empty {
-            quiet.frame = frame
-            quietLabel.frame = quiet.bounds.insetBy(dx: 16, dy: 0)
-        }
         scroll.contentSize = CGSize(width: width, height: layout.contentHeight)
     }
 
@@ -347,6 +451,46 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         let child = children[index]
         let title = child.title ?? Strings.StemCells.subagent
         navigationController?.pushViewController(StemCellChatViewController(session: session, agentId: child.id, title: title, spaceId: nil, stemCell: nil), animated: true)
+    }
+
+    /// A picture in the viewer, paging through every picture shared; a
+    /// recording in the system's player; a file in Quick Look.
+    private func openMedia(_ index: Int) {
+        let media = shownMedia
+        guard media.indices.contains(index) else { return }
+        let one = media[index]
+        if case .tool(let file) = one, !file.isVisual {
+            // The last file asked for, while this screen still shows.
+            previewing?.cancel()
+            let preview = StemCellFilePreview(loader: loader, media: file)
+            self.preview = preview
+            previewing = Task { [weak self] in
+                guard let controller = await preview.controller(), !Task.isCancelled,
+                      let self, self.preview === preview, self.viewIfLoaded?.window != nil, self.presentedViewController == nil else { return }
+                self.present(controller, animated: true)
+            }
+            return
+        }
+        if let player = loader.player(one.key) {
+            let playback = AVPlayerViewController()
+            playback.player = player
+            present(playback, animated: true) { player.play() }
+            return
+        }
+        let pictures = shared.media.filter(\.isPicture).map { picture -> StemCellPicture in
+            switch picture {
+            case .picture: StemCellPicture(key: picture.key, thumbhash: nil, label: Strings.StemCells.picture)
+            case .tool(let media): StemCellPicture(key: media.key, thumbhash: media.item.thumbhash, label: media.item.name)
+            }
+        }
+        guard let at = pictures.firstIndex(where: { $0.key == one.key }) else { return }
+        present(StemCellPictureViewController(source: loader, pictures: pictures, index: at), animated: true)
+    }
+
+    private func openLink(_ index: Int) {
+        let links = shownLinks
+        guard links.indices.contains(index), let url = URL(string: links[index].url) else { return }
+        UIApplication.shared.open(url)
     }
 
     private func toggleCompleted() {
@@ -498,6 +642,8 @@ final class StemCellDetailActivityCardView: UIView {
         var title: String
         var meta: String
         var opens: Bool
+        /// Its accessibility identifier; else `stem-detail-activity:<title>`.
+        var id: String?
     }
 
     var onSelect: ((Int) -> Void)?
@@ -512,6 +658,9 @@ final class StemCellDetailActivityCardView: UIView {
     private var rows: [RowView] = []
     /// The settled card's first row: Settings' row, its chevron turned down while open.
     private let disclosureView = StemCellsSettingsCardView.RowView()
+    /// "Show more" under the rows.
+    private let moreView = StemCellsSettingsCardView.RowView()
+    private var more: StemCellsSettingsRow?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -521,13 +670,16 @@ final class StemCellDetailActivityCardView: UIView {
         clipsToBounds = true
         disclosureView.isHidden = true
         addSubview(disclosureView)
+        moreView.isHidden = true
+        addSubview(moreView)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ items: [Item], disclosure: StemCellsSettingsRow?) {
+    func show(_ items: [Item], disclosure: StemCellsSettingsRow?, more: StemCellsSettingsRow? = nil) {
         self.items = items
         self.disclosure = disclosure
+        self.more = more
         while rows.count < items.count {
             let row = RowView()
             let index = rows.count
@@ -547,17 +699,26 @@ final class StemCellDetailActivityCardView: UIView {
     }
 
     func place(_ card: StemCellSessionDetailLayout.ActivityCard) {
-        frame = card.frame
-        disclosureView.isHidden = card.disclosure == nil
-        if let frames = card.disclosure, let disclosure {
+        place(frame: card.frame, disclosure: card.disclosure, rows: card.rows, more: nil)
+    }
+
+    func place(frame: CGRect, disclosure frames: StemCellsSettingsLayout.Row?, rows: [StemCellSessionDetailLayout.ActivityRow], more moreFrames: StemCellsSettingsLayout.Row?) {
+        self.frame = frame
+        moreView.isHidden = moreFrames == nil
+        if let moreFrames, let more {
+            moreView.show(more, frames: moreFrames)
+            moreView.accessibilityIdentifier = "\(accessibilityIdentifier ?? "stem-detail")-more"
+        }
+        disclosureView.isHidden = frames == nil
+        if let frames, let disclosure {
             disclosureView.show(disclosure, frames: frames)
             disclosureView.accessibilityIdentifier = "stem-detail-completed-toggle"
             disclosureView.accessibilityValue = open ? Strings.StemCells.expanded : Strings.StemCells.collapsed
         }
         // Folded rows keep their places, clipped, for the card to open over.
-        for (index, row) in rows.enumerated() {
-            row.accessibilityElementsHidden = index >= card.rows.count
-            if index < card.rows.count { row.place(card.rows[index]) }
+        for (index, row) in self.rows.enumerated() {
+            row.accessibilityElementsHidden = index >= rows.count
+            if index < rows.count { row.place(rows[index]) }
         }
     }
 
@@ -599,7 +760,7 @@ final class StemCellDetailActivityCardView: UIView {
             accessibilityLabel = item.title
             accessibilityValue = item.meta
             accessibilityTraits = item.opens ? .button : .staticText
-            accessibilityIdentifier = "stem-detail-activity:\(item.title)"
+            accessibilityIdentifier = item.id ?? "stem-detail-activity:\(item.title)"
         }
 
         func place(_ frames: StemCellSessionDetailLayout.ActivityRow) {

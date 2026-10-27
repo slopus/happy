@@ -791,15 +791,18 @@ final class StemCellsUITests: XCTestCase {
     }
 
     /// The header's capsule runs to the right edge and opens the
-    /// conversation's detail, never a rename: its tiles, its family drawn
-    /// as the sidebar draws it, and its activity, settled children folded.
-    /// Each row opens its conversation; back comes back to the detail.
+    /// conversation's detail, never a rename: its model, effort and start;
+    /// what it shared (a grid of its pictures, recordings and files, each
+    /// opened whole, then its links); at the top level no family but its
+    /// children; nested, its parent, siblings and children, each opening
+    /// its conversation. Needs `shared_fixture.py`'s links and pictures.
     func testSessionDetail() {
         home()
         pause(1)
-        let happy = row("space", "Happy")
-        XCTAssertTrue(happy.waitForExistence(timeout: 5))
-        happy.tap()
+        let bot = row("space", "Research Assistant")
+        XCTAssertTrue(bot.waitForExistence(timeout: 5))
+        bringIntoView(bot)
+        bot.tap()
         let title = app.descendants(matching: .any)["stem-chat-title"]
         XCTAssertTrue(title.waitForExistence(timeout: 8))
         pause(1)
@@ -809,62 +812,121 @@ final class StemCellsUITests: XCTestCase {
         let detail = app.descendants(matching: .any)["stem-detail"]
         XCTAssertTrue(detail.waitForExistence(timeout: 5), "the capsule's right end didn't open the detail")
         XCTAssertFalse(app.textFields["stem-chat-title-field"].exists, "the header renamed")
-        XCTAssertEqual(app.staticTexts["stem-detail-name"].label, "Happy")
-        // Happy is never renamed.
-        XCTAssertFalse(app.descendants(matching: .any)["stem-settings:rename"].exists)
-        let tokens = app.descendants(matching: .any)["stem-detail-tile:tokens"]
-        let deadline = Date().addingTimeInterval(8)
-        while Date() < deadline, (tokens.value as? String) == "—" { pause(0.2) }
-        for id in ["tokens", "messages", "subagents", "age", "model", "effort"] {
-            let tile = app.descendants(matching: .any)["stem-detail-tile:\(id)"]
-            XCTAssertTrue(tile.exists, "no \(id) tile")
-            print("STEM_DETAIL \(id) = \(tile.value as? String ?? "")")
-            XCTAssertNotEqual(tile.value as? String, "—", "\(id) never came")
-        }
-        XCTAssertTrue((app.descendants(matching: .any)["stem-detail-tile:subagents"].value as? String ?? "").contains(" of "))
-        // The family is the sidebar's own rows, this one among them.
+        XCTAssertEqual(app.staticTexts["stem-detail-name"].label, "Research Assistant")
+        assertTiles()
+        // At the top level: no section, no siblings.
         let family = app.descendants(matching: .any)["stem-detail-family"]
-        XCTAssertTrue(family.exists, "no family")
-        XCTAssertTrue(family.descendants(matching: .any)["stem-row:space:Happy"].exists, "it isn't in its own family")
-        // The card holds its rows exactly: none missing, no gap under the last.
-        let members = family.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:")).allElementsBoundByIndex
-        print("STEM_FAMILY \(members.map { "\($0.identifier)@\(Int($0.frame.minY))h\(Int($0.frame.height))" }) card \(family.frame)")
-        if let last = members.map(\.frame.maxY).max() {
-            XCTAssertEqual(family.frame.maxY - last, 8 + 12, accuracy: 13, "a gap under the family's last row")
+        if family.exists {
+            let tops = family.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:space:")).allElementsBoundByIndex.map(\.identifier)
+            XCTAssertEqual(tops, ["stem-row:space:Research Assistant"], "a top-level conversation showed siblings")
         }
-        pause(1)
+        XCTAssertFalse(family.exists && family.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:section:")).firstMatch.exists, "a top-level conversation showed its section")
+        // What it shared: its media first, a grid.
+        let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-detail-media:"))
+        XCTAssertTrue(cells.firstMatch.waitForExistence(timeout: 10), "no shared media")
+        pause(1.5)
         capture("detail-top")
-        // Its settled child, folded, then open.
-        let toggle = app.descendants(matching: .any)["stem-detail-completed-toggle"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "no completed fold")
-        bringIntoView(toggle)
-        toggle.tap()
+        let first = cells.element(boundBy: 0).frame
+        let second = cells.element(boundBy: 1).frame
+        XCTAssertEqual(first.width, first.height, accuracy: 1, "a cell isn't square")
+        XCTAssertEqual(second.minY, first.minY, accuracy: 1, "the grid isn't in rows")
+        bringIntoView(cells.firstMatch)
         pause(1)
-        let child = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-detail-activity:")).firstMatch
-        XCTAssertTrue(child.waitForExistence(timeout: 3), "the fold never opened")
-        capture("detail-activity")
-        child.tap()
-        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 8), "the child didn't open")
+        capture("detail-media")
+        let more = app.descendants(matching: .any)["stem-detail-media-more"]
+        if more.exists {
+            let before = cells.count
+            bringIntoView(more)
+            more.tap()
+            XCTAssertTrue(until(10) { cells.count > before }, "Show more showed no more")
+            pause(1.5)
+            capture("detail-media-more")
+        }
+        // A picture opens whole, paging through the rest.
+        let picture = cells.matching(NSPredicate(format: "label ENDSWITH %@ OR label == %@", ".png", "Picture")).firstMatch
+        XCTAssertTrue(picture.exists, "no picture among the media")
+        bringIntoView(picture)
+        picture.tap()
+        XCTAssertTrue(app.images["stem-picture-viewer"].waitForExistence(timeout: 5), "the picture didn't open")
+        pause(2)
+        capture("detail-viewer")
+        app.swipeLeft()
         pause(1.5)
-        app.tapBack()
-        XCTAssertTrue(detail.waitForExistence(timeout: 5), "back didn't come back to the detail")
+        capture("detail-viewer-next")
+        app.buttons["Close"].tap()
+        XCTAssertTrue(until(3) { !self.app.images["stem-picture-viewer"].exists })
         pause(1)
-        // A sibling from the family opens its own conversation.
-        app.swipeDown()
+        // Then its links, each a title over its address.
+        let link = app.descendants(matching: .any)["stem-detail-link:https://telegram.org/blog/shared-media"]
+        XCTAssertTrue(link.waitForExistence(timeout: 10), "no shared links")
+        XCTAssertEqual(link.label, "Telegram's shared media")
+        XCTAssertEqual(link.value as? String, "telegram.org/blog/shared-media")
+        XCTAssertTrue(app.descendants(matching: .any)["stem-detail-link:https://crdt.tech/"].exists)
+        bringIntoView(link)
         pause(1)
-        let sibling = family.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND NOT identifier ENDSWITH %@", "stem-row:space:", ":Happy")).firstMatch
-        XCTAssertTrue(sibling.exists, "no sibling")
-        let name = String(sibling.identifier.dropFirst("stem-row:space:".count))
-        sibling.tap()
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label == %@", "stem-chat-title", name)).firstMatch.waitForExistence(timeout: 8), "\(name) didn't open")
-        pause(1.5)
-        app.tapBack()
-        XCTAssertTrue(detail.waitForExistence(timeout: 5))
-        pause(1)
+        capture("detail-links")
         app.tapBack()
         XCTAssertTrue(title.waitForExistence(timeout: 5), "back didn't come back to the conversation")
         pause(1)
         app.tapBack()
+        pause(1)
+
+        // Nested: Day Trips, a subtask of Plan Lisbon trip.
+        let task = row("space", "Plan Lisbon trip")
+        if !task.waitForExistence(timeout: 3) { openFoldedSections() }
+        XCTAssertTrue(task.waitForExistence(timeout: 5))
+        bringIntoView(task)
+        let trips = row("session", "Day Trips")
+        if !(trips.exists && trips.isHittable) {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: task.frame.maxX - 25, dy: task.frame.midY)).tap()
+        }
+        XCTAssertTrue(until(5) { trips.exists && trips.isHittable }, "Day Trips isn't under its task")
+        trips.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        pause(1)
+        title.tap()
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "the capsule didn't open the subtask's detail")
+        assertTiles()
+        XCTAssertTrue(family.waitForExistence(timeout: 5), "a subtask has no family")
+        for (id, what) in [("stem-row:space:Plan Lisbon trip", "its parent"), ("stem-row:session:Day Trips", "itself"), ("stem-row:session:Neighbourhoods", "its sibling"), ("stem-row:session:Best train day trip", "its child")] {
+            XCTAssertTrue(family.descendants(matching: .any)[id].exists, "the family lacks \(what)")
+        }
+        XCTAssertTrue(cells.firstMatch.waitForExistence(timeout: 10), "the subtask's pictures aren't shared")
+        XCTAssertEqual(cells.count, 3)
+        XCTAssertTrue(app.descendants(matching: .any)["stem-detail-link:https://www.visitcascais.com/en"].waitForExistence(timeout: 5))
+        pause(1.5)
+        capture("detail-nested-top")
+        bringIntoView(app.descendants(matching: .any)["stem-detail-links"])
+        pause(1)
+        capture("detail-nested-shared")
+        bringIntoView(family)
+        pause(1)
+        capture("detail-nested-family")
+        // A sibling opens its own conversation; back comes back here.
+        family.descendants(matching: .any)["stem-row:session:Neighbourhoods"].tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label == %@", "stem-chat-title", "Neighbourhoods")).firstMatch.waitForExistence(timeout: 8), "the sibling didn't open")
+        pause(1.5)
+        app.tapBack()
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "back didn't come back to the detail")
+        pause(1)
+        app.tapBack()
+        pause(1)
+        app.tapBack()
+    }
+
+    /// Model, effort and when it started; nothing else counted.
+    private func assertTiles() {
+        let started = app.descendants(matching: .any)["stem-detail-tile:started"]
+        XCTAssertTrue(started.waitForExistence(timeout: 5), "no Started tile")
+        XCTAssertTrue(until(8) { (started.value as? String) != "—" }, "when it started never came")
+        for id in ["model", "effort", "started"] {
+            let tile = app.descendants(matching: .any)["stem-detail-tile:\(id)"]
+            print("STEM_DETAIL \(id) = \(tile.value as? String ?? "")")
+            XCTAssertNotEqual(tile.value as? String, "—", "\(id) never came")
+        }
+        for id in ["tokens", "messages", "subagents", "age"] {
+            XCTAssertFalse(app.descendants(matching: .any)["stem-detail-tile:\(id)"].exists, "\(id) is still counted")
+        }
     }
 
     /// Every modal sheet closes from a button at its top right, as far

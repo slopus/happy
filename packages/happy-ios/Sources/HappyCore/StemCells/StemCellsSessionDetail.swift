@@ -170,16 +170,39 @@ public enum StemCellsDetailFormat {
         if days < 365 { return .months(days / 30) }
         return .years(days / 365)
     }
+
+    /// When something started, as near as a person says it: today or
+    /// yesterday at a time, a weekday this week, a date this year, or a
+    /// date with its year.
+    public enum Started: Equatable, Sendable {
+        case today(Date)
+        case yesterday(Date)
+        case weekday(Date)
+        case thisYear(Date)
+        case date(Date)
+    }
+
+    /// `since` in Unix milliseconds.
+    public static func started(since: Double, now: Date, calendar: Calendar = .current) -> Started {
+        let date = Date(timeIntervalSince1970: since / 1000)
+        if calendar.isDate(date, inSameDayAs: now) { return .today(date) }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) { return .yesterday(date) }
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0
+        if days > 0, days < 7 { return .weekday(date) }
+        if calendar.component(.year, from: date) == calendar.component(.year, from: now) { return .thisYear(date) }
+        return .date(date)
+    }
 }
 
 /// Where a conversation sits in the sidebar's tree, as its detail draws
-/// it: its parent (a row, or the section it is filed under), itself among
-/// its nearest siblings, and its own children under it, nested again from
-/// the parent so the tree reads on its own.
+/// it: nested, its parent, itself among its nearest siblings, and its own
+/// children under it, nested again from the parent so the tree reads on
+/// its own; at the top level, itself over its children alone.
 public enum StemCellsFamily {
     public static func of(_ id: String, in rows: [StemCellsRow], around: Int = 2, children childLimit: Int = 8) -> [StemCellsRow] {
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return [] }
         let depth = rows[index].depth
+        let topLevel = depth == 0
         func opens(_ row: StemCellsRow) -> Bool { (row.kind == .space || row.kind == .session) && row.targetKind != "surface" && row.agentId != nil }
         func boundary(_ row: StemCellsRow) -> Bool { (row.kind == .section || row.kind == .separator) && row.depth == 0 }
         // The parent, and where its children start.
@@ -205,16 +228,16 @@ public enum StemCellsFamily {
         let at = siblings.firstIndex(of: index) ?? 0
         let width = 2 * around + 1
         let lower = max(0, min(at - around, siblings.count - width))
-        let shown = siblings[lower..<min(siblings.count, lower + width)]
+        let shown = topLevel ? [index][...] : siblings[lower..<min(siblings.count, lower + width)]
         var children: [Int] = []
         for k in (index + 1)..<rows.count {
             if rows[k].depth <= depth || boundary(rows[k]) { break }
             if rows[k].depth == depth + 1, opens(rows[k]) { children.append(k) }
         }
         // Under a row, everything moves in a level; under a section, siblings stay at its level.
-        let nested = parent.map { rows[$0].kind != .section } ?? false
+        let nested = !topLevel && parent.map { rows[$0].kind != .section } ?? false
         var family: [StemCellsRow] = []
-        if let parent {
+        if let parent, !topLevel {
             var row = rows[parent]
             row.depth = 0
             row.collapsed = row.kind == .section ? false : nil

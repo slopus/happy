@@ -7,16 +7,15 @@ import HappyCore
 extension Strings.StemCells {
     public static let detailsHint = "Opens its details"
     public static let rename = "Rename"
-    public static let tokens = "Tokens"
-    public static let messages = "Messages"
-    public static let subagentsRunning = "Subagents running"
-    public static let age = "Age"
+    public static let started = "Started"
+    public static let media = "Media"
+    public static let links = "Links"
+    public static let showMore = "Show more"
     public static let family = "Family"
     public static let activity = "Activity"
     public static let completed = "Completed"
     public static let expanded = "Expanded"
     public static let collapsed = "Collapsed"
-    public static let quietActivity = "No agents or background terminals yet."
     public static let bot = "Bot"
     public static let task = "Task"
     public static let subtask = "Subtask"
@@ -24,10 +23,19 @@ extension Strings.StemCells {
     /// Nothing recorded yet.
     public static let none = "—"
 
-    /// "24", or "50+" where older history is still unread.
-    public static func messageCount(_ count: Int, more: Bool) -> String { more ? "\(count)+" : "\(count)" }
-    /// "1 of 3".
-    public static func ofTotal(_ count: Int, _ total: Int) -> String { "\(count) of \(total)" }
+    /// "Today, 3:41 AM", "Yesterday, 9:12 PM", "Mon, 9:12 PM", "Oct 3", "Oct 3, 2025".
+    public static func started(_ started: StemCellsDetailFormat.Started) -> String {
+        switch started {
+        case .today(let date): "Today, \(date.formatted(date: .omitted, time: .shortened))"
+        case .yesterday(let date): "Yesterday, \(date.formatted(date: .omitted, time: .shortened))"
+        case .weekday(let date): date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        case .thisYear(let date): date.formatted(.dateTime.month(.abbreviated).day())
+        case .date(let date): date.formatted(.dateTime.month(.abbreviated).day().year())
+        }
+    }
+
+    /// A recording in the shared media, for VoiceOver.
+    public static let sharedVideo = "Video"
 
     public static func age(_ age: StemCellsDetailFormat.Age) -> String {
         switch age {
