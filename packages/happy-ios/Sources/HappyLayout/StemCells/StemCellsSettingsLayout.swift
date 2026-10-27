@@ -248,18 +248,15 @@ public struct StemCellsQRSheetLayout: Equatable, Sendable {
     }
 }
 
-/// The link sheet's content, over its buttons: Happy's mark, the title and
-/// a line on what to do on the computer, centred.
+/// The link sheet's content, over its buttons: the title, centred, then
+/// what to do on the computer.
 public struct StemCellsLinkContentLayout: Equatable, Sendable {
     public enum Metrics {
-        public static let mark: CGFloat = 72
-        public static let titleGap: CGFloat = 20
         /// From the title to the first step, as the relay's checklist has it.
         public static let stepsGap: CGFloat = LinkComputerContentLayout.Metrics.checklistMarginTop
         public static let bottom: CGFloat = 12
     }
 
-    public var mark: CGRect
     public var title: CGRect
     /// Each step as a checklist row, its number where the box goes.
     public var steps: [ChecklistRowLayout]
@@ -268,8 +265,7 @@ public struct StemCellsLinkContentLayout: Equatable, Sendable {
     public init(width: CGFloat, title: Measurable, steps: [LinkComputerContentLayout.Row]) {
         typealias M = Metrics
         let width = max(0, width)
-        mark = CGRect(x: ((width - M.mark) / 2).rounded(), y: 0, width: M.mark, height: M.mark)
-        self.title = CGRect(x: 0, y: mark.maxY + M.titleGap, width: width, height: title.height(fitting: width))
+        self.title = CGRect(x: 0, y: 0, width: width, height: title.height(fitting: width))
         var y = self.title.maxY + M.stepsGap
         var rows: [ChecklistRowLayout] = []
         for (index, step) in steps.enumerated() {
@@ -282,20 +278,32 @@ public struct StemCellsLinkContentLayout: Equatable, Sendable {
     }
 }
 
-/// The link sheet's Relay | Direct switch: as wide as the screen's buttons,
-/// just above the primary one (`OnboardingLayout.accessory`), with the Beta
-/// tag astride its top edge at Direct's end.
+/// The link sheet's Relay | Direct switch: 60% as wide as the screen's
+/// buttons and centred over them, just above the primary one
+/// (`OnboardingLayout.accessory`), with the Beta tag astride its top edge
+/// at Direct's end.
 public struct StemCellsLinkSwitchLayout: Equatable, Sendable {
     public enum Metrics {
         public static let height: CGFloat = 36
+        /// Of the buttons' width.
+        public static let widthShare: CGFloat = 0.6
         /// From the control's right end to the tag's.
         public static let tagInset: CGFloat = 10
     }
 
+    public var control: CGRect
     public var tag: CGRect
 
+    /// In the room the screen keeps for it, `accessory`.
+    public init(accessory: CGRect, tag size: CGSize) {
+        let width = (accessory.width * Metrics.widthShare).rounded()
+        self.init(control: CGRect(x: accessory.minX + ((accessory.width - width) / 2).rounded(), y: accessory.minY, width: width, height: accessory.height), tag: size)
+    }
+
+    /// The tag on `control` where it stands now.
     public init(control: CGRect, tag size: CGSize) {
         typealias M = Metrics
+        self.control = control
         let tagSize = CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up))
         tag = CGRect(x: control.maxX - M.tagInset - tagSize.width, y: (control.minY - tagSize.height / 2).rounded(), width: tagSize.width, height: tagSize.height)
     }

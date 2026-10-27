@@ -26,7 +26,7 @@ final class StemCellsLinkNavigationController: UINavigationController {
 /// Linking a computer, as Telegram adds an account (its techniques, none
 /// of its code): the first screen when nothing is paired, and the sheet
 /// "+" opens over settings. A switch just above the screen's buttons,
-/// across them, chooses the way: Relay,
+/// centred over them, chooses the way: Relay,
 /// the default, through a Happy account (Welcome, or Link Your Computer
 /// once one is signed in); or Direct, the experiment (tagged Beta), whose code scanned
 /// or link pasted connects this phone straight to the computer. Choosing
@@ -116,8 +116,9 @@ final class StemCellsLinkViewController: UIViewController {
     private func placeSwitch() {
         guard let screen = shown?.view as? OnboardingScreenView, let frame = screen.accessoryFrame else { return }
         switchClip.frame = screen.convert(screen.scrollView.frame, to: view)
-        control.frame = screen.convert(frame, to: switchClip)
-        tag.frame = StemCellsLinkSwitchLayout(control: control.frame, tag: tag.intrinsicContentSize).tag
+        let layout = StemCellsLinkSwitchLayout(accessory: screen.convert(frame, to: switchClip), tag: tag.intrinsicContentSize)
+        control.frame = layout.control
+        tag.frame = layout.tag
     }
 
     private func chosen() {
@@ -307,13 +308,11 @@ final class StemCellsBetaTag: UILabel {
     }
 }
 
-/// Happy's mark and the title, centred, then what to do on the computer
-/// in numbered steps: the relay checklist's two (install, open Link Mobile
+/// The title, centred, then what to do on the computer in numbered steps: the relay checklist's two (install, open Link Mobile
 /// App), then the scan.
 final class StemCellsLinkContentView: UIView {
     /// The install step's happy.engineering, tapped.
     var onOpenWebsite: (() -> Void)?
-    private let mark = UIImageView(image: UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate))
     private let title = StyledLabel(style: TextStyles.onboardingTitle, color: Palette.text, alignment: .center)
     private let numbers: [UILabel] = (1...3).map { _ in UILabel() }
     private let stepTitles: [StyledLabel] = (1...3).map { _ in StyledLabel(style: TextStyles.checklistTitle, color: Palette.text) }
@@ -321,11 +320,8 @@ final class StemCellsLinkContentView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        mark.tintColor = UIColor(Palette.text)
-        mark.contentMode = .scaleAspectFit
         title.string = Strings.StemCells.linkTitle
         title.accessibilityTraits = .header
-        addSubview(mark)
         addSubview(title)
         let steps = [
             (Strings.Onboarding.installStep, Strings.Onboarding.installBodyPrefix + Strings.Onboarding.installBodyLink + Strings.Onboarding.installBodySuffix),
@@ -378,7 +374,6 @@ final class StemCellsLinkContentView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         let layout = layout(width: bounds.width)
-        mark.frame = layout.mark
         title.setLayoutFrame(layout.title)
         for (index, step) in layout.steps.enumerated() {
             numbers[index].frame = step.box

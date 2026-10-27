@@ -20,6 +20,8 @@ final class StemCellsHomeViewController: UIViewController {
     private let dock = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.StemCells.composerPlaceholder))
     private let dockScrim = HeaderScrimView(edge: .bottom)
     private var modelsWatch: StemCellsWatch?
+    /// The dock's model or effort list while it is open.
+    private var picker: StemCellPickerPresenter?
     private var session: StemCellsSession?
     private var watch: StemCellsWatch?
     private var accountsObservation: AccountsObservation?
@@ -112,6 +114,7 @@ final class StemCellsHomeViewController: UIViewController {
         super.viewWillDisappear(animated)
         // A row lifted from its menu goes back before another screen covers it.
         sidebar.disarm(animated: false)
+        picker?.close(animated: false)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -184,7 +187,8 @@ final class StemCellsHomeViewController: UIViewController {
     private func updateModelBar() {
         let models = session?.models
         let menus = models?.catalog.flatMap { catalog in models?.newWorkMode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
-        StemCellModelPickers.configure(dock, menus: menus, usage: models?.usage ?? [:])
+        StemCellModelPickers.configure(dock, menus: menus)
+        picker?.update(menus: menus, usage: models?.usage ?? [:])
         view.setNeedsLayout()
     }
 
@@ -208,6 +212,7 @@ final class StemCellsHomeViewController: UIViewController {
         let bannerHeight = banner.isEmpty ? 0 : banner.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height
         let docked = StemCellsDockLayout(size: bounds.size, safeArea: LayoutInsets(view.safeAreaInsets)) { [dock] width in dock.height(fitting: width) }
         dock.setLayoutFrame(docked.card)
+        picker?.follow()
         dockScrim.frame = docked.scrim
         let listBottom = dock.isHidden ? contentInsets.listBottom : docked.listBottom
         let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset)
@@ -584,10 +589,21 @@ extension StemCellsHomeViewController: AgentInputCardDelegate, UIGestureRecogniz
         choose(key)
     }
 
-    /// A chip with no menu yet: the models are asked for again.
+    /// A chip opens its list; with no models yet, they are asked for again.
     func agentInputCard(_ card: AgentInputCardView, didPress chip: AgentInputChip) {
         sidebar.disarm()
-        session?.models.load()
+        guard let models = session?.models else { return }
+        guard let catalog = models.catalog, let mode = models.newWorkMode else { return models.load() }
+        picker?.close(animated: false)
+        let picker = StemCellPickerPresenter(list: chip == .effort ? .effort : .model, card: card, menus: StemCellModelMenus(catalog: catalog, selection: mode), usage: models.usage) { [weak self] key in
+            self?.choose(key)
+        }
+        picker.onClose = { [weak self, weak picker] in
+            if let self, self.picker === picker { self.picker = nil }
+        }
+        self.picker = picker
+        picker.show(in: view)
+        StemCellModelPickers.opened(models, mode: mode)
     }
 
     func agentInputCard(_ card: AgentInputCardView, didOpenMenuIn chip: AgentInputChip) {

@@ -248,6 +248,7 @@ final class StemCellChatViewController: UIViewController {
         super.viewWillDisappear(animated)
         // Leaving keeps a name being typed, as a tap away does.
         titleView.finishEditing()
+        picker?.close(animated: false)
         if isMovingFromParent { putAwayIfEmpty() }
         swipeBack.detach()
         navigationController?.interactivePopGestureRecognizer?.isEnabled = true
@@ -468,6 +469,8 @@ final class StemCellChatViewController: UIViewController {
     private var picked: AgentWire.Mode?
     /// The "+" sheet while it is up: its permission menu follows the mode.
     private weak var attachSheet: StemCellAttachSheetViewController?
+    /// The model or effort list while it is open.
+    private var picker: StemCellPickerPresenter?
 
     private var menus: StemCellModelMenus? {
         session.models.catalog.flatMap { catalog in mode.map { StemCellModelMenus(catalog: catalog, selection: $0) } }
@@ -478,7 +481,8 @@ final class StemCellChatViewController: UIViewController {
             card.configuration.model = nil
             card.configuration.effort = nil
         } else {
-            StemCellModelPickers.configure(card, menus: menus, usage: session.models.usage)
+            StemCellModelPickers.configure(card, menus: menus)
+            picker?.update(menus: menus, usage: session.models.usage)
         }
         if let attachSheet {
             attachSheet.permission = permissionName
@@ -813,6 +817,7 @@ final class StemCellChatViewController: UIViewController {
             keyboardTop: fingerOnKeyboard ? keyboardTracker.frame.minY : keyboardTop
         ) { [card] width in card.height(fitting: width) }
         card.setLayoutFrame(screen.card)
+        picker?.follow()
         scrollView.frame = view.bounds
         // The transcript starts under the header's row and scrolls under it.
         let insets = UIEdgeInsets(top: header.layout.listTop, left: 0, bottom: screen.listBottom, right: 0)
@@ -1125,9 +1130,21 @@ extension StemCellChatViewController: AgentInputCardDelegate {
         choose(key)
     }
 
-    /// A chip with no menu yet: the models are asked for again.
+    /// A chip opens its list; with no models yet, they are asked for again.
     func agentInputCard(_ card: AgentInputCardView, didPress chip: AgentInputChip) {
-        session.models.load()
+        guard let menus, !reading(chat) || picked != nil else { return session.models.load() }
+        picker?.close(animated: false)
+        let picker = StemCellPickerPresenter(list: chip == .effort ? .effort : .model, card: card, menus: menus, usage: session.models.usage) { [weak self] key in
+            self?.choose(key)
+        }
+        picker.onClose = { [weak self, weak picker] in
+            if let self, self.picker === picker { self.picker = nil }
+        }
+        // Under the header's row, which the safe area doesn't know of.
+        picker.top = { [weak self] in self?.header.layout.listTop ?? 0 }
+        self.picker = picker
+        picker.show(in: view)
+        StemCellModelPickers.opened(session.models, mode: mode)
     }
 
     func agentInputCard(_ card: AgentInputCardView, didOpenMenuIn chip: AgentInputChip) {

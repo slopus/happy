@@ -707,6 +707,18 @@ public final class AgentInputCardView: UIView {
         textView.resignFirstResponder()
     }
 
+    /// Where a chip stands, in `view`: what its owner's picker opens over.
+    /// Nil while the chip is hidden.
+    public func chipFrame(_ chip: AgentInputChip, in view: UIView) -> CGRect? {
+        let button = switch chip {
+        case .permission: permissionChip
+        case .model: modelChip
+        case .effort: effortChip
+        }
+        guard !button.isHidden, button.window != nil else { return nil }
+        return button.convert(button.bounds, to: view)
+    }
+
     // MARK: Feedback
 
     /// The whole card shakes: a send the agent refuses (`sendBlockShakerRef`).

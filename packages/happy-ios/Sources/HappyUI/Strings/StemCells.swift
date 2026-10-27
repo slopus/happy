@@ -270,6 +270,39 @@ extension Strings {
         /// Desktop's service header: "Claude (Current CLI)".
         public static func serviceHeader(_ service: String, _ account: String) -> String { "\(service) (\(account))" }
         public static func chipLabel(_ kind: String, _ value: String) -> String { "\(kind): \(value)" }
+        /// The lists' names, as desktop labels its panels.
+        public static let selectModel = "Select model"
+        public static let selectEffort = "Select effort"
+        public static func accountsOf(_ service: String) -> String { "\(service) account" }
+        /// A service's heading, read aloud: its account and each window it shows.
+        public static func headingLabel(_ service: String, _ account: String, _ windows: [String]) -> String {
+            (["\(service) account: \(account)"] + windows).joined(separator: ", ")
+        }
+        /// A gauge: the share left, alone at a row's end or with "left" in the windows.
+        public static func usageLeft(_ percent: Int) -> String { "\(percent)%" }
+        public static func percentLeft(_ percent: Int) -> String { "\(percent)% left" }
+        public static func windowLeft(_ label: String, _ percent: Int) -> String { "\(label) \(percent)% left" }
+        public static func resets(_ when: String) -> String { "resets \(when)" }
+        public static let updating = "Updating…"
+        public static let couldntRefresh = "Couldn’t refresh"
+        public static func updated(_ age: String) -> String { "Updated \(age)" }
+        public static func updatedFailed(_ when: String) -> String { "Updated \(when) · couldn’t refresh" }
+        public static func windowAsOf(_ label: String, _ when: String) -> String { "\(label) as of \(when)" }
+        /// `usageAge`: how long ago, in a word.
+        public static func age(_ date: Date, now: Date) -> String {
+            let minutes = Int(now.timeIntervalSince(date) / 60)
+            if minutes < 1 { return "just now" }
+            if minutes < 60 { return "\(minutes) min ago" }
+            let hours = minutes / 60
+            if hours < 20 { return "\(hours) hr ago" }
+            return "at \(clock(date, now: now))"
+        }
+
+        /// `clockTime`: the time, with its weekday when it isn't within the day.
+        public static func clock(_ date: Date, now: Date) -> String {
+            let time = date.formatted(date: .omitted, time: .shortened)
+            return abs(now.timeIntervalSince(date)) < 20 * 3600 ? time : "\(date.formatted(.dateTime.weekday(.abbreviated))) \(time)"
+        }
 
         /// `localDayTime`: today's time alone; any other day leads with its weekday.
         public static func dayTime(_ date: Date, now: Date) -> String {

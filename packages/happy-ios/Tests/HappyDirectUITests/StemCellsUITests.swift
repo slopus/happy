@@ -695,8 +695,9 @@ final class StemCellsUITests: XCTestCase {
         capture("sheet-link-direct")
         let close = app.buttons["stem-glass-close"]
         assertCloses(close, in: link, "the link sheet")
-        XCTAssertEqual(control.frame.minX, scan.frame.minX, accuracy: 0.5, "the switch doesn't start where the scan does")
-        XCTAssertEqual(control.frame.maxX, scan.frame.maxX, accuracy: 0.5, "the switch isn't as wide as the scan")
+        XCTAssertEqual(control.frame.width, scan.frame.width * 0.6, accuracy: 1, "the switch isn't 60% of the scan's width")
+        XCTAssertEqual(control.frame.midX, scan.frame.midX, accuracy: 1, "the switch isn't centred over the scan")
+        XCTAssertTrue(app.staticTexts["Link your computer"].exists, "the title isn't Link your computer")
         XCTAssertGreaterThan(control.frame.minY, link.frame.midY, "the switch isn't down over the scan")
         XCTAssertLessThan(control.frame.maxY, scan.frame.minY, "the switch isn't above the scan")
         XCTAssertTrue(app.descendants(matching: .any)["stem-link-beta"].exists, "no Beta tag")
@@ -1541,49 +1542,111 @@ final class StemCellsUITests: XCTestCase {
         app.collectionViews.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
     }
 
-    /// The model control's menu (Model, then Effort, each with its value),
-    /// then `setting`'s list, stacked over it.
-    private func open(_ control: XCUIElement, _ setting: String) {
-        XCTAssertTrue(control.waitForExistence(timeout: 5), "no \(control)")
-        control.tap()
-        let entry = menuRow(setting)
-        XCTAssertTrue(entry.waitForExistence(timeout: 3), "the model control lists no \(setting)")
-        pause(1)
-        entry.tap()
+    /// A panel of the model control: `stem-picker-models`, `-efforts` or `-accounts`.
+    private func panel(_ id: String) -> XCUIElement {
+        app.descendants(matching: .any)[id]
     }
 
-    /// `label`'s row in the menu that is up, scrolled to in short steps: a
-    /// long list draws only the rows in view, its submenu's heading stays
-    /// over the top, and the keyboard may cut its bottom.
+    /// `label`'s line in the open panels.
+    private func panelRow(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@", "stem-picker-row:", label)).firstMatch
+    }
+
+    /// The picked line of `panel`: in view from the panel's first frame.
+    private func assertPickedShows(_ panel: XCUIElement, _ name: String) {
+        let picked = panel.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND selected == true", "stem-picker-row:")).firstMatch
+        XCTAssertTrue(picked.waitForExistence(timeout: 2), "\(name) checks nothing")
+        let frame = picked.frame
+        XCTAssertTrue(panel.frame.insetBy(dx: -1, dy: -1).contains(frame), "\(name)'s picked line \(frame) isn't in view in \(panel.frame)")
+    }
+
+    /// `control`'s own list, opened on its picked line.
+    private func open(_ control: XCUIElement, _ id: String) {
+        XCTAssertTrue(control.waitForExistence(timeout: 5), "no \(control)")
+        control.tap()
+        XCTAssertTrue(panel(id).waitForExistence(timeout: 3), "\(control) opened no \(id)")
+        assertPickedShows(panel(id), id)
+    }
+
+    /// `label`'s line, scrolled to in short drags inside its panel.
     @discardableResult
-    private func revealRow(_ label: String) -> XCUIElement {
-        let row = menuRow(label)
-        _ = row.waitForExistence(timeout: 2)
-        let list = app.collectionViews.firstMatch
-        func shown() -> Bool {
-            guard row.exists, row.isHittable else { return false }
-            let bottom = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame.minY : app.frame.maxY
-            return row.frame.minY > list.frame.minY + 60 && row.frame.maxY < bottom - 8
-        }
+    private func revealRow(_ label: String, in id: String) -> XCUIElement {
+        let row = panelRow(label)
+        let list = panel(id)
+        // Vertically inside the panel: a line spans its panel's width.
+        func shown() -> Bool { row.exists && row.frame.minY >= list.frame.minY + 4 && row.frame.maxY <= list.frame.maxY - 4 }
         for _ in 0..<16 where !shown() {
-            let window = app.windows.firstMatch.frame
-            let x = list.frame.midX / window.width
-            let from = app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: 0))
-                .withOffset(CGVector(dx: 0, dy: list.frame.minY + 160))
-            from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: -80)))
+            let from = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: list.frame.midX, dy: list.frame.midY))
+            let up = row.exists && row.frame.midY < list.frame.midY
+            from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: up ? 80 : -80)))
             pause(0.5)
         }
         return row
     }
 
-    private func pickIn(_ control: XCUIElement, _ setting: String, _ label: String, shot: String) {
-        open(control, setting)
-        let row = revealRow(label)
-        XCTAssertTrue(row.exists, "\(setting) has no \(label)")
+    private func pickIn(_ control: XCUIElement, _ id: String, _ label: String, shot: String) {
+        open(control, id)
+        let row = revealRow(label, in: id)
+        XCTAssertTrue(row.exists, "\(id) has no \(label)")
         pause(1.5)
         capture(shot)
         row.tap()
+        XCTAssertTrue(until(2) { !self.panel(id).exists }, "a pick left \(id) up")
+        pause(1)
+    }
+
+    /// The model chip opens the model list and the effort chip the effort
+    /// list, each opened on its checked line; a service's heading stacks its
+    /// accounts over the model list in place; a touch outside closes the top
+    /// panel only.
+    func testPickerPanels() {
+        home()
         pause(1.5)
+        let model = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
+        let effort = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Effort: ")).firstMatch
+        open(model, "stem-picker-models")
+        XCTAssertFalse(panel("stem-picker-efforts").exists)
+        pause(1.5)
+        capture("panel-models")
+        let models = panel("stem-picker-models").frame
+        XCTAssertLessThan(models.maxY, model.frame.minY, "the list isn't over its chip")
+        // A service's heading: its accounts over the list, where it stands.
+        // The picked model's service, in view with it.
+        let heading = app.descendants(matching: .any)["stem-picker-heading:claude"]
+        XCTAssertTrue(heading.exists, "the list has no service heading")
+        heading.tap()
+        let accounts = panel("stem-picker-accounts")
+        XCTAssertTrue(accounts.waitForExistence(timeout: 2), "a heading opened no accounts")
+        XCTAssertEqual(accounts.frame.maxY, models.maxY, accuracy: 1, "the accounts aren't stacked over the list")
+        // Wider than the room left of the list's trailing edge, they keep
+        // the screen's 8pt margin.
+        XCTAssertEqual(accounts.frame.minX, max(8, models.maxX - accounts.frame.width), accuracy: 1)
+        assertPickedShows(accounts, "accounts")
+        pause(1.5)
+        capture("panel-accounts")
+        // Outside the accounts, the list stays.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        XCTAssertTrue(until(2) { !accounts.exists }, "a tap away left the accounts up")
+        XCTAssertTrue(panel("stem-picker-models").exists, "a tap away from the accounts closed the list")
+        pause(1)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        XCTAssertTrue(until(2) { !self.panel("stem-picker-models").exists }, "a tap away left the list up")
+        pause(1)
+        open(effort, "stem-picker-efforts")
+        XCTAssertFalse(panel("stem-picker-models").exists, "the effort chip opened the models")
+        pause(1.5)
+        capture("panel-efforts")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        XCTAssertTrue(until(2) { !self.panel("stem-picker-efforts").exists })
+        pause(1)
+        // A pick far down the list: opened again, it shows from the start.
+        pickIn(model, "stem-picker-models", "Opus 5.5 1M", shot: "panel-pick-opus")
+        XCTAssertTrue(model.label.contains("Opus 5.5 1M"), "the chip says \(model.label)")
+        open(model, "stem-picker-models")
+        pause(1.5)
+        capture("panel-models-opus")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        pause(1)
     }
 
     /// The pickers: the dock's model chip before new work exists (the same
@@ -1596,23 +1659,9 @@ final class StemCellsUITests: XCTestCase {
         capture("dock-pickers")
         // Home holds one composer: its model chip, whatever it says now.
         let dock = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
-        // The menu, then Model's list stacked over it, looked at and closed.
-        XCTAssertTrue(dock.waitForExistence(timeout: 5))
-        dock.tap()
-        XCTAssertTrue(menuRow("Model").waitForExistence(timeout: 3))
-        XCTAssertTrue(menuRow("Effort").exists, "the menu has no Effort")
-        pause(1.5)
-        capture("picker-menu")
-        menuRow("Model").tap()
-        XCTAssertTrue(menuRow("Opus 5.5 1M").waitForExistence(timeout: 3), "Model lists no Opus 5.5 1M")
-        // Stacked over the menu where it was, not pushed in beside it.
-        pause(1.5)
-        capture("picker-model-list")
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
-        pause(1.5)
-        XCTAssertFalse(menuRow("Haiku 5.5").exists, "a tap away left the menu up")
-        pickIn(dock, "Model", "Haiku 5.5", shot: "picker-model")
-        pickIn(dock, "Effort", "Low", shot: "picker-effort")
+        let dockEffort = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Effort: ")).firstMatch
+        pickIn(dock, "stem-picker-models", "Haiku 5.5", shot: "picker-model")
+        pickIn(dockEffort, "stem-picker-efforts", "Low", shot: "picker-effort")
         pause(1)
         capture("dock-picked")
 
@@ -1635,10 +1684,10 @@ final class StemCellsUITests: XCTestCase {
 
         app.swipeDown(velocity: .slow)
         pause(1)
-        pickIn(app.buttons["Model: Haiku 5.5"], "Model", "Sonnet 5", shot: "chat-picker-model")
+        pickIn(app.buttons["Model: Haiku 5.5"], "stem-picker-models", "Sonnet 5", shot: "chat-picker-model")
         // A new model starts on its own default effort.
         XCTAssertTrue(app.buttons["Effort: Medium"].waitForExistence(timeout: 3))
-        pickIn(app.buttons["Effort: Medium"], "Effort", "High", shot: "chat-picker-effort")
+        pickIn(app.buttons["Effort: Medium"], "stem-picker-efforts", "High", shot: "chat-picker-effort")
         XCTAssertTrue(app.buttons["Effort: High"].waitForExistence(timeout: 3))
         composer.tap()
         composer.typeText("And now? Five words or fewer.")
