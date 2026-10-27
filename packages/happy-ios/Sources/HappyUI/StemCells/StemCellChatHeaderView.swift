@@ -27,6 +27,12 @@ final class StemCellChatHeaderView: UIView {
         }
     }
 
+    /// How far the transcript has scrolled under the row's foot: the scrim
+    /// comes in with it (`HeaderScrim.presence`).
+    var scrolledUnder: CGFloat = 0 {
+        didSet { scrim.presence = HeaderScrim.presence(scrolledUnder: scrolledUnder) }
+    }
+
     /// The status bar's height: the row starts under it.
     var safeTop: CGFloat = 0 {
         didSet { if safeTop != oldValue { setNeedsLayout() } }
@@ -40,6 +46,7 @@ final class StemCellChatHeaderView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        scrim.presence = 0
         addSubview(scrim)
         backButton.setImage(.icon(.ionicons("chevron-back"), size: 28), for: .normal)
         backButton.tintColor = UIColor(Palette.headerTint)
@@ -84,7 +91,7 @@ final class StemCellChatHeaderView: UIView {
         // The name is bounded by the capsule, whatever it says.
         titleView.maxWidth = StemCellChatHeaderLayout(width: bounds.width, safeTop: safeTop, titleWidth: 0, statusWidth: nil).titleMaxWidth
         let layout = layout
-        scrim.frame = layout.backdrop
+        scrim.frame = layout.scrim
         backGlass.frame = layout.back
         backGlass.cornerConfiguration = .corners(radius: .fixed(Double(layout.back.height / 2)))
         backButton.frame = backGlass.bounds

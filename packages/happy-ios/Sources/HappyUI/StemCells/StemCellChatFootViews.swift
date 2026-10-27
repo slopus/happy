@@ -80,34 +80,4 @@ final class StemCellChatJumpButton: UIControl {
         didSet { arrow.alpha = isHighlighted ? 0.6 : 1 }
     }
 }
-
-/// The conversation's ground from just above the composer to the foot of
-/// the screen, coming in over the list's gap above the card: the
-/// transcript passes behind it, so nothing of it shows under the card,
-/// beside it, or through its glass.
-final class StemCellChatGroundView: UIView {
-    override class var layerClass: AnyClass { CAGradientLayer.self }
-
-    /// The share of the height, from the top, the ground fades in over.
-    var fadeShare: CGFloat = 0 {
-        didSet { if fadeShare != oldValue { update() } }
-    }
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        update()
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.update() }
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    private func update() {
-        guard let gradient = layer as? CAGradientLayer else { return }
-        let ground = UIColor(Palette.surface).resolvedColor(with: traitCollection)
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        gradient.colors = [ground.withAlphaComponent(0).cgColor, ground.cgColor, ground.cgColor]
-        gradient.locations = [0, NSNumber(value: Double(fadeShare)), 1]
-        CATransaction.commit()
-    }
-}
 #endif

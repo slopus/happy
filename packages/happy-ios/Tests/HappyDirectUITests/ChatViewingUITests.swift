@@ -128,9 +128,10 @@ final class ChatViewingUITests: XCTestCase {
         }
     }
 
-    /// The transcript stops at the composer: under it and beside it the
-    /// conversation's ground, one flat colour, never a message, light and
-    /// dark, read mid-transcript where messages go on past the composer.
+    /// Nothing of the transcript is legible under the composer, beside it
+    /// or in the last of the list above it, as on home: read mid-transcript,
+    /// where messages go on past the composer, light and dark, every stroke
+    /// there is blurred soft, where the transcript's own text is sharp.
     func testNothingUnderTheComposer() {
         openConversation()
         let card = element("stem-input")
@@ -143,33 +144,85 @@ final class ChatViewingUITests: XCTestCase {
             capture("ground-\(name)")
             let frame = card.frame
             // Under the card, clear of the home indicator in the middle,
-            // and the gap beside it.
+            // the gap beside it, and the list's last 12 above it.
             let under = CGRect(x: 2, y: frame.maxY + 2, width: 90, height: app.frame.height - frame.maxY - 4)
             let beside = CGRect(x: 1, y: frame.minY + 4, width: max(1, frame.minX - 2), height: frame.height - 8)
-            for (place, area) in [("under", under), ("beside", beside)] {
-                let ink = Self.ink(in: shot.image, area: area)
-                XCTAssertEqual(ink, 0, "\(name): \(ink) pixels of something show \(place) the composer")
+            let above = CGRect(x: 0, y: frame.minY - 12, width: app.frame.width, height: 10)
+            // The transcript's own lines, well clear of both edges: sharp.
+            let transcript = CGRect(x: 0, y: app.frame.height * 0.35, width: app.frame.width, height: app.frame.height * 0.3)
+            let sharp = Self.sharpEdges(in: shot.image, area: transcript)
+            XCTAssertGreaterThan(sharp, 500, "\(name): the transcript itself reads as blurred (\(sharp))")
+            for (place, area) in [("under", under), ("beside", beside), ("above", above)] {
+                let edges = Self.sharpEdges(in: shot.image, area: area)
+                print("STEM_EDGES \(name) \(place)=\(edges) transcript=\(sharp)")
+                XCTAssertLessThan(edges, 20, "\(name): \(edges) sharp strokes show \(place) the composer")
             }
         }
         theme("Adaptive")
     }
 
-    /// The pixels in `area` (in points) that stand out from the ground
-    /// read at its top left corner as text does: far more than the card's
-    /// soft shadow ever darkens it.
-    private static func ink(in image: UIImage, area: CGRect) -> Int {
+    /// The chat's edges beside home's, light and dark: each scrolled so
+    /// its content runs under the glass header and under the composer.
+    /// Pictures for the eye (`edges-*`); the composer's foot is checked by
+    /// `testNothingUnderTheComposer`.
+    func testEdgesLikeHome() {
+        openConversation()
+        for name in ["Light", "Dark"] {
+            theme(name)
+            // At the newest, the transcript runs on under the header.
+            capture("edges-chat-newest-\(name)")
+            scrollUp(1)
+            pause(1.5)
+            capture("edges-chat-\(name)")
+            // Scrolled slowly the rest of the way, for the video.
+            for _ in 0..<2 {
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)).press(
+                    forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)),
+                    withVelocity: .slow, thenHoldForDuration: 0.4
+                )
+                pause(0.6)
+            }
+            app.tapBack()
+            pause(1.5)
+            // Home's list a little down, so rows are under its header and its dock.
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).press(
+                forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)),
+                withVelocity: .slow, thenHoldForDuration: 0.4
+            )
+            pause(1.5)
+            capture("edges-home-\(name)")
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(
+                forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)),
+                withVelocity: .slow, thenHoldForDuration: 0.4
+            )
+            pause(1)
+            let happy = element("stem-row:space:Happy")
+            XCTAssertTrue(happy.waitForExistence(timeout: 5))
+            happy.tap()
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            pause(2)
+        }
+        theme("Adaptive")
+    }
+
+    /// The pixels in `area` (in points) where the image steps by more than
+    /// 40 of 255 within two pixels across or down, as a glyph's stroke
+    /// does: a blur, a scrim's feather or the card's soft shadow never do.
+    private static func sharpEdges(in image: UIImage, area: CGRect) -> Int {
         guard let cg = image.cgImage, let data = cg.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { return -1 }
         let scale = CGFloat(cg.width) / image.size.width
         let pixels = CGRect(x: area.minX * scale, y: area.minY * scale, width: area.width * scale, height: area.height * scale).integral
             .intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
         let step = cg.bitsPerPixel / 8
-        func color(_ x: Int, _ y: Int) -> [Int] { (0..<3).map { Int(bytes[y * cg.bytesPerRow + x * step + $0]) } }
-        let ground = color(Int(pixels.minX), Int(pixels.minY))
+        func luma(_ x: Int, _ y: Int) -> Int {
+            let at = y * cg.bytesPerRow + x * step
+            return (Int(bytes[at]) * 299 + Int(bytes[at + 1]) * 587 + Int(bytes[at + 2]) * 114) / 1000
+        }
         var count = 0
-        for y in Int(pixels.minY)..<Int(pixels.maxY) {
-            for x in Int(pixels.minX)..<Int(pixels.maxX) {
-                let here = color(x, y)
-                if (0..<3).contains(where: { abs(here[$0] - ground[$0]) > 48 }) { count += 1 }
+        for y in Int(pixels.minY)..<(Int(pixels.maxY) - 2) {
+            for x in Int(pixels.minX)..<(Int(pixels.maxX) - 2) {
+                let here = luma(x, y)
+                if abs(luma(x + 2, y) - here) > 40 || abs(luma(x, y + 2) - here) > 40 { count += 1 }
             }
         }
         return count

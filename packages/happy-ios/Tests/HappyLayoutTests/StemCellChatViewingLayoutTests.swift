@@ -46,12 +46,18 @@ final class StemCellChatViewingLayoutTests: XCTestCase {
         XCTAssertFalse(StemCellPictureDismissal(translation: 160, velocity: -1200, height: 874).closes, "flung back")
     }
 
-    func testTheGroundStartsAtTheListsEndAndTheWayBackSitsAboveIt() {
+    /// Home's scrim, whole from the card's top to the foot and feathered
+    /// over the 36 above it, and the way back above the list's end, over
+    /// the feather (drawn in front of it).
+    func testHomesScrimUnderTheCardAndTheWayBackAboveIt() {
         // iPhone 17 Pro, keyboard down: a 64 card 8 above the 34 home indicator.
-        let layout = StemCellChatFootLayout(size: CGSize(width: 402, height: 874), card: CGRect(x: 8, y: 768, width: 386, height: 64))
-        XCTAssertEqual(layout.ground, CGRect(x: 0, y: 760, width: 402, height: 114))
-        XCTAssertEqual(layout.fadeShare, 8 / 114, accuracy: 0.0001)
+        let size = CGSize(width: 402, height: 874)
+        let card = CGRect(x: 8, y: 768, width: 386, height: 64)
+        let layout = StemCellChatFootLayout(size: size, card: card)
+        XCTAssertEqual(layout.scrim, CGRect(x: 0, y: 732, width: 402, height: 142))
+        XCTAssertEqual(card.minY - layout.scrim.minY, HeaderScrim.rampPoints)
         XCTAssertEqual(layout.jump, CGRect(x: 185, y: 716, width: 32, height: 32))
+        XCTAssertLessThanOrEqual(layout.jump.maxY, card.minY - 8)
     }
 
     func testTheWayBackShowsPastAThirdOfTheList() {

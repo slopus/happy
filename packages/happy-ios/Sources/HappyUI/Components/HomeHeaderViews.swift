@@ -17,6 +17,8 @@ final class PartialBlurView: UIVisualEffectView {
         didSet {
             guard presence != oldValue else { return }
             animator?.fractionComplete = fraction * presence
+            // A paused animator at 0 draws the whole material, not none.
+            isHidden = presence <= 0
         }
     }
 

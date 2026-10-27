@@ -14,7 +14,13 @@ import CoreGraphics
 ///     ( ‹ ) (       Pineapple poem       )
 ///           (          Working           )
 ///
-/// A scrim reaches 8 below the row; the transcript starts at the row's foot.
+/// Home's scrim (`HeaderScrimView`) reaches 8 below the row, as on every
+/// glass bar, and on here past the capsule by the scrim's feather, as
+/// home's reaches on over its stories (`backdropExtension`): what scrolls
+/// under the header has faded and blurred out by the time it meets the
+/// capsule, never cut along its edge. It comes in as the transcript
+/// scrolls under it (`HeaderScrim.presence`). The transcript starts at the
+/// row's foot.
 public struct StemCellChatHeaderLayout: Equatable, Sendable {
     public enum Metrics {
         public static let rowHeight: CGFloat = HomeHeaderLayout.Metrics.contentHeight
@@ -37,7 +43,11 @@ public struct StemCellChatHeaderLayout: Equatable, Sendable {
     /// In the screen, inside the capsule.
     public var title: CGRect
     public var status: CGRect?
+    /// The glass bars' scrim, 8 below the row.
     public var backdrop: CGRect
+    /// The scrim drawn here: `backdrop`, reaching the feather past the
+    /// capsule as tall as it gets (with a status), so it never moves.
+    public var scrim: CGRect
     /// The transcript's top inset.
     public var listTop: CGFloat
     /// The widest the name may be.
@@ -64,6 +74,8 @@ public struct StemCellChatHeaderLayout: Equatable, Sendable {
         let midX = pill.midX
         status = statusWidth.map { CGRect(x: (midX - $0 / 2).rounded(), y: top + M.titleHeight, width: $0, height: M.statusHeight) }
         backdrop = CGRect(x: 0, y: 0, width: width, height: rowTop + M.rowHeight + M.backdropOverhang)
+        let tallest = rowTop + (M.rowHeight + M.pillHeightWithStatus) / 2
+        scrim = CGRect(x: 0, y: 0, width: width, height: max(backdrop.height, tallest + HeaderScrim.rampPoints))
         listTop = rowTop + M.rowHeight
     }
 }

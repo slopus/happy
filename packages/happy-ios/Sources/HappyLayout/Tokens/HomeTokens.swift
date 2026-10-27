@@ -56,6 +56,18 @@ public enum HeaderScrim {
         public var alpha: Double
     }
 
+    /// How far a list scrolls under a scrim before it is whole: the 8 of
+    /// room a list keeps before its chrome, so the scrim is whole by the
+    /// time anything meets the chrome's edge.
+    public static let presenceRamp: CGFloat = 8
+
+    /// A scrim's strength over a list whose content has gone `scrolledUnder`
+    /// past where it rests: none at rest, so what rests there reads whole,
+    /// and whole `presenceRamp` on.
+    public static func presence(scrolledUnder: CGFloat) -> CGFloat {
+        min(1, max(0, scrolledUnder / presenceRamp))
+    }
+
     /// `feather(rgb, peak, hold)`: 25 samples of `1 - p^1.67` after a flat
     /// hold, where `hold` puts the ramp's start `rampPoints` above the
     /// bottom of a scrim `height` tall.

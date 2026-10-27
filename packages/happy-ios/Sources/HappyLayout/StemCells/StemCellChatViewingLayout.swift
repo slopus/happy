@@ -62,15 +62,19 @@ public struct StemCellPictureDismissal: Equatable, Sendable {
     }
 }
 
-/// What a Stem Cell conversation keeps around its composer: the screen's
-/// ground from just above the card's top to the foot, so no message shows
-/// under, beside or through the card, fading in over the list's gap; and
+/// What a Stem Cell conversation keeps around its composer: home's dock
+/// scrim (`HeaderScrimView`, `edge: .bottom`), whole from the card's top to
+/// the foot and feathered over the 36 above it, so what scrolls on under
+/// the card has faded and blurred out by the time it meets it, never cut
+/// along its edge (the header's, upside down; it comes in as the
+/// transcript scrolls away from its end, `HeaderScrim.presence`); and
 /// desktop's way back to the newest message (`.happy-message-list__jump`),
-/// a 32 circle centred 12 above where the list ends.
+/// a 32 circle centred 12 above where the list ends, drawn over the
+/// scrim's feather.
 public struct StemCellChatFootLayout: Equatable, Sendable {
     public enum Metrics {
-        /// The list's gap above the card, which the ground fades in over.
-        public static let fade: CGFloat = 8
+        /// The list's gap above the card.
+        public static let listGap: CGFloat = 8
         public static let jumpSize: CGFloat = 32
         public static let jumpGap: CGFloat = 12
         public static let jumpIcon: CGFloat = 16
@@ -80,17 +84,15 @@ public struct StemCellChatFootLayout: Equatable, Sendable {
         public static let jumpShadowOpacity: CGFloat = 0.12
     }
 
-    public var ground: CGRect
-    /// The share of `ground`'s height its fade takes, from the top.
-    public var fadeShare: CGFloat
+    public var scrim: CGRect
     public var jump: CGRect
 
     /// `card` is the composer's frame in a screen of `size`.
     public init(size: CGSize, card: CGRect) {
         typealias M = Metrics
-        let top = max(0, card.minY - M.fade)
-        ground = CGRect(x: 0, y: top, width: size.width, height: max(0, size.height - top))
-        fadeShare = ground.height > 0 ? min(1, (card.minY - top) / ground.height) : 0
+        let top = max(0, card.minY - M.listGap)
+        let scrimTop = max(0, card.minY - HeaderScrim.rampPoints)
+        scrim = CGRect(x: 0, y: scrimTop, width: size.width, height: max(0, size.height - scrimTop))
         jump = CGRect(x: ((size.width - M.jumpSize) / 2).rounded(), y: top - M.jumpGap - M.jumpSize, width: M.jumpSize, height: M.jumpSize)
     }
 

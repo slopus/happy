@@ -19,6 +19,8 @@ final class StemCellChatHeaderLayoutTests: XCTestCase {
         XCTAssertEqual(layout.title, CGRect(x: 157, y: 77, width: 141, height: 22))
         XCTAssertNil(layout.status)
         XCTAssertEqual(layout.backdrop, CGRect(x: 0, y: 0, width: 402, height: 122))
+        // The scrim's 36 of feather end under the capsule, not on it.
+        XCTAssertEqual(layout.scrim, CGRect(x: 0, y: 0, width: 402, height: 148))
         XCTAssertEqual(layout.listTop, 114)
         XCTAssertEqual(layout.titleMaxWidth, 286)
     }
@@ -28,6 +30,19 @@ final class StemCellChatHeaderLayoutTests: XCTestCase {
         XCTAssertEqual(layout.pill, CGRect(x: 68, y: 64, width: 318, height: 48))
         XCTAssertEqual(layout.title, CGRect(x: 197, y: 69, width: 60, height: 22))
         XCTAssertEqual(layout.status, CGRect(x: 201, y: 91, width: 52, height: 16))
+        // The same scrim with a status or without: it never moves.
+        XCTAssertEqual(layout.scrim.maxY, 148)
+        XCTAssertEqual(layout.scrim.maxY - layout.pill.maxY, HeaderScrim.rampPoints)
+    }
+
+    /// At rest nothing is under the header, so nothing is washed; scrolled
+    /// the 8 of room under it, before anything meets the capsule, whole.
+    func testTheScrimComesInAsTheTranscriptScrollsUnder() {
+        XCTAssertEqual(HeaderScrim.presence(scrolledUnder: -20), 0)
+        XCTAssertEqual(HeaderScrim.presence(scrolledUnder: 0), 0)
+        XCTAssertEqual(HeaderScrim.presence(scrolledUnder: 4), 0.5)
+        XCTAssertEqual(HeaderScrim.presence(scrolledUnder: 8), 1)
+        XCTAssertEqual(HeaderScrim.presence(scrolledUnder: 400), 1)
     }
 
     func testALongNameIsCutInsideTheCapsule() {
