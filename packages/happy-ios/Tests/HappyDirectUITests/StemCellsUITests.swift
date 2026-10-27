@@ -1824,6 +1824,7 @@ final class StemCellsUITests: XCTestCase {
         capture("panel-models")
         let models = panel("stem-picker-models").frame
         XCTAssertLessThan(models.maxY, model.frame.minY, "the list isn't over its chip")
+        XCTAssertLessThanOrEqual(models.width, 250, "the list is wider than a menu")
         // A service's heading: its accounts over the list, where it stands.
         // The picked model's service, in view with it.
         let heading = app.descendants(matching: .any)["stem-picker-heading:claude"]
@@ -1860,6 +1861,17 @@ final class StemCellsUITests: XCTestCase {
         pause(1.5)
         capture("panel-models-opus")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        pause(1)
+        // iOS's own menu, the + sheet's permission, to set these beside.
+        openSheet()
+        app.descendants(matching: .any)["attach-permission"].tap()
+        XCTAssertTrue(menuRow("Read only").waitForExistence(timeout: 5), "no permission menu")
+        pause(1.5)
+        capture("native-menu")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
+        let close = app.buttons["attach-close"]
+        XCTAssertTrue(until(3) { !self.menuRow("Read only").exists && close.isHittable }, "the menu stayed")
+        close.tap()
         pause(1)
     }
 

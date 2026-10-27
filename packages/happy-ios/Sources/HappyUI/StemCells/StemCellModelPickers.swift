@@ -210,7 +210,7 @@ enum StemCellModelPickers {
         }
         return StemCellPickerContent(
             id: "stem-picker-accounts", label: Strings.StemCells.accountsOf(service.label), lines: lines,
-            minWidth: StemCellPickerMetrics.accountsWidth, maxWidth: StemCellPickerMetrics.accountsWidth
+            minWidth: StemCellPickerMetrics.accountsMinWidth, maxWidth: StemCellPickerMetrics.accountsMaxWidth
         )
     }
 
@@ -234,7 +234,6 @@ enum StemCellModelPickers {
                 resets: window.resetsAt.map { Strings.StemCells.resets(Strings.StemCells.dayTime($0, now: now)) },
                 gauge: gauge(window, blocked: window.blocking), primary: window.kind == .week
             )
-            line.gauge?.text = Strings.StemCells.percentLeft(window.left)
             lines.append(line)
         }
         if windows.isEmpty { lines.append(.init(label: Strings.StemCells.usageUnknown)) }
@@ -391,7 +390,8 @@ final class StemCellPickerPresenter {
         while overlay.panels.count > 1 { overlay.pop(animated: animated) }
         overlay.pop(animated: animated)
         if animated {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.13) { overlay.removeFromSuperview(); overlay.isUserInteractionEnabled = true }
+            // Once the panels' glass has dissolved.
+            DispatchQueue.main.asyncAfter(deadline: .now() + StemCellPickerOverlay.popDuration) { overlay.removeFromSuperview(); overlay.isUserInteractionEnabled = true }
         } else {
             overlay.removeFromSuperview()
             overlay.isUserInteractionEnabled = true
@@ -414,8 +414,9 @@ final class StemCellPickerPresenter {
     }
 
     /// The panels where they stand now: the list over its chip, the
-    /// accounts over the list.
-    private func place(opening: Bool) {
+    /// accounts over the list. `opening` the list, it stands on its picked
+    /// line; `stacking` the accounts, they stand on theirs.
+    private func place(opening: Bool, stacking: Bool = false) {
         guard let card, let base = overlay.panels.first else { return }
         let top = max(overlay.safeAreaInsets.top, top?() ?? 0)
         let bounds = CGRect(x: 0, y: top, width: overlay.bounds.width, height: overlay.bounds.height - top)
@@ -432,7 +433,7 @@ final class StemCellPickerPresenter {
         let stackedLayout = Self.layout(stacked, in: bounds) { items, footer, width in
             StemCellPickerPanelLayout(items: items, footer: footer, width: width, stackedOver: layout.frame, in: bounds, selected: stacked.selected)
         }
-        overlay.panels[1].apply(stacked, layout: stackedLayout, opening: false)
+        overlay.panels[1].apply(stacked, layout: stackedLayout, opening: stacking)
     }
 
     private static func layout(_ content: StemCellPickerContent, in bounds: CGRect, _ make: ([StemCellPickerPanelLayout.Item], [StemCellPickerPanelLayout.Item], CGFloat) -> StemCellPickerPanelLayout) -> StemCellPickerPanelLayout {
@@ -470,7 +471,8 @@ final class StemCellPickerPresenter {
         accounts = service
         let panel = makePanel(level: 1)
         overlay.push(panel)
-        place(opening: true)
+        // The list stays where it was scrolled.
+        place(opening: false, stacking: true)
         overlay.grow(panel)
         overlay.panels.first?.accessibilityElementsHidden = true
         UIAccessibility.post(notification: .screenChanged, argument: panel)

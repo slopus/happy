@@ -95,7 +95,7 @@ public struct StemCellPickerPanelLayout: Equatable, Sendable {
     }
 
     /// The account's windows under its list: a week line, then the rest,
-    /// 4 apart, 6 above and below.
+    /// `gap` apart, `detailsInsetY` above and below.
     public static func detailsHeight(lines: Int, primary: Bool) -> CGFloat {
         guard lines > 0 else { return 0 }
         let first = primary ? Metrics.detailsPrimaryLine : Metrics.detailsLine
@@ -106,7 +106,8 @@ public struct StemCellPickerPanelLayout: Equatable, Sendable {
 /// One line's parts, desktop's flex row: pieces from its leading edge,
 /// `padding` in, each `gapBefore` after the last, and pieces from its
 /// trailing edge back. A piece that `shrinks` gives up what doesn't fit, so
-/// a long name ends early and what follows it (a check) stays whole.
+/// a long name ends early and what follows it (a gauge) stays whole; with
+/// more than one, the last gives way first.
 public struct StemCellPickerLineLayout: Equatable, Sendable {
     public struct Piece: Equatable, Sendable {
         public var size: CGSize
@@ -142,9 +143,11 @@ public struct StemCellPickerLineLayout: Equatable, Sendable {
         let end = trailing.isEmpty ? line.maxX - padding : right - trailingGap
         var widths = leading.map { min($0.size.width, $0.maxWidth ?? .greatestFiniteMagnitude) }
         let gaps = leading.dropFirst().reduce(0) { $0 + $1.gapBefore }
-        let over = widths.reduce(0, +) + gaps - (end - (line.minX + padding))
-        if over > 0, let index = leading.firstIndex(where: \.shrinks) {
-            widths[index] = max(0, widths[index] - over)
+        var over = widths.reduce(0, +) + gaps - (end - (line.minX + padding))
+        for index in leading.indices.reversed() where over > 0 && leading[index].shrinks {
+            let given = min(over, widths[index])
+            widths[index] -= given
+            over -= given
         }
         var x = line.minX + padding
         var frames: [CGRect] = []

@@ -106,17 +106,14 @@ extension Palette {
     public static let stemCellsHoldInk = ColorToken("#000000", "#ffffff")
     public static let stemCellsHoldDestructive = ColorToken("#ff3b30", "#eb5545")
 
-    /// The model and effort lists (desktop's `composer-model-control.css`):
-    /// the panel (`--surface`, `--modal-border`), a picked or pressed line
-    /// (`--surface-pressed`), a pressed heading (`--surface-selected`), the
-    /// hairline (`--divider`) and the ink (`--text`, `--text-secondary`).
-    public static let stemCellsPanelFill = ColorToken("#ffffff", "#212121")
-    public static let stemCellsPanelBorder = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.1), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.1))
-    public static let stemCellsPanelPressed = ColorToken("#f0f0f2", "#2c2c2e")
-    public static let stemCellsPanelHeadingPressed = ColorToken("#eaeaea", "#2c2c2e")
-    public static let stemCellsPanelDivider = ColorToken("#eaeaea", "#292929")
+    /// The model and effort lists, iOS's menus over their glass: a pressed
+    /// line or heading, the hairline, the ink and the quiet ink, and the
+    /// shadow under the panel.
+    public static let stemCellsPanelPressed = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.08), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.12))
+    public static let stemCellsPanelDivider = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.1), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.12))
+    public static let stemCellsPanelShadow = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.16), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.4))
     public static let stemCellsPanelText = ColorToken("#000000", "#ffffff")
-    public static let stemCellsPanelSecondary = ColorToken("#49454f", "#cac4d0")
+    public static let stemCellsPanelSecondary = ColorToken(light: RGBA(red: 60 / 255.0, green: 60 / 255.0, blue: 67 / 255.0, alpha: 0.6), dark: RGBA(red: 235 / 255.0, green: 235 / 255.0, blue: 245 / 255.0, alpha: 0.6))
     /// A usage ring (`UsageRing`): its quiet track, its arc, and the arc
     /// when little or almost nothing is left.
     public static let stemCellsUsageTrack = ColorToken("#c0c0c0", "#48484a")
@@ -125,55 +122,64 @@ extension Palette {
     public static let stemCellsUsageCritical = ColorToken("#ff3b30", "#ff453a")
 }
 
-/// Desktop's model control panels at 1.25, which puts their 14px type at
-/// iOS menus' 17.5 and their 32px lines at 40.
+/// The model control panels as iOS's own menus draw theirs: liquid glass,
+/// about 250 wide, 17pt lines 44 tall with the check in a column before the
+/// names; desktop's headings, gauges and account windows inside.
 public enum StemCellPickerMetrics {
-    public static let scale: CGFloat = 1.25
-    /// `--happy-panel-inset`, the panel's padding.
-    public static let inset: CGFloat = 6 * scale
+    /// The panel's padding above and below its lines, and at its sides.
+    public static let inset: CGFloat = 8
     /// Between a panel's blocks: services, hairlines, the footer.
-    public static let gap: CGFloat = 4 * scale
-    public static let radius: CGFloat = 14 * scale
-    public static let border: CGFloat = 1
+    public static let gap: CGFloat = 5
+    /// A menu's corners.
+    public static let radius: CGFloat = 24
+    /// Its shadow: soft and wide under the glass.
+    public static let shadowRadius: CGFloat = 24
+    public static let shadowY: CGFloat = 8
     /// A model, effort or account line, and a service's heading.
-    public static let row: CGFloat = 32 * scale
-    public static let heading: CGFloat = 28 * scale
-    /// A line's text inset, and its highlight 2 inside it, rounded 8.
-    public static let padding: CGFloat = 10 * scale
-    public static let highlightInset: CGFloat = 2 * scale
-    public static let highlightRadius: CGFloat = 8 * scale
-    public static let labelSize: CGFloat = 14 * scale
-    public static let headingSize: CGFloat = 12 * scale
-    public static let linkSize: CGFloat = 13 * scale
-    /// The check after a picked line's name, 6 after it.
-    public static let check: CGFloat = 14 * scale
-    public static let checkGap: CGFloat = 6 * scale
-    /// A heading: its service, 4, its account (at most 112 wide), its
-    /// usage 6 apart, and its chevron.
-    public static let headingGap: CGFloat = 4 * scale
-    public static let accountMax: CGFloat = 112 * scale
-    public static let usageGap: CGFloat = 6 * scale
-    public static let chevron: CGFloat = 12 * scale
-    /// A usage gauge: its number, 4, a ring 12 across.
-    public static let gaugeSize: CGFloat = 12 * scale
-    public static let ring: CGFloat = 12 * scale
-    public static let ringGap: CGFloat = 4 * scale
-    /// The account's windows under its list: 6 and 10 in, lines 4 apart,
-    /// the week's 20 high, the rest 16; a window's name at least 48 wide.
-    public static let detailsInsetY: CGFloat = 6 * scale
-    public static let detailsLine: CGFloat = 16 * scale
-    public static let detailsPrimaryLine: CGFloat = 20 * scale
-    public static let detailsLabelMin: CGFloat = 48 * scale
-    public static let detailsGap: CGFloat = 8 * scale
-    /// The panel stands 8 over its chip, at least 8 from the screen's edges.
-    public static let anchorGap: CGFloat = 8 * scale
+    public static let row: CGFloat = 44
+    public static let heading: CGFloat = 32
+    /// A line's text inset, and its highlight 2 inside it.
+    public static let padding: CGFloat = 12
+    public static let highlightInset: CGFloat = 2
+    public static let highlightRadius: CGFloat = 14
+    public static let labelSize: CGFloat = 17
+    public static let headingSize: CGFloat = 13
+    public static let linkSize: CGFloat = 15
+    /// The check, in the column before every name: names start `checkColumn`
+    /// past the line's padding, picked or not.
+    public static let check: CGFloat = 15
+    public static let checkColumn: CGFloat = 23
+    /// Between a name and the gauge after it.
+    public static let checkGap: CGFloat = 8
+    /// A heading: its service, 5, its account (at most 110 wide), its
+    /// usage 8 apart, and its chevron.
+    public static let headingGap: CGFloat = 5
+    public static let accountMax: CGFloat = 110
+    public static let usageGap: CGFloat = 8
+    public static let chevron: CGFloat = 13
+    /// A usage gauge: its number, 4, a ring 13 across.
+    public static let gaugeSize: CGFloat = 13
+    public static let ring: CGFloat = 13
+    public static let ringGap: CGFloat = 4
+    /// The account's windows under its list: 7 in at top and bottom, lines
+    /// 5 apart, the week's 22 high, the rest 18; a window's name at least
+    /// 48 wide, so the times start together.
+    public static let detailsInsetY: CGFloat = 7
+    public static let detailsLine: CGFloat = 18
+    public static let detailsPrimaryLine: CGFloat = 22
+    public static let detailsLabelMin: CGFloat = 48
+    public static let detailsGap: CGFloat = 8
+    /// The panel stands 10 over its chip, at least 8 from the screen's edges.
+    public static let anchorGap: CGFloat = 10
     public static let margin: CGFloat = 8
-    public static let maxHeight: CGFloat = 480 * scale
-    /// Widths: the model list 216 to 256, effort at least 128, accounts 288.
-    public static let modelsMinWidth: CGFloat = 216 * scale
-    public static let modelsMaxWidth: CGFloat = 256 * scale
-    public static let effortsMinWidth: CGFloat = 128 * scale
-    public static let accountsWidth: CGFloat = 288 * scale
+    public static let maxHeight: CGFloat = 560
+    /// Widths: a menu's. The model list 200 to 250, effort 160 to 250,
+    /// accounts 250 to 280 (their windows' times); a longer name ends early.
+    public static let modelsMinWidth: CGFloat = 200
+    public static let modelsMaxWidth: CGFloat = 250
+    public static let effortsMinWidth: CGFloat = 160
+    public static let accountsMinWidth: CGFloat = 250
+    public static let accountsMaxWidth: CGFloat = 280
 }
 
 public enum StemCellsMetrics {

@@ -5,7 +5,7 @@ import UIKit
 
 /// What one of the composer's model control panels lists, as desktop's
 /// `ComposerModelControl` draws it: a service's heading over its models, a
-/// line with its check after its name, a usage gauge at a line's end, the
+/// line with its check before its name, a usage gauge at a line's end, the
 /// hairline between blocks, and an account's windows under its list.
 struct StemCellPickerContent: Equatable {
     struct Gauge: Equatable {
@@ -55,7 +55,7 @@ struct StemCellPickerContent: Equatable {
 @MainActor
 enum StemCellPickerType {
     typealias M = StemCellPickerMetrics
-    static let label = StemCellsFonts.ui(.medium, size: M.labelSize)
+    static let label = StemCellsFonts.ui(.regular, size: M.labelSize)
     static let service = StemCellsFonts.ui(.semiBold, size: M.headingSize)
     static let account = StemCellsFonts.ui(.regular, size: M.headingSize)
     static let link = StemCellsFonts.ui(.medium, size: M.linkSize)
@@ -73,16 +73,36 @@ enum StemCellPickerType {
 
     /// The width a line asks of its panel.
     static func width(_ line: StemCellPickerContent.Line) -> CGFloat {
-        let sides = 2 * M.inset + 2 * M.padding
+        // A name starts past the check's column, picked or not.
+        let sides = 2 * M.inset + 2 * M.padding + M.checkColumn
         switch line {
-        case .option(_, let label, let checked, _, let gauge):
-            return sides + size(label, Self.label).width + (checked ? M.checkGap + M.check : 0) + (gauge.map { M.checkGap + gaugeSize($0).width } ?? 0)
+        case .option(_, let label, _, _, let gauge):
+            return sides + size(label, Self.label).width + (gauge.map { M.checkGap + gaugeSize($0).width } ?? 0)
         case .link(_, let label):
             return sides + size(label, link).width
-        // A heading takes the width the names give it; a notice wraps.
-        case .heading, .notice, .separator, .windows:
+        // A heading and the windows keep to the line's leading edge.
+        case .heading(let service, let account, let gauges, let opens, _):
+            var width = 2 * M.inset + 2 * M.padding + size(service, Self.service).width
+            if let account { width += M.headingGap + min(M.accountMax, size(account, Self.account).width) }
+            if !gauges.isEmpty || opens != nil { width += M.headingGap }
+            width += gauges.map { gaugeSize($0).width }.reduce(0, +) + CGFloat(max(0, gauges.count - 1)) * M.usageGap
+            if opens != nil { width += (gauges.isEmpty ? 0 : M.headingGap) + M.chevron }
+            return width
+        case .windows(let windows):
+            return 2 * M.inset + 2 * M.padding + (windows.map(windowWidth).max() ?? 0)
+        // A notice wraps.
+        case .notice, .separator:
             return 0
         }
+    }
+
+    /// One window's line: its name, when it starts over, what is left.
+    static func windowWidth(_ window: StemCellPickerContent.Window) -> CGFloat {
+        let font = StemCellsFonts.ui(window.primary ? .semiBold : .regular, size: window.primary ? M.linkSize : M.headingSize)
+        var width = size(window.label, font).width
+        if let resets = window.resets { width = max(width, M.detailsLabelMin) + M.detailsGap + size(resets, Self.account).width }
+        if let gauge = window.gauge { width += M.detailsGap + gaugeSize(gauge).width }
+        return width
     }
 
     static func item(_ line: StemCellPickerContent.Line, width: CGFloat) -> StemCellPickerPanelLayout.Item {
@@ -93,7 +113,7 @@ enum StemCellPickerType {
         case .separator: .separator
         case .notice(let text, _):
             .block(ceil((text as NSString).boundingRect(
-                with: CGSize(width: max(1, width - 2 * M.inset - 2 * M.padding), height: .greatestFiniteMagnitude),
+                with: CGSize(width: max(1, width - 2 * M.inset - 2 * M.padding - M.checkColumn), height: .greatestFiniteMagnitude),
                 options: .usesLineFragmentOrigin, attributes: [.font: notice], context: nil
             ).height) + 2 * M.detailsInsetY)
         case .windows(let windows):
@@ -167,9 +187,11 @@ final class StemCellUsageGaugeView: UIView {
     }
 }
 
-/// One line of a panel: a model, effort or account with its check, a
-/// service's heading, the benchmarks link, a notice, a hairline, or an
-/// account's windows.
+/// One line of a panel: a model, effort or account with its check in the
+/// column before its name, a service's heading, the benchmarks link, a
+/// notice, a hairline, or an account's windows. Names, the link and notices
+/// start past the check's column, as a menu's titles; headings and windows
+/// keep to its leading edge, as a menu's section titles.
 final class StemCellPickerLineView: UIControl {
     typealias M = StemCellPickerMetrics
     let line: StemCellPickerContent.Line
@@ -269,7 +291,7 @@ final class StemCellPickerLineView: UIControl {
                 }
                 rows.append((label, resets, gaugeView, window))
             }
-            accessibilityLabel = windows.map { [$0.label, $0.resets, $0.gauge?.text].compactMap { $0 }.joined(separator: " ") }.joined(separator: ", ")
+            accessibilityLabel = windows.map { [$0.label, $0.resets, $0.gauge.map { Strings.StemCells.percentLeft($0.left) }].compactMap { $0 }.joined(separator: " ") }.joined(separator: ", ")
             accessibilityTraits = .staticText
         }
     }
@@ -291,15 +313,15 @@ final class StemCellPickerLineView: UIControl {
         let secondary = UIColor(Palette.stemCellsPanelSecondary)
         check.tintColor = text
         switch line {
-        case .option(_, _, let checked, _, _):
+        case .option:
             title.textColor = text
-            highlight.backgroundColor = checked || isHighlighted ? UIColor(Palette.stemCellsPanelPressed) : nil
+            highlight.backgroundColor = isHighlighted ? UIColor(Palette.stemCellsPanelPressed) : nil
         case .heading:
-            // Pressed, a heading reads in full ink on its own fill.
+            // Pressed, a heading reads in full ink.
             title.textColor = isHighlighted ? text : secondary
             detail.textColor = title.textColor
             chevron.tintColor = title.textColor
-            highlight.backgroundColor = isHighlighted ? UIColor(Palette.stemCellsPanelHeadingPressed) : nil
+            highlight.backgroundColor = isHighlighted ? UIColor(Palette.stemCellsPanelPressed) : nil
         case .link:
             title.textColor = secondary
             highlight.backgroundColor = isHighlighted ? UIColor(Palette.stemCellsPanelPressed) : nil
@@ -318,18 +340,19 @@ final class StemCellPickerLineView: UIControl {
     override func layoutSubviews() {
         super.layoutSubviews()
         let bounds = self.bounds
+        // Past the check's column.
+        let named = bounds.inset(by: UIEdgeInsets(top: 0, left: M.checkColumn, bottom: 0, right: 0))
         highlight.frame = bounds.insetBy(dx: 0, dy: M.highlightInset)
         typealias Piece = StemCellPickerLineLayout.Piece
         switch line {
         case .option(_, let label, let checked, _, let gauge):
-            var leading = [Piece(StemCellPickerType.size(label, StemCellPickerType.label), shrinks: true)]
-            if checked { leading.append(Piece(CGSize(width: M.check, height: M.check), gapBefore: M.checkGap)) }
-            let line = StemCellPickerLineLayout(line: bounds, leading: leading, trailing: gauge.map { [Piece(StemCellPickerType.gaugeSize($0))] } ?? [])
+            let line = StemCellPickerLineLayout(line: named, leading: [Piece(StemCellPickerType.size(label, StemCellPickerType.label), shrinks: true)], trailing: gauge.map { [Piece(StemCellPickerType.gaugeSize($0))] } ?? [])
             title.frame = line.leading[0]
-            if checked { check.frame = line.leading[1] }
+            if checked { check.frame = CGRect(x: M.padding, y: bounds.midY - M.check / 2, width: M.check, height: M.check) }
             if let first = line.trailing.first { gauges.first?.frame = first }
         case .heading(let service, let account, let gaugeModels, let opens, _):
-            var leading = [Piece(StemCellPickerType.size(service, StemCellPickerType.service))]
+            // The account gives way first, then the service.
+            var leading = [Piece(StemCellPickerType.size(service, StemCellPickerType.service), shrinks: true)]
             if let account { leading.append(Piece(StemCellPickerType.size(account, StemCellPickerType.account), maxWidth: M.accountMax, shrinks: true, gapBefore: M.headingGap)) }
             var trailing: [Piece] = []
             if opens != nil { trailing.append(Piece(CGSize(width: M.chevron, height: M.chevron))) }
@@ -344,9 +367,9 @@ final class StemCellPickerLineView: UIControl {
             if opens != nil { chevron.frame = placed.removeFirst() }
             for (view, frame) in zip(gauges.reversed(), placed) { view.frame = frame }
         case .link(_, let label):
-            title.frame = StemCellPickerLineLayout(line: bounds, leading: [Piece(StemCellPickerType.size(label, StemCellPickerType.link), shrinks: true)]).leading[0]
+            title.frame = StemCellPickerLineLayout(line: named, leading: [Piece(StemCellPickerType.size(label, StemCellPickerType.link), shrinks: true)]).leading[0]
         case .notice:
-            title.frame = bounds.insetBy(dx: M.padding, dy: M.detailsInsetY)
+            title.frame = named.insetBy(dx: M.padding, dy: M.detailsInsetY)
         case .separator:
             break
         case .windows:
@@ -371,28 +394,35 @@ final class StemCellPickerLineView: UIControl {
     }
 }
 
-/// A panel: its fill and border, its lines scrolling in its viewport, and
-/// its footer under them.
+/// A panel as iOS's menus: liquid glass with its soft shadow under it, its
+/// lines scrolling in its viewport, and its footer under them.
 final class StemCellPickerPanelView: UIView {
     typealias M = StemCellPickerMetrics
     let scrollView = LinesScrollView()
+    /// The glass, its lines in its content; it comes and goes as the
+    /// material does (`effect` to and from nil), never by its alpha.
+    let glass = UIVisualEffectView(effect: nil)
+    private let effect = UIGlassEffect(style: .regular)
     private(set) var content: StemCellPickerContent?
     private(set) var layout: StemCellPickerPanelLayout?
     var onTap: ((StemCellPickerContent.Line) -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        layer.cornerRadius = M.radius
-        layer.cornerCurve = .continuous
-        layer.borderWidth = M.border
         // Its label, "Select model", read as VoiceOver enters it.
         accessibilityContainerType = .semanticGroup
-        clipsToBounds = true
+        layer.shadowOpacity = 1
+        layer.shadowRadius = M.shadowRadius
+        layer.shadowOffset = CGSize(width: 0, height: M.shadowY)
+        glass.effect = effect
+        glass.cornerConfiguration = .corners(radius: .fixed(M.radius))
+        glass.clipsToBounds = true
+        addSubview(glass)
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.alwaysBounceVertical = false
         scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.delaysContentTouches = false
-        addSubview(scrollView)
+        glass.contentView.addSubview(scrollView)
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyColors() }
         applyColors()
     }
@@ -400,8 +430,26 @@ final class StemCellPickerPanelView: UIView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     private func applyColors() {
-        backgroundColor = UIColor(Palette.stemCellsPanelFill)
-        layer.borderColor = UIColor(Palette.stemCellsPanelBorder).resolvedColor(with: traitCollection).cgColor
+        layer.shadowColor = UIColor(Palette.stemCellsPanelShadow).resolvedColor(with: traitCollection).cgColor
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        glass.frame = bounds
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: M.radius).cgPath
+    }
+
+    /// The glass forms, the lines and the shadow come up with it; or all go.
+    func materialize(_ shown: Bool) {
+        glass.effect = shown ? effect : nil
+        glass.contentView.alpha = shown ? 1 : 0
+        let shadow = CABasicAnimation(keyPath: "shadowOpacity")
+        shadow.fromValue = layer.presentation()?.shadowOpacity ?? layer.shadowOpacity
+        layer.removeAnimation(forKey: "shadowOpacity")
+        layer.shadowOpacity = shown ? 1 : 0
+        shadow.toValue = layer.shadowOpacity
+        shadow.duration = UIView.inheritedAnimationDuration
+        if shadow.duration > 0 { layer.add(shadow, forKey: "shadowOpacity") }
     }
 
     /// Shows `content` where `layout` puts it. Opened, the lines stand at
@@ -421,11 +469,11 @@ final class StemCellPickerPanelView: UIView {
         scrollView.contentSize = CGSize(width: layout.viewport.width, height: layout.contentHeight)
         if same {
             for (view, frame) in zip(lineViews(in: scrollView), layout.items) { place(view, frame) }
-            for (view, frame) in zip(lineViews(in: self), layout.footer) { place(view, frame) }
+            for (view, frame) in zip(lineViews(in: glass.contentView), layout.footer) { place(view, frame) }
         } else {
-            (lineViews(in: scrollView) + lineViews(in: self)).forEach { $0.removeFromSuperview() }
+            (lineViews(in: scrollView) + lineViews(in: glass.contentView)).forEach { $0.removeFromSuperview() }
             for (line, frame) in zip(content.lines, layout.items) { add(line, frame, to: scrollView) }
-            for (line, frame) in zip(content.footer, layout.footer) { add(line, frame, to: self) }
+            for (line, frame) in zip(content.footer, layout.footer) { add(line, frame, to: glass.contentView) }
         }
         let scrolls = max(0, layout.contentHeight - layout.viewport.height)
         scrollView.contentOffset.y = opening ? layout.initialOffset : min(scrolls, offset)
@@ -483,6 +531,9 @@ final class StemCellPickerOverlay: UIView, UIGestureRecognizerDelegate {
         return isUserInteractionEnabled ? self : nil
     }
 
+    /// How long a panel takes to dissolve.
+    static let popDuration: TimeInterval = 0.16
+
     @objc private func outside() { onOutside?() }
 
     override func accessibilityPerformEscape() -> Bool {
@@ -496,13 +547,14 @@ final class StemCellPickerOverlay: UIView, UIGestureRecognizerDelegate {
         addSubview(panel)
     }
 
-    /// The panel grows in from its bottom trailing corner, where its chip is.
+    /// The panel grows in from its bottom trailing corner, where its chip
+    /// is, its glass forming as it does.
     func grow(_ panel: StemCellPickerPanelView) {
         guard !UIAccessibility.isReduceMotionEnabled else { return }
-        panel.alpha = 0
-        panel.transform = CGAffineTransform(scaleX: 0.96, y: 0.96).translatedBy(x: panel.bounds.width * 0.02, y: panel.bounds.height * 0.02)
-        UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
-            panel.alpha = 1
+        UIView.performWithoutAnimation { panel.materialize(false) }
+        panel.transform = CGAffineTransform(scaleX: 0.9, y: 0.9).translatedBy(x: panel.bounds.width * 0.05, y: panel.bounds.height * 0.05)
+        UIView.animate(withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0, options: [.allowUserInteraction]) {
+            panel.materialize(true)
             panel.transform = .identity
         }
     }
@@ -514,7 +566,10 @@ final class StemCellPickerOverlay: UIView, UIGestureRecognizerDelegate {
         panel.accessibilityElementsHidden = true
         panel.accessibilityIdentifier = nil
         guard animated else { return panel.removeFromSuperview() }
-        UIView.animate(withDuration: 0.12, delay: 0, options: [.curveEaseIn]) { panel.alpha = 0 } completion: { _ in panel.removeFromSuperview() }
+        UIView.animate(withDuration: Self.popDuration, delay: 0, options: [.curveEaseIn, .beginFromCurrentState]) {
+            panel.materialize(false)
+            panel.transform = .identity
+        } completion: { _ in panel.removeFromSuperview() }
     }
 
     override func layoutSubviews() {
