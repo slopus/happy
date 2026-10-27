@@ -20,3 +20,7 @@ reviewed components/CommandPalette/CommandPaletteItem.tsx command.icon as any
 # Session row actions come from hooks/useSessionQuickActions.ts, whose
 # `icon:` literals the scan reads.
 reviewed components/SessionActionsPopover.tsx action.icon as keyof typeof Ionicons.glyphMap
+# The iOS composer's full-screen editor, which happy-app doesn't have: its
+# expand button (AgentInputCard.swift); contract-outline, which closes it,
+# the scan finds.
+Ionicons expand-outline

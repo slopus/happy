@@ -250,9 +250,11 @@ public final class DirectAgentClient: Sendable {
         return try await decode(Response.self, "GET", "/v0/agents/\(Self.escape(agentId))/mode").mode
     }
 
+    /// Always steering, as desktop sends: mid-turn it is taken at the next
+    /// boundary rather than waiting behind the run; idle, it starts one.
     public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], mode: AgentWire.Mode) async throws {
         var object: [String: JSONValue] = [
-            "id": .string(id), "text": .string(text), "delivery": .string("queue"),
+            "id": .string(id), "text": .string(text), "delivery": .string("steer"),
             "clientMetadata": .object(["composer": .string("mobile")]),
         ]
         if !images.isEmpty {
@@ -262,6 +264,21 @@ public final class DirectAgentClient: Sendable {
         }
         object["mode"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode))
         _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/send", json: .object(object))
+    }
+
+    /// The composer's draft as the computer keeps it for this person.
+    public func draft(_ agentId: String) async throws -> AgentWire.Draft {
+        struct Response: Decodable { var draft: AgentWire.Draft }
+        return try await decode(Response.self, "GET", "/v0/agents/\(Self.escape(agentId))/draft").draft
+    }
+
+    /// Saves the draft, or clears it with nil. A write older than the one
+    /// kept is ignored; the answer is what is kept either way.
+    public func saveDraft(_ agentId: String, value: AgentWire.DraftValue?, updatedAt: Double, mutationId: String) async throws -> AgentWire.Draft {
+        struct Response: Decodable { var draft: AgentWire.Draft }
+        let draft: JSONValue = try value.map { try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode($0)) } ?? .null
+        let body: JSONValue = .object(["draft": draft, "updatedAt": .number(updatedAt), "mutationId": .string(mutationId)])
+        return try await decode(Response.self, "PUT", "/v0/agents/\(Self.escape(agentId))/draft", json: body).draft
     }
 
     public func abort(_ agentId: String) async throws {

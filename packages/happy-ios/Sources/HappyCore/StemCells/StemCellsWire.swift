@@ -427,9 +427,56 @@ extension AgentWire {
         public var live: Live?
     }
 
+    /// The composer's draft on the computer (`GET/PUT /v0/agents/:id/draft`):
+    /// the text with the mode it goes with, and when it was last touched,
+    /// kept even when cleared so an older device can't bring it back. On a
+    /// team server it is the signed-in person's own.
+    public struct Draft: Equatable, Sendable, Codable {
+        public var value: DraftValue?
+        public var updatedAt: Double?
+
+        public init(value: DraftValue?, updatedAt: Double?) {
+            self.value = value
+            self.updatedAt = updatedAt
+        }
+    }
+
+    public struct DraftValue: Equatable, Sendable, Codable {
+        public var text: String
+        public var providerId: String
+        public var modelId: String
+        public var effort: String
+        public var serviceTier: String?
+        public var permissionMode: String
+
+        public init(text: String, mode: Mode) {
+            self.text = text
+            providerId = mode.providerId
+            modelId = mode.modelId
+            effort = mode.effort
+            serviceTier = mode.serviceTier
+            permissionMode = mode.permissionMode
+        }
+
+        public var mode: Mode { Mode(providerId: providerId, modelId: modelId, effort: effort, serviceTier: serviceTier, permissionMode: permissionMode) }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(text, forKey: .text)
+            try container.encode(providerId, forKey: .providerId)
+            try container.encode(modelId, forKey: .modelId)
+            try container.encode(effort, forKey: .effort)
+            // Required on the wire, `null` included.
+            try container.encode(serviceTier, forKey: .serviceTier)
+            try container.encode(permissionMode, forKey: .permissionMode)
+        }
+    }
+
     public struct Bootstrap: Equatable, Sendable, Codable {
         public var agent: Agent
         public var mode: Mode?
+        /// This person's draft; absent from an older computer.
+        public var draft: Draft?
         public var pending: [Message]?
         public var cursor: String?
         /// Every child the agent spawned, hidden collaborators included.

@@ -198,6 +198,19 @@ public struct StemCellChatSnapshot: Equatable, Sendable {
     /// The model, account and effort the next message goes with: the last
     /// one sent, a pick, or the computer's default.
     public var mode: AgentWire.Mode?
+    /// The composer's draft, and a count that moves only when it came from
+    /// elsewhere (the computer, the person's other device, or this phone's
+    /// kept copy): the screen sets the composer then, and never has its
+    /// own typing echoed back.
+    public var draft = ""
+    public var draftArrivals = 0
+    /// When `draft` was written (ms since 1970): a draft from elsewhere
+    /// older than what is being typed here isn't shown over it.
+    public var draftUpdatedAt: Double = 0
+    /// The person's steering at the end of `items` that the running turn
+    /// hasn't taken yet: desktop draws it under the working line, as next
+    /// in the queue, until the agent takes it up.
+    public var queued = 0
 
     public init() {}
 }
@@ -255,6 +268,19 @@ public actor StemCellConversation {
     private var creation: Task<String, Error>?
     private var visible = false
 
+    /// The draft as desktop keeps it (`connectHappyAgent` `setDraft`): this
+    /// phone's copy first, saved to the computer 300 ms after the last
+    /// keystroke (a clear at once), last write wins by `updatedAt` across
+    /// the person's devices, and `agent.draft.updated` brings theirs.
+    private var drafts: StemCellDrafts?
+    private var draft = StemCellDraft(text: "", updatedAt: 0, synced: true)
+    /// Moves with every draft taken or typed: a save answered after it is stale.
+    private var draftRevision = 0
+    private var draftSave: Task<Void, Never>?
+    /// The newest keystroke's stamp, so one arriving out of order is dropped.
+    private var lastDraftEdit: Double = 0
+    static let draftDebounce: Duration = .milliseconds(300)
+
     public init(client: DirectAgentClient, store: StemCellsStore, agentId: String, creation: Task<String, Error>? = nil, mode: AgentWire.Mode? = nil) {
         self.client = client
         self.store = store
@@ -301,6 +327,14 @@ public actor StemCellConversation {
     private func created(_ id: String) async {
         creation = nil
         agentId = id
+        // Typed while the daemon made it: newer than the draft it was made
+        // with, which would otherwise take its place on the first read.
+        if !draft.synced {
+            draft.updatedAt = Self.stamp(after: draft.updatedAt)
+            snapshot.draftUpdatedAt = draft.updatedAt
+            draftRevision += 1
+            saveDraftSoon(after: .zero)
+        }
         await follow()
     }
 
@@ -360,6 +394,7 @@ public actor StemCellConversation {
     private func adopt(_ start: AgentWire.Bootstrap, _ history: AgentWire.MessagesResponse) {
         mode = picked ?? start.mode ?? mode
         snapshot.mode = mode
+        if let draft = start.draft { adoptDraft(draft, publishes: false) }
         if mode == nil, defaultMode == nil { defaultMode = Task { [client] in try await client.defaultMode() } }
         runs = []
         messages = [:]
@@ -481,6 +516,9 @@ public actor StemCellConversation {
             if let value = changes["retrying"] { retrying = value == .null ? nil : Self.decode(AgentWire.AgentRetrying.self, value) }
             if let value = changes["pendingQuestionId"] { question = value.stringValue != nil }
             if let running = changes["subagents"]?["running"]?.numberValue { subagentsRunning = Int(running) }
+        case "agent.draft.updated":
+            guard let draft = payload["draft"].flatMap({ Self.decode(AgentWire.Draft.self, $0) }) else { return }
+            adoptDraft(draft, publishes: false)
         default:
             return
         }
@@ -614,6 +652,12 @@ public actor StemCellConversation {
         self.mode = mode
         snapshot.mode = mode
         publish()
+        // A draft is its text with the mode it goes with, empty or not
+        // (desktop's `saveMode`): saved at once with this one.
+        draft = StemCellDraft(text: draft.text, updatedAt: Self.stamp(after: draft.updatedAt), synced: false)
+        snapshot.draftUpdatedAt = draft.updatedAt
+        draftRevision += 1
+        saveDraftSoon(after: .zero)
     }
 
     private func sendingMode() async throws -> AgentWire.Mode {
@@ -650,6 +694,112 @@ public actor StemCellConversation {
         guard let index = outgoing.firstIndex(where: { $0.id == id }) else { return }
         outgoing[index].failure = reason
         publish()
+    }
+
+    // MARK: Draft
+
+    /// This phone's kept drafts: the one kept for this conversation shows
+    /// at once, and goes to the computer if it never did.
+    public func useDrafts(_ drafts: StemCellDrafts) async {
+        self.drafts = drafts
+        guard creation == nil, let kept = await drafts.draft(agentId), kept.updatedAt > draft.updatedAt else { return }
+        draft = kept
+        snapshot.draft = kept.text
+        snapshot.draftUpdatedAt = kept.updatedAt
+        snapshot.draftArrivals += 1
+        publish()
+        if !kept.synced { saveDraftSoon(after: .zero) }
+    }
+
+    /// Typed here, at `at` (ms since 1970, never going back): kept and
+    /// saved after the keystrokes pause, a clear at once.
+    public func setDraft(_ text: String, at: Double) {
+        guard at > lastDraftEdit else { return }
+        lastDraftEdit = at
+        guard text != draft.text else { return }
+        draft = StemCellDraft(text: text, updatedAt: max(at, draft.updatedAt + 1), synced: false)
+        snapshot.draft = text
+        snapshot.draftUpdatedAt = draft.updatedAt
+        draftRevision += 1
+        saveDraftSoon(after: text.isEmpty ? .zero : Self.draftDebounce)
+    }
+
+    /// The screen goes: what waits for the pause is saved now.
+    public func flushDraft() {
+        if !draft.synced { saveDraftSoon(after: .zero) }
+    }
+
+    private static func stamp(after previous: Double) -> Double {
+        max((Date().timeIntervalSince1970 * 1000).rounded(), previous + 1)
+    }
+
+    private func saveDraftSoon(after delay: Duration) {
+        draftSave?.cancel()
+        let revision = draftRevision
+        draftSave = Task {
+            if delay > .zero {
+                try? await Task.sleep(for: delay)
+                if Task.isCancelled { return }
+            }
+            await saveDraft(revision)
+        }
+    }
+
+    private func saveDraft(_ revision: Int) async {
+        let local = draft
+        do {
+            // New work's draft is under the ID the daemon gives it.
+            if let creation { agentId = try await creation.value }
+            await drafts?.keep(agentId, local)
+            // Cleared, it is still the mode the next message goes with.
+            let value = AgentWire.DraftValue(text: local.text, mode: try await sendingMode())
+            let saved = try await client.saveDraft(agentId, value: value, updatedAt: local.updatedAt, mutationId: ClientID.make())
+            // Typed or taken meanwhile: that one is saved next.
+            guard revision == draftRevision else { return }
+            if (saved.updatedAt ?? 0) > local.updatedAt {
+                // Written later on another device: it stands.
+                adoptDraft(saved, publishes: true)
+            } else {
+                draft.synced = true
+                await drafts?.keep(agentId, draft)
+            }
+        } catch {
+            // Kept unsynced here: it goes on the next keystroke, opening or read.
+        }
+    }
+
+    /// The computer's draft, from a read, an event or a save's answer: it
+    /// replaces this phone's unless this phone's is newer, which goes up.
+    private func adoptDraft(_ remote: AgentWire.Draft, publishes: Bool) {
+        let stamp = remote.updatedAt ?? 0
+        let text = remote.value?.text ?? ""
+        // Older, or this phone's own coming back: this phone's stands, and
+        // goes up with its own save.
+        if stamp < draft.updatedAt || (stamp == draft.updatedAt && text == draft.text) {
+            if stamp == draft.updatedAt { draft.synced = true }
+            return
+        }
+        draftSave?.cancel()
+        draftRevision += 1
+        draft = StemCellDraft(text: text, updatedAt: stamp, synced: true)
+        // Newer than anything picked here: its mode is the one now.
+        if let mode = remote.value?.mode {
+            if picked != nil { picked = mode }
+            self.mode = mode
+            snapshot.mode = mode
+        }
+        snapshot.draftUpdatedAt = stamp
+        // Only new words are set in the composer; a mode alone isn't.
+        if snapshot.draft != text {
+            snapshot.draft = text
+            snapshot.draftArrivals += 1
+        }
+        if creation == nil, let drafts {
+            let agentId = agentId
+            let kept = draft
+            Task { await drafts.keep(agentId, kept) }
+        }
+        if publishes { publish() }
     }
 
     public func abort() async {
@@ -730,6 +880,18 @@ public actor StemCellConversation {
             items.append(StemCellChatItem(id: send.id, role: .user, pieces: pieces, delivery: send.failure.map { .failed($0) } ?? (send.accepted ? .pending : .sending)))
         }
         snapshot.items = items
+        // Only steering for a run already going: a send that starts one is
+        // its first message, not next in line.
+        var queued = 0
+        if snapshot.working {
+            for item in items.reversed() {
+                guard item.role == .user, item.delivery == .pending || item.delivery == .sending else { break }
+                queued += 1
+            }
+            // Before the run says it began, the first of them is what starts it.
+            if activeRun?.id == nil { queued = max(0, queued - 1) }
+        }
+        snapshot.queued = queued
         snapshot.activity = StemCellActivity.project(
             working: snapshot.working, status: status, wait: wait, retrying: retrying, question: question,
             subagentsRunning: subagentsRunning, produced: produced, startedAt: activeRun?.startedAt

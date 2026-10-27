@@ -220,7 +220,8 @@ final class AgentInputCardLayoutTests: XCTestCase {
         modelIsMenu: Bool = true,
         effort: CGSize? = nil,
         minHeight: CGFloat? = nil,
-        zenMode: Bool = false
+        zenMode: Bool = false,
+        offersExpand: Bool = false
     ) -> AgentInputCardLayout {
         AgentInputCardLayout(.init(
             width: 377,
@@ -235,7 +236,8 @@ final class AgentInputCardLayoutTests: XCTestCase {
             modelIsMenu: modelIsMenu,
             effort: effort.map(AgentInputCardLayout.Chip.init),
             separator: effort == nil ? .zero : CGSize(width: 5, height: 17),
-            zenMode: zenMode
+            zenMode: zenMode,
+            offersExpand: offersExpand
         ))
     }
 
@@ -272,6 +274,27 @@ final class AgentInputCardLayoutTests: XCTestCase {
         assertFrame(capped.text, rect(18, 12, 341, 120))
         XCTAssertTrue(capped.textScrolls)
         XCTAssertEqual(capped.size.height, 186)
+    }
+
+    /// Five lines fit; from the sixth the text scrolls and the full-screen
+    /// editor's 30pt button takes the text's top right corner, the lines
+    /// wrapping 30 short of it.
+    func testExpandShowsOnceTheTextScrolls() {
+        let five = card(text: 118, offersExpand: true)
+        XCTAssertFalse(five.textScrolls)
+        XCTAssertNil(five.expand)
+        XCTAssertEqual(five.textTrailingInset, 0)
+
+        let six = card(text: 140, offersExpand: true)
+        XCTAssertTrue(six.textScrolls)
+        assertFrame(six.text, rect(18, 12, 341, 120))
+        assertFrame(six.expand, rect(329, 12, 30, 30))
+        XCTAssertEqual(six.textTrailingInset, 30)
+        XCTAssertEqual(six.size, card(text: 140).size)
+
+        let unoffered = card(text: 140)
+        XCTAssertNil(unoffered.expand)
+        XCTAssertEqual(unoffered.textTrailingInset, 0)
     }
 
     /// A cleared input drops to one line whatever was last measured.
@@ -522,5 +545,45 @@ final class ComposerTokenTests: XCTestCase {
         XCTAssertEqual(ContextGauge.intensity(percent: 0), 0.35, accuracy: 0.0001)
         XCTAssertEqual(ContextGauge.intensity(percent: 50), 0.675, accuracy: 0.0001)
         XCTAssertEqual(ContextGauge.intensity(percent: 140), 1, accuracy: 0.0001)
+    }
+}
+
+final class ComposerEditorLayoutTests: XCTestCase {
+    /// An iPhone 15 (393 × 852, 59 over and 34 under) with the keyboard up
+    /// at 516: the text 16 in from both sides and 8 down, 8 above the
+    /// keyboard; its first lines clear of the 44pt button 8 from the right.
+    func testOverTheKeyboard() {
+        let layout = ComposerEditorLayout(
+            size: CGSize(width: 393, height: 852),
+            safeArea: .init(top: 59, bottom: 34),
+            keyboardTop: 516
+        )
+        assertFrame(layout.collapse, rect(341, 63, 44, 44))
+        assertFrame(layout.text, rect(16, 67, 361, 441))
+        assertFrame(layout.collapseClearance, rect(325, 0, 36, 40))
+    }
+
+    /// The keyboard down: the text runs to the safe area's bottom; side
+    /// insets (landscape) push both in.
+    func testKeyboardDownInLandscape() {
+        let layout = ComposerEditorLayout(
+            size: CGSize(width: 852, height: 393),
+            safeArea: .init(top: 0, left: 59, bottom: 21, right: 59),
+            keyboardTop: nil
+        )
+        assertFrame(layout.collapse, rect(741, 4, 44, 44))
+        assertFrame(layout.text, rect(75, 8, 702, 356))
+        assertFrame(layout.collapseClearance, rect(666, 0, 36, 40))
+    }
+
+    /// A keyboard below the safe area's bottom (a hardware keyboard's bar)
+    /// leaves the text at the safe area.
+    func testKeyboardBelowTheSafeArea() {
+        let layout = ComposerEditorLayout(
+            size: CGSize(width: 393, height: 852),
+            safeArea: .init(top: 59, bottom: 34),
+            keyboardTop: 830
+        )
+        XCTAssertEqual(layout.text.maxY, 852 - 34 - 8)
     }
 }

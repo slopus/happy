@@ -274,4 +274,154 @@ final class ChatViewingUITests: XCTestCase {
         XCTAssertTrue(composer.exists)
         capture("viewer-closed")
     }
+
+    // MARK: Composer
+
+    private var composerText: String { composer.value as? String ?? "" }
+
+    /// Waits for the composer to read `text`.
+    private func waitForComposer(_ text: String, timeout: TimeInterval = 10, _ message: String) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline, composerText != text { pause(0.3) }
+        XCTAssertEqual(composerText, text, message)
+    }
+
+    /// Clears Happy's draft from the desktop's side, so the composer starts
+    /// empty, as a clear made on another device arrives.
+    private func clearDraft() {
+        print("STEM_STEP draft-clear")
+        waitForComposer("", "a draft cleared on the computer stayed on the phone")
+    }
+
+    /// The draft as the computer keeps it: typed here, it is there when
+    /// the conversation opens again, and after a cold launch; written on
+    /// the desktop, it shows here while the conversation is open.
+    func testDraftSync() {
+        openConversation()
+        clearDraft()
+        let typed = "Draft typed on the phone"
+        composer.tap()
+        composer.typeText(typed)
+        pause(1)
+        capture("draft-typed")
+        app.tapBack()
+        pause(1.5)
+        // The daemon's copy, for the log.
+        print("STEM_STEP draft-check")
+        let happy = element("stem-row:space:Happy")
+        XCTAssertTrue(happy.waitForExistence(timeout: 5))
+        happy.tap()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        waitForComposer(typed, timeout: 5, "the draft didn't come back on reopening")
+        capture("draft-reopened")
+
+        app.terminate()
+        app.launch()
+        let again = element("stem-row:space:Happy")
+        XCTAssertTrue(again.waitForExistence(timeout: 20))
+        again.tap()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        waitForComposer(typed, timeout: 5, "the draft didn't survive a cold launch")
+        pause(1)
+
+        print("STEM_STEP draft-desktop")
+        waitForComposer("Written on the desktop", "the desktop's draft never showed on the phone")
+        pause(1)
+        capture("draft-from-desktop")
+        clearDraft()
+    }
+
+    /// Past five lines the composer offers its text full screen: the
+    /// button at the text's top right opens it with the same text, and the
+    /// one there puts it back with what was typed full screen.
+    func testExpandEditor() {
+        openConversation()
+        clearDraft()
+        let expand = app.buttons["composer-expand"]
+        composer.tap()
+        composer.typeText("One\nTwo\nThree\nFour\nFive")
+        pause(0.8)
+        XCTAssertFalse(expand.exists, "five lines offered the full-screen editor")
+        composer.typeText("\nSix\nSeven\nEight")
+        XCTAssertTrue(expand.waitForExistence(timeout: 3), "no expand button past five lines")
+        let card = element("stem-input")
+        XCTAssertEqual(expand.frame.maxX, card.frame.maxX - 18, accuracy: 1.5, "the expand button isn't at the text's right")
+        XCTAssertLessThan(expand.frame.minY - card.frame.minY, 30, "the expand button isn't at the text's top")
+        capture("expand-offered")
+
+        expand.tap()
+        let editor = app.textViews["composer-editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 3), "the full-screen editor never opened")
+        pause(0.8)
+        XCTAssertEqual(editor.value as? String, "One\nTwo\nThree\nFour\nFive\nSix\nSeven\nEight")
+        XCTAssertGreaterThan(editor.frame.height, app.frame.height * 0.3, "the editor isn't full screen")
+        // XCUITest's hasFocus reads false for either text view once a
+        // screen has been presented over the chat: typing is the proof.
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "the keyboard went down")
+        capture("expand-editor")
+        // The caret is where it was in the card: at the end.
+        editor.typeText("\nNine, typed full screen")
+        pause(0.5)
+        capture("expand-editor-typed")
+        app.buttons["composer-collapse"].tap()
+        pause(1)
+        XCTAssertFalse(editor.exists)
+        XCTAssertEqual(composerText, "One\nTwo\nThree\nFour\nFive\nSix\nSeven\nEight\nNine, typed full screen")
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "the keyboard went down on collapsing")
+        composer.typeText(" and after")
+        XCTAssertTrue(composerText.hasSuffix("full screen and after"), "the caret didn't come back where it was left")
+        capture("expand-collapsed")
+
+        // A draft written on the desktop while the text is full screen
+        // shows there, and goes back to the card with it.
+        expand.tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        pause(1.5)
+        print("STEM_STEP draft-desktop")
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline, editor.value as? String != "Written on the desktop" { pause(0.3) }
+        XCTAssertEqual(editor.value as? String, "Written on the desktop", "the desktop's draft didn't reach the full-screen editor")
+        capture("expand-editor-desktop")
+        app.buttons["composer-collapse"].tap()
+        pause(1)
+        XCTAssertEqual(composerText, "Written on the desktop", "collapsing put back an older text")
+        clearDraft()
+    }
+
+    /// Steering sent while the agent works waits under the working line,
+    /// as next in line, dimmed; when the agent takes it up it goes into
+    /// the transcript above the line.
+    func testSteeringWaitsUnderTheWorkingLine() {
+        openConversation()
+        clearDraft()
+        composer.tap()
+        composer.typeText("Run `sleep 25` with your shell tool, one call, then say only: first done.")
+        app.buttons["Send"].tap()
+        XCTAssertTrue(working.waitForExistence(timeout: 20), "the agent never started")
+        pause(3)
+        composer.typeText("Then say only: steering taken (STEER-\(Int(Date().timeIntervalSince1970) % 1000))")
+        let token = composerText.components(separatedBy: "(").last?.dropLast() ?? ""
+        app.buttons["Send"].tap()
+        let steer = app.descendants(matching: .any).matching(identifier: "stem-message").matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Then say only", String(token))).firstMatch
+        XCTAssertTrue(steer.waitForExistence(timeout: 5), "the steering never showed")
+        pause(1)
+        XCTAssertTrue(working.exists, "the turn ended before the steering could wait")
+        XCTAssertGreaterThanOrEqual(steer.frame.minY, working.frame.maxY - 1, "waiting steering isn't under the working line")
+        print("STEM_FRAMES queued working=\(working.frame) steer=\(steer.frame)")
+        capture("steering-queued")
+
+        let deadline = Date().addingTimeInterval(180)
+        while Date() < deadline, working.exists, steer.frame.minY >= working.frame.maxY - 1 { pause(0.5) }
+        pause(1.5)
+        if working.exists {
+            XCTAssertLessThanOrEqual(steer.frame.maxY, working.frame.minY + 1, "taken steering isn't above the working line")
+            print("STEM_FRAMES taken working=\(working.frame) steer=\(steer.frame)")
+        }
+        capture("steering-taken")
+        while Date() < deadline, working.exists { pause(1) }
+        pause(1)
+        let reply = app.descendants(matching: .any).matching(identifier: "stem-message").matching(NSPredicate(format: "label CONTAINS[c] %@", "steering taken")).allElementsBoundByIndex
+        XCTAssertTrue(reply.contains { $0.frame.minY > steer.frame.maxY - 1 && !$0.label.contains("Then say only") }, "the agent's answer to the steering isn't under it")
+        capture("steering-answered")
+    }
 }

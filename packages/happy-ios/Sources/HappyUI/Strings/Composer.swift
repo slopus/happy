@@ -11,6 +11,12 @@ extension Strings {
         /// SessionView.tsx `placeholder={t('session.inputPlaceholder')}`.
         public static var inputPlaceholder: String { localized("session.inputPlaceholder", "Type a message ...") }
 
+        /// The full-screen editor (iOS only, as Telegram's input expands):
+        /// the button at the text's top right once it is past the lines the
+        /// card shows, and the one that puts the text back in the card.
+        public static let expandEditor = "Expand"
+        public static let collapseEditor = "Collapse"
+
         /// AgentInput.tsx `t('agentInput.permissionMode.title')`: the chip's
         /// label and its menu's heading.
         public static var permissionModeTitle: String { localized("agentInput.permissionMode.title", "PERMISSION MODE") }

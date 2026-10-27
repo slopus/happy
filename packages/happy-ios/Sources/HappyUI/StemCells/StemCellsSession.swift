@@ -16,6 +16,8 @@ final class StemCellsSession {
     let models: StemCellModelState
     /// What this computer last showed, for opening on it offline.
     let offline: StemCellsOfflineFile?
+    /// The composers' drafts, kept on this phone beside the computer's copy.
+    let drafts: StemCellDrafts
     /// Colours the code blocks its conversations show.
     let syntax = CodeSyntaxService()
     /// The conversations read ahead and kept, so they open drawn.
@@ -63,6 +65,7 @@ final class StemCellsSession {
         images = StemCellsImages(client: client, offline: offline)
         warm = StemCellsWarmChats(client: client, store: store, syntax: syntax)
         models = StemCellModelState(client: client, offline: offline)
+        drafts = StemCellDrafts(offline: offline)
         models.load()
         let updates = store.updates
         following = Task { [weak self] in

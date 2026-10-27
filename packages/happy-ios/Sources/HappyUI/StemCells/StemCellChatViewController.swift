@@ -87,7 +87,10 @@ final class StemCellChatViewController: UIViewController {
     private var chat = StemCellChatSnapshot()
     private var following: Task<Void, Never>?
     private var planning: Task<Void, Never>?
-    private var planned: (items: [StemCellChatItem], key: StemCellChatPlanner.Key, copied: String?, opened: Set<String>, proposals: [String: StemCellProposalShown])?
+    private var planned: (items: [StemCellChatItem], key: StemCellChatPlanner.Key, copied: String?, opened: Set<String>, proposals: [String: StemCellProposalShown], queued: Set<String>)?
+    /// The steering waiting under the working line, as of the plans on
+    /// screen: read with them, never with a snapshot they don't show yet.
+    private var plansQueued = Set<String>()
     /// Other agents' messages opened to read, for this screen's life.
     private var opened = Set<String>()
     /// The sidebar proposals the transcript shows, and their cards by row.
@@ -110,6 +113,18 @@ final class StemCellChatViewController: UIViewController {
     private var copied: (id: String, until: Task<Void, Never>)?
     /// The newest row is in view: what arrives keeps it there.
     private var followsNewest = true
+    /// The steering last drawn under the working line.
+    private var queuedShown = Set<String>()
+    /// The composer's text full screen, while it is up.
+    private weak var editor: ComposerEditorViewController?
+    /// The draft arrivals set here so far (`StemCellChatSnapshot.draftArrivals`);
+    /// none yet, so the first snapshot's draft shows, however a conversation
+    /// read ahead came by it.
+    private var draftArrivals = -1
+    /// Set while a draft from elsewhere goes into the composer: not typing.
+    private var showingDraft = false
+    /// The last keystroke's stamp, never going back.
+    private var lastDraftEdit: Double = 0
     /// A message sent while the agent was idle, not yet drawn: as it lands
     /// it is lifted to desktop's line (`StemCellSendLift`).
     private var liftPending: String?
@@ -185,6 +200,7 @@ final class StemCellChatViewController: UIViewController {
         // New work asks what it is; a conversation already going asks for the next message.
         if case .stemCell = intro { card.configuration.placeholder = Strings.StemCells.composerPlaceholder }
         card.configuration.showsAdd = true
+        card.configuration.showsExpand = true
         card.configuration.addAccessibilityLabel = Strings.StemCells.addPicture
         card.delegate = self
         card.textView.accessibilityIdentifier = "stem-composer"
@@ -250,6 +266,11 @@ final class StemCellChatViewController: UIViewController {
             let conversation = conversation
             Task { await conversation.start() }
         }
+        if !previewing {
+            let conversation = conversation
+            let drafts = session.drafts
+            Task { await conversation.useDrafts(drafts) }
+        }
         modelsWatch = session.models.watch { [weak self] in self?.updateChips() }
         session.models.load()
         updateChips()
@@ -296,6 +317,10 @@ final class StemCellChatViewController: UIViewController {
         titleView.finishEditing()
         picker?.close(animated: false)
         if isMovingFromParent { putAwayIfEmpty() }
+        if !previewing {
+            let conversation = conversation
+            Task { await conversation.flushDraft() }
+        }
         swipeBack.detach()
         navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         // A screen pushed over this one has the bar it expects.
@@ -308,7 +333,7 @@ final class StemCellChatViewController: UIViewController {
     /// starts to go, so the sidebar comes back without it, and off the
     /// computer once it has gone. A swipe back let go of halfway keeps it.
     private func putAwayIfEmpty() {
-        guard !previewing, let spaceId, untouched, !kept, chat.loaded, chat.items.isEmpty else { return }
+        guard !previewing, let spaceId, untouched, !kept, chat.loaded, chat.items.isEmpty, !card.hasContent else { return }
         putAway = true
         let store = session.store
         Task { await store.putAway(spaceId, true) }
@@ -504,6 +529,11 @@ final class StemCellChatViewController: UIViewController {
         chat = snapshot
         if picked == snapshot.mode { picked = nil }
         media.register(snapshot.items)
+        if snapshot.draftArrivals != draftArrivals {
+            draftArrivals = snapshot.draftArrivals
+            // Typed here since, on its way to the conversation: that stands.
+            if snapshot.draftUpdatedAt >= lastDraftEdit { showDraft(snapshot.draft) }
+        }
         proposals.want(snapshot.items.flatMap(\.proposalIds))
         working.show(snapshot.activity)
         header.status = Self.status(snapshot.activity)
@@ -753,14 +783,27 @@ final class StemCellChatViewController: UIViewController {
         let copiedId = copied?.id
         let shown = proposals.shown
         let opened = opened
-        if let planned, planned.items == items, planned.key == key, planned.copied == copiedId, planned.opened == opened, planned.proposals == shown { return }
-        planned = (items, key, copiedId, opened, shown)
+        let queued = Set(items.suffix(chat.queued).map(\.id))
+        if let planned, planned.items == items, planned.key == key, planned.copied == copiedId, planned.opened == opened, planned.proposals == shown {
+            // Only where the steering stands moved: the rows are the same.
+            if planned.queued != queued, planning == nil {
+                self.planned?.queued = queued
+                plansQueued = queued
+                view.setNeedsLayout()
+            } else {
+                self.planned?.queued = queued
+            }
+            return
+        }
+        planned = (items, key, copiedId, opened, shown, queued)
         planning?.cancel()
         // Rows as they stand untouched are shared with the warm chat: taken
         // from it as it laid them out ahead, and left with it for the next open.
         let untouched = !previewing && copiedId == nil && opened.isEmpty && shown.isEmpty
         if untouched, let ahead = warm?.chat.plans(for: items, key: key) {
+            planning = nil
             shownProposals = shown
+            plansQueued = queued
             return show(ahead)
         }
         let planner = planner
@@ -768,8 +811,11 @@ final class StemCellChatViewController: UIViewController {
         planning = Task { [weak self] in
             let plans = await planner.plans(items, key: key, copied: copiedId, opened: opened, proposals: shown)
             guard !Task.isCancelled, let self else { return }
+            self.planning = nil
             warmChat?.keep(plans, items: items, key: key)
             self.shownProposals = shown
+            // The latest word on it, which may have moved while these were planned.
+            self.plansQueued = self.planned?.queued ?? queued
             self.show(plans)
         }
     }
@@ -963,12 +1009,24 @@ final class StemCellChatViewController: UIViewController {
             introLayout = layout
             heights.append(layout.size.height)
         }
-        heights += plans.map(\.size.height)
+        // Steering the turn hasn't taken waits under the working line, as
+        // next in the queue, with room under it for the line that follows
+        // it once taken (desktop's `conversationPendingSteering` and
+        // `footerReserveHeight`): taking it up moves nothing else.
+        let queuedIds = plansQueued
+        let settled = plans.filter { !queuedIds.contains($0.id) }
+        let waiting = plans.filter { queuedIds.contains($0.id) }
+        heights += settled.map(\.size.height)
         heights.append(chat.activity == nil ? 0 : StemCellWorkingLayout.Metrics.height)
+        heights += waiting.map(\.size.height)
+        if !waiting.isEmpty { heights.append(StemCellWorkingLayout.Metrics.height) }
         // The intro stays under the bar, as desktop's leading header.
         let pins = introLayout != nil && !previewing
         let first = introLayout == nil ? 0 : 1
-        func row(_ id: String) -> Int? { plans.firstIndex { $0.id == id }.map { $0 + first } }
+        func row(_ id: String) -> Int? {
+            if let index = settled.firstIndex(where: { $0.id == id }) { return first + index }
+            return waiting.firstIndex { $0.id == id }.map { first + settled.count + 1 + $0 }
+        }
         func stacked() -> StemCellChatStackLayout {
             let held = lift.flatMap { lift in row(lift.id).map { StemCellChatStackLayout.Lift(row: $0, line: lift.line) } }
             return StemCellChatStackLayout(heights: heights, width: width, viewport: viewport, pinsFirst: pins, lift: held)
@@ -987,17 +1045,25 @@ final class StemCellChatViewController: UIViewController {
         }
         if !stack.holding { lift = nil }
         rowsEnd = stack.frames.first?.minY == 0 ? stack.frames.last?.maxY : nil
-        var index = 0
         if let introLayout {
             introView.setLayoutFrame(stack.frames[0])
             introView.place(introLayout)
-            index = 1
         }
-        for plan in plans {
-            rowViews[plan.id]?.setLayoutFrame(stack.frames[index])
-            index += 1
+        // Steering taken up goes into the transcript above the line, moving
+        // there as the line moves under it.
+        let taken = !queuedShown.subtracting(queuedIds).isEmpty && view.window != nil
+        queuedShown = queuedIds
+        let place = {
+            for plan in self.plans {
+                if let index = row(plan.id) { self.rowViews[plan.id]?.setLayoutFrame(stack.frames[index]) }
+            }
+            self.working.frame = stack.frames[first + settled.count]
         }
-        working.frame = stack.frames[index]
+        if taken {
+            UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: place)
+        } else {
+            place()
+        }
         let contentHeight = stack.contentHeight
         let previous = scrollView.contentSize.height
         scrollView.contentSize = CGSize(width: width, height: contentHeight)
@@ -1139,6 +1205,20 @@ final class StemCellChatViewController: UIViewController {
         present(StemCellPictureViewController(source: media, pictures: pictures, index: index), animated: true)
     }
 
+    /// A draft from elsewhere (the computer, the person's other device,
+    /// what this phone kept) in the composer, the caret at its end; never
+    /// over a word being composed.
+    private func showDraft(_ text: String) {
+        if let editor, editor.presentingViewController != nil {
+            editor.show(text)
+        }
+        guard card.text != text, !card.hasMarkedText else { return }
+        showingDraft = true
+        card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0), animatesHeight: false)
+        showingDraft = false
+        updatePrimary()
+    }
+
     private func showFileUnavailable() {
         let alert = UIAlertController(title: nil, message: Strings.StemCells.fileUnavailable, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
@@ -1254,6 +1334,41 @@ final class StemCellChatViewController: UIViewController {
 extension StemCellChatViewController: AgentInputCardDelegate {
     func agentInputCardDidChangeText(_ card: AgentInputCardView) {
         updatePrimary()
+        guard !showingDraft else { return }
+        draftEdited(card.text)
+    }
+
+    /// The draft, as typed here or full screen: kept and saved once the
+    /// keystrokes pause.
+    private func draftEdited(_ text: String) {
+        guard !previewing else { return }
+        let at = max((Date().timeIntervalSince1970 * 1000).rounded(), lastDraftEdit + 1)
+        lastDraftEdit = at
+        let conversation = conversation
+        Task { await conversation.setDraft(text, at: at) }
+    }
+
+    /// The text full screen, the caret where it was; collapsed, it comes
+    /// back to the card as it was left there.
+    func agentInputCardDidPressExpand(_ card: AgentInputCardView) {
+        guard presentedViewController == nil else { return }
+        let editor = ComposerEditorViewController(
+            text: card.text,
+            selection: card.selectedRange,
+            keyboardTop: keyboardTop < view.bounds.maxY ? view.convert(CGPoint(x: 0, y: keyboardTop), to: nil).y : nil
+        )
+        editor.onChange = { [weak self] text in self?.draftEdited(text) }
+        editor.onClose = { [weak self] text, selection, focused in
+            guard let self else { return }
+            self.showingDraft = true
+            self.card.setText(text, selection: selection, animatesHeight: false)
+            self.showingDraft = false
+            self.updatePrimary()
+            // Taken before the editor goes, so the keyboard stays up.
+            if focused { self.card.focus() }
+        }
+        self.editor = editor
+        present(editor, animated: true)
     }
 
     func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {

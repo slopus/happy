@@ -231,6 +231,10 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
     /// and `refusesControls` is not consulted (only Home's dock refuses,
     /// and it has no panel).
     public var desktop: AgentInputDesktopConfiguration?
+    /// The full-screen editor's button at the text's top right, once the
+    /// text is past the lines the card shows; the delegate hears
+    /// `agentInputCardDidPressExpand`. The compact card only.
+    public var showsExpand: Bool
 
     public init(
         placeholder: String,
@@ -250,7 +254,8 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         primaryStyle: AgentInputPrimaryStyle = .standard,
         refusesControls: Bool = false,
         zenMode: Bool = false,
-        desktop: AgentInputDesktopConfiguration? = nil
+        desktop: AgentInputDesktopConfiguration? = nil,
+        showsExpand: Bool = false
     ) {
         self.placeholder = placeholder
         self.isEditable = isEditable
@@ -270,6 +275,7 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         self.refusesControls = refusesControls
         self.zenMode = zenMode
         self.desktop = desktop
+        self.showsExpand = showsExpand
     }
 }
 
@@ -306,6 +312,8 @@ public protocol AgentInputCardDelegate: AnyObject {
     func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool
     /// A control was pressed while `refusesControls` is on; it has shaken.
     func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl)
+    /// The full-screen editor's button (`showsExpand`).
+    func agentInputCardDidPressExpand(_ card: AgentInputCardView)
 }
 
 extension AgentInputCardDelegate {
@@ -324,6 +332,7 @@ extension AgentInputCardDelegate {
     public func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool { true }
     public func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool { true }
     public func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl) {}
+    public func agentInputCardDidPressExpand(_ card: AgentInputCardView) {}
 }
 
 /// The card. Give it a frame from `height(fitting:)`; it lays itself out.
@@ -360,6 +369,7 @@ public final class AgentInputCardView: UIView {
     private let inputGroup = PassthroughView()
     private let actionsGroup = PassthroughView()
     private let placeholderLabel = UILabel()
+    private let expandButton = ComposerIconButton(icon: .ionicons("expand-outline"), size: AgentInputCardLayout.Metrics.expandIconSize)
     private let attachmentStrip = AttachmentStripView()
     private let addButton = ComposerIconButton(icon: .ionicons("add"), size: MobileComposerMetrics.mobile.addIconSize)
     private let middle = UIView()
@@ -486,6 +496,12 @@ public final class AgentInputCardView: UIView {
         placeholderLabel.isAccessibilityElement = false
         placeholderLabel.isUserInteractionEnabled = false
         inputGroup.addSubview(placeholderLabel)
+        expandButton.isHidden = true
+        expandButton.tint = Palette.textSecondary
+        expandButton.accessibilityLabel = Strings.Composer.expandEditor
+        expandButton.accessibilityIdentifier = "composer-expand"
+        expandButton.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)
+        inputGroup.addSubview(expandButton)
 
         addButton.accessibilityLabel = Strings.Composer.addPhoto
         addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
@@ -1018,7 +1034,8 @@ public final class AgentInputCardView: UIView {
             modelIsMenu: config.model?.menu != nil,
             effort: config.effort.map { _ in .init(labelSize: effortChip.contentSize) },
             separator: config.effort == nil ? .zero : separator.sizeThatFits(.zero),
-            zenMode: config.zenMode
+            zenMode: config.zenMode,
+            offersExpand: config.showsExpand
         )
     }
 
@@ -1053,6 +1070,13 @@ public final class AgentInputCardView: UIView {
         if textView.isScrollEnabled != layout.textScrolls {
             textView.isScrollEnabled = layout.textScrolls
         }
+        setTextTrailingInset(layout.textTrailingInset)
+        if let expand = layout.expand {
+            expandButton.isHidden = false
+            expandButton.setLayoutFrame(expand)
+        } else {
+            expandButton.isHidden = true
+        }
         placeholderLabel.setLayoutFrame(CGRect(
             x: layout.text.minX,
             y: layout.text.minY + metrics.inputPaddingTop,
@@ -1082,6 +1106,8 @@ public final class AgentInputCardView: UIView {
     private func layoutDesktop(_ layout: AgentInputDesktopLayout) {
         typealias M = AgentInputDesktopLayout.Metrics
         layer.shadowPath = nil
+        expandButton.isHidden = true
+        setTextTrailingInset(0)
         if let strip = layout.attachments {
             attachmentStrip.isHidden = false
             attachmentStrip.insets = .panel
@@ -1101,6 +1127,13 @@ public final class AgentInputCardView: UIView {
         ))
         desktopControls.frame = actionsGroup.bounds
         desktopControls.place(layout)
+    }
+
+    /// The text wraps clear of the expand button while it shows. Its height
+    /// is measured at the full width: past the cap either way, it scrolls.
+    private func setTextTrailingInset(_ inset: CGFloat) {
+        guard textView.textContainerInset.right != inset else { return }
+        textView.textContainerInset.right = inset
     }
 
     private func place(_ chip: ComposerChipButton, _ frame: AgentInputCardLayout.ChipFrame?) {
@@ -1169,6 +1202,7 @@ public final class AgentInputCardView: UIView {
         updatePlaceholder()
 
         guard let previous else { return }
+        if previous.showsExpand != config.showsExpand { setNeedsLayout() }
         if previous.attachments.count != config.attachments.count
             || previous.inputMinHeight != config.inputMinHeight
             || previous.showsAdd != config.showsAdd
@@ -1266,6 +1300,10 @@ public final class AgentInputCardView: UIView {
 
     @objc private func primaryTapped() {
         delegate?.agentInputCardDidPressPrimary(self)
+    }
+
+    @objc private func expandTapped() {
+        delegate?.agentInputCardDidPressExpand(self)
     }
 }
 

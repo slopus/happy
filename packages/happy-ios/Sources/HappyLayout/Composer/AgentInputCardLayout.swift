@@ -44,6 +44,12 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         public static let disabledChipOpacity: CGFloat = 0.58
         /// `MultiTextInput`'s `opacity: editable ? 1 : 0.58`.
         public static let readOnlyTextOpacity: CGFloat = 0.58
+        /// The full-screen editor's button at the text's top right, once
+        /// the text is past the lines the card shows (Telegram's expand):
+        /// its glyph, the square it is centred in, and the text's room
+        /// beside it.
+        public static let expandIconSize: CGFloat = 14
+        public static let expandSize: CGFloat = 30
     }
 
     /// Where the thumbnails sit in the strip's scrolling content: the first
@@ -102,6 +108,8 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         /// the rest says; the middle box stays, empty, and send keeps its
         /// place.
         public var zenMode: Bool
+        /// The full-screen editor's button, shown once the text scrolls.
+        public var offersExpand: Bool
 
         public init(
             width: CGFloat,
@@ -118,7 +126,8 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             modelIsMenu: Bool = true,
             effort: Chip? = nil,
             separator: CGSize = .zero,
-            zenMode: Bool = false
+            zenMode: Bool = false,
+            offersExpand: Bool = false
         ) {
             self.width = width
             self.metrics = metrics
@@ -135,6 +144,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             self.effort = effort
             self.separator = separator
             self.zenMode = zenMode
+            self.offersExpand = offersExpand
         }
     }
 
@@ -168,6 +178,11 @@ public struct AgentInputCardLayout: Equatable, Sendable {
     /// The text view, its 4 + 4 padding included.
     public var text: CGRect
     public var textScrolls: Bool
+    /// The full-screen editor's button, over the text's top right corner;
+    /// nil until the text is taller than the card shows.
+    public var expand: CGRect?
+    /// Room the text keeps clear at its right for `expand`, inside its frame.
+    public var textTrailingInset: CGFloat
     public var actionRow: CGRect
     public var add: CGRect?
     /// The box between add and send. It clips what it holds.
@@ -225,6 +240,15 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             height: text.height
         )
         textScrolls = text.scrollEnabled
+        // Past the lines the card shows (the sixth on): the text's top right
+        // corner, flush with it, the lines wrapping clear of it.
+        if input.offersExpand, textScrolls {
+            expand = CGRect(x: self.text.maxX - M.expandSize, y: self.text.minY, width: M.expandSize, height: M.expandSize)
+            textTrailingInset = M.expandSize
+        } else {
+            expand = nil
+            textTrailingInset = 0
+        }
         y += containerHeight
 
         // [+] [middle, flex 1] [send, 8 margin], 2 apart.
