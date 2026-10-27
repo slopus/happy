@@ -298,6 +298,19 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         // Rows whose content changed, by id: on screen they take their new
         // plan in place; off screen, `cellForItemAt` reads it later.
         let changed = Dictionary(changeset.reconfigures.map { (newIds[$0], update.plans[$0]) }, uniquingKeysWith: { first, _ in first })
+        // UIKit resizes a growing cell and moves its neighbours with
+        // different animations. Apply small follows without those per-row
+        // animations, then slide the whole collection as one block. Slides
+        // stack when another streamed line arrives before the last settles.
+        // Taller changes need UIKit to lay out rows beyond the far edge.
+        let follows = animated && !UIAccessibility.isReduceMotionEnabled && abs(current) <= 0.5 && anchor.kind == .newest
+        let arrivals = follows ? ChatFollowMotion.newestInserts(old: oldIds, new: newIds) : nil
+        let shift = arrivals == nil ? nil : ChatFollowMotion.shift(
+            from: layout.model, ids: oldIds, to: model, ids: newIds,
+            visibleHeight: bounds.height - edgeInsets.top - edgeInsets.bottom
+        )
+        let slides = shift.map { abs($0) <= edgeInsets.bottom } ?? false
+        layout.arrivalShift = slides ? nil : arrivals.flatMap { $0.isEmpty ? nil : shift }
         let apply = {
             self.collectionView.performBatchUpdates {
                 self.install(update)
@@ -326,15 +339,37 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         }
         // Only a reader at the newest edge sees rows move; anyone else is
         // held still, and an animation would only show the correction.
-        if animated, case .newest = anchor.kind {
+        if slides, let shift {
+            UIView.performWithoutAnimation(apply)
+            slide(by: shift)
+        } else if follows {
+            UIView.animate(withDuration: ChatFollowMotion.duration, delay: 0, options: [.curveEaseOut, .allowUserInteraction], animations: apply)
+        } else if animated, case .newest = anchor.kind {
             apply()
         } else {
             UIView.performWithoutAnimation(apply)
         }
+        layout.arrivalShift = nil
         hasContent = !update.plans.isEmpty
         // A short window may not reach a screen back; let the delegate page.
         scrollViewDidScroll(collectionView)
         return changeset.touchedRows
+    }
+
+    private var followSlides = 0
+
+    /// An additive bounds animation carries the rows as a single block.
+    private func slide(by shift: CGFloat) {
+        guard abs(shift) > 0.5 else { return }
+        let animation = CABasicAnimation(keyPath: "bounds.origin.y")
+        animation.fromValue = shift
+        animation.toValue = 0
+        animation.isAdditive = true
+        animation.duration = ChatFollowMotion.duration
+        let points = ChatFollowMotion.controlPoints
+        animation.timingFunction = CAMediaTimingFunction(controlPoints: Float(points.x1), Float(points.y1), Float(points.x2), Float(points.y2))
+        followSlides &+= 1
+        collectionView.layer.add(animation, forKey: "chat.follow.\(followSlides)")
     }
 
     private func install(_ update: ChatListUpdate) {

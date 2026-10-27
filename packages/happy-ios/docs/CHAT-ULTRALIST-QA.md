@@ -11,6 +11,14 @@ harness, and sends, permission answers and question answers go to
 
 ## Tests
 
+For runs without XCUITest, `-qaScript send` drives fixture sends, streamed
+replies, a failed send and its retry; `-qaScript live` observes the live
+fixture. Add `-qaProbe -qaRows -qaRun <name>` to record each row's presented
+frame and opacity to `Documents/qa/<name>-rows.jsonl`, beside script marks
+and the frame ledger. Without `-chatUltraList` this checks the default
+UICollectionView renderer. `-qaFilm` records window snapshots at 30 fps;
+measure frame timing in a separate run because snapshots add work.
+
 | Test | Covers |
 | --- | --- |
 | `testSmokeLongFling` | Device, signing and capture work: a 1500-turn chat, one fling each way |

@@ -206,6 +206,9 @@ final class ChatUltraQAProbe: NSObject {
     private var memoryTick = 0
     private var notes: [String] = []
     private var lastNotes: [String] = []
+    /// Every presented row frame and opacity, for comparing arrival motion.
+    private let tracesRows = ProcessInfo.processInfo.arguments.contains("-qaRows")
+    private var rowLines: [String] = []
 
     init(window: HarnessWindow, chat: UIViewController?, redacted: Bool = false) {
         self.window = window
@@ -596,6 +599,7 @@ final class ChatUltraQAProbe: NSObject {
         var deltas: [CGFloat] = []
         var newestGap = Double.nan
         var touchDelta = Double.nan
+        var traced: [String] = []
         for row in rowViews(list) {
             loaded += 1
             // A row the render server hasn't received yet isn't on screen:
@@ -607,6 +611,10 @@ final class ChatUltraQAProbe: NSObject {
             }
             let frame = presentedFrame(row.view, in: screen)
             positions[row.identity] = frame.minY
+            if tracesRows {
+                let opacity = (row.view.layer.presentation() ?? row.view.layer).opacity
+                traced.append(String(format: "[\"%@\",%.2f,%.2f,%.3f]", row.identity, frame.minY, frame.maxY, opacity))
+            }
             if let before = previousRows[row.identity] { deltas.append(frame.minY - before) }
             if row.identity == newest, dockY >= 0 { newestGap = dockY - Double(frame.maxY) }
             if row.identity == touchRow { touchDelta = Double(frame.minY - touchRowStartY) }
@@ -620,6 +628,10 @@ final class ChatUltraQAProbe: NSObject {
                 notReady += 1
                 note(row.view, identity: row.identity, visible: visible, dockY: dockY, link: link, flags: flags)
             }
+        }
+        if tracesRows {
+            rowLines.append(String(format: "{\"t\":%.6f,\"dock\":%.2f,\"offset\":%.2f,\"presented\":%.2f,\"rows\":[%@]}",
+                                   link.targetTimestamp, dockY, offset, presented, traced.joined(separator: ",")))
         }
         if let open = opening, open.list == identity {
             track(open, link: link, list: list, listFrame: listFrame, screen: screen, onScreen: onScreen, notReady: notReady)
@@ -800,7 +812,9 @@ final class ChatUltraQAProbe: NSObject {
         let ledger = self.ledger
         let lines = notes
         notes.removeAll()
-        writer.async { ledger.append(frames, notes: lines) }
+        let rows = rowLines
+        rowLines.removeAll()
+        writer.async { ledger.append(frames, notes: lines, rows: rows) }
     }
 
     @objc private func resigned() {
@@ -1170,19 +1184,23 @@ private final class QALedger: @unchecked Sendable {
     private let frameURL: URL?
     private let windowURL: URL?
     private let noteURL: URL?
+    private let rowURL: URL?
     private var notes: [String] = []
+    private var rows: [String] = []
 
     init(directory: URL?, run: String) {
         frameURL = directory?.appendingPathComponent("\(run)-frames.csv")
         windowURL = directory?.appendingPathComponent("\(run)-windows.json")
         noteURL = directory?.appendingPathComponent("\(run)-notready.jsonl")
+        rowURL = directory?.appendingPathComponent("\(run)-rows.jsonl")
         let header = "time,target,callback,flags,finger,offset,presented,distance,dockY,loaded,uncommitted,onScreen,ready,notReady,uncovered,rigid,deviation,newestGap,touchDelta,turn,applyMs,applySumMs,memoryMB\n"
         if let frameURL { try? header.write(to: frameURL, atomically: true, encoding: .utf8) }
     }
 
-    func append(_ batch: [QAFrame], notes lines: [String] = []) {
+    func append(_ batch: [QAFrame], notes lines: [String] = [], rows traced: [String] = []) {
         frames.append(contentsOf: batch)
         notes.append(contentsOf: lines)
+        rows.append(contentsOf: traced)
     }
 
     private static func percentile(_ percent: Double, _ values: [Double]) -> Double {
@@ -1291,15 +1309,19 @@ private final class QALedger: @unchecked Sendable {
             }
         }
         if let windowURL { try? Data(encoded().utf8).write(to: windowURL) }
-        if let noteURL, !notes.isEmpty {
-            let text = notes.joined(separator: "\n") + "\n"
-            notes.removeAll()
-            if !FileManager.default.fileExists(atPath: noteURL.path) { FileManager.default.createFile(atPath: noteURL.path, contents: nil) }
-            if let handle = try? FileHandle(forWritingTo: noteURL) {
-                _ = try? handle.seekToEnd()
-                try? handle.write(contentsOf: Data(text.utf8))
-                try? handle.close()
-            }
+        Self.append(&notes, to: noteURL)
+        Self.append(&rows, to: rowURL)
+    }
+
+    private static func append(_ lines: inout [String], to url: URL?) {
+        guard let url, !lines.isEmpty else { return }
+        let text = lines.joined(separator: "\n") + "\n"
+        lines.removeAll()
+        if !FileManager.default.fileExists(atPath: url.path) { FileManager.default.createFile(atPath: url.path, contents: nil) }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(text.utf8))
+            try? handle.close()
         }
     }
 }

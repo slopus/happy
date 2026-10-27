@@ -55,6 +55,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var homeRenderer: HomeRendererHarness?
     private var realArchive: RealArchiveHarness?
     private var qaProbe: ChatUltraQAProbe?
+    private var motionScript: ChatMotionScript?
     private var qaReal: ChatUltraQAReal?
     private var stories: StoriesHarness?
     #endif
@@ -130,6 +131,11 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.probe = probe
         #if DEBUG || HAPPY_FIXTURES
         if ProcessInfo.processInfo.arguments.contains("-qaProbe") { qaProbe = ChatUltraQAProbe(window: window, chat: chat) }
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "-qaScript"), arguments.indices.contains(index + 1) {
+            let run = arguments.firstIndex(of: "-qaRun").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } ?? "script"
+            motionScript = ChatMotionScript(chat: chat, name: arguments[index + 1], run: run)
+        }
         #endif
         if keyboard { probe.focusComposerWhenFilled() }
     }

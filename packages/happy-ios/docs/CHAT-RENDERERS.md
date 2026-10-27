@@ -11,6 +11,18 @@ permissions, question forms, copy menus, links and history pager keep their
 existing controller actions. Returning to an open chat after changing its
 renderer preserves its current plans and reading position.
 
+On UICollectionView, following at the newest edge uses a 0.4-second
+ease-out (`ChatFollowMotion`). Small arrivals and streamed height changes
+apply their geometry immediately, then the collection slides as one block.
+Overlapping slides add together, keeping a growing reply attached to its
+neighbours. Changes taller than the far inset use UIKit's batch animation
+with the same timing; new rows rise fully drawn from below their settled
+position. A reader away from the newest edge keeps their reading anchor.
+Reduce Motion bypasses the added follow animations.
+
+This behavior belongs to the Happy account chat (`ChatViewController`).
+The experimental Stem Cells chat has its own scroll view and layout.
+
 `ChatUltraListAdapter` uses `UltraListView(engineMode: .keyframe)` with
 inverted content and inverted rows. `NodeRow` prepares and draws static
 boxes, text and icons in the library's bounded preparation window. TextKit

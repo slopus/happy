@@ -16,6 +16,11 @@ final class ChatCollectionLayout: UICollectionViewLayout {
     /// (`ChatScrollAnchor`); nil leaves UIKit's proposal alone.
     var anchoredVisibleMinY: CGFloat?
 
+    /// New rows rise with the content they push while following the newest
+    /// message. Nil keeps UIKit's ordinary insertion animation.
+    var arrivalShift: CGFloat?
+    private var inserted: Set<Int> = []
+
     override var collectionViewContentSize: CGSize {
         model.contentSize
     }
@@ -36,6 +41,25 @@ final class ChatCollectionLayout: UICollectionViewLayout {
         attributes.center = CGPoint(x: frame.midX, y: frame.midY)
         attributes.transform = Self.flip
         return attributes
+    }
+
+    override func prepare(forCollectionViewUpdates updateItems: [UICollectionViewUpdateItem]) {
+        super.prepare(forCollectionViewUpdates: updateItems)
+        inserted = Set(updateItems.compactMap { $0.updateAction == .insert ? $0.indexPathAfterUpdate?.item : nil })
+    }
+
+    override func finalizeCollectionViewUpdates() {
+        super.finalizeCollectionViewUpdates()
+        inserted = []
+    }
+
+    override func initialLayoutAttributesForAppearingItem(at itemIndexPath: IndexPath) -> UICollectionViewLayoutAttributes? {
+        guard let shift = arrivalShift, inserted.contains(itemIndexPath.item), itemIndexPath.item < model.count else {
+            return super.initialLayoutAttributesForAppearingItem(at: itemIndexPath)
+        }
+        let start = attributes(row: itemIndexPath.item)
+        start.center.y -= shift
+        return start
     }
 
     override func shouldInvalidateLayout(forBoundsChange newBounds: CGRect) -> Bool {
