@@ -221,6 +221,74 @@ final class StemCellsLayoutTests: XCTestCase {
         XCTAssertEqual(long.contentHeight, 700)
     }
 
+    /// Desktop's leading header: the intro stays under the bar and the
+    /// rows fill in under it, then scroll as any others once they don't fit.
+    func testAnIntroIsPinnedUnderTheBarAndTheRowsFillInUnderIt() {
+        let short = StemCellChatStackLayout(heights: [116, 60, 0], width: 390, viewport: 600, pinsFirst: true)
+        XCTAssertEqual(short.frames, [CGRect(x: 0, y: 0, width: 390, height: 116), CGRect(x: 0, y: 116, width: 390, height: 60), CGRect(x: 0, y: 176, width: 390, height: 0)])
+        XCTAssertEqual(short.contentHeight, 600)
+        let long = StemCellChatStackLayout(heights: [116, 400, 300], width: 390, viewport: 600, pinsFirst: true)
+        XCTAssertEqual(long.frames.map(\.minY), [0, 116, 516])
+        XCTAssertEqual(long.contentHeight, 816)
+    }
+
+    /// A send while the agent is idle goes 30% down the viewport, no
+    /// higher than a pinned intro's line and no lower than half.
+    func testTheSendLiftLineIsDesktopsUnderTheIntro() {
+        XCTAssertEqual(StemCellSendLift(viewport: 600, introLine: 116).line, 180)
+        // The keyboard up: 30% is above the intro's line, so the line is the intro's.
+        XCTAssertEqual(StemCellSendLift(viewport: 297, introLine: 116).line, 116)
+        XCTAssertEqual(StemCellSendLift(viewport: 600).line, 180)
+        XCTAssertEqual(StemCellSendLift(viewport: 200, introLine: 160).line, 100)
+        // The first send, right under the intro's line: there already.
+        XCTAssertFalse(StemCellSendLift(viewport: 600, introLine: 116).lifts(shownAt: 116))
+        XCTAssertTrue(StemCellSendLift(viewport: 600, introLine: 116).lifts(shownAt: 420))
+    }
+
+    /// A lifted follow-up under a pinned intro: on its line with the room
+    /// under it held, whatever the viewport, until the reply fills it, and
+    /// then where it would rest anyway.
+    func testALiftedSendHoldsItsLineUntilTheReplyFillsTheRoom() {
+        let lift = StemCellChatStackLayout.Lift(row: 3, line: 180)
+        // Intro 116, a send 60, a reply 724, the follow-up 60, working 0.
+        let heights: [CGFloat] = [116, 60, 724, 60, 0]
+        let held = StemCellChatStackLayout(heights: heights, width: 390, viewport: 600, pinsFirst: true, lift: lift)
+        XCTAssertTrue(held.holding)
+        XCTAssertEqual(held.frames[3].minY, 900)
+        XCTAssertEqual(held.contentHeight, 1320)
+        // Following the end, the follow-up stands on the line.
+        XCTAssertEqual(held.frames[3].minY - (held.contentHeight - 600), 180)
+        // The keyboard up: the same line, the room shorter.
+        let up = StemCellChatStackLayout(heights: heights, width: 390, viewport: 297, pinsFirst: true, lift: lift)
+        XCTAssertEqual(up.frames[3].minY - (up.contentHeight - 297), 180)
+        // The reply fills the room: spent, and nothing moves as it goes.
+        let filling = StemCellChatStackLayout(heights: [116, 60, 724, 60, 359], width: 390, viewport: 600, pinsFirst: true, lift: lift)
+        XCTAssertTrue(filling.holding)
+        let full = StemCellChatStackLayout(heights: [116, 60, 724, 60, 360], width: 390, viewport: 600, pinsFirst: true, lift: lift)
+        XCTAssertFalse(full.holding)
+        XCTAssertEqual(full.contentHeight, 1320)
+        XCTAssertEqual(filling.contentHeight, 1320)
+    }
+
+    /// Without an intro a short conversation rests on the composer; a send
+    /// lifted from there stands on its line, and the rest it comes back to
+    /// once the reply is in is that same place.
+    func testALiftWithoutAnIntroComesUpFromTheComposer() {
+        let lift = StemCellChatStackLayout.Lift(row: 0, line: 180)
+        let sent = StemCellChatStackLayout(heights: [80, 0], width: 390, viewport: 600, lift: lift)
+        XCTAssertTrue(sent.holding)
+        XCTAssertEqual(sent.frames[0].minY, 180)
+        XCTAssertEqual(sent.contentHeight, 600)
+        // A reply streaming in stays under it, the send unmoved.
+        let streaming = StemCellChatStackLayout(heights: [80, 200], width: 390, viewport: 600, lift: lift)
+        XCTAssertEqual(streaming.frames[0].minY, 180)
+        XCTAssertEqual(streaming.contentHeight, 600)
+        // The reply fills the room: spent, the same place it rests at.
+        let full = StemCellChatStackLayout(heights: [80, 340], width: 390, viewport: 600, lift: lift)
+        XCTAssertFalse(full.holding)
+        XCTAssertEqual(full.frames[0].minY, 180)
+    }
+
     func testAgentParagraphsSitOneGapApart() {
         let layout = StemCellMessageLayout.agent(width: 390, blocks: [.text(block(height: 24)), .text(block(height: 48))])
         XCTAssertEqual(layout.markdownOrigin, CGPoint(x: 16, y: 8))

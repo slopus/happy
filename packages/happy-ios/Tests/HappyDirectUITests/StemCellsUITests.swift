@@ -185,6 +185,63 @@ final class StemCellsUITests: XCTestCase {
         capture("sidebar-after-new-work")
     }
 
+    /// Desktop's chat layout: new work's intro pinned under the bar, the
+    /// first message right under it with nothing moving, and a follow-up
+    /// sent while the agent is idle lifted 30% down the transcript (no
+    /// higher than the intro's line), the room under it held for the reply.
+    func testChatLayout() {
+        home()
+        pause(1.5)
+        app.descendants(matching: .any)["stem-new-work"].tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 3))
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        pause(1.5)
+        let intro = app.descendants(matching: .any)["stem-intro"]
+        let back = app.buttons["stem-chat-back"]
+        let input = app.descendants(matching: .any)["stem-input"]
+        let top = intro.frame.minY
+        XCTAssertGreaterThanOrEqual(top, back.frame.maxY - 1, "the intro is under the bar's row")
+        XCTAssertLessThan(top - back.frame.maxY, 16, "the intro isn't pinned under the bar")
+        capture("layout-intro")
+        // Claude's week is spent on the e2e computer: a model that answers.
+        let model = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
+        if !model.label.contains("GPT-6.1 Sol") { pickIn(model, "stem-picker-models", "GPT-6.1 Sol", shot: "layout-model") }
+        XCTAssertEqual(intro.frame.minY, top, accuracy: 1, "picking a model moved the intro")
+        composer.tap()
+        composer.typeText("Plan a long weekend in Lisbon for the four of us. Two lines, no tools.")
+        app.buttons["Send"].tap()
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
+        let messages = app.descendants(matching: .any).matching(identifier: "stem-message")
+        XCTAssertTrue(until(5) { messages.count >= 1 }, "the send never showed")
+        pause(1)
+        XCTAssertEqual(intro.frame.minY, top, accuracy: 1, "the first send moved the intro")
+        XCTAssertEqual(messages.element(boundBy: 0).frame.minY, intro.frame.maxY, accuracy: 1, "the first message isn't right under the intro")
+        let introLine = intro.frame.height
+        capture("layout-first")
+        // The agent done with it, answered or not.
+        let working = app.descendants(matching: .any)["stem-working"]
+        let deadline = Date().addingTimeInterval(120)
+        while Date() < deadline, messages.count < 2 || working.exists { pause(1) }
+        pause(2)
+        capture("layout-answered")
+        let before = messages.count
+        composer.typeText("Swap Saturday and Sunday. One line.")
+        app.buttons["Send"].tap()
+        XCTAssertTrue(until(5) { messages.count > before }, "the follow-up never showed")
+        pause(1)
+        let sent = messages.element(boundBy: before)
+        let viewport = input.frame.minY - 8 - top
+        let line = min(max((viewport * 0.3).rounded(), introLine), (viewport * 0.5).rounded())
+        XCTAssertEqual(sent.frame.minY - top, line, accuracy: 1.5, "the follow-up isn't lifted to the line (viewport \(viewport))")
+        XCTAssertGreaterThan(input.frame.minY - sent.frame.maxY, 40, "no room held for the reply")
+        capture("layout-follow-up")
+        let deadlineReply = Date().addingTimeInterval(120)
+        while Date() < deadlineReply, messages.count < before + 2 || working.exists { pause(1) }
+        pause(2)
+        capture("layout-follow-up-answered")
+    }
+
     /// New work left with nothing in it goes: the sidebar comes back without
     /// its row, never showing it on the way, and the computer drops it too
     /// (it isn't there after a fresh launch either).

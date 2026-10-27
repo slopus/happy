@@ -103,6 +103,16 @@ final class StemCellChatViewController: UIViewController {
     private var copied: (id: String, until: Task<Void, Never>)?
     /// The newest row is in view: what arrives keeps it there.
     private var followsNewest = true
+    /// A message sent while the agent was idle, not yet drawn: as it lands
+    /// it is lifted to desktop's line (`StemCellSendLift`).
+    private var liftPending: String?
+    /// The lifted send and its line, while the reply hasn't filled the room
+    /// under it.
+    private var lift: (id: String, line: CGFloat)?
+    /// Where the transcript's rows end, as last laid out; nil while they
+    /// stand off the top (a short one resting on its composer), where
+    /// dropping a lift would move them.
+    private var rowsEnd: CGFloat?
     /// The computer was reachable when last heard: pictures that failed
     /// while it wasn't are asked for again when it is back.
     private var live = true
@@ -907,7 +917,28 @@ final class StemCellChatViewController: UIViewController {
         }
         heights += plans.map(\.size.height)
         heights.append(chat.activity == nil ? 0 : StemCellWorkingLayout.Metrics.height)
-        let stack = StemCellChatStackLayout(heights: heights, width: width, viewport: viewport)
+        // The intro stays under the bar, as desktop's leading header.
+        let pins = introLayout != nil && !previewing
+        let first = introLayout == nil ? 0 : 1
+        func row(_ id: String) -> Int? { plans.firstIndex { $0.id == id }.map { $0 + first } }
+        func stacked() -> StemCellChatStackLayout {
+            let held = lift.flatMap { lift in row(lift.id).map { StemCellChatStackLayout.Lift(row: $0, line: lift.line) } }
+            return StemCellChatStackLayout(heights: heights, width: width, viewport: viewport, pinsFirst: pins, lift: held)
+        }
+        var stack = stacked()
+        if let id = liftPending, let sent = row(id) {
+            liftPending = nil
+            // Where it lands following the end; lifted from there if below the line.
+            let line = StemCellSendLift(viewport: viewport, introLine: introLayout?.line.maxY)
+            if line.lifts(shownAt: stack.frames[sent].minY - max(0, stack.contentHeight - viewport)) {
+                lift = (id, line.line)
+            } else {
+                lift = nil
+            }
+            stack = stacked()
+        }
+        if !stack.holding { lift = nil }
+        rowsEnd = stack.frames.first?.minY == 0 ? stack.frames.last?.maxY : nil
         var index = 0
         if let introLayout {
             introView.setLayoutFrame(stack.frames[0])
@@ -919,9 +950,10 @@ final class StemCellChatViewController: UIViewController {
             index += 1
         }
         working.frame = stack.frames[index]
+        let contentHeight = stack.contentHeight
         let previous = scrollView.contentSize.height
-        scrollView.contentSize = CGSize(width: width, height: stack.contentHeight)
-        if followsNewest, previous != stack.contentHeight || scrollView.contentOffset.y != newestOffset {
+        scrollView.contentSize = CGSize(width: width, height: contentHeight)
+        if followsNewest, previous != contentHeight || scrollView.contentOffset.y != newestOffset {
             scrollView.contentOffset.y = newestOffset
         } else if !followsNewest, scrollView.contentOffset.y > newestOffset, !scrollView.isTracking, !scrollView.isDecelerating {
             // Shorter than the place it was read at (a section folded): no gap under the end.
@@ -978,6 +1010,9 @@ final class StemCellChatViewController: UIViewController {
         card.setText("", selection: NSRange(location: 0, length: 0))
         StemCellsHaptics.play(.send)
         followsNewest = true
+        // Mid-turn, a send waits under the reply at the end instead.
+        let id = ClientID.make()
+        liftPending = chat.working ? nil : id
         let conversation = conversation
         let store = session.store
         let staged = pictures
@@ -988,7 +1023,7 @@ final class StemCellChatViewController: UIViewController {
             }.value
             staged.clear()
             await store.attentionInput()
-            await conversation.send(text: text, pictures: photos)
+            await conversation.send(id: id, text: text, pictures: photos)
         }
     }
 
@@ -1281,6 +1316,11 @@ extension StemCellChatViewController: UIScrollViewDelegate {
         updateJump()
         guard scrollView.isTracking || scrollView.isDecelerating else { return }
         followsNewest = scrollView.contentOffset.y >= newestOffset - 24
+        // Read away from the end: room held under it, wholly out of view, goes.
+        if !followsNewest, lift != nil, let rowsEnd, scrollView.contentOffset.y + scrollView.bounds.height - scrollView.contentInset.bottom <= rowsEnd {
+            lift = nil
+            view.setNeedsLayout()
+        }
         if scrollView.contentOffset.y < 200 - scrollView.contentInset.top, chat.hasMore {
             let conversation = conversation
             Task { await conversation.loadOlder() }

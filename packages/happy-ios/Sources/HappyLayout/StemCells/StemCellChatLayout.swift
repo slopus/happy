@@ -64,24 +64,91 @@ public struct StemCellChatScreenLayout: Equatable, Sendable {
 
 /// The conversation's rows stacked in a scroll view: newest last, resting
 /// on the composer while they are shorter than the screen, as a chat does.
+/// A conversation that opens on its intro (desktop's leading header) keeps
+/// it pinned under the bar instead, and its rows fill in under it.
+///
+/// A lifted send (`StemCellSendLift`) stands on its line from the
+/// viewport's top while the reply has not filled the room under it: the
+/// content reaches a viewport below the line, so following the end keeps
+/// it there whatever the viewport does (the keyboard, the composer
+/// growing). Once the rows below it fill that room the lift is spent, and
+/// the stack is as it would be without it, at the same place.
 public struct StemCellChatStackLayout: Equatable, Sendable {
+    /// Row `row` held `line` down from the viewport's top.
+    public struct Lift: Equatable, Sendable {
+        public var row: Int
+        public var line: CGFloat
+
+        public init(row: Int, line: CGFloat) {
+            self.row = row
+            self.line = line
+        }
+    }
+
     public var frames: [CGRect]
     public var contentHeight: CGFloat
+    /// The lift still holds room for the reply.
+    public var holding: Bool
 
     /// `heights` top to bottom; `viewport` is the height between the top
     /// inset and the composer, which short content rests at the foot of.
-    public init(heights: [CGFloat], width: CGFloat, viewport: CGFloat) {
+    /// `pinsFirst`: the first row is the intro, at the top whatever follows.
+    public init(heights: [CGFloat], width: CGFloat, viewport: CGFloat, pinsFirst: Bool = false, lift: Lift? = nil) {
         let total = heights.reduce(0, +)
-        var y = max(0, viewport - total)
-        var frames: [CGRect] = []
-        frames.reserveCapacity(heights.count)
+        var starts: [CGFloat] = []
+        starts.reserveCapacity(heights.count)
+        var end: CGFloat = 0
         for height in heights {
-            frames.append(CGRect(x: 0, y: y, width: width, height: height))
-            y += height
+            starts.append(end)
+            end += height
         }
-        self.frames = frames
+        var lead = pinsFirst ? 0 : max(0, viewport - total)
         contentHeight = max(viewport, total)
+        holding = false
+        if let lift, starts.indices.contains(lift.row) {
+            let start = starts[lift.row]
+            // Shorter below it than the room under its line: held. At the
+            // moment the room fills, the natural rest is this same place.
+            if total - start < viewport - lift.line {
+                holding = true
+                if !pinsFirst { lead = max(0, lift.line - start) }
+                contentHeight = lead + start - lift.line + viewport
+            }
+        }
+        frames = zip(starts, heights).map { CGRect(x: 0, y: lead + $0, width: width, height: $1) }
+        if !holding { contentHeight = max(viewport, lead + total) }
     }
+}
+
+/// Desktop's send lift (Message.tsx `sendLift`, `SEND_LIFT_TOP`): a message
+/// sent while the agent is idle is lifted to 30% down the viewport, the
+/// turns before it still in view above, and the room under it is held for
+/// the reply until the reply fills it (`StemCellChatStackLayout.Lift`). A
+/// lift only ever moves a send up: one already at the line or above it
+/// stays where it landed.
+///
+/// Under a pinned intro the line is no higher than the intro's own line, so
+/// the first send, landing right under the intro, is already there and
+/// nothing moves; every later one is lifted to the same slot or lower.
+public struct StemCellSendLift: Equatable, Sendable {
+    public enum Metrics {
+        /// `SEND_LIFT_TOP`: of the viewport's height, from its top.
+        public static let share: CGFloat = 0.3
+        /// No lower than this share, however tall the intro: the reply's room.
+        public static let lowest: CGFloat = 0.5
+    }
+
+    /// From the viewport's top, where the send's top edge sits.
+    public var line: CGFloat
+
+    /// `introLine`: where a pinned intro's line ends.
+    public init(viewport: CGFloat, introLine: CGFloat? = nil) {
+        typealias M = Metrics
+        line = min(max((viewport * M.share).rounded(), introLine ?? 0), (viewport * M.lowest).rounded())
+    }
+
+    /// A send whose top is `shownAt` from the viewport's top, as it landed.
+    public func lifts(shownAt: CGFloat) -> Bool { shownAt > line }
 }
 
 /// One message of a Stem Cells conversation, as desktop's `Message` sets
