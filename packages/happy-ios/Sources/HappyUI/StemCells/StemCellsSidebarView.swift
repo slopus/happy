@@ -16,6 +16,8 @@ import UIKit
 /// in place to be renamed.
 final class StemCellsSidebarView: UIScrollView {
     var onSelect: ((StemCellsRow) -> Void)?
+    /// A finger came down on a row that opens: it may be opened next.
+    var onIntent: ((StemCellsRow) -> Void)?
     var onFold: ((StemCellsRow) -> Void)?
     /// A section's "+": new work in that section. Sections show it only when set.
     var onAdd: ((StemCellsRow) -> Void)?
@@ -246,6 +248,15 @@ final class StemCellsSidebarView: UIScrollView {
         guard let view = gesture.view as? StemCellsRowView else { return }
         let opens = onSelect != nil || view.row?.kind == .section
         view.pressed = opens && hold == nil && (gesture.state == .began || gesture.state == .changed)
+        if gesture.state == .began, onSelect != nil, let row = view.row { onIntent?(row) }
+    }
+
+    /// The rows on screen now, top first.
+    var visibleRows: [StemCellsRow] {
+        let shown = arranged ?? rows
+        guard let frames = layoutResult?.frames, frames.count == shown.count else { return [] }
+        let window = bounds.inset(by: contentInset)
+        return zip(shown, frames).filter { $0.1.box.intersects(window) }.map(\.0)
     }
 
     private func layoutRows(_ rows: [StemCellsRow]) -> [StemCellsSidebarLayout.Row] {

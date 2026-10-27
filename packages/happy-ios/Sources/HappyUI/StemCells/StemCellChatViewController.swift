@@ -24,6 +24,13 @@ final class StemCellChatViewController: UIViewController {
 
     private let session: StemCellsSession
     private let conversation: StemCellConversation
+    /// A conversation read ahead (`StemCellsWarmChats`), held while this
+    /// screen shows it; nil for new work, which has its own.
+    private let warm: (chat: StemCellsWarmChats.Chat, token: UUID)?
+    /// When its row was tapped, to time how soon it showed.
+    private let tappedAt: CFTimeInterval?
+    /// What the push's first frame had: the transcript, or nothing yet.
+    private var firstFrame: Bool?
     private let spaceId: String?
     /// New work nobody named or wrote in, as its row says.
     private var untouched: Bool
@@ -131,8 +138,19 @@ final class StemCellChatViewController: UIViewController {
         opensFocused = creation != nil
         untouched = creation != nil
         focusPending = creation != nil
-        conversation = StemCellConversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created, mode: creation == nil ? nil : session.models.newWorkMode)
-        planner = StemCellChatPlanner(syntax: session.syntax)
+        if creation == nil {
+            let held = session.warm.hold(agentId)
+            warm = held
+            conversation = held.chat.conversation
+            // A preview lays out at its card's width: its own planner, so
+            // the full width's rows stay cached.
+            planner = previewing ? StemCellChatPlanner(syntax: session.syntax) : held.chat.planner
+        } else {
+            warm = nil
+            conversation = StemCellConversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created, mode: session.models.newWorkMode)
+            planner = StemCellChatPlanner(syntax: session.syntax)
+        }
+        tappedAt = previewing ? nil : session.warm.takeTap(agentId)
         proposals = StemCellSidebarProposals(client: session.client, store: session.store)
         media = StemCellMediaLoader(client: session.client, agentId: agentId)
         let files = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("StemCells", isDirectory: true)
@@ -216,16 +234,22 @@ final class StemCellChatViewController: UIViewController {
         if previewing { setUpPreview() }
         applyIntro()
         proposals.onChange = { [weak self] in self?.replan() }
-        let updates = conversation.updates
-        following = Task { [weak self] in
-            for await snapshot in updates {
-                guard let self else { return }
-                self.apply(snapshot)
-            }
-        }
-        let conversation = conversation
-        Task { await conversation.start() }
         watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
+        if let warm {
+            // Read ahead: what it has shows on the first frame.
+            session.warm.watch(warm.chat, token: warm.token) { [weak self] snapshot in self?.apply(snapshot) }
+            if warm.chat.snapshot.loaded { apply(warm.chat.snapshot) }
+        } else {
+            let updates = conversation.updates
+            following = Task { [weak self] in
+                for await snapshot in updates {
+                    guard let self else { return }
+                    self.apply(snapshot)
+                }
+            }
+            let conversation = conversation
+            Task { await conversation.start() }
+        }
         modelsWatch = session.models.watch { [weak self] in self?.updateChips() }
         session.models.load()
         updateChips()
@@ -285,6 +309,7 @@ final class StemCellChatViewController: UIViewController {
     /// computer once it has gone. A swipe back let go of halfway keeps it.
     private func putAwayIfEmpty() {
         guard !previewing, let spaceId, untouched, !kept, chat.loaded, chat.items.isEmpty else { return }
+        putAway = true
         let store = session.store
         Task { await store.putAway(spaceId, true) }
         guard let coordinator = transitionCoordinator else {
@@ -308,7 +333,12 @@ final class StemCellChatViewController: UIViewController {
             watch?.invalidate()
             modelsWatch?.invalidate()
             proposals.stop()
-            Task { await conversation.stop() }
+            // Read ahead, it stays read for a quick way back.
+            if let warm {
+                session.warm.release(warm.chat, token: warm.token, opened: !previewing, putAway: putAway)
+            } else {
+                Task { await conversation.stop() }
+            }
         }
     }
 
@@ -455,6 +485,9 @@ final class StemCellChatViewController: UIViewController {
     private func showIntro() {
         introView.isHidden = intro == nil || reading(chat) || (!chat.items.isEmpty && !planShown)
     }
+    /// Left empty and put away as the screen went: nothing to keep of it.
+    private var putAway = false
+
     /// A plan has been shown, if only an empty one.
     private var planShown = false
 
@@ -723,10 +756,19 @@ final class StemCellChatViewController: UIViewController {
         if let planned, planned.items == items, planned.key == key, planned.copied == copiedId, planned.opened == opened, planned.proposals == shown { return }
         planned = (items, key, copiedId, opened, shown)
         planning?.cancel()
+        // Rows as they stand untouched are shared with the warm chat: taken
+        // from it as it laid them out ahead, and left with it for the next open.
+        let untouched = !previewing && copiedId == nil && opened.isEmpty && shown.isEmpty
+        if untouched, let ahead = warm?.chat.plans(for: items, key: key) {
+            shownProposals = shown
+            return show(ahead)
+        }
         let planner = planner
+        let warmChat = untouched ? warm?.chat : nil
         planning = Task { [weak self] in
             let plans = await planner.plans(items, key: key, copied: copiedId, opened: opened, proposals: shown)
             guard !Task.isCancelled, let self else { return }
+            warmChat?.keep(plans, items: items, key: key)
             self.shownProposals = shown
             self.show(plans)
         }
@@ -799,6 +841,7 @@ final class StemCellChatViewController: UIViewController {
             proposalViews.removeValue(forKey: key)
         }
         layoutTranscript()
+        timeShown()
     }
 
     private func makeProposal(_ artifactId: String, key: String) -> StemCellSidebarProposalView {
@@ -834,6 +877,11 @@ final class StemCellChatViewController: UIViewController {
         super.viewDidLayoutSubviews()
         if previewing { return layoutPreview() }
         replan()
+        if firstFrame == nil {
+            firstFrame = drawn
+            scrollView.accessibilityIdentifier = "stem-transcript"
+        }
+        timeShown()
         header.safeTop = view.safeAreaInsets.top
         header.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: header.layout.backdrop.height)
         let screen = StemCellChatScreenLayout(
@@ -961,6 +1009,29 @@ final class StemCellChatViewController: UIViewController {
         }
         showNewestFromItsStart()
         updateJump()
+    }
+
+    /// The transcript is up: history read and its rows, if any, laid out.
+    private var drawn: Bool { chat.loaded && (chat.items.isEmpty || planShown) }
+
+    private var timed = false
+
+    /// How long from the row's tap until the transcript was on screen, and
+    /// whether the push's first frame had it: logged, and the transcript's
+    /// value for the UI tests.
+    private func timeShown() {
+        guard !timed, let tappedAt, drawn, let firstFrame else { return }
+        timed = true
+        // Committed by the time the main queue comes back to this.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let ms = Int(((CACurrentMediaTime() - tappedAt) * 1000).rounded())
+            let warm = StemCellsWarmChats.enabled ? "warm" : "off"
+            #if DEBUG
+            print("STEM_OPEN \(warm) first=\(firstFrame) ms=\(ms) rows=\(plans.count)")
+            #endif
+            scrollView.accessibilityValue = "first=\(firstFrame) ms=\(ms) rows=\(plans.count)"
+        }
     }
 
     private var newestOffset: CGFloat {

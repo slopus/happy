@@ -84,6 +84,10 @@ final class StemCellsHomeViewController: UIViewController {
         dock.textView.accessibilityIdentifier = "stem-new-work"
         view.addSubview(dock)
         sidebar.onSelect = { [weak self] row in self?.open(row) }
+        sidebar.onIntent = { [weak self] row in
+            guard let agentId = row.agentId, row.targetKind != "surface" else { return }
+            self?.session?.warm.intent(agentId)
+        }
         sidebar.onFold = { [weak self] row in self?.fold(row) }
         sidebar.onAdd = { [weak self] row in self?.makeNewWork(in: row.nodeId) }
         sidebar.menu = { [weak self] row in self?.menu(for: row) }
@@ -157,6 +161,7 @@ final class StemCellsHomeViewController: UIViewController {
         self.snapshot = snapshot
         onSnapshot?(snapshot)
         if previous.rows != snapshot.rows { sidebar.apply(Self.drawn(snapshot.rows)) }
+        warmUp()
         if previous.availability != snapshot.availability || previous.error != snapshot.error || previous.stemCellError != snapshot.stemCellError {
             applyChrome()
         }
@@ -218,6 +223,7 @@ final class StemCellsHomeViewController: UIViewController {
         let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset)
         banner.frame = layout.banner
         sidebar.frame = bounds
+        session?.warm.layOut(width: bounds.width, environment: traitCollection.textEnvironment)
         let insets = UIEdgeInsets(layout.listInsets)
         if sidebar.contentInset != insets {
             let atTop = sidebar.contentOffset.y <= -sidebar.contentInset.top + 1
@@ -281,6 +287,7 @@ final class StemCellsHomeViewController: UIViewController {
             guard let agentId = row.agentId else { return }
             session.selectedRowId = row.id
             sidebar.selectedRowId = row.id
+            session.warm.tap(agentId)
             let space = row.spaceId.flatMap { id in snapshotSpace(id) }
             let chat = StemCellChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, stemCell: space)
             navigationController?.pushViewController(chat, animated: animated)
@@ -486,10 +493,19 @@ extension StemCellsHomeViewController: UIScrollViewDelegate {
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         stories.listDidEndDragging(decelerate: decelerate)
+        if !decelerate { warmUp() }
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         stories.listDidEndDecelerating()
+        warmUp()
+    }
+
+    /// The sidebar's conversations and those on screen, for reading ahead.
+    private func warmUp() {
+        guard let session, !snapshot.allRows.isEmpty else { return }
+        sidebar.layoutIfNeeded()
+        session.warm.update(rows: snapshot.allRows, visible: sidebar.visibleRows, references: snapshot.references)
     }
 }
 

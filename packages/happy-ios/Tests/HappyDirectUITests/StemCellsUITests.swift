@@ -714,6 +714,68 @@ final class StemCellsUITests: XCTestCase {
         pause(1.5)
     }
 
+    /// Conversations read ahead open drawn: several sidebar rows, each
+    /// pushed with its transcript on the push's first frame, timed from
+    /// the tap until it was on screen. `STEM_WARM=0` is the cold "before",
+    /// timed the same way.
+    func testWarmOpens() {
+        let warm = ProcessInfo.processInfo.environment["STEM_WARM"] != "0"
+        if !warm { app.launchEnvironment["STEM_WARM"] = "0" }
+        // Slowed for the recording, the screens take that much longer.
+        var slow = 1.0
+        if let drag = ProcessInfo.processInfo.environment["STEM_ANIMATION_DRAG"] {
+            app.launchEnvironment["UIAnimationDragCoefficient"] = drag
+            slow = Double(drag) ?? 1
+        }
+        app.launch()
+        home()
+        // Desktop's 1.5s before reading ahead, then one conversation at a time.
+        pause(5)
+        var opened: [String] = []
+        for label in ["Pasted from", "Plan a long", "Write a four-line", "Reply with exactly", "Say which model", "Plan a weekend"] {
+            let target = row("space", label).firstMatch
+            guard target.exists, target.isHittable else { continue }
+            target.tap()
+            let transcript = app.scrollViews["stem-transcript"]
+            XCTAssertTrue(transcript.waitForExistence(timeout: 8), "\(label) didn't open")
+            var value = ""
+            let deadline = Date().addingTimeInterval(10)
+            while Date() < deadline {
+                value = transcript.value as? String ?? ""
+                if !value.isEmpty { break }
+                pause(0.1)
+            }
+            print("STEM_TIMING \(warm ? "warm" : "cold") \(label): \(value)")
+            XCTAssertTrue(value.contains("rows="), "\(label) never showed its transcript")
+            if warm {
+                XCTAssertTrue(value.hasPrefix("first=true"), "\(label) opened without its transcript: \(value)")
+                XCTAssertTrue(app.descendants(matching: .any)["stem-message"].firstMatch.exists, "\(label) has no message")
+            }
+            capture("warm-\(opened.count)")
+            opened.append(label)
+            pause(1.5 * slow)
+            app.tapBack()
+            pause(1.5 * slow)
+            if opened.count == 4 { break }
+        }
+        XCTAssertGreaterThanOrEqual(opened.count, 3, "too few conversations on screen: \(opened)")
+        // One left a moment ago comes back drawn too.
+        if warm, let first = opened.first {
+            row("space", first).firstMatch.tap()
+            let transcript = app.scrollViews["stem-transcript"]
+            XCTAssertTrue(transcript.waitForExistence(timeout: 8))
+            var value = ""
+            for _ in 0..<100 where value.isEmpty {
+                value = transcript.value as? String ?? ""
+                if value.isEmpty { pause(0.1) }
+            }
+            print("STEM_TIMING warm \(first) again: \(value)")
+            XCTAssertTrue(value.hasPrefix("first=true"), "\(first) came back without its transcript: \(value)")
+            pause(1.5 * slow)
+            app.tapBack()
+        }
+    }
+
     /// Every modal sheet closes from a button at its top right, as far
     /// from the top as from the side: settings' QR sheet, the link sheet
     /// "+" opens and the attach sheet. The link sheet's
