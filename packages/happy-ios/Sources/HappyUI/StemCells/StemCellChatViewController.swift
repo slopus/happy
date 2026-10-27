@@ -61,6 +61,12 @@ final class StemCellChatViewController: UIViewController {
     private var rowViews: [String: ChatPlanView] = [:]
     private var plans: [ChatRowPlan] = []
     private let working = StemCellWorkingView()
+    /// The screen's ground under and beside the composer: the transcript
+    /// ends where the composer starts, never showing under or through it.
+    private let composerGround = StemCellChatGroundView()
+    /// Desktop's way back to the newest message.
+    private let jump = StemCellChatJumpButton()
+    private var jumpShown = false
     private let card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.Composer.inputPlaceholder))
     private let keyboardTracker = UIView()
     /// The keyboard's top as its notifications last said (down: past any
@@ -163,6 +169,12 @@ final class StemCellChatViewController: UIViewController {
             card.configuration.attachments = pictures.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) }
             updatePrimary()
         }
+        composerGround.isUserInteractionEnabled = false
+        view.addSubview(composerGround)
+        jump.isHidden = true
+        jump.alpha = 0
+        jump.addTarget(self, action: #selector(jumpToLatest), for: .touchUpInside)
+        view.addSubview(jump)
         view.addSubview(card)
         header.onBack = { [weak self] in
             guard let self else { return }
@@ -325,6 +337,8 @@ final class StemCellChatViewController: UIViewController {
     func newWorkFade(_ alpha: CGFloat) {
         view.backgroundColor = UIColor(Palette.surface).withAlphaComponent(alpha)
         scrollView.alpha = alpha
+        composerGround.alpha = alpha
+        jump.alpha = jumpShown ? alpha : 0
         header.alpha = alpha
         card.alpha = composerIsEmpty ? 1 : alpha
     }
@@ -818,6 +832,10 @@ final class StemCellChatViewController: UIViewController {
         ) { [card] width in card.height(fitting: width) }
         card.setLayoutFrame(screen.card)
         picker?.follow()
+        let foot = StemCellChatFootLayout(size: view.bounds.size, card: screen.card)
+        composerGround.setLayoutFrame(foot.ground)
+        composerGround.fadeShare = foot.fadeShare
+        jump.setLayoutFrame(foot.jump)
         scrollView.frame = view.bounds
         // The transcript starts under the header's row and scrolls under it.
         let insets = UIEdgeInsets(top: header.layout.listTop, left: 0, bottom: screen.listBottom, right: 0)
@@ -832,6 +850,7 @@ final class StemCellChatViewController: UIViewController {
 
     private func setUpPreview() {
         card.isHidden = true
+        composerGround.isHidden = true
         header.isHidden = true
         scrollView.isUserInteractionEnabled = false
         view.accessibilityIdentifier = "stem-preview"
@@ -909,10 +928,37 @@ final class StemCellChatViewController: UIViewController {
             scrollView.contentOffset.y = newestOffset
         }
         showNewestFromItsStart()
+        updateJump()
     }
 
     private var newestOffset: CGFloat {
         max(-scrollView.contentInset.top, scrollView.contentSize.height + scrollView.contentInset.bottom - scrollView.bounds.height)
+    }
+
+    /// The way back shows while the reader is more than a third of the
+    /// list's height from the newest message, as desktop's does, and
+    /// shimmers while the working line spins: not on a question to the
+    /// person or a scheduled wait, which show still.
+    private func updateJump() {
+        let viewport = scrollView.bounds.height - scrollView.contentInset.top - scrollView.contentInset.bottom
+        let away = !previewing && StemCellChatFootLayout.showsJump(distanceFromEnd: newestOffset - scrollView.contentOffset.y, viewport: viewport)
+        // Hidden, it doesn't sweep.
+        jump.working = away && StemCellChatJumpButton.spins(chat.activity)
+        guard away != jumpShown else { return }
+        jumpShown = away
+        if away { jump.isHidden = false }
+        UIView.animate(withDuration: 0.16, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+            self.jump.alpha = away ? 1 : 0
+        } completion: { _ in
+            // Shown again meanwhile, it stays.
+            if !self.jumpShown { self.jump.isHidden = true }
+        }
+    }
+
+    /// Back to the newest message, following it from there.
+    @objc private func jumpToLatest() {
+        followsNewest = true
+        scrollView.setContentOffset(CGPoint(x: 0, y: newestOffset), animated: true)
     }
 
     // MARK: Acts
@@ -977,8 +1023,14 @@ final class StemCellChatViewController: UIViewController {
             present(playback, animated: true) { player.play() }
             return
         }
-        let presented = media.media(key)
-        present(StemCellPictureViewController(source: media, key: key, thumbhash: presented?.item.thumbhash, label: presented?.item.name ?? Strings.StemCells.picture), animated: true)
+        // Every picture of the conversation, swiped between in its order.
+        var pictures = StemCellPicture.all(in: chat.items)
+        if !pictures.contains(where: { $0.key == key }) {
+            let presented = media.media(key)
+            pictures = [StemCellPicture(key: key, thumbhash: presented?.item.thumbhash, label: presented?.item.name ?? Strings.StemCells.picture)]
+        }
+        let index = pictures.firstIndex { $0.key == key } ?? 0
+        present(StemCellPictureViewController(source: media, pictures: pictures, index: index), animated: true)
     }
 
     private func showFileUnavailable() {
@@ -1226,6 +1278,7 @@ extension StemCellChatViewController: UIScrollViewDelegate {
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        updateJump()
         guard scrollView.isTracking || scrollView.isDecelerating else { return }
         followsNewest = scrollView.contentOffset.y >= newestOffset - 24
         if scrollView.contentOffset.y < 200 - scrollView.contentInset.top, chat.hasMore {

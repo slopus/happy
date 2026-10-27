@@ -119,6 +119,13 @@ extension Strings {
         public static func media(isVideo: Bool, name: String) -> String { "\(isVideo ? video : picture): \(name)" }
         public static let addPicture = "Add a picture"
         public static let close = "Close"
+        /// Where the viewer is among the conversation's pictures.
+        public static func pictureNumber(_ number: Int, of count: Int) -> String { "\(number) of \(count)" }
+        /// Desktop's way back to the newest message, and whether the agent
+        /// is working as it shows, which UI tests read.
+        public static let jumpToLatest = "Jump to latest"
+        public static let jumpWorking = "working"
+        public static let jumpIdle = "idle"
         /// A tile's accessibility value, which UI tests wait on.
         public static let mediaLoading = "loading"
         public static let mediaLoaded = "loaded"
