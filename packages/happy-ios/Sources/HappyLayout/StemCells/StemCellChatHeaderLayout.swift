@@ -7,15 +7,14 @@ import CoreGraphics
 /// glass over the transcript, which scrolls under it. In home's 52-tall row
 /// under the status bar (`HomeHeaderLayout`), the back button is a 44 glass
 /// circle 16 in, where home's account picture is, and the name is centred
-/// in a glass capsule, 16 in on either side of it, with its status under it
-/// in grey when there is one:
+/// in a glass capsule that runs from 8 past the circle to 16 short of the
+/// screen's right edge, with its status under it in grey when there is
+/// one. The capsule opens the conversation's detail.
 ///
-///     ( ‹ )        ( Pineapple poem )
-///                  (    Working     )
+///     ( ‹ ) (       Pineapple poem       )
+///           (          Working           )
 ///
-/// The capsule keeps 8 clear of the circle on both sides, so it stays
-/// centred. A scrim reaches 8 below the row; the transcript starts at the
-/// row's foot.
+/// A scrim reaches 8 below the row; the transcript starts at the row's foot.
 public struct StemCellChatHeaderLayout: Equatable, Sendable {
     public enum Metrics {
         public static let rowHeight: CGFloat = HomeHeaderLayout.Metrics.contentHeight
@@ -51,16 +50,14 @@ public struct StemCellChatHeaderLayout: Equatable, Sendable {
         let width = max(0, width)
         let rowTop = safeTop
         back = CGRect(x: M.padding, y: rowTop + (M.rowHeight - M.control) / 2, width: M.control, height: M.control)
-        let side = M.padding + M.control + M.gap
-        let pillMax = max(0, width - 2 * side)
-        titleMaxWidth = max(0, pillMax - 2 * M.pillPadding)
+        let left = M.padding + M.control + M.gap
+        let pillWidth = max(0, width - left - M.padding)
+        titleMaxWidth = max(0, pillWidth - 2 * M.pillPadding)
         let titleWidth = min(titleWidth.rounded(.up), titleMaxWidth)
         let statusMax = titleMaxWidth
         let statusWidth = statusWidth.map { min($0.rounded(.up), statusMax) }
-        let inner = max(titleWidth, statusWidth ?? 0)
         let height = statusWidth == nil ? M.pillHeight : M.pillHeightWithStatus
-        let pillWidth = min(pillMax, inner + 2 * M.pillPadding)
-        pill = CGRect(x: ((width - pillWidth) / 2).rounded(), y: rowTop + (M.rowHeight - height) / 2, width: pillWidth, height: height)
+        pill = CGRect(x: left, y: rowTop + (M.rowHeight - height) / 2, width: pillWidth, height: height)
         let lines = M.titleHeight + (statusWidth == nil ? 0 : M.statusHeight)
         let top = pill.minY + ((height - lines) / 2).rounded()
         title = CGRect(x: (pill.midX - titleWidth / 2).rounded(), y: top, width: titleWidth, height: M.titleHeight)

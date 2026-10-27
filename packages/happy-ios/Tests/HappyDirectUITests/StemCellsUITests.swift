@@ -730,9 +730,20 @@ final class StemCellsUITests: XCTestCase {
         app.launch()
         home()
         // Desktop's 1.5s before reading ahead, then one conversation at a time.
-        pause(5)
+        pause(6)
         var opened: [String] = []
-        for label in ["Pasted from", "Plan a long", "Write a four-line", "Reply with exactly", "Say which model", "Plan a weekend"] {
+        // Whatever rows show whole between the bar and the dock, top first,
+        // once each: other tests reorder the sidebar.
+        let dock = app.descendants(matching: .any)["stem-new-work"].frame.minY
+        let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:space:")).allElementsBoundByIndex
+            .filter { $0.frame.minY > 100 && $0.frame.maxY < dock - 30 }
+            .sorted { $0.frame.minY < $1.frame.minY }
+        var labels: [String] = []
+        for element in rows {
+            let label = String(element.identifier.dropFirst("stem-row:space:".count))
+            if !labels.contains(label) { labels.append(label) }
+        }
+        for label in labels {
             let target = row("space", label).firstMatch
             guard target.exists, target.isHittable else { continue }
             target.tap()
@@ -749,7 +760,10 @@ final class StemCellsUITests: XCTestCase {
             XCTAssertTrue(value.contains("rows="), "\(label) never showed its transcript")
             if warm {
                 XCTAssertTrue(value.hasPrefix("first=true"), "\(label) opened without its transcript: \(value)")
-                XCTAssertTrue(app.descendants(matching: .any)["stem-message"].firstMatch.exists, "\(label) has no message")
+                // An empty one (a bot just made) is drawn too, with nothing in it.
+                if !value.hasSuffix("rows=0") {
+                    XCTAssertTrue(app.descendants(matching: .any)["stem-message"].firstMatch.exists, "\(label) has no message")
+                }
             }
             capture("warm-\(opened.count)")
             opened.append(label)
@@ -774,6 +788,83 @@ final class StemCellsUITests: XCTestCase {
             pause(1.5 * slow)
             app.tapBack()
         }
+    }
+
+    /// The header's capsule runs to the right edge and opens the
+    /// conversation's detail, never a rename: its tiles, its family drawn
+    /// as the sidebar draws it, and its activity, settled children folded.
+    /// Each row opens its conversation; back comes back to the detail.
+    func testSessionDetail() {
+        home()
+        pause(1)
+        let happy = row("space", "Happy")
+        XCTAssertTrue(happy.waitForExistence(timeout: 5))
+        happy.tap()
+        let title = app.descendants(matching: .any)["stem-chat-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        pause(1)
+        capture("detail-header")
+        // The capsule's far right, well past the name, still opens it.
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width - 30, dy: title.frame.midY)).tap()
+        let detail = app.descendants(matching: .any)["stem-detail"]
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "the capsule's right end didn't open the detail")
+        XCTAssertFalse(app.textFields["stem-chat-title-field"].exists, "the header renamed")
+        XCTAssertEqual(app.staticTexts["stem-detail-name"].label, "Happy")
+        // Happy is never renamed.
+        XCTAssertFalse(app.descendants(matching: .any)["stem-settings:rename"].exists)
+        let tokens = app.descendants(matching: .any)["stem-detail-tile:tokens"]
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline, (tokens.value as? String) == "—" { pause(0.2) }
+        for id in ["tokens", "messages", "subagents", "age", "model", "effort"] {
+            let tile = app.descendants(matching: .any)["stem-detail-tile:\(id)"]
+            XCTAssertTrue(tile.exists, "no \(id) tile")
+            print("STEM_DETAIL \(id) = \(tile.value as? String ?? "")")
+            XCTAssertNotEqual(tile.value as? String, "—", "\(id) never came")
+        }
+        XCTAssertTrue((app.descendants(matching: .any)["stem-detail-tile:subagents"].value as? String ?? "").contains(" of "))
+        // The family is the sidebar's own rows, this one among them.
+        let family = app.descendants(matching: .any)["stem-detail-family"]
+        XCTAssertTrue(family.exists, "no family")
+        XCTAssertTrue(family.descendants(matching: .any)["stem-row:space:Happy"].exists, "it isn't in its own family")
+        // The card holds its rows exactly: none missing, no gap under the last.
+        let members = family.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:")).allElementsBoundByIndex
+        print("STEM_FAMILY \(members.map { "\($0.identifier)@\(Int($0.frame.minY))h\(Int($0.frame.height))" }) card \(family.frame)")
+        if let last = members.map(\.frame.maxY).max() {
+            XCTAssertEqual(family.frame.maxY - last, 8 + 12, accuracy: 13, "a gap under the family's last row")
+        }
+        pause(1)
+        capture("detail-top")
+        // Its settled child, folded, then open.
+        let toggle = app.descendants(matching: .any)["stem-detail-completed-toggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "no completed fold")
+        bringIntoView(toggle)
+        toggle.tap()
+        pause(1)
+        let child = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-detail-activity:")).firstMatch
+        XCTAssertTrue(child.waitForExistence(timeout: 3), "the fold never opened")
+        capture("detail-activity")
+        child.tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 8), "the child didn't open")
+        pause(1.5)
+        app.tapBack()
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "back didn't come back to the detail")
+        pause(1)
+        // A sibling from the family opens its own conversation.
+        app.swipeDown()
+        pause(1)
+        let sibling = family.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND NOT identifier ENDSWITH %@", "stem-row:space:", ":Happy")).firstMatch
+        XCTAssertTrue(sibling.exists, "no sibling")
+        let name = String(sibling.identifier.dropFirst("stem-row:space:".count))
+        sibling.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label == %@", "stem-chat-title", name)).firstMatch.waitForExistence(timeout: 8), "\(name) didn't open")
+        pause(1.5)
+        app.tapBack()
+        XCTAssertTrue(detail.waitForExistence(timeout: 5))
+        pause(1)
+        app.tapBack()
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "back didn't come back to the conversation")
+        pause(1)
+        app.tapBack()
     }
 
     /// Every modal sheet closes from a button at its top right, as far
@@ -1294,17 +1385,17 @@ final class StemCellsUITests: XCTestCase {
         capture("large-file")
     }
 
-    /// A task's name renamed where it stands in its conversation's bar: the
-    /// bar and the sidebar row wear it at once and the computer keeps it
-    /// (`STEM_RENAMED`, read back by the run). Renamed back after, so the
-    /// test can run again.
+    /// A task's name renamed from its conversation's detail, where the name
+    /// stands: the detail, the bar and the sidebar row wear it at once and
+    /// the computer keeps it (`STEM_RENAMED`, read back by the run). Renamed
+    /// back after, so the test can run again.
     func testRenameTitle() {
         home()
         pause(1.5)
         let old = ProcessInfo.processInfo.environment["STEM_RENAME_ROW"] ?? "Renew passport"
         let new = old + " by May"
         let titled = { (name: String) in self.app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label == %@", "stem-chat-title", name)).firstMatch }
-        let field = app.textFields["stem-chat-title-field"]
+        let field = app.textFields["stem-detail-rename"]
         for (from, to) in [(old, new), (new, old)] {
             let task = row("space", from)
             XCTAssertTrue(task.waitForExistence(timeout: 10), "no row named \(from)")
@@ -1315,13 +1406,17 @@ final class StemCellsUITests: XCTestCase {
             pause(1)
             if to == new { capture("rename-before") }
             title.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["stem-detail"].waitForExistence(timeout: 5), "the capsule didn't open the detail")
+            app.descendants(matching: .any)["stem-settings:rename"].tap()
             XCTAssertTrue(field.waitForExistence(timeout: 3), "the name never became a field")
             pause(0.8)
             if to == new { capture("rename-editing") }
             // The field opens with its name selected: typing replaces it.
             field.typeText(to + "\n")
-            XCTAssertTrue(titled(to).waitForExistence(timeout: 3), "the bar never showed \(to)")
+            XCTAssertEqual(app.staticTexts["stem-detail-name"].label, to, "the detail never showed \(to)")
             XCTAssertFalse(field.exists)
+            app.tapBack()
+            XCTAssertTrue(titled(to).waitForExistence(timeout: 3), "the bar never showed \(to)")
             pause(1)
             if to == new {
                 capture("rename-after")

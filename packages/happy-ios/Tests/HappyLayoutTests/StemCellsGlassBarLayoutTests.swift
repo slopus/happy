@@ -6,16 +6,16 @@ import XCTest
 /// them, on a 390-wide phone: its circle is a conversation's back, its
 /// actions are home's capsule, its title is a conversation's.
 final class StemCellsGlassBarLayoutTests: XCTestCase {
-    func testBackIsTheConversationsBackAndTheTitleItsCapsule() {
+    /// A conversation's capsule runs to the edge; the bar's hugs its title.
+    func testBackIsTheConversationsBackAndTheTitleCentredInACapsule() {
         let bar = StemCellsGlassBarLayout(width: 390, safeTop: 47, hairline: 1, hasLeading: true, actions: 0, titleWidth: 99.4)
         let chat = StemCellChatHeaderLayout(width: 390, safeTop: 47, titleWidth: 99.4, statusWidth: nil)
         XCTAssertEqual(bar.leading, CGRect(x: 16, y: 51, width: 44, height: 44))
         XCTAssertEqual(bar.leading, chat.back)
         XCTAssertEqual(bar.pill, CGRect(x: 129, y: 51, width: 132, height: 44))
-        XCTAssertEqual(bar.pill, chat.pill)
+        XCTAssertEqual(bar.pill?.minY, chat.pill.minY)
         XCTAssertEqual(bar.title, CGRect(x: 145, y: 62, width: 100, height: 22))
-        XCTAssertEqual(bar.title, chat.title)
-        XCTAssertEqual(bar.titleMaxWidth, chat.titleMaxWidth)
+        XCTAssertEqual(bar.title?.minY, chat.title.minY)
         XCTAssertEqual(bar.backdrop, CGRect(x: 0, y: 0, width: 390, height: 107))
         XCTAssertEqual(bar.backdrop, chat.backdrop)
         XCTAssertEqual(bar.contentTop, 99)

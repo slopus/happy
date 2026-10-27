@@ -176,9 +176,11 @@ final class StemCellChatViewController: UIViewController {
         navigationItem.largeTitleDisplayMode = .never
         // New work's media is under the ID the daemon gives it.
         if let created = creation?.created {
+            creating = true
             Task { [weak self] in
                 guard let id = try? await created.value else { return }
                 self?.media.agentId = id
+                self?.creating = false
             }
         }
     }
@@ -226,6 +228,7 @@ final class StemCellChatViewController: UIViewController {
             if opensOverHome { card.blur() }
             navigationController?.popViewController(animated: true)
         }
+        header.onOpen = { [weak self] in self?.openDetail() }
         view.addSubview(header)
 
         keyboardTracker.isHidden = true
@@ -324,7 +327,7 @@ final class StemCellChatViewController: UIViewController {
         swipeBack.detach()
         navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         // A screen pushed over this one has the bar it expects.
-        if !previewing, !isMovingFromParent, let top = navigationController?.topViewController, top !== self, !(top is StemCellChatViewController) {
+        if !previewing, !isMovingFromParent, let top = navigationController?.topViewController, top !== self, !(top is StemCellChatViewController), !(top is StemCellSessionDetailViewController) {
             navigationController?.setNavigationBarHidden(false, animated: animated)
         }
     }
@@ -365,6 +368,19 @@ final class StemCellChatViewController: UIViewController {
                 Task { await conversation.stop() }
             }
         }
+    }
+
+    // MARK: Detail
+
+    /// The conversation's detail, over it: its numbers, its family and its
+    /// activity, and its rename. New work has none until the daemon made it.
+    private func openDetail() {
+        guard !previewing, !creating, !media.agentId.isEmpty else { return }
+        let agentId = media.agentId
+        card.blur()
+        let detail = StemCellSessionDetailViewController(session: session, agentId: agentId, title: title ?? "", spaceId: spaceId)
+        detail.onRenamed = { [weak self] in self?.kept = true }
+        navigationController?.pushViewController(detail, animated: true)
     }
 
     // MARK: Keyboard
@@ -466,26 +482,13 @@ final class StemCellChatViewController: UIViewController {
         }
         // Under a folded section too.
         if let spaceId, let row = snapshot.allRows.first(where: { $0.spaceId == spaceId }) { untouched = row.isUntouchedStemCell }
-        guard let spaceId, let row = snapshot.rows.first(where: { $0.spaceId == spaceId }) else { return }
+        guard let spaceId, let row = snapshot.allRows.first(where: { $0.spaceId == spaceId }) else { return }
         if title != row.label { title = row.label }
         titleView.text = row.label
         if previewing, previewTitle.text != row.label {
             previewTitle.text = row.label
             previewPill.accessibilityLabel = row.label
             view.setNeedsLayout()
-        }
-        // A task or a bot is renamed as its row is; Happy never.
-        if !row.isHappy, row.targetKind == "task" || row.targetKind == "bot" {
-            titleView.editableText = row.label == Strings.StemCells.untitled ? "" : row.label
-            if titleView.onRename == nil {
-                let store = session.store
-                titleView.onRename = { [weak self] title in
-                    self?.kept = true
-                    Task { await store.rename(spaceId, title: title) }
-                }
-            }
-        } else {
-            titleView.onRename = nil
         }
         let next: Intro? = switch row.mark {
         case .stemCell(let seed): .stemCell(seed: seed)
@@ -512,6 +515,9 @@ final class StemCellChatViewController: UIViewController {
     }
     /// Left empty and put away as the screen went: nothing to keep of it.
     private var putAway = false
+
+    /// New work the daemon hasn't made yet: it has no detail to open.
+    private var creating = false
 
     /// A plan has been shown, if only an empty one.
     private var planShown = false

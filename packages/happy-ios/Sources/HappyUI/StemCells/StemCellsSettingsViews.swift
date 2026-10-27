@@ -311,6 +311,10 @@ final class StemCellsSettingsCardView: UIView {
         private let toggle = UISwitch()
         private let separator = UIView()
         private var row: StemCellsSettingsRow?
+        /// A fold's chevron, turned down while what it folds is open.
+        var chevronTurned = false {
+            didSet { chevron.image = StemCellsGlyphs.image(chevronTurned ? "chevron-down" : "chevron-right", size: 14) }
+        }
 
         override init(frame: CGRect) {
             super.init(frame: frame)

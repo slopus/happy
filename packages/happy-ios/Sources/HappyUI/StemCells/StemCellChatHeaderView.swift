@@ -4,15 +4,19 @@ import HappyLayout
 import UIKit
 
 /// A conversation's header, as Telegram's on iOS 26: a glass back circle
-/// and the name in a glass capsule, with the agent's status in grey under
-/// it, floating over the transcript, which scrolls under them and a scrim.
-/// The capsule renames where it stands (`StemCellChatTitleView`). Frames
-/// are `StemCellChatHeaderLayout`'s. Touches between the controls go
-/// through to the transcript.
+/// and the name in a glass capsule to the right edge, with the agent's
+/// status in grey under it, floating over the transcript, which scrolls
+/// under them and a scrim. The capsule opens the conversation's detail.
+/// Frames are `StemCellChatHeaderLayout`'s. Touches between the controls
+/// go through to the transcript.
 @MainActor
 final class StemCellChatHeaderView: UIView {
     let titleView = StemCellChatTitleView()
     var onBack: (() -> Void)?
+    /// The capsule was tapped: the detail opens.
+    var onOpen: (() -> Void)? {
+        didSet { titleView.onOpen = onOpen }
+    }
 
     /// What the agent is doing, under its name; nil for nothing.
     var status: String? {
@@ -44,9 +48,11 @@ final class StemCellChatHeaderView: UIView {
         backButton.addAction(UIAction { [weak self] _ in self?.onBack?() }, for: .touchUpInside)
         backGlass.contentView.addSubview(backButton)
         addSubview(backGlass)
-        // Anywhere on the capsule is the name's.
-        pillGlass.addGestureRecognizer(UITapGestureRecognizer(target: titleView, action: #selector(StemCellChatTitleView.beginEditing)))
+        // Anywhere on the capsule, the name too, opens the detail.
+        pillGlass.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(open)))
+        pillGlass.accessibilityIdentifier = "stem-chat-capsule"
         addSubview(pillGlass)
+        titleView.isUserInteractionEnabled = false
         addSubview(titleView)
         statusLabel.font = .systemFont(ofSize: 13)
         statusLabel.textColor = UIColor(Palette.textSecondary)
@@ -58,6 +64,8 @@ final class StemCellChatHeaderView: UIView {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    @objc private func open() { onOpen?() }
 
     static func glass() -> UIVisualEffectView {
         let effect = UIGlassEffect(style: .regular)

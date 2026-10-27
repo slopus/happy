@@ -2,8 +2,9 @@
 import HappyLayout
 import UIKit
 
-/// A conversation's name in its header's capsule. Where the row is a task or a bot, a
-/// tap turns it into a field where it stands, as the sidebar's rows do:
+/// A conversation's name in its header's capsule, which opens its detail
+/// (`onOpen`). Given `onRename`, a tap turns it into a field where it
+/// stands, as the sidebar's rows do:
 /// Return, the keyboard going or the screen closing keeps the new name,
 /// Escape the old one. The name shows at once; the store takes it back if
 /// the computer refuses it.
@@ -17,6 +18,11 @@ final class StemCellChatTitleView: UIView {
 
     /// Given the new name; nil where the name can't be changed.
     var onRename: ((String) -> Void)? {
+        didSet { updateAccessibility() }
+    }
+
+    /// In the header: what activating it does instead of renaming.
+    var onOpen: (() -> Void)? {
         didSet { updateAccessibility() }
     }
 
@@ -83,11 +89,15 @@ final class StemCellChatTitleView: UIView {
 
     private func updateAccessibility() {
         accessibilityLabel = text
-        accessibilityTraits = onRename == nil ? .header : [.header, .button]
-        accessibilityHint = onRename == nil ? nil : Strings.StemCells.renameHint
+        accessibilityTraits = onRename == nil && onOpen == nil ? .header : [.header, .button]
+        accessibilityHint = onOpen != nil ? Strings.StemCells.detailsHint : onRename == nil ? nil : Strings.StemCells.renameHint
     }
 
     override func accessibilityActivate() -> Bool {
+        if let onOpen {
+            onOpen()
+            return true
+        }
         guard onRename != nil else { return false }
         beginEditing()
         return true

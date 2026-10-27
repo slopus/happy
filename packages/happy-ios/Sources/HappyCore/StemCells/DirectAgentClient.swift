@@ -206,6 +206,11 @@ public final class DirectAgentClient: Sendable {
         try await decode(AgentWire.Bootstrap.self, "GET", "/v0/agents/\(Self.escape(agentId))/bootstrap")
     }
 
+    /// The same snapshot, read for a conversation's detail.
+    public func sessionDetail(_ agentId: String) async throws -> AgentWire.Detail {
+        try await decode(AgentWire.Detail.self, "GET", "/v0/agents/\(Self.escape(agentId))/bootstrap")
+    }
+
     /// Newest runs first page, or the runs before `before`, or the messages after `after`.
     public func messages(_ agentId: String, before: String? = nil, after: String? = nil, limit: Int = 50) async throws -> AgentWire.MessagesResponse {
         var query = "limit=\(limit)&omitToolData=true"

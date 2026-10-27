@@ -35,6 +35,12 @@ final class StemCellsSidebarView: UIScrollView {
     /// Set down in slot `to`.
     var onDrop: ((StemCellsDrag, Int) -> Void)?
     var images: StemCellsImages?
+    /// Room above the first row and below the last; the sidebar's own when nil.
+    var padding: (top: CGFloat, bottom: CGFloat)?
+    /// Off where the list is drawn whole inside another screen's scroll.
+    var scrolls = true {
+        didSet { isScrollEnabled = scrolls }
+    }
 
     /// The row whose conversation is open, which stays selected.
     var selectedRowId: String? {
@@ -129,7 +135,7 @@ final class StemCellsSidebarView: UIScrollView {
         hold?.close(animated: false)
         liftHidden = false
         armed = false
-        isScrollEnabled = true
+        isScrollEnabled = scrolls
         reorderPan.isEnabled = false
         outside.view?.removeGestureRecognizer(outside)
         floating?.card.removeFromSuperview()
@@ -143,6 +149,9 @@ final class StemCellsSidebarView: UIScrollView {
     func apply(_ rows: [StemCellsRow]) -> Int {
         dispatchPrecondition(condition: .onQueue(.main))
         let previous = Dictionary(self.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // Other rows in the same shapes (one swapped for another) are placed
+        // again: their views are new.
+        if self.rows.map(\.id) != rows.map(\.id) { laidOut = nil }
         self.rows = rows
         settleIfCaughtUp()
         var touched = 0
@@ -160,6 +169,7 @@ final class StemCellsSidebarView: UIScrollView {
             view.configure(row)
             // Rows a tap doesn't open (a proposal's) read as what they are.
             if onSelect == nil, row.kind != .section, row.kind != .separator { view.accessibilityTraits = .staticText }
+            if onFold == nil, row.kind == .section { view.accessibilityTraits = .header }
             view.selected = row.id == selectedRowId
             touched += 1
         }
@@ -246,7 +256,7 @@ final class StemCellsSidebarView: UIScrollView {
 
     @objc private func rowPressed(_ gesture: PressRecognizer) {
         guard let view = gesture.view as? StemCellsRowView else { return }
-        let opens = onSelect != nil || view.row?.kind == .section
+        let opens = view.row?.kind == .section ? onFold != nil : onSelect != nil
         view.pressed = opens && hold == nil && (gesture.state == .began || gesture.state == .changed)
         if gesture.state == .began, onSelect != nil, let row = view.row { onIntent?(row) }
     }
@@ -288,7 +298,7 @@ final class StemCellsSidebarView: UIScrollView {
     /// Lays `shown` out and moves each row to its place, gliding when asked.
     private func place(_ shown: [StemCellsRow], animated: Bool) {
         let input = layoutRows(shown)
-        let result = StemCellsSidebarLayout.layout(input, width: bounds.width, scale: traitCollection.displayScale)
+        let result = StemCellsSidebarLayout.layout(input, width: bounds.width, top: padding?.top ?? StemCellsMetrics.contentTop, bottom: padding?.bottom ?? StemCellsMetrics.contentBottom, scale: traitCollection.displayScale)
         layoutResult = result
         laidOut = (bounds.width, input)
         let move = {
@@ -413,7 +423,7 @@ final class StemCellsSidebarView: UIScrollView {
 
     private func unarm() {
         armed = false
-        isScrollEnabled = true
+        isScrollEnabled = scrolls
         reorderPan.isEnabled = false
         outside.view?.removeGestureRecognizer(outside)
     }
