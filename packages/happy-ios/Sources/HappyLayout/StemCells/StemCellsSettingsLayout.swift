@@ -163,6 +163,19 @@ public struct StemCellsSettingsLayout: Equatable, Sendable {
         contentHeight = (cards.last.map { $0.frame.maxY } ?? (searching ? M.stripTop : subtitle.maxY)) + M.bottom
     }
 
+    /// Where the page scrolls to show a row home's search found: its card's
+    /// `row` in the middle of what shows between `insets` (the bar above,
+    /// the home indicator below), as near as the content allows. Nil for a
+    /// row there isn't.
+    public func revealOffset(card: Int, row: Int, viewport: CGFloat, insets: LayoutInsets) -> CGFloat? {
+        guard cards.indices.contains(card), cards[card].rows.indices.contains(row) else { return nil }
+        let middle = cards[card].frame.minY + cards[card].rows[row].box.midY
+        let shown = viewport - insets.top - insets.bottom
+        let top = -insets.top
+        let bottom = max(top, contentHeight + insets.bottom - viewport)
+        return min(bottom, max(top, (middle - insets.top - shown / 2).rounded()))
+    }
+
     static func row(_ spec: RowSpec, y: CGFloat, width: CGFloat, last: Bool) -> Row {
         typealias M = Metrics
         let textX = spec.hasIcon ? M.textX : M.plainTextX

@@ -43,10 +43,19 @@ final class StemCellsScreenLayoutTests: XCTestCase {
         XCTAssertNil(old.button)
     }
 
-    func testSearchSitsUnderTheBar() {
-        let layout = StemCellsSearchLayout(width: 390, safeArea: LayoutInsets(top: 103, left: 0, bottom: 34, right: 0), barHeight: 56)
-        XCTAssertEqual(layout.bar, rect(4, 103, 382, 56))
-        XCTAssertEqual(layout.listInsets, LayoutInsets(top: 159, left: 0, bottom: 34, right: 0))
+    func testSearchKeepsTheListClearOfTheKeyboard() {
+        let nothing = text("Nothing found", lineHeight: 22)
+        // The keyboard up: 336 of it over an 874 screen.
+        let up = StemCellsSearchLayout(size: CGSize(width: 402, height: 874), contentTop: 126, safeBottom: 34, keyboardTop: 538, nothingFound: nothing)
+        XCTAssertEqual(up.listBottom, 336)
+        // 13 characters at 8 a character: 104 wide, centred.
+        XCTAssertEqual(up.nothingFound, rect(149, 158, 104, 22))
+        // Down: the home indicator alone.
+        let down = StemCellsSearchLayout(size: CGSize(width: 402, height: 874), contentTop: 126, safeBottom: 34, keyboardTop: 874, nothingFound: nothing)
+        XCTAssertEqual(down.listBottom, 34)
+        // A long line wraps inside 24 from each side.
+        let long = StemCellsSearchLayout(size: CGSize(width: 320, height: 600), contentTop: 100, safeBottom: 0, keyboardTop: 600, nothingFound: text(String(repeating: "a", count: 40), lineHeight: 20))
+        XCTAssertEqual(long.nothingFound, rect(24, 132, 272, 40))
     }
 
     func testTodosStackUnderTheirField() {

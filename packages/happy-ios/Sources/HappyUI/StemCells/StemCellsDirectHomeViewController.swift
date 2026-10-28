@@ -39,8 +39,8 @@ final class StemCellsDirectHomeViewController: UIViewController, StemCellsDockHo
         header.stemCellsActions = true
         stemCells.header = header
         header.searchButton.accessibilityIdentifier = "stem-search"
-        header.searchButton.addAction(UIAction { [weak self] _ in self?.stemCells.openSearch() }, for: .primaryActionTriggered)
-        header.logoControl.isUserInteractionEnabled = true
+        header.searchButton.addAction(UIAction { [weak self] _ in self?.stemCells.beginSearch() }, for: .primaryActionTriggered)
+        header.logoInteractive = true
         header.logoControl.isAccessibilityElement = true
         header.logoControl.accessibilityLabel = Strings.StemCells.openSettings
         header.logoControl.accessibilityTraits = .button

@@ -588,16 +588,134 @@ final class StemCellsUITests: XCTestCase {
         }
     }
 
-    /// Search over every row.
-    func testSearch() {
+    /// Search in place, on home itself: the header's search button grows
+    /// into a field with the keyboard up and nothing pushed; typing narrows
+    /// the sidebar (a folded section's rows too), quick actions and
+    /// settings coming under it, or alone when no row answers; a setting
+    /// found opens Settings on its row; Cancel folds the field back and
+    /// the list is as it was, folds and scroll and all.
+    func testInlineSearch() {
         home()
+        pause(1.5)
+        // A fold to keep: Bots folded, its rows gone.
+        let bots = row("section", "Bots")
+        XCTAssertTrue(bots.waitForExistence(timeout: 5), "no Bots section")
+        bringIntoView(bots)
+        if row("space", "Chef").exists { bots.tap(); pause(1.5) }
+        XCTAssertFalse(row("space", "Chef").exists, "Bots didn't fold")
+        // And somewhere down the list, to come back to.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).press(
+            forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)),
+            withVelocity: .slow, thenHoldForDuration: 0.5
+        )
+        pause(1.5)
+        let before = shownRows("stem-row:")
+        XCTAssertFalse(before.isEmpty)
+        capture("search-before")
+
+        let field = app.textFields["stem-search-field"]
         app.buttons["stem-search"].tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 3), "search didn't open in the header")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "no keyboard")
+        XCTAssertTrue(until(3) { field.value(forKey: "hasKeyboardFocus") as? Bool == true }, "the caret isn't in the field")
+        // The keyboard's first-run tip, on a fresh simulator.
+        if app.buttons["Continue"].waitForExistence(timeout: 1) { app.buttons["Continue"].tap(); pause(0.5) }
+        // Nothing pushed: home's rows are still the screen, with no back.
+        XCTAssertFalse(app.buttons["stem-glass-back"].exists, "search pushed a screen")
+        XCTAssertTrue(row("space", "Plan Lisbon trip").exists)
         pause(1)
-        app.typeText("happy")
-        pause(2)
-        capture("search")
-        app.tapBack()
+        capture("search-open")
+
+        app.typeText("lis")
+        XCTAssertTrue(until(3) { !self.row("space", "Renew passport").exists }, "the list didn't narrow")
+        XCTAssertTrue(row("space", "Plan Lisbon trip").exists, "the match went")
+        XCTAssertTrue(row("section", "Tasks").exists, "the match lost its section")
         pause(1)
+        capture("search-lis")
+
+        // A folded section's rows answer too.
+        clear(field)
+        app.typeText("chef")
+        XCTAssertTrue(row("space", "Chef").waitForExistence(timeout: 3), "a folded row isn't found")
+        XCTAssertTrue(row("section", "Bots").exists)
+
+        // Rows, then quick actions and settings under them.
+        clear(field)
+        app.typeText("re")
+        XCTAssertTrue(row("result", "Report an Issue").waitForExistence(timeout: 3), "no settings under the rows")
+        XCTAssertTrue(row("section", "Settings").exists)
+        XCTAssertTrue(row("section", "Quick actions").exists)
+        XCTAssertTrue(row("space", "Renew passport").exists)
+        XCTAssertLessThan(row("space", "Renew passport").frame.minY, row("section", "Quick actions").frame.minY, "the actions aren't under the rows")
+        XCTAssertLessThan(row("section", "Quick actions").frame.minY, row("section", "Settings").frame.minY, "settings aren't under the actions")
+        pause(1)
+        capture("search-both")
+        // Under the rows, the quick actions and then the settings; a drag
+        // puts the keyboard away and keeps what was found.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(
+            forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)),
+            withVelocity: .slow, thenHoldForDuration: 0.3
+        )
+        pause(1)
+        XCTAssertTrue(until(3) { !self.app.keyboards.firstMatch.exists }, "a drag kept the keyboard")
+        XCTAssertTrue(row("result", "Report an Issue").isHittable)
+        capture("search-both-results")
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+
+        clear(field)
+        app.typeText("zzqx")
+        XCTAssertTrue(app.staticTexts["stem-search-nothing"].waitForExistence(timeout: 3), "nothing said nothing was found")
+        pause(0.5)
+        capture("search-nothing")
+
+        // No row answers: the settings alone.
+        clear(field)
+        app.typeText("theme")
+        let theme = row("result", "Theme")
+        XCTAssertTrue(theme.waitForExistence(timeout: 3), "no Theme setting")
+        XCTAssertTrue(shownRows("stem-row:space:").isEmpty && shownRows("stem-row:session:").isEmpty, "rows answered theme")
+        pause(1)
+        capture("search-settings-only")
+
+        // It opens Settings on its row.
+        theme.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-settings"].waitForExistence(timeout: 5), "Settings didn't open")
+        let themeRow = app.descendants(matching: .any)["stem-settings:theme"]
+        XCTAssertTrue(themeRow.waitForExistence(timeout: 3))
+        XCTAssertTrue(until(3) { themeRow.isHittable }, "Theme isn't on screen")
+        pause(0.3)
+        capture("search-opened-setting")
+        pause(1.5)
+        closeSettings()
+        // Back on home, the search as it was left.
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        XCTAssertEqual(field.value as? String, "theme")
+        XCTAssertTrue(theme.exists)
+
+        // Cancel: the field folds back, the list as it was.
+        app.buttons["stem-search-cancel"].tap()
+        XCTAssertTrue(until(3) { !field.exists || !field.isHittable }, "the field stayed")
+        XCTAssertTrue(until(3) { !self.app.keyboards.firstMatch.exists }, "the keyboard stayed")
+        pause(1.5)
+        capture("search-restored")
+        XCTAssertFalse(row("space", "Chef").exists, "the fold was lost")
+        let after = shownRows("stem-row:")
+        XCTAssertEqual(after.map(\.identifier), before.map(\.identifier), "other rows came back")
+        for (one, two) in zip(before, after) {
+            XCTAssertEqual(one.frame.minY, two.frame.minY, accuracy: 1, "\(one.identifier) moved: the scroll wasn't kept")
+        }
+        // Bots open again, as the daemon had it.
+        bringIntoView(bots)
+        bots.tap()
+        pause(1)
+    }
+
+    /// Empties the search field with the keyboard's delete.
+    private func clear(_ field: XCUIElement) {
+        let text = field.value as? String ?? ""
+        app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
+        pause(0.4)
     }
 
     /// New work makes only new work: its intro offers no todo list,
@@ -1793,7 +1911,7 @@ final class StemCellsUITests: XCTestCase {
     }
 
     /// The header: the computer's picture at the left opens settings; the
-    /// name in the middle; search beside the filter at the right.
+    /// name in the middle; search at the right (`testInlineSearch`).
     func testHeader() {
         home()
         pause(1.5)
@@ -1803,13 +1921,6 @@ final class StemCellsUITests: XCTestCase {
         pause(1.5)
         capture("settings")
         closeSettings()
-        app.buttons["stem-search"].tap()
-        pause(1)
-        app.typeText("lisbon")
-        pause(2)
-        capture("header-search")
-        app.tapBack()
-        pause(1.5)
     }
 
     /// Settings from the picture: the QR sheet and its Scan, Edit name

@@ -94,7 +94,18 @@ final class HeaderGlassView: UIView {
         super.layoutSubviews()
         let radius = bounds.height / 2
         layer.cornerRadius = radius
-        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: radius).cgPath
+        let path = UIBezierPath(roundedRect: bounds, cornerRadius: radius).cgPath
+        // Inside an animation the shadow goes with the shape, not ahead of it.
+        let duration = UIView.inheritedAnimationDuration
+        if duration > 0, let from = layer.presentation()?.shadowPath ?? layer.shadowPath, from != path {
+            let animation = CABasicAnimation(keyPath: "shadowPath")
+            animation.fromValue = from
+            animation.toValue = path
+            animation.duration = duration
+            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            layer.add(animation, forKey: "shadowPath")
+        }
+        layer.shadowPath = path
         // `staticMaterialClip` fills the padding box, inside the rim.
         let inner = bounds.insetBy(dx: HomeHeaderLayout.Metrics.controlBorder, dy: HomeHeaderLayout.Metrics.controlBorder)
         blur.frame = inner
@@ -256,6 +267,20 @@ final class HomeHeaderView: UIView {
     let settingsButton = HeaderIconButton(.ionicons("settings-outline"), size: 22, label: Strings.Settings.title)
     /// Stem Cells' search, in the pill's first slot.
     let searchButton = HeaderIconButton(.ionicons("search-outline"), size: 22, label: Strings.StemCells.search)
+    /// What search is typed into: the pill grows into it, after the glyph.
+    let searchField = UITextField()
+    /// The glass circle at the right that ends the search.
+    let searchCancel = HeaderGlassView()
+    let searchCancelButton = HeaderIconButton(.ionicons("close-outline"), size: 26, label: Strings.Common.cancel)
+    /// A computer's search is open in the header: the pill is its field,
+    /// the logo and title give way. Set inside an animation to grow it.
+    var isSearching = false {
+        didSet {
+            guard isSearching != oldValue else { return }
+            applySearching()
+            setNeedsLayout()
+        }
+    }
     /// A computer's home: the pill is search alone, and the picture is the
     /// way to settings, so there is no gear (and no filter: a computer's
     /// home has nothing to group).
@@ -307,12 +332,63 @@ final class HomeHeaderView: UIView {
             actions.addSubview(view)
         }
         searchButton.isHidden = true
+        searchField.font = StemCellsFonts.ui(.regular, size: 17)
+        searchField.textColor = UIColor(Palette.text)
+        searchField.tintColor = UIColor(Palette.stemCellsSettingsPrimary)
+        searchField.placeholder = Strings.StemCells.search
+        searchField.returnKeyType = .search
+        searchField.enablesReturnKeyAutomatically = false
+        searchField.clearButtonMode = .whileEditing
+        searchField.autocorrectionType = .no
+        searchField.autocapitalizationType = .none
+        searchField.spellCheckingType = .no
+        searchField.accessibilityIdentifier = "stem-search-field"
+        actions.addSubview(searchField)
+        searchCancel.addSubview(searchCancelButton)
+        searchCancelButton.accessibilityIdentifier = "stem-search-cancel"
         titleLabel.string = Strings.Home.sessionsTitle
         titleLabel.accessibilityTraits = .header
-        for view in [scrim, logoControl, actions, titleLabel, statusDot, statusLabel] {
+        // The title sits under the pill, which grows over it into the field.
+        for view in [scrim, logoControl, titleLabel, statusDot, statusLabel, actions, searchCancel] {
             addSubview(view)
         }
         applyStatus()
+        applySearching()
+    }
+
+    /// What shows for the search's state. In an animation the circle
+    /// grows with the pill, while the logo and title are gone before the
+    /// glass reaches them (it's clear enough to show them through) and the
+    /// field comes in after; closing, the other way round.
+    private func applySearching() {
+        let searching = isSearching
+        let quiet: [UIView] = [logoControl, titleLabel, statusDot, statusLabel]
+        // What goes, then what comes.
+        let going = { for view in (searching ? quiet : [self.searchField]) { view.alpha = 0 } }
+        let coming = { for view in (searching ? [self.searchField] : quiet) { view.alpha = 1 } }
+        if UIView.inheritedAnimationDuration > 0 {
+            UIView.animate(withDuration: 0.08, delay: 0, options: [.beginFromCurrentState, .curveEaseOut, .overrideInheritedDuration, .overrideInheritedCurve], animations: going)
+            UIView.animate(withDuration: 0.2, delay: 0.1, options: [.beginFromCurrentState, .curveEaseIn, .overrideInheritedDuration, .overrideInheritedCurve], animations: coming)
+        } else {
+            going()
+            coming()
+        }
+        searchCancel.alpha = searching ? 1 : 0
+        searchCancel.transform = searching ? .identity : CGAffineTransform(scaleX: 0.6, y: 0.6)
+        // The glyph stays as the field's own; the field takes its touches.
+        searchButton.isUserInteractionEnabled = !isSearching
+        searchButton.isAccessibilityElement = !isSearching
+        logoControl.isUserInteractionEnabled = !isSearching && logoInteractive
+        for view in [logoControl, titleLabel] as [UIView] { view.accessibilityElementsHidden = isSearching }
+        searchCancel.isUserInteractionEnabled = isSearching
+        searchCancel.accessibilityElementsHidden = !isSearching
+        searchField.isUserInteractionEnabled = isSearching
+        searchField.accessibilityElementsHidden = !isSearching
+    }
+
+    /// Whether the logo takes taps when search isn't open over it.
+    var logoInteractive = false {
+        didSet { logoControl.isUserInteractionEnabled = logoInteractive && !isSearching }
     }
 
     @available(*, unavailable)
@@ -324,6 +400,7 @@ final class HomeHeaderView: UIView {
     /// list scroll.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         if logoControl.frame.contains(point) || actions.frame.contains(point) { return true }
+        if isSearching, searchCancel.frame.contains(point) { return true }
         guard let accessory, !accessory.isHidden else { return false }
         return accessory.point(inside: convert(point, to: accessory), with: event)
     }
@@ -361,6 +438,7 @@ final class HomeHeaderView: UIView {
         input.titleX = titleX
         input.backdropExtension = backdropExtension
         input.singleAction = stemCellsActions
+        input.searching = isSearching
         return HomeHeaderLayout(input)
     }
 
@@ -384,6 +462,11 @@ final class HomeHeaderView: UIView {
         let second = layout.settingsButton.offsetBy(dx: -origin.x, dy: -origin.y)
         searchButton.setLayoutFrame(first)
         filterButton.setLayoutFrame(first)
+        searchField.setLayoutFrame(layout.searchField.offsetBy(dx: -origin.x, dy: -origin.y))
+        // Its transform scales it in: the frame goes through its bounds and centre.
+        searchCancel.bounds = CGRect(origin: .zero, size: layout.searchCancel.size)
+        searchCancel.center = CGPoint(x: layout.searchCancel.midX, y: layout.searchCancel.midY)
+        searchCancelButton.frame = searchCancel.bounds
         actionDivider.setLayoutFrame(layout.actionDivider.offsetBy(dx: -origin.x, dy: -origin.y))
         settingsButton.setLayoutFrame(second)
         titleLabel.setLayoutFrame(layout.title)

@@ -53,6 +53,8 @@ public struct StemCellsPlaces: Equatable, Sendable {
 public struct StemCellsRow: Equatable, Sendable, Identifiable {
     public enum Kind: Equatable, Sendable {
         case search, create, section, separator, widget, space, session
+        /// Not the document's: a quick action or a setting search found.
+        case result
     }
 
     /// The mark in a row's leading lane.
@@ -86,7 +88,8 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
     public var mark: Mark
     public var status: Status
     public var unread: Bool
-    /// Set when something folds under it: whether it is folded now.
+    /// Set when something folds under it: whether it is folded now. A
+    /// heading without it (search's) folds nothing.
     public var collapsed: Bool?
     /// Happy's own row, which never goes under another.
     public var isHappy: Bool
@@ -127,7 +130,7 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
         self.isUntouchedStemCell = isUntouchedStemCell
     }
 
-    public var opens: Bool { kind == .space || kind == .session || kind == .search || kind == .create }
+    public var opens: Bool { kind == .space || kind == .session || kind == .search || kind == .create || kind == .result }
 }
 
 /// The document as the rows the sidebar draws.

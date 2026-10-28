@@ -295,6 +295,12 @@ final class StemCellsSettingsCardView: UIView {
         for (view, (row, frames)) in zip(views, zip(rows, layout.rows)) { view.show(row, frames: frames) }
     }
 
+    /// The row at `index` lights up and fades, as a found row does.
+    func flash(_ index: Int) {
+        guard views.indices.contains(index) else { return }
+        views[index].flash()
+    }
+
     /// Measures a value as a row draws it.
     static func valueWidth(_ text: String?) -> CGFloat? {
         text.map { ($0 as NSString).size(withAttributes: [.font: RowView.valueFont]).width }
@@ -408,6 +414,11 @@ final class StemCellsSettingsCardView: UIView {
         }
 
         @objc private func tapped() { row?.action?() }
+
+        func flash() {
+            backgroundColor = UIColor(Palette.stemCellsRowPressed)
+            UIView.animate(withDuration: 0.8, delay: 0.6, options: [.allowUserInteraction, .curveEaseOut]) { self.backgroundColor = nil }
+        }
     }
 }
 

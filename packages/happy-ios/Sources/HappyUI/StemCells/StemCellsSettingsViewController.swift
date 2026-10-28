@@ -25,10 +25,13 @@ import UIKit
 /// write to that account's synced settings, so they are on its page alone.
 final class StemCellsSettingsViewController: UIViewController, UIScrollViewDelegate, UIGestureRecognizerDelegate {
     /// Pushes settings over `controller`, on `computer`'s page (the active
-    /// profile's when nil). Once: a second tap meanwhile does nothing.
-    static func open(context: AppContext, computer: String?, from controller: UIViewController) {
+    /// profile's when nil), showing the row `reveal` names if there is one.
+    /// Once: a second tap meanwhile does nothing.
+    static func open(context: AppContext, computer: String?, reveal: String? = nil, from controller: UIViewController) {
         guard let navigation = controller.navigationController, navigation.topViewController === controller else { return }
-        navigation.pushViewController(StemCellsSettingsViewController(context: context, computer: computer), animated: true)
+        let settings = StemCellsSettingsViewController(context: context, computer: computer)
+        settings.reveal = reveal
+        navigation.pushViewController(settings, animated: true)
     }
 
     private struct Profile: Equatable {
@@ -51,6 +54,8 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     private var heldName: (id: String, name: String)?
     private var cards: [StemCellsSettingsCardView] = []
     private var rows: [[StemCellsSettingsRow]] = []
+    /// The frames last applied.
+    private var settingsLayout = StemCellsSettingsLayout(width: 0, nameHeight: 0, subtitleHeight: 0, cards: [])
     private let bar = StemCellsGlassBar()
     private var query: String?
     private let empty = UILabel()
@@ -74,6 +79,9 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     private var switching: Task<Void, Never>?
     /// The profile last chosen, which the switches in line end on.
     private var wanted: String?
+    /// The row home's search found, shown once the page is on screen
+    /// and has it (a row that waits on the computer comes a moment later).
+    private var reveal: String?
 
     init(context: AppContext, computer: String?) {
         self.context = context
@@ -127,6 +135,29 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         super.viewWillAppear(animated)
         // Back from Welcome without signing in: no account is being added.
         if context.account.isAddingAccount, presentedViewController == nil { context.account.cancelAddingAccount() }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard reveal != nil else { return }
+        showRevealed()
+        // A row that hasn't come by now isn't coming.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.reveal = nil }
+    }
+
+    /// The row search found: scrolled to the middle and flashed, for the
+    /// person to change or open; nothing runs on its own (a link would
+    /// leave the app, a rename would raise the keyboard).
+    private func showRevealed() {
+        guard let id = reveal, query == nil, view.window != nil,
+              let card = rows.firstIndex(where: { $0.contains { $0.id == id } }),
+              let index = rows[card].firstIndex(where: { $0.id == id }), cards.indices.contains(card) else { return }
+        reveal = nil
+        view.layoutIfNeeded()
+        if let y = settingsLayout.revealOffset(card: card, row: index, viewport: scroll.bounds.height, insets: LayoutInsets(scroll.adjustedContentInset)) {
+            scroll.setContentOffset(CGPoint(x: 0, y: y), animated: true)
+        }
+        cards[card].flash(index)
     }
 
     override func didMove(toParent parent: UIViewController?) {
@@ -315,25 +346,26 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         typealias Row = StemCellsSettingsRow
         let id = profile.id
         let adding = [
-            Row(id: "add-computer", title: Strings.StemCells.addComputer, icon: ("laptop-outline", .blue), action: { [weak self] in self?.addComputer() }),
-            Row(id: "add-account", title: Strings.StemCells.addHappyAccount, icon: ("person-add-outline", .gray), action: { [weak self] in self?.addHappyAccount() }),
+            Row(StemCellsSettingsIndex.addComputer, action: { [weak self] in self?.addComputer() }),
+            Row(StemCellsSettingsIndex.addAccount, action: { [weak self] in self?.addHappyAccount() }),
         ]
         if profile.isDirect {
+            typealias Index = StemCellsSettingsIndex
             // Home follows desktop's authoritative account setting. There is
             // deliberately no independent renderer or layout selector here.
-            var experiments = [Row(id: "hide-projects", title: "Hide projects", icon: ("folder-outline", .orange), accessory: .toggle, isOn: projectsHidden, toggled: { [weak self] on in
+            var experiments = [Row(Index.hideProjects, accessory: .toggle, isOn: projectsHidden, toggled: { [weak self] on in
                 guard let engine = self?.context.account.direct.syncEngine(for: id) else { return }
                 Task { try? await engine.setProjectsHidden(on) }
             })]
             // Stories: only where the computer offers them.
             if stories == .on || stories == .off {
-                experiments.append(Row(id: "stories", title: Strings.Stories.setting, icon: ("sparkles-outline", .blue), accessory: .toggle, isOn: stories == .on, toggled: { [weak self] on in self?.setStories(on) }))
+                experiments.append(Row(Index.stories, accessory: .toggle, isOn: stories == .on, toggled: { [weak self] on in self?.setStories(on) }))
             }
             experiments.append(directConnectionRow())
             return [
                 [
-                    Row(id: "edit-name", title: Strings.StemCells.editName, icon: ("create-outline", .blue), action: { [weak self] in self?.beginRename() }),
-                    Row(id: "status", title: Strings.StemCells.status, icon: ("desktop-outline", .green), value: profile.subtitle, accessory: .none),
+                    Row(Index.editName, action: { [weak self] in self?.beginRename() }),
+                    Row(Index.status, value: profile.subtitle, accessory: .none),
                 ],
                 experiments,
                 [themeRow()],
@@ -370,26 +402,27 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     /// The Direct connection experiment, on this phone.
     private func directConnectionRow() -> StemCellsSettingsRow {
         let context = context
-        return StemCellsSettingsRow(id: "direct-connection", title: Strings.StemCells.directConnection, icon: ("flask-outline", .purple), accessory: .toggle, isOn: StemCellsPreference(variant: context.variant).directConnection, toggled: { on in
+        return StemCellsSettingsRow(StemCellsSettingsIndex.directConnection, accessory: .toggle, isOn: StemCellsPreference(variant: context.variant).directConnection, toggled: { on in
             StemCellsExperiments.turn(on, context: context, surface: .settings)
         })
     }
 
     /// The profile's theme on this phone: a tap goes Adaptive, Light, Dark.
     private func themeRow() -> StemCellsSettingsRow {
-        StemCellsSettingsRow(id: "theme", title: Strings.SettingsAppearance.theme, icon: ("contrast-outline", .indigo), value: Self.themeName(context.account.localSettings.themePreference), accessory: .none, action: { [weak self] in self?.cycleTheme() })
+        StemCellsSettingsRow(StemCellsSettingsIndex.theme, value: Self.themeName(context.account.localSettings.themePreference), accessory: .none, action: { [weak self] in self?.cycleTheme() })
     }
 
     private func aboutRows() -> [StemCellsSettingsRow] {
         typealias Row = StemCellsSettingsRow
+        typealias Index = StemCellsSettingsIndex
         return [
-            Row(id: "whats-new", title: Strings.Settings.whatsNew, icon: ("sparkles-outline", .orange), action: { [weak self] in self?.show(ChangelogViewController()) }),
-            Row(id: "github-repo", title: Strings.Settings.github, icon: ("logo-github", .gray), value: Strings.Links.githubDetail, action: { UIApplication.shared.open(Strings.Links.github) }),
-            Row(id: "report-issue", title: Strings.Settings.reportIssue, icon: ("bug-outline", .red), action: { UIApplication.shared.open(Strings.Links.issues) }),
-            Row(id: "privacy", title: Strings.Settings.privacyPolicy, icon: ("shield-checkmark-outline", .blue), action: { UIApplication.shared.open(Strings.Links.privacy) }),
-            Row(id: "terms", title: Strings.Settings.termsOfService, icon: ("document-text-outline", .gray), action: { UIApplication.shared.open(Strings.Links.terms) }),
-            Row(id: "eula", title: Strings.Settings.eula, icon: ("document-text-outline", .gray), action: { UIApplication.shared.open(Strings.Links.eula) }),
-            Row(id: "version", title: Strings.Common.version, icon: ("information-circle-outline", .gray), value: SettingsIndexModel.versionDetail(version: context.version, variant: context.variant), accessory: .none, action: { [weak self] in self?.versionTapped() }),
+            Row(Index.whatsNew, action: { [weak self] in self?.show(ChangelogViewController()) }),
+            Row(Index.githubRepo, value: Strings.Links.githubDetail, action: { UIApplication.shared.open(Strings.Links.github) }),
+            Row(Index.reportIssue, action: { UIApplication.shared.open(Strings.Links.issues) }),
+            Row(Index.privacy, action: { UIApplication.shared.open(Strings.Links.privacy) }),
+            Row(Index.terms, action: { UIApplication.shared.open(Strings.Links.terms) }),
+            Row(Index.eula, action: { UIApplication.shared.open(Strings.Links.eula) }),
+            Row(Index.version, value: SettingsIndexModel.versionDetail(version: context.version, variant: context.variant), accessory: .none, action: { [weak self] in self?.versionTapped() }),
         ]
     }
 
@@ -449,6 +482,8 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         while cards.count < rows.count { let card = StemCellsSettingsCardView(); scroll.addSubview(card); cards.append(card) }
         while cards.count > rows.count { cards.removeLast().removeFromSuperview() }
         view.setNeedsLayout()
+        // A row search found that only came now (one waiting on the computer).
+        if reveal != nil, view.window != nil { DispatchQueue.main.async { [weak self] in self?.showRevealed() } }
         if animated {
             for card in cards { card.alpha = 0 }
             view.layoutIfNeeded()
@@ -471,6 +506,7 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
             card.map { StemCellsSettingsLayout.RowSpec(hasIcon: $0.icon != nil, valueWidth: StemCellsSettingsCardView.valueWidth($0.value), accessory: $0.accessory) }
         }
         let layout = StemCellsSettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, searching: searching)
+        settingsLayout = layout
         carousel.frame = layout.strip
         name.frame = layout.name
         nameField?.frame = layout.name

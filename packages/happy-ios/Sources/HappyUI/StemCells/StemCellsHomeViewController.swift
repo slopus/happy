@@ -10,6 +10,12 @@ import UIKit
 /// chips hold, and its "+" makes new work with the library open over it.
 /// Desktop's Search and Create rows aren't drawn: search is the header's
 /// button and create is the dock.
+///
+/// Search happens here, in place: the header's search pill grows into a
+/// field with the keyboard up, the dock steps aside, and the sidebar
+/// narrows to what answers as it's typed, with the quick actions and the
+/// settings that answer below it, as desktop's ⌘K palette lists them.
+/// Ending it puts the list back as it was, folds and scroll and all.
 final class StemCellsHomeViewController: UIViewController {
     private let context: AppContext
     /// The computer this screen always shows; nil to follow the choice.
@@ -36,10 +42,38 @@ final class StemCellsHomeViewController: UIViewController {
     private lazy var stories = StoriesHomeController(host: self)
     /// How the stories last changed the list's room, while it is applied.
     private var storiesChange: StoriesHomeController.Change?
+    /// Search, in the header, while it is open.
+    private var search: Search?
+    private let nothingFound = UILabel()
+    /// The keyboard's top in this screen; nil while it has never shown.
+    private var keyboardTop: CGFloat?
+
+    private struct Search {
+        var query = ""
+        /// How far below its top the list was when search opened: where
+        /// it goes back to.
+        var fromTop: CGFloat
+        /// Something is typed, so the list is narrowed to what answers it.
+        var narrowed = false
+        /// What each quick action or setting found does, by its row's id.
+        var results: [String: () -> Void] = [:]
+    }
+
+    /// One of desktop's palette actions (`actionRows`), as a phone has them.
+    private struct QuickAction {
+        var id: String
+        var title: String
+        var glyph: String
+        var run: () -> Void
+    }
 
     /// The header home floats over this screen, for the stories to live in.
     weak var header: HomeHeaderView? {
-        didSet { if header !== oldValue { stories.install(in: header) } }
+        didSet {
+            guard header !== oldValue else { return }
+            stories.install(in: header)
+            if let header { wireSearch(header) }
+        }
     }
 
     /// Every snapshot shown, for the screen around this one.
@@ -69,6 +103,15 @@ final class StemCellsHomeViewController: UIViewController {
         view.addSubview(empty)
         view.addSubview(banner)
         view.addSubview(dockScrim)
+        nothingFound.text = Strings.StemCells.nothingFound
+        nothingFound.font = StemCellsFonts.ui(.regular, size: 17)
+        nothingFound.textColor = UIColor(Palette.stemCellsRowText)
+        nothingFound.textAlignment = .center
+        nothingFound.numberOfLines = 0
+        nothingFound.isHidden = true
+        nothingFound.accessibilityIdentifier = "stem-search-nothing"
+        view.addSubview(nothingFound)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         dock.configuration.showsAdd = true
         dock.configuration.addAccessibilityLabel = Strings.StemCells.addPicture
         dock.configuration.primaryAction = AgentInputPrimaryAction.resolve(
@@ -142,6 +185,8 @@ final class StemCellsHomeViewController: UIViewController {
     private func attach() {
         let id = computerID()
         guard id != session?.accountID else { return }
+        // Another computer's sidebar: what was searched was the last one's.
+        endSearch(animated: false)
         watch?.invalidate(); watch = nil
         directWatch?.cancel(); directWatch = nil
         modelsWatch?.invalidate(); modelsWatch = nil
@@ -174,7 +219,7 @@ final class StemCellsHomeViewController: UIViewController {
         let previous = self.snapshot
         self.snapshot = snapshot
         onSnapshot?(snapshot)
-        if previous.rows != snapshot.rows { sidebar.apply(Self.drawn(snapshot.rows)) }
+        if previous.rows != snapshot.rows || (search?.narrowed == true && previous.allRows != snapshot.allRows) { showRows() }
         warmUp()
         if previous.availability != snapshot.availability || previous.error != snapshot.error || previous.stemCellError != snapshot.stemCellError {
             applyChrome()
@@ -190,7 +235,7 @@ final class StemCellsHomeViewController: UIViewController {
         snapshot.allRows = directHome.allRows
         snapshot.error = directHome.error
         onSnapshot?(snapshot)
-        if previous != snapshot.rows { sidebar.apply(snapshot.rows) }
+        if previous != snapshot.rows || search?.narrowed == true { showRows() }
         warmUp()
         applyChrome()
     }
@@ -201,7 +246,8 @@ final class StemCellsHomeViewController: UIViewController {
         empty.message = !hasComputer ? Strings.StemCells.noComputer : Strings.StemCells.unsupported
         empty.showsPair = !hasComputer
         sidebar.isHidden = !empty.isHidden
-        stories.isSuppressed = sidebar.isHidden
+        // Searching, the header is the field: the stories wait.
+        stories.isSuppressed = sidebar.isHidden || search != nil
         let reason = { (text: String) in text.isEmpty ? Strings.StemCells.unanswered : text }
         let notice = snapshot.stemCellError.map { Strings.StemCells.newWorkFailed(reason($0)) } ?? snapshot.error.map(reason)
         // Prioritizing being off is Settings' business: home says nothing of it.
@@ -233,10 +279,181 @@ final class StemCellsHomeViewController: UIViewController {
         }
     }
 
-    /// Search, from the header.
-    func openSearch() {
-        guard let session else { return }
-        navigationController?.pushViewController(StemCellsSearchViewController(session: session, onOpen: { [weak self] row in self?.open(row) }), animated: true)
+    // MARK: Search
+
+    private func wireSearch(_ header: HomeHeaderView) {
+        header.searchField.addAction(UIAction { [weak self, weak header] _ in
+            guard let self, search != nil else { return }
+            search?.query = header?.searchField.text ?? ""
+            showRows(toTop: true)
+        }, for: .editingChanged)
+        // Return puts the keyboard away; what's found stays.
+        header.searchField.addAction(UIAction { _ in }, for: .editingDidEndOnExit)
+        header.searchCancelButton.addAction(UIAction { [weak self] _ in self?.endSearch() }, for: .primaryActionTriggered)
+    }
+
+    /// Search opens in the header, in place: the pill grows into a field
+    /// with the keyboard up and the dock steps aside. Nothing is pushed.
+    func beginSearch() {
+        guard session != nil, search == nil, let header, !sidebar.isHidden else { return }
+        sidebar.disarm()
+        picker?.close(animated: true)
+        search = Search(fromTop: sidebar.contentOffset.y + sidebar.contentInset.top)
+        header.searchField.text = ""
+        stories.isSuppressed = true
+        sidebar.keyboardDismissMode = .onDrag
+        searchMoves(header, animated: true)
+        header.searchField.becomeFirstResponder()
+    }
+
+    /// The field folds back into the search button, and the list is the
+    /// sidebar's again, where it was.
+    func endSearch(animated: Bool = true) {
+        guard let ended = search else { return }
+        search = nil
+        sidebar.keyboardDismissMode = .none
+        stories.isSuppressed = sidebar.isHidden
+        if let header {
+            header.searchField.resignFirstResponder()
+            header.searchField.text = ""
+            searchMoves(header, animated: animated)
+        }
+        showRows()
+        restore(fromTop: ended.fromTop)
+    }
+
+    /// The header, the dock and the list's room, as search now has them.
+    private func searchMoves(_ header: HomeHeaderView, animated: Bool) {
+        let searching = search != nil
+        let change = {
+            header.isSearching = searching
+            header.layoutIfNeeded()
+            self.dock.alpha = searching ? 0 : 1
+            self.dockScrim.presence = searching ? 0 : 1
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+        }
+        dock.isUserInteractionEnabled = !searching
+        if animated {
+            // The classic spring: what it animates sees its duration
+            // (`inheritedAnimationDuration`), so the header times its fades
+            // and its glass's shadow to it.
+            UIView.animate(withDuration: 0.42, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: change)
+        } else {
+            UIView.performWithoutAnimation(change)
+        }
+    }
+
+    /// The rows the sidebar shows: the document's, or, with something
+    /// typed, the rows that answer it and then the quick actions and
+    /// settings that do. `toTop`: the query changed, so the list starts
+    /// at its top; emptied, it goes back to where it was.
+    private func showRows(toTop: Bool = false) {
+        let drawn = usesSpaces ? Self.drawn(snapshot.rows) : snapshot.rows
+        let query = search?.query.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard var search, !query.isEmpty else {
+            let wasNarrowed = self.search?.narrowed == true
+            self.search?.narrowed = false
+            self.search?.results = [:]
+            nothingFound.isHidden = true
+            sidebar.apply(drawn)
+            if wasNarrowed, let fromTop = self.search?.fromTop { restore(fromTop: fromTop) }
+            return
+        }
+        let found = results(for: query)
+        search.narrowed = true
+        search.results = found.runs
+        self.search = search
+        let rows = StemCellsSearch.rows(snapshot.allRows, query: query) + found.rows
+        nothingFound.isHidden = !rows.isEmpty
+        sidebar.apply(rows)
+        if toTop {
+            sidebar.layoutIfNeeded()
+            sidebar.contentOffset.y = -sidebar.contentInset.top
+        }
+    }
+
+    /// The list `fromTop` below its top, as far as it now goes.
+    private func restore(fromTop: CGFloat) {
+        view.layoutIfNeeded()
+        sidebar.layoutIfNeeded()
+        let top = -sidebar.contentInset.top
+        let end = max(top, sidebar.contentSize.height + sidebar.contentInset.bottom - sidebar.bounds.height)
+        sidebar.contentOffset.y = max(top, min(end, top + fromTop))
+    }
+
+    /// The quick actions and settings that answer `query`, at most six of
+    /// each, best first, each under its heading, and what each does.
+    private func results(for query: String) -> (rows: [StemCellsRow], runs: [String: () -> Void]) {
+        var rows: [StemCellsRow] = []
+        var runs: [String: () -> Void] = [:]
+        func section(_ id: String, _ label: String, _ found: [(id: String, title: String, glyph: String, run: () -> Void)]) {
+            guard !found.isEmpty else { return }
+            rows.append(StemCellsRow(id: "search:\(id)", nodeId: "search:\(id)", kind: .section, label: label))
+            for one in found {
+                let rowId = "search:\(id):\(one.id)"
+                rows.append(StemCellsRow(id: rowId, nodeId: rowId, kind: .result, label: one.title, mark: .glyph(one.glyph)))
+                runs[rowId] = one.run
+            }
+        }
+        let actions = StemCellsSearch.ranked(quickActions(), query: query) { $0.title }
+        section("actions", Strings.StemCells.quickActions, actions.map { ($0.id, $0.title, $0.glyph, $0.run) })
+        let computer = session?.accountID
+        let stories = session.map { StoriesSession.session(for: $0).snapshot.availability }
+        let entries = StemCellsSettingsIndex.computer(stories: stories == .on || stories == .off)
+        let settings = StemCellsSearch.ranked(entries, query: query) { $0.title }
+        section("settings", Strings.StemCells.settingsResults, settings.map { entry in
+            (entry.id, entry.title, entry.glyph, { [weak self] in
+                guard let self else { return }
+                StemCellsSettingsViewController.open(context: context, computer: computer, reveal: entry.id, from: parent ?? self)
+            })
+        })
+        return (rows, runs)
+    }
+
+    /// What desktop's palette offers to do from anywhere, as a phone does it.
+    private func quickActions() -> [QuickAction] {
+        [
+            // New work grows from the dock, so the search gives it back first.
+            QuickAction(id: "new-work", title: Strings.StemCells.newWork, glyph: "compose") { [weak self] in
+                self?.endSearch(animated: false)
+                self?.makeNewWork()
+            },
+            QuickAction(id: "new-work-picture", title: Strings.StemCells.newWorkWithPicture, glyph: "image-outline") { [weak self] in
+                self?.endSearch(animated: false)
+                self?.makeNewWork(library: true)
+            },
+            QuickAction(id: "add-computer", title: Strings.StemCells.addComputer, glyph: "laptop-outline") { [weak self] in
+                guard let self else { return }
+                StemCellsLinkNavigationController.present(context: context, from: self)
+            },
+            QuickAction(id: "scan", title: Strings.StemCells.scanQRCode, glyph: "qr-code-outline") { [weak self] in
+                guard let self else { return }
+                StemCellsScan.scan(context: context, on: self)
+            },
+            QuickAction(id: "settings", title: Strings.StemCells.openSettingsAction, glyph: "settings-outline") { [weak self] in
+                guard let self else { return }
+                StemCellsSettingsViewController.open(context: context, computer: session?.accountID, from: parent ?? self)
+            },
+        ]
+    }
+
+    @objc private func keyboardWillChange(_ notification: Notification) {
+        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        keyboardTop = min(view.bounds.height, view.convert(frame, from: nil).minY)
+        guard search != nil, view.window != nil else { return }
+        // A keyboard of a screen over home's moves it only once it's back.
+        let top = parent ?? self
+        guard header?.searchField.isFirstResponder == true || (navigationController?.topViewController === top && top.presentedViewController == nil) else {
+            view.setNeedsLayout()
+            return
+        }
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+        let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
+        view.setNeedsLayout()
+        UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState]) {
+            self.view.layoutIfNeeded()
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -247,7 +464,11 @@ final class StemCellsHomeViewController: UIViewController {
         dock.setLayoutFrame(docked.card)
         picker?.follow()
         dockScrim.frame = docked.scrim
-        let listBottom = dock.isHidden ? contentInsets.listBottom : docked.listBottom
+        // Searching, the dock has stepped aside: the keyboard, or the home
+        // indicator, is what the list keeps clear of.
+        let searching = StemCellsSearchLayout(size: bounds.size, contentTop: contentInsets.contentTop, safeBottom: view.safeAreaInsets.bottom, keyboardTop: keyboardTop ?? bounds.height, nothingFound: nothingFound.measurable)
+        nothingFound.frame = searching.nothingFound
+        let listBottom = search != nil ? searching.listBottom : dock.isHidden ? contentInsets.listBottom : docked.listBottom
         let layout = StemCellsHomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset)
         banner.frame = layout.banner
         sidebar.frame = bounds
@@ -300,13 +521,19 @@ final class StemCellsHomeViewController: UIViewController {
     private func open(_ row: StemCellsRow, animated: Bool = true) {
         guard let session else { return }
         Task { await session.store.attentionInput() }
+        // A quick action or a setting search found; the search stays for coming back.
+        if row.kind == .result {
+            header?.searchField.resignFirstResponder()
+            search?.results[row.id]?()
+            return
+        }
         switch row.kind {
         case .space where row.targetKind == "project" || row.targetKind == "workspace":
             fold(row)
         case .space where row.targetKind == "artifacts":
             navigationController?.pushViewController(DirectArtifactsViewController(session: session), animated: animated)
         case .search:
-            openSearch()
+            beginSearch()
         case .create:
             makeNewWork()
         case .space where row.targetKind == "surface":
@@ -350,6 +577,8 @@ final class StemCellsHomeViewController: UIViewController {
     }
 
     private func fold(_ row: StemCellsRow) {
+        // Narrowed, nothing folds: the document's folds wait for the search to end.
+        guard search?.narrowed != true else { return }
         if !usesSpaces, let engine = session?.engine {
             Task { try? await engine.fold(row.id) }
             return
@@ -403,7 +632,8 @@ final class StemCellsHomeViewController: UIViewController {
     /// away (leaving or archiving, a section's heading deleted), each run
     /// once the preview has gone (a rename needs the keyboard).
     private func menu(for row: StemCellsRow) -> [[StemCellsMenuItem]]? {
-        guard usesSpaces else { return nil }
+        // Searching, a hold has nothing to rename or move among what was found.
+        guard usesSpaces, search == nil else { return nil }
         guard let session, [.space, .session, .section].contains(row.kind) else { return nil }
         let store = session.store
         var first: [StemCellsMenuItem] = []
@@ -482,7 +712,7 @@ final class StemCellsHomeViewController: UIViewController {
     // MARK: Carry
 
     private func beginDrag(_ row: StemCellsRow) -> StemCellsDrag? {
-        guard let document = snapshot.document else { return nil }
+        guard search == nil, let document = snapshot.document else { return nil }
         return StemCellsDrag(holding: row.id, drawn: Self.drawn(snapshot.rows), all: snapshot.allRows, document: document)
     }
 

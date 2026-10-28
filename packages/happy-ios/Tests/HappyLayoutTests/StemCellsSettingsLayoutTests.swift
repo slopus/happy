@@ -5,6 +5,26 @@ import XCTest
 /// Stem Cells settings on a 390-wide phone: the bar, the profile strip,
 /// the cards and the QR sheet, frame by frame.
 final class StemCellsSettingsLayoutTests: XCTestCase {
+    /// A row home's search found comes to the middle of the page, as far
+    /// as the page scrolls.
+    func testARowSearchFoundScrollsToTheMiddle() {
+        let row = StemCellsSettingsLayout.RowSpec(hasIcon: true, valueWidth: nil, accessory: .chevron)
+        let layout = StemCellsSettingsLayout(width: 402, nameHeight: 34, subtitleHeight: 21, cards: Array(repeating: Array(repeating: row, count: 4), count: 6))
+        let insets = LayoutInsets(top: 114, left: 0, bottom: 34, right: 0)
+        // The fourth card's second row: cards from 209 (8, the strip's 104,
+        // 12, the name's 34, 2, the line's 21, 28), 232 apart, its middle 78
+        // into its card: 983 down. 726 shows between the insets.
+        let card = layout.cards[3]
+        XCTAssertEqual(card.frame.minY + card.rows[1].box.midY, 983)
+        XCTAssertEqual(layout.revealOffset(card: 3, row: 1, viewport: 874, insets: insets), 983 - 114 - 726 / 2)
+        // The first row can't come down to the middle: the page stays at its top.
+        XCTAssertEqual(layout.revealOffset(card: 0, row: 0, viewport: 874, insets: insets), -114)
+        // The last can't come up past the page's end.
+        XCTAssertEqual(layout.revealOffset(card: 5, row: 3, viewport: 874, insets: insets), layout.contentHeight + 34 - 874)
+        XCTAssertNil(layout.revealOffset(card: 6, row: 0, viewport: 874, insets: insets))
+        XCTAssertNil(layout.revealOffset(card: 0, row: 4, viewport: 874, insets: insets))
+    }
+
     func testSearchingTheCardsMoveUpUnderTheField() {
         typealias L = StemCellsSettingsLayout
         let layout = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: true, accessory: .chevron)]], searching: true)

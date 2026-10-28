@@ -11,6 +11,15 @@ extension Strings {
         // Rows (HappyAgentSpacesSidebar.tsx, AppHappyAgentView.tsx).
         public static let search = "Search"
         public static let create = "Create"
+
+        // Search in home's header: what it finds below the sidebar's rows,
+        // and the quick actions, as desktop's ⌘K palette names its own
+        // (commandPaletteResults.ts `actionRows`).
+        public static let quickActions = "Quick actions"
+        public static let settingsResults = "Settings"
+        public static let newWork = "New work"
+        public static let newWorkWithPicture = "New work with a picture"
+        public static let openSettingsAction = "Open settings"
         /// `happyAgentSpaceLabel`: work is "New" until it has a name.
         public static let untitled = "New"
         public static let untitledSession = "Untitled"

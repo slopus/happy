@@ -169,7 +169,7 @@ final class StemCellsSidebarView: UIScrollView {
             view.configure(row)
             // Rows a tap doesn't open (a proposal's) read as what they are.
             if onSelect == nil, row.kind != .section, row.kind != .separator { view.accessibilityTraits = .staticText }
-            if onFold == nil, row.kind == .section { view.accessibilityTraits = .header }
+            if onFold == nil || row.collapsed == nil, row.kind == .section { view.accessibilityTraits = .header }
             view.selected = row.id == selectedRowId
             touched += 1
         }
@@ -226,6 +226,9 @@ final class StemCellsSidebarView: UIScrollView {
             return
         }
         switch row.kind {
+        case .section where row.collapsed == nil:
+            // Search's heading: nothing folds under it.
+            break
         case .section:
             // Its "+", with a finger's room around it, makes new work in it.
             if let add = view.frames?.add, let onAdd, gesture.location(in: self).x >= add.minX - 7, gesture.location(in: self).x < add.maxX + StemCellsMetrics.trailingGap / 2 {
@@ -256,7 +259,7 @@ final class StemCellsSidebarView: UIScrollView {
 
     @objc private func rowPressed(_ gesture: PressRecognizer) {
         guard let view = gesture.view as? StemCellsRowView else { return }
-        let opens = view.row?.kind == .section ? onFold != nil : onSelect != nil
+        let opens = view.row?.kind == .section ? onFold != nil && view.row?.collapsed != nil : onSelect != nil
         view.pressed = opens && hold == nil && (gesture.state == .began || gesture.state == .changed)
         if gesture.state == .began, onSelect != nil, let row = view.row { onIntent?(row) }
     }
@@ -281,7 +284,7 @@ final class StemCellsSidebarView: UIScrollView {
             case .widget: .widget
             default: .row
             }
-            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.status == .waiting || row.status == .awaitingInput, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section, foldClosed: row.collapsed == true || row.hasHiddenSessions)
+            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.status == .waiting || row.status == .awaitingInput, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions)
         }
     }
 

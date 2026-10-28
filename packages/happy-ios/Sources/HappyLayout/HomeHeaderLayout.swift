@@ -20,6 +20,13 @@ import CoreGraphics
 ///     and the status line hangs 2pt into the title's bottom, outside the
 ///     centring (HomeHeaderTitle.tsx `subtitleSlot`).
 /// A scrim reaches 8pt below the row.
+///
+/// A computer's home searches in place: its search pill grows left across
+/// the row into the field, the search glyph riding along at its start, and
+/// a glass circle at the right ends the search. The logo and title give
+/// way to it; nothing else moves.
+///
+///     |16| ( ⌕  Search…                    ) |8| ( ✕ ) |16|
 public struct HomeHeaderLayout: Equatable, Sendable {
     public enum Metrics {
         /// MOBILE_GLASS_HEADER_HEIGHT.
@@ -42,6 +49,10 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         public static let backdropOverhang: CGFloat = 8
         /// MainView.tsx: content starts 12 below the chrome.
         public static let contentGap: CGFloat = 12
+        /// Searching: between the field's pill and the circle that ends it.
+        public static let searchGap: CGFloat = 8
+        /// Searching: the field's end inside its pill, clear of the rim.
+        public static let fieldTrailing: CGFloat = 8
     }
 
     public struct Input {
@@ -63,6 +74,8 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         /// The pill holds one button (a computer's home: search alone), in
         /// the first slot; the divider and second slot are empty.
         public var singleAction: Bool = false
+        /// The single action's search is open: its pill is the field.
+        public var searching: Bool = false
 
         public init(width: CGFloat, safeTop: CGFloat, hairline: CGFloat, title: Measurable, status: Measurable?) {
             self.width = width
@@ -87,6 +100,12 @@ public struct HomeHeaderLayout: Equatable, Sendable {
     public var title: CGRect
     public var statusDot: CGRect?
     public var status: CGRect?
+    /// The search field, after the glyph in the pill's first slot: no
+    /// width until the search opens.
+    public var searchField: CGRect
+    /// The glass circle that ends the search, at the right. Placed either
+    /// way, so it fades in where it will be.
+    public var searchCancel: CGRect
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -102,9 +121,14 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         let logoInset = (M.controlSize - logoSize) / 2
         logo = CGRect(x: logoControl.minX + logoInset, y: logoControl.minY + logoInset, width: logoSize, height: logoSize)
 
-        let pillWidth = input.singleAction ? 2 * M.controlBorder + M.controlSize : 2 * M.controlBorder + 2 * M.controlSize + input.hairline
+        let searching = input.singleAction && input.searching
+        searchCancel = CGRect(x: width - M.paddingHorizontal - M.controlSize, y: top + (rowHeight - M.controlSize) / 2, width: M.controlSize, height: M.controlSize)
+        let pillWidth = searching
+            ? max(2 * M.controlBorder + M.controlSize, searchCancel.minX - M.searchGap - M.paddingHorizontal)
+            : input.singleAction ? 2 * M.controlBorder + M.controlSize : 2 * M.controlBorder + 2 * M.controlSize + input.hairline
         let pillHeight = 2 * M.controlBorder + M.controlSize
-        actions = CGRect(x: width - M.paddingHorizontal - pillWidth, y: top + (rowHeight - pillHeight) / 2, width: pillWidth, height: pillHeight)
+        let pillX = searching ? M.paddingHorizontal : width - M.paddingHorizontal - pillWidth
+        actions = CGRect(x: pillX, y: top + (rowHeight - pillHeight) / 2, width: pillWidth, height: pillHeight)
         let buttonY = actions.minY + M.controlBorder
         filterButton = CGRect(x: actions.minX + M.controlBorder, y: buttonY, width: M.controlSize, height: M.controlSize)
         actionDivider = CGRect(
@@ -114,6 +138,8 @@ public struct HomeHeaderLayout: Equatable, Sendable {
             height: M.actionDividerHeight
         )
         settingsButton = CGRect(x: actionDivider.maxX, y: buttonY, width: input.singleAction ? 0 : M.controlSize, height: M.controlSize)
+        let fieldEnd = searching ? actions.maxX - M.controlBorder - M.fieldTrailing : filterButton.maxX
+        searchField = CGRect(x: filterButton.maxX, y: buttonY, width: max(0, fieldEnd - filterButton.maxX), height: M.controlSize)
 
         let slotX = M.titleInset
         let slotWidth = max(0, width - 2 * M.titleInset)
