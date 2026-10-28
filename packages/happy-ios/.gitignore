@@ -8,3 +8,5 @@ xtool/
 *.xcodeproj/
 *.xcworkspace/
 DerivedData/
+.build-mac/
+.build-ios/

@@ -16,6 +16,24 @@ xtool dev build                    # Linux: the dev app bundle, needs `xtool sdk
 xcodegen && open Happy.xcodeproj   # macOS
 ```
 
+## Native Mac app
+
+`HappyMac` is a genuine **AppKit / macOS SDK** target, not Catalyst,
+"Designed for iPad", SwiftUI, or the Tauri client. UIKit and AppKit share
+account composition, SQLite, crypto, sync and presentation models through
+`HappyClientKit`, while keeping their views separate. Requires macOS 14+
+and Xcode 26+ (Swift 6.2). This is a functional relay-client port, not yet
+full mobile feature parity.
+See [Mac build and behavior](docs/MAC.md) for building, testing and limitations.
+
+```sh
+xcodegen
+xcodebuild -project Happy.xcodeproj -scheme 'Happy Mac' \
+  -destination 'platform=macOS' \
+  -derivedDataPath .build-mac build
+open .build-mac/Build/Products/Debug/HappyMac.app
+```
+
 The chat fixtures (`Sources/HappyUI/Chat/Fixtures`) are built in Debug and
 where `HAPPY_FIXTURES` is set, never in the shipped app. The hosted tests use
 them, so to run those in Preview:

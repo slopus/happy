@@ -12,16 +12,11 @@ enum CompositionRoot {
     static func makeContext(bundle: Bundle = .main) -> AppContext {
         let variant = AppVariant.current(bundle: bundle)
         let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
-        let account = AccountController(
-            serverConfig: ServerConfig(storage: UserDefaultsStore(suiteName: ServerConfig.storageSuite)),
-            clientID: HappyClientID.make(version: version),
-            // The RN app's own Keychain item, so upgrades stay signed in.
-            credentialStore: SecureStoreCredentialStore(backend: SecurityKeychainBackend()),
-            storeDirectory: storeDirectory(),
-            localSettings: UserDefaultsStore(suiteName: LocalSettings.storageSuite),
-            accountCredentialStore: KeychainAccountCredentialStore(backend: SecurityKeychainBackend()),
-            directCredentialStore: KeychainDirectCredentialStore(backend: SecurityKeychainBackend()),
-            localSettingsFactory: { UserDefaultsStore(suiteName: LocalSettings.storageSuite(accountID: $0)) },
+        let account = NativeAccountFactory.make(
+            version: version,
+            directory: storeDirectory(),
+            // No namespace on iOS: retain the exact RN-compatible items.
+            backend: SecurityKeychainBackend(),
             appState: {
                 await MainActor.run {
                     UIApplication.shared.applicationState == .background ? "background" : "active"

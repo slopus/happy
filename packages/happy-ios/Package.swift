@@ -36,6 +36,8 @@ let package = Package(
         // Everything the app is built from, for the XcodeGen app target.
         .library(name: "HappyKit", targets: ["HappyCrypto", "HappyWire", "HappyStore", "HappyCore", "HappyLayout", "HappyIcons", "HappyUI"]),
         .library(name: "HappyGuestKit", targets: ["HappyGuest", "HappyGuestUI"]),
+        // Native platform shells share services/models, never UI frameworks.
+        .library(name: "HappyClientKit", targets: ["HappyCrypto", "HappyWire", "HappyStore", "HappyCore", "HappyLayout", "HappyIcons"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),

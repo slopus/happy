@@ -258,6 +258,12 @@ public final class AccountSession: Sendable {
     public func sendAppState(_ state: String) async {
         await sync.setBackgrounded(state != "active")
         if state == "active" { await rigComposer.flushAheadSessions() }
+        await sendPresence(state)
+    }
+
+    /// Desktop focus affects presence, not whether the process may deliver
+    /// accepted writes. The mobile lifecycle still uses sendAppState above.
+    public func sendPresence(_ state: String) async {
         try? await realtime.emit("app-state", .object(["state": .string(state)]))
     }
 

@@ -1,7 +1,7 @@
 # XcodeGen spec for the Xcode project. Generate with `xcodegen` in this
 # directory; the .xcodeproj is not committed.
 #
-# One app target, three configurations matching happy-app's variants:
+# Independent UIKit iOS and AppKit macOS targets, three configurations:
 #   Debug   -> com.slopus.happy.dev      "Happy v2 (dev)"
 #   Preview -> com.slopus.happy.preview  "Happy v2 (preview)"
 #   Release -> com.ex3ndr.happy          "Happy v2"
@@ -12,6 +12,7 @@ options:
   bundleIdPrefix: com.slopus
   deploymentTarget:
     iOS: "26.0"
+    macOS: "14.0"
   createIntermediateGroups: true
 configs:
   Debug: debug
@@ -66,6 +67,63 @@ targets:
           PRODUCT_BUNDLE_IDENTIFIER: com.ex3ndr.happy
           INFOPLIST_FILE: App/Info-Production.plist
           CODE_SIGN_ENTITLEMENTS: App/Happy-Production.entitlements
+  HappyMac:
+    # Genuine AppKit/macOS SDK target. No UIKit, Catalyst or iPad binary.
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/HappyMacApp
+      - path: Mac/Assets.xcassets
+    dependencies:
+      - package: HappyIOS
+        product: HappyClientKit
+    settings:
+      base:
+        PRODUCT_NAME: HappyMac
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Mac/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Mac/HappyMac.entitlements
+        CODE_SIGN_STYLE: Automatic
+        SDKROOT: macosx
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SUPPORTS_MACCATALYST: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.native.mac.dev
+          INFOPLIST_KEY_CFBundleDisplayName: Happy Native (dev)
+          HAPPY_APP_VARIANT: development
+        Preview:
+          PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.native.mac.preview
+          INFOPLIST_KEY_CFBundleDisplayName: Happy Native (preview)
+          HAPPY_APP_VARIANT: preview
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.native.mac
+          INFOPLIST_KEY_CFBundleDisplayName: Happy Native
+          HAPPY_APP_VARIANT: production
+  HappyMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/HappyMacTests
+      - path: Tests/HappyCoreTests/MacAppConfigurationTests.swift
+      - path: Tests/HappyCoreTests/AppConfigurationTests.swift
+      - path: Tests/HappyCoreTests/NativePresentationTests.swift
+      - path: Tests/HappyCoreTests/NativeAccountFactoryTests.swift
+      - path: Tests/HappyLayoutTests/MacDesktopLayoutTests.swift
+    dependencies:
+      - target: HappyMac
+      - package: HappyIOS
+        product: HappyClientKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.native.mac.tests
+        SDKROOT: macosx
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/HappyMac.app/Contents/MacOS/HappyMac"
+        BUNDLE_LOADER: "$(TEST_HOST)"
   HappyUIKitTests:
     # Measures real UIKit views; needs an iOS simulator. Not hosted in the
     # app: the views under test need no running application.
@@ -161,6 +219,35 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.direct-ui-tests
         TEST_TARGET_NAME: Happy
 schemes:
+  Happy Mac:
+    build:
+      targets:
+        HappyMac: all
+        HappyMacTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - HappyMacTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+  Happy Mac (preview):
+    build:
+      targets:
+        HappyMac: all
+    run:
+      config: Preview
+    profile:
+      config: Preview
+    analyze:
+      config: Preview
+    archive:
+      config: Preview
   HappyDirectUI:
     build:
       targets:
