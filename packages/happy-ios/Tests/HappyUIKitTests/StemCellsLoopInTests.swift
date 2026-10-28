@@ -55,7 +55,7 @@ final class StemCellsLoopInTests: XCTestCase {
         let frame = try XCTUnwrap(sidebar.layoutResult?.frames[index])
         XCTAssertNotNil(frame.trailing, "the new row's dot has no square")
         let view = try XCTUnwrap(rowView(sidebar, "space:mic"))
-        XCTAssertEqual(view.accessibilityValue, "New, microphone")
+        XCTAssertEqual(view.accessibilityValue, "new, microphone")
         let fill = try XCTUnwrap(view.subviews.first?.backgroundColor).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
         XCTAssertEqual(fill, UIColor(Palette.stemCellsRowNew).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)))
         // Its neighbour, not new, has neither.
