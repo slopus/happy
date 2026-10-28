@@ -284,7 +284,7 @@ final class StemCellsSidebarView: UIScrollView {
             case .widget: .widget
             default: .row
             }
-            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.status == .waiting || row.status == .awaitingInput, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions)
+            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions)
         }
     }
 

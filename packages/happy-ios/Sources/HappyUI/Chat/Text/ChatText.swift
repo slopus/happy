@@ -117,6 +117,14 @@ enum ChatSpans {
             } else if span.styles.contains(.italic) {
                 spanStyle = style.with(style.emphasisFace)
             }
+            // A person this phone named (never a link an agent typed): in
+            // the strong face and the mention's ink, on a tint when it is the reader.
+            if let url = span.url, let mention = HappyReferences.mention(link: url) {
+                var attributes = style.attributes(color: UIColor(Palette.stemCellsMention), font: style.with(style.strongFace).font(in: environment), in: environment)
+                if mention.me { attributes[.backgroundColor] = UIColor(Palette.stemCellsMentionMe) }
+                result.append(NSAttributedString(string: span.text, attributes: attributes))
+                continue
+            }
             var attributes = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
             // An http(s) link, or a reference this phone wrote (never one an agent typed).
             if let url = span.url, Markdown.isHTTPLink(url) || HappyReferences.reference(link: url) != nil {

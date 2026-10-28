@@ -31,7 +31,7 @@ public enum HappyReferences {
     }
 
     /// The kinds a reader resolves; any other well-formed kind reads as inert text.
-    public static let knownKinds: Set<String> = ["artifact", "agent", "workspace", "project", "service"]
+    public static let knownKinds: Set<String> = ["artifact", "agent", "workspace", "project", "service", "user"]
 
     static let maxTagLength = 512
     static let maxValueLength = 256
@@ -90,6 +90,19 @@ public enum HappyReferences {
         "\(linkPrefix)\(reference.kind)/\(reference.id)" + (reference.version.map { "/\($0)" } ?? "")
     }
 
+    /// A mention's link: `user/id`, and `/me` when it names the reader.
+    public static func mentionLink(_ reference: Reference, me: Bool) -> String {
+        "\(linkPrefix)user/\(reference.id)" + (me ? "/me" : "")
+    }
+
+    /// The person a mention's link names, and whether it is the reader.
+    public static func mention(link: String) -> (id: String, me: Bool)? {
+        guard link.hasPrefix(linkPrefix) else { return nil }
+        let parts = link.dropFirst(linkPrefix.count).split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2 || (parts.count == 3 && parts[2] == "me"), parts[0] == "user", isID(parts[1]) else { return nil }
+        return (parts[1], parts.count == 3)
+    }
+
     /// The reference a link written by `markdown` points at.
     public static func reference(link: String) -> Reference? {
         guard link.hasPrefix(linkPrefix) else { return nil }
@@ -111,8 +124,11 @@ public enum HappyReferences {
         replace(text) { reference in
             let shown = knownKinds.contains(reference.kind) ? view(reference) : .text(placeholder(reference))
             let name = label(shown.label).isEmpty ? label(placeholder(reference)) : label(shown.label)
-            guard case .link = shown else { return name }
-            return "[\(name)](\(link(reference)))"
+            switch shown {
+            case .link: return "[\(name)](\(link(reference)))"
+            case .mention(_, let me): return "[\(name)](\(mentionLink(reference, me: me)))"
+            case .text: return name
+            }
         }
     }
 

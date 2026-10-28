@@ -6,7 +6,9 @@ import UIKit
 /// One row of the Stem Cells sidebar as desktop's `Sidebar` draws it: a
 /// rounded box, the mark in its leading lane, the label, and the trailing
 /// square for a status or a section's fold. Unread is the title in bold,
-/// nothing beside it. It applies the
+/// nothing beside it. A row someone looped the person into is new until
+/// opened: tinted, bold, with a dot in the trailing square, and it pulses
+/// once when it arrives on screen. It applies the
 /// frames `StemCellsSidebarLayout` gives it and decides nothing about where
 /// anything goes.
 final class StemCellsRowView: UIView {
@@ -85,6 +87,7 @@ final class StemCellsRowView: UIView {
         applyText(row)
         applyTrailing(row)
         applyState()
+        if row.isNew, previous?.isNew != true { pulse() }
         accessibilityLabel = row.kind == .separator ? nil : row.label
         accessibilityTraits = row.kind == .section ? [.header, .button] : row.kind == .separator ? .none : .button
         isAccessibilityElement = row.kind != .separator
@@ -95,6 +98,7 @@ final class StemCellsRowView: UIView {
         case .clay(let slug): slug
         default: nil
         }
+        if row.isNew { accessibilityValue = [Strings.StemCells.newRow, accessibilityValue].compactMap { $0 }.joined(separator: ", ") }
         setNeedsLayout()
     }
 
@@ -152,7 +156,7 @@ final class StemCellsRowView: UIView {
         case .separator:
             label.attributedText = nil
         default:
-            let weight: StemCellsFonts.Weight = row.unread ? .bold : selected ? .semiBold : .medium
+            let weight: StemCellsFonts.Weight = row.unread || row.isNew ? .bold : selected ? .semiBold : .medium
             label.attributedText = NSAttributedString(string: row.label, attributes: [.font: StemCellsFonts.ui(weight, size: StemCellsMetrics.labelSize)])
         }
         // Working rows shimmer their title; nothing else spins.
@@ -180,12 +184,15 @@ final class StemCellsRowView: UIView {
             trailing.image = StemCellsGlyphs.image("clock", size: StemCellsMetrics.clockGlyph)
             trailing.tintColor = UIColor(Palette.stemCellsRowText)
         case .working, .none:
-            break
+            guard row.isNew else { break }
+            trailing.isHidden = false
+            trailing.image = Self.newDot
+            trailing.tintColor = UIColor(Palette.stemCellsRowNewDot)
         }
     }
 
     private func applyState() {
-        let ink = UIColor(selected || row?.unread == true ? Palette.stemCellsRowTextActive : Palette.stemCellsRowText)
+        let ink = UIColor(selected || row?.unread == true || row?.isNew == true ? Palette.stemCellsRowTextActive : Palette.stemCellsRowText)
         label.textColor = ink
         label.ground = UIColor(selected ? Palette.stemCellsRowSelected : Palette.surface)
         picture.tintColor = picture.contentMode == .center ? ink : nil
@@ -193,7 +200,7 @@ final class StemCellsRowView: UIView {
         add.tintColor = UIColor(Palette.stemCellsRowText)
         if let row, row.kind != .section, row.kind != .separator { applyText(row) }
         let carryable = row?.kind != .section && row?.kind != .separator
-        fill.backgroundColor = lifted ? UIColor(Palette.stemCellsBackground) : selected ? UIColor(Palette.stemCellsRowSelected) : pressed && carryable ? UIColor(Palette.stemCellsRowPressed) : .clear
+        fill.backgroundColor = lifted ? UIColor(Palette.stemCellsBackground) : selected ? UIColor(Palette.stemCellsRowSelected) : pressed && carryable ? UIColor(Palette.stemCellsRowPressed) : row?.isNew == true ? UIColor(Palette.stemCellsRowNew) : .clear
         layer.shadowColor = UIColor.black.cgColor
         layer.shadowOpacity = lifted ? 0.14 : 0
         layer.shadowRadius = 12
@@ -218,6 +225,29 @@ final class StemCellsRowView: UIView {
         add.frame = frames.add.map(local) ?? .zero
         add.isHidden = frames.add == nil
         rule.frame = frames.rule.map(local) ?? .zero
+    }
+
+    // MARK: New
+
+    /// The new row's dot, drawn once as a template to tint.
+    private static let newDot: UIImage = {
+        let size = CGSize(width: StemCellsMetrics.newDot, height: StemCellsMetrics.newDot)
+        return UIGraphicsImageRenderer(size: size).image { _ in UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill() }
+            .withRenderingMode(.alwaysTemplate)
+    }()
+
+    /// A row that just became new flashes its tint once, where the person can see it.
+    private func pulse() {
+        guard window != nil, !UIAccessibility.isReduceMotionEnabled, !selected else { return }
+        let flash = UIColor(Palette.stemCellsRowNewDot).withAlphaComponent(0.35)
+        let rest = UIColor(Palette.stemCellsRowNew)
+        fill.backgroundColor = rest
+        UIView.animateKeyframes(withDuration: StemCellsMetrics.newPulseDuration, delay: 0.15, options: [.allowUserInteraction]) {
+            UIView.addKeyframe(withRelativeStartTime: 0, relativeDuration: 0.25) { self.fill.backgroundColor = flash }
+            UIView.addKeyframe(withRelativeStartTime: 0.25, relativeDuration: 0.25) { self.fill.backgroundColor = rest }
+            UIView.addKeyframe(withRelativeStartTime: 0.5, relativeDuration: 0.25) { self.fill.backgroundColor = flash }
+            UIView.addKeyframe(withRelativeStartTime: 0.75, relativeDuration: 0.25) { self.fill.backgroundColor = rest }
+        } completion: { [weak self] _ in self?.applyState() }
     }
 
     // MARK: Hatch

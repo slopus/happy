@@ -14,6 +14,14 @@ extension Palette {
     public static let stemCellsRowTextActive = ColorToken("#000000", "#ffffff")
     /// The open row's fill (`--surface-selected`).
     public static let stemCellsRowSelected = ColorToken("#eaeaea", "#2c2c2e")
+    /// A row someone looped the person into, not yet opened: its fill and
+    /// the dot in its trailing square.
+    public static let stemCellsRowNew = ColorToken("#e3f3f7", "#16343c")
+    public static let stemCellsRowNewDot = ColorToken("#2baccc")
+    /// A person a message mentions ("@Steve"), and the tint behind a
+    /// mention of the person reading.
+    public static let stemCellsMention = ColorToken("#1a7f99", "#5cc8e2")
+    public static let stemCellsMentionMe = ColorToken("#d8eef4", "#1d3f48")
     /// A pressed or carried row's fill (`--surface-ripple`).
     public static let stemCellsRowPressed = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.08), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.08))
     /// A separator's hairline (`--divider`).
@@ -187,6 +195,8 @@ public enum StemCellsMetrics {
     /// into its ground; one sweep takes 1.6s.
     public static let sheenInk: CGFloat = 0.15
     public static let sheenDuration: Double = 1.6
+    /// A row that just became new flashes its tint twice in this long.
+    public static let newPulseDuration: Double = 1.4
     // Desktop's sidebar at its own pixels (`Sidebar.tsx`: `SIDEBAR_ROW_HEIGHT`
     // and the rest, `styles/sidebar.css`, `theme.css`), half again as big on
     // the phone: rows, gaps, type and marks all `phone` times desktop's.
@@ -242,7 +252,8 @@ public enum StemCellsMetrics {
     /// The trailing square a status mark, an unread dot or a fold stands in (`SIDEBAR_SLOT_CELL`).
     public static let trailing: CGFloat = 18 * phone
     public static let trailingGap: CGFloat = 8 * phone
-    /// `.happy-sidebar__item-unread`.
+    /// `.happy-sidebar__item-unread`: the dot a new row wears in that square.
+    public static let newDot: CGFloat = 8 * phone
     /// `--happy-hover-radius`.
     public static let cornerRadius: CGFloat = 6 * phone
     /// A picture's rounding in its lane: a rounded square, never a circle.

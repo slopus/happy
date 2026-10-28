@@ -107,6 +107,24 @@ final class HappyReferencesTests: XCTestCase {
         XCTAssertEqual(markdown(text, references), "See an unavailable artifact.")
     }
 
+    func testAPersonReadsAsAMentionSetApartForTheReader() {
+        var references = StemCellReferences()
+        references.users = ["u-steve": "Steve", "u-kirill": " Kirill "]
+        references.me = "u-steve"
+        let text = "<happy-user id=\"u-steve\"/>, can you look? <happy-user id=\"u-kirill\"/> signed off."
+        XCTAssertEqual(markdown(text, references), "[@Steve](ref:user/u-steve/me), can you look? [@Kirill](ref:user/u-kirill) signed off.")
+        XCTAssertEqual(HappyReferences.plain(text, view: references.view), "@Steve, can you look? @Kirill signed off.")
+        // Someone the phone doesn't know reads as words that say so.
+        XCTAssertEqual(markdown("<happy-user id=\"u-gone\"/>", references), "an unavailable user")
+        // The link says who, and whether it is the reader; it opens nothing.
+        XCTAssertEqual(HappyReferences.mention(link: HappyReferences.mentionLink(.init(kind: "user", id: "u-steve"), me: true))?.id, "u-steve")
+        XCTAssertEqual(HappyReferences.mention(link: HappyReferences.mentionLink(.init(kind: "user", id: "u-steve"), me: true))?.me, true)
+        XCTAssertEqual(HappyReferences.mention(link: HappyReferences.mentionLink(.init(kind: "user", id: "u-kirill"), me: false))?.me, false)
+        XCTAssertNil(HappyReferences.mention(link: HappyReferences.link(.init(kind: "agent", id: "a1"))))
+        XCTAssertNil(HappyReferences.mention(link: "happy-reference:user/u-steve"), "a hand-written link passed for a mention")
+        XCTAssertNil(references.entity(.init(kind: "user", id: "u-steve")))
+    }
+
     func testProjectsServicesAndUnknownKindsAreInert() {
         let references = StemCellReferences.entities(owners: Self.owners)
         XCTAssertEqual(markdown("<happy-project id=\"p\"/> <happy-service id=\"s\" workspace=\"wb\"/> <happy-gizmo id=\"g\"/>", references),

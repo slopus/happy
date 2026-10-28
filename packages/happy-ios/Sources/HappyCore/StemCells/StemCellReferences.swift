@@ -5,7 +5,8 @@ import HappyWire
 /// happy-desktop's `messageReferencesCreate` (`messageReferences.ts`), over
 /// the bots and tasks this phone holds. An agent reads as its conversation's
 /// name (a bot's or task's own as the bot's or task's), a workspace as the
-/// bot, task or subtask it holds, an artifact as its current title. What
+/// bot, task or subtask it holds, an artifact as its current title, a
+/// person as "@" and their name, set apart when it is the reader. What
 /// the lists don't hold (archived, a project, a service, a kind this build
 /// doesn't know) is inert words that say what it was.
 public struct StemCellReferences: Equatable, Sendable {
@@ -27,10 +28,13 @@ public struct StemCellReferences: Equatable, Sendable {
         case link(String, reading: Bool = false)
         /// Opens nothing: plain words.
         case text(String)
+        /// A person named in the message: "@" and their name, set apart,
+        /// and more so when it is the person reading (`me`).
+        case mention(String, me: Bool)
 
         public var label: String {
             switch self {
-            case .link(let label, _), .text(let label): label
+            case .link(let label, _), .text(let label), .mention(let label, _): label
             }
         }
     }
@@ -41,6 +45,10 @@ public struct StemCellReferences: Equatable, Sendable {
     /// The conversation's own subagents, by ID, as titled ("" untitled):
     /// a hidden one reads as its title, and opens nothing.
     public var subagents: [String: String] = [:]
+    /// The people a message may mention, by user ID, as named.
+    public var users: [String: String] = [:]
+    /// The person reading: their mentions are set apart.
+    public var me: String?
 
     public init(agents: [String: Entity] = [:], workspaces: [String: Entity] = [:], artifacts: [String: Artifact] = [:]) {
         self.agents = agents
@@ -121,6 +129,9 @@ public struct StemCellReferences: Equatable, Sendable {
             }
             let label = entity.label.trimmingCharacters(in: .whitespacesAndNewlines)
             return .link(label.isEmpty ? "Untitled \(reference.kind)" : label)
+        case "user":
+            guard let name = users[reference.id]?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return inert }
+            return .mention("@" + name, me: reference.id == me)
         default:
             // Projects aren't on this phone; services open nowhere yet.
             return inert

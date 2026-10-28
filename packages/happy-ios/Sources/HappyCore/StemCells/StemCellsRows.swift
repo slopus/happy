@@ -88,6 +88,9 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
     public var mark: Mark
     public var status: Status
     public var unread: Bool
+    /// Someone looped the person in and they haven't opened it yet: the
+    /// row stands out until they do.
+    public var isNew = false
     /// Set when something folds under it: whether it is folded now. A
     /// heading without it (search's) folds nothing.
     public var collapsed: Bool?
@@ -131,6 +134,9 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
     }
 
     public var opens: Bool { kind == .space || kind == .session || kind == .search || kind == .create || kind == .result }
+
+    /// Something stands in the trailing square: a question, a wait, or a new row's dot.
+    public var hasTrailingMark: Bool { status == .waiting || status == .awaitingInput || isNew }
 }
 
 /// The document as the rows the sidebar draws.

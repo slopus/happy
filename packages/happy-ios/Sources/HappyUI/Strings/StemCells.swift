@@ -24,6 +24,8 @@ extension Strings {
         public static let untitled = "New"
         public static let untitledSession = "Untitled"
         public static let prioritizing = "Prioritizing"
+        /// A row someone looped the person into, not yet opened, for VoiceOver.
+        public static let newRow = "New"
 
         // Menus.
         public static let renameTask = "Rename task"
