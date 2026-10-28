@@ -49,6 +49,8 @@ public struct StemCellReferences: Equatable, Sendable {
     public var users: [String: String] = [:]
     /// The person reading: their mentions are set apart.
     public var me: String?
+    /// People the daemon doesn't know; any other unnamed one is still being read.
+    public var missingUsers: Set<String> = []
 
     public init(agents: [String: Entity] = [:], workspaces: [String: Entity] = [:], artifacts: [String: Artifact] = [:]) {
         self.agents = agents
@@ -104,6 +106,16 @@ public struct StemCellReferences: Equatable, Sendable {
         return ids
     }
 
+    /// The people `text` mentions whose names haven't been read.
+    public func unknownUsers(in text: String) -> [String] {
+        guard text.contains("<happy-user") else { return [] }
+        var ids: [String] = []
+        for case .reference(let reference, _) in HappyReferences.parse(text) where reference.kind == "user" && users[reference.id] == nil && !ids.contains(reference.id) {
+            ids.append(reference.id)
+        }
+        return ids
+    }
+
     /// What `reference` reads as now.
     public func view(_ reference: HappyReferences.Reference) -> View {
         let inert = View.text(HappyReferences.placeholder(reference))
@@ -130,7 +142,9 @@ public struct StemCellReferences: Equatable, Sendable {
             let label = entity.label.trimmingCharacters(in: .whitespacesAndNewlines)
             return .link(label.isEmpty ? "Untitled \(reference.kind)" : label)
         case "user":
-            guard let name = users[reference.id]?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return inert }
+            guard let name = users[reference.id]?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+                return missingUsers.contains(reference.id) ? inert : .mention("@…", me: reference.id == me)
+            }
             return .mention("@" + name, me: reference.id == me)
         default:
             // Projects aren't on this phone; services open nowhere yet.

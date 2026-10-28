@@ -114,7 +114,11 @@ final class HappyReferencesTests: XCTestCase {
         let text = "<happy-user id=\"u-steve\"/>, can you look? <happy-user id=\"u-kirill\"/> signed off."
         XCTAssertEqual(markdown(text, references), "[@Steve](ref:user/u-steve/me), can you look? [@Kirill](ref:user/u-kirill) signed off.")
         XCTAssertEqual(HappyReferences.plain(text, view: references.view), "@Steve, can you look? @Kirill signed off.")
-        // Someone the phone doesn't know reads as words that say so.
+        // Someone not read yet is a mention waiting for its name; someone
+        // the daemon doesn't know reads as words that say so.
+        XCTAssertEqual(references.unknownUsers(in: text + " <happy-user id=\"u-gone\"/> <happy-user id=\"u-gone\"/>"), ["u-gone"])
+        XCTAssertEqual(markdown("<happy-user id=\"u-gone\"/>", references), "[@…](ref:user/u-gone)")
+        references.missingUsers = ["u-gone"]
         XCTAssertEqual(markdown("<happy-user id=\"u-gone\"/>", references), "an unavailable user")
         // The link says who, and whether it is the reader; it opens nothing.
         XCTAssertEqual(HappyReferences.mention(link: HappyReferences.mentionLink(.init(kind: "user", id: "u-steve"), me: true))?.id, "u-steve")

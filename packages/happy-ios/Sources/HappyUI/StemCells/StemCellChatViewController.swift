@@ -809,6 +809,12 @@ final class StemCellChatViewController: UIViewController {
             let store = session.store
             Task { await store.readArtifacts(unread) }
         }
+        // So are the names of the people they mention.
+        let people = items.flatMap { references.unknownUsers(in: $0.text) }
+        if !people.isEmpty {
+            let store = session.store
+            Task { await store.readUsers(people) }
+        }
         let copiedId = copied?.id
         let shown = proposals.shown
         let opened = opened

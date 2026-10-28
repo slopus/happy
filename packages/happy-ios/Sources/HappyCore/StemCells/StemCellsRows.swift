@@ -236,6 +236,8 @@ public enum StemCellsRows {
         )
         if row.workspaceId == nil, let agentId = row.agentId { row.workspaceId = places.agent(agentId)?.workspaceId }
         row.targetId = space.target.id
+        // Looped in by someone and not yet read.
+        row.isNew = space.target.kind == "task" && places.task(space.target.id)?.membership?.unread != nil
         row.sessions = sessionTree(conversation?.subtasks ?? [])
         row.hasHiddenSessions = hasMissing(row.sessions, under: node, held: held)
         // Subtasks not yet in the sidebar: folded, and unfolding brings them.

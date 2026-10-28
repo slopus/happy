@@ -112,6 +112,11 @@ public actor StemCellsStore {
     /// Artifact titles references asked for, as read; and those being read.
     private var artifactTitles: [String: StemCellReferences.Artifact] = [:]
     private var artifactReads: Set<String> = []
+    /// People messages mention, as named, and those being read; the person reading.
+    private var userNames: [String: String] = [:]
+    private var userReads: Set<String> = []
+    private var usersMissing: Set<String> = []
+    private var me: String?
     private var places = StemCellsPlaces()
     private var placesReload: Task<Void, Never>?
     /// Names given here whose rename no read has carried yet.
@@ -286,6 +291,7 @@ public actor StemCellsStore {
             async let tasks = client.tasks()
             async let setting = client.userSetting(Self.settingKey)
             async let surfaceList = client.surfaces()
+            async let profile = client.profileUser()
             let capabilities = (try? await health)?.capabilities ?? AgentWire.Health.Capabilities()
             self.capabilities = capabilities
             guard capabilities.sidebarOperations == true else {
@@ -299,6 +305,10 @@ public actor StemCellsStore {
             snapshot.prioritizing = (try? await setting) == .bool(true)
             prioritizingDaemon = snapshot.prioritizing
             let served = (try? await surfaceList) ?? nil
+            if let user = (try? await profile) ?? nil {
+                me = user.id
+                if !user.name.isEmpty { userNames[user.id] = user.name }
+            }
             surfaces = served ?? []
             self.bots = botList; self.tasks = taskList
             agents = StemCellsAgents()
@@ -403,6 +413,56 @@ public actor StemCellsStore {
         publish()
     }
 
+    /// The person's membership of a task they hold, as it is now: a
+    /// loop-in mark set or cleared shows at once.
+    private func adoptMembership(_ membership: JSONValue) {
+        guard let taskId = membership["taskId"]?.stringValue,
+              let index = tasks.firstIndex(where: { $0["id"]?.stringValue == taskId }),
+              var object = tasks[index].objectValue else { return }
+        object["membership"] = membership
+        tasks[index] = .object(object)
+        rebuildPlaces()
+    }
+
+    /// Reads the names of people messages mention, a batch at a time.
+    public func readUsers(_ ids: [String]) {
+        let wanted = Array(Set(ids.filter { userNames[$0] == nil && !userReads.contains($0) && !usersMissing.contains($0) }))
+        guard !wanted.isEmpty else { return }
+        userReads.formUnion(wanted)
+        let client = client
+        Task {
+            var names: [String: String] = [:]
+            for start in stride(from: 0, to: wanted.count, by: 100) {
+                let batch = Array(wanted[start..<min(start + 100, wanted.count)])
+                names.merge((try? await client.userNames(batch)) ?? [:]) { _, new in new }
+            }
+            await usersRead(wanted, names)
+        }
+    }
+
+    private func usersRead(_ asked: [String], _ names: [String: String]) {
+        userReads.subtract(asked)
+        // The reader's own name is the profile's; `/v0/users` may not hold it.
+        for (id, name) in names where !name.isEmpty { userNames[id] = name }
+        // Omitted: no such person here. A failed read is asked again later.
+        if !names.isEmpty || asked.isEmpty { usersMissing.formUnion(asked.filter { userNames[$0] == nil }) }
+        publish()
+    }
+
+    private func readProfile() {
+        let client = client
+        Task {
+            guard let user = (try? await client.profileUser()) ?? nil else { return }
+            await profileRead(user.id, user.name)
+        }
+    }
+
+    private func profileRead(_ id: String, _ name: String) {
+        me = id
+        if !name.isEmpty { userNames[id] = name }
+        publish()
+    }
+
     /// The bots and tasks with their conversations composed from the newest copies.
     private func rebuildPlaces() {
         func composed(_ owners: [JSONValue]) -> JSONValue {
@@ -443,7 +503,18 @@ public actor StemCellsStore {
         case "agent.created":
             if let agent = payload["agent"] { agents.created(agent); rebuildPlaces() }
         case "bot.created", "bot.updated", "task.created", "task.updated", "task.joined", "task.left":
+            if let membership = payload["membership"] { adoptMembership(membership) }
             schedulePlacesReload()
+        case "task.membership.updated":
+            guard let membership = payload["membership"] else { return }
+            adoptMembership(membership)
+        case "profile.updated":
+            // Names changed somewhere: the ones held are read again.
+            let held = Array(userNames.keys)
+            userNames = userNames.filter { $0.key == me }
+            usersMissing = []
+            readUsers(held)
+            if let me, let id = payload["userId"]?.stringValue ?? payload["profile"]?["userId"]?.stringValue, id == me { readProfile() }
         case "surface.created":
             if let surface = payload["surface"].flatMap(Self.decodeSurface) {
                 surfaces.removeAll { $0.id == surface.id }
@@ -562,6 +633,9 @@ public actor StemCellsStore {
         snapshot.happySpaceId = spaces.values.first { places.isHappy($0) }?.id
         var references = StemCellReferences.entities(owners: composedOwners)
         references.artifacts = artifactTitles
+        references.users = userNames
+        references.me = me
+        references.missingUsers = usersMissing
         snapshot.references = references
         continuation.yield(snapshot)
         // What the events changed is kept too, once they settle.
