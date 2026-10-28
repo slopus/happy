@@ -6,16 +6,18 @@ import UIKit
 
 /// A conversation's detail, pushed from its header's capsule: the legacy
 /// app's session screen made over in Settings' glass style. Its mark and
-/// name (renamed where it stands, as Settings' name is), its model, effort
-/// and when it started as tiles; what it shared, Telegram's shared media in
-/// our style (its pictures, recordings and files in a grid, then the links
-/// written in it); where it sits in the sidebar's tree drawn by the
-/// sidebar's own rows, and desktop's Activity: the children at work and the
-/// terminals running, then the settled children under a fold. Every row
-/// opens its conversation. Frames are `StemCellSessionDetailLayout`'s; what
-/// it shows is read off the main thread (`StemCellsSessionDetailFeed`,
-/// `StemCellsSharedFeed`) and again as the conversation's events come.
-final class StemCellSessionDetailViewController: UIViewController, UIGestureRecognizerDelegate {
+/// name (the pencil after it renames it where it stands, as Settings' name
+/// is); where it sits in the sidebar's tree, drawn by the sidebar's own
+/// rows; its model, effort and when it started as tiles; what it shared,
+/// Telegram's shared media in our style (its pictures, recordings and files
+/// in a grid, then the links written in it); and desktop's Activity: the
+/// children at work and the terminals running, then the settled children
+/// under a fold. Every row opens its conversation. Nothing is drawn over
+/// its top but the back button's glass. Frames are
+/// `StemCellSessionDetailLayout`'s; what it shows is read off the main
+/// thread (`StemCellsSessionDetailFeed`, `StemCellsSharedFeed`) and again
+/// as the conversation's events come.
+final class StemCellSessionDetailViewController: UIViewController, UIGestureRecognizerDelegate, UIScrollViewDelegate {
     private let session: StemCellsSession
     private let agentId: String
     private let spaceId: String?
@@ -51,13 +53,13 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
     private var heldName: String?
 
     private let bar = StemCellsGlassBar()
-    private let scroll = UIScrollView()
+    private let scroll = StemCellDetailScrollView()
     private let mark = StemCellDetailMarkView()
     private let name = UILabel()
+    private let pencil = UIButton(type: .system)
     private var nameField: StemCellsRenameField?
     private let subtitle = UILabel()
     private let tiles = (0..<3).map { _ in StemCellDetailTileView() }
-    private let actions = StemCellsSettingsCardView()
     private let mediaHeading = StemCellDetailTileView.heading()
     private let mediaCard = StemCellDetailMediaCardView()
     private let linksHeading = StemCellDetailTileView.heading()
@@ -92,6 +94,7 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         view.backgroundColor = UIColor(Palette.stemCellsSettingsGround)
         view.accessibilityIdentifier = "stem-detail"
         scroll.alwaysBounceVertical = true
+        scroll.delegate = self
         scroll.keyboardDismissMode = .interactive
         view.addSubview(scroll)
         mark.images = session.images
@@ -105,6 +108,13 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         name.isUserInteractionEnabled = true
         name.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(nameTapped)))
         scroll.addSubview(name)
+        pencil.setImage(StemCellsGlyphs.image("pencil", size: 16), for: .normal)
+        pencil.tintColor = UIColor(Palette.stemCellsSettingsSecondary)
+        pencil.accessibilityLabel = Strings.StemCells.rename
+        pencil.accessibilityIdentifier = "stem-detail-rename-button"
+        pencil.isHidden = true
+        pencil.addAction(UIAction { [weak self] _ in self?.beginRename() }, for: .touchUpInside)
+        scroll.addSubview(pencil)
         subtitle.font = StemCellsFonts.ui(.regular, size: 17)
         subtitle.textColor = UIColor(Palette.stemCellsSettingsSecondary)
         subtitle.textAlignment = .center
@@ -114,7 +124,6 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
             tile.accessibilityIdentifier = "stem-detail-tile:\(id)"
             scroll.addSubview(tile)
         }
-        scroll.addSubview(actions)
         mediaHeading.text = Strings.StemCells.media.uppercased()
         scroll.addSubview(mediaHeading)
         mediaCard.source = loader
@@ -152,6 +161,8 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         }())
 
         bar.leading = .back
+        // Nothing is over this screen's top but the back button.
+        bar.scrims = false
         bar.onLeading = { [weak self] in self?.navigationController?.popViewController(animated: true) }
         StemCellsGlassChrome.install(bar, on: self)
 
@@ -180,6 +191,9 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         applyActivity()
         applyShared()
         askShared(media: true, links: true)
+        #if DEBUG
+        if let mode = ProcessInfo.processInfo.environment["STEM_DETAIL_PROBE"] { startProbe(relayout: mode == "relayout") }
+        #endif
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -197,6 +211,9 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         following?.cancel()
         asking?.cancel()
         previewing?.cancel()
+        #if DEBUG
+        probe?.link.invalidate()
+        #endif
         watch?.invalidate()
         let feed = feed
         Task { await feed.stop() }
@@ -229,15 +246,9 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         family = next.count > 1 ? next : []
         _ = tree.apply(family)
         tree.selectedRowId = found?.id
-        var renames: [StemCellsSettingsRow] = []
-        if canRename {
-            renames.append(StemCellsSettingsRow(id: "rename", title: Strings.StemCells.rename, icon: ("pencil", .blue), accessory: .none, action: { [weak self] in self?.beginRename() }))
-        }
-        actionRows = renames
         view.setNeedsLayout()
     }
 
-    private var actionRows: [StemCellsSettingsRow] = []
     private let fallbackTitle: String?
 
     /// Its row's name, mark and kind; else, for a subagent the sidebar
@@ -246,6 +257,8 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         name.text = heldName ?? row?.label ?? detail?.title ?? fallbackTitle ?? Strings.StemCells.untitledSession
         mark.mark = row?.mark ?? .glyph("agents")
         subtitle.text = row.map { Self.subtitle($0) } ?? Self.subtitle(subtask: detail?.subtask == true, working: detail?.working == true)
+        // The name is as wide as its text, its pencil just after it.
+        view.setNeedsLayout()
     }
 
     /// A task or a bot is renamed; Happy never.
@@ -383,7 +396,11 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let width = view.bounds.width
-        scroll.frame = view.bounds
+        // Set again only when it changed: a scroll view given its frame,
+        // even the same one, while pulled past an end snaps its offset
+        // back, and the stretch jags under the finger as a working
+        // conversation lays this screen out again and again.
+        if scroll.frame != view.bounds { scroll.frame = view.bounds }
         let side = StemCellSessionDetailLayout.Metrics.side
         let cardWidth = max(0, width - 2 * side)
         let familyHeight: CGFloat? = family.isEmpty ? nil : StemCellsSidebarLayout.layout(
@@ -392,8 +409,9 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         let workCount = (detail?.running.count ?? 0) + (detail?.terminals.count ?? 0)
         let settled = detail?.completed.count ?? 0
         let layout = StemCellSessionDetailLayout(
-            width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight),
-            tiles: tiles.count, actions: actionRows.count,
+            width: width, nameHeight: ceil(name.font.lineHeight),
+            nameWidth: name.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: name.font.lineHeight)).width,
+            renames: canRename, subtitleHeight: ceil(subtitle.font.lineHeight), tiles: tiles.count,
             media: .init(count: shownMedia.count, more: hasMore(shared.media.count, limit: mediaLimit)),
             links: .init(count: shownLinks.count, more: hasMore(shared.links.count, limit: linksLimit)),
             family: familyHeight, running: workCount, completed: settled,
@@ -401,12 +419,11 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         )
         mark.frame = layout.mark
         name.frame = layout.name
-        nameField?.frame = layout.name
+        nameField?.frame = layout.field
+        pencil.isHidden = layout.pencilTouch == nil || nameField != nil
+        if let frame = layout.pencilTouch { pencil.frame = frame }
         subtitle.frame = layout.subtitle
         for (tile, frame) in zip(tiles, layout.tiles) { tile.place(frame) }
-        actions.isHidden = actionRows.isEmpty
-        actions.frame = layout.actions.frame
-        actions.show(actionRows, layout: layout.actions)
         mediaHeading.isHidden = layout.media == nil
         mediaCard.isHidden = layout.media == nil
         if let frame = layout.mediaHeading { mediaHeading.frame = frame }
@@ -420,7 +437,7 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         if let frame = layout.familyHeading { familyHeading.frame = frame }
         if let frame = layout.family {
             familyCard.frame = frame
-            tree.frame = familyCard.bounds
+            if tree.frame != familyCard.bounds { tree.frame = familyCard.bounds }
         }
         activityHeading.isHidden = layout.activityHeading == nil
         if let frame = layout.activityHeading { activityHeading.frame = frame }
@@ -428,8 +445,100 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         if let card = layout.running { running.place(card) }
         completed.isHidden = layout.completed == nil
         if let card = layout.completed { completed.place(card) }
-        scroll.contentSize = CGSize(width: width, height: layout.contentHeight)
+        let size = CGSize(width: width, height: layout.contentHeight)
+        // Grown or shrunk while pulled past an end, it takes its new size
+        // once it is back (it bounces to its old end first) or at rest.
+        if let size = heldSize.laidOut(size, current: scroll.contentSize, holding: holding) { scroll.contentSize = size }
     }
+
+    private var heldSize = StemCellSessionDetailLayout.HeldSize()
+
+    private var stretched: Bool {
+        StemCellSessionDetailLayout.stretched(
+            offset: scroll.contentOffset.y, top: scroll.adjustedContentInset.top, bottom: scroll.adjustedContentInset.bottom,
+            contentHeight: scroll.contentSize.height, viewport: scroll.bounds.height
+        )
+    }
+
+    /// A finger pulls it, or it bounces, past an end.
+    private var holding: Bool { (scroll.isTracking || scroll.isDecelerating) && stretched }
+
+    private func applyHeldSize() {
+        if let size = heldSize.release(current: scroll.contentSize, holding: holding) { scroll.contentSize = size }
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if heldSize.held != nil { applyHeldSize() }
+        #if DEBUG
+        probe?.watch()
+        #endif
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { applyHeldSize() }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { applyHeldSize() }
+
+    #if DEBUG
+    /// For the UI tests: while a finger pulls the screen past an end, how
+    /// often the content stepped back against the pull, as the scroll
+    /// view's value; with `relayout`, the screen laid out again on every
+    /// frame meanwhile, as a working conversation lays it out.
+    private final class Probe: NSObject {
+        weak var screen: StemCellSessionDetailViewController?
+        var link: CADisplayLink!
+        private let relayout: Bool
+        private var last: CGFloat?
+        private var lastStretched = false
+        private var stretchedFrames = 0
+        private var backwards = 0
+
+        @MainActor init(_ screen: StemCellSessionDetailViewController, relayout: Bool) {
+            self.screen = screen
+            self.relayout = relayout
+            super.init()
+            link = CADisplayLink(target: self, selector: #selector(tick))
+            link.add(to: .main, forMode: .common)
+        }
+
+        @MainActor @objc private func tick() {
+            guard let screen else { return link.invalidate() }
+            if relayout {
+                screen.view.setNeedsLayout()
+                screen.view.layoutIfNeeded()
+            }
+            watch()
+        }
+
+        @MainActor func watch() {
+            guard let screen else { return }
+            let scroll = screen.scroll
+            let y = scroll.contentOffset.y
+            let stretched = screen.stretched
+            defer { (last, lastStretched) = (y, stretched) }
+            // A step from a stretch back inside counts too: a snap back
+            // is the jag.
+            guard scroll.isTracking, stretched || lastStretched, let last else { return }
+            if stretched { stretchedFrames += 1 }
+            // Pulled past the top the offset falls, past the bottom it
+            // rises; which end is the nearer one.
+            let first = -scroll.adjustedContentInset.top
+            let end = max(first, scroll.contentSize.height + scroll.adjustedContentInset.bottom - scroll.bounds.height)
+            let atTop = y < (first + end) / 2
+            if atTop ? y > last + 0.5 : y < last - 0.5 { backwards += 1 }
+            scroll.accessibilityValue = "stretched=\(stretchedFrames) backwards=\(backwards)"
+        }
+    }
+
+    private var probe: Probe?
+
+    private func startProbe(relayout: Bool) {
+        scroll.accessibilityIdentifier = "stem-detail-scroll"
+        scroll.accessibilityValue = "stretched=0 backwards=0"
+        probe = Probe(self, relayout: relayout)
+    }
+    #endif
 
     // MARK: Acts
 
@@ -501,7 +610,7 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
             // Placed where they open before the card grows over them.
             UIView.performWithoutAnimation {
                 completed.placeRows(StemCellSessionDetailLayout(
-                    width: view.bounds.width, nameHeight: 0, subtitleHeight: 0, tiles: 0, actions: 0, family: nil,
+                    width: view.bounds.width, nameHeight: 0, subtitleHeight: 0, tiles: 0, family: nil,
                     running: 0, completed: detail.completed.count, open: true
                 ).completed)
             }
@@ -528,12 +637,15 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         field.returnKeyType = .done
         field.autocapitalizationType = .sentences
         field.accessibilityIdentifier = "stem-detail-rename"
-        field.frame = name.frame
+        field.accessibilityLabel = Strings.StemCells.rename
         let initial = field.text ?? ""
         field.onFinish = { [weak self] kept in self?.finishRename(kept, initial: initial) }
         scroll.addSubview(field)
         nameField = field
         name.isHidden = true
+        // The field takes the name's row, the pencil gone.
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
         field.becomeFirstResponder()
         field.selectAll(nil)
     }
@@ -549,10 +661,11 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
         field.onFinish = nil
         field.removeFromSuperview()
         name.isHidden = false
+        view.setNeedsLayout()
         guard let spaceId, let title = kept?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty, title != initial else { return }
         // Shown at once and kept until the computer says the same.
         heldName = title
-        name.text = title
+        applyName()
         StemCellsHaptics.play(.renamed)
         onRenamed?()
         let store = session.store
@@ -561,15 +674,21 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
 
     @objc private func tappedAway() { endEditingName(keep: true) }
 
-    /// Beside the rows' own taps, never instead of them; not on the name,
-    /// whose tap starts the rename.
+    /// Beside the rows' own taps, never instead of them; not on the name
+    /// or its pencil, whose tap starts the rename.
     func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard let view = touch.view else { return true }
-        if view === name || view.isDescendant(of: actions) { return false }
+        if view === name || view.isDescendant(of: pencil) { return false }
         return nameField.map { !view.isDescendant(of: $0) } ?? true
     }
 
     func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+}
+
+/// The detail's scroll: a drag begun on a media cell, or any control,
+/// still scrolls, however slowly it starts.
+final class StemCellDetailScrollView: UIScrollView {
+    override func touchesShouldCancel(in view: UIView) -> Bool { true }
 }
 
 /// A white card, Settings' rounding.

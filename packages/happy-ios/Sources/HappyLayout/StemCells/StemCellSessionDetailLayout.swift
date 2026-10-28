@@ -8,36 +8,40 @@ import CoreGraphics
 /// (`StemCellsSettingsLayout`). Under the glass bar, scrolling:
 ///
 ///          (mark)
-///       Pineapple poem          ← renames where it stands
+///       Pineapple poem ✎        ← the pencil renames it where it stands
 ///       Task · Working
+///   FAMILY
+///   ┌ the sidebar's tree ─┐     ← its parent, siblings, children
 ///   ┌────────┐ ┌────────┐
 ///   │ Opus 5 │ │ High   │       ← tiles, two to a row; an odd
 ///   │ Model  │ │ Effort │         last one the row's width
 ///   └────────┘ └────────┘
 ///   ┌ Today 3:41 AM ──────┐
-///   ┌ Rename ──────────── ┐     ← actions, Settings' rows
 ///   MEDIA
 ///   ┌──┬──┬──┐                  ← what it showed, Telegram's
 ///   ├──┼──┼──┤                    grid, three to a row
 ///   │ Show more           │
 ///   LINKS
 ///   ┌ title / host ───────┐     ← the links written in it
-///   FAMILY
-///   ┌ the sidebar's tree ─┐     ← its parent, siblings, children
 ///   ACTIVITY
 ///   ┌ running agents,     ┐     ← desktop's Activity: what is at
 ///   │ terminals           │       work, then what settled, folded
 ///   └─────────────────────┘
 ///   ┌ Completed      3  › ┐
 ///
-/// A section with nothing in it isn't drawn: no media, no links, no
-/// family, nothing at work or settled.
+/// A section with nothing in it isn't drawn: no family, no media, no
+/// links, nothing at work or settled.
 public struct StemCellSessionDetailLayout: Equatable, Sendable {
     public enum Metrics {
         public static let top: CGFloat = 12
         public static let mark: CGFloat = 88
         public static let nameGap: CGFloat = 14
         public static let subtitleGap: CGFloat = 2
+        /// The pencil after the name, its glyph's box; a finger's room
+        /// around it takes the tap.
+        public static let pencil: CGFloat = 20
+        public static let pencilGap: CGFloat = 6
+        public static let pencilTouch: CGFloat = 44
         public static let textSide: CGFloat = StemCellsSettingsLayout.Metrics.textSide
         public static let side: CGFloat = StemCellsSettingsLayout.Metrics.side
         public static let radius: CGFloat = StemCellsSettingsLayout.Metrics.radius
@@ -115,28 +119,36 @@ public struct StemCellSessionDetailLayout: Equatable, Sendable {
     }
 
     public var mark: CGRect
+    /// The name, as wide as it reads, centred.
     public var name: CGRect
+    /// The pencil just after it, and where its tap lands; nil when it
+    /// can't be renamed.
+    public var pencil: CGRect?
+    public var pencilTouch: CGRect?
+    /// The field the name becomes while renamed: the row's width.
+    public var field: CGRect
     public var subtitle: CGRect
+    public var familyHeading: CGRect?
+    public var family: CGRect?
     public var tiles: [Tile]
-    public var actions: StemCellsSettingsLayout.Card
     public var mediaHeading: CGRect?
     public var media: MediaCard?
     public var linksHeading: CGRect?
     public var links: LinksCard?
-    public var familyHeading: CGRect?
-    public var family: CGRect?
     public var activityHeading: CGRect?
     /// What is at work: the children, then the terminals.
     public var running: ActivityCard?
     public var completed: ActivityCard?
     public var contentHeight: CGFloat
 
-    /// `media` and `links` what the shared sections show (nil or none:
-    /// not drawn); `running` rows at work, `completed` settled (shown
-    /// under the fold while `open`, its count `countWidth` wide);
-    /// `actions` Settings rows with a glyph each.
+    /// `nameWidth` the name's single line, nil for the row's width;
+    /// `renames` puts the pencil after it. The family's tree is
+    /// `family` tall (nil: not drawn); `media` and `links` what the
+    /// shared sections show (nil or none: not drawn); `running` rows at
+    /// work, `completed` settled (shown under the fold while `open`, its
+    /// count `countWidth` wide).
     public init(
-        width: CGFloat, nameHeight: CGFloat, subtitleHeight: CGFloat, tiles count: Int, actions: Int,
+        width: CGFloat, nameHeight: CGFloat, nameWidth: CGFloat? = nil, renames: Bool = false, subtitleHeight: CGFloat, tiles count: Int,
         media: Shown? = nil, links: Shown? = nil, family familyHeight: CGFloat?,
         running: Int, completed: Int, countWidth: CGFloat = 0, open: Bool
     ) {
@@ -144,10 +156,40 @@ public struct StemCellSessionDetailLayout: Equatable, Sendable {
         let cardWidth = max(0, width - 2 * M.side)
         let textWidth = max(0, width - 2 * M.textSide)
         mark = CGRect(x: ((width - M.mark) / 2).rounded(), y: M.top, width: M.mark, height: M.mark)
-        name = CGRect(x: M.textSide, y: mark.maxY + M.nameGap, width: textWidth, height: nameHeight)
+        let nameTop = mark.maxY + M.nameGap
+        field = CGRect(x: M.textSide, y: nameTop, width: textWidth, height: nameHeight)
+        // The name stays centred under the mark; the pencil hangs after
+        // it, as much room kept on the other side.
+        let hang = renames ? M.pencilGap + M.pencil : 0
+        let text = min((nameWidth ?? textWidth).rounded(.up), max(0, textWidth - 2 * hang))
+        name = CGRect(x: ((width - text) / 2).rounded(), y: nameTop, width: text, height: nameHeight)
+        if renames {
+            let pencil = CGRect(x: name.maxX + M.pencilGap, y: (name.midY - M.pencil / 2).rounded(), width: M.pencil, height: M.pencil)
+            self.pencil = pencil
+            let grow = (M.pencilTouch - M.pencil) / 2
+            pencilTouch = pencil.insetBy(dx: -grow, dy: -grow)
+        } else {
+            pencil = nil
+            pencilTouch = nil
+        }
         subtitle = CGRect(x: M.textSide, y: name.maxY + M.subtitleGap, width: textWidth, height: subtitleHeight)
 
         var y = subtitle.maxY + M.tilesTop
+        func heading() -> CGRect {
+            let frame = CGRect(x: M.side + M.headingInset, y: y, width: max(0, cardWidth - 2 * M.headingInset), height: M.headingHeight)
+            y = frame.maxY + M.headingGap
+            return frame
+        }
+
+        // Where it sits first, right under its name.
+        if let familyHeight {
+            familyHeading = heading()
+            family = CGRect(x: M.side, y: y, width: cardWidth, height: familyHeight)
+            y += familyHeight + M.cardGap
+        } else {
+            familyHeading = nil
+            family = nil
+        }
         let tileWidth = max(0, ((cardWidth - M.tileGap) / 2).rounded(.down))
         var tiles: [Tile] = []
         let count = max(0, count)
@@ -170,18 +212,6 @@ public struct StemCellSessionDetailLayout: Equatable, Sendable {
         self.tiles = tiles
         if let last = tiles.last { y = last.frame.maxY + M.cardGap }
 
-        var rows: [StemCellsSettingsLayout.Row] = []
-        for index in 0..<max(0, actions) {
-            rows.append(StemCellsSettingsLayout.row(.init(hasIcon: true, accessory: .none), y: CGFloat(index) * StemCellsSettingsLayout.Metrics.row, width: cardWidth, last: index == actions - 1))
-        }
-        self.actions = StemCellsSettingsLayout.Card(frame: CGRect(x: M.side, y: y, width: cardWidth, height: CGFloat(max(0, actions)) * StemCellsSettingsLayout.Metrics.row), rows: rows)
-        if actions > 0 { y = self.actions.frame.maxY + M.cardGap }
-
-        func heading() -> CGRect {
-            let frame = CGRect(x: M.side + M.headingInset, y: y, width: max(0, cardWidth - 2 * M.headingInset), height: M.headingHeight)
-            y = frame.maxY + M.headingGap
-            return frame
-        }
         /// "Show more" at `top`, the card's last row.
         func more(_ shown: Shown, top: CGFloat) -> StemCellsSettingsLayout.Row? {
             shown.more ? StemCellsSettingsLayout.row(.init(hasIcon: false, accessory: .none), y: top, width: cardWidth, last: true) : nil
@@ -240,15 +270,6 @@ public struct StemCellSessionDetailLayout: Equatable, Sendable {
             self.links = nil
         }
 
-        if let familyHeight {
-            familyHeading = heading()
-            family = CGRect(x: M.side, y: y, width: cardWidth, height: familyHeight)
-            y += familyHeight + M.cardGap
-        } else {
-            familyHeading = nil
-            family = nil
-        }
-
         activityHeading = running > 0 || completed > 0 ? heading() : nil
         if running > 0 {
             let card = ActivityCard(frame: CGRect(x: M.side, y: y, width: cardWidth, height: CGFloat(running) * M.activityRow), disclosure: nil, rows: listRows(running, from: 0))
@@ -269,5 +290,41 @@ public struct StemCellSessionDetailLayout: Equatable, Sendable {
             self.completed = nil
         }
         contentHeight = y - M.cardGap + M.bottom
+    }
+
+    /// Pulled past either end, top or bottom: the content's offset
+    /// `offset` in a viewport `viewport` tall, inset `top` and `bottom`,
+    /// over content `contentHeight` tall. A short page still has its top
+    /// as its end.
+    public static func stretched(offset: CGFloat, top: CGFloat, bottom: CGFloat, contentHeight: CGFloat, viewport: CGFloat) -> Bool {
+        let first = -top
+        let last = max(first, contentHeight + bottom - viewport)
+        return offset < first || offset > last
+    }
+
+    /// A content size laid out while a finger holds the scroll stretched
+    /// past an end, kept back until the scroll is back or at rest: a new
+    /// size mid-stretch moves the content under the finger.
+    public struct HeldSize: Equatable {
+        public private(set) var held: CGSize?
+
+        public init() {}
+
+        /// Laid out at `size` over the scroll's `current`: the size to
+        /// give it now, if any. Laid out back at `current`, nothing is
+        /// held any more.
+        public mutating func laidOut(_ size: CGSize, current: CGSize, holding: Bool) -> CGSize? {
+            if size == current { held = nil; return nil }
+            if holding { held = size; return nil }
+            held = nil
+            return size
+        }
+
+        /// The held size, once nothing holds it.
+        public mutating func release(current: CGSize, holding: Bool) -> CGSize? {
+            guard let size = held, !holding else { return nil }
+            held = nil
+            return size == current ? nil : size
+        }
     }
 }

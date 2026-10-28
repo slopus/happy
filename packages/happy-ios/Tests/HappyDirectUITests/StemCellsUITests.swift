@@ -814,6 +814,7 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertFalse(app.textFields["stem-chat-title-field"].exists, "the header renamed")
         XCTAssertEqual(app.staticTexts["stem-detail-name"].label, "Research Assistant")
         assertTiles()
+        assertPencil()
         // At the top level: no section, no siblings.
         let family = app.descendants(matching: .any)["stem-detail-family"]
         if family.exists {
@@ -888,6 +889,11 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertTrue(detail.waitForExistence(timeout: 5), "the capsule didn't open the subtask's detail")
         assertTiles()
         XCTAssertTrue(family.waitForExistence(timeout: 5), "a subtask has no family")
+        // First, right under its name, before the tiles.
+        let model = app.descendants(matching: .any)["stem-detail-tile:model"]
+        XCTAssertGreaterThan(family.frame.minY, app.staticTexts["stem-detail-subtitle"].frame.maxY, "the family isn't under the name")
+        XCTAssertLessThan(family.frame.maxY, model.frame.minY, "the family isn't before the tiles")
+        XCTAssertFalse(app.buttons["stem-detail-rename-button"].exists, "a subtask offered a rename")
         for (id, what) in [("stem-row:space:Plan Lisbon trip", "its parent"), ("stem-row:session:Day Trips", "itself"), ("stem-row:session:Neighbourhoods", "its sibling"), ("stem-row:session:Best train day trip", "its child")] {
             XCTAssertTrue(family.descendants(matching: .any)[id].exists, "the family lacks \(what)")
         }
@@ -912,6 +918,82 @@ final class StemCellsUITests: XCTestCase {
         app.tapBack()
         pause(1)
         app.tapBack()
+    }
+
+    /// Pulled past either end and held there, the finger still pulling
+    /// slowly a long way, three times over: the detail stretches under the
+    /// finger and settles back. The content never steps back against the
+    /// pull, and what sat on screen before the pulls sits in the same place
+    /// after them.
+    func testSessionDetailBounce() {
+        pullPastTheEnds(probe: "watch", distance: (0.72, 0.12), velocity: 120, hold: 2)
+    }
+
+    /// The same while the screen is laid out again on every frame, as a
+    /// working conversation lays it out (`STEM_DETAIL_PROBE=relayout`).
+    func testSessionDetailBounceWhileWorking() {
+        pullPastTheEnds(probe: "relayout", distance: (0.75, 0.3), velocity: 300, hold: 1.2)
+    }
+
+    private func pullPastTheEnds(probe: String, distance: (from: CGFloat, to: CGFloat), velocity: XCUIGestureVelocity, hold: TimeInterval) {
+        app.terminate()
+        app.launchEnvironment["STEM_DETAIL_PROBE"] = probe
+        app.launch()
+        home()
+        pause(1)
+        let bot = row("space", "Research Assistant")
+        XCTAssertTrue(bot.waitForExistence(timeout: 5))
+        bringIntoView(bot)
+        bot.tap()
+        let title = app.descendants(matching: .any)["stem-chat-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        pause(1)
+        title.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stem-detail"].waitForExistence(timeout: 5))
+        let media = app.descendants(matching: .any)["stem-detail-media"]
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-detail-media:")).firstMatch.waitForExistence(timeout: 10), "no shared media")
+        let scroll = app.scrollViews["stem-detail-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5), "the probe isn't on")
+        pause(2)
+        let low = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: distance.from))
+        let high = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: distance.to))
+        let name = app.staticTexts["stem-detail-name"]
+        // Each end in turn: brought there, pulled past it three times and
+        // let go, the content where it was.
+        for (end, toEnd, from, to) in [("bottom", { self.app.swipeUp(velocity: .fast) }, low, high), ("top", { self.app.swipeDown(velocity: .fast) }, high, low)] {
+            for _ in 0..<8 { toEnd() }
+            pause(2)
+            let anchor = end == "top" ? name : media
+            let before = anchor.frame
+            capture("bounce-\(end)-before")
+            for _ in 0..<3 {
+                from.press(forDuration: 0.05, thenDragTo: to, withVelocity: velocity, thenHoldForDuration: hold)
+                pause(1.5)
+            }
+            capture("bounce-\(end)-after")
+            XCTAssertEqual(anchor.frame.minY, before.minY, accuracy: 0.5, "pulled past the \(end), the content didn't settle where it was")
+            XCTAssertEqual(anchor.frame.height, before.height, accuracy: 0.5)
+        }
+        let value = scroll.value as? String ?? ""
+        print("STEM_BOUNCE \(probe) \(value)")
+        let counts = Dictionary(uniqueKeysWithValues: value.split(separator: " ").compactMap { pair -> (String, Int)? in
+            let parts = pair.split(separator: "=")
+            guard parts.count == 2, let count = Int(parts[1]) else { return nil }
+            return (String(parts[0]), count)
+        })
+        XCTAssertGreaterThan(counts["stretched"] ?? 0, 60, "the pulls never stretched it: \(value)")
+        XCTAssertEqual(counts["backwards"], 0, "the content stepped back against the pull: \(value)")
+    }
+
+    /// The pencil right after the name, on its line, and no Rename row.
+    private func assertPencil() {
+        let pencil = app.buttons["stem-detail-rename-button"]
+        let name = app.staticTexts["stem-detail-name"]
+        XCTAssertTrue(pencil.waitForExistence(timeout: 5), "no pencil after the name")
+        XCTAssertEqual(pencil.frame.midY, name.frame.midY, accuracy: 1.5, "the pencil isn't on the name's line")
+        XCTAssertGreaterThan(pencil.frame.midX, name.frame.maxX, "the pencil isn't after the name")
+        XCTAssertLessThan(pencil.frame.minX, name.frame.maxX + 12, "the pencil isn't next to the name")
+        XCTAssertFalse(app.descendants(matching: .any)["stem-settings:rename"].exists, "the Rename row is still there")
     }
 
     /// Model, effort and when it started; nothing else counted.
@@ -1469,8 +1551,11 @@ final class StemCellsUITests: XCTestCase {
             if to == new { capture("rename-before") }
             title.tap()
             XCTAssertTrue(app.descendants(matching: .any)["stem-detail"].waitForExistence(timeout: 5), "the capsule didn't open the detail")
-            app.descendants(matching: .any)["stem-settings:rename"].tap()
+            let name = app.staticTexts["stem-detail-name"].frame
+            app.buttons["stem-detail-rename-button"].tap()
             XCTAssertTrue(field.waitForExistence(timeout: 3), "the name never became a field")
+            XCTAssertEqual(field.frame.midY, name.midY, accuracy: 1, "the field isn't where the name was")
+            XCTAssertFalse(app.buttons["stem-detail-rename-button"].exists && app.buttons["stem-detail-rename-button"].isHittable, "the pencil stayed while renaming")
             pause(0.8)
             if to == new { capture("rename-editing") }
             // The field opens with its name selected: typing replaces it.

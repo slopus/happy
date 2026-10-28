@@ -41,6 +41,11 @@ final class StemCellsGlassBar: UIView {
         }
     }
     var onClose: (() -> Void)?
+    /// The scrim under the row, keeping what scrolls under it legible.
+    /// Off for a screen with nothing on the row but its glass.
+    var scrims = true {
+        didSet { if scrims != oldValue { setNeedsLayout() } }
+    }
     var title: String? {
         didSet {
             guard title != oldValue else { return }
@@ -218,7 +223,7 @@ final class StemCellsGlassBar: UIView {
         let layout = layout
         scrim.frame = layout.backdrop
         // Nothing on the row, nothing to keep legible.
-        scrim.isHidden = leading == nil && !closes && title == nil && actions.isEmpty && !isSearching
+        scrim.isHidden = !scrims || (leading == nil && !closes && title == nil && actions.isEmpty && !isSearching)
         place(leadingGlass, layout.leading)
         leadingButton.frame = leadingGlass.bounds
         place(closeGlass, layout.close)
