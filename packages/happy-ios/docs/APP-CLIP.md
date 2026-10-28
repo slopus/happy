@@ -250,9 +250,10 @@ The first upload was rejected with ITMS-90474 because the Clip had no
 
 **Local dependency patch.** At its pinned revision `0073165`, UltraView does not
 compile with Xcode 26.6. The error is `sending 'layer' risks causing data races`
-at `Sources/UltraCore/UIKit/NodeTransitionAnimator.swift:201`. Build 26 was built
-from a SwiftPM checkout patched locally as follows. The patch is in no
-repository:
+at `Sources/UltraCore/UIKit/NodeTransitionAnimator.swift:201`. Builds 26 and 27
+were both built from a SwiftPM checkout patched locally as follows. The patch is
+saved as `AppClip/patches/ultraview-NodeTransitionAnimator-201.patch`, but it is
+not in slopus/ultraview:
 
 ```diff
 -            let shown = presented ? (layer.presentation() ?? layer) : layer
@@ -260,6 +261,9 @@ repository:
 +            if presented, let presentation = layer.presentation() { shown = presentation } else { shown = layer }
 ```
 
+To rebuild either binary, resolve packages, apply the patch inside the UltraView
+checkout (`git apply <path>/ultraview-NodeTransitionAnimator-201.patch`), then
+build with `-disableAutomaticPackageResolution` so the checkout is not reset.
 Land that fix in slopus/ultraview and bump the pin before the next binary.
 
 **Build 27: the chat look.** Build 26 has the earlier plain-text guest screen.

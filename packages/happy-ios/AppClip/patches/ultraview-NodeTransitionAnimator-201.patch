@@ -1,0 +1,14 @@
+diff --git a/Sources/UltraCore/UIKit/NodeTransitionAnimator.swift b/Sources/UltraCore/UIKit/NodeTransitionAnimator.swift
+index a6333eb..53e9ac4 100644
+--- a/Sources/UltraCore/UIKit/NodeTransitionAnimator.swift
++++ b/Sources/UltraCore/UIKit/NodeTransitionAnimator.swift
+@@ -198,7 +198,8 @@ final class NodeTransitionAnimator {
+         func visit(_ node: UltraNode, parent: Int?) {
+             guard let view = node.mountedView else { return }
+             let layer = view.layer
+-            let shown = presented ? (layer.presentation() ?? layer) : layer
++            let shown: CALayer
++            if presented, let presentation = layer.presentation() { shown = presentation } else { shown = layer }
+             let size = shown.bounds.size
+             let frame = CGRect(
+                 x: shown.position.x - size.width * shown.anchorPoint.x,
