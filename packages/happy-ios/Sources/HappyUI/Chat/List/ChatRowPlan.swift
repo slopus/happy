@@ -23,8 +23,10 @@ final class ChatRowPlan: @unchecked Sendable {
     /// Stem Cells sidebar proposals, which the screen keeps as live views
     /// over the row: each laid out, at its frame in row coordinates.
     let proposals: [(artifactId: String, layout: StemCellSidebarProposalLayout, frame: CGRect)]
+    /// What its tap toggles (Show full, Show less), as a VoiceOver action.
+    let toggles: String?
 
-    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: StemCellSidebarProposalLayout, frame: CGRect)] = []) {
+    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: StemCellSidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil) {
         self.id = id
         self.size = size
         self.items = items
@@ -32,6 +34,7 @@ final class ChatRowPlan: @unchecked Sendable {
         self.alpha = alpha
         self.accessibilityLabel = accessibilityLabel
         self.proposals = proposals
+        self.toggles = toggles
     }
 }
 

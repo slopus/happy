@@ -112,6 +112,9 @@ extension Strings {
         }
         public static let sending = "Sending…"
         public static let sendFailed = "Not sent. Tap to retry."
+        /// Under a long message cut to its first lines, and opened (desktop's).
+        public static let showFull = "Show full"
+        public static let showLess = "Show less"
 
 
         // A Surface on the phone: read, and a todo added.

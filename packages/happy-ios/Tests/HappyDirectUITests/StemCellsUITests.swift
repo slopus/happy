@@ -1038,6 +1038,50 @@ final class StemCellsUITests: XCTestCase {
         app.tapBack()
     }
 
+    /// A 30-line message, sent: its bubble shows desktop's first ten lines
+    /// and Show full under them (10 + 10 × 24 + 8 + 16 + 10, 8 above and
+    /// below), a tap opens all 30 (some wrapped), and another cuts it back.
+    func testLongMessageFolds() {
+        home()
+        pause(1)
+        let bot = row("space", "Research Assistant")
+        XCTAssertTrue(bot.waitForExistence(timeout: 5))
+        bringIntoView(bot)
+        bot.tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        pause(2)
+        let mark = "Fold check \(Int(Date().timeIntervalSince1970))"
+        // Every third line runs past a bubble's width and wraps.
+        let text = ([mark] + (2...30).map { "Line \($0) of 30" + ($0 % 3 == 0 ? ", long enough to run the whole width of the bubble and wrap" : "") }).joined(separator: "\n")
+        composer.tap()
+        composer.typeText(text)
+        pause(1)
+        app.buttons["Send"].tap()
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
+        let message = app.descendants(matching: .any).matching(identifier: "stem-message").matching(NSPredicate(format: "label BEGINSWITH %@", mark)).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 10), "the message isn't in the chat")
+        // The keyboard dragged down, the message where it can be read.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(
+            forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)), withVelocity: .slow, thenHoldForDuration: 0.2
+        )
+        pause(2)
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "the keyboard is still up")
+        bringIntoView(message)
+        pause(1)
+        capture("fold-closed")
+        XCTAssertEqual(message.frame.height, 300, accuracy: 18, "the message isn't cut to ten lines")
+        message.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+        pause(1.5)
+        bringIntoView(message)
+        capture("fold-open")
+        XCTAssertGreaterThan(message.frame.height, 780, "the tap didn't open all thirty lines")
+        message.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+        pause(1.5)
+        XCTAssertEqual(message.frame.height, 300, accuracy: 18, "a second tap didn't cut it back")
+        app.tapBack()
+    }
+
     /// Pulled past either end and held there, the finger still pulling
     /// slowly a long way, three times over: the detail stretches under the
     /// finger and settles back. The content never steps back against the

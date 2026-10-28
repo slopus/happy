@@ -154,17 +154,25 @@ public struct StemCellSendLift: Equatable, Sendable {
 /// One message of a Stem Cells conversation, as desktop's `Message` sets
 /// it on a phone's width: 16 in from the sides and 8 above and below
 /// (desktop's 20 and 16, scaled), the agent's markdown with its blocks 8
-/// apart, the person's text in a bubble at the right, at most 76% of the
-/// column, 10 above and below its text and 12 beside it.
+/// apart, the person's text in a bubble at the right, 10 above and below
+/// its text and 12 beside it. The bubble reaches to 36 from the column's
+/// left, as far as Telegram lets one on a phone; past desktop's ten lines
+/// its text is cut there, "Show full" under it.
 public struct StemCellMessageLayout: Equatable, Sendable {
     public enum Metrics {
         public static let marginH: CGFloat = 16
         public static let marginV: CGFloat = 8
         public static let blockGap: CGFloat = 8
-        public static let bubbleMaxFraction: CGFloat = 0.76
+        /// The least room left of a person's bubble, and of their pictures.
+        public static let bubbleLeading: CGFloat = 36
         public static let bubblePaddingH: CGFloat = 12
         public static let bubblePaddingV: CGFloat = 10
         public static let bubbleRadius: CGFloat = 10
+        /// Desktop's `MESSAGE_PREVIEW_HEIGHT`: a person's message past this
+        /// many lines shows only them until opened.
+        public static let previewLines = 10
+        /// Between the text and its Show full / Show less line.
+        public static let foldGap: CGFloat = 8
         /// The status line under a person's message while it is on its way.
         public static let statusGap: CGFloat = 2
         public static let statusHeight: CGFloat = 14
@@ -201,6 +209,10 @@ public struct StemCellMessageLayout: Equatable, Sendable {
     public var bubble: CGRect?
     /// The person's text, drawn as written.
     public var text: CGRect?
+    /// The text is its first `previewLines`, cut (`Fold.preview`).
+    public var cut = false
+    /// Show full, or Show less, under a long message's text.
+    public var foldControl: CGRect?
     /// The pictures the person sent, under the bubble at the right.
     public var pictures: [CGRect]
     public var status: CGRect?
@@ -259,24 +271,66 @@ public struct StemCellMessageLayout: Equatable, Sendable {
         return StemCellMessageLayout(size: CGSize(width: max(0, width), height: y + M.marginV), parts: placed, bubble: nil, text: nil, pictures: [], status: nil)
     }
 
+    /// A person's message that may be longer than `previewLines`.
+    public struct Fold {
+        /// The text cut to `previewLines`; shorter than the whole, it folds.
+        public var preview: Measurable
+        /// Show full, or, opened, Show less.
+        public var control: Measurable
+        public var opened: Bool
+        /// The text's line height: no taller than `previewLines` of it, the
+        /// preview is never measured.
+        public var lineHeight: CGFloat
+
+        public init(preview: Measurable, control: Measurable, opened: Bool, lineHeight: CGFloat) {
+            self.preview = preview
+            self.control = control
+            self.opened = opened
+            self.lineHeight = lineHeight
+        }
+    }
+
     /// `showsStatus` keeps a line under the bubble for a refusal. `text` is
     /// nil for pictures sent alone; `pictures` are drawn as desktop draws a
     /// message's photos: justified, against the right, at most four.
-    public static func user(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable?, pictures: [StemCellMediaFlow.Image] = [], showsStatus: Bool) -> StemCellMessageLayout {
+    public static func user(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable?, fold: Fold? = nil, pictures: [StemCellMediaFlow.Image] = [], showsStatus: Bool) -> StemCellMessageLayout {
         typealias M = Metrics
         let column = ChatColumn(rowWidth: width, maxContentWidth: maxContentWidth)
         let inner = max(0, column.width - 2 * M.marginH)
-        let maxBubble = (inner * M.bubbleMaxFraction).rounded(.down)
+        let maxBubble = max(0, column.width - M.marginH - M.bubbleLeading)
         let right = column.x + column.width - M.marginH
         var bottom = M.marginV
         var bubble: CGRect?
         var textFrame: CGRect?
+        var cut = false
+        var foldControl: CGRect?
         if let text {
-            let textSize = text.size(fitting: max(0, maxBubble - 2 * M.bubblePaddingH))
-            let bubbleWidth = textSize.width + 2 * M.bubblePaddingH
-            let frame = CGRect(x: right - bubbleWidth, y: bottom, width: bubbleWidth, height: textSize.height + 2 * M.bubblePaddingV)
+            let measure = max(0, maxBubble - 2 * M.bubblePaddingH)
+            var textSize = text.size(fitting: measure)
+            var contentWidth = textSize.width
+            var controlSize: CGSize?
+            if let fold, textSize.height > CGFloat(M.previewLines) * fold.lineHeight + 0.5 {
+                let preview = fold.preview.size(fitting: measure)
+                if preview.height < textSize.height {
+                    // As wide cut as whole, as desktop clips it: opening
+                    // it only grows it down. The cut line's ellipsis can
+                    // be the widest.
+                    textSize.width = max(textSize.width, preview.width)
+                    if !fold.opened { textSize.height = preview.height; cut = true }
+                    let control = fold.control.size(fitting: measure)
+                    controlSize = control
+                    contentWidth = max(textSize.width, control.width)
+                }
+            }
+            let contentHeight = textSize.height + (controlSize.map { M.foldGap + $0.height } ?? 0)
+            let bubbleWidth = contentWidth + 2 * M.bubblePaddingH
+            let frame = CGRect(x: right - bubbleWidth, y: bottom, width: bubbleWidth, height: contentHeight + 2 * M.bubblePaddingV)
             bubble = frame
-            textFrame = CGRect(x: frame.minX + M.bubblePaddingH, y: frame.minY + M.bubblePaddingV, width: textSize.width, height: textSize.height)
+            let placed = CGRect(x: frame.minX + M.bubblePaddingH, y: frame.minY + M.bubblePaddingV, width: textSize.width, height: textSize.height)
+            textFrame = placed
+            if let controlSize {
+                foldControl = CGRect(x: placed.minX, y: placed.maxY + M.foldGap, width: controlSize.width, height: controlSize.height)
+            }
             bottom = frame.maxY
         }
         var pictureFrames: [CGRect] = []
@@ -296,7 +350,7 @@ public struct StemCellMessageLayout: Equatable, Sendable {
         }
         return StemCellMessageLayout(
             size: CGSize(width: max(0, width), height: bottom + M.marginV),
-            parts: [], bubble: bubble, text: textFrame, pictures: pictureFrames, status: status
+            parts: [], bubble: bubble, text: textFrame, cut: cut, foldControl: foldControl, pictures: pictureFrames, status: status
         )
     }
 }

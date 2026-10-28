@@ -100,7 +100,8 @@ final class StemCellChatViewController: UIViewController {
     /// The steering waiting under the working line, as of the plans on
     /// screen: read with them, never with a snapshot they don't show yet.
     private var plansQueued = Set<String>()
-    /// Other agents' messages opened to read, for this screen's life.
+    /// Other agents' messages, and the person's long ones, opened to read,
+    /// for this screen's life.
     private var opened = Set<String>()
     /// The sidebar proposals the transcript shows, and their cards by row.
     private let proposals: StemCellSidebarProposals
@@ -852,6 +853,12 @@ final class StemCellChatViewController: UIViewController {
             }()
             row.apply(plan)
             row.accessibilityLabel = plan.accessibilityLabel
+            // A long message reads whole; it opens or closes by an action.
+            let id = plan.id
+            let toggles = plan.toggles.map { name in
+                [UIAccessibilityCustomAction(name: name) { [weak self] _ in self?.toggle(id); return true }]
+            }
+            row.accessibilityCustomActions = toggles
             var cardsHosted: [UIView] = []
             for (artifactId, layout, frame) in plan.proposals {
                 guard let shown = shownProposals[artifactId] else { continue }
@@ -883,6 +890,7 @@ final class StemCellChatViewController: UIViewController {
                 let message = UIAccessibilityElement(accessibilityContainer: row)
                 message.accessibilityLabel = label
                 message.accessibilityIdentifier = "stem-message"
+                message.accessibilityCustomActions = toggles
                 message.accessibilityFrameInContainerSpace = plan.items.reduce(CGRect.null) { frame, item in
                     item.wordsFrame.map { frame.union($0) } ?? frame
                 }
@@ -1292,8 +1300,9 @@ final class StemCellChatViewController: UIViewController {
         }
     }
 
-    /// Opens or closes another agent's message where it is, as the
-    /// conversation grows anywhere: read at the newest, it stays there.
+    /// Opens or closes another agent's message, or the person's long one,
+    /// where it is, as the conversation grows anywhere: read at the newest,
+    /// it stays there.
     private func toggle(_ messageId: String) {
         if opened.remove(messageId) == nil { opened.insert(messageId) }
         // It opens where the finger is, not pulled up after the newest line.

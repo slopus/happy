@@ -162,22 +162,33 @@ actor StemCellChatPlanner {
             return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"), proposals: proposals)
         case .user:
             // Desktop's own message: the text as written (Figtree 16/24), lines and all, in
-            // the accent bubble at the right, its photos under it.
-            let body = text.isEmpty ? nil : MeasuredText(ChatTextStyles.stemCellsText.string(text, color: Palette.userMessageText, in: environment))
+            // the accent bubble at the right, its photos under it. Past ten
+            // lines it is cut there until tapped open, as on desktop.
+            let string = ChatTextStyles.stemCellsText.string(text, color: Palette.userMessageText, in: environment)
+            let body = text.isEmpty ? nil : MeasuredText(string)
+            let preview = MeasuredText(string, maxLines: M.previewLines)
+            let toggles = opened ? Strings.StemCells.showLess : Strings.StemCells.showFull
+            let control = MeasuredText(ChatTextStyles.stemCellsFold.string(toggles, color: Palette.textSecondary, in: environment))
             let pictures: [(id: String, image: StemCellMediaFlow.Image)] = item.pieces.compactMap {
                 guard case .picture(let id, _, let data) = $0 else { return nil }
                 return (id, Self.pictureSize(data))
             }
             var failure = false
             if case .failed = item.delivery { failure = true }
-            let layout = StemCellMessageLayout.user(width: width, maxContentWidth: key.maxContentWidth, text: body?.measurable, pictures: pictures.map(\.image), showsStatus: failure)
+            let layout = StemCellMessageLayout.user(
+                width: width, maxContentWidth: key.maxContentWidth, text: body?.measurable,
+                fold: body.map { _ in .init(preview: preview.measurable, control: control.measurable, opened: opened, lineHeight: ChatTextStyles.stemCellsText.lineHeight ?? 24) },
+                pictures: pictures.map(\.image), showsStatus: failure
+            )
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
             if let bubble = layout.bubble {
                 items.append(.box(ChatBox(frame: bubble, fill: Palette.stemCellsUserBubble, radius: M.bubbleRadius)))
+                if layout.foldControl != nil { hits.append(ChatHit(frame: bubble, action: .toggleTool(item.id))) }
                 hits.append(ChatHit(frame: bubble, action: .copyMenu(text), hold: true))
             }
-            if let body, let frame = layout.text { items.append(.text(body.layout(for: frame), frame)) }
+            if let body, let frame = layout.text { items.append(.text((layout.cut ? preview : body).layout(for: frame), frame)) }
+            if let frame = layout.foldControl { items.append(.text(control.layout(for: frame), frame)) }
             for (picture, frame) in zip(pictures, layout.pictures) {
                 let key = StemCellMediaLoader.sentKey(picture.id)
                 items.append(.media(ChatMedia(key: key, isVideo: false, thumbhash: nil, label: Strings.StemCells.picture), frame: frame))
@@ -194,7 +205,7 @@ actor StemCellChatPlanner {
             // On its way, or waiting for the agent to take it: dimmed, never moved.
             let alpha: CGFloat = item.delivery == .sending || item.delivery == .pending ? 0.6 : 1
             let label = [text, failure ? Strings.StemCells.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
-            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, alpha: alpha, accessibilityLabel: label)
+            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, alpha: alpha, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles)
         case .collaborator:
             // Planned above.
             return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])

@@ -129,9 +129,9 @@ final class StemCellMediaLayoutTests: XCTestCase {
     func testAPersonsPhotosHugTheRightUnderTheBubble() {
         let layout = StemCellMessageLayout.user(width: 390, text: .fixed(width: 40, height: 20), pictures: [image(4032, 3024)], showsStatus: false)
         XCTAssertEqual(layout.bubble, CGRect(x: 310, y: 8, width: 64, height: 40))
-        // 0.76 of 358 is 272: the photo fills it at 4:3.
-        XCTAssertEqual(layout.pictures, [CGRect(x: 102, y: 56, width: 272, height: 204)])
-        XCTAssertEqual(layout.size.height, 268)
+        // 36 clear at the left leaves 338: the photo fills it at 4:3.
+        XCTAssertEqual(layout.pictures, [CGRect(x: 36, y: 56, width: 338, height: 253.5)])
+        XCTAssertEqual(layout.size.height, 317.5)
 
         let alone = StemCellMessageLayout.user(width: 390, text: nil, pictures: [image(100, 200), image(100, 200)], showsStatus: false)
         XCTAssertNil(alone.bubble)

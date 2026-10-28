@@ -277,4 +277,7 @@ extension ChatTextStyles {
     public static func stemCellsActivityHeader(_ level: Int) -> ChatTextStyle {
         ChatTextStyle(.figtree(.semibold), size: 12, lineHeight: 18)
     }
+    /// Show full / Show less under a long message: desktop's quiet mono
+    /// meta line (`agent-trace-row.css`, `data-variant="meta"`), 11/16.
+    public static let stemCellsFold = ChatTextStyle(.plex(.mono), size: 11, lineHeight: 16)
 }
