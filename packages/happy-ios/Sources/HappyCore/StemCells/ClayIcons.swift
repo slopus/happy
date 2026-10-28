@@ -141,6 +141,9 @@ public enum ClayIcons {
         "typo",
         "formatting",
         "lint",
+        "waveform",
+        "microphone",
+        "headphones",
     ]
 
     public static func contains(_ slug: String) -> Bool { slugs.contains(slug) }
