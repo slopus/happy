@@ -72,7 +72,7 @@ final class ChatPlanView: UIView {
     var onAction: ((ChatRowAction) -> Void)?
     private(set) var plan: ChatRowPlan?
     /// The pictures, recordings and stories the plan shows now.
-    var mediaViews: [UIView] { (media as [UIView] + stories as [UIView]).filter { !$0.isHidden } }
+    var mediaViews: [UIView] { (media as [UIView] + stories as [UIView] + pages as [UIView]).filter { !$0.isHidden } }
     private var boxes: [UIView] = []
     private var texts: [ChatTextView] = []
     private var icons: [UIImageView] = []
@@ -87,6 +87,7 @@ final class ChatPlanView: UIView {
     private var mermaids: [ChatMermaidView] = []
     private var media: [ChatMediaView] = []
     private var stories: [StoryInlineView] = []
+    private var pages: [StemCellInlinePageView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -125,6 +126,7 @@ final class ChatPlanView: UIView {
         var mermaidIndex = 0
         var mediaIndex = 0
         var storyIndex = 0
+        var pageIndex = 0
         var order: [UIView] = []
         for item in plan.items {
             switch item {
@@ -233,6 +235,11 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(id)
                 order.append(view)
+            case .embed(.page(let page), let frame):
+                let view = take(&pages, &pageIndex) { StemCellInlinePageView() }
+                view.setLayoutFrame(frame)
+                view.apply(page)
+                order.append(view)
             }
         }
         for view in boxes[boxIndex...] { view.isHidden = true }
@@ -273,6 +280,10 @@ final class ChatPlanView: UIView {
             view.isHidden = true
         }
         for view in stories[storyIndex...] {
+            view.apply(nil)
+            view.isHidden = true
+        }
+        for view in pages[pageIndex...] {
             view.apply(nil)
             view.isHidden = true
         }

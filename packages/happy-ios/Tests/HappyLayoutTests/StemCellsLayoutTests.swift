@@ -356,6 +356,14 @@ final class StemCellsLayoutTests: XCTestCase {
         XCTAssertFalse(StemCellChatScrollHold.follows(scroll(550, decelerating: true)))
     }
 
+    /// An inline page sits under its artifact's card, across the column at its measured height.
+    func testAnInlinePageSitsUnderItsCard() {
+        let layout = StemCellMessageLayout.agent(width: 390, parts: [.card, .page(height: 132)])
+        let card = StemCellResultCardLayout.height
+        XCTAssertEqual(layout.parts, [.card(rect(16, 8, 358, card)), .page(rect(16, 8 + card + 8, 358, 132))])
+        XCTAssertEqual(layout.size, CGSize(width: 390, height: 8 + card + 8 + 132 + 8))
+    }
+
     func testAgentParagraphsSitOneGapApart() {
         let layout = StemCellMessageLayout.agent(width: 390, blocks: [.text(block(height: 24)), .text(block(height: 48))])
         XCTAssertEqual(layout.markdownOrigin, CGPoint(x: 16, y: 8))

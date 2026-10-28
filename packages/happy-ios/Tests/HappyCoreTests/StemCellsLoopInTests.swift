@@ -51,6 +51,32 @@ final class StemCellsLoopInTests: XCTestCase {
     }
 }
 
+/// An HTML artifact that asks to be shown inline is a page the conversation draws.
+final class StemCellInlinePageDecisionTests: XCTestCase {
+    private func object(_ fields: [String: JSONValue]) -> JSONValue {
+        var base: [String: JSONValue] = [
+            "id": .string("a1"), "type": .string("html"), "title": .string("Voice waveform"), "status": .string("active"),
+            "latestVersion": .number(3), "entry": .object(["path": .string("index.html"), "mimeType": .string("text/html")]),
+            "display": .string("inline_expanded"), "live": .null, "background": .null,
+        ]
+        for (key, value) in fields { base[key] = value }
+        return .object(base)
+    }
+
+    func testOnlyAnInlineExpandedPageOfFilesIsShownInline() {
+        XCTAssertEqual(StemCellReferences.page(object([:])), StemCellReferences.Page(version: 3, entry: "index.html"))
+        XCTAssertEqual(StemCellReferences.page(object(["background": .string("#0B0B0F")]))?.background, "#0b0b0f")
+        XCTAssertNil(StemCellReferences.page(object(["background": .string("red")]))?.background)
+        for display: JSONValue in [.null, .string("side"), .string("inline_compact"), .string("someday")] {
+            XCTAssertNil(StemCellReferences.page(object(["display": display])), "\(display)")
+        }
+        XCTAssertNil(StemCellReferences.page(object(["type": .string("markdown")])))
+        XCTAssertNil(StemCellReferences.page(object(["status": .string("deleted")])))
+        XCTAssertNil(StemCellReferences.page(object(["live": .object(["url": .string("http://localhost:5173/")])])))
+        XCTAssertNil(StemCellReferences.page(object(["entry": .null])))
+    }
+}
+
 /// Answers every request with one body.
 private struct Answering: DirectTransport {
     let body: Data

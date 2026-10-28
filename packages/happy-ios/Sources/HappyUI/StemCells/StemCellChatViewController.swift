@@ -110,6 +110,8 @@ final class StemCellChatViewController: UIViewController {
     private var sidebarRows: [StemCellsRow] = []
     /// What the references messages make read as and open.
     private var references = StemCellReferences()
+    /// Inline pages' heights as they measured themselves.
+    private var pageHeights: [String: CGFloat] = [:]
     /// The references with this conversation's own subagents, which the
     /// sidebar's lists never hold.
     private var subagentReferences: StemCellReferences {
@@ -794,7 +796,7 @@ final class StemCellChatViewController: UIViewController {
     }
 
     private var planKey: StemCellChatPlanner.Key {
-        StemCellChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles)
+        StemCellChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
     }
 
     /// Plans the rows off the main thread, then shows them in one frame.
@@ -808,6 +810,15 @@ final class StemCellChatViewController: UIViewController {
         if !unread.isEmpty {
             let store = session.store
             Task { await store.readArtifacts(unread) }
+        }
+        // An HTML artifact a call shows is read for whether it wants to be inline.
+        let pages = items.flatMap(\.pieces).compactMap { piece -> String? in
+            guard case .artifact(let artifact) = piece, artifact.type == "html", artifact.followsLatest, references.artifacts[artifact.id] == nil else { return nil }
+            return artifact.id
+        }
+        if !pages.isEmpty {
+            let store = session.store
+            Task { await store.readArtifacts(pages) }
         }
         // So are the names of the people they mention.
         let people = items.flatMap { references.unknownUsers(in: $0.text) }
@@ -1618,6 +1629,17 @@ extension StemCellChatViewController: NavigationTransitionProviding {
 
 extension StemCellChatViewController: ChatMediaProviding {
     var chatMedia: ChatMediaSource? { media }
+}
+
+extension StemCellChatViewController: StemCellPageHosting {
+    var pageClient: DirectAgentClient { session.client }
+
+    func page(_ artifactId: String, measured height: CGFloat) {
+        let height = min(max(1, height.rounded(.up)), 4000)
+        guard pageHeights[artifactId].map({ abs($0 - height) >= 1 }) ?? (height != StemCellChatPlanner.pageHeight) else { return }
+        pageHeights[artifactId] = height
+        replan()
+    }
 }
 
 extension StemCellChatViewController: StoriesProviding {

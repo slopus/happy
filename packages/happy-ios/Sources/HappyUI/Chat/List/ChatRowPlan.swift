@@ -97,6 +97,16 @@ enum ChatDrawItem {
 enum ChatEmbed: Equatable, Sendable {
     /// A story, by its ID (`StoryInlineView`).
     case story(String)
+    /// An HTML artifact's page (`StemCellInlinePageView`).
+    case page(StemCellInlinePage)
+}
+
+/// An artifact's page shown inline in a Stem Cells conversation: the
+/// version and entry its web view loads through the paired computer.
+struct StemCellInlinePage: Equatable, Sendable {
+    var artifactId: String
+    var title: String
+    var page: StemCellReferences.Page
 }
 
 /// A diagram in a row: `index` is its place among the row's diagrams, so

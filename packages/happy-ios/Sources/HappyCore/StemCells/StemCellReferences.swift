@@ -23,6 +23,21 @@ public struct StemCellReferences: Equatable, Sendable {
         case missing
     }
 
+    /// An HTML artifact whose latest version asks to be shown inline at its
+    /// full height (`display` `inline_expanded`): the version and entry the
+    /// conversation's web view loads, and the colour behind it, if any.
+    public struct Page: Equatable, Sendable {
+        public var version: Int
+        public var entry: String
+        public var background: String?
+
+        public init(version: Int, entry: String, background: String? = nil) {
+            self.version = version
+            self.entry = entry
+            self.background = background
+        }
+    }
+
     public enum View: Equatable, Sendable {
         /// Opens: a name to tap. `reading` while an artifact's title is on its way.
         case link(String, reading: Bool = false)
@@ -42,6 +57,8 @@ public struct StemCellReferences: Equatable, Sendable {
     public var agents: [String: Entity] = [:]
     public var workspaces: [String: Entity] = [:]
     public var artifacts: [String: Artifact] = [:]
+    /// The artifacts read so far that want to be shown inline, by ID.
+    public var pages: [String: Page] = [:]
     /// The conversation's own subagents, by ID, as titled ("" untitled):
     /// a hidden one reads as its title, and opens nothing.
     public var subagents: [String: String] = [:]
@@ -94,6 +111,21 @@ public struct StemCellReferences: Equatable, Sendable {
         let title = object["title"]?.stringValue ?? ""
         if object["status"]?.stringValue == "deleted" { return .deleted(title: title) }
         return .active(title: title, type: object["type"]?.stringValue ?? "", latestVersion: Int(object["latestVersion"]?.numberValue ?? 1))
+    }
+
+    /// An artifact object as a page the conversation shows inline: an active
+    /// HTML artifact of files (not a live URL) whose latest version asks for
+    /// `inline_expanded`. Nil for anything else, which stays a card.
+    public static func page(_ object: JSONValue) -> Page? {
+        guard object["status"]?.stringValue != "deleted", object["type"]?.stringValue == "html",
+              object["display"]?.stringValue == "inline_expanded",
+              object["live"] == nil || object["live"] == .null,
+              let entry = object["entry"]?["path"]?.stringValue, let version = object["latestVersion"]?.numberValue else { return nil }
+        // `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`, and nothing else.
+        let background = object["background"]?.stringValue.flatMap { value in
+            value.range(of: "^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$", options: .regularExpression) != nil ? value.lowercased() : nil
+        }
+        return Page(version: Int(version), entry: entry, background: background)
     }
 
     /// The artifacts `text` names whose titles haven't been read.

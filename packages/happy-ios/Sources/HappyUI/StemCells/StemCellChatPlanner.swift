@@ -18,7 +18,12 @@ actor StemCellChatPlanner {
         var references = StemCellReferences()
         /// The agents this one spawned, by ID, as titled.
         var subagentTitles: [String: String] = [:]
+        /// Inline pages' heights as they measured themselves, by artifact ID.
+        var pageHeights: [String: CGFloat] = [:]
     }
+
+    /// An inline page's height until it has measured itself.
+    static let pageHeight: CGFloat = 120
 
     private let syntax: CodeSyntaxService
     private var cache: [String: (item: StemCellChatItem, key: Key, copied: Bool, opened: Bool, proposals: [StemCellProposalShown?], plan: ChatRowPlan)] = [:]
@@ -69,6 +74,7 @@ actor StemCellChatPlanner {
                 case tree(StemCellChatMediaPlan.Tree)
                 case card(StemCellChatMediaPlan.Card)
                 case story(String)
+                case page(StemCellInlinePage)
                 case proposal(String)
                 /// Words the planner writes, read but not selectable.
                 case line(MarkdownPiece)
@@ -98,6 +104,11 @@ actor StemCellChatPlanner {
                 case .artifact(let artifact):
                     drafts.append(.card(StemCellChatMediaPlan.card(artifact: artifact)))
                     parts.append(.card)
+                    // Desktop's inline page, under its card: only where the call follows the latest version.
+                    if artifact.followsLatest, let page = key.references.pages[artifact.id] {
+                        drafts.append(.page(StemCellInlinePage(artifactId: artifact.id, title: artifact.title, page: page)))
+                        parts.append(.page(height: key.pageHeights[artifact.id] ?? Self.pageHeight))
+                    }
                 case .sidebarProposal(let artifactId):
                     // Drawn by the sidebar's own rows once it is read.
                     if let shown = proposals[artifactId], shown.status != .loading, shown.status != .missing {
@@ -150,6 +161,8 @@ actor StemCellChatPlanner {
                     card(drafted, frame)
                 case (.story(let frame), .story(let id)):
                     items.append(.embed(.story(id), frame: frame))
+                case (.page(let frame), .page(let page)):
+                    items.append(.embed(.page(page), frame: frame))
                 case (.markdown(let placed, let origin), .line(let markdown)):
                     items += markdown.draw(placed, origin: origin).items
                 case (.proposal(let layout, let frame), .proposal(let artifactId)):

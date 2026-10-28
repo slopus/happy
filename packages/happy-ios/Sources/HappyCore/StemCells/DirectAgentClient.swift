@@ -363,6 +363,13 @@ public final class DirectAgentClient: Sendable {
         return artifact
     }
 
+    /// What the daemon serves every page beside its files: `api/v1/style.css`,
+    /// `client.js` and the rest (`GET /v0/artifacts/:id/api/v1/*`). `path` is
+    /// what follows `api/v1/`, escaped as the page wrote it.
+    public func artifactAPI(_ artifactId: String, path: String) async throws -> DirectHTTPResponse {
+        try await send("GET", "/v0/artifacts/\(Self.escape(artifactId))/api/v1/\(path)")
+    }
+
     /// One version of an artifact, `nil` for the latest: its entry, its files
     /// and how it wants to be shown.
     public func artifactVersion(_ artifactId: String, version: Int?) async throws -> AgentWire.ArtifactVersion {

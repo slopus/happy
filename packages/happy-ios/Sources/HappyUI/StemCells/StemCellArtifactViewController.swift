@@ -173,6 +173,32 @@ final class StemCellArtifactFiles: NSObject, WKURLSchemeHandler, @unchecked Send
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
         let id = ObjectIdentifier(task)
         let request = task.request
+        // `/api/v1/…`: Happy's standard styles and scripts, which a page links from its root.
+        if let url = request.url, url.path.hasPrefix("/api/v1/") {
+            let rest = String((url.path(percentEncoded: true)).dropFirst("/api/v1/".count)) + (url.query(percentEncoded: true).map { "?\($0)" } ?? "")
+            let client = client
+            let artifactId = artifactId
+            let box = TaskBox(task)
+            running[id] = Task { @MainActor [weak self] in
+                defer { self?.running[id] = nil }
+                func going() -> Bool { !Task.isCancelled && self?.running[id] != nil }
+                do {
+                    let response = try await client.artifactAPI(artifactId, path: rest)
+                    guard going() else { return }
+                    var headers: [String: String] = [:]
+                    for (key, value) in response.headers where ["content-type", "content-length"].contains(key) { headers[key] = value }
+                    box.task.didReceive(HTTPURLResponse(url: url, statusCode: response.status, httpVersion: "HTTP/1.1", headerFields: headers)!)
+                    guard going() else { return }
+                    box.task.didReceive(response.body)
+                    guard going() else { return }
+                    box.task.didFinish()
+                } catch {
+                    guard going() else { return }
+                    box.task.didFailWithError(error)
+                }
+            }
+            return
+        }
         guard let url = request.url, let (version, path) = Self.file(url) else {
             task.didFailWithError(URLError(.badURL))
             return

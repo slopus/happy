@@ -301,6 +301,8 @@ public struct StemCellMessageLayout: Equatable, Sendable {
         case card
         /// A story drawn inline (`StoryCardLayout`).
         case story
+        /// An HTML artifact shown inline, across the column at the height its page measured.
+        case page(height: CGFloat)
         /// A sidebar Prioritizing proposed, at the column's left.
         case proposal(StemCellSidebarProposalLayout.Input)
     }
@@ -312,6 +314,7 @@ public struct StemCellMessageLayout: Equatable, Sendable {
         case tree(StemCellMediaTreeLayout, origin: CGPoint)
         case card(CGRect)
         case story(CGRect)
+        case page(CGRect)
         /// The card's frame; its insides are `layout`'s, from the frame's origin.
         case proposal(StemCellSidebarProposalLayout, frame: CGRect)
     }
@@ -374,6 +377,9 @@ public struct StemCellMessageLayout: Equatable, Sendable {
                 let size = StoryCardLayout.size(width: inner)
                 placed.append(.story(CGRect(origin: CGPoint(x: left, y: y), size: size)))
                 y += size.height
+            case .page(let height):
+                placed.append(.page(CGRect(x: left, y: y, width: inner, height: height)))
+                y += height
             case .proposal(let input):
                 let proposal = StemCellSidebarProposalLayout(width: inner, input: input)
                 placed.append(.proposal(proposal, frame: CGRect(origin: CGPoint(x: left, y: y), size: proposal.size)))

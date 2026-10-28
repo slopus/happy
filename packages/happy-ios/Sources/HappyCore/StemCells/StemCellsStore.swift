@@ -111,6 +111,7 @@ public actor StemCellsStore {
     private var agents = StemCellsAgents()
     /// Artifact titles references asked for, as read; and those being read.
     private var artifactTitles: [String: StemCellReferences.Artifact] = [:]
+    private var artifactPages: [String: StemCellReferences.Page] = [:]
     private var artifactReads: Set<String> = []
     /// People messages mention, as named, and those being read; the person reading.
     private var userNames: [String: String] = [:]
@@ -328,6 +329,7 @@ public actor StemCellsStore {
             heldEvents = nil
             // What changed while away is read again when next asked for.
             artifactTitles = [:]
+            artifactPages = [:]
             for event in pending { receive(event) }
             publish()
             keeping?.cancel()
@@ -387,29 +389,38 @@ public actor StemCellsStore {
     /// Reads the titles of artifacts messages name, once each; what is
     /// read is published with the references.
     public func readArtifacts(_ ids: [String]) {
-        let wanted = ids.filter { artifactTitles[$0] == nil && !artifactReads.contains($0) }
+        read(artifacts: ids.filter { artifactTitles[$0] == nil })
+    }
+
+    /// Reads artifacts whether or not they were read before, one read at a time each.
+    private func read(artifacts ids: [String]) {
+        let wanted = ids.filter { !artifactReads.contains($0) }
         guard !wanted.isEmpty else { return }
         artifactReads.formUnion(wanted)
         let client = client
         Task {
             for id in wanted {
                 let read: StemCellReferences.Artifact?
+                var page: StemCellReferences.Page?
                 do {
-                    read = StemCellReferences.artifact(try await client.artifact(id))
+                    let object = try await client.artifact(id)
+                    read = StemCellReferences.artifact(object)
+                    page = StemCellReferences.page(object)
                 } catch DirectAgentError.status(404, _, _) {
                     read = .missing
                 } catch {
                     read = nil
                 }
-                await artifactRead(id, read)
+                await artifactRead(id, read, page: page)
             }
         }
     }
 
-    private func artifactRead(_ id: String, _ read: StemCellReferences.Artifact?) {
+    private func artifactRead(_ id: String, _ read: StemCellReferences.Artifact?, page: StemCellReferences.Page?) {
         artifactReads.remove(id)
         guard let read else { return }
         artifactTitles[id] = read
+        artifactPages[id] = page
         publish()
     }
 
@@ -538,6 +549,12 @@ public actor StemCellsStore {
             } else if case .active(let title, let kind, let latest) = held {
                 artifactTitles[id] = .active(title: changes["title"]?.stringValue ?? title, type: kind, latestVersion: changes["latestVersion"]?.numberValue.map { Int($0) } ?? latest)
             }
+            if type == "artifact.deleted" || changes["status"]?.stringValue == "deleted" {
+                artifactPages[id] = nil
+            } else if case .active(_, "html", _) = held {
+                // A page shown inline follows its latest version, entry and display.
+                read(artifacts: [id])
+            }
         case "user_settings.updated":
             if payload["setting"]?["key"]?.stringValue == Self.settingKey {
                 snapshot.prioritizing = payload["setting"]?["value"] == .bool(true)
@@ -633,6 +650,7 @@ public actor StemCellsStore {
         snapshot.happySpaceId = spaces.values.first { places.isHappy($0) }?.id
         var references = StemCellReferences.entities(owners: composedOwners)
         references.artifacts = artifactTitles
+        references.pages = artifactPages
         references.users = userNames
         references.me = me
         references.missingUsers = usersMissing

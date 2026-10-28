@@ -105,6 +105,37 @@ final class StemCellsLoopInTests: XCTestCase {
     }
 }
 
+/// An HTML artifact a call shows that asks to be inline: its card, then
+/// its page under it, at the height the page measured once it has.
+@MainActor
+final class StemCellInlinePagePlanTests: XCTestCase {
+    func testThePageSitsUnderItsCardAtItsMeasuredHeight() throws {
+        let artifact = StemCellArtifact(id: "art1", version: 1, type: "html", title: "Voice waveform", followsLatest: true)
+        let item = StemCellChatItem(id: "m1", role: .agent, pieces: [.artifact(artifact)], delivery: .sent)
+        var key = StemCellChatPlanner.Key(width: 393, maxContentWidth: 10_000, environment: nil)
+        func pages(_ plan: ChatRowPlan) -> [(StemCellInlinePage, CGRect)] {
+            plan.items.compactMap { if case .embed(.page(let page), let frame) = $0 { (page, frame) } else { nil } }
+        }
+        // Not read yet, or not asking to be inline: the card alone.
+        XCTAssertTrue(pages(StemCellChatPlanner.plan(item, key: key, copied: false, syntax: CodeSyntaxService())).isEmpty)
+
+        key.references.pages["art1"] = .init(version: 2, entry: "index.html")
+        let plan = StemCellChatPlanner.plan(item, key: key, copied: false, syntax: CodeSyntaxService())
+        let (page, frame) = try XCTUnwrap(pages(plan).first)
+        XCTAssertEqual(page, StemCellInlinePage(artifactId: "art1", title: "Voice waveform", page: .init(version: 2, entry: "index.html")))
+        XCTAssertEqual(frame, CGRect(x: 16, y: 8 + StemCellResultCardLayout.height + 8, width: 361, height: StemCellChatPlanner.pageHeight))
+        // The card still opens the artifact whole.
+        XCTAssertTrue(plan.hits.contains { if case .openArtifact = $0.action { true } else { false } })
+
+        key.pageHeights["art1"] = 152
+        XCTAssertEqual(pages(StemCellChatPlanner.plan(item, key: key, copied: false, syntax: CodeSyntaxService())).first?.1.height, 152)
+
+        // A call that pinned one version is a record of it: a card, never the live page.
+        let pinned = StemCellChatItem(id: "m2", role: .agent, pieces: [.artifact(StemCellArtifact(id: "art1", version: 1, type: "html", title: "", followsLatest: false))], delivery: .sent)
+        XCTAssertTrue(pages(StemCellChatPlanner.plan(pinned, key: key, copied: false, syntax: CodeSyntaxService())).isEmpty)
+    }
+}
+
 /// One message's text on the chat's ground, as the conversation draws it.
 private final class MessagePreview: UIView {
     let layout: ChatTextLayout
