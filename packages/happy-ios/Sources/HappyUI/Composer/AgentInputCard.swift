@@ -497,7 +497,7 @@ public final class AgentInputCardView: UIView {
         placeholderLabel.isUserInteractionEnabled = false
         inputGroup.addSubview(placeholderLabel)
         expandButton.isHidden = true
-        expandButton.tint = Palette.textSecondary
+        expandButton.tint = Palette.text
         expandButton.accessibilityLabel = Strings.Composer.expandEditor
         expandButton.accessibilityIdentifier = "composer-expand"
         expandButton.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)

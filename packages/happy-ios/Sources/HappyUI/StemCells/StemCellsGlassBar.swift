@@ -205,6 +205,8 @@ final class StemCellsGlassBar: UIView {
     }
 
     fileprivate func pin(to scroll: UIScrollView) {
+        // The blur comes in as the screen's content goes under the row.
+        scrim.presence = HeaderScrim.presence(scrolledUnder: scroll.contentOffset.y + scroll.adjustedContentInset.top)
         let frame = CGRect(origin: scroll.contentOffset, size: scroll.bounds.size)
         if self.frame.size != frame.size { setNeedsLayout() }
         if self.frame != frame { self.frame = frame }

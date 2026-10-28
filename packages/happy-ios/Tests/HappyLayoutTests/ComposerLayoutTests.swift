@@ -277,9 +277,10 @@ final class AgentInputCardLayoutTests: XCTestCase {
     }
 
     /// Five lines fit; from the sixth the text scrolls and the full-screen
-    /// editor's 30pt button takes the text's top right corner, the lines
-    /// wrapping 30 short of it.
-    func testExpandShowsOnceTheTextScrolls() {
+    /// editor's button shows over send, in its column: send's size and
+    /// centre, 8 in from the card's top as send is 8 in from its foot, the
+    /// lines wrapping clear of it.
+    func testExpandShowsOnceTheTextScrolls() throws {
         let five = card(text: 118, offersExpand: true)
         XCTAssertFalse(five.textScrolls)
         XCTAssertNil(five.expand)
@@ -288,8 +289,13 @@ final class AgentInputCardLayoutTests: XCTestCase {
         let six = card(text: 140, offersExpand: true)
         XCTAssertTrue(six.textScrolls)
         assertFrame(six.text, rect(18, 12, 341, 120))
-        assertFrame(six.expand, rect(329, 12, 30, 30))
-        XCTAssertEqual(six.textTrailingInset, 30)
+        assertFrame(six.expand, rect(325, 8, 42, 42))
+        assertFrame(six.primary, rect(325, 136, 42, 42))
+        let expand = try XCTUnwrap(six.expand)
+        XCTAssertEqual(expand.size, six.primary.size)
+        XCTAssertEqual(expand.midX, six.primary.midX)
+        XCTAssertEqual(expand.minY, six.size.height - six.primary.maxY)
+        XCTAssertEqual(six.textTrailingInset, 34)
         XCTAssertEqual(six.size, card(text: 140).size)
 
         let unoffered = card(text: 140)

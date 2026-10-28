@@ -53,7 +53,7 @@ final class ChatViewingUITests: XCTestCase {
         XCTAssertTrue(row.label.contains(name), "the theme never reached \(name)")
         app.buttons["stem-glass-back"].firstMatch.tap()
         pause(1)
-        let happy = element("stem-row:space:Happy")
+        let happy = happyRow
         XCTAssertTrue(happy.waitForExistence(timeout: 5))
         happy.tap()
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
@@ -72,6 +72,11 @@ final class ChatViewingUITests: XCTestCase {
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any)[id] }
 
     private var composer: XCUIElement { app.textViews["stem-composer"] }
+    /// Happy's own conversation: its space, or, on the shared sidebar, its
+    /// Chief of Staff under Bots.
+    private var happyRow: XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR identifier ENDSWITH %@", "stem-row:space:Happy", ":Chief of Staff")).firstMatch
+    }
     private var working: XCUIElement { element("stem-working") }
     private var jump: XCUIElement { app.buttons["stem-jump-latest"] }
     private var pictures: XCUIElementQuery {
@@ -92,7 +97,7 @@ final class ChatViewingUITests: XCTestCase {
             XCTAssertTrue(any.waitForExistence(timeout: 90))
         }
         pause(1)
-        let happy = element("stem-row:space:Happy")
+        let happy = happyRow
         XCTAssertTrue(happy.waitForExistence(timeout: 10))
         happy.tap()
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
@@ -128,8 +133,148 @@ final class ChatViewingUITests: XCTestCase {
         }
     }
 
-    /// Nothing of the transcript is legible under the composer, beside it
-    /// or in the last of the list above it, as on home: read mid-transcript,
+    /// Dark, with the agent working: the ground between the working line
+    /// and the composer is the transcript's own, at rest and pulled so the
+    /// working line goes under the card, never a lighter band over the end
+    /// of the transcript (build 45 drew one whenever content went under).
+    func testNoBandAboveTheComposerWhileWorking() {
+        openConversation()
+        theme("Dark")
+        composer.tap()
+        composer.typeText("Run `sleep 20` with your shell tool, one call, then just say done.")
+        app.buttons["Send"].tap()
+        XCTAssertTrue(working.waitForExistence(timeout: 15), "the agent never started")
+        dismissKeyboard()
+        if jump.exists {
+            jump.tap()
+            pause(1.5)
+        }
+        let card = element("stem-input").frame
+        func check(_ name: String) {
+            let shot = XCUIScreen.main.screenshot().image
+            capture("band-\(name)")
+            // The 10 at either side, outside every bubble and line, from 44
+            // above the card to it: a band would cross them.
+            let sides = [
+                CGRect(x: 1, y: card.minY - 44, width: 9, height: 40),
+                CGRect(x: app.frame.width - 10, y: card.minY - 44, width: 9, height: 40),
+            ]
+            let ground = Self.ground(in: shot)
+            for side in sides {
+                let above = Self.luma(in: shot, area: side)
+                print("STEM_BAND \(name) ground=\(ground) above=\(above)")
+                XCTAssertEqual(above, Double(ground), accuracy: 1.5, "\(name): a band above the composer (\(Int(above)) on \(ground))")
+            }
+        }
+        check("rest")
+        // Pulled a little and held: the working line under the card.
+        for (index, drag) in [0.04, 0.08].enumerated() {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+            start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4 + drag)), withVelocity: .slow, thenHoldForDuration: 1.2)
+            pause(0.6)
+            check("pulled-\(index)")
+        }
+        XCTAssertTrue(working.waitForNonExistence(timeout: 60))
+        pause(1)
+        check("idle")
+        theme("Adaptive")
+    }
+
+    /// The edges are a blur and nothing else, at the header and at the
+    /// composer, light and dark: with nothing under them (a short
+    /// conversation at rest) and with the transcript under them, their
+    /// ground is the screen's own, never a lighter or darker band.
+    func testEdgesKeepTheGround() {
+        openConversation()
+        for name in ["Light", "Dark"] {
+            theme(name)
+            // The transcript under both edges.
+            scrollUp(1)
+            pause(1.5)
+            checkEdges("\(name)-under")
+            app.tapBack()
+            pause(1)
+            openShortConversation()
+            checkEdges("\(name)-nothing")
+            app.tapBack()
+            pause(1)
+            XCTAssertTrue(happyRow.waitForExistence(timeout: 5))
+            happyRow.tap()
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            pause(1.5)
+        }
+        theme("Adaptive")
+    }
+
+    /// Below the header's controls, past their shadow, across the screen's
+    /// sides where no line reaches, and at the sides above the composer:
+    /// the ground. With nothing under the header, its whole width is.
+    private func checkEdges(_ name: String) {
+        let shot = XCUIScreen.main.screenshot().image
+        capture("edges-ground-\(name)")
+        let ground = Self.ground(in: shot)
+        let capsule = element("stem-chat-capsule").frame
+        let card = element("stem-input").frame
+        var areas: [(String, CGRect)] = [
+            ("head-left", CGRect(x: 1, y: capsule.maxY + 2, width: 9, height: 12)),
+            ("head-right", CGRect(x: app.frame.width - 10, y: capsule.maxY + 2, width: 9, height: 12)),
+            ("foot-left", CGRect(x: 1, y: card.minY - 44, width: 9, height: 40)),
+            ("foot-right", CGRect(x: app.frame.width - 10, y: card.minY - 44, width: 9, height: 40)),
+        ]
+        if name.hasSuffix("nothing") {
+            areas.append(("head-across", CGRect(x: 0, y: capsule.maxY + 2, width: app.frame.width, height: 12)))
+        }
+        for (place, area) in areas {
+            let mean = Self.luma(in: shot, area: area)
+            print("STEM_GROUND \(name) \(place) ground=\(ground) mean=\(mean)")
+            if name.hasPrefix("Light"), place.hasPrefix("head") {
+                // The glass controls' own shadow falls here on white (244 under
+                // the capsule, 252 at the sides), scrim or none: never lighter.
+                XCTAssertLessThanOrEqual(mean, Double(ground) + 1.5, "\(name): the \(place) edge is lighter than the ground")
+                XCTAssertGreaterThanOrEqual(mean, Double(ground) - 9, "\(name): the \(place) edge is darker than the controls' shadow (\(mean) on \(ground))")
+            } else {
+                XCTAssertEqual(mean, Double(ground), accuracy: 1.5, "\(name): the \(place) edge is not the ground (\(mean) on \(ground))")
+            }
+        }
+    }
+
+    /// The screen's ground: the brightness most of its middle has.
+    private static func ground(in image: UIImage) -> Int {
+        mostCommonLuma(in: image, area: CGRect(x: 0, y: image.size.height * 0.3, width: image.size.width, height: image.size.height * 0.4))
+    }
+
+    /// The keyboard down, dragged away under the finger.
+    private func dismissKeyboard() {
+        for _ in 0..<3 where app.keyboards.firstMatch.exists {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)).press(
+                forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)),
+                withVelocity: .slow, thenHoldForDuration: 0.1
+            )
+            pause(1)
+        }
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "the keyboard stayed up")
+        pause(1)
+    }
+
+    /// The brightness most of `area` (in points) has: a screen's ground.
+    private static func mostCommonLuma(in image: UIImage, area: CGRect) -> Int {
+        guard let cg = image.cgImage, let data = cg.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { return -1 }
+        let scale = CGFloat(cg.width) / image.size.width
+        let pixels = CGRect(x: area.minX * scale, y: area.minY * scale, width: area.width * scale, height: area.height * scale).integral
+            .intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        let step = cg.bitsPerPixel / 8
+        var counts = [Int](repeating: 0, count: 256)
+        for y in stride(from: Int(pixels.minY), to: Int(pixels.maxY), by: 2) {
+            for x in stride(from: Int(pixels.minX), to: Int(pixels.maxX), by: 2) {
+                let at = y * cg.bytesPerRow + x * step
+                counts[(Int(bytes[at]) * 299 + Int(bytes[at + 1]) * 587 + Int(bytes[at + 2]) * 114) / 1000] += 1
+            }
+        }
+        return counts.indices.max { counts[$0] < counts[$1] } ?? -1
+    }
+
+    /// Nothing of the transcript is legible under the composer or beside
+    /// it, as on home, while what is above it still reads: mid-transcript,
     /// where messages go on past the composer, light and dark, every stroke
     /// there is blurred soft, where the transcript's own text is sharp.
     func testNothingUnderTheComposer() {
@@ -144,15 +289,14 @@ final class ChatViewingUITests: XCTestCase {
             capture("ground-\(name)")
             let frame = card.frame
             // Under the card, clear of the home indicator in the middle,
-            // the gap beside it, and the list's last 12 above it.
+            // and the gap beside it.
             let under = CGRect(x: 2, y: frame.maxY + 2, width: 90, height: app.frame.height - frame.maxY - 4)
             let beside = CGRect(x: 1, y: frame.minY + 4, width: max(1, frame.minX - 2), height: frame.height - 8)
-            let above = CGRect(x: 0, y: frame.minY - 12, width: app.frame.width, height: 10)
             // The transcript's own lines, well clear of both edges: sharp.
             let transcript = CGRect(x: 0, y: app.frame.height * 0.35, width: app.frame.width, height: app.frame.height * 0.3)
             let sharp = Self.sharpEdges(in: shot.image, area: transcript)
             XCTAssertGreaterThan(sharp, 500, "\(name): the transcript itself reads as blurred (\(sharp))")
-            for (place, area) in [("under", under), ("beside", beside), ("above", above)] {
+            for (place, area) in [("under", under), ("beside", beside)] {
                 let edges = Self.sharpEdges(in: shot.image, area: area)
                 print("STEM_EDGES \(name) \(place)=\(edges) transcript=\(sharp)")
                 XCTAssertLessThan(edges, 20, "\(name): \(edges) sharp strokes show \(place) the composer")
@@ -161,16 +305,134 @@ final class ChatViewingUITests: XCTestCase {
         theme("Adaptive")
     }
 
-    /// The chat's edges beside home's, light and dark: each scrolled so
-    /// its content runs under the glass header and under the composer.
-    /// Pictures for the eye (`edges-*`); the composer's foot is checked by
+    /// Flung to the top of a long conversation and of a short one, light
+    /// and dark, the ground under the composer holds still: sampled all
+    /// through each bounce off the top, its brightness never jumps. (A
+    /// short one's end, pulled down past the composer by the bounce, once
+    /// brought the scrim in and out again.)
+    func testScrollToTopDoesNotFlashUnderTheComposer() {
+        openConversation()
+        for name in ["Light", "Dark"] {
+            theme(name)
+            flingToTop("long-\(name)")
+            jump.tap()
+            pause(1.5)
+            app.tapBack()
+            pause(1)
+            openShortConversation()
+            flingToTop("short-\(name)")
+            app.tapBack()
+            pause(1)
+            let happy = happyRow
+            XCTAssertTrue(happy.waitForExistence(timeout: 5))
+            happy.tap()
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            pause(1.5)
+        }
+        theme("Adaptive")
+    }
+
+    /// A seeded task, its conversation a prompt and an answer that end a
+    /// little above the composer, asked for the first time.
+    private func openShortConversation() {
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "stem-row:", "Try the new recipe")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        pause(2)
+        let answer = app.descendants(matching: .any).matching(identifier: "stem-message").matching(NSPredicate(format: "label CONTAINS %@ AND NOT (label CONTAINS %@)", "21", "numbers")).firstMatch
+        if !answer.exists {
+            composer.tap()
+            composer.typeText("Write the numbers 1 to 22, one per line, and nothing else. Use no tools.")
+            app.buttons["Send"].tap()
+            if app.buttons["Continue"].waitForExistence(timeout: 2) { app.buttons["Continue"].tap() }
+            XCTAssertTrue(answer.waitForExistence(timeout: 120), "the agent never answered")
+            pause(3)
+        }
+        if composer.hasFocus { app.swipeDown(velocity: .slow) }
+        pause(1.5)
+    }
+
+    /// Three flings down the screen, each from at or near the top, with
+    /// the composer's own ground sampled as fast as screenshots come
+    /// through each bounce: beside the card, and under it at the screen's
+    /// sides, where no line of the transcript reaches (blurred lines go by
+    /// under the middle of it, as on home).
+    private func flingToTop(_ name: String) {
+        let card = element("stem-input").frame
+        let under = CGRect(x: 0, y: card.maxY + 2, width: 4, height: app.frame.height - card.maxY - 4)
+        let beside = CGRect(x: 1, y: card.minY + 4, width: max(1, card.minX - 2), height: card.height - 8)
+        var samples: [(under: Double, beside: Double)] = []
+        for _ in 0..<3 {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(
+                forDuration: 0.02, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)),
+                withVelocity: .fast, thenHoldForDuration: 0
+            )
+            for _ in 0..<10 {
+                let shot = XCUIScreen.main.screenshot().image
+                samples.append((Self.luma(in: shot, area: under), Self.luma(in: shot, area: beside)))
+            }
+        }
+        capture("top-\(name)")
+        let unders = samples.map(\.under), besides = samples.map(\.beside)
+        print("STEM_FLASH \(name) under=\(unders.map { Int($0) }) beside=\(besides.map { Int($0) })")
+        XCTAssertLessThan((unders.max() ?? 0) - (unders.min() ?? 0), 4, "\(name): the ground under the composer flashed")
+        XCTAssertLessThan((besides.max() ?? 0) - (besides.min() ?? 0), 4, "\(name): the ground beside the composer flashed")
+    }
+
+    /// The mean brightness of `area` (in points), 0 to 255.
+    private static func luma(in image: UIImage, area: CGRect) -> Double {
+        guard let cg = image.cgImage, let data = cg.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { return -1 }
+        let scale = CGFloat(cg.width) / image.size.width
+        let pixels = CGRect(x: area.minX * scale, y: area.minY * scale, width: area.width * scale, height: area.height * scale).integral
+            .intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        let step = cg.bitsPerPixel / 8
+        var sum = 0, count = 0
+        for y in stride(from: Int(pixels.minY), to: Int(pixels.maxY), by: 2) {
+            for x in stride(from: Int(pixels.minX), to: Int(pixels.maxX), by: 2) {
+                let at = y * cg.bytesPerRow + x * step
+                sum += (Int(bytes[at]) * 299 + Int(bytes[at + 1]) * 587 + Int(bytes[at + 2]) * 114) / 1000
+                count += 1
+            }
+        }
+        return count == 0 ? -1 : Double(sum) / Double(count)
+    }
+
+    /// The chat's edges beside home's, light and dark. Beside the composer
+    /// and under it to the screen's foot, the chat at its newest is home's
+    /// list at its end, pixel for pixel: the same scrim, frame and strength
+    /// over the same nothing. Then each scrolled so its content runs under
+    /// the glass header and under the composer, pictures for the eye
+    /// (`edges-*`); what shows there is checked by
     /// `testNothingUnderTheComposer`.
     func testEdgesLikeHome() {
         openConversation()
         for name in ["Light", "Dark"] {
             theme(name)
             // At the newest, the transcript runs on under the header.
+            let chatRest = XCUIScreen.main.screenshot().image
             capture("edges-chat-newest-\(name)")
+            let card = element("stem-input").frame
+            app.tapBack()
+            pause(1.5)
+            for _ in 0..<3 { app.swipeUp(velocity: .fast) }
+            pause(2.5)
+            let homeRest = XCUIScreen.main.screenshot().image
+            capture("edges-home-end-\(name)")
+            let around = [
+                CGRect(x: 0, y: card.minY, width: card.minX - 1, height: card.height),
+                CGRect(x: card.maxX + 1, y: card.minY, width: app.frame.width - card.maxX - 1, height: card.height),
+                CGRect(x: 0, y: card.maxY + 1, width: app.frame.width, height: app.frame.height - card.maxY - 1),
+            ]
+            let diff = Self.difference(chatRest, homeRest, areas: around)
+            print("STEM_HOME_DIFF \(name) mean=\(diff.mean) max=\(diff.max)")
+            XCTAssertLessThan(diff.mean, 1, "\(name): the chat's composer edge is not home's")
+            for _ in 0..<3 { app.swipeDown(velocity: .fast) }
+            pause(1.5)
+            XCTAssertTrue(happyRow.waitForExistence(timeout: 5))
+            happyRow.tap()
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            pause(2)
             scrollUp(1)
             pause(1.5)
             capture("edges-chat-\(name)")
@@ -196,13 +458,40 @@ final class ChatViewingUITests: XCTestCase {
                 withVelocity: .slow, thenHoldForDuration: 0.4
             )
             pause(1)
-            let happy = element("stem-row:space:Happy")
+            let happy = happyRow
             XCTAssertTrue(happy.waitForExistence(timeout: 5))
             happy.tap()
             XCTAssertTrue(composer.waitForExistence(timeout: 5))
             pause(2)
         }
         theme("Adaptive")
+    }
+
+    /// How far apart two screenshots are over `areas` (in points): the mean
+    /// and largest step of any channel, 0 to 255.
+    private static func difference(_ a: UIImage, _ b: UIImage, areas: [CGRect]) -> (mean: Double, max: Int) {
+        guard let ca = a.cgImage, let cb = b.cgImage, ca.width == cb.width, ca.height == cb.height, ca.bitsPerPixel == cb.bitsPerPixel,
+              let da = ca.dataProvider?.data, let db = cb.dataProvider?.data,
+              let pa = CFDataGetBytePtr(da), let pb = CFDataGetBytePtr(db) else { return (255, 255) }
+        let scale = CGFloat(ca.width) / a.size.width
+        let step = ca.bitsPerPixel / 8
+        var sum = 0, count = 0, largest = 0
+        for area in areas {
+            let pixels = CGRect(x: area.minX * scale, y: area.minY * scale, width: area.width * scale, height: area.height * scale).integral
+                .intersection(CGRect(x: 0, y: 0, width: ca.width, height: ca.height))
+            guard !pixels.isNull else { continue }
+            for y in Int(pixels.minY)..<Int(pixels.maxY) {
+                for x in Int(pixels.minX)..<Int(pixels.maxX) {
+                    for channel in 0..<3 {
+                        let d = abs(Int(pa[y * ca.bytesPerRow + x * step + channel]) - Int(pb[y * cb.bytesPerRow + x * step + channel]))
+                        sum += d
+                        largest = max(largest, d)
+                    }
+                    count += 3
+                }
+            }
+        }
+        return (count == 0 ? 255 : Double(sum) / Double(count), largest)
     }
 
     /// The pixels in `area` (in points) where the image steps by more than
@@ -361,7 +650,7 @@ final class ChatViewingUITests: XCTestCase {
         pause(1.5)
         // The daemon's copy, for the log.
         print("STEM_STEP draft-check")
-        let happy = element("stem-row:space:Happy")
+        let happy = happyRow
         XCTAssertTrue(happy.waitForExistence(timeout: 5))
         happy.tap()
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
@@ -370,7 +659,7 @@ final class ChatViewingUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        let again = element("stem-row:space:Happy")
+        let again = happyRow
         XCTAssertTrue(again.waitForExistence(timeout: 20))
         again.tap()
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
@@ -387,6 +676,37 @@ final class ChatViewingUITests: XCTestCase {
     /// Past five lines the composer offers its text full screen: the
     /// button at the text's top right opens it with the same text, and the
     /// one there puts it back with what was typed full screen.
+    /// The expand button is send's, in send's column: its size and centre,
+    /// as far in from the card's top as send is from its foot.
+    private func assertExpandOverSend() {
+        let card = element("stem-input").frame
+        let expand = app.buttons["composer-expand"].frame
+        let send = app.buttons["Send"].frame
+        XCTAssertEqual(expand.midX, send.midX, accuracy: 1, "the expand button isn't over send")
+        XCTAssertEqual(expand.width, send.width, accuracy: 1, "the expand button isn't send's size")
+        XCTAssertEqual(expand.minY - card.minY, card.maxY - send.maxY, accuracy: 1, "the expand button isn't in from the top as send is from the foot")
+    }
+
+    /// The expand button beside the long text, light and dark, for the eye.
+    func testExpandButtonLooks() {
+        openConversation()
+        // Both themes' pictures, whatever the first shows.
+        continueAfterFailure = true
+        for name in ["Light", "Dark"] {
+            theme(name)
+            clearDraft()
+            composer.tap()
+            composer.typeText("One\nTwo\nThree\nFour\nFive\nSix\nSeven\nEight is a longer line that wraps under the button")
+            XCTAssertTrue(app.buttons["composer-expand"].waitForExistence(timeout: 3))
+            pause(0.8)
+            capture("expand-\(name)")
+            assertExpandOverSend()
+            clearDraft()
+            dismissKeyboard()
+        }
+        theme("Adaptive")
+    }
+
     func testExpandEditor() {
         openConversation()
         clearDraft()
@@ -397,9 +717,7 @@ final class ChatViewingUITests: XCTestCase {
         XCTAssertFalse(expand.exists, "five lines offered the full-screen editor")
         composer.typeText("\nSix\nSeven\nEight")
         XCTAssertTrue(expand.waitForExistence(timeout: 3), "no expand button past five lines")
-        let card = element("stem-input")
-        XCTAssertEqual(expand.frame.maxX, card.frame.maxX - 18, accuracy: 1.5, "the expand button isn't at the text's right")
-        XCTAssertLessThan(expand.frame.minY - card.frame.minY, 30, "the expand button isn't at the text's top")
+        assertExpandOverSend()
         capture("expand-offered")
 
         expand.tap()

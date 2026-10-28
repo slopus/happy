@@ -122,11 +122,11 @@ final class HomeHeaderLayoutTests: XCTestCase {
     }
 
     func testTheScrimHoldsItsPeakThenFeathersOverTheLastThirtySixPoints() {
-        let stops = HeaderScrim.stops(height: 119, peak: HeaderScrim.strongPeakLight)
+        let stops = HeaderScrim.stops(height: 119)
         XCTAssertEqual(stops.count, 25)
-        XCTAssertEqual(stops[0].alpha, 0.76)
-        XCTAssertEqual(stops[18].alpha, 0.7192, accuracy: 0.00001)
-        XCTAssertEqual(stops[20].alpha, 0.5604, accuracy: 0.00001)
+        XCTAssertEqual(stops[0].alpha, 1)
+        XCTAssertEqual(stops[18].alpha, 0.9463, accuracy: 0.0001)
+        XCTAssertEqual(stops[20].alpha, 0.7374, accuracy: 0.0001)
         XCTAssertEqual(stops[24].alpha, 0)
         XCTAssertEqual(stops[24].location, 1)
     }

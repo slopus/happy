@@ -63,14 +63,10 @@ public struct StemCellPictureDismissal: Equatable, Sendable {
 }
 
 /// What a Stem Cell conversation keeps around its composer: home's dock
-/// scrim (`HeaderScrimView`, `edge: .bottom`), whole from the card's top to
-/// the foot and feathered over the 36 above it, so what scrolls on under
-/// the card has faded and blurred out by the time it meets it, never cut
-/// along its edge (the header's, upside down; it comes in as the
-/// transcript scrolls away from its end, `HeaderScrim.presence`); and
-/// desktop's way back to the newest message (`.happy-message-list__jump`),
-/// a 32 circle centred 12 above where the list ends, drawn over the
-/// scrim's feather.
+/// scrim in home's frame (`StemCellsDockLayout.scrim`), there always as
+/// home's is; and desktop's way back to the newest message
+/// (`.happy-message-list__jump`), a 32 circle centred 12 above where the
+/// list ends.
 public struct StemCellChatFootLayout: Equatable, Sendable {
     public enum Metrics {
         /// The list's gap above the card.
@@ -91,8 +87,7 @@ public struct StemCellChatFootLayout: Equatable, Sendable {
     public init(size: CGSize, card: CGRect) {
         typealias M = Metrics
         let top = max(0, card.minY - M.listGap)
-        let scrimTop = max(0, card.minY - HeaderScrim.rampPoints)
-        scrim = CGRect(x: 0, y: scrimTop, width: size.width, height: max(0, size.height - scrimTop))
+        scrim = StemCellsDockLayout.scrim(size: size, card: card)
         jump = CGRect(x: ((size.width - M.jumpSize) / 2).rounded(), y: top - M.jumpGap - M.jumpSize, width: M.jumpSize, height: M.jumpSize)
     }
 

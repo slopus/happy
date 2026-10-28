@@ -44,12 +44,10 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         public static let disabledChipOpacity: CGFloat = 0.58
         /// `MultiTextInput`'s `opacity: editable ? 1 : 0.58`.
         public static let readOnlyTextOpacity: CGFloat = 0.58
-        /// The full-screen editor's button at the text's top right, once
-        /// the text is past the lines the card shows (Telegram's expand):
-        /// its glyph, the square it is centred in, and the text's room
-        /// beside it.
-        public static let expandIconSize: CGFloat = 14
-        public static let expandSize: CGFloat = 30
+        /// The full-screen editor's button's glyph, once the text is past
+        /// the lines the card shows (Telegram's expand). The button is
+        /// send's size, in send's column.
+        public static let expandIconSize: CGFloat = 18
     }
 
     /// Where the thumbnails sit in the strip's scrolling content: the first
@@ -240,11 +238,15 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             height: text.height
         )
         textScrolls = text.scrollEnabled
-        // Past the lines the card shows (the sixth on): the text's top right
-        // corner, flush with it, the lines wrapping clear of it.
+        // Past the lines the card shows (the sixth on): send's size, over
+        // send in its column, at the input's top (the card's top, 8 in, as
+        // send is 8 in from its foot, unless photos are above); the lines
+        // wrap clear of it.
         if input.offersExpand, textScrolls {
-            expand = CGRect(x: self.text.maxX - M.expandSize, y: self.text.minY, width: M.expandSize, height: M.expandSize)
-            textTrailingInset = M.expandSize
+            let size = metrics.primaryActionSize
+            let expand = CGRect(x: contentX + contentWidth - size, y: inputContainer.minY, width: size, height: size)
+            self.expand = expand
+            textTrailingInset = max(0, self.text.maxX - expand.minX)
         } else {
             expand = nil
             textTrailingInset = 0

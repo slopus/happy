@@ -37,8 +37,15 @@ public struct StemCellsDockLayout: Equatable, Sendable {
     public init(size: CGSize, safeArea: LayoutInsets, cardHeight: (CGFloat) -> CGFloat) {
         let screen = StemCellChatScreenLayout(size: size, safeArea: safeArea, keyboardTop: size.height, cardHeight: cardHeight)
         card = screen.card
-        scrim = CGRect(x: 0, y: card.midY, width: max(0, size.width), height: max(0, size.height - card.midY))
+        scrim = Self.scrim(size: size, card: card)
         listBottom = screen.listBottom
+    }
+
+    /// The scrim under a composer `card` in a screen of `size`: from the
+    /// card's middle to the screen's foot, so its feather lies behind the
+    /// card and shows only on what has gone under it.
+    public static func scrim(size: CGSize, card: CGRect) -> CGRect {
+        CGRect(x: 0, y: card.midY, width: max(0, size.width), height: max(0, size.height - card.midY))
     }
 }
 

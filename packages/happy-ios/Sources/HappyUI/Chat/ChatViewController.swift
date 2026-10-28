@@ -277,7 +277,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     private func installHeader() {
         setUpHeader()
-        headerScrim.overlayOpacity = ChatHeaderScrim.restingOpacity
+        headerScrim.presence = 0
         view.addSubview(headerScrim)
         cliWarning.isHidden = true
         cliWarning.traitOverrides.followsTextSize = true
@@ -1565,10 +1565,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         let backdrop = ChatScreenLayout.headerBackdropVisible(distanceFromOldest: distanceFromOldest)
         if backdrop != headerBackdropVisible {
             headerBackdropVisible = backdrop
-            CATransaction.begin()
-            CATransaction.setAnimationDuration(ChatHeaderScrim.fadeDuration)
-            headerScrim.overlayOpacity = backdrop ? ChatHeaderScrim.underlapOpacity : ChatHeaderScrim.restingOpacity
-            CATransaction.commit()
+            headerScrim.presence = backdrop ? 1 : 0
         }
         let showButton = ChatScreenLayout.showsScrollButton(distanceFromNewest: distanceFromNewest)
         if (scrollButton.alpha > 0) != showButton {

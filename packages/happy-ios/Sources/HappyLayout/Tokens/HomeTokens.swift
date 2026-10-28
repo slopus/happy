@@ -20,9 +20,6 @@ extension Palette {
         light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.024),
         dark: RGBA(red: 44 / 255, green: 44 / 255, blue: 47 / 255, alpha: 0.40)
     )
-    /// The colour the home scrim fades from (MobileHeaderScrim.tsx): white
-    /// in light, black in dark. Its alpha comes from `HeaderScrim`.
-    public static let headerScrimTint = ColorToken(light: RGBA.white, dark: RGBA.black)
 }
 
 /// The glass controls' drop shadow (Header.tsx): black, 0/4 offset, radius
@@ -38,21 +35,20 @@ public enum HeaderGlassShadow {
     public static let materialFraction: CGFloat = 0.44
 }
 
-/// MobileHeaderScrim.tsx: one dim gradient behind the floating controls,
-/// full strength at the screen edge and falling to nothing over the last
-/// 36pt. The home variant uses the strong peak at full overlay opacity.
+/// Where content scrolls under chrome, as Telegram's edges are: a blur
+/// alone, no wash or tint, whole at the screen's edge and falling to
+/// nothing over the last 36pt.
 public enum HeaderScrim {
     public static let featherSteps = 24
     public static let rampPoints: CGFloat = 36
     public static let fallbackFeatherStart: CGFloat = 0.60
-    public static let strongPeakLight: Double = 0.76
-    public static let strongPeakDark: Double = 0.55
-    /// expo-blur `intensity` 8, as the animator fraction.
-    public static let edgeBlurFraction: CGFloat = 0.08
+    /// The blur's radius where it is whole: enough that nothing under the
+    /// chrome reads, little enough that what is next to it still does.
+    public static let blurRadius: CGFloat = 6
 
     public struct Stop: Equatable, Sendable {
         public var location: Double
-        /// Multiplies the peak alpha.
+        /// How much of the blur shows, 0 to 1.
         public var alpha: Double
     }
 
@@ -68,17 +64,17 @@ public enum HeaderScrim {
         min(1, max(0, scrolledUnder / presenceRamp))
     }
 
-    /// `feather(rgb, peak, hold)`: 25 samples of `1 - p^1.67` after a flat
+    /// The feather: 25 samples of `1 - p^1.67` after a flat
     /// hold, where `hold` puts the ramp's start `rampPoints` above the
     /// bottom of a scrim `height` tall.
-    public static func stops(height: CGFloat, peak: Double) -> [Stop] {
+    public static func stops(height: CGFloat) -> [Stop] {
         let hold = height > rampPoints ? Double(1 - rampPoints / height) : Double(fallbackFeatherStart)
         return (0...featherSteps).map { step in
             let t = Double(step) / Double(featherSteps)
             let p = t <= hold ? 0 : (t - hold) / (1 - hold)
             let falloff = 1 - pow(p, 1.67)
             // RN writes `toFixed(4)` into the rgba string.
-            return Stop(location: t, alpha: ((peak * falloff) * 10_000).rounded() / 10_000)
+            return Stop(location: t, alpha: (falloff * 10_000).rounded() / 10_000)
         }
     }
 }

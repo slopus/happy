@@ -68,15 +68,14 @@ final class StemCellChatViewController: UIViewController {
     private var rowViews: [String: ChatPlanView] = [:]
     private var plans: [ChatRowPlan] = []
     private let working = StemCellWorkingView()
-    /// The screen's ground under and beside the composer: the transcript
-    /// ends where the composer starts, never showing under or through it.
-    /// Home's dock scrim, under the composer and feathered above it. Over
-    /// home it lies on home's own dock scrim, so new work's fade leaves it.
+    /// Home's dock scrim, in its frame and always there, as home's is: one
+    /// that came and went with the content under it flashed as a short
+    /// transcript bounced off its top. Over home it lies on home's own, so
+    /// new work's fade leaves it.
     private let composerScrim = HeaderScrimView(edge: .bottom)
-    /// Where the transcript's drawn content starts and ends in it (not the
-    /// room held under a lifted send or waiting steering): what the scrims
-    /// measure how far it has gone under them by.
-    private var contentSpan: ClosedRange<CGFloat> = 0...0
+    /// Where the transcript's drawn content starts in it: what the header's
+    /// scrim measures how far it has gone under it by.
+    private var contentTop: CGFloat = 0
     /// A jump to the newest message under way: layout moves its target
     /// rather than cutting it short.
     private var jumping = false
@@ -1065,9 +1064,7 @@ final class StemCellChatViewController: UIViewController {
         }
         if !stack.holding { lift = nil }
         rowsEnd = stack.frames.first?.minY == 0 ? stack.frames.last?.maxY : nil
-        // The reserve under waiting steering is room, not content.
-        let drawn = (waiting.isEmpty ? stack.frames : Array(stack.frames.dropLast())).filter { $0.height > 0 }
-        contentSpan = (drawn.first?.minY ?? 0)...max(drawn.first?.minY ?? 0, drawn.last?.maxY ?? 0)
+        contentTop = stack.frames.first { $0.height > 0 }?.minY ?? 0
         if let introLayout {
             introView.setLayoutFrame(stack.frames[0])
             introView.place(introLayout)
@@ -1100,18 +1097,13 @@ final class StemCellChatViewController: UIViewController {
         }
         showNewestFromItsStart()
         updateJump()
-        updateScrims()
+        updateHeaderScrim()
     }
 
-    /// The scrims at both edges come in as the transcript's content goes
-    /// under them: its first line past the top of the list under the
-    /// header, its last past the list's foot under the composer.
-    private func updateScrims() {
-        let top = scrollView.contentOffset.y + scrollView.contentInset.top
-        let foot = scrollView.contentOffset.y + scrollView.bounds.height - scrollView.contentInset.bottom
-        header.scrolledUnder = top - contentSpan.lowerBound
-        // Its strength, never its alpha, which would turn its blur off.
-        composerScrim.presence = HeaderScrim.presence(scrolledUnder: contentSpan.upperBound - foot)
+    /// The header's scrim comes in as the transcript's first line goes
+    /// past the top of the list under it.
+    private func updateHeaderScrim() {
+        header.scrolledUnder = scrollView.contentOffset.y + scrollView.contentInset.top - contentTop
     }
 
     /// The transcript is up: history read and its rows, if any, laid out.
@@ -1545,7 +1537,7 @@ extension StemCellChatViewController: UIScrollViewDelegate {
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         updateJump()
-        updateScrims()
+        updateHeaderScrim()
         guard scrollView.isTracking || scrollView.isDecelerating else { return }
         followsNewest = scrollView.contentOffset.y >= newestOffset - 24
         // Read away from the end: room held under it, wholly out of view, goes.

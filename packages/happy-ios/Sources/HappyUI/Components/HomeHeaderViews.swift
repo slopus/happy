@@ -16,9 +16,14 @@ final class PartialBlurView: UIVisualEffectView {
     var presence: CGFloat = 1 {
         didSet {
             guard presence != oldValue else { return }
-            animator?.fractionComplete = fraction * presence
-            // A paused animator at 0 draws the whole material, not none.
+            // A paused animator made at 0 draws the whole material, not
+            // none, whatever it is moved to after: none is no animator.
             isHidden = presence <= 0
+            if animator == nil || presence <= 0 {
+                rebuild()
+            } else {
+                animator?.fractionComplete = fraction * presence
+            }
         }
     }
 
@@ -47,7 +52,7 @@ final class PartialBlurView: UIVisualEffectView {
         animator?.stopAnimation(true)
         animator = nil
         effect = nil
-        guard window != nil else { return }
+        guard window != nil, presence > 0 else { return }
         // expo-blur names the material for the app's theme, not the system's.
         let style: UIBlurEffect.Style = traitCollection.userInterfaceStyle == .dark
             ? .systemUltraThinMaterialDark
@@ -122,30 +127,21 @@ final class HeaderGlassView: UIView {
     }
 }
 
-/// MobileHeaderScrim.tsx, home variant: a light blur and a dim wash, both
-/// at full strength at the screen's edge and feathered out over the last
-/// 36pt towards the content. The header's runs down from the top; the
-/// dock's (`edge="bottom"`) runs up from the foot.
-final class HeaderScrimView: UIView {
-    enum Edge {
-        case top
-        case bottom
+/// A blur and nothing else: the system's blur with its material's tint,
+/// saturation and brightness taken out, so over a plain ground it draws
+/// that ground exactly and only what is under it softens. Were UIKit ever
+/// to build its blur another way, it draws nothing rather than a tinted
+/// material.
+final class EdgeBlurView: UIVisualEffectView {
+    /// The blur's radius, in points.
+    var radius: CGFloat {
+        didSet { if radius != oldValue { strip() } }
     }
 
-    private let blur = PartialBlurView(fraction: HeaderScrim.edgeBlurFraction)
-    private let blurMask = CAGradientLayer()
-    private let tint = CAGradientLayer()
-
-    init(edge: Edge = .top) {
-        super.init(frame: .zero)
+    init(radius: CGFloat) {
+        self.radius = radius
+        super.init(effect: UIBlurEffect(style: .regular))
         isUserInteractionEnabled = false
-        blur.layer.mask = blurMask
-        addSubview(blur)
-        layer.addSublayer(tint)
-        for gradient in [blurMask, tint] {
-            gradient.startPoint = CGPoint(x: 0.5, y: edge == .top ? 0 : 1)
-            gradient.endPoint = CGPoint(x: 0.5, y: edge == .top ? 1 : 0)
-        }
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.setNeedsLayout()
         }
@@ -156,24 +152,69 @@ final class HeaderScrimView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
-    /// MobileHeaderScrim's `overlayOpacity`: scales the wash, never the
-    /// blur. The chat's header strengthens it once content is under it,
-    /// animating it in a transaction of its own.
-    var overlayOpacity: Float = 1 {
-        didSet { tint.opacity = overlayOpacity * Float(presence) }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        strip()
     }
 
-    /// How present the scrim is, 0 to 1, set a frame at a time: the wash's
-    /// opacity and the blur's strength, never this view's alpha, which
-    /// would turn the blur off.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        strip()
+    }
+
+    /// UIKit sets its effect up again as it sees fit: each time, only the
+    /// backdrop's gaussian blur is kept, at `radius`, and the material's
+    /// overlays go.
+    private func strip() {
+        for view in subviews where view !== contentView {
+            let filters = (view.layer.filters as? [NSObject]) ?? []
+            guard let blur = filters.first(where: { ($0.value(forKey: "name") as? String) == "gaussianBlur" }) else {
+                view.isHidden = true
+                continue
+            }
+            blur.setValue(radius, forKey: "inputRadius")
+            view.layer.filters = [blur]
+            view.isHidden = false
+        }
+    }
+}
+
+/// An edge where content scrolls under chrome, as Telegram's are: a blur
+/// alone, no wash, whole at the screen's edge and feathered out over the
+/// last 36pt towards the content. Over a plain ground it is that ground,
+/// so it shows only on what goes under it. The header's runs down from the
+/// top; the dock's and the composer's (`edge: .bottom`) up from the foot.
+final class HeaderScrimView: UIView {
+    enum Edge {
+        case top
+        case bottom
+    }
+
+    private let blur = EdgeBlurView(radius: HeaderScrim.blurRadius)
+    private let feather = HeaderScrimFeatherView()
+
+    init(edge: Edge = .top) {
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        feather.gradient.startPoint = CGPoint(x: 0.5, y: edge == .top ? 0 : 1)
+        feather.gradient.endPoint = CGPoint(x: 0.5, y: edge == .top ? 1 : 0)
+        // A visual effect view feathers by a mask view, not its layer's mask.
+        blur.mask = feather
+        addSubview(blur)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    /// How present the blur is, 0 to 1, set a frame at a time: its radius,
+    /// never this view's alpha, which would turn it off.
     var presence: CGFloat = 1 {
         didSet {
             guard presence != oldValue else { return }
-            blur.presence = presence
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            tint.opacity = overlayOpacity * Float(presence)
-            CATransaction.commit()
+            blur.radius = HeaderScrim.blurRadius * presence
+            blur.isHidden = presence <= 0
         }
     }
 
@@ -182,18 +223,18 @@ final class HeaderScrimView: UIView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         blur.frame = bounds
-        blurMask.frame = blur.bounds
-        tint.frame = bounds
-        let dark = traitCollection.userInterfaceStyle == .dark
-        let base = UIColor(Palette.headerScrimTint).resolvedColor(with: traitCollection)
-        let tintStops = HeaderScrim.stops(height: bounds.height, peak: dark ? HeaderScrim.strongPeakDark : HeaderScrim.strongPeakLight)
-        tint.colors = tintStops.map { base.withAlphaComponent($0.alpha).cgColor }
-        tint.locations = tintStops.map { NSNumber(value: $0.location) }
-        let maskStops = HeaderScrim.stops(height: bounds.height, peak: 1)
-        blurMask.colors = maskStops.map { UIColor.white.withAlphaComponent($0.alpha).cgColor }
-        blurMask.locations = maskStops.map { NSNumber(value: $0.location) }
+        feather.frame = blur.bounds
+        let stops = HeaderScrim.stops(height: bounds.height)
+        feather.gradient.colors = stops.map { UIColor.white.withAlphaComponent($0.alpha).cgColor }
+        feather.gradient.locations = stops.map { NSNumber(value: $0.location) }
         CATransaction.commit()
     }
+}
+
+/// The blur's mask: whole where the edge holds, clear past its feather.
+private final class HeaderScrimFeatherView: UIView {
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+    var gradient: CAGradientLayer { layer as! CAGradientLayer }
 }
 
 /// StatusDot.tsx: a dot that breathes between full and 0.3 opacity while

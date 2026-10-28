@@ -87,15 +87,6 @@ public struct ChatHeaderTitleLayout: Equatable, Sendable {
     }
 }
 
-/// ChatHeaderView's scrim: MobileHeaderScrim's strong variant, its wash at
-/// 0.80 while the conversation starts below the header and 0.96 once
-/// content is scrolled under it, faded over 200 ms.
-public enum ChatHeaderScrim {
-    public static let restingOpacity: Float = 0.80
-    public static let underlapOpacity: Float = 0.96
-    public static let fadeDuration: TimeInterval = 0.2
-}
-
 /// ChatHeaderView without glass (a tablet): the title over the workspace or
 /// branch and the line changes, at the start of the header's row rather
 /// than in a capsule. The row is the navigation bar's width held to

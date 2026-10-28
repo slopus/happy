@@ -491,6 +491,7 @@ final class StemCellsHomeViewController: UIViewController {
             }
         }
         empty.frame = layout.empty
+        updateHeaderScrim()
     }
 
     override func didMove(toParent parent: UIViewController?) {
@@ -752,6 +753,12 @@ extension StemCellsHomeViewController: UIScrollViewDelegate {
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         stories.listDidScroll()
+        updateHeaderScrim()
+    }
+
+    /// The header's blur comes in as the list goes under it.
+    private func updateHeaderScrim() {
+        header?.scrim.presence = HeaderScrim.presence(scrolledUnder: sidebar.contentOffset.y + sidebar.contentInset.top)
     }
 
     func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
