@@ -1147,6 +1147,194 @@ final class StemCellsUITests: XCTestCase {
         XCTAssertEqual(counts["backwards"], 0, "the content stepped back against the pull: \(value)")
     }
 
+    /// The chat pulled past its newest row and held there, the finger still
+    /// pulling slowly, three times over, while a reply streams in: the
+    /// content never steps back against the pull, nothing writes the
+    /// transcript's height, inset or offset while it is held stretched, and
+    /// let go it settles on the newest line. Needs the e2e computer's fake
+    /// model (`fakellm.py`), which streams "stream P W": P paragraphs, W ms
+    /// a word, in the conversation `STEM_STREAM_ROW` (Stream Lab).
+    func testChatBounceWhileStreaming() {
+        let composer = openStreamLab(probe: "watch")
+        send(composer, "stream 40 30")
+        let working = app.descendants(matching: .any)["stem-working"]
+        XCTAssertTrue(working.waitForExistence(timeout: 15), "the reply never started")
+        let transcript = app.scrollViews["stem-transcript"]
+        // Long enough to scroll before the pulls.
+        pause(8)
+        dismissKeyboard()
+        toNewest()
+        capture("chat-bounce-before")
+        let low = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        let high = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+        for _ in 0..<3 {
+            XCTAssertTrue(working.exists, "the reply ended before the pulls did")
+            low.press(forDuration: 0.05, thenDragTo: high, withVelocity: 120, thenHoldForDuration: 2)
+            pause(1.5)
+        }
+        capture("chat-bounce-after")
+        let counts = probeCounts(transcript)
+        print("STEM_CHAT_BOUNCE \(transcript.value as? String ?? "")")
+        XCTAssertGreaterThan(counts["stretched"] ?? 0, 60, "the pulls never stretched it")
+        XCTAssertEqual(counts["backwards"], 0, "the content stepped back against the pull")
+        XCTAssertEqual(counts["held"], 0, "the transcript was written while held stretched")
+        // Let go, it follows the reply again: the newest row ends over the composer.
+        let messages = app.descendants(matching: .any).matching(identifier: "stem-message")
+        let input = app.descendants(matching: .any)["stem-input"]
+        pause(1)
+        let newest = messages.element(boundBy: messages.count - 1).frame
+        XCTAssertLessThan(newest.maxY, input.frame.minY + 1, "the newest row went under the composer")
+        XCTAssertGreaterThan(newest.maxY, input.frame.minY - 120, "it didn't follow the reply once let go")
+        // The turn over, back as it was.
+        let deadline = Date().addingTimeInterval(120)
+        while Date() < deadline, working.exists { pause(1) }
+    }
+
+    /// Desktop's send lift, step by step against a streaming reply: an idle
+    /// send by a reader at the end is lifted to 30% down the transcript
+    /// with room held under it; the reply grows into that room without
+    /// moving the send, then, once it outgrows it, is followed at its end;
+    /// a send mid-turn waits at the end, lifted by nothing; another send
+    /// once idle is lifted again; and one sent by a reader scrolled up into
+    /// history moves nothing. Needs `fakellm.py` as above.
+    func testSendLiftMatchesDesktop() {
+        let composer = openStreamLab(probe: "watch")
+        let transcript = app.scrollViews["stem-transcript"]
+        let messages = app.descendants(matching: .any).matching(identifier: "stem-message")
+        let working = app.descendants(matching: .any)["stem-working"]
+        let input = app.descendants(matching: .any)["stem-input"]
+        // Each run's sends are its own: the conversation keeps the last run's.
+        let run = String(Int(Date().timeIntervalSince1970) % 100_000)
+        func say(_ text: String) -> XCUIElement {
+            send(composer, "\(text) \(run)")
+            return app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "stem-message", "\(text) \(run)")).firstMatch
+        }
+        func idle() {
+            let deadline = Date().addingTimeInterval(180)
+            while Date() < deadline, working.exists { pause(0.5) }
+            XCTAssertFalse(working.exists, "the turn never ended")
+            pause(1)
+        }
+        idle()
+        // 1. Idle, at the end: lifted, room held.
+        // The reply waits a moment before its first word: the lift is seen
+        // before the reply grows into the room.
+        let first = say("stream 4 120 wait 1500 first")
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        pause(0.3)
+        let counts = probeCounts(transcript)
+        let top = CGFloat(counts["top"] ?? 0)
+        let viewport = input.frame.minY - 8 - top
+        let line = (viewport * 0.3).rounded()
+        capture("lift-1-sent")
+        XCTAssertEqual(first.frame.minY - top, line, accuracy: 1.5, "the send isn't lifted to the line (viewport \(viewport))")
+        XCTAssertGreaterThan(input.frame.minY - first.frame.maxY, viewport / 3, "no room held for the reply")
+        // 2. The reply grows into the room, the send held, then followed.
+        let liftedAt = first.frame.minY
+        var held = 0
+        var followed = false
+        let deadline = Date().addingTimeInterval(60)
+        while Date() < deadline, working.exists {
+            let now = first.frame.minY
+            if abs(now - liftedAt) < 1 {
+                held += 1
+            } else {
+                XCTAssertLessThan(now, liftedAt, "the send moved down")
+                pause(0.3)
+                let end = max(messages.element(boundBy: messages.count - 1).frame.maxY, working.frame.maxY)
+                XCTAssertEqual(end, input.frame.minY - 8, accuracy: 4, "outgrown, the reply's end isn't followed")
+                followed = true
+                break
+            }
+            pause(0.3)
+        }
+        capture("lift-2-outgrown")
+        XCTAssertGreaterThan(held, 2, "the room under the send didn't hold")
+        XCTAssertTrue(followed, "the reply never outgrew the room")
+        // 3. Mid-turn: it waits at the end, nothing lifted.
+        let mid = say("stream 2 40 midturn")
+        XCTAssertTrue(mid.waitForExistence(timeout: 5))
+        pause(0.8)
+        capture("lift-3-midturn")
+        XCTAssertGreaterThan(mid.frame.minY - top, line + 40, "a send mid-turn was lifted")
+        XCTAssertLessThan(mid.frame.maxY, input.frame.minY + 1, "a send mid-turn is under the composer")
+        idle()
+        // 4. Idle again: lifted again.
+        let again = say("stream 2 120 wait 1500 again")
+        XCTAssertTrue(again.waitForExistence(timeout: 5))
+        pause(0.3)
+        capture("lift-4-again")
+        XCTAssertEqual(again.frame.minY - top, line, accuracy: 1.5, "the next idle send isn't lifted")
+        idle()
+        // 5. Scrolled up into history: a send moves nothing.
+        // The drag that puts the keyboard away takes the reader up too.
+        dismissKeyboard()
+        pause(1)
+        let anchor = mid
+        let parked = anchor.frame.minY
+        XCTAssertTrue(transcript.frame.contains(CGPoint(x: anchor.frame.midX, y: parked)), "the anchor isn't on screen")
+        composer.tap()
+        pause(1)
+        let parkedNow = anchor.frame.minY
+        _ = say("stream 1 40 parked")
+        pause(1.5)
+        capture("lift-5-parked")
+        XCTAssertEqual(anchor.frame.minY, parkedNow, accuracy: 1, "a send from history moved the reader (\(parked) before the keyboard)")
+        XCTAssertTrue(app.descendants(matching: .any)["stem-jump-latest"].exists, "no way back to the newest")
+        idle()
+    }
+
+    /// Stream Lab's conversation, with the transcript's probe on.
+    private func openStreamLab(probe: String) -> XCUIElement {
+        app.terminate()
+        app.launchEnvironment["STEM_CHAT_PROBE"] = probe
+        app.launch()
+        home()
+        pause(1)
+        let bot = row("space", ProcessInfo.processInfo.environment["STEM_STREAM_ROW"] ?? "Stream Lab")
+        XCTAssertTrue(bot.waitForExistence(timeout: 8), "no Stream Lab")
+        bringIntoView(bot)
+        bot.tap()
+        let composer = app.textViews["stem-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.scrollViews["stem-transcript"].waitForExistence(timeout: 5))
+        pause(2)
+        return composer
+    }
+
+    private func send(_ composer: XCUIElement, _ text: String) {
+        if !app.keyboards.firstMatch.exists { composer.tap() }
+        composer.typeText(text)
+        app.buttons["Send"].tap()
+    }
+
+    /// Dragged down into the keyboard, as a person puts it away.
+    private func dismissKeyboard() {
+        guard app.keyboards.firstMatch.exists else { return }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(
+            forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)), withVelocity: .slow, thenHoldForDuration: 0.2
+        )
+        pause(1)
+    }
+
+    /// Back at the newest row, following it.
+    private func toNewest() {
+        let jump = app.descendants(matching: .any)["stem-jump-latest"]
+        if jump.exists, jump.isHittable { jump.tap() }
+        for _ in 0..<3 { app.swipeUp(velocity: .fast) }
+        pause(2.5)
+    }
+
+    /// The probe's counts, from the transcript's value.
+    private func probeCounts(_ transcript: XCUIElement) -> [String: Int] {
+        let value = transcript.value as? String ?? ""
+        return Dictionary(value.split(separator: " ").compactMap { pair -> (String, Int)? in
+            let parts = pair.split(separator: "=")
+            guard parts.count == 2, let count = Int(parts[1]) else { return nil }
+            return (String(parts[0]), count)
+        }, uniquingKeysWith: { _, last in last })
+    }
+
     /// The pencil right after the name, on its line, and no Rename row.
     private func assertPencil() {
         let pencil = app.buttons["stem-detail-rename-button"]

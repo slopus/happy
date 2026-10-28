@@ -289,6 +289,73 @@ final class StemCellsLayoutTests: XCTestCase {
         XCTAssertEqual(full.frames[0].minY, 180)
     }
 
+    /// ConversationView's keys, as MessageList takes them: an idle send by
+    /// a reader at the end is lifted, one by a reader further up moves
+    /// nothing; a send mid-turn is never lifted and carries a reader within
+    /// 80 of the end to it.
+    func testASendLiftsOnlyAReaderAtTheEnd() {
+        func send(_ working: Bool, _ following: Bool, _ distance: CGFloat) -> [Bool] {
+            let send = StemCellSendLift.Send(working: working, following: following, distanceFromEnd: distance)
+            return [send.lifts, send.follows]
+        }
+        XCTAssertEqual(send(false, true, 0), [true, true])
+        XCTAssertEqual(send(false, false, 40), [false, false])
+        XCTAssertEqual(send(true, true, 0), [false, true])
+        XCTAssertEqual(send(true, false, 80), [false, true])
+        XCTAssertEqual(send(true, false, 81), [false, false])
+    }
+
+    /// The room under a lift stays as the reader scrolls away and back; only
+    /// a viewport taken another height lets it go, once wholly out of view.
+    func testTheRoomUnderALiftGoesOnlyAfterAResizeOutOfView() {
+        XCTAssertFalse(StemCellSendLift.releases(resized: false, viewportBottom: 100, rowsEnd: 500))
+        XCTAssertFalse(StemCellSendLift.releases(resized: true, viewportBottom: 501, rowsEnd: 500))
+        XCTAssertTrue(StemCellSendLift.releases(resized: true, viewportBottom: 500, rowsEnd: 500))
+        XCTAssertFalse(StemCellSendLift.releases(resized: true, viewportBottom: 100, rowsEnd: nil))
+    }
+
+    /// A height laid out while a finger pulls past the end, or the scroll
+    /// bounces back from it, waits; the finger off and the scroll back
+    /// inside, it is given.
+    func testAHeightWaitsWhileTheScrollIsPastAnEnd() {
+        // 1000 high under a 600 viewport, insets 100 and 150: the end is at 550.
+        func scroll(_ offset: CGFloat, tracking: Bool = false, decelerating: Bool = false) -> StemCellChatScrollHold.Scroll {
+            .init(offset: offset, insetTop: 100, insetBottom: 150, contentHeight: 1000, viewport: 600, tracking: tracking, decelerating: decelerating)
+        }
+        XCTAssertEqual(scroll(550).end(), 550)
+        XCTAssertFalse(scroll(550.5).stretched())
+        XCTAssertTrue(scroll(551).stretched())
+        XCTAssertTrue(scroll(-101).stretched())
+        // Past the end at the new height only: a shorter height would clamp it.
+        XCTAssertTrue(scroll(500).stretched(contentHeight: 900))
+
+        var hold = StemCellChatScrollHold()
+        // At rest, given at once.
+        XCTAssertEqual(hold.laidOut(1024, scroll: scroll(550)), 1024)
+        // The same height: nothing to give.
+        XCTAssertNil(hold.laidOut(1000, scroll: scroll(580, tracking: true)))
+        XCTAssertNil(hold.held)
+        // Pulled past the end: held.
+        XCTAssertNil(hold.laidOut(1024, scroll: scroll(580, tracking: true)))
+        XCTAssertNil(hold.laidOut(1048, scroll: scroll(590, tracking: true)))
+        XCTAssertEqual(hold.held, 1048)
+        // Inside the ends, a finger on it: given, it moves nothing on screen.
+        var inside = StemCellChatScrollHold()
+        XCTAssertEqual(inside.laidOut(1024, scroll: scroll(300, tracking: true)), 1024)
+        // Still pulled: kept.
+        XCTAssertNil(hold.release(scroll: scroll(590, tracking: true)))
+        // Let go, bouncing back past the end: kept.
+        XCTAssertNil(hold.release(scroll: scroll(560, decelerating: true)))
+        // Back inside: given, once.
+        XCTAssertEqual(hold.release(scroll: scroll(550, decelerating: true)), 1048)
+        XCTAssertNil(hold.held)
+        XCTAssertNil(hold.release(scroll: scroll(550)))
+        // Following the end waits while anything moves the scroll.
+        XCTAssertTrue(StemCellChatScrollHold.follows(scroll(550)))
+        XCTAssertFalse(StemCellChatScrollHold.follows(scroll(550, tracking: true)))
+        XCTAssertFalse(StemCellChatScrollHold.follows(scroll(550, decelerating: true)))
+    }
+
     func testAgentParagraphsSitOneGapApart() {
         let layout = StemCellMessageLayout.agent(width: 390, blocks: [.text(block(height: 24)), .text(block(height: 48))])
         XCTAssertEqual(layout.markdownOrigin, CGPoint(x: 16, y: 8))

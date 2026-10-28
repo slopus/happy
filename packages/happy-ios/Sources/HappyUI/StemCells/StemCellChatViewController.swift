@@ -138,8 +138,15 @@ final class StemCellChatViewController: UIViewController {
     /// it is lifted to desktop's line (`StemCellSendLift`).
     private var liftPending: String?
     /// The lifted send and its line, while the reply hasn't filled the room
-    /// under it.
-    private var lift: (id: String, line: CGFloat)?
+    /// under it; `viewport` as it was lifted in, and whether it has been
+    /// another height since (`StemCellSendLift.releases`).
+    private var lift: (id: String, line: CGFloat, viewport: CGFloat, resized: Bool)?
+    /// A content height laid out while a finger, or a bounce, holds the
+    /// transcript's scroll (`StemCellChatScrollHold`).
+    private var scrollHold = StemCellChatScrollHold()
+    #if DEBUG
+    private var probe: ScrollProbe?
+    #endif
     /// Where the transcript's rows end, as last laid out; nil while they
     /// stand off the top (a short one resting on its composer), where
     /// dropping a lift would move them.
@@ -259,6 +266,9 @@ final class StemCellChatViewController: UIViewController {
         scrollView.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(held(_:))))
 
         if previewing { setUpPreview() }
+        #if DEBUG
+        if !previewing, let mode = ProcessInfo.processInfo.environment["STEM_CHAT_PROBE"] { probe = ScrollProbe(self, relayout: mode == "relayout") }
+        #endif
         applyIntro()
         proposals.onChange = { [weak self] in self?.replan() }
         watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
@@ -365,6 +375,9 @@ final class StemCellChatViewController: UIViewController {
         Task { await conversation.setVisible(false) }
         if isMovingFromParent || navigationController == nil {
             following?.cancel()
+            #if DEBUG
+            probe?.link.invalidate()
+            #endif
             planning?.cancel()
             watch?.invalidate()
             modelsWatch?.invalidate()
@@ -959,10 +972,15 @@ final class StemCellChatViewController: UIViewController {
         let foot = StemCellChatFootLayout(size: view.bounds.size, card: screen.card)
         composerScrim.setLayoutFrame(foot.scrim)
         jump.setLayoutFrame(foot.jump)
-        scrollView.frame = view.bounds
+        // Set again only when it changed: a scroll view given its frame,
+        // even the same one, while pulled past an end snaps its offset back.
+        if scrollView.frame != view.bounds { scrollView.frame = view.bounds }
         // The transcript starts under the header's row and scrolls under it.
         let insets = UIEdgeInsets(top: header.layout.listTop, left: 0, bottom: screen.listBottom, right: 0)
         if scrollView.contentInset != insets {
+            #if DEBUG
+            probe?.wrote("inset", insets.bottom)
+            #endif
             scrollView.contentInset = insets
             scrollView.verticalScrollIndicatorInsets = insets
         }
@@ -1050,13 +1068,20 @@ final class StemCellChatViewController: UIViewController {
             let held = lift.flatMap { lift in row(lift.id).map { StemCellChatStackLayout.Lift(row: $0, line: lift.line) } }
             return StemCellChatStackLayout(heights: heights, width: width, viewport: viewport, pinsFirst: pins, lift: held)
         }
+        // The room under a lift taken another height by the keyboard or the
+        // composer may go once it is out of view.
+        if let held = lift, held.viewport != viewport { lift = (held.id, held.line, viewport, true) }
         var stack = stacked()
         if let id = liftPending, let sent = row(id) {
             liftPending = nil
-            // Where it lands following the end; lifted from there if below the line.
-            let line = StemCellSendLift(viewport: viewport, introLine: introLayout?.line.maxY)
-            if line.lifts(shownAt: stack.frames[sent].minY - max(0, stack.contentHeight - viewport)) {
-                lift = (id, line.line)
+            // Where it lands following the end; lifted from there if below the
+            // line. The intro's line counts only while it is on screen there:
+            // scrolled away, the line is desktop's 30%.
+            let shownFrom = max(0, stack.contentHeight - viewport)
+            let introLine = introLayout.flatMap { $0.line.maxY > shownFrom ? $0.line.maxY : nil }
+            let line = StemCellSendLift(viewport: viewport, introLine: introLine)
+            if line.lifts(shownAt: stack.frames[sent].minY - shownFrom) {
+                lift = (id, line.line, viewport, false)
             } else {
                 lift = nil
             }
@@ -1084,16 +1109,19 @@ final class StemCellChatViewController: UIViewController {
         } else {
             place()
         }
-        let contentHeight = stack.contentHeight
+        if scrollView.contentSize.width != width { scrollView.contentSize.width = width }
         let previous = scrollView.contentSize.height
-        scrollView.contentSize = CGSize(width: width, height: contentHeight)
+        // Pulled or bouncing past an end, it keeps the height it has, and
+        // nothing follows the newest row: either would move the content
+        // under the finger. Both come once it is let go or at rest.
+        let scroll = scrollState
+        if let height = scrollHold.laidOut(stack.contentHeight, scroll: scroll) { setContentHeight(height) }
         if jumping {
-            if previous != contentHeight { scrollView.setContentOffset(CGPoint(x: 0, y: newestOffset), animated: true) }
-        } else if followsNewest, previous != contentHeight || scrollView.contentOffset.y != newestOffset {
-            scrollView.contentOffset.y = newestOffset
-        } else if !followsNewest, scrollView.contentOffset.y > newestOffset, !scrollView.isTracking, !scrollView.isDecelerating {
-            // Shorter than the place it was read at (a section folded): no gap under the end.
-            scrollView.contentOffset.y = newestOffset
+            if previous != scrollView.contentSize.height { scrollView.setContentOffset(CGPoint(x: 0, y: newestOffset), animated: true) }
+        } else if StemCellChatScrollHold.follows(scroll), followsNewest ? scrollView.contentOffset.y != newestOffset : scrollView.contentOffset.y > newestOffset {
+            // Following, at the end; else shorter than the place it was read
+            // at (a section folded): no gap under the end.
+            setOffset(newestOffset)
         }
         showNewestFromItsStart()
         updateJump()
@@ -1110,6 +1138,8 @@ final class StemCellChatViewController: UIViewController {
     private var drawn: Bool { chat.loaded && (chat.items.isEmpty || planShown) }
 
     private var timed = false
+    /// What `timeShown` found, the transcript's value.
+    private var timing = ""
 
     /// How long from the row's tap until the transcript was on screen, and
     /// whether the push's first frame had it: logged, and the transcript's
@@ -1125,12 +1155,56 @@ final class StemCellChatViewController: UIViewController {
             #if DEBUG
             print("STEM_OPEN \(warm) first=\(firstFrame) ms=\(ms) rows=\(plans.count)")
             #endif
-            scrollView.accessibilityValue = "first=\(firstFrame) ms=\(ms) rows=\(plans.count)"
+            timing = "first=\(firstFrame) ms=\(ms) rows=\(plans.count)"
+            scrollView.accessibilityValue = timing
+            #if DEBUG
+            probe?.report()
+            #endif
         }
     }
 
     private var newestOffset: CGFloat {
         max(-scrollView.contentInset.top, scrollView.contentSize.height + scrollView.contentInset.bottom - scrollView.bounds.height)
+    }
+
+    private var scrollState: StemCellChatScrollHold.Scroll {
+        StemCellChatScrollHold.Scroll(
+            offset: scrollView.contentOffset.y, insetTop: scrollView.contentInset.top, insetBottom: scrollView.contentInset.bottom,
+            contentHeight: scrollView.contentSize.height, viewport: scrollView.bounds.height,
+            tracking: scrollView.isTracking, decelerating: scrollView.isDecelerating
+        )
+    }
+
+    private func setContentHeight(_ height: CGFloat, _ from: String = "size") {
+        #if DEBUG
+        probe?.wrote(from, height)
+        #endif
+        scrollView.contentSize.height = height
+    }
+
+    private func setOffset(_ y: CGFloat) {
+        #if DEBUG
+        probe?.wrote("offset", y)
+        #endif
+        scrollView.contentOffset.y = y
+    }
+
+    /// Let go and at rest: a height held meanwhile is given, and a reader
+    /// following the newest row is taken to it, gliding, as the reply may
+    /// have grown a long way under the finger. A glide a finger stopped
+    /// ends with that finger still on it: nothing is given until it lifts.
+    private func settleScroll(lifted: Bool) {
+        var scroll = scrollState
+        if lifted { scroll.tracking = false }
+        scroll.decelerating = false
+        guard !scroll.tracking else { return }
+        if let height = scrollHold.release(scroll: scroll) { setContentHeight(height, "size-settle") }
+        guard !jumping, followsNewest, abs(scrollView.contentOffset.y - newestOffset) > 0.5 else { return }
+        #if DEBUG
+        probe?.wrote("glide", newestOffset)
+        #endif
+        jumping = true
+        scrollView.setContentOffset(CGPoint(x: 0, y: newestOffset), animated: true)
     }
 
     /// The way back shows while the reader is more than a third of the
@@ -1176,10 +1250,13 @@ final class StemCellChatViewController: UIViewController {
         kept = true
         card.setText("", selection: NSRange(location: 0, length: 0))
         StemCellsHaptics.play(.send)
-        followsNewest = true
-        // Mid-turn, a send waits under the reply at the end instead.
+        // Idle, a reader at the end sees it lifted; mid-turn it waits under
+        // the reply at the end, which a reader near it follows. One reading
+        // further up stays where they are, as on desktop.
         let id = ClientID.make()
-        liftPending = chat.working ? nil : id
+        let lands = StemCellSendLift.Send(working: chat.working, following: followsNewest, distanceFromEnd: newestOffset - scrollView.contentOffset.y)
+        if lands.follows { followsNewest = true }
+        liftPending = lands.lifts ? id : nil
         let conversation = conversation
         let store = session.store
         let staged = pictures
@@ -1533,15 +1610,36 @@ extension StemCellChatViewController: UIScrollViewDelegate {
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         // No keyboard up, or one the finger never moved: nothing will say where it went.
         if !card.textView.isFirstResponder || abs(keyboardTracker.frame.minY - min(keyboardTop, view.bounds.maxY)) < 1 { fingerOnKeyboard = false }
+        // Let go to glide or bounce, what is held waits until it is back
+        // inside its ends (`scrollViewDidScroll`) or at rest.
+        #if DEBUG
+        probe?.wrote("end-drag", decelerate ? 1 : 0)
+        #endif
+        if !decelerate { settleScroll(lifted: true) }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        #if DEBUG
+        probe?.wrote("end-decel", 0)
+        #endif
+        settleScroll(lifted: false)
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         updateJump()
         updateHeaderScrim()
-        guard scrollView.isTracking || scrollView.isDecelerating else { return }
-        followsNewest = scrollView.contentOffset.y >= newestOffset - 24
-        // Read away from the end: room held under it, wholly out of view, goes.
-        if !followsNewest, lift != nil, let rowsEnd, scrollView.contentOffset.y + scrollView.bounds.height - scrollView.contentInset.bottom <= rowsEnd {
+        #if DEBUG
+        probe?.watch()
+        #endif
+        let moving = scrollView.isTracking || scrollView.isDecelerating
+        // At the end of the height on screen, before a held one is given.
+        if moving { followsNewest = scrollView.contentOffset.y >= newestOffset - 24 }
+        // Back inside its ends after a bounce: what was held is given.
+        if scrollHold.held != nil, let height = scrollHold.release(scroll: scrollState) { setContentHeight(height, "size-scroll") }
+        guard moving else { return }
+        // The room under a lift stays as the reader scrolls away and back;
+        // taken another height meanwhile, it goes once wholly out of view.
+        if let held = lift, StemCellSendLift.releases(resized: held.resized, viewportBottom: scrollView.contentOffset.y + scrollView.bounds.height - scrollView.contentInset.bottom, rowsEnd: rowsEnd) {
             lift = nil
             view.setNeedsLayout()
         }
@@ -1551,6 +1649,80 @@ extension StemCellChatViewController: UIScrollViewDelegate {
         }
     }
 }
+
+#if DEBUG
+extension StemCellChatViewController {
+    /// For the UI tests (`STEM_CHAT_PROBE`): every write of the transcript's
+    /// content height, inset and offset, logged with whether a finger held
+    /// it and whether it was past an end; and, as the transcript's value
+    /// after its timing, how many frames a finger held it stretched, how
+    /// often the content stepped back against the pull then, and how many
+    /// writes landed while it was held stretched. With `relayout` the
+    /// screen is laid out again on every frame, as a reply streaming in
+    /// lays it out.
+    final class ScrollProbe: NSObject {
+        weak var screen: StemCellChatViewController?
+        var link: CADisplayLink!
+        private let relayout: Bool
+        private var last: CGFloat?
+        private var lastStretched = false
+        private var stretchedFrames = 0
+        private var backwards = 0
+        private var heldWrites = 0
+        private let started = CACurrentMediaTime()
+
+        @MainActor init(_ screen: StemCellChatViewController, relayout: Bool) {
+            self.screen = screen
+            self.relayout = relayout
+            super.init()
+            link = CADisplayLink(target: self, selector: #selector(tick))
+            link.add(to: .main, forMode: .common)
+        }
+
+        @MainActor @objc private func tick() {
+            guard let screen else { return link.invalidate() }
+            if relayout {
+                screen.view.setNeedsLayout()
+                screen.view.layoutIfNeeded()
+            }
+            watch()
+        }
+
+        @MainActor func wrote(_ what: String, _ value: CGFloat) {
+            guard let screen else { return }
+            let scroll = screen.scrollState
+            let stretched = scroll.stretched()
+            if scroll.tracking, stretched, !what.hasPrefix("end-") { heldWrites += 1 }
+            NSLog("%@", String(format: "STEM_SCROLL t=%.3f %@=%.1f offset=%.1f end=%.1f size=%.1f bottom=%.1f tracking=%d decelerating=%d stretched=%d",
+                         CACurrentMediaTime() - started, what, value, scroll.offset, scroll.end(), scroll.contentHeight, scroll.insetBottom,
+                         scroll.tracking ? 1 : 0, scroll.decelerating ? 1 : 0, stretched ? 1 : 0))
+            report()
+        }
+
+        @MainActor func watch() {
+            guard let screen else { return }
+            let scroll = screen.scrollState
+            let y = scroll.offset
+            let stretched = scroll.stretched()
+            defer { (last, lastStretched) = (y, stretched) }
+            // A step from a stretch back inside counts too: a snap back is
+            // the jump.
+            guard scroll.tracking, stretched || lastStretched, let last else { return }
+            if stretched { stretchedFrames += 1 }
+            // Pulled past the top the offset falls, past the bottom it rises.
+            let atTop = y < (-scroll.insetTop + scroll.end()) / 2
+            if atTop ? y > last + 0.5 : y < last - 0.5 { backwards += 1 }
+            report()
+        }
+
+        @MainActor func report() {
+            guard let screen else { return }
+            let scroll = screen.scrollView
+            screen.scrollView.accessibilityValue = "\(screen.timing) stretched=\(stretchedFrames) backwards=\(backwards) held=\(heldWrites) top=\(Int(scroll.contentInset.top)) bottom=\(Int(scroll.contentInset.bottom))"
+        }
+    }
+}
+#endif
 
 /// The preview card's own ground, whole and then none of it: the same
 /// colour to its own clear, so it draws nothing but the messages going.

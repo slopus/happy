@@ -121,13 +121,14 @@ public struct StemCellChatStackLayout: Equatable, Sendable {
 }
 
 /// Desktop's send lift (Message.tsx `sendLift`, `SEND_LIFT_TOP`): a message
-/// sent while the agent is idle is lifted to 30% down the viewport, the
-/// turns before it still in view above, and the room under it is held for
-/// the reply until the reply fills it (`StemCellChatStackLayout.Lift`). A
-/// lift only ever moves a send up: one already at the line or above it
-/// stays where it landed.
+/// sent while the agent is idle, by a reader at the end, is lifted to 30%
+/// down the viewport, the turns before it still in view above, and the
+/// room under it is held for the reply until the reply fills it
+/// (`StemCellChatStackLayout.Lift`). A lift only ever moves a send up: one
+/// already at the line or above it stays where it landed.
 ///
-/// Under a pinned intro the line is no higher than the intro's own line, so
+/// Under a pinned intro still on screen (`introLine`; once it has scrolled
+/// away the line is plain 30%) the line is no higher than its own line, so
 /// the first send, landing right under the intro, is already there and
 /// nothing moves; every later one is lifted to the same slot or lower.
 public struct StemCellSendLift: Equatable, Sendable {
@@ -136,6 +137,9 @@ public struct StemCellSendLift: Equatable, Sendable {
         public static let share: CGFloat = 0.3
         /// No lower than this share, however tall the intro: the reply's room.
         public static let lowest: CGFloat = 0.5
+        /// `SEND_FOLLOW_THRESHOLD`: a send made mid-turn this close to the
+        /// end carries the reader to it.
+        public static let follow: CGFloat = 80
     }
 
     /// From the viewport's top, where the send's top edge sits.
@@ -149,6 +153,114 @@ public struct StemCellSendLift: Equatable, Sendable {
 
     /// A send whose top is `shownAt` from the viewport's top, as it landed.
     public func lifts(shownAt: CGFloat) -> Bool { shownAt > line }
+
+    /// What a send does to the reader (ConversationView's `liftKey` and
+    /// `followKey`, MessageList's commit). Sent while the agent is idle,
+    /// it is lifted, but only for a reader following the newest row; one
+    /// reading further up stays where they are. Sent mid-turn, it waits
+    /// at the end, and a reader within `Metrics.follow` of the end is
+    /// carried there and follows it, with no room held.
+    public struct Send: Equatable, Sendable {
+        public var lifts: Bool
+        public var follows: Bool
+
+        public init(working: Bool, following: Bool, distanceFromEnd: CGFloat) {
+            if working {
+                lifts = false
+                follows = following || distanceFromEnd <= Metrics.follow
+            } else {
+                lifts = following
+                follows = following
+            }
+        }
+    }
+
+    /// The room a lift holds stays while the reader scrolls away and back
+    /// (`geometryExtent`), until the rows below the send fill it. Only
+    /// once the viewport has changed height under it (the keyboard, the
+    /// composer) does it go early: as soon as the reader is far enough up
+    /// that none of it shows (`geometryExtentOffscreenRelease`).
+    public static func releases(resized: Bool, viewportBottom: CGFloat, rowsEnd: CGFloat?) -> Bool {
+        guard resized, let rowsEnd else { return false }
+        return viewportBottom <= rowsEnd
+    }
+}
+
+/// The transcript's scroll while a finger drives it, or it bounces past an
+/// end on its own: nothing the screen lays out moves it then. A new content
+/// height that would take the scroll past an end, or bring it back inside
+/// one, waits; following the newest row waits too. Both are given once the
+/// finger lets go, the bounce is back inside, or the scroll is at rest. A
+/// height or an offset written mid-pull moves the content under the finger,
+/// and a reply streaming in lays the screen out many times a second.
+public struct StemCellChatScrollHold: Equatable, Sendable {
+    /// The scroll view as it stands, in its own coordinates.
+    public struct Scroll: Equatable, Sendable {
+        public var offset: CGFloat
+        public var insetTop: CGFloat
+        public var insetBottom: CGFloat
+        public var contentHeight: CGFloat
+        public var viewport: CGFloat
+        /// A finger is on it.
+        public var tracking: Bool
+        /// It moves on its own: momentum, or a bounce back from an end.
+        public var decelerating: Bool
+
+        public init(offset: CGFloat, insetTop: CGFloat, insetBottom: CGFloat, contentHeight: CGFloat, viewport: CGFloat, tracking: Bool, decelerating: Bool) {
+            self.offset = offset
+            self.insetTop = insetTop
+            self.insetBottom = insetBottom
+            self.contentHeight = contentHeight
+            self.viewport = viewport
+            self.tracking = tracking
+            self.decelerating = decelerating
+        }
+
+        /// The offset that shows the end, at `contentHeight` or its own.
+        public func end(contentHeight: CGFloat? = nil) -> CGFloat {
+            max(-insetTop, (contentHeight ?? self.contentHeight) + insetBottom - viewport)
+        }
+
+        /// Past either end, at `contentHeight` or its own.
+        public func stretched(contentHeight: CGFloat? = nil) -> Bool {
+            offset < -insetTop - 0.5 || offset > end(contentHeight: contentHeight) + 0.5
+        }
+
+        /// Driven by a finger or by its own motion.
+        public var moving: Bool { tracking || decelerating }
+    }
+
+    /// A height laid out and not yet given.
+    public private(set) var held: CGFloat?
+
+    public init() {}
+
+    /// Laid out at `height`: the height to give the scroll view now, or nil
+    /// to keep what it has (holding `height` when it would move the content).
+    public mutating func laidOut(_ height: CGFloat, scroll: Scroll) -> CGFloat? {
+        if height == scroll.contentHeight {
+            held = nil
+            return nil
+        }
+        if scroll.moving, scroll.stretched() || scroll.stretched(contentHeight: height) {
+            held = height
+            return nil
+        }
+        held = nil
+        return height
+    }
+
+    /// The held height, once nothing holds it: the finger is off and the
+    /// scroll isn't bouncing past an end with it.
+    public mutating func release(scroll: Scroll) -> CGFloat? {
+        guard let height = held, !scroll.tracking else { return nil }
+        if scroll.decelerating, scroll.stretched() || scroll.stretched(contentHeight: height) { return nil }
+        held = nil
+        return height == scroll.contentHeight ? nil : height
+    }
+
+    /// Following the newest row moves the offset only while nothing else does.
+    public static func follows(_ scroll: Scroll) -> Bool { !scroll.moving }
 }
 
 /// One message of a Stem Cells conversation, as desktop's `Message` sets
