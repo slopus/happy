@@ -715,6 +715,36 @@ final class ChatViewingUITests: XCTestCase {
         theme("Adaptive")
     }
 
+    /// The expand button appears where it stands. A conversation opened
+    /// with a long draft lays its card out inside the opening's animation,
+    /// which once carried the button in from the card's corner: the frames
+    /// of that opening, as fast as screenshots come, are kept for the eye,
+    /// and it ends over send.
+    func testExpandAppearsInPlace() {
+        openConversation()
+        clearDraft()
+        composer.tap()
+        composer.typeText("One\nTwo\nThree\nFour\nFive\nSix")
+        XCTAssertTrue(app.buttons["composer-expand"].waitForExistence(timeout: 3))
+        pause(1.5)
+        app.tapBack()
+        pause(1.5)
+        XCTAssertTrue(happyRow.waitForExistence(timeout: 5))
+        happyRow.tap()
+        var shots: [UIImage] = []
+        let start = Date()
+        while Date().timeIntervalSince(start) < 1.2 { shots.append(XCUIScreen.main.screenshot().image) }
+        for (index, shot) in shots.enumerated() {
+            let attachment = XCTAttachment(image: shot)
+            attachment.name = "expand-open-\(index)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        XCTAssertTrue(app.buttons["composer-expand"].waitForExistence(timeout: 3))
+        assertExpandOverSend()
+        clearDraft()
+    }
+
     func testExpandEditor() {
         openConversation()
         clearDraft()

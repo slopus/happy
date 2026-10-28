@@ -6,13 +6,14 @@ import CoreGraphics
 /// A conversation's header, as Telegram's chat header on iOS 26: floating
 /// glass over the transcript, which scrolls under it. In home's 52-tall row
 /// under the status bar (`HomeHeaderLayout`), the back button is a 44 glass
-/// circle 16 in, where home's account picture is, and the name is centred
-/// in a glass capsule that runs from 8 past the circle to 16 short of the
-/// screen's right edge, with its status under it in grey when there is
-/// one. The capsule opens the conversation's detail.
+/// circle 16 in, where home's account picture is, and the name and its
+/// status in grey under it (when there is one) are centred on the screen,
+/// in a glass capsule centred there too: from 8 past the circle to as far
+/// short of the right edge, which stays free. A long name is cut inside
+/// it. The capsule opens the conversation's detail.
 ///
-///     ( ‹ ) (       Pineapple poem       )
-///           (          Working           )
+///     ( ‹ ) (    Pineapple poem    )
+///           (       Working        )
 ///
 /// Home's scrim (`HeaderScrimView`) reaches 8 below the row, as on every
 /// glass bar, and on here past the capsule by the scrim's feather, as
@@ -60,8 +61,9 @@ public struct StemCellChatHeaderLayout: Equatable, Sendable {
         let width = max(0, width)
         let rowTop = safeTop
         back = CGRect(x: M.padding, y: rowTop + (M.rowHeight - M.control) / 2, width: M.control, height: M.control)
+        // As far in from the right as from the left: centred on the screen.
         let left = M.padding + M.control + M.gap
-        let pillWidth = max(0, width - left - M.padding)
+        let pillWidth = max(0, width - 2 * left)
         titleMaxWidth = max(0, pillWidth - 2 * M.pillPadding)
         let titleWidth = min(titleWidth.rounded(.up), titleMaxWidth)
         let statusMax = titleMaxWidth
@@ -70,8 +72,8 @@ public struct StemCellChatHeaderLayout: Equatable, Sendable {
         pill = CGRect(x: left, y: rowTop + (M.rowHeight - height) / 2, width: pillWidth, height: height)
         let lines = M.titleHeight + (statusWidth == nil ? 0 : M.statusHeight)
         let top = pill.minY + ((height - lines) / 2).rounded()
-        title = CGRect(x: (pill.midX - titleWidth / 2).rounded(), y: top, width: titleWidth, height: M.titleHeight)
-        let midX = pill.midX
+        let midX = width / 2
+        title = CGRect(x: (midX - titleWidth / 2).rounded(), y: top, width: titleWidth, height: M.titleHeight)
         status = statusWidth.map { CGRect(x: (midX - $0 / 2).rounded(), y: top + M.titleHeight, width: $0, height: M.statusHeight) }
         backdrop = CGRect(x: 0, y: 0, width: width, height: rowTop + M.rowHeight + M.backdropOverhang)
         let tallest = rowTop + (M.rowHeight + M.pillHeightWithStatus) / 2

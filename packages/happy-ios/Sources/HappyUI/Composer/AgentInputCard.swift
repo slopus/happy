@@ -1071,12 +1071,7 @@ public final class AgentInputCardView: UIView {
             textView.isScrollEnabled = layout.textScrolls
         }
         setTextTrailingInset(layout.textTrailingInset)
-        if let expand = layout.expand {
-            expandButton.isHidden = false
-            expandButton.setLayoutFrame(expand)
-        } else {
-            expandButton.isHidden = true
-        }
+        showExpand(at: layout.expand)
         placeholderLabel.setLayoutFrame(CGRect(
             x: layout.text.minX,
             y: layout.text.minY + metrics.inputPaddingTop,
@@ -1127,6 +1122,30 @@ public final class AgentInputCardView: UIView {
         ))
         desktopControls.frame = actionsGroup.bounds
         desktopControls.place(layout)
+    }
+
+    /// The expand button shows where it stands, never carried there by
+    /// the card's own animation (it came in from the left as the card
+    /// grew): its frame set outside any animation, then a 0.1s fade in.
+    private func showExpand(at frame: CGRect?) {
+        guard let frame else {
+            expandButton.layer.removeAllAnimations()
+            expandButton.isHidden = true
+            return
+        }
+        let appearing = expandButton.isHidden
+        UIView.performWithoutAnimation {
+            expandButton.setLayoutFrame(frame)
+            expandButton.layoutIfNeeded()
+            if appearing {
+                expandButton.alpha = 0
+                expandButton.isHidden = false
+            }
+        }
+        guard appearing else { return }
+        UIView.animate(withDuration: 0.1, delay: 0, options: [.allowUserInteraction, .overrideInheritedDuration, .overrideInheritedCurve]) {
+            self.expandButton.alpha = 1
+        }
     }
 
     /// The text wraps clear of the expand button while it shows. Its height
