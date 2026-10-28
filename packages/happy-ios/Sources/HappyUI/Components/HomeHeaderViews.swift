@@ -52,7 +52,9 @@ final class PartialBlurView: UIVisualEffectView {
         animator?.stopAnimation(true)
         animator = nil
         effect = nil
-        guard window != nil, presence > 0 else { return }
+        let target = fraction * presence
+        isHidden = target <= 0
+        guard window != nil, target > 0 else { return }
         // expo-blur names the material for the app's theme, not the system's.
         let style: UIBlurEffect.Style = traitCollection.userInterfaceStyle == .dark
             ? .systemUltraThinMaterialDark
@@ -142,7 +144,9 @@ final class EdgeBlurView: UIVisualEffectView {
         self.radius = radius
         super.init(effect: UIBlurEffect(style: .regular))
         isUserInteractionEnabled = false
+        // A new style rebuilds the material, hidden or not.
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
+            self.strip()
             self.setNeedsLayout()
         }
     }
@@ -168,10 +172,12 @@ final class EdgeBlurView: UIVisualEffectView {
     private func strip() {
         for view in subviews where view !== contentView {
             let filters = (view.layer.filters as? [NSObject]) ?? []
-            guard let blur = filters.first(where: { ($0.value(forKey: "name") as? String) == "gaussianBlur" }) else {
+            let named = filters.first { $0.responds(to: Selector(("name"))) && ($0.value(forKey: "name") as? String) == "gaussianBlur" }
+            guard let found = named, let blur = found.copy() as? NSObject else {
                 view.isHidden = true
                 continue
             }
+            // A fresh filter, so the backdrop redraws at the new radius.
             blur.setValue(radius, forKey: "inputRadius")
             view.layer.filters = [blur]
             view.isHidden = false

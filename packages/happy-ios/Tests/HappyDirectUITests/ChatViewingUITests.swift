@@ -206,9 +206,9 @@ final class ChatViewingUITests: XCTestCase {
         theme("Adaptive")
     }
 
-    /// Below the header's controls, past their shadow, across the screen's
-    /// sides where no line reaches, and at the sides above the composer:
-    /// the ground. With nothing under the header, its whole width is.
+    /// At the sides above the composer, beside it and under it: the ground.
+    /// With nothing under the header, its edge below the controls is too,
+    /// but for their own shadow on white.
     private func checkEdges(_ name: String) {
         let shot = XCUIScreen.main.screenshot().image
         capture("edges-ground-\(name)")
@@ -216,13 +216,22 @@ final class ChatViewingUITests: XCTestCase {
         let capsule = element("stem-chat-capsule").frame
         let card = element("stem-input").frame
         var areas: [(String, CGRect)] = [
-            ("head-left", CGRect(x: 1, y: capsule.maxY + 2, width: 9, height: 12)),
-            ("head-right", CGRect(x: app.frame.width - 10, y: capsule.maxY + 2, width: 9, height: 12)),
             ("foot-left", CGRect(x: 1, y: card.minY - 44, width: 9, height: 40)),
             ("foot-right", CGRect(x: app.frame.width - 10, y: card.minY - 44, width: 9, height: 40)),
+            // Inside the composer's scrim, under the card at the screen's
+            // sides, past the card's own soft shadow.
+            ("scrim-left", CGRect(x: 0, y: card.maxY + 12, width: 6, height: app.frame.height - card.maxY - 14)),
+            ("scrim-right", CGRect(x: app.frame.width - 6, y: card.maxY + 12, width: 6, height: app.frame.height - card.maxY - 14)),
         ]
+        // Under the header the transcript's bubbles run to 8 from the
+        // sides, and blurred they spread there: only with nothing under it
+        // is the header's edge all ground.
         if name.hasSuffix("nothing") {
-            areas.append(("head-across", CGRect(x: 0, y: capsule.maxY + 2, width: app.frame.width, height: 12)))
+            areas += [
+                ("head-left", CGRect(x: 1, y: capsule.maxY + 2, width: 9, height: 12)),
+                ("head-right", CGRect(x: app.frame.width - 10, y: capsule.maxY + 2, width: 9, height: 12)),
+                ("head-across", CGRect(x: 0, y: capsule.maxY + 2, width: app.frame.width, height: 12)),
+            ]
         }
         for (place, area) in areas {
             let mean = Self.luma(in: shot, area: area)
@@ -231,7 +240,7 @@ final class ChatViewingUITests: XCTestCase {
                 // The glass controls' own shadow falls here on white (244 under
                 // the capsule, 252 at the sides), scrim or none: never lighter.
                 XCTAssertLessThanOrEqual(mean, Double(ground) + 1.5, "\(name): the \(place) edge is lighter than the ground")
-                XCTAssertGreaterThanOrEqual(mean, Double(ground) - 9, "\(name): the \(place) edge is darker than the controls' shadow (\(mean) on \(ground))")
+                XCTAssertGreaterThanOrEqual(mean, Double(ground) - (place == "head-across" ? 9 : 4.5), "\(name): the \(place) edge is darker than the controls' shadow (\(mean) on \(ground))")
             } else {
                 XCTAssertEqual(mean, Double(ground), accuracy: 1.5, "\(name): the \(place) edge is not the ground (\(mean) on \(ground))")
             }
