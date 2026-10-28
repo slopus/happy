@@ -56,6 +56,11 @@ public final class DirectAgentClient: Sendable {
         try await decode(AgentWire.Health.self, "GET", "/v0/health")
     }
 
+    public func artifacts(pageCursor: String? = nil) async throws -> JSONValue {
+        let query = pageCursor.map { "?pageCursor=\(Self.escape($0))" } ?? ""
+        return try await decode(JSONValue.self, "GET", "/v0/artifacts\(query)")
+    }
+
     public func userSetting(_ key: String) async throws -> JSONValue? {
         struct Response: Decodable { let setting: AgentWire.Setting }
         do { return try await decode(Response.self, "GET", "/v0/user-settings/\(Self.escape(key))").setting.value }

@@ -9,6 +9,7 @@ import UIKit
 @MainActor
 final class StemCellsSession {
     let accountID: String
+    let engine: DirectSyncEngine
     let client: DirectAgentClient
     let store: StemCellsStore
     let images: StemCellsImages
@@ -33,9 +34,9 @@ final class StemCellsSession {
 
     /// The session for a paired computer, made once and kept while the app runs.
     static func session(for accountID: String, context: AppContext) -> StemCellsSession? {
-        if let existing = sessions[accountID] { return existing }
-        guard let client = context.account.direct.agentClient(for: accountID) else { return nil }
-        let session = StemCellsSession(accountID: accountID, client: client)
+        guard let engine = context.account.direct.syncEngine(for: accountID) else { return nil }
+        if let existing = sessions[accountID], existing.engine === engine { return existing }
+        let session = StemCellsSession(accountID: accountID, engine: engine)
         sessions[accountID] = session
         return session
     }
@@ -52,18 +53,17 @@ final class StemCellsSession {
         Task { await store.stop() }
     }
 
-    private init(accountID: String, client: DirectAgentClient) {
+    private init(accountID: String, engine: DirectSyncEngine) {
         self.accountID = accountID
+        self.engine = engine
+        let client = engine.client
         self.client = client
-        let offline = StemCellsOfflineFile.directory(for: accountID).map(StemCellsOfflineFile.init(directory:))
+        let offline = engine.offline
         self.offline = offline
         Task.detached(priority: .utility) { StemCellsOfflineFile.removeLegacy(accountID) }
-        store = StemCellsStore(client: client, offline: offline, labels: StemCellsRows.Labels(
-            search: Strings.StemCells.search, create: Strings.StemCells.create, untitled: Strings.StemCells.untitled,
-            untitledSession: Strings.StemCells.untitledSession, widget: Strings.StemCells.prioritizing
-        ))
+        store = engine.spaces
         images = StemCellsImages(client: client, offline: offline)
-        warm = StemCellsWarmChats(client: client, store: store, syntax: syntax)
+        warm = StemCellsWarmChats(client: client, store: store, syntax: syntax, persistence: engine)
         models = StemCellModelState(client: client, offline: offline)
         drafts = StemCellDrafts(offline: offline)
         models.load()
@@ -75,14 +75,8 @@ final class StemCellsSession {
                 for watcher in self.watchers.values { watcher(snapshot) }
             }
         }
-        let store = store
-        Task { await store.start() }
-        observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
-            Task { await store.attentionVisibleUpdate(false); await store.pause() }
-        })
-        observers.append(NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
-            Task { await store.start() }
-        })
+        // DirectAccounts owns foreground/background and account switching.
+        // Opening an offscreen account's settings never starts another stream.
     }
 
     /// Calls `watch` with every snapshot from now on, starting with the current one.

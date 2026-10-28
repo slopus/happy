@@ -171,7 +171,7 @@ final class StemCellChatViewController: UIViewController {
             planner = previewing ? StemCellChatPlanner(syntax: session.syntax) : held.chat.planner
         } else {
             warm = nil
-            conversation = StemCellConversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created, mode: session.models.newWorkMode)
+            conversation = StemCellConversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created, mode: session.models.newWorkMode, persistence: session.engine)
             planner = StemCellChatPlanner(syntax: session.syntax)
         }
         tappedAt = previewing ? nil : session.warm.takeTap(agentId)

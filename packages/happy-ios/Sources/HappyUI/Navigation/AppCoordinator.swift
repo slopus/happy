@@ -277,10 +277,7 @@ public final class AppCoordinator {
         }
         let root: UIViewController
         if let direct = context.account.direct.active {
-            // Stem Cells is a preview feature; a production build keeps the computer's page.
-            root = StemCellsPreference(variant: context.variant).isAvailable
-                ? StemCellsDirectHomeViewController(context: context, id: direct.id)
-                : DirectHomeViewController(context: context, id: direct.id)
+            root = StemCellsDirectHomeViewController(context: context, id: direct.id)
         } else if let pending {
             root = AccountServerConfirmationViewController(context: context, account: pending)
         } else if let session {

@@ -131,6 +131,28 @@ public actor StemCellsStore {
 
     // MARK: Life
 
+    /// DirectSyncEngine owns the stream for account-backed sessions. The
+    /// standalone start() remains available for existing fixtures/consumers.
+    public func startExternal() async { await restoreOffline() }
+
+    public func externalResync(loadSidebar: Bool) async {
+        for listener in listeners.values { listener.continuation.yield(.resync) }
+        for listener in typeListeners.values { listener.continuation.yield(.resync) }
+        snapshot.live = true
+        if loadSidebar { await load() } else { publish() }
+    }
+
+    public func externalEvent(_ envelope: JSONValue) {
+        let payload = envelope["payload"]
+        if let key = payload?["agentId"]?.stringValue ?? payload?["surfaceId"]?.stringValue ?? payload?["todo"]?["surfaceId"]?.stringValue {
+            for listener in listeners.values where listener.key == key { listener.continuation.yield(.event(envelope)) }
+        }
+        if let type = envelope["type"]?.stringValue {
+            for listener in typeListeners.values where listener.prefixes.contains(where: type.hasPrefix) { listener.continuation.yield(.event(envelope)) }
+        }
+        receive(envelope)
+    }
+
     public func start() {
         guard following == nil else { return }
         following = Task { [weak self] in

@@ -27,6 +27,9 @@ final class StemCellsHomeViewController: UIViewController {
     private var accountsObservation: AccountsObservation?
     private var carryWork: Task<Void, Never>?
     private var snapshot = StemCellsSnapshot()
+    private var directHome = DirectHomeSnapshot()
+    private var directWatch: Task<Void, Never>?
+    private var usesSpaces: Bool { directHome.usesSpaces && session?.snapshot.availability != .unsupported }
     private var creating = false
     /// Stories, in home's header: open under it, or closed into its title.
     /// Nothing at all while Stories are off.
@@ -89,7 +92,7 @@ final class StemCellsHomeViewController: UIViewController {
             self?.session?.warm.intent(agentId)
         }
         sidebar.onFold = { [weak self] row in self?.fold(row) }
-        sidebar.onAdd = { [weak self] row in self?.makeNewWork(in: row.nodeId) }
+        sidebar.onAdd = { [weak self] row in self?.makeNewWork(in: self?.usesSpaces == true ? row.nodeId : nil) }
         sidebar.menu = { [weak self] row in self?.menu(for: row) }
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
@@ -140,15 +143,25 @@ final class StemCellsHomeViewController: UIViewController {
         let id = computerID()
         guard id != session?.accountID else { return }
         watch?.invalidate(); watch = nil
+        directWatch?.cancel(); directWatch = nil
         modelsWatch?.invalidate(); modelsWatch = nil
         session = id.flatMap { StemCellsSession.session(for: $0, context: context) }
         stories.attach(session)
         sidebar.images = session?.images
         sidebar.apply([])
         snapshot = StemCellsSnapshot()
+        directHome = DirectHomeSnapshot()
         if let session {
             sidebar.selectedRowId = session.selectedRowId
             watch = session.watch { [weak self] snapshot in self?.apply(snapshot) }
+            directWatch = Task { [weak self, engine = session.engine] in
+                for await snapshot in await engine.snapshots() {
+                    guard !Task.isCancelled, let self else { return }
+                    self.directHome = snapshot
+                    if self.usesSpaces { self.apply(session.snapshot) }
+                    else { self.applyClassic() }
+                }
+            }
             modelsWatch = session.models.watch { [weak self] in self?.updateModelBar() }
             session.models.load()
         }
@@ -157,6 +170,7 @@ final class StemCellsHomeViewController: UIViewController {
     }
 
     private func apply(_ snapshot: StemCellsSnapshot) {
+        guard usesSpaces else { applyClassic(); return }
         let previous = self.snapshot
         self.snapshot = snapshot
         onSnapshot?(snapshot)
@@ -165,6 +179,20 @@ final class StemCellsHomeViewController: UIViewController {
         if previous.availability != snapshot.availability || previous.error != snapshot.error || previous.stemCellError != snapshot.stemCellError {
             applyChrome()
         }
+    }
+
+    private func applyClassic() {
+        let previous = snapshot.rows
+        snapshot = StemCellsSnapshot()
+        snapshot.availability = directHome.loaded ? .available : .loading
+        snapshot.live = directHome.live
+        snapshot.rows = directHome.rows
+        snapshot.allRows = directHome.allRows
+        snapshot.error = directHome.error
+        onSnapshot?(snapshot)
+        if previous != snapshot.rows { sidebar.apply(snapshot.rows) }
+        warmUp()
+        applyChrome()
     }
 
     private func applyChrome() {
@@ -273,6 +301,10 @@ final class StemCellsHomeViewController: UIViewController {
         guard let session else { return }
         Task { await session.store.attentionInput() }
         switch row.kind {
+        case .space where row.targetKind == "project" || row.targetKind == "workspace":
+            fold(row)
+        case .space where row.targetKind == "artifacts":
+            navigationController?.pushViewController(DirectArtifactsViewController(session: session), animated: animated)
         case .search:
             openSearch()
         case .create:
@@ -318,6 +350,10 @@ final class StemCellsHomeViewController: UIViewController {
     }
 
     private func fold(_ row: StemCellsRow) {
+        if !usesSpaces, let engine = session?.engine {
+            Task { try? await engine.fold(row.id) }
+            return
+        }
         guard let store = session?.store else { return }
         StemCellsHaptics.play(.fold)
         // A row with subtasks the sidebar doesn't hold yet brings them, open.
@@ -367,6 +403,7 @@ final class StemCellsHomeViewController: UIViewController {
     /// away (leaving or archiving, a section's heading deleted), each run
     /// once the preview has gone (a rename needs the keyboard).
     private func menu(for row: StemCellsRow) -> [[StemCellsMenuItem]]? {
+        guard usesSpaces else { return nil }
         guard let session, [.space, .session, .section].contains(row.kind) else { return nil }
         let store = session.store
         var first: [StemCellsMenuItem] = []

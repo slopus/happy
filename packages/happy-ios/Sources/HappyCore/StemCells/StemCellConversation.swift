@@ -222,6 +222,26 @@ public struct StemCellChatSnapshot: Equatable, Sendable {
 public actor StemCellConversation {
     private let client: DirectAgentClient
     private let store: StemCellsStore
+    private let persistence: DirectSyncEngine?
+    private var keeping: Task<Void, Never>?
+    private var delivering: [String: Task<Void, Never>] = [:]
+    private var conversationDirty = false
+    private var deliveryWatch: Task<Void, Never>?
+    private var outgoingModes: [String: AgentWire.Mode] = [:]
+    private var lastKept: KeptConversation?
+    private struct KeptConversation: Codable, Equatable, Sendable {
+        struct Run: Codable, Equatable, Sendable { var id: String; var messageIds: [String] }
+        struct Picture: Codable, Equatable, Sendable { var mimeType: String; var data: Data }
+        struct Send: Codable, Equatable, Sendable {
+            var id: String; var text: String; var pictures: [Picture]; var accepted: Bool; var failure: String?; var mode: AgentWire.Mode?
+        }
+        var runs: [Run]
+        var messages: [String: AgentWire.Message]
+        var pending: [String]
+        var outgoing: [Send]
+        var mode: AgentWire.Mode?
+        var hasMore: Bool
+    }
     private var agentId: String
     private let continuation: AsyncStream<StemCellChatSnapshot>.Continuation
     public nonisolated let updates: AsyncStream<StemCellChatSnapshot>
@@ -281,9 +301,10 @@ public actor StemCellConversation {
     private var lastDraftEdit: Double = 0
     static let draftDebounce: Duration = .milliseconds(300)
 
-    public init(client: DirectAgentClient, store: StemCellsStore, agentId: String, creation: Task<String, Error>? = nil, mode: AgentWire.Mode? = nil) {
+    public init(client: DirectAgentClient, store: StemCellsStore, agentId: String, creation: Task<String, Error>? = nil, mode: AgentWire.Mode? = nil, persistence: DirectSyncEngine? = nil) {
         self.client = client
         self.store = store
+        self.persistence = persistence
         self.agentId = agentId
         self.creation = creation
         (updates, continuation) = AsyncStream.makeStream(of: StemCellChatSnapshot.self, bufferingPolicy: .bufferingNewest(1))
@@ -307,14 +328,23 @@ public actor StemCellConversation {
             }
             return
         }
-        following = Task { await self.follow() }
+        following = Task {
+            await restoreConversation()
+            guard !Task.isCancelled else { return }
+            await self.follow()
+        }
     }
 
-    public func stop() {
+    public func stop() async {
         following?.cancel(); following = nil
         children?.cancel(); children = nil
         reading?.cancel(); reading = nil
         reloadSoon?.cancel(); reloadSoon = nil
+        deliveryWatch?.cancel(); deliveryWatch = nil
+        let sends = Array(delivering.values)
+        sends.forEach { $0.cancel() }
+        for send in sends { await send.value }
+        _ = await saveConversationNow()
         continuation.finish()
     }
 
@@ -339,6 +369,25 @@ public actor StemCellConversation {
     }
 
     private func follow() async {
+        if let persistence {
+            let deliveryEvents = await persistence.deliveryEvents(for: agentId)
+            deliveryWatch?.cancel()
+            deliveryWatch = Task {
+                for await event in deliveryEvents {
+                    guard !Task.isCancelled else { return }
+                    switch event {
+                    case .accepted(let id): sent(id)
+                    case .failed(let id, let reason): failed(id, reason)
+                    }
+                }
+            }
+            for queued in (try? await persistence.queuedMessages(for: agentId)) ?? [] {
+                let copy = (queued.id, queued.text, queued.pictures.map { (mimeType: $0.mimeType, data: $0.data) }, false, queued.failure)
+                if let index = outgoing.firstIndex(where: { $0.id == queued.id }) { outgoing[index] = copy }
+                else { outgoing.append(copy) }
+                outgoingModes[queued.id] = queued.mode
+            }
+        }
         let events = await store.conversationEvents(agentId)
         let spawned = await store.events(matching: ["agent.created", "agent.updated"])
         // Stopped while those were asked for: nothing is followed.
@@ -353,10 +402,13 @@ public actor StemCellConversation {
         }
         heldEvents = []
         reload()
+        for send in outgoing where !send.accepted && send.failure == nil { deliver(send.id) }
         for await event in events {
             if Task.isCancelled { return }
             switch event {
-            case .resync: reload()
+            case .resync:
+                reload()
+                for send in outgoing where !send.accepted && send.failure == nil { deliver(send.id) }
             case .event(let envelope):
                 if heldEvents != nil { heldEvents?.append(envelope) } else { receive(envelope) }
             }
@@ -396,8 +448,17 @@ public actor StemCellConversation {
         snapshot.mode = mode
         if let draft = start.draft { adoptDraft(draft, publishes: false) }
         if mode == nil, defaultMode == nil { defaultMode = Task { [client] in try await client.defaultMode() } }
-        runs = []
-        messages = [:]
+        // A newest-page refresh is not a deletion of older pages already
+        // downloaded. Retain them until a complete history says otherwise.
+        let refreshed = Set(history.runs.map(\.id))
+        if persistence != nil && history.hasMore {
+            runs.removeAll { refreshed.contains($0.id) }
+            let retained = Set(runs.flatMap(\.messageIds))
+            messages = messages.filter { retained.contains($0.key) }
+        } else {
+            runs = []
+            messages = [:]
+        }
         pending = []
         for run in history.runs {
             runs.append((run.id, (run.messages ?? []).map(\.id)))
@@ -602,8 +663,20 @@ public actor StemCellConversation {
 
     /// Draws the message at once and sends it, after the new work it is in
     /// has been made.
-    public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = []) {
+    public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = []) async {
+        guard !outgoing.contains(where: { $0.id == id }), messages[id] == nil else { return }
         outgoing.append((id, text, pictures, false, nil))
+        outgoingModes[id] = mode
+        guard await saveConversationNow() else {
+            failed(id, "Could not save this message on this device. Retry when storage is available.")
+            return
+        }
+        if let persistence, creation == nil {
+            do { try await persistence.enqueueMessage(queuedMessage(id: id, text: text, pictures: pictures)) }
+            catch { failed(id, "Could not save this message on this device."); return }
+            publish()
+            return
+        }
         publish()
         deliver(id)
     }
@@ -612,22 +685,50 @@ public actor StemCellConversation {
         guard let index = outgoing.firstIndex(where: { $0.id == id }), outgoing[index].failure != nil else { return }
         outgoing[index].failure = nil
         publish()
+        if let persistence {
+            let send = outgoing[index]
+            let payload = queuedMessage(id: id, text: send.text, pictures: send.pictures)
+            Task {
+                guard await saveConversationNow() else { failed(id, "Could not save this message on this device."); return }
+                do {
+                    try await persistence.enqueueMessage(payload)
+                    try await persistence.retryMessage(id)
+                } catch { failed(id, "Could not save this message on this device.") }
+            }
+            return
+        }
         deliver(id)
     }
 
     private func deliver(_ id: String) {
+        guard delivering[id] == nil else { return }
         let client = client
-        Task {
+        delivering[id] = Task {
+            defer { delivering.removeValue(forKey: id) }
             do {
+                if let persistence, !(await persistence.deliveryAllowed) { return }
+                guard await saveConversationNow() else { failed(id, "Could not save this message on this device."); return }
                 // New work: its conversation exists once the daemon has made it,
                 // under the ID the daemon gave it.
                 if let creation { agentId = try await creation.value }
+                if let persistence, !(await persistence.deliveryAllowed) { return }
                 guard let outgoingIndex = outgoing.firstIndex(where: { $0.id == id }) else { return }
                 let send = outgoing[outgoingIndex]
-                let mode = try await sendingMode()
+                if let persistence {
+                    try await persistence.enqueueMessage(queuedMessage(id: id, text: send.text, pictures: send.pictures))
+                    return
+                }
+                let mode: AgentWire.Mode
+                if let selected = outgoingModes[id] { mode = selected }
+                else {
+                    mode = try await sendingMode(); outgoingModes[id] = mode
+                    guard await saveConversationNow() else { failed(id, "Could not save this message on this device."); return }
+                }
                 // The same ID again is the same message: a retry never doubles it.
                 var attempt = 0
                 while true {
+                    try Task.checkCancellation()
+                    if let persistence, !(await persistence.deliveryAllowed) { return }
                     do {
                         try await client.sendMessage(agentId, id: id, text: send.text, images: send.pictures, mode: mode)
                         break
@@ -641,9 +742,70 @@ public actor StemCellConversation {
                 }
                 sent(id)
             } catch {
-                failed(id, StemCellsStore.describe(error))
+                if persistence != nil, !(error is DirectAgentError) || (error as? DirectAgentError)?.status.map({ $0 >= 500 }) == true {
+                    // Offline sends stay queued and resume on the account's
+                    // next resync, with the same daemon message ID.
+                    publish()
+                } else { failed(id, StemCellsStore.describe(error)) }
             }
         }
+    }
+
+    private func queuedMessage(id: String, text: String, pictures: [(mimeType: String, data: Data)]) -> DirectQueuedMessage {
+        DirectQueuedMessage(id: id, agentID: agentId, text: text, pictures: pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, mode: outgoingModes[id])
+    }
+
+    private func restoreConversation() async {
+        guard let persistence, let value = try? await persistence.cachedResource("conversation:\(agentId)"),
+              let kept = try? JSONDecoder().decode(KeptConversation.self, from: JSONEncoder().encode(value)) else { return }
+        runs = kept.runs.map { ($0.id, $0.messageIds) }
+        messages = kept.messages
+        pending = kept.pending
+        outgoing = kept.outgoing.map { ($0.id, $0.text, $0.pictures.map { ($0.mimeType, $0.data) }, $0.accepted, $0.failure) }
+        outgoingModes = Dictionary(kept.outgoing.compactMap { send in send.mode.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
+        mode = picked ?? kept.mode
+        snapshot.mode = mode
+        snapshot.hasMore = kept.hasMore
+        snapshot.loaded = true
+        lastKept = kept
+        publish()
+    }
+
+    private func keepConversation() {
+        conversationDirty = true
+        guard persistence != nil, keeping == nil else { return }
+        keeping = Task {
+            while conversationDirty {
+                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                conversationDirty = false
+                _ = await persistConversation()
+            }
+            keeping = nil
+        }
+    }
+
+    private func saveConversationNow() async -> Bool {
+        keeping?.cancel()
+        await keeping?.value
+        keeping = nil
+        conversationDirty = false
+        let saved = await persistConversation()
+        if conversationDirty { keepConversation() }
+        return saved
+    }
+
+    private func persistConversation() async -> Bool {
+        guard let persistence, snapshot.loaded || !outgoing.isEmpty else { return true }
+        let kept = KeptConversation(runs: runs.map { .init(id: $0.id, messageIds: $0.messageIds) }, messages: messages, pending: pending,
+            outgoing: outgoing.map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id]) }, mode: mode, hasMore: snapshot.hasMore)
+        guard kept != lastKept else { return true }
+        let key = "conversation:\(agentId)"
+        do {
+            let value = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(kept))
+            try await persistence.keepResource(key, value: value)
+            lastKept = kept
+            return true
+        } catch { snapshot.error = "Could not save this conversation on this device."; return false }
     }
 
     /// The next message goes with this model, account and effort.
@@ -859,6 +1021,7 @@ public actor StemCellConversation {
     }
 
     private func publish() {
+        keepConversation()
         var items: [StemCellChatItem] = []
         // What a layout block's `<img src>` can name: media shown earlier.
         var shown: [String: StemCellMedia] = [:]

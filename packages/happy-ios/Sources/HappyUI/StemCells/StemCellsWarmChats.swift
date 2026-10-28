@@ -53,6 +53,7 @@ final class StemCellsWarmChats {
 
     private let client: DirectAgentClient
     private let store: StemCellsStore
+    private let persistence: DirectSyncEngine?
     private let syntax: CodeSyntaxService
     private var chats: [String: Chat] = [:]
     private var candidates: [StemCellsWarmth.Candidate] = []
@@ -78,9 +79,10 @@ final class StemCellsWarmChats {
     /// When a row was tapped, for its screen to time how soon it showed.
     private var tapped: (agentId: String, at: CFTimeInterval)?
 
-    init(client: DirectAgentClient, store: StemCellsStore, syntax: CodeSyntaxService) {
+    init(client: DirectAgentClient, store: StemCellsStore, syntax: CodeSyntaxService, persistence: DirectSyncEngine? = nil) {
         self.client = client
         self.store = store
+        self.persistence = persistence
         self.syntax = syntax
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
@@ -262,7 +264,7 @@ final class StemCellsWarmChats {
     }
 
     private func begin(_ agentId: String) -> Chat {
-        let conversation = StemCellConversation(client: client, store: store, agentId: agentId)
+        let conversation = StemCellConversation(client: client, store: store, agentId: agentId, persistence: persistence)
         let chat = Chat(agentId: agentId, conversation: conversation, planner: StemCellChatPlanner(syntax: syntax))
         chats[agentId] = chat
         let updates = conversation.updates

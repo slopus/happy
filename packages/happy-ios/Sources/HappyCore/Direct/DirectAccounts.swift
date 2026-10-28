@@ -1,8 +1,8 @@
 import Foundation
 import HappyWire
 
-/// Owns independent identity-only connections. No LocalStore, HappyAPI or
-/// SyncEngine is ever created for a direct device.
+/// Owns independent direct connections. Relay LocalStore, HappyAPI and
+/// SyncEngine are never created for a direct device.
 @MainActor
 public final class DirectAccounts {
     public private(set) var accounts: [DirectAccount] = []
@@ -14,6 +14,7 @@ public final class DirectAccounts {
     private var generation: UInt64 = 0
     private var foreground = true
     private var loaded = false
+    private var engines: [String: DirectSyncEngine] = [:]
     let makeTransport: @Sendable (DirectDeviceCredentials) -> any DirectTransport
     var refreshInterval: Duration = .seconds(60)
 
@@ -23,6 +24,17 @@ public final class DirectAccounts {
     }
 
     public var active: DirectAccount? { accounts.first { $0.id == activeID } }
+
+    /// A stable account lifetime, shared by Home, Settings and conversations.
+    /// Construction performs no I/O; the actor opens SQLite off-main on start.
+    public func syncEngine(for id: String) -> DirectSyncEngine? {
+        if let engine = engines[id] { return engine }
+        guard let client = agentClient(for: id) else { return nil }
+        let engine = DirectSyncEngine(client: client, directory: StemCellsOfflineFile.directory(for: id))
+        engines[id] = engine
+        if foreground && activeID == id { Task { await engine.start() } }
+        return engine
+    }
     func credential(for id: String) -> DirectDeviceCredentials? { credentials[id] }
     func configureStorage(_ directory: URL?) async { await storage.configureDirectory(directory) }
 
@@ -39,6 +51,7 @@ public final class DirectAccounts {
         // paired device receives its own ID even on the same installation.
         let id = credentials.first { $0.value.address == value.address && $0.value.deviceID == value.deviceID }?.key ?? "direct-\(UUID().uuidString.lowercased())"
         await stop(id)
+        if let engine = engines.removeValue(forKey: id) { await engine.stop() }
         var account = DirectAccount(id: id, name: "Happy Agent")
         let transport = makeTransport(value)
         do { account = try await DirectIdentity.refresh(account, transport: transport, token: value.deviceToken) }
@@ -49,6 +62,7 @@ public final class DirectAccounts {
         try await storage.add(account, credentials: value)
         credentials[id] = value
         accounts.removeAll { $0.id == id }; accounts.append(account); activeID = id
+        for (otherID, engine) in engines where otherID != id { await engine.pause() }
         onChange?(); startConnections()
         return account
     }
@@ -58,6 +72,10 @@ public final class DirectAccounts {
         if let id, !accounts.contains(where: { $0.id == id }) { throw AccountSwitchError.unknownAccount }
         try await storage.select(id)
         activeID = id; onChange?()
+        for (accountID, engine) in engines {
+            if foreground && accountID == id { await engine.start() }
+            else { await engine.pause() }
+        }
     }
 
     /// Renames the computer (`PATCH /v0/config` `node.name`). The name shows
@@ -90,6 +108,7 @@ public final class DirectAccounts {
         // Await teardown before deleting credentials. The loop can no longer
         // publish or save an old identity after removal completes.
         await stop(id)
+        if let engine = engines.removeValue(forKey: id) { await engine.stop() }
         do { try await storage.remove(id) }
         catch { startConnections(); throw error }
         credentials.removeValue(forKey: id); accounts.removeAll { $0.id == id }
@@ -104,6 +123,12 @@ public final class DirectAccounts {
         let pending = jobs; jobs.removeAll()
         pending.values.forEach { $0.cancel() }
         for job in pending.values { await job.value }
+        guard foreground == active else { return }
+        for (id, engine) in engines {
+            guard foreground == active else { return }
+            if active && id == activeID { await engine.start() }
+            else { await engine.pause() }
+        }
         guard foreground == active else { return }
         if active { startConnections() }
         else {

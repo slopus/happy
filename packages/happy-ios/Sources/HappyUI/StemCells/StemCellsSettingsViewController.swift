@@ -57,6 +57,8 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     private var observation: AccountsObservation?
     private var prioritizingWatch: StemCellsWatch?
     private var prioritizing: Bool?
+    private var directSettingsWatch: Task<Void, Never>?
+    private var projectsHidden = false
     private var storiesWatch: StemCellsWatch?
     /// Whether the computer offers Stories and the person has them on.
     private var stories: StoriesSnapshot.Availability?
@@ -264,6 +266,8 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     }
 
     private func watchShown() {
+        directSettingsWatch?.cancel(); directSettingsWatch = nil
+        projectsHidden = false
         prioritizingWatch?.invalidate()
         prioritizingWatch = nil
         prioritizing = nil
@@ -284,6 +288,15 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
             return
         }
         guard let session = StemCellsSession.session(for: profile.id, context: context) else { return }
+        directSettingsWatch = Task { [weak self, engine = session.engine] in
+            for await snapshot in await engine.snapshots() {
+                guard !Task.isCancelled, let self else { return }
+                let hidden = DirectSettings.projectsHidden(snapshot.settings)
+                guard hidden != projectsHidden else { continue }
+                projectsHidden = hidden
+                rebuild(animated: false)
+            }
+        }
         prioritizingWatch = session.watch { [weak self] snapshot in
             guard let self, prioritizing != snapshot.prioritizing else { return }
             prioritizing = snapshot.prioritizing
@@ -306,7 +319,12 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
             Row(id: "add-account", title: Strings.StemCells.addHappyAccount, icon: ("person-add-outline", .gray), action: { [weak self] in self?.addHappyAccount() }),
         ]
         if profile.isDirect {
-            var experiments = [Row(id: "prioritizing", title: Strings.StemCells.prioritizing, icon: ("pulse-outline", .orange), accessory: .toggle, isOn: prioritizing == true, toggled: { [weak self] on in self?.setPrioritizing(on) })]
+            // Home follows desktop's authoritative account setting. There is
+            // deliberately no independent renderer or layout selector here.
+            var experiments = [Row(id: "hide-projects", title: "Hide projects", icon: ("folder-outline", .orange), accessory: .toggle, isOn: projectsHidden, toggled: { [weak self] on in
+                guard let engine = self?.context.account.direct.syncEngine(for: id) else { return }
+                Task { try? await engine.setProjectsHidden(on) }
+            })]
             // Stories: only where the computer offers them.
             if stories == .on || stories == .off {
                 experiments.append(Row(id: "stories", title: Strings.Stories.setting, icon: ("sparkles-outline", .blue), accessory: .toggle, isOn: stories == .on, toggled: { [weak self] on in self?.setStories(on) }))
