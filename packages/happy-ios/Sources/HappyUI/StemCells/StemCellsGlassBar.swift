@@ -224,6 +224,8 @@ final class StemCellsGlassBar: UIView {
         super.layoutSubviews()
         let layout = layout
         scrim.frame = layout.backdrop
+        // It fades into the screen's own ground, whatever that is.
+        if let ground = owner?.view.backgroundColor, scrim.ground != ground { scrim.ground = ground }
         // Nothing on the row, nothing to keep legible.
         scrim.isHidden = !scrims || (leading == nil && !closes && title == nil && actions.isEmpty && !isSearching)
         place(leadingGlass, layout.leading)

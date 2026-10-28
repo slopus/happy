@@ -130,4 +130,15 @@ final class HomeHeaderLayoutTests: XCTestCase {
         XCTAssertEqual(stops[24].alpha, 0)
         XCTAssertEqual(stops[24].location, 1)
     }
+
+    /// The foot's fade: Telegram's light one at the screen's foot, none at
+    /// the scrim's top.
+    func testTheFootFadesLightlyIntoTheGroundAtTheFoot() {
+        let stops = HeaderScrim.footStops()
+        XCTAssertEqual(stops.count, 25)
+        XCTAssertEqual(stops[0].location, 0)
+        XCTAssertEqual(stops[0].alpha, 0.55)
+        XCTAssertEqual(stops[12].alpha, 0.1729, accuracy: 0.0001)
+        XCTAssertEqual(stops[24].alpha, 0)
+    }
 }

@@ -282,11 +282,11 @@ final class ChatViewingUITests: XCTestCase {
         return counts.indices.max { counts[$0] < counts[$1] } ?? -1
     }
 
-    /// Nothing of the transcript is legible under the composer or beside
-    /// it, as on home, while what is above it still reads: mid-transcript,
-    /// where messages go on past the composer, light and dark, every stroke
-    /// there is blurred soft, where the transcript's own text is sharp.
-    func testNothingUnderTheComposer() {
+    /// The edges as Telegram's: mid-transcript, light and dark, what goes
+    /// under the status bar has faded into the ground, no stroke left in
+    /// it, while what goes behind the composer still reads (strokes at the
+    /// card's sides, under its lower half, are sharp).
+    func testEdgesFadeLikeTelegram() {
         openConversation()
         let card = element("stem-input")
         XCTAssertTrue(card.exists)
@@ -295,21 +295,20 @@ final class ChatViewingUITests: XCTestCase {
             scrollUp(1)
             pause(1.5)
             let shot = XCUIScreen.main.screenshot()
-            capture("ground-\(name)")
+            capture("telegram-\(name)")
             let frame = card.frame
-            // Under the card, clear of the home indicator in the middle,
-            // and the gap beside it.
-            let under = CGRect(x: 2, y: frame.maxY + 2, width: 90, height: app.frame.height - frame.maxY - 4)
-            let beside = CGRect(x: 1, y: frame.minY + 4, width: max(1, frame.minX - 2), height: frame.height - 8)
             // The transcript's own lines, well clear of both edges: sharp.
             let transcript = CGRect(x: 0, y: app.frame.height * 0.35, width: app.frame.width, height: app.frame.height * 0.3)
             let sharp = Self.sharpEdges(in: shot.image, area: transcript)
             XCTAssertGreaterThan(sharp, 500, "\(name): the transcript itself reads as blurred (\(sharp))")
-            for (place, area) in [("under", under), ("beside", beside)] {
-                let edges = Self.sharpEdges(in: shot.image, area: area)
-                print("STEM_EDGES \(name) \(place)=\(edges) transcript=\(sharp)")
-                XCTAssertLessThan(edges, 20, "\(name): \(edges) sharp strokes show \(place) the composer")
-            }
+            // Under the status bar, between its time and its icons.
+            let top = CGRect(x: app.frame.width * 0.36, y: 2, width: app.frame.width * 0.28, height: 40)
+            let topEdges = Self.sharpEdges(in: shot.image, area: top)
+            // In the 8 of gutter beside the card's top half, above the foot's fade.
+            let beside = CGRect(x: 0, y: frame.minY, width: frame.minX, height: frame.height / 2)
+            let besideEdges = Self.sharpEdges(in: shot.image, area: beside)
+            print("STEM_TELEGRAM \(name) top=\(topEdges) beside=\(besideEdges) transcript=\(sharp)")
+            XCTAssertLessThan(topEdges, 20, "\(name): \(topEdges) sharp strokes under the status bar")
         }
         theme("Adaptive")
     }
@@ -413,7 +412,7 @@ final class ChatViewingUITests: XCTestCase {
     /// over the same nothing. Then each scrolled so its content runs under
     /// the glass header and under the composer, pictures for the eye
     /// (`edges-*`); what shows there is checked by
-    /// `testNothingUnderTheComposer`.
+    /// `testEdgesFadeLikeTelegram`.
     func testEdgesLikeHome() {
         openConversation()
         for name in ["Light", "Dark"] {

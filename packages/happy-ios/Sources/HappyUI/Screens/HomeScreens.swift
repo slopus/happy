@@ -61,6 +61,8 @@ public final class HomeViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.groupedBackground)
+        header.scrim.ground = UIColor(Palette.groupedBackground)
+        dockView.scrim.ground = UIColor(Palette.groupedBackground)
         // OnboardingHeader's title, which scales; the rows below don't yet.
         setScaledTitleView(titleView)
         showsBackTitle()

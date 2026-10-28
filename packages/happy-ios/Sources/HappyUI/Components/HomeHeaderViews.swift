@@ -185,28 +185,46 @@ final class EdgeBlurView: UIVisualEffectView {
     }
 }
 
-/// An edge where content scrolls under chrome, as Telegram's are: a blur
-/// alone, no wash, whole at the screen's edge and feathered out over the
-/// last 36pt towards the content. Over a plain ground it is that ground,
-/// so it shows only on what goes under it. The header's runs down from the
-/// top; the dock's and the composer's (`edge: .bottom`) up from the foot.
+/// An edge where content scrolls under chrome, as Telegram treats its
+/// two (`HeaderScrim`): a fade into the screen's own `ground`, so with
+/// nothing under it the edge is that ground. The header's (`.top`) runs
+/// down from the top, nearly whole with a light blur, and feathers out
+/// over its last 36pt; the dock's and the composer's (`.bottom`) are a
+/// light fade at the screen's foot and no blur.
 final class HeaderScrimView: UIView {
     enum Edge {
         case top
         case bottom
     }
 
-    private let blur = EdgeBlurView(radius: HeaderScrim.blurRadius)
+    let edge: Edge
+    /// The screen's ground the edge fades into.
+    var ground: UIColor = UIColor(Palette.surface) {
+        didSet { setNeedsLayout() }
+    }
+
+    private let blur: EdgeBlurView?
     private let feather = HeaderScrimFeatherView()
+    private let fade = CAGradientLayer()
 
     init(edge: Edge = .top) {
+        self.edge = edge
+        blur = edge == .top ? EdgeBlurView(radius: HeaderScrim.topBlurRadius) : nil
         super.init(frame: .zero)
         isUserInteractionEnabled = false
-        feather.gradient.startPoint = CGPoint(x: 0.5, y: edge == .top ? 0 : 1)
-        feather.gradient.endPoint = CGPoint(x: 0.5, y: edge == .top ? 1 : 0)
-        // A visual effect view feathers by a mask view, not its layer's mask.
-        blur.mask = feather
-        addSubview(blur)
+        for gradient in [feather.gradient, fade] {
+            gradient.startPoint = CGPoint(x: 0.5, y: edge == .top ? 0 : 1)
+            gradient.endPoint = CGPoint(x: 0.5, y: edge == .top ? 1 : 0)
+        }
+        if let blur {
+            // A visual effect view feathers by a mask view, not its layer's mask.
+            blur.mask = feather
+            addSubview(blur)
+        }
+        layer.addSublayer(fade)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
+            self.setNeedsLayout()
+        }
     }
 
     @available(*, unavailable)
@@ -214,13 +232,18 @@ final class HeaderScrimView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
-    /// How present the blur is, 0 to 1, set a frame at a time: its radius,
-    /// never this view's alpha, which would turn it off.
+    /// How present the edge is, 0 to 1, set a frame at a time: the fade's
+    /// opacity and the blur's radius, never this view's alpha, which would
+    /// turn the blur off.
     var presence: CGFloat = 1 {
         didSet {
             guard presence != oldValue else { return }
-            blur.radius = HeaderScrim.blurRadius * presence
-            blur.isHidden = presence <= 0
+            blur?.radius = HeaderScrim.topBlurRadius * presence
+            blur?.isHidden = presence <= 0
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            fade.opacity = Float(presence)
+            CATransaction.commit()
         }
     }
 
@@ -228,11 +251,24 @@ final class HeaderScrimView: UIView {
         super.layoutSubviews()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        blur.frame = bounds
-        feather.frame = blur.bounds
-        let stops = HeaderScrim.stops(height: bounds.height)
-        feather.gradient.colors = stops.map { UIColor.white.withAlphaComponent($0.alpha).cgColor }
-        feather.gradient.locations = stops.map { NSNumber(value: $0.location) }
+        fade.frame = bounds
+        let ground = ground.resolvedColor(with: traitCollection)
+        let stops: [HeaderScrim.Stop]
+        switch edge {
+        case .top:
+            stops = HeaderScrim.stops(height: bounds.height)
+            fade.colors = stops.map { ground.withAlphaComponent($0.alpha * HeaderScrim.topPeak).cgColor }
+        case .bottom:
+            stops = HeaderScrim.footStops()
+            fade.colors = stops.map { ground.withAlphaComponent($0.alpha).cgColor }
+        }
+        fade.locations = stops.map { NSNumber(value: $0.location) }
+        if let blur {
+            blur.frame = bounds
+            feather.frame = blur.bounds
+            feather.gradient.colors = stops.map { UIColor.white.withAlphaComponent($0.alpha).cgColor }
+            feather.gradient.locations = fade.locations
+        }
         CATransaction.commit()
     }
 }

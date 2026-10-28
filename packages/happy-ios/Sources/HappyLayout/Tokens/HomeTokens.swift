@@ -35,20 +35,33 @@ public enum HeaderGlassShadow {
     public static let materialFraction: CGFloat = 0.44
 }
 
-/// Where content scrolls under chrome, as Telegram's edges are: a blur
-/// alone, no wash or tint, whole at the screen's edge and falling to
-/// nothing over the last 36pt.
+/// Where content scrolls under chrome, as Telegram's chats list treats
+/// its two edges (measured from its screen, iOS 26). Both fade to the
+/// screen's own ground, never another colour, so with nothing under them
+/// they are that ground.
+///
+/// The header's edge: content goes almost wholly into the ground under the
+/// status bar and the controls (0.94), with a light blur, and comes back
+/// over the last 36pt (Telegram: 0.88 at 27 from the end, 0.45 at 10).
+/// The foot's: no blur, content legible behind the composer's glass, and
+/// only a light fade into the ground at the screen's foot (Telegram: 0.5
+/// at its last 20pt).
 public enum HeaderScrim {
     public static let featherSteps = 24
     public static let rampPoints: CGFloat = 36
     public static let fallbackFeatherStart: CGFloat = 0.60
-    /// The blur's radius where it is whole: enough that nothing under the
-    /// chrome reads, little enough that what is next to it still does.
-    public static let blurRadius: CGFloat = 6
+    /// The header's fade where it holds.
+    public static let topPeak: Double = 0.94
+    /// The header's blur radius where it holds: softens, never smears.
+    public static let topBlurRadius: CGFloat = 2
+    /// The foot's fade at the screen's foot, from none at the scrim's top.
+    public static let footPeak: Double = 0.55
+    /// How the foot's fade grows towards the foot: `t^footCurve`.
+    public static let footCurve: Double = 1.67
 
     public struct Stop: Equatable, Sendable {
         public var location: Double
-        /// How much of the blur shows, 0 to 1.
+        /// How much of the fade (or the blur) shows, 0 to 1.
         public var alpha: Double
     }
 
@@ -75,6 +88,15 @@ public enum HeaderScrim {
             let falloff = 1 - pow(p, 1.67)
             // RN writes `toFixed(4)` into the rgba string.
             return Stop(location: t, alpha: (falloff * 10_000).rounded() / 10_000)
+        }
+    }
+
+    /// The foot's fade, from the screen's foot (location 0, `footPeak`)
+    /// to the scrim's top (1, none).
+    public static func footStops() -> [Stop] {
+        (0...featherSteps).map { step in
+            let t = Double(step) / Double(featherSteps)
+            return Stop(location: t, alpha: ((footPeak * pow(1 - t, footCurve)) * 10_000).rounded() / 10_000)
         }
     }
 }
