@@ -4,7 +4,7 @@ import HappyLayout
 import UIKit
 
 /// A conversation's header, as Telegram's on iOS 26: a glass back circle
-/// and the name in a glass capsule to the right edge, with the agent's
+/// and the name in a glass capsule that hugs it, with the agent's
 /// status in grey under it, floating over the transcript, which scrolls
 /// under them and a scrim. The capsule opens the conversation's detail.
 /// Frames are `StemCellChatHeaderLayout`'s. Touches between the controls

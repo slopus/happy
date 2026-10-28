@@ -8,12 +8,13 @@ import CoreGraphics
 /// under the status bar (`HomeHeaderLayout`), the back button is a 44 glass
 /// circle 16 in, where home's account picture is, and the name and its
 /// status in grey under it (when there is one) are centred on the screen,
-/// in a glass capsule centred there too: from 8 past the circle to as far
-/// short of the right edge, which stays free. A long name is cut inside
-/// it. The capsule opens the conversation's detail.
+/// in a glass capsule that hugs them, as wide as the wider line and
+/// centred there too. A longer name widens it, as far as 8 past the circle
+/// and as far short of the right edge, which stays free; past that the
+/// name is cut. The capsule opens the conversation's detail.
 ///
-///     ( ‹ ) (    Pineapple poem    )
-///           (       Working        )
+///     ( ‹ )        ( Pineapple poem )
+///                  (    Working     )
 ///
 /// Home's scrim (`HeaderScrimView`) reaches 8 below the row, as on every
 /// glass bar, and on here past the capsule by the scrim's feather, as
@@ -51,7 +52,7 @@ public struct StemCellChatHeaderLayout: Equatable, Sendable {
     public var scrim: CGRect
     /// The transcript's top inset.
     public var listTop: CGFloat
-    /// The widest the name may be.
+    /// The widest the name may be: the capsule as wide as it can get.
     public var titleMaxWidth: CGFloat
 
     /// `titleWidth` and `statusWidth` are their single lines' widths; no
@@ -63,13 +64,15 @@ public struct StemCellChatHeaderLayout: Equatable, Sendable {
         back = CGRect(x: M.padding, y: rowTop + (M.rowHeight - M.control) / 2, width: M.control, height: M.control)
         // As far in from the right as from the left: centred on the screen.
         let left = M.padding + M.control + M.gap
-        let pillWidth = max(0, width - 2 * left)
-        titleMaxWidth = max(0, pillWidth - 2 * M.pillPadding)
+        let widest = max(0, width - 2 * left)
+        titleMaxWidth = max(0, widest - 2 * M.pillPadding)
         let titleWidth = min(titleWidth.rounded(.up), titleMaxWidth)
         let statusMax = titleMaxWidth
         let statusWidth = statusWidth.map { min($0.rounded(.up), statusMax) }
         let height = statusWidth == nil ? M.pillHeight : M.pillHeightWithStatus
-        pill = CGRect(x: left, y: rowTop + (M.rowHeight - height) / 2, width: pillWidth, height: height)
+        // Hugging the wider line, never narrower than it is tall.
+        let pillWidth = min(widest, max(height, max(titleWidth, statusWidth ?? 0) + 2 * M.pillPadding))
+        pill = CGRect(x: ((width - pillWidth) / 2).rounded(), y: rowTop + (M.rowHeight - height) / 2, width: pillWidth, height: height)
         let lines = M.titleHeight + (statusWidth == nil ? 0 : M.statusHeight)
         let top = pill.minY + ((height - lines) / 2).rounded()
         let midX = width / 2
