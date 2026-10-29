@@ -44,7 +44,7 @@ final class StemCellsSidebarView: UIScrollView {
         didSet { isScrollEnabled = scrolls }
     }
 
-    /// The row whose conversation is open, which stays selected.
+    /// The row drawn selected: on home, the one whose screen is coming in.
     var selectedRowId: String? {
         didSet {
             guard selectedRowId != oldValue else { return }

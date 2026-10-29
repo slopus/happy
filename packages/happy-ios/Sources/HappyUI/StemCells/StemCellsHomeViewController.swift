@@ -162,7 +162,6 @@ final class StemCellsHomeViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         attach()
-        sidebar.selectedRowId = session?.selectedRowId
         if let store = session?.store { Task { await store.attentionVisibleUpdate(true) } }
     }
 
@@ -175,6 +174,12 @@ final class StemCellsHomeViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        // The row opened stays lit while its screen comes in, then lets go,
+        // as Telegram's chat list does: coming back, by the back button or
+        // a swipe, finds nothing selected. This list is never beside the
+        // conversation it opened (on iPad too it is pushed over), so there
+        // is no open chat for a selection to show.
+        sidebar.selectedRowId = nil
         if let store = session?.store { Task { await store.attentionVisibleUpdate(false) } }
     }
 
@@ -203,7 +208,6 @@ final class StemCellsHomeViewController: UIViewController {
         snapshot = StemCellsSnapshot()
         directHome = DirectHomeSnapshot()
         if let session {
-            sidebar.selectedRowId = session.selectedRowId
             watch = session.watch { [weak self] snapshot in self?.apply(snapshot) }
             directWatch = Task { [weak self, engine = session.engine] in
                 for await snapshot in await engine.snapshots() {
@@ -545,13 +549,11 @@ final class StemCellsHomeViewController: UIViewController {
             makeNewWork()
         case .space where row.targetKind == "surface":
             guard let surfaceId = row.targetId else { return }
-            session.selectedRowId = row.id
             sidebar.selectedRowId = row.id
             let surface = AgentWire.Surface(id: surfaceId, type: row.surfaceType ?? "", name: row.label)
             navigationController?.pushViewController(StemCellsSurfaceViewController(session: session, surface: surface), animated: animated)
         case .space, .session:
             guard let agentId = row.agentId else { return }
-            session.selectedRowId = row.id
             sidebar.selectedRowId = row.id
             session.warm.tap(agentId)
             let space = row.spaceId.flatMap { id in snapshotSpace(id) }
@@ -623,7 +625,6 @@ final class StemCellsHomeViewController: UIViewController {
             }
             creating = false
             let rowId = "space:\(creation.spaceId)"
-            session.selectedRowId = rowId
             sidebar.selectedRowId = rowId
             let chat = StemCellChatViewController(session: session, agentId: creation.agentId, title: Strings.StemCells.untitled, spaceId: creation.spaceId, stemCell: .stemCell(seed: creation.spaceId), creation: creation)
             chat.focusesOnOpen = !library

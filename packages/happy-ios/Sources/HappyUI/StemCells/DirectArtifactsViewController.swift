@@ -76,6 +76,8 @@ final class DirectArtifactsViewController: UITableViewController {
         await source?.apply(snapshot, animatingDifferences: !known.isEmpty)
     }
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        // Lit only while the artifact comes in: back here, nothing is selected.
+        tableView.deselectRow(at: indexPath, animated: true)
         navigationController?.pushViewController(StemCellArtifactViewController(session: session, artifact: artifacts[indexPath.row]), animated: true)
     }
     override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {

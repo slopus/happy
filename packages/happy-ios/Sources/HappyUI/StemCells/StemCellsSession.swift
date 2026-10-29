@@ -3,9 +3,9 @@ import HappyCore
 import UIKit
 
 /// One paired computer's Stem Cells, shared by every screen that shows it:
-/// the store, the client its conversations use, the pictures it has read,
-/// and which row is open. The store's snapshots arrive here off the main
-/// thread's work and are handed to whoever watches.
+/// the store, the client its conversations use, and the pictures it has
+/// read. The store's snapshots arrive here off the main thread's work and
+/// are handed to whoever watches.
 @MainActor
 final class StemCellsSession {
     let accountID: String
@@ -24,8 +24,6 @@ final class StemCellsSession {
     /// The conversations read ahead and kept, so they open drawn.
     let warm: StemCellsWarmChats
     private(set) var snapshot = StemCellsSnapshot()
-    /// The row whose conversation was opened last; it stays selected.
-    var selectedRowId: String?
     private var watchers: [UUID: (StemCellsSnapshot) -> Void] = [:]
     private var following: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
