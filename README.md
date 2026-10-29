@@ -1,6 +1,8 @@
 <div align="center">
 
-<h1>The Happy way of making things :D</h1>
+<h1>Happy Engineering</h1>
+
+<h2>The fun way of making things :D</h2>
 
 </div>
 
