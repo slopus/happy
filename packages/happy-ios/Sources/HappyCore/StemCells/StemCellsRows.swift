@@ -137,6 +137,9 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
     public var hasAgent = false
     /// Set while agent stories are on: drawn as sidebar v2's story row.
     public var story: StoryRowState?
+    /// A section heading or separator while agent stories are on: drawn at
+    /// desktop's own size, as the story rows around it are.
+    public var amongStories = false
 
     /// What sidebar v2 draws of a row's stories: its ring's segments and how
     /// many of them are new (none: no ring).
@@ -281,8 +284,9 @@ public enum StemCellsRows {
     public static func withStories(_ rows: [StemCellsRow], rings: [String: StoryRing]?) -> [StemCellsRow] {
         guard let rings else { return rows }
         return rows.filter { $0.depth == 0 }.map { row in
-            guard row.kind == .space || row.kind == .session else { return row }
             var row = row
+            if row.kind == .section || row.kind == .separator { row.amongStories = true }
+            guard row.kind == .space || row.kind == .session else { return row }
             row.collapsed = nil
             row.hasHiddenSessions = false
             if row.mark == .none { row.mark = .glyph(row.kind == .session ? "agents" : "tasks") }

@@ -342,6 +342,29 @@ public enum StemCellsStoryRowMetrics {
     public static let signalRoom: CGFloat = 20
     public static let dot: CGFloat = 10
     public static let braille = CGSize(width: 8, height: 14)
+    /// Headings and separators among story rows stand at desktop's own
+    /// size, as the rows do: their row box 6 in from the list
+    /// (`--happy-panel-inset`).
+    public static let rowInset: CGFloat = 6
+    /// A section heading (`sidebar.css` "A heading among story rows"): 22
+    /// tall, its title in 11 bold mono starting on the discs' left edge. Its
+    /// fold's 18 box stands 7 in from the row box
+    /// (`--happy-sidebar-fold-inset`), its "+" one 22 step before it; both
+    /// glyphs 12.
+    public static let headingHeight: CGFloat = 22
+    public static let headingSize: CGFloat = 11
+    public static let headingInset: CGFloat = cardInset + pad
+    public static let headingFoldInset: CGFloat = 7
+    public static let headingBox: CGFloat = 18
+    public static let headingStep: CGFloat = 22
+    public static let headingGlyph: CGFloat = 12
+    /// A separator (`.happy-sidebar__separator`): 17 tall, its hairline 6
+    /// in from each end of the row box (`--happy-hover-radius`).
+    public static let separatorHeight: CGFloat = 17
+    public static let ruleInset: CGFloat = 6
+    /// Between headings and separators, and from either into a card: the
+    /// column's gap (`SIDEBAR_ROW_GAP`).
+    public static let headingsGap: CGFloat = 2
     /// The lines changed: 4 between "+N" and "−M", and 4 before the status.
     public static let countsGap: CGFloat = 4
     /// The empty mark's scene: 49 × 22 cells, the dinosaur on the top 21,

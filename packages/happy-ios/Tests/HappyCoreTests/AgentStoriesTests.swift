@@ -218,6 +218,11 @@ final class AgentStoriesTests: XCTestCase {
         XCTAssertNil(on[1].collapsed)
         XCTAssertFalse(on[1].hasHiddenSessions)
         XCTAssertNil(on[0].story)
+        // Headings and separators go with the rows: desktop's own size among story rows.
+        XCTAssertTrue(on[0].amongStories)
+        XCTAssertFalse(rows[0].amongStories)
+        let rule = StemCellsRow(id: "r", nodeId: "r", kind: .separator, label: "")
+        XCTAssertTrue(StemCellsRows.withStories([rule], rings: [:])[0].amongStories)
         XCTAssertEqual(on[1].story, StemCellsRow.StoryRowState(segments: 4, unseen: 2))
         XCTAssertEqual(on[2].story, StemCellsRow.StoryRowState(segments: 0, unseen: 0))
         // One signal, in the corner: the spinner working, else a dot while unread.

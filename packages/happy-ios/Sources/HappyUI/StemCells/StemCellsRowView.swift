@@ -85,7 +85,6 @@ final class StemCellsRowView: UIView {
         trailing.contentMode = .center
         chevron.contentMode = .center
         add.contentMode = .center
-        add.image = StemCellsGlyphs.image("add", size: StemCellsMetrics.addGlyph)
         rule.backgroundColor = UIColor(Palette.stemCellsDivider)
         subtitle.numberOfLines = StemCellsStoryRowMetrics.statusLines
         subtitle.lineBreakMode = .byTruncatingTail
@@ -235,9 +234,10 @@ final class StemCellsRowView: UIView {
     private func applyText(_ row: StemCellsRow) {
         switch row.kind {
         case .section:
+            let size = Self.headingSize(row)
             label.attributedText = NSAttributedString(string: row.label.uppercased(), attributes: [
-                .font: StemCellsFonts.mono(bold: true, size: StemCellsMetrics.sectionLabelSize),
-                .kern: StemCellsMetrics.sectionLabelSize * StemCellsMetrics.sectionTracking,
+                .font: StemCellsFonts.mono(bold: true, size: size),
+                .kern: size * StemCellsMetrics.sectionTracking,
             ])
         case .separator:
             label.attributedText = nil
@@ -257,7 +257,10 @@ final class StemCellsRowView: UIView {
         if folds {
             // Closed while folded or while it has subtasks still to show.
             let closed = row.collapsed == true || row.hasHiddenSessions
-            chevron.image = StemCellsGlyphs.image(closed ? "chevron-right" : "chevron-down", size: StemCellsMetrics.chevronGlyph)
+            chevron.image = StemCellsGlyphs.image(closed ? "chevron-right" : "chevron-down", size: row.amongStories ? StemCellsStoryRowMetrics.headingGlyph : StemCellsMetrics.chevronGlyph)
+        }
+        if row.kind == .section {
+            add.image = StemCellsGlyphs.image("add", size: row.amongStories ? StemCellsStoryRowMetrics.headingGlyph : StemCellsMetrics.addGlyph)
         }
         // A story row's corner says all of this instead.
         guard row.story == nil else { return }
@@ -338,6 +341,18 @@ final class StemCellsRowView: UIView {
         rule.frame = frames.rule.map(local) ?? .zero
     }
 
+    /// A heading among story rows is desktop's 22 tall; a finger also gets
+    /// the gaps around it.
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        guard row?.amongStories == true, row?.kind == .section else { return super.point(inside: point, with: event) }
+        return bounds.insetBy(dx: 0, dy: -6).contains(point)
+    }
+
+    /// A section heading's type: desktop's own size among story rows.
+    static func headingSize(_ row: StemCellsRow) -> CGFloat {
+        row.amongStories ? StemCellsStoryRowMetrics.headingSize : StemCellsMetrics.sectionLabelSize
+    }
+
     // MARK: New
 
     /// The new row's dot, drawn once as a template to tint.
@@ -385,8 +400,8 @@ final class StemCellsRowView: UIView {
         guard field == nil, let row else { return false }
         let field = StemCellsRenameField()
         let section = row.kind == .section
-        field.font = section ? StemCellsFonts.mono(bold: true, size: StemCellsMetrics.sectionLabelSize) : row.story != nil ? StemCellsStoryRowText.titleFont(textScale) : StemCellsFonts.ui(.medium, size: StemCellsMetrics.labelSize)
-        if section { field.defaultTextAttributes[.kern] = StemCellsMetrics.sectionLabelSize * StemCellsMetrics.sectionTracking }
+        field.font = section ? StemCellsFonts.mono(bold: true, size: Self.headingSize(row)) : row.story != nil ? StemCellsStoryRowText.titleFont(textScale) : StemCellsFonts.ui(.medium, size: StemCellsMetrics.labelSize)
+        if section { field.defaultTextAttributes[.kern] = Self.headingSize(row) * StemCellsMetrics.sectionTracking }
         field.textColor = UIColor(Palette.stemCellsRowTextActive)
         field.tintColor = UIColor(Palette.stemCellsRowTextActive)
         field.text = text

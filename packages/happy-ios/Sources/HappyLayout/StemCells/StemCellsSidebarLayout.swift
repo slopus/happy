@@ -30,8 +30,11 @@ public enum StemCellsSidebarLayout {
         /// Drawn as a story row (Stories on): the card, the disc in its
         /// ring, the title and up to two status lines, the time and one signal.
         public var story: StoryRow?
+        /// A section heading or separator among story rows: at desktop's
+        /// own size, as the rows are.
+        public var amongStories: Bool
 
-        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, hasAdd: Bool = false, foldClosed: Bool = false, story: StoryRow? = nil) {
+        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, hasAdd: Bool = false, foldClosed: Bool = false, story: StoryRow? = nil, amongStories: Bool = false) {
             self.kind = kind
             self.depth = depth
             self.hasMark = hasMark
@@ -41,6 +44,7 @@ public enum StemCellsSidebarLayout {
             self.hasAdd = hasAdd
             self.foldClosed = foldClosed
             self.story = story
+            self.amongStories = amongStories
         }
     }
 
@@ -187,6 +191,8 @@ public enum StemCellsSidebarLayout {
 
     public static func height(_ row: Row) -> CGFloat {
         if row.kind == .row, let story = row.story { return storyHeight(story.text.scale) }
+        if row.kind == .section, row.amongStories { return StemCellsStoryRowMetrics.headingHeight }
+        if row.kind == .separator, row.amongStories { return StemCellsStoryRowMetrics.separatorHeight }
         return height(row.kind)
     }
 
@@ -208,11 +214,13 @@ public enum StemCellsSidebarLayout {
     }
 
     /// Between a row and the one before it: 6.5 into a card from a card or
-    /// a heading, 12.5 from a card down to a heading, the column's gap otherwise.
+    /// a heading, 12.5 from a card down to a heading, desktop's 2 between
+    /// anything else among story rows, the column's gap otherwise.
     static func gap(_ row: Row, after previous: Row) -> CGFloat {
         typealias S = StemCellsStoryRowMetrics
         if row.story != nil, previous.story != nil || previous.kind == .section { return S.rowGap }
         if previous.story != nil, row.kind == .section { return S.headingGap }
+        if row.amongStories || row.story != nil, previous.amongStories || previous.story != nil { return S.headingsGap }
         return StemCellsMetrics.rowGap
     }
 
@@ -232,6 +240,11 @@ public enum StemCellsSidebarLayout {
                 y += height
                 continue
             }
+            if row.kind == .section, row.amongStories {
+                frames.append(storyHeading(row, y: y, width: width, scale: scale))
+                y += height
+                continue
+            }
             let box = CGRect(x: boxX, y: y, width: boxWidth, height: height)
             let midY = y + height / 2
             // Centred `trailingCenter` in, on the row's middle, on whole pixels.
@@ -244,6 +257,12 @@ public enum StemCellsSidebarLayout {
                 return CGRect(x: pixel(width - M.trailingCenter - size / 2 - ink.dx), y: pixel(midY - size / 2 - ink.dy), width: size, height: size)
             }
             switch row.kind {
+            case .separator where row.amongStories:
+                // Desktop's own: the box 6 in, the hairline 6 in from its ends.
+                let story = StemCellsStoryRowMetrics.self
+                frame.box = CGRect(x: story.rowInset, y: y, width: max(0, width - 2 * story.rowInset), height: height)
+                let inset = story.rowInset + story.ruleInset
+                frame.rule = CGRect(x: inset, y: (midY - M.line / 2).rounded(.down), width: max(0, width - 2 * inset), height: M.line)
             case .separator:
                 frame.rule = CGRect(x: boxX, y: (midY - M.line / 2).rounded(.down), width: boxWidth, height: M.line)
             case .section:
@@ -355,6 +374,35 @@ public enum StemCellsSidebarLayout {
             let wide = ((tall * S.emptyColumns / S.emptyRows) * pixels).rounded() / pixels
             frame.empty = CGRect(x: pixel(x), y: pixel(last - text.status.capHeight), width: wide, height: height)
         }
+        return frame
+    }
+
+    /// A heading among story rows, as desktop's: the row box 6 in from the
+    /// list, the title from the discs' left edge; the fold's 18 box 7 in
+    /// from the row box's right, its 12 glyph in its middle with its ink's
+    /// optical centre on the box's; the "+" one 22 step before it. The title
+    /// keeps 4 clear of the fold (`padding-right: inset + 22`), and of the
+    /// "+" the same way.
+    static func storyHeading(_ row: Row, y: CGFloat, width: CGFloat, scale: CGFloat) -> Frame {
+        typealias S = StemCellsStoryRowMetrics
+        typealias M = StemCellsMetrics
+        func pixel(_ value: CGFloat) -> CGFloat { (value * max(1, scale)).rounded() / max(1, scale) }
+        let box = CGRect(x: S.rowInset, y: y, width: max(0, width - 2 * S.rowInset), height: S.headingHeight)
+        var frame = Frame(box: box)
+        let fold = CGRect(x: box.maxX - S.headingFoldInset - S.headingBox, y: box.midY - S.headingBox / 2, width: S.headingBox, height: S.headingBox)
+        // The ink offsets are measured at a row's glyph; this one is smaller.
+        let ink = row.foldClosed ? M.chevronRightInk : M.chevronDownInk
+        let shrink = S.headingGlyph / M.chevronGlyph
+        frame.chevron = fold
+        frame.chevronGlyph = CGRect(x: pixel(fold.midX - S.headingGlyph / 2 - ink.dx * shrink), y: pixel(fold.midY - S.headingGlyph / 2 - ink.dy * shrink), width: S.headingGlyph, height: S.headingGlyph)
+        var end = fold.minX
+        if row.hasAdd {
+            let add = fold.offsetBy(dx: -S.headingStep, dy: 0)
+            frame.add = add
+            end = add.minX
+        }
+        let clear = S.headingStep - S.headingBox
+        frame.label = CGRect(x: S.headingInset, y: y, width: max(0, end - clear - S.headingInset), height: box.height)
         return frame
     }
 

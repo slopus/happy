@@ -163,6 +163,28 @@ final class StemCellsStoryRowTests: XCTestCase {
         XCTAssertEqual(both.corner, .braille)
     }
 
+    func testAHeadingAmongStoryRowsIsDesktopsOwnSize() throws {
+        let sidebar = sidebar()
+        let frame = try frame(sidebar, "section:later")
+        let view = try XCTUnwrap(rowView(sidebar, "section:later"))
+        XCTAssertEqual(view.frame, CGRect(x: 6, y: frame.box.minY, width: 390, height: 22))
+        // 11 bold mono, as desktop's, on the discs' left edge.
+        let title = try XCTUnwrap(parts(view, StemCellsShimmerLabel.self).first?.attributedText)
+        let font = try XCTUnwrap(title.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
+        XCTAssertEqual(font.pointSize, 11)
+        XCTAssertEqual(frame.label.minX, try self.frame(sidebar, "space:new").mark!.minX)
+        // The fold's 12 glyph 22 in from the list's right edge, the "+" 22 before it.
+        let glyphs = parts(view, UIImageView.self).filter { !$0.isHidden && $0.image != nil && $0.frame.width == 12 }
+        XCTAssertEqual(glyphs.count, 1, "the chevron")
+        XCTAssertEqual(frame.chevron!.midX, 402 - 22)
+        XCTAssertEqual(frame.add!.midX, 402 - 44)
+        XCTAssertEqual(parts(view, UIImageView.self).compactMap(\.image?.size.width).filter { $0 == 12 }.count, 2, "the fold and the +")
+        // A finger gets the gaps around it too.
+        XCTAssertTrue(view.point(inside: CGPoint(x: 100, y: -5), with: nil))
+        XCTAssertTrue(view.point(inside: CGPoint(x: 100, y: 27), with: nil))
+        XCTAssertFalse(view.point(inside: CGPoint(x: 100, y: -7), with: nil))
+    }
+
     func testALongStatusIsCutAtTwoLines() throws {
         let sidebar = sidebar()
         let view = try XCTUnwrap(rowView(sidebar, "space:bench"))
