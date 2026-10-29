@@ -9,11 +9,15 @@ import UIKit
 /// back and elsewhere forward, a hold pausing it with the chrome hidden, a
 /// sideways drag turning a cube to the next or previous author, and a drag
 /// down closing it. Seeing a story's first frame marks it seen at once.
-final class StoryViewerViewController: UIViewController, UIGestureRecognizerDelegate {
+final class StoryViewerViewController: UIViewController, UIGestureRecognizerDelegate, UITextFieldDelegate {
     /// The person asked for a story's conversation (their own).
     var onOpenConversation: ((StorySource) -> Void)?
     /// The viewer went away.
     var onClose: (() -> Void)?
+    /// An agent's row icon, its avatar here.
+    var ringImage: UIImage? {
+        didSet { for page in [page, neighbor] { page.authorImage = ringImage } }
+    }
     /// The viewer starts going away, back into what it opened from.
     var onClosing: (() -> Void)?
     /// The circle the viewer opened from.
@@ -56,7 +60,9 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     /// open: one opened from a conversation may be out of the feed.
     private let opened: String?
 
-    private enum Pause: Hashable { case hold, drag, sheet, background, picker, appearing, caption, tooltip }
+    private enum Pause: Hashable { case hold, drag, sheet, background, picker, appearing, caption, tooltip, page, typing }
+    /// Feedback on its way to the agent.
+    private var sendingFeedback = false
     /// A recording's sound, as Telegram's viewer keeps it while open: at
     /// first as the phone's ringer switch has it (and with other audio),
     /// then off or on, past the switch, by the sound button or a volume
@@ -147,6 +153,14 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.pause(.background, false) }
         })
+        for name in [UIResponder.keyboardWillChangeFrameNotification, UIResponder.keyboardWillHideNotification] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                let end = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+                let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+                let hiding = note.name == UIResponder.keyboardWillHideNotification
+                MainActor.assumeIsolated { self?.keyboardChanged(end: end, hiding: hiding, duration: duration) }
+            })
+        }
         StoriesHaptics.prepare(.advance, .react)
         // Sized first, so the first frame is read at the size it is drawn.
         page.frame = view.bounds
@@ -221,6 +235,16 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         page.viewsButton.addTarget(self, action: #selector(viewsTapped), for: .touchUpInside)
         page.heartButton.addTarget(self, action: #selector(heartTapped), for: .touchUpInside)
         page.soundButton.addTarget(self, action: #selector(soundTapped), for: .touchUpInside)
+        page.repostButton.addTarget(self, action: #selector(repostTapped), for: .touchUpInside)
+        page.feedbackField.delegate = self
+        page.authorImage = ringImage
+        // Live pages are the person's to use: touching one holds the story.
+        page.canvas.interactivePages = true
+        page.canvas.onPageTouch = { [weak self, weak page] touching in
+            guard let self, page === self.page else { return }
+            pause(.page, touching)
+        }
+        page.canvas.onRepostChip = { [weak self] repostOf in self?.openReposted(repostOf) }
         page.canvas.onAudioKnown = { [weak self] _ in self?.updateSound() }
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(heartHeld(_:)))
         hold.minimumPressDuration = 0.35
@@ -576,6 +600,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         // A tooltip takes the touch that puts it away.
         if let tooltip, touch.view?.isDescendant(of: tooltip) == true { return false }
+        // A live page's touches are its own.
+        if let touched = touch.view, page.canvas.isPage(touched) { return false }
         if gestureRecognizer is UIPanGestureRecognizer, page.canvas.passesDrag(touch) {
             return cube == nil && presentedViewController == nil && !isBeingDismissed
         }
@@ -604,6 +630,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         switch press.state {
         case .began:
             if !picker.isHidden { hidePicker(); pressMoved = true; return }
+            // Typing, a touch elsewhere only puts the keyboard away.
+            if page.feedbackField.isFirstResponder { page.feedbackField.resignFirstResponder(); pressMoved = true; return }
             pressStart = CACurrentMediaTime()
             pressMoved = false
             pressHolding = false
@@ -741,6 +769,117 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         }
     }
 
+    // MARK: Agents' stories
+
+    /// The keyboard lifts the agent's bar over it, and holds the story while it's up.
+    private func keyboardChanged(end: CGRect?, hiding: Bool, duration: Double) {
+        guard let end else { return }
+        let local = view.convert(end, from: nil)
+        let hiding = hiding || local.minY >= view.bounds.maxY
+        let bar = page.layout.bar
+        let lift = hiding ? 0 : max(0, (bar.minY + min(bar.height, StoryViewerLayout.Metrics.bar)) - local.minY + 8)
+        UIView.animate(withDuration: duration, delay: 0, options: [.beginFromCurrentState]) {
+            self.page.keyboardLift = lift
+            self.page.layoutIfNeeded()
+        }
+    }
+
+    func textFieldDidBeginEditing(_ textField: UITextField) {
+        note("typing")
+        pause(.typing, true)
+    }
+
+    func textFieldDidEndEditing(_ textField: UITextField) {
+        pause(.typing, false)
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        sendFeedback()
+        return false
+    }
+
+    /// What the person typed goes to the agent that posted the story,
+    /// quoting the frame shown; the viewer stays where it is.
+    private func sendFeedback() {
+        let field = page.feedbackField
+        let text = (field.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !sendingFeedback, let (story, frame) = current, story.isAgents else { return }
+        sendingFeedback = true
+        field.isEnabled = false
+        note("feedback")
+        let store = session.store
+        Task { [weak self] in
+            do {
+                try await store.feedback(story.id, frameId: frame.id, text: text)
+                guard let self else { return }
+                sendingFeedback = false
+                field.isEnabled = true
+                field.text = ""
+                field.resignFirstResponder()
+                StoriesHaptics.play(.post)
+                note("feedback:sent")
+                flashPlaceholder(Strings.Stories.feedbackSent)
+            } catch {
+                guard let self else { return }
+                sendingFeedback = false
+                field.isEnabled = true
+                StoriesHaptics.play(.refused)
+                note("feedback:failed")
+                flashPlaceholder(Strings.Stories.feedbackFailed)
+            }
+        }
+    }
+
+    /// "Sent" in place of the placeholder for a moment, then back.
+    private func flashPlaceholder(_ text: String) {
+        let field = page.feedbackField
+        let shown = NSAttributedString(string: text, attributes: [.foregroundColor: UIColor.white])
+        field.attributedPlaceholder = shown
+        field.accessibilityValue = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak field] in
+            guard let field, field.attributedPlaceholder == shown else { return }
+            field.attributedPlaceholder = NSAttributedString(string: Strings.Stories.feedbackPlaceholder, attributes: [.foregroundColor: UIColor(white: 1, alpha: 0.7)])
+            field.accessibilityValue = nil
+        }
+    }
+
+    /// ↻: the person's own draft of the agent's story, opened in the editor
+    /// once the viewer has gone.
+    @objc private func repostTapped() {
+        guard let (story, _) = current, story.isAgents, presentedViewController == nil else { return }
+        note("repost")
+        pause(.sheet, true)
+        page.repostButton.isEnabled = false
+        let store = session.store
+        let session = session
+        Task { [weak self] in
+            do {
+                let draft = try await store.repost(story.id)
+                guard let self else { return }
+                let host = presentingViewController
+                note("reposted")
+                dismiss(animated: true) {
+                    guard let host else { return }
+                    StoriesEditorPresenter.present(session: session, draft: draft, from: host)
+                }
+            } catch {
+                guard let self else { return }
+                page.repostButton.isEnabled = true
+                StoriesHaptics.play(.refused)
+                let alert = UIAlertController(title: Strings.Stories.repostFailed, message: StoryRefusal(error)?.message, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: Strings.Stories.done, style: .default) { [weak self] _ in self?.pause(.sheet, false) })
+                present(alert, animated: true)
+            }
+        }
+    }
+
+    /// The chip on a repost opens the agent's conversation, when the person may read it.
+    private func openReposted(_ repostOf: StoryRepostOf) {
+        guard repostOf.canOpen, let open = onOpenConversation else { return }
+        note("chip")
+        dismiss(animated: true) { open(StorySource(agentId: repostOf.agentId, toolCallId: "")) }
+    }
+
     // MARK: Acts
 
     @objc private func closeTapped() { dismissViewer() }
@@ -865,7 +1004,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
                 dismiss(animated: true) { open?(source) }
             })
         }
-        if authors.indices.contains(authorIndex), authors[authorIndex].isSelf {
+        // An agent's story is the person's to delete too.
+        if authors.indices.contains(authorIndex), authors[authorIndex].isSelf || story.isAgents {
             sheet.addAction(UIAlertAction(title: Strings.Stories.delete, style: .destructive) { [weak self] _ in self?.confirmDelete(story) })
         }
         sheet.addAction(UIAlertAction(title: Strings.Stories.cancel, style: .cancel) { [weak self] _ in self?.pause(.sheet, false) })

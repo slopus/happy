@@ -92,6 +92,20 @@ public enum StoriesRow {
         return String(letters).uppercased()
     }
 
+    /// The rings by their agent, when the daemon serves them (agent stories on).
+    public static func rings(_ feed: StoryFeed?) -> [String: StoryRing]? {
+        guard let rings = feed?.rings else { return nil }
+        return Dictionary(rings.map { ($0.agentId, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// A ring as the viewer plays it: one author, the agent, named as its row is.
+    public static func ringAuthor(_ ring: StoryRing, name: String) -> StoryFeedAuthor {
+        StoryFeedAuthor(userId: ringPrefix + ring.agentId, name: name, photo: nil, thumbhash: nil, isSelf: false,
+                        storyIds: ring.storyIds, unseenCount: ring.unseenCount, draftCount: nil, latestPostedAt: ring.latestPostedAt)
+    }
+
+    static let ringPrefix = "ring:"
+
     /// Where the viewer opens on an author: their first unseen story, or
     /// their first when all are seen.
     public static func start(_ author: StoryFeedAuthor, stories: [String: Story]) -> Int {

@@ -15,6 +15,17 @@ public enum StoryCanvas {
     public static let maxOverlays = 32
     public static let maxCaption = 1_024
     public static let imageDurationMs = 5_000
+    /// An artifact frame's untouched time.
+    public static let artifactDurationMs = 10_000
+    /// An artifact page's own viewport, in CSS pixels: a frame's is 360 ×
+    /// 640, an overlay window's 360 wide.
+    public static let pageWidth: Double = 360
+    public static let pageHeight: Double = 640
+    /// An artifact window's corners, as a fraction of the canvas's width.
+    public static let windowRadius: Double = 1.0 / 27
+    /// The left and right tenth of an artifact frame still move between frames.
+    public static let artifactEdge: Double = 0.1
+    public static let maxRoundVideoBytes = 64 * 1024 * 1024
     public static let maxVideoDurationMs = 60_000
     public static let lifetimeMs: Int64 = 24 * 60 * 60 * 1000
 }
@@ -27,6 +38,9 @@ public enum StoryStatus: String, Codable, Sendable, Equatable {
 public enum StoryAsset: Equatable, Hashable, Sendable, Codable {
     case chatMedia(agentId: String, toolCallId: String, index: Int)
     case artifactFile(artifactId: String, version: Int, path: String)
+    /// An artifact itself, shown live (an `artifact` frame); no version
+    /// always shows its latest.
+    case artifact(artifactId: String, version: Int?)
 
     enum CodingKeys: String, CodingKey { case type, agentId, toolCallId, index, artifactId, version, path }
 
@@ -37,6 +51,8 @@ public enum StoryAsset: Equatable, Hashable, Sendable, Codable {
             self = .chatMedia(agentId: try c.decode(String.self, forKey: .agentId), toolCallId: try c.decode(String.self, forKey: .toolCallId), index: try c.decode(Int.self, forKey: .index))
         case "artifact_file":
             self = .artifactFile(artifactId: try c.decode(String.self, forKey: .artifactId), version: try c.decode(Int.self, forKey: .version), path: try c.decode(String.self, forKey: .path))
+        case "artifact":
+            self = .artifact(artifactId: try c.decode(String.self, forKey: .artifactId), version: try c.decodeIfPresent(Int.self, forKey: .version))
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown asset")
         }
@@ -51,6 +67,36 @@ public enum StoryAsset: Equatable, Hashable, Sendable, Codable {
         case .artifactFile(let artifactId, let version, let path):
             try c.encode("artifact_file", forKey: .type); try c.encode(artifactId, forKey: .artifactId)
             try c.encode(version, forKey: .version); try c.encode(path, forKey: .path)
+        case .artifact(let artifactId, let version):
+            try c.encode("artifact", forKey: .type); try c.encode(artifactId, forKey: .artifactId)
+            try c.encodeIfPresent(version, forKey: .version)
+        }
+    }
+}
+
+/// A round video's recording: as read, a file of the story's own artifact;
+/// on a write, a new upload instead.
+public enum StoryRoundVideoMedia: Equatable, Hashable, Sendable, Codable {
+    case file(StoryAsset)
+    case upload(uploadId: String, name: String)
+
+    enum CodingKeys: String, CodingKey { case type, uploadId, name }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if try c.decode(String.self, forKey: .type) == "upload" {
+            self = .upload(uploadId: try c.decode(String.self, forKey: .uploadId), name: try c.decode(String.self, forKey: .name))
+        } else {
+            self = .file(try StoryAsset(from: decoder))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        switch self {
+        case .file(let asset): try asset.encode(to: encoder)
+        case .upload(let uploadId, let name):
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode("upload", forKey: .type); try c.encode(uploadId, forKey: .uploadId); try c.encode(name, forKey: .name)
         }
     }
 }
@@ -119,10 +165,19 @@ public enum StoryOverlay: Equatable, Sendable, Codable {
     case sticker(id: String, packId: String, stickerId: String, transform: StoryTransform)
     case emoji(id: String, emoji: String, transform: StoryTransform)
     case reaction(id: String, emoji: String, dark: Bool?, flipped: Bool?, transform: StoryTransform)
+    /// A live window onto an artifact, `aspectRatio` wide over tall; the
+    /// scale is the window's width over the canvas's.
+    case artifact(id: String, artifactId: String, version: Int?, aspectRatio: Double, transform: StoryTransform)
+    /// A round video a person recorded; the scale is its diameter over the
+    /// canvas's width.
+    case roundVideo(id: String, media: StoryRoundVideoMedia, durationMs: Int, mirrored: Bool?, transform: StoryTransform)
     /// A type this app does not know, kept as sent and never drawn.
     case unknown(JSONValue)
 
-    enum CodingKeys: String, CodingKey { case id, type, text, style, transform, url, label, color, packId, stickerId, emoji, dark, flipped }
+    enum CodingKeys: String, CodingKey { case id, type, text, style, transform, url, label, color, packId, stickerId, emoji, dark, flipped, artifactId, version, aspectRatio, media, durationMs, mirrored }
+
+    /// An artifact window's shape when none is given.
+    public static let defaultAspectRatio = 0.8
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -140,6 +195,10 @@ public enum StoryOverlay: Equatable, Sendable, Codable {
             self = .emoji(id: try id(), emoji: try c.decode(String.self, forKey: .emoji), transform: try transform())
         case "reaction":
             self = .reaction(id: try id(), emoji: try c.decode(String.self, forKey: .emoji), dark: try c.decodeIfPresent(Bool.self, forKey: .dark), flipped: try c.decodeIfPresent(Bool.self, forKey: .flipped), transform: try transform())
+        case "artifact":
+            self = .artifact(id: try id(), artifactId: try c.decode(String.self, forKey: .artifactId), version: try c.decodeIfPresent(Int.self, forKey: .version), aspectRatio: try c.decodeIfPresent(Double.self, forKey: .aspectRatio) ?? Self.defaultAspectRatio, transform: try transform())
+        case "round_video":
+            self = .roundVideo(id: try id(), media: try c.decode(StoryRoundVideoMedia.self, forKey: .media), durationMs: try c.decode(Int.self, forKey: .durationMs), mirrored: try c.decodeIfPresent(Bool.self, forKey: .mirrored), transform: try transform())
         default:
             self = .unknown(try JSONValue(from: decoder))
         }
@@ -166,6 +225,14 @@ public enum StoryOverlay: Equatable, Sendable, Codable {
             try c.encode(id, forKey: .id); try c.encode("reaction", forKey: .type); try c.encode(emoji, forKey: .emoji)
             try c.encodeIfPresent(dark, forKey: .dark); try c.encodeIfPresent(flipped, forKey: .flipped)
             try c.encode(transform, forKey: .transform)
+        case .artifact(let id, let artifactId, let version, let aspectRatio, let transform):
+            try c.encode(id, forKey: .id); try c.encode("artifact", forKey: .type); try c.encode(artifactId, forKey: .artifactId)
+            try c.encodeIfPresent(version, forKey: .version); try c.encode(aspectRatio, forKey: .aspectRatio)
+            try c.encode(transform, forKey: .transform)
+        case .roundVideo(let id, let media, let durationMs, let mirrored, let transform):
+            try c.encode(id, forKey: .id); try c.encode("round_video", forKey: .type); try c.encode(media, forKey: .media)
+            try c.encode(durationMs, forKey: .durationMs); try c.encodeIfPresent(mirrored, forKey: .mirrored)
+            try c.encode(transform, forKey: .transform)
         case .unknown:
             break
         }
@@ -174,7 +241,8 @@ public enum StoryOverlay: Equatable, Sendable, Codable {
     /// Its ID; nil for a type this app does not know.
     public var id: String? {
         switch self {
-        case .text(let id, _, _, _), .link(let id, _, _, _, _, _), .sticker(let id, _, _, _), .emoji(let id, _, _), .reaction(let id, _, _, _, _): id
+        case .text(let id, _, _, _), .link(let id, _, _, _, _, _), .sticker(let id, _, _, _), .emoji(let id, _, _), .reaction(let id, _, _, _, _),
+             .artifact(let id, _, _, _, _), .roundVideo(let id, _, _, _, _): id
         case .unknown(let raw): raw["id"]?.stringValue
         }
     }
@@ -182,7 +250,8 @@ public enum StoryOverlay: Equatable, Sendable, Codable {
     public var transform: StoryTransform? {
         get {
             switch self {
-            case .text(_, _, _, let t), .link(_, _, _, _, _, let t), .sticker(_, _, _, let t), .emoji(_, _, let t), .reaction(_, _, _, _, let t): t
+            case .text(_, _, _, let t), .link(_, _, _, _, _, let t), .sticker(_, _, _, let t), .emoji(_, _, let t), .reaction(_, _, _, _, let t),
+                 .artifact(_, _, _, _, let t), .roundVideo(_, _, _, _, let t): t
             case .unknown: nil
             }
         }
@@ -194,6 +263,8 @@ public enum StoryOverlay: Equatable, Sendable, Codable {
             case .sticker(let id, let packId, let stickerId, _): self = .sticker(id: id, packId: packId, stickerId: stickerId, transform: t)
             case .emoji(let id, let emoji, _): self = .emoji(id: id, emoji: emoji, transform: t)
             case .reaction(let id, let emoji, let dark, let flipped, _): self = .reaction(id: id, emoji: emoji, dark: dark, flipped: flipped, transform: t)
+            case .artifact(let id, let artifactId, let version, let aspectRatio, _): self = .artifact(id: id, artifactId: artifactId, version: version, aspectRatio: aspectRatio, transform: t)
+            case .roundVideo(let id, let media, let durationMs, let mirrored, _): self = .roundVideo(id: id, media: media, durationMs: durationMs, mirrored: mirrored, transform: t)
             case .unknown: break
             }
         }
@@ -201,7 +272,8 @@ public enum StoryOverlay: Equatable, Sendable, Codable {
 }
 
 public struct StoryFrame: Equatable, Sendable, Codable, Identifiable {
-    public enum Kind: String, Codable, Sendable, Equatable { case image, video }
+    /// `artifact`: a live page filling the canvas (`StoryAsset.artifact`).
+    public enum Kind: String, Codable, Sendable, Equatable { case image, video, artifact }
 
     public var id: String
     public var kind: Kind
@@ -262,9 +334,24 @@ public struct StoryFrame: Equatable, Sendable, Codable, Identifiable {
         try c.encode(background, forKey: .background); try c.encode(overlays, forKey: .overlays)
     }
 
-    /// How long the viewer shows it: five seconds for an image, a video's
-    /// length up to a minute (five seconds while that is unknown).
+    /// How long the viewer shows it: five seconds for an image, ten of
+    /// untouched time for a live page, a video's length up to a minute
+    /// (five seconds while that is unknown), and never less than its round
+    /// video plays.
     public var showMs: Int {
+        max(ownShowMs, roundVideoMs ?? 0)
+    }
+
+    /// Its round video's length, when it has one.
+    public var roundVideoMs: Int? {
+        overlays.lazy.compactMap { overlay -> Int? in
+            if case .roundVideo(_, _, let durationMs, _, _) = overlay { return min(durationMs, StoryCanvas.maxVideoDurationMs) }
+            return nil
+        }.first
+    }
+
+    private var ownShowMs: Int {
+        if kind == .artifact { return StoryCanvas.artifactDurationMs }
         guard kind == .video, let durationMs, durationMs > 0 else { return StoryCanvas.imageDurationMs }
         return min(durationMs, StoryCanvas.maxVideoDurationMs)
     }
@@ -302,6 +389,60 @@ public struct StoryReactionCount: Equatable, Hashable, Sendable, Codable {
 public struct StorySource: Equatable, Sendable, Codable {
     public var agentId: String
     public var toolCallId: String
+
+    public init(agentId: String, toolCallId: String) {
+        self.agentId = agentId
+        self.toolCallId = toolCallId
+    }
+}
+
+/// Whose story it is to its viewers: a person's, or an agent's, which lives
+/// in that agent's ring and never in the people row.
+public enum StoryAuthor: Equatable, Sendable, Codable {
+    case user(userId: String?)
+    case agent(agentId: String)
+
+    enum CodingKeys: String, CodingKey { case kind, userId, agentId }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        switch try c.decode(String.self, forKey: .kind) {
+        case "agent": self = .agent(agentId: try c.decode(String.self, forKey: .agentId))
+        default: self = .user(userId: try c.decodeIfPresent(String.self, forKey: .userId))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .user(let userId): try c.encode("user", forKey: .kind); try c.encode(userId, forKey: .userId)
+        case .agent(let agentId): try c.encode("agent", forKey: .kind); try c.encode(agentId, forKey: .agentId)
+        }
+    }
+
+    public var agentId: String? { if case .agent(let id) = self { id } else { nil } }
+}
+
+/// The agent's story a repost was made from: the chip that reads
+/// "Reposted from <title>", which opens it when `canOpen`.
+public struct StoryRepostOf: Equatable, Sendable, Codable {
+    public var storyId: String
+    public var agentId: String
+    public var title: String?
+    public var canOpen: Bool
+
+    public init(storyId: String, agentId: String, title: String?, canOpen: Bool) {
+        self.storyId = storyId
+        self.agentId = agentId
+        self.title = title
+        self.canOpen = canOpen
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(storyId, forKey: .storyId); try c.encode(agentId, forKey: .agentId)
+        try c.encode(title, forKey: .title); try c.encode(canOpen, forKey: .canOpen)
+    }
 }
 
 /// The story object, from the caller's view.
@@ -324,8 +465,17 @@ public struct Story: Equatable, Sendable, Codable, Identifiable {
     public var myReaction: String?
     public var reactions: [StoryReactionCount]
     public var version: String
+    /// From daemons with agent stories: whose story it is (nil from older ones).
+    public var author: StoryAuthor?
+    /// An agent's story: the agent whose row wears it.
+    public var ringAgentId: String?
+    public var supersedes: [String]?
+    /// When an agent's story left its ring, and why.
+    public var endedAt: Int64?
+    public var endReason: String?
+    public var repostOf: StoryRepostOf?
 
-    public init(id: String, status: StoryStatus, authorUserId: String?, createdBy: StoryCreator, source: StorySource? = nil, caption: String?, frames: [StoryFrame], audience: String = "self", artifactVersion: Int, createdAt: Int64, updatedAt: Int64, postedAt: Int64?, expiresAt: Int64?, seen: Bool, viewCount: Int?, myReaction: String?, reactions: [StoryReactionCount], version: String) {
+    public init(id: String, status: StoryStatus, authorUserId: String?, createdBy: StoryCreator, source: StorySource? = nil, caption: String?, frames: [StoryFrame], audience: String = "self", artifactVersion: Int, createdAt: Int64, updatedAt: Int64, postedAt: Int64?, expiresAt: Int64?, seen: Bool, viewCount: Int?, myReaction: String?, reactions: [StoryReactionCount], version: String, author: StoryAuthor? = nil, ringAgentId: String? = nil, supersedes: [String]? = nil, endedAt: Int64? = nil, endReason: String? = nil, repostOf: StoryRepostOf? = nil) {
         self.id = id
         self.status = status
         self.authorUserId = authorUserId
@@ -344,9 +494,15 @@ public struct Story: Equatable, Sendable, Codable, Identifiable {
         self.myReaction = myReaction
         self.reactions = reactions
         self.version = version
+        self.author = author
+        self.ringAgentId = ringAgentId
+        self.supersedes = supersedes
+        self.endedAt = endedAt
+        self.endReason = endReason
+        self.repostOf = repostOf
     }
 
-    enum CodingKeys: String, CodingKey { case id, status, authorUserId, createdBy, source, caption, frames, audience, artifactVersion, createdAt, updatedAt, postedAt, expiresAt, seen, viewCount, myReaction, reactions, version }
+    enum CodingKeys: String, CodingKey { case id, status, authorUserId, createdBy, source, caption, frames, audience, artifactVersion, createdAt, updatedAt, postedAt, expiresAt, seen, viewCount, myReaction, reactions, version, author, ringAgentId, supersedes, endedAt, endReason, repostOf }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -368,6 +524,12 @@ public struct Story: Equatable, Sendable, Codable, Identifiable {
         myReaction = try c.decodeIfPresent(String.self, forKey: .myReaction)
         reactions = try c.decode([StoryReactionCount].self, forKey: .reactions)
         version = try c.decode(String.self, forKey: .version)
+        author = try c.decodeIfPresent(StoryAuthor.self, forKey: .author)
+        ringAgentId = try c.decodeIfPresent(String.self, forKey: .ringAgentId)
+        supersedes = try c.decodeIfPresent([String].self, forKey: .supersedes)
+        endedAt = try c.decodeIfPresent(Int64.self, forKey: .endedAt)
+        endReason = try c.decodeIfPresent(String.self, forKey: .endReason)
+        repostOf = try c.decodeIfPresent(StoryRepostOf.self, forKey: .repostOf)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -381,7 +543,16 @@ public struct Story: Equatable, Sendable, Codable, Identifiable {
         try c.encode(expiresAt, forKey: .expiresAt); try c.encode(seen, forKey: .seen)
         try c.encode(viewCount, forKey: .viewCount); try c.encode(myReaction, forKey: .myReaction)
         try c.encode(reactions, forKey: .reactions); try c.encode(version, forKey: .version)
+        // Written as an agent-stories daemon writes them, left out as an older one does.
+        if author != nil || ringAgentId != nil || supersedes != nil || endedAt != nil || endReason != nil || repostOf != nil {
+            try c.encode(author, forKey: .author); try c.encode(ringAgentId, forKey: .ringAgentId)
+            try c.encode(supersedes ?? [], forKey: .supersedes); try c.encode(endedAt, forKey: .endedAt)
+            try c.encode(endReason, forKey: .endReason); try c.encode(repostOf, forKey: .repostOf)
+        }
     }
+
+    /// An agent's story: in a ring, never the people row.
+    public var isAgents: Bool { author?.agentId != nil }
 
     /// Whether the person may react: a posted story of someone else's.
     public func reactable(isOwn: Bool) -> Bool { status == .posted && !isOwn }
@@ -438,18 +609,60 @@ public struct StoryFeedAuthor: Equatable, Sendable, Codable {
 
     /// Its circle's key in the row: the user, or the one person.
     public var key: String { isSelf ? "self" : (userId ?? "self") }
+
+    /// An agent's ring played as an author (`StoriesRow.ringAuthor`): its agent.
+    public var ringAgentId: String? {
+        guard let userId, userId.hasPrefix(StoriesRow.ringPrefix) else { return nil }
+        return String(userId.dropFirst(StoriesRow.ringPrefix.count))
+    }
+}
+
+/// One sidebar row's ring: an agent's live stories, oldest first, and
+/// those its subtasks posted.
+public struct StoryRing: Equatable, Sendable, Codable {
+    /// The row's agent: a task's or bot's own, matched to its `target.agentId`.
+    public var agentId: String
+    public var storyIds: [String]
+    public var unseenCount: Int
+    public var latestPostedAt: Int64?
+
+    public init(agentId: String, storyIds: [String], unseenCount: Int, latestPostedAt: Int64?) {
+        self.agentId = agentId
+        self.storyIds = storyIds
+        self.unseenCount = unseenCount
+        self.latestPostedAt = latestPostedAt
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(agentId, forKey: .agentId); try c.encode(storyIds, forKey: .storyIds)
+        try c.encode(unseenCount, forKey: .unseenCount); try c.encode(latestPostedAt, forKey: .latestPostedAt)
+    }
 }
 
 /// `GET /v0/stories/feed`: the row in the order it is shown.
 public struct StoryFeed: Equatable, Sendable, Codable {
     public var authors: [StoryFeedAuthor]
+    /// Agents' rings, newest first; nil from a daemon without agent stories.
+    public var rings: [StoryRing]?
     public var stories: [String: Story]
     public var cursor: String
 
-    public init(authors: [StoryFeedAuthor], stories: [String: Story], cursor: String) {
+    public init(authors: [StoryFeedAuthor], rings: [StoryRing]? = nil, stories: [String: Story], cursor: String) {
         self.authors = authors
+        self.rings = rings
         self.stories = stories
         self.cursor = cursor
+    }
+
+    enum CodingKeys: String, CodingKey { case authors, rings, stories, cursor }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(authors, forKey: .authors)
+        try c.encodeIfPresent(rings, forKey: .rings)
+        try c.encode(stories, forKey: .stories)
+        try c.encode(cursor, forKey: .cursor)
     }
 }
 

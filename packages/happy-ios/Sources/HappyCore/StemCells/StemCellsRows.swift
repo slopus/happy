@@ -114,6 +114,24 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
     public var hasShownSessions = false
     /// A Surface row's type: `todo`, `document`, `calendar`, `system_monitor` or `chat`.
     public var surfaceType: String?
+    /// The agent's own line about where its work stands (`set_status`).
+    public var statusLine: String?
+    /// The row has an agent behind it, so a story row keeps a second line for it.
+    public var hasAgent = false
+    /// Set while agent stories are on: drawn as sidebar v2's story row.
+    public var story: StoryRowState?
+
+    /// What sidebar v2 draws of a row's stories: its ring's segments and how
+    /// many of them are new (none: no ring).
+    public struct StoryRowState: Equatable, Sendable {
+        public var segments: Int
+        public var unseen: Int
+
+        public init(segments: Int = 0, unseen: Int = 0) {
+            self.segments = segments
+            self.unseen = unseen
+        }
+    }
 
     public init(id: String, nodeId: String, kind: Kind, depth: Int = 0, label: String, mark: Mark = .none, status: Status = .none, unread: Bool = false, collapsed: Bool? = nil, isHappy: Bool = false, agentId: String? = nil, workspaceId: String? = nil, spaceId: String? = nil, targetKind: String? = nil, isUntouchedStemCell: Bool = false) {
         self.id = id
@@ -135,8 +153,22 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
 
     public var opens: Bool { kind == .space || kind == .session || kind == .search || kind == .create || kind == .result }
 
-    /// Something stands in the trailing square: a question, a wait, or a new row's dot.
-    public var hasTrailingMark: Bool { status == .waiting || status == .awaitingInput || isNew }
+    /// Something stands in the trailing square: a question, a wait, or a new
+    /// row's dot. A story row has none: its one signal is its corner.
+    public var hasTrailingMark: Bool { story == nil && (status == .waiting || status == .awaitingInput || isNew) }
+
+    /// A story row's corner: a dot while it waits on the person (a question
+    /// or an approval), a bar while a run is going, nothing on a timed wait
+    /// or at rest.
+    public var corner: Corner {
+        switch status {
+        case .awaitingInput: .dot
+        case .working: .bar
+        case .waiting, .none: .none
+        }
+    }
+
+    public enum Corner: Equatable, Sendable { case none, dot, bar }
 }
 
 /// The document as the rows the sidebar draws.
@@ -215,6 +247,21 @@ public enum StemCellsRows {
         return shown
     }
 
+    /// The rows as sidebar v2 draws them while agent stories are on
+    /// (`rings` set, keyed by agent): each conversation's row a story row,
+    /// a task's or bot's wearing its agent's ring. Off (nil), as they are.
+    public static func withStories(_ rows: [StemCellsRow], rings: [String: StoryRing]?) -> [StemCellsRow] {
+        guard let rings else { return rows }
+        return rows.map { row in
+            guard row.kind == .space || row.kind == .session else { return row }
+            var row = row
+            // A session row shows no ring; its stories roll up into its task's.
+            let ring = row.kind == .space ? row.agentId.flatMap { rings[$0] } : nil
+            row.story = StemCellsRow.StoryRowState(segments: ring?.storyIds.count ?? 0, unseen: min(ring?.unseenCount ?? 0, ring?.storyIds.count ?? 0))
+            return row
+        }
+    }
+
     static func knownTarget(_ space: AgentWire.Space) -> Bool {
         ["task", "bot", "surface", "agent"].contains(space.target.kind)
     }
@@ -244,6 +291,8 @@ public enum StemCellsRows {
         if row.collapsed == nil, row.hasHiddenSessions { row.collapsed = true }
         row.hasShownSessions = node.children.contains { spaces[$0.id] == nil && places.agent($0.id) != nil }
         if space.target.kind == "surface" { row.surfaceType = places.surface(space.target.id)?.type }
+        row.hasAgent = conversation != nil
+        row.statusLine = conversation?.statusLine?.text
         // A bot can always be archived; a task only where the daemon says so.
         row.canArchive = space.target.kind == "bot" || places.task(space.target.id)?.canArchive == true
         return [row] + children
@@ -285,6 +334,8 @@ public enum StemCellsRows {
                 collapsed: children.isEmpty ? nil : !node.expanded,
                 agentId: agent.id, workspaceId: agent.workspaceId
             )
+            row.hasAgent = true
+            row.statusLine = agent.statusLine?.text
             // A subtask's own subtasks show and hide under it as a row's do.
             row.sessions = sessionTree(agent.subtasks ?? [])
             row.hasHiddenSessions = hasMissing(row.sessions, under: node, held: held)

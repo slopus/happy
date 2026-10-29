@@ -51,6 +51,9 @@ public struct StoryDraft: Equatable, Sendable {
     public var caption: String
     public private(set) var frames: [Frame]
     public private(set) var selected: Int
+    /// Round videos recorded here and not yet sent, by overlay: uploaded
+    /// on save like a frame's file.
+    public private(set) var roundVideoFiles: [String: URL] = [:]
 
     public init(storyId: String = ClientID.make()) {
         self.storyId = storyId
@@ -172,14 +175,34 @@ public struct StoryDraft: Equatable, Sendable {
         frames[selected].overlays.removeAll { $0.id == id }
     }
 
+    /// Puts a round video recorded on the device on the selected frame, in
+    /// place of the one it had: a frame holds one. False without a frame.
+    @discardableResult
+    public mutating func setRoundVideo(id: String = ClientID.make(), file: URL, durationMs: Int, mirrored: Bool, transform: StoryTransform) -> Bool {
+        guard frames.indices.contains(selected) else { return false }
+        for overlay in frames[selected].overlays { if case .roundVideo(let old, _, _, _, _) = overlay { roundVideoFiles[old] = nil } }
+        frames[selected].overlays.removeAll { if case .roundVideo = $0 { true } else { false } }
+        let name = "round." + (file.pathExtension.isEmpty ? "mp4" : file.pathExtension)
+        let clamped = min(max(1, durationMs), StoryCanvas.maxVideoDurationMs)
+        frames[selected].overlays.append(.roundVideo(id: id, media: .upload(uploadId: "", name: name), durationMs: clamped, mirrored: mirrored ? true : nil, transform: transform.clamped))
+        roundVideoFiles[id] = file
+        return true
+    }
+
     // MARK: Saving
 
-    /// The device files to upload before saving, by frame.
+    /// The device files to upload before saving: each frame's, and each new
+    /// round video's under its overlay's ID.
     public var uploads: [(frameId: String, file: URL, name: String)] {
-        frames.compactMap { frame in
+        let media = frames.compactMap { frame -> (String, URL, String)? in
             if case .local(let file, let name) = frame.media { return (frame.id, file, name) }
             return nil
         }
+        let rounds = frames.flatMap(\.overlays).compactMap { overlay -> (String, URL, String)? in
+            guard case .roundVideo(let id, .upload(_, let name), _, _, _) = overlay, let file = roundVideoFiles[id] else { return nil }
+            return (id, file, name)
+        }
+        return (media + rounds).map { (frameId: $0.0, file: $0.1, name: $0.2) }
     }
 
     /// The frames as the create or edit sends them, with each device file's
@@ -194,7 +217,12 @@ public struct StoryDraft: Equatable, Sendable {
                 guard let upload = uploaded[frame.id] else { throw StoryDraftError.notUploaded(frame.id) }
                 media = .upload(uploadId: upload, name: name)
             }
-            return StoryFrameInput(id: frame.id, media: media, placement: frame.placement, background: frame.background, overlays: frame.overlays)
+            let overlays = try frame.overlays.map { overlay -> StoryOverlay in
+                guard case .roundVideo(let id, .upload(_, let name), let durationMs, let mirrored, let transform) = overlay, roundVideoFiles[id] != nil else { return overlay }
+                guard let upload = uploaded[id] else { throw StoryDraftError.notUploaded(id) }
+                return .roundVideo(id: id, media: .upload(uploadId: upload, name: name), durationMs: durationMs, mirrored: mirrored, transform: transform)
+            }
+            return StoryFrameInput(id: frame.id, media: media, placement: frame.placement, background: frame.background, overlays: overlays)
         }
     }
 
@@ -220,7 +248,8 @@ public struct StoryDraft: Equatable, Sendable {
             id: storyId, status: .draft, authorUserId: original?.authorUserId, createdBy: original?.createdBy ?? .user(userId: nil),
             caption: sentCaption, frames: [shown], artifactVersion: original?.artifactVersion ?? 0,
             createdAt: original?.createdAt ?? 0, updatedAt: original?.updatedAt ?? 0, postedAt: nil, expiresAt: nil,
-            seen: false, viewCount: nil, myReaction: nil, reactions: [], version: original?.version ?? ""
+            seen: false, viewCount: nil, myReaction: nil, reactions: [], version: original?.version ?? "",
+            author: original?.author, repostOf: original?.repostOf
         )
         return (story, shown)
     }

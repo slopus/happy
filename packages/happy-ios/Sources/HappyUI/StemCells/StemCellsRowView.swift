@@ -8,7 +8,10 @@ import UIKit
 /// square for a status or a section's fold. Unread is the title in bold,
 /// nothing beside it. A row someone looped the person into is new until
 /// opened: tinted, bold, with a dot in the trailing square, and it pulses
-/// once when it arrives on screen. It applies the
+/// once when it arrives on screen. While agent stories are on, a
+/// conversation's row is sidebar v2's story row instead: its mark on a round
+/// plate inside its story ring, the agent's status under the title, and one
+/// signal in the bottom-right corner (no shimmer, no trailing mark). It applies the
 /// frames `StemCellsSidebarLayout` gives it and decides nothing about where
 /// anything goes.
 final class StemCellsRowView: UIView {
@@ -20,6 +23,9 @@ final class StemCellsRowView: UIView {
     private let chevron = UIImageView()
     private let add = UIImageView()
     private let rule = UIView()
+    private let ring = StemCellsStoryRingView()
+    private let subtitle = UILabel()
+    private let corner = StemCellsCornerView()
     private var pictureJob: Task<Void, Never>?
 
     private(set) var row: StemCellsRow?
@@ -44,6 +50,10 @@ final class StemCellsRowView: UIView {
     }
     /// When the title's running sweep began; nil while it doesn't run.
     var titleSweepBegan: CFTimeInterval? { label.sweepBegan }
+    /// The story ring, for the viewer to grow out of and close into.
+    var ringView: UIView? { ring.isHidden ? nil : ring }
+    /// What the row wears as its mark, for the viewer's avatar.
+    var markImage: UIImage? { picture.isHidden ? nil : picture.image }
     /// What a hold on the row offers, as VoiceOver's actions on it.
     var actions: (() -> [UIAccessibilityCustomAction]?)?
 
@@ -71,7 +81,12 @@ final class StemCellsRowView: UIView {
         add.contentMode = .center
         add.image = StemCellsGlyphs.image("add", size: StemCellsMetrics.addGlyph)
         rule.backgroundColor = UIColor(Palette.stemCellsDivider)
-        for view in [fill, stemCell, picture, label, trailing, chevron, add, rule] { addSubview(view) }
+        subtitle.font = StemCellsFonts.ui(.regular, size: StemCellsStoryRowMetrics.subtitleSize)
+        subtitle.textColor = UIColor(Palette.stemCellsRowText)
+        subtitle.lineBreakMode = .byTruncatingTail
+        ring.isHidden = true
+        subtitle.isHidden = true
+        for view in [fill, ring, stemCell, picture, label, subtitle, trailing, chevron, add, rule, corner] { addSubview(view) }
         isAccessibilityElement = true
     }
 
@@ -87,12 +102,13 @@ final class StemCellsRowView: UIView {
         guard row != self.row else { return }
         let previous = self.row
         self.row = row
-        if previous?.mark != row.mark {
+        if previous?.mark != row.mark || (previous?.story == nil) != (row.story == nil) {
             applyMark(row.mark)
             if case .stemCell(let seed) = previous?.mark, case .clay(let slug) = row.mark, let image = ClayIconImages.image(slug) { hatch(seed: seed, into: image) }
         }
         applyText(row)
         applyTrailing(row)
+        applyStory(row)
         applyState()
         if row.isNew, previous?.isNew != true { pulse() }
         accessibilityLabel = row.kind == .separator ? nil : row.label
@@ -107,7 +123,22 @@ final class StemCellsRowView: UIView {
         }
         let value = [row.isNew ? Strings.StemCells.newRow : nil, wears, Self.shimmers(row) ? Strings.StemCells.workingRow : nil].compactMap { $0 }
         accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
+        if let story = row.story {
+            accessibilityValue = [row.statusLine, story.unseen > 0 ? Strings.Stories.newStories(story.unseen) : nil, row.corner == .dot ? Strings.Stories.waitingOnYou : nil]
+                .compactMap { $0 }.joined(separator: ", ")
+        }
         setNeedsLayout()
+    }
+
+    /// Sidebar v2's story row: the ring, the status line and the corner.
+    private func applyStory(_ row: StemCellsRow) {
+        let story = row.story
+        ring.isHidden = story == nil || row.mark == .none
+        ring.apply(story ?? .init())
+        ring.accessibilityIdentifier = "stem-ring:\(row.label)"
+        subtitle.isHidden = story == nil || !row.hasAgent
+        subtitle.text = row.statusLine
+        corner.apply(story == nil ? .none : row.corner)
     }
 
     private func applyMark(_ mark: StemCellsRow.Mark) {
@@ -137,10 +168,10 @@ final class StemCellsRowView: UIView {
             picture.contentMode = .center
             picture.image = StemCellsGlyphs.image(name, size: StemCellsMetrics.glyph)
         case .image(let path, let thumbhash):
-            // A picture is a rounded square.
+            // A picture is a rounded square; in a story ring, a circle.
             picture.isHidden = false
             picture.contentMode = .scaleAspectFill
-            picture.layer.cornerRadius = StemCellsMetrics.pictureRadius
+            picture.layer.cornerRadius = row?.story != nil ? StemCellsStoryRowMetrics.plate / 2 : StemCellsMetrics.pictureRadius
             let pixels = Int(StemCellsMetrics.mark * 3)
             if let cached = images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels) {
                 picture.image = cached
@@ -165,15 +196,17 @@ final class StemCellsRowView: UIView {
             label.attributedText = nil
         default:
             let weight: StemCellsFonts.Weight = row.unread || row.isNew ? .bold : selected ? .semiBold : .medium
-            label.attributedText = NSAttributedString(string: row.label, attributes: [.font: StemCellsFonts.ui(weight, size: StemCellsMetrics.labelSize)])
+            let size = row.story != nil ? StemCellsStoryRowMetrics.titleSize : StemCellsMetrics.labelSize
+            label.attributedText = NSAttributedString(string: row.label, attributes: [.font: StemCellsFonts.ui(weight, size: size)])
         }
         label.shimmering = Self.shimmers(row)
     }
 
     /// Desktop's `shimmerLabel`: a place with work running in it, or in
-    /// the work it handed on, says so in its title; nothing else spins.
+    /// the work it handed on, says so in its title; nothing else spins. A
+    /// story row's corner says it instead.
     static func shimmers(_ row: StemCellsRow) -> Bool {
-        row.status == .working && (row.kind == .space || row.kind == .session)
+        row.story == nil && row.status == .working && (row.kind == .space || row.kind == .session)
     }
 
     private func applyTrailing(_ row: StemCellsRow) {
@@ -187,6 +220,8 @@ final class StemCellsRowView: UIView {
             let closed = row.collapsed == true || row.hasHiddenSessions
             chevron.image = StemCellsGlyphs.image(closed ? "chevron-right" : "chevron-down", size: StemCellsMetrics.chevronGlyph)
         }
+        // A story row's corner says all of this instead.
+        guard row.story == nil else { return }
         switch row.status {
         case .awaitingInput:
             trailing.isHidden = false
@@ -228,9 +263,22 @@ final class StemCellsRowView: UIView {
         func local(_ rect: CGRect) -> CGRect { rect.offsetBy(dx: -origin.x, dy: -origin.y) }
         fill.frame = bounds
         layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: StemCellsMetrics.cornerRadius).cgPath
-        let mark = frames.mark.map(local) ?? .zero
+        var mark = frames.mark.map(local) ?? .zero
+        ring.frame = frames.ring.map(local) ?? .zero
+        if frames.ring != nil, let row {
+            // On the plate: art and glyphs at their own size in its middle,
+            // a picture filling it.
+            let side: CGFloat? = switch row.mark {
+            case .clay, .happy, .stemCell: StemCellsStoryRowMetrics.plateArt
+            case .glyph: StemCellsStoryRowMetrics.plateGlyph
+            default: nil
+            }
+            if let side { mark = mark.insetBy(dx: (mark.width - side) / 2, dy: (mark.height - side) / 2) }
+        }
         stemCell.frame = mark
         picture.frame = mark
+        subtitle.frame = frames.subtitle.map(local) ?? .zero
+        corner.frame = frames.corner.map(local) ?? .zero
         label.frame = local(frames.label)
         field?.frame = label.frame
         trailing.frame = frames.trailing.map(local) ?? .zero

@@ -13,6 +13,20 @@ final class StoryCanvasView: UIView {
     var onReady: (() -> Void)?
     /// A recording reached its end.
     var onVideoEnd: (() -> Void)?
+    /// A live page (an artifact frame or window) is touched (true) or let go.
+    var onPageTouch: ((Bool) -> Void)?
+    /// The "Reposted from …" chip was tapped.
+    var onRepostChip: ((StoryRepostOf) -> Void)?
+    /// Live pages take touches (the viewer); elsewhere they are only drawn.
+    var interactivePages = false {
+        didSet {
+            framePage?.interactive = interactivePages
+            for view in overlayViews.values { (view as? StoryArtifactOverlayView)?.page.interactive = interactivePages }
+            applyEdges()
+        }
+    }
+    /// Round videos recorded on the device and not yet sent, by overlay.
+    var localRoundVideos: [String: URL] = [:]
     /// Whether the recording shown has sound, once that is known.
     var onAudioKnown: ((Bool) -> Void)?
     private(set) var hasAudio: Bool?
@@ -45,6 +59,13 @@ final class StoryCanvasView: UIView {
     private static let captionLines = 3
     private let unavailable = UILabel()
     private var overlayViews: [String: StoryOverlayView] = [:]
+    /// An artifact frame's live page, under the overlays.
+    private var framePage: StoryArtifactPageView?
+    /// An artifact frame's left and right tenth, which still move between frames.
+    private let edgeViews = [UIView(), UIView()]
+    private let repostChip = UIControl()
+    private let repostLabel = UILabel()
+    private var repostOf: StoryRepostOf?
     private var overlayOrder: [String] = []
     private var loading: Task<Void, Never>?
     nonisolated(unsafe) private var endObserver: NSObjectProtocol?
@@ -80,8 +101,27 @@ final class StoryCanvasView: UIView {
         unavailable.numberOfLines = 0
         unavailable.isHidden = true
         addSubview(unavailable)
-        overlayLayer.isUserInteractionEnabled = false
+        // Only live windows take touches; every other overlay is drawn.
         addSubview(overlayLayer)
+        for edge in edgeViews {
+            edge.backgroundColor = .clear
+            edge.isHidden = true
+            edge.accessibilityIdentifier = "story-page-edge"
+            addSubview(edge)
+        }
+        repostChip.backgroundColor = UIColor(white: 0, alpha: 0.5)
+        repostChip.isHidden = true
+        repostChip.accessibilityIdentifier = "story-repost-chip"
+        repostChip.isAccessibilityElement = true
+        repostChip.accessibilityTraits = .button
+        repostChip.addAction(UIAction { [weak self] _ in
+            guard let self, let repostOf else { return }
+            onRepostChip?(repostOf)
+        }, for: .touchUpInside)
+        repostLabel.textColor = .white
+        repostLabel.isUserInteractionEnabled = false
+        repostChip.addSubview(repostLabel)
+        addSubview(repostChip)
         captionFade.colors = [UIColor(white: 0, alpha: 0).cgColor, UIColor(white: 0, alpha: 0.55).cgColor]
         layer.addSublayer(captionFade)
         captionLabel.textColor = .white
@@ -133,8 +173,9 @@ final class StoryCanvasView: UIView {
         myReaction = story.myReaction
         showsCounts = story.status == .posted
         background.colors = frame.background.compactMap { UIColor(hex: $0)?.cgColor }
-        if !sameFrame || previous?.available != frame.available { loadMedia(story.id, frame, playsVideo: playsVideo) }
+        if !sameFrame || previous?.available != frame.available || previous?.asset != frame.asset { loadMedia(story.id, frame, playsVideo: playsVideo) }
         applyOverlays(frame.overlays)
+        applyRepost(story.repostOf)
         applyCaption()
     }
 
@@ -214,8 +255,34 @@ final class StoryCanvasView: UIView {
         isReady = false
         stopPlayer()
         mediaView.image = nil
+        framePage?.removeFromSuperview()
+        framePage = nil
         unavailable.isHidden = frame.available
-        unavailable.text = frame.kind == .video ? Strings.Stories.videoUnavailable : Strings.Stories.photoUnavailable
+        unavailable.text = switch frame.kind {
+        case .video: Strings.Stories.videoUnavailable
+        case .image: Strings.Stories.photoUnavailable
+        case .artifact: Strings.Stories.pageUnavailable
+        }
+        if frame.kind == .artifact {
+            // A live page over the background, ready as soon as it's placed.
+            if frame.available, let media, case .artifact(let artifactId, let version) = frame.asset {
+                let page = StoryArtifactPageView(client: media.client, artifactId: artifactId, version: version)
+                page.interactive = interactivePages
+                page.onTouch = { [weak self] touching in self?.onPageTouch?(touching) }
+                page.onUnavailable = { [weak self, weak page] in
+                    guard let self, let page, page === framePage else { return }
+                    page.isHidden = true
+                    unavailable.isHidden = false
+                }
+                insertSubview(page, belowSubview: overlayLayer)
+                framePage = page
+            }
+            applyEdges()
+            setNeedsLayout()
+            markReady()
+            return
+        }
+        applyEdges()
         if let local = local[frame.id] {
             unavailable.isHidden = true
             switch local {
@@ -309,11 +376,56 @@ final class StoryCanvasView: UIView {
         Int(max(size.width, size.height, 400) * max(1, scale))
     }
 
-    func play() { player?.play() }
+    func play() {
+        player?.play()
+        for view in overlayViews.values { (view as? StoryRoundVideoOverlayView)?.play() }
+    }
 
     /// A recording starts again from its beginning.
-    func restart() { player?.seek(to: .zero) }
-    func pause() { player?.pause() }
+    func restart() {
+        player?.seek(to: .zero)
+        for view in overlayViews.values { (view as? StoryRoundVideoOverlayView)?.restart() }
+    }
+
+    func pause() {
+        player?.pause()
+        for view in overlayViews.values { (view as? StoryRoundVideoOverlayView)?.pause() }
+    }
+
+    /// Whether `view` is part of a live page, whose touches are its own.
+    func isPage(_ view: UIView) -> Bool {
+        var current: UIView? = view
+        while let shown = current, shown !== self {
+            if shown is StoryArtifactPageView { return true }
+            current = shown.superview
+        }
+        return false
+    }
+
+    /// The left and right tenth of an artifact frame take the touch back
+    /// from the page, so a tap there still moves between frames.
+    private func applyEdges() {
+        let shown = interactivePages && shownFrame?.kind == .artifact && framePage != nil
+        for edge in edgeViews { edge.isHidden = !shown }
+    }
+
+    // MARK: Repost
+
+    private func applyRepost(_ repostOf: StoryRepostOf?) {
+        self.repostOf = repostOf
+        repostChip.isHidden = repostOf == nil
+        guard let repostOf else { return }
+        repostChip.accessibilityLabel = Strings.Stories.repostedFrom(repostOf.title)
+        setNeedsLayout()
+    }
+
+    private func repostText(size: CGFloat) -> NSAttributedString {
+        let text = NSMutableAttributedString(string: "\u{21BB} Reposted from ", attributes: [.font: UIFont.systemFont(ofSize: size), .foregroundColor: UIColor.white])
+        let title = (repostOf?.title).flatMap { $0.isEmpty ? nil : $0 } ?? "an agent"
+        text.append(NSAttributedString(string: title, attributes: [.font: UIFont.systemFont(ofSize: size, weight: .semibold), .foregroundColor: UIColor.white]))
+        if repostOf?.canOpen == true { text.append(NSAttributedString(string: " \u{203A}", attributes: [.font: UIFont.systemFont(ofSize: size), .foregroundColor: UIColor.white])) }
+        return text
+    }
 
     /// How far a recording has played, 0…1; nil for a picture.
     var videoProgress: Double? {
@@ -330,6 +442,9 @@ final class StoryCanvasView: UIView {
     func stop() {
         loading?.cancel()
         stopPlayer()
+        framePage?.removeFromSuperview()
+        framePage = nil
+        for view in overlayViews.values { (view as? StoryRoundVideoOverlayView)?.pause() }
         storyId = nil
         shownFrame = nil
         mediaView.image = nil
@@ -347,7 +462,11 @@ final class StoryCanvasView: UIView {
             order.append(id)
             if let view = overlayViews[id], view.update(overlay) { continue }
             overlayViews[id]?.removeFromSuperview()
-            guard let view = StoryOverlayView.make(overlay, media: media) else { continue }
+            guard let view = StoryOverlayView.make(overlay, media: media, storyId: storyId, roundVideos: localRoundVideos) else { continue }
+            if let window = view as? StoryArtifactOverlayView {
+                window.page.interactive = interactivePages
+                window.page.onTouch = { [weak self] touching in self?.onPageTouch?(touching) }
+            }
             overlayViews[id] = view
         }
         for (id, view) in overlayViews where !live.contains(id) {
@@ -424,6 +543,12 @@ final class StoryCanvasView: UIView {
         }
         overlayLayer.frame = bounds
         for view in overlayViews.values { view.place(canvas: size) }
+        if let framePage {
+            let page = AgentStoryLayout.framePage(canvas: size, viewport: CGSize(width: StoryCanvas.pageWidth, height: StoryCanvas.pageHeight))
+            framePage.frame = page.box
+            framePage.viewport = page.viewport
+        }
+        for (edge, frame) in zip(edgeViews, AgentStoryLayout.edges(canvas: size, edge: StoryCanvas.artifactEdge)) { edge.frame = frame }
         unavailable.font = .systemFont(ofSize: max(13, size.width / 24), weight: .medium)
         unavailable.frame = bounds.insetBy(dx: size.width * 0.1, dy: 0)
         if captionLabel.isHidden {
@@ -457,6 +582,17 @@ final class StoryCanvasView: UIView {
             if captionExpanded {
                 captionScroll.contentOffset.y = caption.scrolls ? min(captionScroll.contentOffset.y, max(0, caption.content.height - caption.scroll.height)) : 0
             }
+        }
+        // Over the caption's foot, when there is one.
+        if !repostChip.isHidden {
+            let font = AgentStoryLayout.chip(textWidth: 0, canvas: size).fontSize
+            let text = repostText(size: font)
+            let chip = AgentStoryLayout.chip(textWidth: ceil(text.size().width), canvas: size, bottomInset: captionLabel.isHidden ? 0 : max(0, size.height - captionLabel.frame.minY))
+            repostChip.frame = chip.frame
+            repostChip.layer.cornerRadius = chip.frame.height / 2
+            repostLabel.attributedText = text
+            repostLabel.lineBreakMode = .byTruncatingTail
+            repostLabel.frame = CGRect(origin: .zero, size: chip.frame.size).insetBy(dx: chip.padding.width, dy: 0)
         }
         CATransaction.commit()
         // Resized so the caption fits whole: nothing is left to open.

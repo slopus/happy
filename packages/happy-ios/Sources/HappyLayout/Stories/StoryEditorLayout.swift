@@ -54,13 +54,17 @@ public struct StoryEditorLayout: Equatable, Sendable {
     public var captionPanel: CGRect
     public var caption: CGRect
     public var framesButton: CGRect
+    /// The round-video button at the caption's far right (design "Sidebar
+    /// v2", the repost editor), when the computer takes round videos; the
+    /// caption stops `captionSide` short of it.
+    public var roundVideo: CGRect?
     /// The bin's square and its circle, over the canvas's foot.
     public var bin: CGRect
     public var binCircle: CGRect
 
     /// `statusBar` is the status bar's height, `homeIndicator` the safe
     /// area's bottom, and `postContent` Post's label and arrow measured.
-    public init(bounds: CGRect, statusBar: CGFloat, homeIndicator: CGFloat, postContent: CGFloat, tablet: Bool = false) {
+    public init(bounds: CGRect, statusBar: CGFloat, homeIndicator: CGFloat, postContent: CGFloat, tablet: Bool = false, roundVideo hasRoundVideo: Bool = false) {
         typealias M = Metrics
         var top = statusBar + M.canvasTop
         var size: CGSize
@@ -94,6 +98,12 @@ public struct StoryEditorLayout: Equatable, Sendable {
         captionPanel = CGRect(x: canvas.minX, y: bounds.maxY - safeBottom + lift - M.captionLift - panelHeight, width: canvas.width, height: panelHeight)
         caption = CGRect(x: captionPanel.minX + M.captionSide, y: captionPanel.minY + M.captionPanelTop, width: max(0, captionPanel.width - 2 * M.captionSide), height: M.captionHeight)
         framesButton = CGRect(x: bounds.maxX - M.frames - M.framesSide, y: captionPanel.minY - M.frames, width: M.frames, height: M.frames)
+        roundVideo = nil
+        if hasRoundVideo {
+            let button = CGRect(x: captionPanel.maxX - M.captionSide - M.captionHeight, y: caption.minY, width: M.captionHeight, height: M.captionHeight)
+            roundVideo = button
+            caption.size.width = max(0, button.minX - M.captionSide - caption.minX)
+        }
         let unit = canvas.width / 1080
         bin = CGRect(x: canvas.minX + (canvas.width - M.bin * unit) / 2, y: canvas.maxY - (M.bin + M.binBottom) * unit, width: M.bin * unit, height: M.bin * unit)
         binCircle = bin.insetBy(dx: (M.bin - M.binCircle) / 2 * unit, dy: (M.bin - M.binCircle) / 2 * unit)

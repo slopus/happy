@@ -43,6 +43,8 @@ final class StoriesWireTests: XCTestCase {
             case .sticker: "sticker"
             case .emoji: "emoji"
             case .reaction: "reaction"
+            case .artifact: "artifact"
+            case .roundVideo: "round_video"
             case .unknown: "unknown"
             }
         }

@@ -22,6 +22,8 @@ public struct StoriesSnapshot: Equatable, Sendable {
     public var gone: Set<String> = []
     public var recents: [StickerRef] = []
     public var live = false
+    /// The computer serves agents' stories: rings, round videos, reposts.
+    public var agentStories = false
 
     public init() {}
 
@@ -170,6 +172,7 @@ public actor StoriesStore {
         // Out of reach, what was kept stays on screen.
         guard let health = try? await client.health() else { return }
         guard health.capabilities?.stories == true else { return turnedOff(.unsupported) }
+        snapshot.agentStories = health.capabilities?.agentStories == true
         let setting: JSONValue?
         do { setting = try await client.userSetting(DirectAgentClient.storiesSettingKey) }
         catch { return }
@@ -232,7 +235,22 @@ public actor StoriesStore {
             feed.authors[index].unseenCount = unseen(feed.authors[index])
         }
         feed.authors.removeAll { !$0.isSelf && $0.storyIds.isEmpty }
+        if let rings = feed.rings {
+            feed.rings = rings.compactMap { ring in
+                var ring = ring
+                ring.storyIds.removeAll { !live($0) }
+                ring.unseenCount = unseen(ring)
+                return ring.storyIds.isEmpty ? nil : ring
+            }
+        }
         snapshot.feed = feed
+    }
+
+    /// Still in its ring: not deleted, gone or ended.
+    private func live(_ storyId: String) -> Bool {
+        guard !snapshot.gone.contains(storyId) else { return false }
+        guard let story = snapshot.stories[storyId] else { return true }
+        return story.status != .deleted && story.endedAt == nil
     }
 
     /// Keeps the newer copy of a story (versions are UUIDv7s, so they sort
@@ -286,8 +304,13 @@ public actor StoriesStore {
             if type == "story.created", story.status == .draft { reloadFeedSoon() }
             if type == "story.posted" {
                 place(story)
-                reloadFeedSoon()
+                // A ring's order is its own; nothing else moves.
+                if !story.isAgents { reloadFeedSoon() }
             }
+        case "story.ended":
+            guard let id = payload["storyId"]?.stringValue else { return }
+            if let story = payload["story"].flatMap({ Self.decode(Story.self, $0) }) { adopt(story) }
+            unring(id)
         case "story.deleted":
             guard let id = payload["storyId"]?.stringValue else { return }
             removed(id, version: payload["version"]?.stringValue)
@@ -315,9 +338,22 @@ public actor StoriesStore {
     }
 
     /// A posted story goes last in its author's circle, which exists once
-    /// the feed is read again if it doesn't yet.
+    /// the feed is read again if it doesn't yet; an agent's, last in its
+    /// ring, unseen, the ring going first.
     private func place(_ story: Story) {
         guard var feed = snapshot.feed else { return }
+        if story.isAgents {
+            guard let agentId = story.ringAgentId, story.endedAt == nil, story.status == .posted, feed.rings != nil else { return }
+            var ring = feed.rings?.first { $0.agentId == agentId } ?? StoryRing(agentId: agentId, storyIds: [], unseenCount: 0, latestPostedAt: nil)
+            guard !ring.storyIds.contains(story.id) else { return }
+            ring.storyIds.append(story.id)
+            ring.unseenCount = unseen(ring)
+            ring.latestPostedAt = story.postedAt ?? ring.latestPostedAt
+            feed.rings?.removeAll { $0.agentId == agentId }
+            feed.rings?.insert(ring, at: 0)
+            snapshot.feed = feed
+            return
+        }
         let index = feed.authors.firstIndex { author in
             author.isSelf ? (story.authorUserId == author.userId || story.authorUserId == nil) : author.userId == story.authorUserId
         }
@@ -343,18 +379,36 @@ public actor StoriesStore {
         }
         feed.authors.removeAll { !$0.isSelf && $0.storyIds.isEmpty }
         snapshot.feed = feed
+        unring(id)
     }
 
-    /// Marks `storyId` and every earlier story of its author seen. False
-    /// when the story isn't known here.
+    /// An agent's story left its ring: ended or deleted.
+    private func unring(_ id: String) {
+        guard var feed = snapshot.feed, let rings = feed.rings, rings.contains(where: { $0.storyIds.contains(id) }) else { return }
+        feed.rings = rings.compactMap { ring in
+            var ring = ring
+            ring.storyIds.removeAll { $0 == id }
+            ring.unseenCount = unseen(ring)
+            return ring.storyIds.isEmpty ? nil : ring
+        }
+        snapshot.feed = feed
+    }
+
+    /// Marks `storyId` and every earlier story of its author seen, or of
+    /// its ring for an agent's. False when the story isn't known here.
     @discardableResult
     private func markSeen(through storyId: String) -> Bool {
         guard let story = snapshot.stories[storyId], story.status == .posted, let mark = story.postedAt else { return false }
-        for (id, other) in snapshot.stories where other.authorUserId == story.authorUserId && other.status == .posted && !other.seen && (other.postedAt ?? .max) <= mark {
+        func together(_ other: Story) -> Bool {
+            if let ring = story.ringAgentId { return other.ringAgentId == ring }
+            return other.ringAgentId == nil && !other.isAgents && other.authorUserId == story.authorUserId
+        }
+        for (id, other) in snapshot.stories where together(other) && other.status == .posted && !other.seen && (other.postedAt ?? .max) <= mark {
             snapshot.stories[id]?.seen = true
         }
         if var feed = snapshot.feed {
             for index in feed.authors.indices { feed.authors[index].unseenCount = unseen(feed.authors[index]) }
+            if let rings = feed.rings { feed.rings = rings.map { var ring = $0; ring.unseenCount = unseen(ring); return ring } }
             snapshot.feed = feed
         }
         return true
@@ -362,6 +416,10 @@ public actor StoriesStore {
 
     private func unseen(_ author: StoryFeedAuthor) -> Int {
         author.isSelf ? 0 : author.storyIds.filter { snapshot.stories[$0]?.seen == false }.count
+    }
+
+    private func unseen(_ ring: StoryRing) -> Int {
+        ring.storyIds.filter { snapshot.stories[$0]?.seen == false }.count
     }
 
     // MARK: Publishing
@@ -443,7 +501,7 @@ public actor StoriesStore {
         keptOnDisk = true
         var feed = snapshot.feed
         if let shown = feed {
-            let ids = Set(shown.authors.flatMap(\.storyIds))
+            let ids = Set(shown.authors.flatMap(\.storyIds) + (shown.rings ?? []).flatMap(\.storyIds))
             feed?.stories = snapshot.stories.filter { ids.contains($0.key) }
         }
         let kept = Kept(availability: snapshot.availability, feed: feed, recents: snapshot.recents)
@@ -599,6 +657,19 @@ public actor StoriesStore {
         removed(storyId, version: deleted.version)
         publish()
         reloadFeedSoon()
+    }
+
+    /// The person's own draft from an agent's story, to edit and post.
+    public func repost(_ storyId: String) async throws -> Story {
+        let story = try await client.repostStory(storyId, id: ClientID.make())
+        adopt(story)
+        publish()
+        return story
+    }
+
+    /// Sends what the person typed to the agent that posted the story.
+    public func feedback(_ storyId: String, frameId: String?, text: String) async throws {
+        try await client.storyFeedback(storyId, frameId: frameId, text: text, id: ClientID.make())
     }
 
     /// A new draft by hand.

@@ -144,5 +144,23 @@ extension Strings {
         public static let emojiObjects = "Objects"
         public static let emojiSymbols = "Symbols"
         public static let emojiFlags = "Flags"
+
+        // Agents' stories (sidebar v2, API.md "Agent stories").
+        public static func newStories(_ count: Int) -> String { count == 1 ? "1 new story" : "\(count) new stories" }
+        public static let waitingOnYou = "Waiting on you"
+        public static let watchStory = "Watch story"
+        public static let feedbackPlaceholder = "Tell the agent what to change\u{2026}"
+        public static let feedbackSent = "Sent"
+        public static let feedbackFailed = "Couldn't send. Try again."
+        public static let send = "Send"
+        public static let repost = "Repost"
+        public static let repostFailed = "Couldn't repost this story"
+        public static func repostedFrom(_ title: String?) -> String { "Reposted from " + ((title?.isEmpty ?? true) ? "an agent" : title!) }
+        public static let pageUnavailable = "This page is no longer available"
+        public static let roundVideo = "Round video"
+        public static let roundVideoHint = "Hold to record a round video, tap to lock"
+        public static let flipCamera = "Flip camera"
+        public static let stopRecording = "Stop"
+        public static let cameraDenied = "Allow camera access in Settings to record a round video."
     }
 }

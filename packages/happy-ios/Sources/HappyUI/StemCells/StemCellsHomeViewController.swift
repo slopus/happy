@@ -144,6 +144,12 @@ final class StemCellsHomeViewController: UIViewController {
         sidebar.onDragging = { [weak self] active in self?.dragging(active) }
         sidebar.delegate = self
         stories.onInsetChange = { [weak self] change in self?.storiesMoved(change) }
+        // Agent stories turn the conversations' rows into story rows.
+        stories.onRings = { [weak self] _ in self?.showRows() }
+        sidebar.onOpenStory = { [weak self] row, ring in
+            guard let agentId = row.agentId else { return }
+            self?.stories.openRing(agentId: agentId, name: row.label, from: ring)
+        }
         stories.list = sidebar
         empty.onPair = { [weak self] in
             guard let self else { return }
@@ -356,7 +362,7 @@ final class StemCellsHomeViewController: UIViewController {
             self.search?.narrowed = false
             self.search?.results = [:]
             nothingFound.isHidden = true
-            sidebar.apply(drawn)
+            sidebar.apply(StemCellsRows.withStories(drawn, rings: stories.rings))
             if wasNarrowed, let fromTop = self.search?.fromTop { restore(fromTop: fromTop) }
             return
         }

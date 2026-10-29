@@ -24,3 +24,10 @@ reviewed components/SessionActionsPopover.tsx action.icon as keyof typeof Ionico
 # expand button (AgentInputCard.swift); contract-outline, which closes it,
 # the scan finds.
 Ionicons expand-outline
+# Agents' stories (design "Sidebar v2: agent story rings"), which happy-app
+# doesn't have: the viewer's repost (StoryViewerPageView), the editor's
+# round-video button (StoryEditorViewController) and the round camera's flip
+# (StoryRoundVideoRecorder).
+Ionicons repeat
+Ionicons radio-button-on
+Ionicons camera-reverse-outline

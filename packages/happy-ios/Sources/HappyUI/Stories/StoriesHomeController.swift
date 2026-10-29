@@ -37,6 +37,11 @@ final class StoriesHomeController {
 
     let view = StoriesHeaderView()
     var onInsetChange: ((Change) -> Void)?
+    /// The sidebar's rings changed: by agent, or nil while agent stories
+    /// are off (Stories off, or a daemon without them).
+    var onRings: (([String: StoryRing]?) -> Void)?
+    /// The sidebar's rings, as last drawn.
+    private(set) var rings: [String: StoryRing]?
     /// The list the stories open above.
     weak var list: UIScrollView?
     /// A row is being carried: the list's own scrolling then is the carry's.
@@ -171,6 +176,11 @@ final class StoriesHomeController {
     private func draw(_ next: StoriesSnapshot) {
         let hadUnseen = StoriesRow.hasUnseen(items)
         snapshot = next
+        let rings = next.isOn ? StoriesRow.rings(next.feed) : nil
+        if rings != self.rings {
+            self.rings = rings
+            onRings?(rings)
+        }
         items = next.isOn ? StoriesRow.items(next.feed, myStory: Strings.Stories.myStory) : []
         view.apply(items)
         view.isHidden = !isShown
@@ -408,6 +418,31 @@ final class StoriesHomeController {
                 guard let self, self.settleWhenBack else { return }
                 self.settle()
             }
+        }
+    }
+
+    // MARK: Rings
+
+    /// A sidebar row's ring was tapped: the viewer plays that agent's ring,
+    /// oldest first from its first new story, grown out of the ring and
+    /// closing back into it, then closes.
+    func openRing(agentId: String, name: String, from ring: UIView) {
+        guard opening == nil, !viewerUp, let session, let host, let stories = rings?[agentId] else { return }
+        let author = StoriesRow.ringAuthor(stories, name: name)
+        var feed = StoryFeed(authors: [author], stories: session.snapshot.stories, cursor: "")
+        feed.stories.merge(snapshot.feed?.stories ?? [:]) { held, _ in held }
+        let image = (ring.superview as? StemCellsRowView)?.markImage
+        guard let viewer = StoriesViewerPresenter.present(session: session, feed: feed, authorIndex: 0, from: host, origin: ring, ringImage: image) else { return }
+        hideTooltip()
+        launching = false
+        self.viewer = viewer
+        viewer.onClosing = { [weak self, weak viewer] in
+            guard let self, let viewer, viewer === self.viewer else { return }
+            self.release()
+        }
+        viewer.onClose = { [weak self, weak viewer] in
+            guard let self, let viewer, viewer === self.viewer else { return }
+            self.release()
         }
     }
 

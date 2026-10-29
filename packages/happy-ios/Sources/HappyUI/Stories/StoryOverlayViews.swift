@@ -60,13 +60,15 @@ class StoryOverlayView: UIView {
         transform = turned
     }
 
-    static func make(_ overlay: StoryOverlay, media: StoriesMedia?) -> StoryOverlayView? {
+    static func make(_ overlay: StoryOverlay, media: StoriesMedia?, storyId: String? = nil, roundVideos: [String: URL] = [:]) -> StoryOverlayView? {
         switch overlay {
         case .text: StoryTextOverlayView(overlay)
         case .link: StoryLinkOverlayView(overlay)
         case .emoji: StoryEmojiOverlayView(overlay)
         case .reaction: StoryReactionOverlayView(overlay)
         case .sticker: StoryStickerOverlayView(overlay, media: media)
+        case .artifact: media.map { StoryArtifactOverlayView(overlay, client: $0.client) }
+        case .roundVideo(let id, _, _, _, _): StoryRoundVideoOverlayView(overlay, media: media, storyId: storyId, local: roundVideos[id])
         case .unknown: nil
         }
     }

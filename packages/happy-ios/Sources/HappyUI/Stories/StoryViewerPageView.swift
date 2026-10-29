@@ -7,7 +7,9 @@ import UIKit
 /// One author in the viewer, as Telegram's story item set lays it out: the
 /// canvas with its corners rounded, the progress strip and the author over
 /// its top, close and more beside them, and the bar under it with the heart,
-/// or on one's own story how many have seen it.
+/// or on one's own story how many have seen it. On an agent's story the bar
+/// is the design's: a field to tell the agent what to change, the heart,
+/// and repost at the far right.
 final class StoryViewerPageView: UIView {
     let canvas = StoryCanvasView()
     let closeButton = UIButton(type: .system)
@@ -16,6 +18,13 @@ final class StoryViewerPageView: UIView {
     let viewsButton = UIButton(type: .system)
     /// A recording's sound, on or off, at the top beside the more button.
     let soundButton = UIButton(type: .custom)
+    /// An agent's story: what to tell the agent, and making it one's own.
+    let feedbackField = UITextField()
+    let repostButton = UIButton(type: .system)
+    /// How far a keyboard lifts the agent's bar.
+    var keyboardLift: CGFloat = 0 { didSet { if keyboardLift != oldValue { setNeedsLayout() } } }
+    /// An agent's row icon, drawn as its avatar.
+    var authorImage: UIImage?
     private let topFade = CAGradientLayer()
     private let strip = UIView()
     private var segments: [StoryProgressSegment] = []
@@ -25,7 +34,9 @@ final class StoryViewerPageView: UIView {
     private let timeLabel = UILabel()
     /// Shades the side of the cube turned away.
     let shade = UIView()
-    private var chrome: [UIView] { [strip, avatar, nameLabel, timeLabel, closeButton, moreButton, soundButton, heartButton, viewsButton] }
+    private var chrome: [UIView] { [strip, avatar, nameLabel, timeLabel, closeButton, moreButton, soundButton, heartButton, viewsButton, feedbackField, repostButton] }
+    /// The story shown is an agent's.
+    private(set) var isAgents = false
 
     private(set) var author: StoryFeedAuthor?
     private var photoKey: String?
@@ -85,6 +96,28 @@ final class StoryViewerPageView: UIView {
         viewsButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 6)
         viewsButton.titleEdgeInsets = UIEdgeInsets(top: 0, left: 6, bottom: 0, right: 0)
         viewsButton.accessibilityIdentifier = "story-views"
+        feedbackField.attributedPlaceholder = NSAttributedString(string: Strings.Stories.feedbackPlaceholder, attributes: [.foregroundColor: UIColor(white: 1, alpha: 0.7)])
+        feedbackField.textColor = .white
+        feedbackField.tintColor = .white
+        feedbackField.font = .systemFont(ofSize: 15)
+        feedbackField.keyboardAppearance = .dark
+        feedbackField.returnKeyType = .send
+        feedbackField.enablesReturnKeyAutomatically = true
+        feedbackField.layer.borderColor = UIColor(white: 1, alpha: 0.3).cgColor
+        feedbackField.layer.borderWidth = 1
+        feedbackField.leftView = UIView(frame: CGRect(x: 0, y: 0, width: 14, height: 1))
+        feedbackField.leftViewMode = .always
+        feedbackField.rightView = UIView(frame: CGRect(x: 0, y: 0, width: 10, height: 1))
+        feedbackField.rightViewMode = .always
+        feedbackField.accessibilityIdentifier = "story-feedback"
+        feedbackField.isHidden = true
+        addSubview(feedbackField)
+        repostButton.setImage(UIImage.icon(.ionicons("repeat"), size: 24).withRenderingMode(.alwaysTemplate), for: .normal)
+        repostButton.tintColor = .white
+        repostButton.accessibilityLabel = Strings.Stories.repost
+        repostButton.accessibilityIdentifier = "story-repost"
+        repostButton.isHidden = true
+        addSubview(repostButton)
         shade.backgroundColor = .black
         shade.alpha = 0
         shade.isUserInteractionEnabled = false
@@ -119,8 +152,11 @@ final class StoryViewerPageView: UIView {
         let (story, frame) = frames[position]
         canvas.show(story, frame: frame, media: media)
         timeLabel.text = story.postedAt.map { Strings.Stories.ago(now - $0) }
+        isAgents = story.isAgents
         heartButton.isHidden = author.isSelf
         viewsButton.isHidden = !author.isSelf
+        feedbackField.isHidden = !isAgents
+        repostButton.isHidden = !isAgents
         // Others' stories offer only their conversation, when there is one.
         moreButton.isHidden = !author.isSelf && story.source == nil
         setHeart(story.myReaction)
@@ -187,6 +223,16 @@ final class StoryViewerPageView: UIView {
     }
 
     private func loadPhoto(_ author: StoryFeedAuthor, images: StemCellsImages?) {
+        if author.ringAgentId != nil, let authorImage {
+            // An agent wears its row's icon.
+            photoKey = nil
+            loading?.cancel()
+            avatar.image = authorImage
+            avatar.contentMode = .scaleAspectFit
+            initials.isHidden = true
+            return
+        }
+        avatar.contentMode = .scaleAspectFill
         let key = images == nil ? nil : author.photo.map { "\($0)#\(author.thumbhash ?? "")" }
         guard key != photoKey else { return }
         photoKey = key
@@ -233,7 +279,15 @@ final class StoryViewerPageView: UIView {
         closeButton.frame = layout.close
         moreButton.frame = layout.more
         soundButton.frame = moreButton.isHidden ? layout.more : layout.sound
-        place(heartButton, layout.heart)
+        if isAgents {
+            let bar = AgentStoryLayout.bar(canvas: layout.canvas, bar: layout.bar, barHeight: StoryViewerLayout.Metrics.bar, lift: keyboardLift)
+            place(heartButton, bar.heart)
+            place(repostButton, bar.repost)
+            place(feedbackField, bar.field)
+            feedbackField.layer.cornerRadius = bar.field.height / 2
+        } else {
+            place(heartButton, layout.heart)
+        }
         place(viewsButton, layout.views)
         shade.frame = bounds
         if let openingMask {
@@ -310,11 +364,11 @@ final class StoryViewerPageView: UIView {
 
     /// The bar under the story: in its place, or dropped below the screen.
     func placeOpeningBar(_ opening: StoryOpeningLayout, risen: Bool) {
-        for view in [heartButton, viewsButton] { view.transform = risen ? .identity : CGAffineTransform(translationX: 0, y: opening.barDrop) }
+        for view in [heartButton, viewsButton, feedbackField, repostButton] { view.transform = risen ? .identity : CGAffineTransform(translationX: 0, y: opening.barDrop) }
     }
 
     func showOpeningBar(_ shown: Bool) {
-        for view in [heartButton, viewsButton] { view.alpha = shown ? 1 : 0 }
+        for view in [heartButton, viewsButton, feedbackField, repostButton] { view.alpha = shown ? 1 : 0 }
     }
 }
 

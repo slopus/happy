@@ -125,6 +125,8 @@ extension AgentWire {
             public var sidebarAttachments: Bool?
             public var stories: Bool?
             public var stickers: Bool?
+            /// Agents' stories, their rings and status lines.
+            public var agentStories: Bool?
         }
         public var ready: Bool
         public var capabilities: Capabilities?
@@ -160,6 +162,17 @@ extension AgentWire {
         }
     }
 
+    /// The one line an agent last wrote about where its work stands (`set_status`).
+    public struct AgentStatusLine: Equatable, Sendable, Codable {
+        public var text: String
+        public var updatedAt: Double
+
+        public init(text: String, updatedAt: Double) {
+            self.text = text
+            self.updatedAt = updatedAt
+        }
+    }
+
     public struct AgentSubagents: Equatable, Sendable, Codable {
         public var total: Int?
         public var running: Int?
@@ -180,8 +193,9 @@ extension AgentWire {
         public let version: String?
         public let retrying: AgentRetrying?
         public let subagents: AgentSubagents?
+        public let statusLine: AgentStatusLine?
 
-        public init(id: String, workspaceId: String, parentAgentId: String? = nil, title: String? = nil, status: String = "idle", wait: AgentWait? = nil, subtasks: [Agent]? = nil, pendingQuestionId: String? = nil, unread: AgentUnread? = nil, canSendMessages: Bool? = nil, archivedAt: Double? = nil, version: String? = nil, retrying: AgentRetrying? = nil, subagents: AgentSubagents? = nil) {
+        public init(id: String, workspaceId: String, parentAgentId: String? = nil, title: String? = nil, status: String = "idle", wait: AgentWait? = nil, subtasks: [Agent]? = nil, pendingQuestionId: String? = nil, unread: AgentUnread? = nil, canSendMessages: Bool? = nil, archivedAt: Double? = nil, version: String? = nil, retrying: AgentRetrying? = nil, subagents: AgentSubagents? = nil, statusLine: AgentStatusLine? = nil) {
             self.id = id
             self.workspaceId = workspaceId
             self.parentAgentId = parentAgentId
@@ -196,6 +210,7 @@ extension AgentWire {
             self.version = version
             self.retrying = retrying
             self.subagents = subagents
+            self.statusLine = statusLine
         }
 
         public static func == (lhs: Agent, rhs: Agent) -> Bool {
@@ -203,7 +218,7 @@ extension AgentWire {
                 && lhs.wait == rhs.wait && lhs.subtasks == rhs.subtasks && lhs.pendingQuestionId == rhs.pendingQuestionId
                 && lhs.unread == rhs.unread && lhs.canSendMessages == rhs.canSendMessages && lhs.archivedAt == rhs.archivedAt
                 && lhs.parentAgentId == rhs.parentAgentId && lhs.version == rhs.version
-                && lhs.retrying == rhs.retrying && lhs.subagents == rhs.subagents
+                && lhs.retrying == rhs.retrying && lhs.subagents == rhs.subagents && lhs.statusLine == rhs.statusLine
         }
 
         public var isWorking: Bool { status != "idle" }

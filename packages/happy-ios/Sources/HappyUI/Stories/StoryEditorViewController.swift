@@ -33,6 +33,10 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
     }
     private let caption = UITextField()
     private let captionDim = UIControl()
+    /// Telegram's round video, at the caption's far right, where the
+    /// computer takes them: hold to record, tap to lock.
+    private let roundVideoButton = UIButton(configuration: .glass())
+    private var recorder: StoryRoundVideoRecorder?
     private let framesButton = UIButton(configuration: .glass())
     private let framesPanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterialDark))
     private let framesScroll = UIScrollView()
@@ -185,6 +189,18 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
         caption.accessibilityIdentifier = "story-editor-caption"
         caption.addAction(UIAction { [weak self] _ in self?.captionChanged() }, for: .editingChanged)
         captionPanel.addSubview(caption)
+        roundVideoButton.configuration?.image = UIImage.icon(.ionicons("radio-button-on"), size: 22).withRenderingMode(.alwaysTemplate)
+        roundVideoButton.configuration?.contentInsets = .zero
+        roundVideoButton.tintColor = .white
+        roundVideoButton.accessibilityIdentifier = "story-editor-round-video"
+        roundVideoButton.accessibilityLabel = Strings.Stories.roundVideo
+        roundVideoButton.accessibilityHint = Strings.Stories.roundVideoHint
+        roundVideoButton.isHidden = !session.snapshot.agentStories
+        roundVideoButton.addAction(UIAction { [weak self] _ in self?.recordRoundVideo(locked: true) }, for: .primaryActionTriggered)
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(roundVideoHeld(_:)))
+        hold.minimumPressDuration = 0.25
+        roundVideoButton.addGestureRecognizer(hold)
+        captionPanel.addSubview(roundVideoButton)
         view.addSubview(captionPanel)
 
         framesButton.configuration?.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
@@ -250,7 +266,8 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
         let statusBar = view.window?.windowScene?.statusBarManager?.statusBarFrame.height ?? view.safeAreaInsets.top
         let layout = StoryEditorLayout(
             bounds: view.bounds, statusBar: statusBar, homeIndicator: view.safeAreaInsets.bottom,
-            postContent: title + 5 + StoryEditorIcons.next.size.width, tablet: traitCollection.userInterfaceIdiom == .pad
+            postContent: title + 5 + StoryEditorIcons.next.size.width, tablet: traitCollection.userInterfaceIdiom == .pad,
+            roundVideo: !roundVideoButton.isHidden
         )
         let resized = self.layout?.canvas.size != layout.canvas.size
         self.layout = layout
@@ -269,6 +286,8 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
         let field = layout.caption.offsetBy(dx: -layout.captionPanel.minX, dy: -layout.captionPanel.minY)
         captionField.frame = field
         caption.frame = field.insetBy(dx: 16, dy: 0)
+        roundVideoButton.frame = layout.roundVideo.map { $0.offsetBy(dx: -layout.captionPanel.minX, dy: -layout.captionPanel.minY) } ?? .zero
+        recorder?.frame = view.bounds
         framesButton.frame = layout.framesButton
         layoutFrames(layout)
         bin.frame = layout.bin
@@ -304,6 +323,7 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
             // The editor's own field shows the caption.
             story.caption = nil
             canvas.local = local
+            canvas.localRoundVideos = draft.roundVideoFiles
             canvas.show(story, frame: shown, media: session.media, playsVideo: true)
             if shown.kind == .video { canvas.play() }
         }
@@ -902,6 +922,49 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
         keyboard = note.name == UIResponder.keyboardWillHideNotification ? 0 : max(0, view.bounds.maxY - local.minY)
         view.setNeedsLayout()
         UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
+    }
+
+    // MARK: Round video
+
+    @objc private func roundVideoHeld(_ hold: UILongPressGestureRecognizer) {
+        switch hold.state {
+        case .began: recordRoundVideo(locked: false)
+        case .ended:
+            // Let go: what was held is the recording, unless it was locked.
+            if let recorder, !recorder.locked { recorder.finish() }
+        case .cancelled, .failed: recorder?.cancel()
+        default: break
+        }
+    }
+
+    /// Opens the round camera over the editor, recording at once; a tap
+    /// locks it, a hold records while held.
+    private func recordRoundVideo(locked: Bool) {
+        guard recorder == nil, draft.current != nil, !saving else { return }
+        caption.resignFirstResponder()
+        select(nil)
+        note("round:record")
+        let recorder = StoryRoundVideoRecorder(frame: view.bounds)
+        recorder.onFinish = { [weak self] recording in self?.recorded(recording) }
+        view.addSubview(recorder)
+        self.recorder = recorder
+        recorder.start()
+        if locked { recorder.lock() }
+    }
+
+    /// The recording lands on the frame as a circle, low on the left, to be
+    /// dragged and pinched like any overlay; it replaces the frame's last one.
+    private func recorded(_ recording: StoryRoundVideoRecorder.Recording?) {
+        recorder?.removeFromSuperview()
+        recorder = nil
+        guard let recording else { return note("round:none") }
+        files.append(recording.file)
+        let id = ClientID.make()
+        guard draft.setRoundVideo(id: id, file: recording.file, durationMs: recording.durationMs, mirrored: recording.mirrored, transform: StoryTransform(x: 0.26, y: 0.7, scale: 0.34, rotation: 0)) else { return }
+        note("round:\(recording.durationMs)")
+        selected = id
+        render()
+        canvas.play()
     }
 
     // MARK: Saving

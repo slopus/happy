@@ -16,6 +16,8 @@ import UIKit
 /// in place to be renamed.
 final class StemCellsSidebarView: UIScrollView {
     var onSelect: ((StemCellsRow) -> Void)?
+    /// A story row's ring was tapped: its agent's stories, not its conversation.
+    var onOpenStory: ((StemCellsRow, UIView) -> Void)?
     /// A finger came down on a row that opens: it may be opened next.
     var onIntent: ((StemCellsRow) -> Void)?
     var onFold: ((StemCellsRow) -> Void)?
@@ -198,6 +200,12 @@ final class StemCellsSidebarView: UIScrollView {
         view.actions = { [weak self, weak view] in
             guard let self, editing == nil, let row = view?.row else { return nil }
             var actions: [UIAccessibilityCustomAction] = []
+            if (row.story?.segments ?? 0) > 0, let onOpenStory, let ring = view?.ringView {
+                actions.append(UIAccessibilityCustomAction(name: Strings.Stories.watchStory) { _ in
+                    onOpenStory(row, ring)
+                    return true
+                })
+            }
             if row.kind == .section, let onAdd {
                 actions.append(UIAccessibilityCustomAction(name: Strings.StemCells.newWorkIn(row.label), image: StemCellsGlyphs.image("add")) { _ in
                     onAdd(row)
@@ -215,8 +223,14 @@ final class StemCellsSidebarView: UIScrollView {
     }
 
     @objc private func rowTapped(_ gesture: UITapGestureRecognizer) {
+        guard let view = gesture.view as? StemCellsRowView else { return }
+        tap(view, at: gesture.location(in: self))
+    }
+
+    /// A tap on a row at `point`, in the list's content.
+    func tap(_ view: StemCellsRowView, at point: CGPoint) {
         // The touch that opened a hold, let go: the hold stays and that is all.
-        guard hold == nil, let view = gesture.view as? StemCellsRowView, let row = view.row else { return }
+        guard hold == nil, let row = view.row else { return }
         // A lifted row put back by a tap that didn't move it.
         if armed { return disarm() }
         // A tap while something is open closes it and does nothing else; a
@@ -231,16 +245,22 @@ final class StemCellsSidebarView: UIScrollView {
             break
         case .section:
             // Its "+", with a finger's room around it, makes new work in it.
-            if let add = view.frames?.add, let onAdd, gesture.location(in: self).x >= add.minX - 7, gesture.location(in: self).x < add.maxX + StemCellsMetrics.trailingGap / 2 {
+            if let add = view.frames?.add, let onAdd, point.x >= add.minX - 7, point.x < add.maxX + StemCellsMetrics.trailingGap / 2 {
                 onAdd(row)
             } else {
                 onFold?(row)
             }
         case .separator: break
         default:
+            // A ring with stories in it opens them, with a finger's room around it.
+            if let ring = view.frames?.ring, (row.story?.segments ?? 0) > 0, let onOpenStory,
+               ring.insetBy(dx: -8, dy: -8).contains(point), let ringView = view.ringView {
+                onOpenStory(row, ringView)
+                return
+            }
             // A row's fold is its chevron, with a finger's room around it;
             // a row that opens nothing (a proposal's) folds wherever it's tapped.
-            if let chevron = view.frames?.chevron, onSelect == nil || gesture.location(in: self).x >= chevron.minX - 14 {
+            if let chevron = view.frames?.chevron, onSelect == nil || point.x >= chevron.minX - 14 {
                 onFold?(row)
             } else {
                 onSelect?(row)
@@ -284,7 +304,13 @@ final class StemCellsSidebarView: UIScrollView {
             case .widget: .widget
             default: .row
             }
-            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions)
+            let corner: StemCellsSidebarLayout.Corner = switch row.corner {
+            case .none: .none
+            case .dot: .dot
+            case .bar: .bar
+            }
+            let story = row.story.map { _ in StemCellsSidebarLayout.StoryRow(hasSubtitle: row.hasAgent, corner: corner) }
+            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story)
         }
     }
 

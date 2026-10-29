@@ -46,7 +46,21 @@ extension DirectAgentClient {
             "/v0/agents/\(escape(agentId))/tool-calls/\(escape(toolCallId))/media/\(index)"
         case .artifactFile(let artifactId, let version, let path):
             "/v0/artifacts/\(escape(artifactId))/versions/\(version)/files/" + path.split(separator: "/").map { escape(String($0)) }.joined(separator: "/")
+        case .artifact(let artifactId, let version):
+            // A live page has no bytes of its own: its version, read as an artifact is.
+            "/v0/artifacts/\(escape(artifactId))" + (version.map { "/versions/\($0)" } ?? "")
         }
+    }
+
+    /// Where a round video's recording is read from.
+    public static func roundVideoPath(storyId: String, overlayId: String) -> String {
+        "/v0/stories/\(escape(storyId))/overlays/\(escape(overlayId))/media"
+    }
+
+    /// A round video's bytes, whole or one range of them.
+    public func roundVideo(_ storyId: String, overlayId: String, range: ClosedRange<Int>? = nil) async throws -> DirectHTTPResponse {
+        let headers = range.map { ["Range": "bytes=\($0.lowerBound)-\($0.upperBound)"] } ?? [:]
+        return try await send("GET", Self.roundVideoPath(storyId: storyId, overlayId: overlayId), headers: headers)
     }
 
     public func storyViewers(_ storyId: String, cursor: String? = nil) async throws -> StoryViewersPage {
@@ -103,6 +117,20 @@ extension DirectAgentClient {
         let response = try await send("POST", "/v0/stories/\(Self.escape(storyId))/delete", json: .object(["mutationId": .string(ClientID.make())]), headers: ["If-Match": version])
         guard let story = try? JSONDecoder().decode(StoryResponse.self, from: response.body).story else { throw DirectAgentError.invalidResponse }
         return story
+    }
+
+    /// The person's own draft from an agent's story; `id` is the retry key.
+    public func repostStory(_ storyId: String, id: String) async throws -> Story {
+        try await decode(StoryResponse.self, "POST", "/v0/stories/\(Self.escape(storyId))/repost", json: .object(["id": .string(id), "mutationId": .string(ClientID.make())])).story
+    }
+
+    /// What the person typed to the agent that posted the story, quoting
+    /// the frame they were on; the daemon writes the quote. `id` is the
+    /// message's own, the retry key.
+    public func storyFeedback(_ storyId: String, frameId: String?, text: String, id: String) async throws {
+        var body: [String: JSONValue] = ["id": .string(id), "text": .string(text), "mutationId": .string(ClientID.make())]
+        if let frameId { body["frameId"] = .string(frameId) }
+        _ = try await send("POST", "/v0/stories/\(Self.escape(storyId))/feedback", json: .object(body))
     }
 
     public func markStorySeen(_ storyId: String) async throws -> Story {

@@ -279,6 +279,52 @@ public enum StemCellsMetrics {
     public static let contentBottom: CGFloat = 6 * phone
 }
 
+/// Sidebar v2's story row (design "Sidebar v2: agent story rings", its
+/// 300-wide sidebar), `StemCellsMetrics.phone` times on the phone as the
+/// sidebar's other rows are: a 40 ring round a 30 plate, two lines of 13
+/// and 12, and the corner's 8 dot or 18 × 3 bar 10 in from the corner.
+public enum StemCellsStoryRowMetrics {
+    static let phone = StemCellsMetrics.phone
+    /// `.row` padding 6 above and below a 40 avatar.
+    public static let rowHeight: CGFloat = 52 * phone
+    /// `.row` padding 8 on the left.
+    public static let ringInset: CGFloat = 8 * phone
+    /// `.av`, and the ring's own radius in it (18.5 of 20).
+    public static let ring: CGFloat = 40 * phone
+    public static let ringRadius: CGFloat = 18.5 * phone
+    /// Unseen segments 2 wide, seen ones 1.25, 3 between segments when there are several.
+    public static let unseenWidth: CGFloat = 2 * phone
+    public static let seenWidth: CGFloat = 1.25 * phone
+    public static let segmentGap: CGFloat = 3 * phone
+    /// `.av .ic`: inset 5, round, the ink at 8% under the mark.
+    public static let plate: CGFloat = 30 * phone
+    public static let plateInk: CGFloat = 0.08
+    /// A glyph, and clay art, on the plate (`.ic` font-size 15).
+    public static let plateGlyph: CGFloat = 16 * phone
+    public static let plateArt: CGFloat = 20 * phone
+    /// `.row` gap 10, ring to text.
+    public static let textGap: CGFloat = 10 * phone
+    /// `.txt` padding-right 14, clear of the corner.
+    public static let textTrailing: CGFloat = 14 * phone
+    /// `.title` 13 / 500 and `.sub` 12, 1 apart.
+    public static let titleSize: CGFloat = 13 * phone
+    public static let subtitleSize: CGFloat = 12 * phone
+    public static let titleLine: CGFloat = 16 * phone
+    public static let subtitleLine: CGFloat = 15 * phone
+    public static let lineGap: CGFloat = 1 * phone
+    public static let textBlock: CGFloat = titleLine + lineGap + subtitleLine
+    /// `.corner`: 10 in from the right and the bottom.
+    public static let cornerInset: CGFloat = 10 * phone
+    public static let dot: CGFloat = 8 * phone
+    public static let bar = CGSize(width: 18 * phone, height: 3 * phone)
+    /// The bar's fill: 40% of the track, sliding across in 1.4 s.
+    public static let barFill: CGFloat = 0.4
+    public static let barDuration: Double = 1.4
+    /// A nested story row's ring stands this far right of its parent's: clear of
+    /// the parent's ring, so its elbow shows (desktop's 28, scaled here).
+    public static let indent: CGFloat = 28 * phone
+}
+
 extension ChatTextStyles {
     /// A message from another agent (`agent-activity-row.css`): its sender,
     /// what it said it is, and the message opened under them.

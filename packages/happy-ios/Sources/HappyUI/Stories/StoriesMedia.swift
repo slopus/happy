@@ -10,7 +10,8 @@ import UniformTypeIdentifiers
 /// while memory allows; sticker files are kept on disk by their digest.
 @MainActor
 final class StoriesMedia {
-    private let client: DirectAgentClient
+    /// The computer the media comes from; live pages read their files through it too.
+    let client: DirectAgentClient
     private let images = NSCache<NSString, Decoded>()
     private let placeholders = NSCache<NSString, UIImage>()
     private var loading: [String: Task<UIImage?, Never>] = [:]
@@ -102,6 +103,17 @@ final class StoriesMedia {
         let stream = StoriesByteStream(name: "asset", mimeType: "video/mp4") { range in
             try await client.asset(asset, range: range)
         }
+        return AVPlayer(playerItem: AVPlayerItem(asset: stream.asset()))
+    }
+
+    /// A player for a round video, streamed a range at a time.
+    func roundVideoPlayer(storyId: String, overlayId: String) -> AVPlayer {
+        let key = "round/\(storyId)/\(overlayId)"
+        let client = client
+        let stream = streams[key] ?? StoriesByteStream(name: overlayId, mimeType: "video/mp4") { range in
+            try await client.roundVideo(storyId, overlayId: overlayId, range: range)
+        }
+        streams[key] = stream
         return AVPlayer(playerItem: AVPlayerItem(asset: stream.asset()))
     }
 

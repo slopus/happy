@@ -8,9 +8,10 @@ import UIKit
 @MainActor
 enum StoriesViewerPresenter {
     @discardableResult
-    static func present(session: StoriesSession, feed: StoryFeed, authorIndex: Int, storyId: String? = nil, from host: UIViewController, origin: UIView?) -> StoryViewerViewController? {
+    static func present(session: StoriesSession, feed: StoryFeed, authorIndex: Int, storyId: String? = nil, from host: UIViewController, origin: UIView?, ringImage: UIImage? = nil) -> StoryViewerViewController? {
         guard host.presentedViewController == nil else { return nil }
         let viewer = StoryViewerViewController(session: session, feed: feed, authorIndex: authorIndex, storyId: storyId)
+        viewer.ringImage = ringImage
         viewer.origin = origin
         viewer.transitioningDelegate = StoriesViewerTransition.shared
         viewer.onOpenConversation = { [weak host] source in
