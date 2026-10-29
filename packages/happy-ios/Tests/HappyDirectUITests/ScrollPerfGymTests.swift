@@ -178,6 +178,69 @@ final class ScrollPerfGymTests: XCTestCase {
         report("sidebar")
     }
 
+    /// Not a workload: a story posted live (`gym.py` posts it on
+    /// `GYM_POST_STORY`, an html artifact as its one frame, as SHIP BOSS's
+    /// was) puts a ring on its task's row, and a tap on that ring opens it
+    /// in the viewer, not the chat, with no relaunch; once it has played
+    /// the ring is seen. Posted twice: with home on screen, and with the
+    /// task's chat on screen, home only come back to after.
+    func testStoryRingOpens() {
+        let task = environment["GYM_STORY_TASK"] ?? "Release notes"
+        launch()
+        var row = find(task)
+        pause(2)
+        print("GYM_POST_STORY \(task)")
+        watchRing(row, "posted on home")
+
+        // As SHIP BOSS had it: in the chat, + and its permission changed
+        // first, then the story posted while the chat is on screen.
+        open(task)
+        app.buttons["Add a picture"].tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        if springboard.alerts.firstMatch.waitForExistence(timeout: 3) {
+            springboard.alerts.firstMatch.buttons["Don’t Allow"].tap()
+        }
+        let permission = app.descendants(matching: .any)["attach-permission"]
+        XCTAssertTrue(permission.waitForExistence(timeout: 5), "+ didn't open its sheet")
+        pause(1)
+        permission.tap()
+        let auto = app.collectionViews.buttons.matching(NSPredicate(format: "label == 'Auto' OR label BEGINSWITH 'Auto,'")).firstMatch
+        XCTAssertTrue(auto.waitForExistence(timeout: 5), "no permission menu")
+        auto.tap()
+        pause(1)
+        app.buttons["attach-close"].tap()
+        pause(1)
+        print("GYM_POST_STORY \(task)")
+        pause(8)
+        app.buttons["stem-chat-back"].firstMatch.tap()
+        row = find(task)
+        watchRing(row, "posted in its chat")
+    }
+
+    /// The ring on `row` turns new, opens its viewer at a tap, and is seen once closed.
+    private func watchRing(_ row: XCUIElement, _ when: String) {
+        XCTAssertTrue(until(40) { (row.value as? String)?.contains("new stor") == true }, "\(when): no new story came to the ring: \(row.value ?? "")")
+        pause(1)
+        // The ring's middle: the disc 7 into the card, which is 3 in, 50 across.
+        row.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 7 + 29, dy: row.frame.height / 2)).tap()
+        let viewer = app.descendants(matching: .any)["story-viewer-page"]
+        XCTAssertTrue(viewer.waitForExistence(timeout: 10), "\(when): a tap on the ring opened no viewer")
+        XCTAssertFalse(app.scrollViews["stem-transcript"].exists, "\(when): the ring opened the chat")
+        pause(2)
+        app.descendants(matching: .any)["story-close"].firstMatch.tap()
+        XCTAssertTrue(until(10) { !viewer.exists }, "\(when): the viewer never closed")
+        XCTAssertTrue(until(10) { (row.value as? String)?.contains("new stor") == false }, "\(when): the ring stayed unseen: \(row.value ?? "")")
+    }
+
+    private func until(_ seconds: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if condition() { return true }
+            pause(0.3)
+        }
+        return condition()
+    }
+
     /// Opens `title`, plays `before` unmeasured, then `script` measured
     /// (`GymFrameMeter`'s scripted scroll), and reports it as `workload`.
     private func scripted(_ workload: String, _ title: String, _ script: String, before: String? = nil) {

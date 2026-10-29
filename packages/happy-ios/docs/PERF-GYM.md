@@ -14,7 +14,8 @@ scripted workloads, and budgets per workload.
   A message `stream P W` gets a reply of P Markdown sections (a paragraph, a
   list, a table and code), streamed one word every W ms. A message
   `status TEXT` makes the agent call its `set_status` tool with TEXT, so a
-  sidebar row has a status line to show.
+  sidebar row has a status line to show. A message `tool NAME JSON` makes it
+  call its tool NAME with that JSON object (`create_artifact`, `post_story`).
 - `scripts/perf-gym/budgets.json`: the most each workload may cost.
 - `scripts/perf-gym/baselines/`: measured runs on the synthetic chats, before
   and after the October 2026 transcript work (e7363747a), and on the gym's
@@ -89,6 +90,12 @@ close to a release build's.
 Before the workloads, `testPrime` runs both chats to the top until no more
 pages come, as someone who has read their long chats has them on the phone.
 With the retention below, the phone then keeps the newest 100 runs.
+
+`testStoryRingOpens` is a check, not a workload: run it alone. When the test
+prints `GYM_POST_STORY <task>`, the gym has that task's agent post a story
+with an html artifact as its one frame, while home is on screen and again
+while the task's chat is. Each time, a tap on the new ring must open the
+viewer with no relaunch, and the ring must read seen once the viewer closes.
 
 ### The synthetic chats
 
