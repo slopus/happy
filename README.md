@@ -1,8 +1,8 @@
 <div align="center">
 
-<h1>Most fun way to build yourself and with your team</h1>
+<h1>The fun way to build :D</h1>
 
-<p>Orchestrate Claude, Codex, Grok, Gemini, and more in one app</p>
+<p>Orchestrate Claude, Codex, Grok, Gemini, and more</p>
 
 </div>
 
