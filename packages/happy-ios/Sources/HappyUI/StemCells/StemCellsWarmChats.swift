@@ -57,9 +57,8 @@ final class StemCellsWarmChats {
     private let syntax: CodeSyntaxService
     private var chats: [String: Chat] = [:]
     private var candidates: [StemCellsWarmth.Candidate] = []
-    private var visible = Set<String>()
-    /// The last left first.
-    private var leftOrder: [String] = []
+    /// The places among the sidebar's rows on screen.
+    private var visible: ClosedRange<Int>?
     private var clock = 0
     private var ranked: [String] = []
     /// What rows are laid out at: the sidebar's width and text, which a
@@ -128,10 +127,10 @@ final class StemCellsWarmChats {
 
     // MARK: What the sidebar says
 
-    /// The sidebar's rows and which of them are on screen.
-    func update(rows: [StemCellsRow], visible: [StemCellsRow], references: StemCellReferences) {
+    /// The rows the sidebar shows, folds applied, and the places among
+    /// them on screen (nil before it is measured).
+    func update(rows: [StemCellsRow], visible shown: ClosedRange<Int>?, references: StemCellReferences) {
         let next = StemCellsWarmth.candidates(rows)
-        let shown = Set(visible.compactMap(\.agentId))
         let referencesChanged = references != self.references
         self.references = references
         guard next != candidates || shown != self.visible || referencesChanged || !started else { return }
@@ -197,10 +196,7 @@ final class StemCellsWarmChats {
     func release(_ chat: Chat, token: UUID, opened: Bool, putAway: Bool = false) {
         chat.watchers.removeValue(forKey: token)
         guard chats[chat.agentId] === chat else { return }
-        if putAway {
-            leftOrder.removeAll { $0 == chat.agentId }
-            candidates.removeAll { $0.agentId == chat.agentId }
-        }
+        if putAway { candidates.removeAll { $0.agentId == chat.agentId } }
         if !Self.enabled || putAway, chat.watchers.isEmpty {
             stop(chat)
             chats.removeValue(forKey: chat.agentId)
@@ -209,9 +205,6 @@ final class StemCellsWarmChats {
         if opened {
             clock += 1
             chat.left = clock
-            leftOrder.removeAll { $0 == chat.agentId }
-            leftOrder.insert(chat.agentId, at: 0)
-            if leftOrder.count > StemCellsWarmth.Limits.released * 2 { leftOrder.removeLast() }
         }
         rerank()
     }
@@ -219,7 +212,7 @@ final class StemCellsWarmChats {
     // MARK: Ranking and reading
 
     private func rerank() {
-        ranked = Self.enabled && !background ? StemCellsWarmth.ranked(candidates, left: leftOrder, visible: visible, limit: limit) : []
+        ranked = Self.enabled && !background ? StemCellsWarmth.ranked(candidates, visible: visible, limit: limit) : []
         prune()
         replanAll()
         if started, pump == nil, !background { schedule(after: .zero) }

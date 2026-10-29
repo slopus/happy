@@ -792,11 +792,13 @@ extension StemCellsHomeViewController: UIScrollViewDelegate {
         warmUp()
     }
 
-    /// The sidebar's conversations and those on screen, for reading ahead.
+    /// The rows the sidebar shows and where it is scrolled, for reading
+    /// ahead what is on screen and around it.
     private func warmUp() {
         guard let session, !snapshot.allRows.isEmpty else { return }
         sidebar.layoutIfNeeded()
-        session.warm.update(rows: snapshot.allRows, visible: sidebar.visibleRows, references: snapshot.references)
+        let shown = sidebar.shownRows
+        session.warm.update(rows: shown.isEmpty ? snapshot.rows : shown, visible: shown.isEmpty ? nil : sidebar.visibleRange, references: snapshot.references)
     }
 }
 

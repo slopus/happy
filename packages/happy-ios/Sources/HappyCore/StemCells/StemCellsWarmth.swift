@@ -6,13 +6,11 @@ import Foundation
 /// `releaseSession`) and its retention (`happyAgentConversationRetention.ts`),
 /// with the signals a phone's sidebar has.
 ///
-/// Desktop ranks every active agent the sidebar can show, running ones
-/// first, then the most recently updated, and reads the top 12 one at a
-/// time once nothing else is loading. The phone has no agent `updatedAt` in
-/// its rows, and shows a dozen of a hundred at a time, so what stands for
-/// "recently updated" here is what a thumb can reach: the rows on screen,
-/// top first, then news the person hasn't read, then the conversations they last
-/// left, then the rest in the sidebar's order.
+/// Both read ahead what the sidebar shows (one rule, agreed with desktop):
+/// the conversations whose rows are on screen, top to bottom, then those
+/// just off it, nearest first, the one below before the one above, the
+/// top 12 one at a time once nothing else is loading. Rows a fold hides
+/// aren't shown, so they aren't read.
 public enum StemCellsWarmth {
     public enum Limits {
         /// `PRELOADED_SESSIONS`: read ahead from the ranking.
@@ -32,64 +30,50 @@ public enum StemCellsWarmth {
         public static let busyWait: Duration = .milliseconds(100)
     }
 
-    /// One conversation the sidebar can open.
+    /// One conversation the sidebar shows.
     public struct Candidate: Equatable, Sendable {
         public var agentId: String
-        /// Working, waiting or asking: desktop's `status !== "idle"`.
-        public var running: Bool
-        public var unread: Bool
+        /// Its first row's place among the rows the sidebar shows.
+        public var row: Int
 
-        public init(agentId: String, running: Bool, unread: Bool) {
+        public init(agentId: String, row: Int) {
             self.agentId = agentId
-            self.running = running
-            self.unread = unread
+            self.row = row
         }
     }
 
-    /// The sidebar's conversations, once each, in its order: every row that
-    /// opens one, folded away or not.
+    /// The conversations of the rows the sidebar shows (`rows`, folds
+    /// applied), once each at its first row: every row that opens one.
     public static func candidates(_ rows: [StemCellsRow]) -> [Candidate] {
         var seen = Set<String>()
         var found: [Candidate] = []
-        for row in rows where row.kind == .space || row.kind == .session {
+        for (index, row) in rows.enumerated() where row.kind == .space || row.kind == .session {
             guard row.targetKind != "surface", let agentId = row.agentId, seen.insert(agentId).inserted else { continue }
-            found.append(Candidate(agentId: agentId, running: row.status != .none, unread: row.unread))
+            found.append(Candidate(agentId: agentId, row: index))
         }
         return found
     }
 
-    /// The `limit` most likely opened next, most likely first. `left` are
-    /// the conversations the person opened and left, the last left first;
-    /// `visible` those whose rows are on screen.
-    public static func ranked(_ candidates: [Candidate], left: [String], visible: Set<String>, limit: Int) -> [String] {
-        let recency = Dictionary(left.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
-        let order = candidates.enumerated().sorted { a, b in
-            let (l, r) = (a.element, b.element)
-            if l.running != r.running { return l.running }
-            let (lv, rv) = (visible.contains(l.agentId), visible.contains(r.agentId))
-            if lv != rv { return lv }
-            // On screen, top first, as the eye and thumb go.
-            if lv { return a.offset < b.offset }
-            if l.unread != r.unread { return l.unread }
-            let (ll, rl) = (recency[l.agentId], recency[r.agentId])
-            if ll != rl {
-                guard let ll else { return false }
-                guard let rl else { return true }
-                return ll < rl
-            }
-            return a.offset < b.offset
+    /// The `limit` most likely opened next, most likely first: the rows in
+    /// `visible` (places among the rows shown) top to bottom, then the
+    /// rest by how many rows they are from it, the one below before the
+    /// one above. Nil before the sidebar is measured: the first rows.
+    public static func ranked(_ candidates: [Candidate], visible: ClosedRange<Int>?, limit: Int) -> [String] {
+        let visible = visible ?? (0...0)
+        func key(_ candidate: Candidate) -> (Int, Int, Int) {
+            if visible.contains(candidate.row) { return (0, candidate.row, 0) }
+            return candidate.row > visible.upperBound ? (1, candidate.row - visible.upperBound, 0) : (1, visible.lowerBound - candidate.row, 1)
         }
-        return order.prefix(max(0, limit)).map(\.element.agentId)
+        return candidates.sorted { key($0) < key($1) }.prefix(max(0, limit)).map(\.agentId)
     }
 
     /// How many kept conversations also keep their transcripts laid out,
-    /// ready to draw: as many as are read ahead, so every row on screen
-    /// opens drawn. Desktop sizes what it keeps rendered by memory, 4GB
-    /// assumed where unknown; a phone with less lays out one per gigabyte,
-    /// at least two.
+    /// ready to draw: desktop's retention for the memory a device has
+    /// (`happyAgentConversationRetentionFor`), one view per gigabyte, the
+    /// one on screen included, between two and eight.
     public static func laidOut(physicalMemory bytes: UInt64) -> Int {
         let gigabytes = Int(bytes / 1_000_000_000)
-        return gigabytes >= 4 ? Limits.preloaded : max(2, gigabytes)
+        return min(8, max(2, gigabytes)) - 1
     }
 
     /// A conversation read and kept: on screen (`held`), or when it was

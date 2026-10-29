@@ -299,6 +299,20 @@ final class StemCellsSidebarView: UIScrollView {
         if gesture.state == .began, onSelect != nil, let row = view.row { onIntent?(row) }
     }
 
+    /// The rows shown, folds applied, in the order drawn.
+    var shownRows: [StemCellsRow] { arranged ?? rows }
+
+    /// The places among `shownRows` on screen now; nil before they are
+    /// laid out.
+    var visibleRange: ClosedRange<Int>? {
+        let shown = shownRows
+        guard let frames = layoutResult?.frames, frames.count == shown.count else { return nil }
+        let window = bounds.inset(by: contentInset)
+        let on = frames.indices.filter { frames[$0].box.intersects(window) }
+        guard let first = on.first, let last = on.last else { return nil }
+        return first...last
+    }
+
     /// The rows on screen now, top first.
     var visibleRows: [StemCellsRow] {
         let shown = arranged ?? rows

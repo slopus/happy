@@ -6,49 +6,41 @@ final class StemCellsWarmthTests: XCTestCase {
         StemCellsRow(id: "space:\(agent)", nodeId: agent, kind: kind, label: agent, status: status, unread: unread, agentId: agent, spaceId: agent, targetKind: target)
     }
 
-    /// Every row that opens a conversation, once, in the sidebar's order:
+    /// Every row shown that opens a conversation, once, at its first row:
     /// not a surface, a section, or the same agent twice.
-    func testTheCandidatesAreTheSidebarsConversationsOnce() {
+    func testTheCandidatesAreTheShownConversationsOnce() {
         let rows = [
             row("a"), row("doc", target: "surface"), row("b", kind: .session, status: .working),
             StemCellsRow(id: "section:s", nodeId: "s", kind: .section, label: "S"), row("a"),
         ]
-        XCTAssertEqual(StemCellsWarmth.candidates(rows), [
-            .init(agentId: "a", running: false, unread: false),
-            .init(agentId: "b", running: true, unread: false),
-        ])
+        XCTAssertEqual(StemCellsWarmth.candidates(rows), [.init(agentId: "a", row: 0), .init(agentId: "b", row: 2)])
     }
 
-    /// Desktop's order, running first; then what stands for "recently
-    /// updated" on a phone: the rows on screen top first, unread, the last left, the
-    /// rest in the sidebar's order.
-    func testTheRankingIsRunningThenWhatShowsThenNewsThenTheLastLeft() {
-        let candidates = [
-            StemCellsWarmth.Candidate(agentId: "top", running: false, unread: false),
-            .init(agentId: "seen", running: false, unread: false),
-            .init(agentId: "left-long-ago", running: false, unread: false),
-            .init(agentId: "news", running: false, unread: true),
-            .init(agentId: "left", running: false, unread: false),
-            .init(agentId: "busy", running: true, unread: false),
-            .init(agentId: "below", running: false, unread: false),
-            .init(agentId: "seen-news", running: false, unread: true),
-        ]
-        let ranked = StemCellsWarmth.ranked(candidates, left: ["left", "left-long-ago"], visible: ["top", "seen", "seen-news"], limit: 12)
-        XCTAssertEqual(ranked, ["busy", "top", "seen", "seen-news", "news", "left", "left-long-ago", "below"])
-        XCTAssertEqual(StemCellsWarmth.ranked(candidates, left: [], visible: [], limit: 3), ["busy", "news", "seen-news"])
-        XCTAssertEqual(StemCellsWarmth.ranked(candidates, left: [], visible: [], limit: 0), [])
+    /// What the sidebar shows (agreed with desktop): the rows on screen top
+    /// to bottom, whatever runs or is unread, then the nearest off it, the
+    /// one below before the one above.
+    func testTheRankingIsWhatShowsThenTheNearest() {
+        let candidates = ["far-above", "above", "top", "busy", "bottom", "below", "two-below", "far-below"].enumerated().map {
+            StemCellsWarmth.Candidate(agentId: $1, row: [0, 3, 4, 5, 6, 7, 8, 12][$0])
+        }
+        XCTAssertEqual(StemCellsWarmth.ranked(candidates, visible: 4...6, limit: 12),
+                       ["top", "busy", "bottom", "below", "above", "two-below", "far-above", "far-below"])
+        XCTAssertEqual(StemCellsWarmth.ranked(candidates, visible: 4...6, limit: 4), ["top", "busy", "bottom", "below"])
+        // Not yet measured: the first rows.
+        XCTAssertEqual(StemCellsWarmth.ranked(candidates, visible: nil, limit: 3), ["far-above", "above", "top"])
+        XCTAssertEqual(StemCellsWarmth.ranked(candidates, visible: 4...6, limit: 0), [])
     }
 
-    /// Desktop's limits; every one read ahead laid out, but on a phone
-    /// under 4GB, one per gigabyte.
+    /// Desktop's limits; laid out, desktop's retention for the memory:
+    /// one view per gigabyte, the open one included, two to eight.
     func testTheLimitsAreDesktops() {
         XCTAssertEqual(StemCellsWarmth.Limits.preloaded, 12)
         XCTAssertEqual(StemCellsWarmth.Limits.prefetched, 6)
         XCTAssertEqual(StemCellsWarmth.Limits.released, 16)
-        XCTAssertEqual(StemCellsWarmth.laidOut(physicalMemory: 1_500_000_000), 2)
-        XCTAssertEqual(StemCellsWarmth.laidOut(physicalMemory: 3_000_000_000), 3)
-        XCTAssertEqual(StemCellsWarmth.laidOut(physicalMemory: 6_000_000_000), 12)
-        XCTAssertEqual(StemCellsWarmth.laidOut(physicalMemory: 16_000_000_000), 12)
+        XCTAssertEqual(StemCellsWarmth.laidOut(physicalMemory: 1_500_000_000), 1)
+        XCTAssertEqual(StemCellsWarmth.laidOut(physicalMemory: 3_000_000_000), 2)
+        XCTAssertEqual(StemCellsWarmth.laidOut(physicalMemory: 6_000_000_000), 5)
+        XCTAssertEqual(StemCellsWarmth.laidOut(physicalMemory: 16_000_000_000), 7)
     }
 
     /// What is on screen and what the ranking wants stay; of the rest the
