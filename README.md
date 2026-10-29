@@ -1,8 +1,6 @@
 <div align="center">
 
-<h1>The fun way to build :D</h1>
-
-<p>Orchestrate Claude, Codex, Grok, Gemini, and more</p>
+<h1>The Happy way of making things :D</h1>
 
 </div>
 
