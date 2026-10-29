@@ -279,7 +279,7 @@ final class StemCellsUITests: XCTestCase {
     func testHatch() {
         home()
         pause(1)
-        let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "stem-row:space:", "stem cell"))
+        let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value BEGINSWITH %@", "stem-row:space:", "stem cell"))
         let before = cells.count
         app.descendants(matching: .any)["stem-new-work"].tap()
         let composer = app.textViews["stem-composer"]
@@ -769,6 +769,65 @@ final class StemCellsUITests: XCTestCase {
             if discard.waitForExistence(timeout: 3) { discard.tap() }
             pause(1)
         }
+    }
+
+    /// Two tasks set working on the computer (the driver's `work-rows`):
+    /// their titles shimmer, light and dark, while an idle row stays
+    /// still, and each stops once its turn ends. Rows say "working" in
+    /// their value exactly while they shimmer.
+    func testWorkingRowsShimmer() {
+        home()
+        pause(2)
+        // The computer's Theme, gone round to `name`; what it was before.
+        @discardableResult func theme(_ name: String) -> String {
+            app.descendants(matching: .any)["stem-settings-mark"].tap()
+            let row = app.descendants(matching: .any)["stem-settings:theme"]
+            XCTAssertTrue(row.waitForExistence(timeout: 5))
+            let was = row.label
+            for _ in 0..<3 where !row.label.contains(name) {
+                row.tap()
+                pause(0.8)
+            }
+            XCTAssertTrue(row.label.contains(name), "the theme never reached \(name)")
+            app.buttons["stem-glass-back"].firstMatch.tap()
+            pause(1.5)
+            return was
+        }
+        let was = theme("Light")
+        let env = ProcessInfo.processInfo.environment
+        let garden = row("space", env["STEM_WORK_ROW"] ?? "Plan the garden beds")
+        let flights = row("space", env["STEM_WORK_ROW_2"] ?? "Compare flight prices")
+        let idle = row("space", env["STEM_IDLE_ROW"] ?? "Draft the newsletter")
+        XCTAssertTrue(garden.waitForExistence(timeout: 8))
+        // Somewhere clear of the bars and the dock; the list may end too
+        // soon to bring it higher.
+        func show(_ row: XCUIElement) {
+            let height = app.frame.height
+            if row.frame.midY < height * 0.15 || row.frame.midY > height * 0.75 { bringIntoView(row) }
+        }
+        show(garden)
+        func shimmers(_ element: XCUIElement) -> Bool { (element.value as? String)?.contains("working") == true }
+        XCTAssertFalse(shimmers(garden), "the row shimmers before its turn")
+        capture("shimmer-before")
+        print("STEM_STEP work-rows")
+        XCTAssertTrue(until(30) { shimmers(garden) && shimmers(flights) }, "the working rows never shimmered")
+        XCTAssertFalse(shimmers(idle), "an idle row shimmers")
+        for frame in 0..<6 {
+            capture("shimmer-light-\(frame)")
+            pause(0.27)
+        }
+        theme("Dark")
+        show(garden)
+        for frame in 0..<6 {
+            capture("shimmer-dark-\(frame)")
+            pause(0.27)
+        }
+        XCTAssertTrue(shimmers(garden))
+        // The turn ends: the title stops.
+        XCTAssertTrue(until(120) { !shimmers(garden) && !shimmers(flights) }, "the rows kept shimmering after their turns")
+        pause(1)
+        capture("shimmer-ended")
+        for name in ["Adaptive", "Light", "Dark"] where was.contains(name) { theme(name); break }
     }
 
     /// An unread conversation opened and left reads as read: its row's
@@ -1511,7 +1570,7 @@ final class StemCellsUITests: XCTestCase {
         // The sidebar, untouched, while Prioritizing works: the stem cell
         // grows its icon and name at once, and the batch moves the row once
         // Prioritizing's turn ends.
-        let fresh = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND value == %@", "stem-row:space:New", "stem cell"))
+        let fresh = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND value BEGINSWITH %@", "stem-row:space:New", "stem cell"))
         deadline = Date().addingTimeInterval(180)
         while Date() < deadline, fresh.count > 0 { pause(2) }
         XCTAssertEqual(fresh.count, 0, "the new work never grew its icon and name")

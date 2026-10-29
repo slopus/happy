@@ -296,6 +296,9 @@ final class StemCellsSidebarView: UIScrollView {
         if laidOut?.width != width || laidOut?.rows != input || layoutResult?.frames.count != shown.count {
             place(shown, animated: false)
         }
+        // A row scrolled out of sight stops its title's sweep. Drawn whole
+        // inside another screen's scroll, every row counts as seen.
+        for view in views.values { view.onScreen = !scrolls || view.frame.intersects(bounds) }
     }
 
     /// Lays `shown` out and moves each row to its place, gliding when asked.

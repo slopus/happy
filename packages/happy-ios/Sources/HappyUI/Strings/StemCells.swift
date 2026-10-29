@@ -26,6 +26,8 @@ extension Strings {
         public static let prioritizing = "Prioritizing"
         /// A row someone looped the person into, not yet opened, for VoiceOver.
         public static let newRow = "new"
+        /// A row whose title shimmers while its work runs, for VoiceOver.
+        public static let workingRow = "working"
 
         // Menus.
         public static let renameTask = "Rename task"

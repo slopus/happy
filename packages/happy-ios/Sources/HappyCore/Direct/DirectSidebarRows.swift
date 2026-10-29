@@ -23,11 +23,7 @@ public enum DirectSidebarRows {
         func folder(_ id: String, _ title: String, depth: Int, kind: String) {
             rows.append(StemCellsRow(id: id, nodeId: id, kind: .space, depth: depth, label: title, mark: .glyph("folder"), collapsed: collapsed.contains(id), targetKind: kind))
         }
-        func status(_ agent: AgentWire.Agent) -> StemCellsRow.Status {
-            if agent.pendingQuestionId != nil { return .awaitingInput }
-            if agent.wait != nil { return .waiting }
-            return agent.isWorking ? .working : .none
-        }
+        func status(_ agent: AgentWire.Agent) -> StemCellsRow.Status { StemCellsRows.activity(agent) }
         func agentRow(_ agent: AgentWire.Agent, depth: Int, label: String? = nil, owner: DirectDesktopSnapshot.Owner? = nil, kind: String? = nil, muted: Bool = false) {
             guard agent.archivedAt == nil else { return }
             let id = owner.map { "\(kind ?? "agent"):\($0.id)" } ?? "session:\(agent.id)"

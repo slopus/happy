@@ -332,10 +332,28 @@ public enum StemCellsRows {
         }
     }
 
+    /// A row's conversation is live: its agent's own events end its work the
+    /// moment a turn settles. The space's `working` is the daemon's reading
+    /// at the row's last change and isn't sent again when the run ends, so
+    /// it is only for a row with no conversation here.
     static func status(_ agent: AgentWire.Agent?, working: Bool) -> StemCellsRow.Status {
-        if agent?.pendingQuestionId != nil { return .awaitingInput }
-        if agent?.wait != nil { return .waiting }
-        if working || agent?.isWorking == true { return .working }
+        guard let agent else { return working ? .working : .none }
+        return activity(agent)
+    }
+
+    /// Desktop's `happyAgentConversationActivityProject`: a session works
+    /// while its own turn runs and equally while only the work it handed
+    /// on does. An open question, its own or below, outranks it all; a
+    /// scheduled wait is the low modifier, so a session waiting while its
+    /// subtasks work is working.
+    static func activity(_ agent: AgentWire.Agent) -> StemCellsRow.Status {
+        let children = (agent.subtasks ?? []).filter { $0.archivedAt == nil }
+        let below = children.map(activity)
+        if agent.pendingQuestionId != nil || below.contains(.awaitingInput) { return .awaitingInput }
+        // The host's count takes in the subtasks; only hidden children need it.
+        if (agent.subagents?.running ?? 0) > children.filter(\.isWorking).count { return .working }
+        if (agent.isWorking && agent.wait == nil) || below.contains(.working) { return .working }
+        if agent.isWorking || below.contains(.waiting) { return .waiting }
         return .none
     }
 
