@@ -283,6 +283,7 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
             panel.origin.y = view.bounds.height - keyboard - panel.height
         }
         captionPanel.frame = panel
+        canvas.footInset = max(0, layout.canvas.maxY - layout.captionPanel.minY)
         let field = layout.caption.offsetBy(dx: -layout.captionPanel.minX, dy: -layout.captionPanel.minY)
         captionField.frame = field
         caption.frame = field.insetBy(dx: 16, dy: 0)

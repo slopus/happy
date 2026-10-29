@@ -25,6 +25,11 @@ final class StoryCanvasView: UIView {
             applyEdges()
         }
     }
+    /// Room at the canvas's foot taken by what is drawn over it (the
+    /// editor's caption field), which the repost chip sits above.
+    var footInset: CGFloat = 0 {
+        didSet { if footInset != oldValue { setNeedsLayout() } }
+    }
     /// Round videos recorded on the device and not yet sent, by overlay.
     var localRoundVideos: [String: URL] = [:]
     /// Whether the recording shown has sound, once that is known.
@@ -43,7 +48,8 @@ final class StoryCanvasView: UIView {
     private let background = CAGradientLayer()
     private let mediaView = UIImageView()
     private let playerView = StoryPlayerView()
-    private let overlayLayer = UIView()
+    // Takes no touch itself: one between overlays goes to the page under it.
+    private let overlayLayer = PassthroughView()
     private let captionFade = CAGradientLayer()
     private let captionLabel = UILabel()
     /// Over a folded caption: a tap opens it.
@@ -587,7 +593,7 @@ final class StoryCanvasView: UIView {
         if !repostChip.isHidden {
             let font = AgentStoryLayout.chip(textWidth: 0, canvas: size).fontSize
             let text = repostText(size: font)
-            let chip = AgentStoryLayout.chip(textWidth: ceil(text.size().width), canvas: size, bottomInset: captionLabel.isHidden ? 0 : max(0, size.height - captionLabel.frame.minY))
+            let chip = AgentStoryLayout.chip(textWidth: ceil(text.size().width), canvas: size, bottomInset: max(footInset, captionLabel.isHidden ? 0 : size.height - captionLabel.frame.minY))
             repostChip.frame = chip.frame
             repostChip.layer.cornerRadius = chip.frame.height / 2
             repostLabel.attributedText = text
