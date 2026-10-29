@@ -6,7 +6,7 @@ import UIKit
 
 /// The composer's "+" sheet, after Claude's "Add to session": a glass close
 /// circle, the title, and Photos (the whole library) at the right; a strip
-/// of the camera and the newest photos, picked in order with numbered
+/// of the camera and the newest photos and videos, picked in order with numbered
 /// checks, Photos turning into "Add N" while any are; then Paste from
 /// clipboard, Add files, and the permission the next message runs with.
 ///
@@ -150,7 +150,7 @@ final class StemCellAttachSheetViewController: UIViewController {
     private func fetch() {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
+        options.predicate = NSPredicate(format: "mediaType == %d || mediaType == %d", PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue)
         options.fetchLimit = 30
         Task.detached(priority: .userInitiated) {
             let found = PHAsset.fetchAssets(with: options)
@@ -170,7 +170,8 @@ final class StemCellAttachSheetViewController: UIViewController {
         tiles = assets.enumerated().map { index, asset in
             let tile = StemCellAttachTile()
             tile.accessibilityIdentifier = "attach-photo:\(index)"
-            tile.accessibilityLabel = Strings.StemCells.photo(picked: nil)
+            tile.videoDuration = asset.mediaType == .video ? asset.duration : nil
+            tile.setNumber(nil, animated: false)
             tile.addAction(UIAction { [weak self] _ in self?.toggle(asset.localIdentifier) }, for: .touchUpInside)
             thumbnails.requestImage(for: asset, targetSize: CGSize(width: side, height: side), contentMode: .aspectFill, options: options) { @Sendable [weak tile] image, _ in
                 // A failed full-size fetch (offline iCloud) keeps the degraded one.
@@ -199,7 +200,6 @@ final class StemCellAttachSheetViewController: UIViewController {
         for (asset, tile) in zip(assets, tiles) {
             let number = picked.firstIndex(of: asset.localIdentifier).map { $0 + 1 }
             tile.setNumber(number, animated: true)
-            tile.accessibilityLabel = Strings.StemCells.photo(picked: number)
         }
         updatePhotos()
     }
@@ -272,8 +272,17 @@ final class StemCellAttachSheetViewController: UIViewController {
 final class StemCellAttachTile: UIControl {
     private let image = UIImageView()
     private let check = LibraryCheckView()
+    private let duration = UILabel()
     private let icon = IconView(size: 28, tint: Palette.headerTint)
     private let label = UILabel()
+
+    var videoDuration: TimeInterval? {
+        didSet {
+            duration.text = videoDuration.map { LibraryPickerLayout.duration(seconds: $0) }
+            duration.isHidden = videoDuration == nil
+            setNeedsLayout()
+        }
+    }
 
     var picture: UIImage? {
         get { image.image }
@@ -290,6 +299,14 @@ final class StemCellAttachTile: UIControl {
         image.clipsToBounds = true
         image.isUserInteractionEnabled = false
         addSubview(image)
+        duration.font = .systemFont(ofSize: 11, weight: .semibold)
+        duration.textColor = .white
+        duration.layer.shadowColor = UIColor.black.cgColor
+        duration.layer.shadowOpacity = 0.4
+        duration.layer.shadowRadius = 2
+        duration.layer.shadowOffset = .zero
+        duration.isHidden = true
+        addSubview(duration)
         check.isHidden = true
         addSubview(check)
         isAccessibilityElement = true
@@ -319,6 +336,8 @@ final class StemCellAttachTile: UIControl {
     func setNumber(_ number: Int?, animated: Bool) {
         check.isHidden = number == nil
         check.set(number, animated: animated)
+        accessibilityLabel = videoDuration.map { Strings.Library.video(LibraryPickerLayout.duration(seconds: $0), index: number) }
+            ?? Strings.Library.photo(number)
         accessibilityTraits = number == nil ? .button : [.button, .selected]
     }
 
@@ -330,6 +349,7 @@ final class StemCellAttachTile: UIControl {
         super.layoutSubviews()
         image.frame = bounds
         check.frame = StemCellAttachSheetLayout.check
+        duration.frame = LibraryPickerLayout.duration(duration.intrinsicContentSize, in: bounds.size)
         // The camera's glyph and name, centred together.
         let labelHeight: CGFloat = 20
         let block = 28 + 6 + labelHeight

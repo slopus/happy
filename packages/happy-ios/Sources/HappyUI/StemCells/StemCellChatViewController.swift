@@ -665,15 +665,15 @@ final class StemCellChatViewController: UIViewController {
         Strings.StemCells.permissionName(mode?.permissionMode ?? session.models.catalog?.defaultPermissionMode ?? "auto")
     }
 
-    /// The whole library, photos only: a message carries text and pictures alone.
+    /// Photos and videos from the whole library, uploaded through the direct connection.
     private func presentLibrary() {
         let room = pictures.room()
         guard room > 0 else { return settleFocus(added: false) }
-        let picker = LibraryPicker.present(from: self, options: .init(limit: room, videos: false)) { [weak self] picks in self?.take(picks) }
+        let picker = LibraryPicker.present(from: self, options: .init(limit: room)) { [weak self] picks in self?.take(picks) }
         picker.onCancel = { [weak self] in self?.settleFocus(added: false) }
     }
 
-    /// Photos picked in the sheet's strip, read in full off the main thread.
+    /// Photos and videos picked in the sheet's strip, read in full off the main thread.
     private func add(assets ids: [String]) {
         Task { [weak self] in
             let found = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
@@ -1765,7 +1765,7 @@ extension StemCellChatViewController: UIImagePickerControllerDelegate, UINavigat
         for extra in urls.dropFirst(room) { try? FileManager.default.removeItem(at: extra) }
         let urls = Array(urls.prefix(room))
         Task { [weak self] in
-            let picks = await Task.detached(priority: .userInitiated) { urls.compactMap { LibraryPicker.document($0, videos: false) } }.value
+            let picks = await Task.detached(priority: .userInitiated) { urls.compactMap { LibraryPicker.document($0, videos: true) } }.value
             guard let self else { return LibraryPicker.discard(picks) }
             take(picks)
         }
