@@ -900,6 +900,10 @@ final class StemCellChatViewController: UIViewController {
             // A row that was this one, if it is still spare, has nothing to draw again.
             let row = spareRows.firstIndex { $0.plan?.id == id }.map { spareRows.remove(at: $0) } ?? spareRows.popLast() ?? {
                 let row = ChatPlanView()
+                row.onChunksPlaced = { [weak self, weak row] in
+                    guard let self, let row, let plan = row.plan else { return }
+                    self.reads(row, plan)
+                }
                 row.drawsStaticContent = true
                 row.cutsTallPlans = true
                 row.drawsTextOffMain = true
@@ -910,9 +914,10 @@ final class StemCellChatViewController: UIViewController {
             }()
             row.isHidden = false
             rowViews[id] = row
+            // Where it is first: a tall row then brings in only its chunks there.
             row.setLayoutFrame(stackedFrames[index])
-            configure(row, plan)
             row.band = band.offsetBy(dx: 0, dy: -row.frame.minY)
+            configure(row, plan)
         }
     }
 
@@ -940,11 +945,6 @@ final class StemCellChatViewController: UIViewController {
         row.accessibilityLabel = plan.accessibilityLabel
         // A long message reads whole; it opens or closes by an action.
         let id = plan.id
-        let toggles = plan.toggles.map { name in
-            [UIAccessibilityCustomAction(name: name) { [weak self] _ in self?.toggle(id); return true }]
-        }
-        row.accessibilityCustomActions = toggles
-        var cardsHosted: [UIView] = []
         var hosted = Set<String>()
         for (artifactId, layout, frame) in plan.proposals {
             guard let shown = shownProposals[artifactId] else { continue }
@@ -954,12 +954,24 @@ final class StemCellChatViewController: UIViewController {
             if card.superview !== row { row.addSubview(card) }
             card.setLayoutFrame(frame)
             card.apply(shown, layout: layout)
-            cardsHosted.append(card)
         }
         for key in (rowCards[id] ?? []).subtracting(hosted) {
             proposalViews.removeValue(forKey: key)?.removeFromSuperview()
         }
         rowCards[id] = hosted.isEmpty ? nil : hosted
+        reads(row, plan)
+    }
+
+    /// What VoiceOver reads of `row`: what of it is a view now, a tall
+    /// row's chunks near the screen included. Its cards stay over its chunks.
+    private func reads(_ row: ChatPlanView, _ plan: ChatRowPlan) {
+        let id = plan.id
+        let toggles = plan.toggles.map { name in
+            [UIAccessibilityCustomAction(name: name) { [weak self] _ in self?.toggle(id); return true }]
+        }
+        row.accessibilityCustomActions = toggles
+        let cardsHosted: [UIView] = plan.proposals.compactMap { proposalViews["\(id)#\($0.artifactId)"] }.filter { $0.superview === row }
+        for card in cardsHosted { row.bringSubviewToFront(card) }
         // A row with media reads as its message, then each picture or
         // recording on its own, and each card as what it opens.
         let cards = plan.hits.sorted { $0.frame.minY < $1.frame.minY }.compactMap { hit -> UIAccessibilityElement? in

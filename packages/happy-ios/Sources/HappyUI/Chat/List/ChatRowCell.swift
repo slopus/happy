@@ -87,6 +87,9 @@ final class ChatPlanView: UIView {
     private var chunks: [(plan: ChatRowPlan, frame: CGRect)] = []
     private var chunkViews: [Int: ChatPlanView] = [:]
     private var chunksPlaced: (mount: Range<Int>, keep: Range<Int>)?
+    /// Other chunks came or went: what is over them, and what VoiceOver
+    /// reads of them, is the owner's to set again.
+    var onChunksPlaced: (() -> Void)?
     /// A chunk of a tall plan: touches go through it to the row's other chunks.
     private var passesTouches = false
     /// The pictures, recordings and stories the plan shows now.
@@ -135,11 +138,15 @@ final class ChatPlanView: UIView {
             chunks = cut.chunks.map { chunk in
                 (ChatRowPlan(id: "\(plan.id)#\(chunk.items.lowerBound)", size: plan.size, items: Array(plan.items[chunk.items])), chunk.frame)
             }
-            for (index, view) in chunkViews {
-                if index < chunks.count { view.apply(chunks[index].plan) } else { removeChunk(index) }
-            }
+            for index in Array(chunkViews.keys) where index >= chunks.count { removeChunk(index) }
             chunksPlaced = nil
+            // Those far from the band go before they are drawn again.
             placeChunks()
+            for (index, view) in chunkViews {
+                // A chunk is the row's size: touches reach what grew in it.
+                view.setLayoutFrame(CGRect(origin: .zero, size: chunks[index].plan.size))
+                view.apply(chunks[index].plan)
+            }
             draw([], id: plan.id)
         } else {
             for index in Array(chunkViews.keys) { removeChunk(index) }
@@ -173,6 +180,7 @@ final class ChatPlanView: UIView {
         for index in chunkViews.keys.sorted() {
             if let view = chunkViews[index] { bringSubviewToFront(view) }
         }
+        onChunksPlaced?()
     }
 
     private func removeChunk(_ index: Int) {

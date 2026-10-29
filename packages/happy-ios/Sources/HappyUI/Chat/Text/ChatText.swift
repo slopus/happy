@@ -328,17 +328,44 @@ class ChatTextView: UIView {
 /// shows blank; text that grew shows its last drawing meanwhile.
 final class ChatOffMainTextView: ChatTextView {
     private var drawing: Task<Void, Never>?
-    /// The size the shown bitmap was drawn at.
-    private var drawn: CGSize?
+    /// The width the shown bitmap was drawn at.
+    private var drawnWidth: CGFloat?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        // Another appearance: drawn again at once, with the rest of the screen.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
+            self.forget()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
 
     override var layout: ChatTextLayout? {
         didSet {
             // Other words than it showed: none until they are drawn. The
             // same words grown, as a reply streams: the last ones meanwhile.
             guard layout !== oldValue else { return }
-            if let old = oldValue?.string.string, let new = layout?.string.string, new.hasPrefix(old) { return }
-            layer.contents = nil
+            if let old = oldValue?.string, let new = layout?.string, Self.grew(old, into: new) { return }
+            forget()
         }
+    }
+
+    /// `new` starts with all of `old`, its attributes included.
+    private static func grew(_ old: NSAttributedString, into new: NSAttributedString) -> Bool {
+        old.length > 0 && new.length >= old.length && new.attributedSubstring(from: NSRange(location: 0, length: old.length)).isEqual(to: old)
+    }
+
+    /// Nothing drawn, and nothing on its way.
+    private func forget() {
+        drawing?.cancel()
+        drawing = nil
+        layer.contents = nil
+        drawnWidth = nil
+        setNeedsDisplay()
     }
 
     override func display(_ layer: CALayer) {
@@ -346,24 +373,28 @@ final class ChatOffMainTextView: ChatTextView {
         drawing = nil
         guard let layout, bounds.width > 0, bounds.height > 0 else {
             layer.contents = nil
+            drawnWidth = nil
             return
         }
         let size = bounds.size
         let traits = traitCollection
         let scale = layer.contentsScale
-        // On screen with nothing drawn at this size yet: now. Words that
-        // grew within it, as a reply streams, keep showing the last of them
-        // until the rest is drawn.
-        if layer.contents == nil || drawn != size, let window, convert(bounds, to: window).intersects(window.bounds) {
+        // Another width wraps the words elsewhere: what was drawn is wrong.
+        if drawnWidth != size.width { layer.contents = nil }
+        // On screen with nothing drawn: now. Words that grew, as a reply
+        // streams, keep showing the last of them (pinned top-left) until
+        // the rest is drawn.
+        if layer.contents == nil, let window, convert(bounds, to: window).intersects(window.bounds) {
             layer.contents = Self.draw(layout, size: size, scale: scale, traits: traits)
-            drawn = size
+            drawnWidth = size.width
             return
         }
         drawing = Task { [weak self] in
             let image = await Task.detached(priority: .userInitiated) { Self.draw(layout, size: size, scale: scale, traits: traits) }.value
-            guard !Task.isCancelled, let self else { return }
+            // Only for the words and size it was drawn for.
+            guard !Task.isCancelled, let self, self.layout === layout, self.bounds.size == size else { return }
             self.layer.contents = image
-            self.drawn = size
+            self.drawnWidth = size.width
         }
     }
 
