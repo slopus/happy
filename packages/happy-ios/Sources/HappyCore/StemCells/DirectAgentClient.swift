@@ -265,7 +265,10 @@ public final class DirectAgentClient: Sendable {
     }
 
     /// Newest runs first page, or the runs before `before`, or the messages after `after`.
-    public func messages(_ agentId: String, before: String? = nil, after: String? = nil, limit: Int = 50) async throws -> AgentWire.MessagesResponse {
+    /// `limit` is desktop's page (`DEFAULT_HISTORY_LIMIT`). Tool data is left
+    /// out: the phone shows none of a tool's input or output, only its pictures,
+    /// which come on their own (`media`).
+    public func messages(_ agentId: String, before: String? = nil, after: String? = nil, limit: Int = 100) async throws -> AgentWire.MessagesResponse {
         var query = "limit=\(limit)&omitToolData=true"
         if let before { query += "&before=\(Self.escape(before))" }
         if let after { query += "&after=\(Self.escape(after))" }

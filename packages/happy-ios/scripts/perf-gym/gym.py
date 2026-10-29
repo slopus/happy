@@ -17,7 +17,7 @@ Everything lives in the work folder (GYM_WORK, default <repo>/.context/gym), nev
 `export` only ever sends GET requests to the person's own daemon; what it copies stays in
 the work folder, which is gitignored, and must never be committed or sent anywhere.
 """
-import argparse, base64, hashlib, http.client, json, os, random, re, shutil, signal, socket, sqlite3, struct
+import argparse, base64, filecmp, hashlib, http.client, json, os, random, re, shutil, signal, socket, sqlite3, struct
 import subprocess, sys, threading, time, urllib.parse, zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -335,16 +335,31 @@ def healthy():
         return False
 
 
+# The daemon the baselines were measured on. A fixed one, so a run compares the
+# app and not the daemon; from 0.4.110-preview.9 the mobile connector sends a
+# 100-run history page whole.
+AGENT_VERSION = "0.4.110-preview.11"
+# The gym's own copy: Happy Agent's updater prunes old versions from ~/.happy/dist.
+AGENTS = os.path.join(os.path.dirname(WORK), "gym-agents")
+
+
 def agent_binary(args):
     if getattr(args, "agent", None):
         return args.agent
     if os.environ.get("HAPPY_AGENT_BIN"):
         return os.environ["HAPPY_AGENT_BIN"]
-    versions = os.path.expanduser("~/.happy/dist/version")
-    found = sorted((os.path.join(versions, v, "happy-agent") for v in os.listdir(versions)), key=os.path.getmtime) if os.path.isdir(versions) else []
-    if not found:
-        sys.exit("gym: no happy-agent binary; pass --agent or set HAPPY_AGENT_BIN")
-    return found[-1]
+    kept = os.path.join(AGENTS, AGENT_VERSION, "happy-agent")
+    installed = os.path.expanduser(f"~/.happy/dist/version/{AGENT_VERSION}/happy-agent")
+    if not os.path.exists(kept) and os.path.exists(installed):
+        os.makedirs(os.path.dirname(kept), exist_ok=True)
+        shutil.copy2(installed, kept)
+    if not os.path.exists(kept):
+        sys.exit(f"gym: no happy-agent {AGENT_VERSION} (looked in {installed} and {kept}); "
+                 "put that version at either, or pass --agent / HAPPY_AGENT_BIN")
+    version = subprocess.run([kept, "--version"], capture_output=True, text=True).stdout.strip()
+    if not version.endswith(AGENT_VERSION):
+        sys.exit(f"gym: {kept} says {version!r}, not {AGENT_VERSION}")
+    return kept
 
 
 def write_config():
@@ -408,8 +423,10 @@ def start_daemon(args):
         return
     os.makedirs(DAEMON, exist_ok=True)
     binary = os.path.join(DAEMON, "happy-agent")
-    if not os.path.exists(binary):
-        shutil.copy2(agent_binary(args), binary)
+    source = agent_binary(args)
+    # Another version asked for than the one copied before: that one.
+    if not os.path.exists(binary) or not filecmp.cmp(source, binary):
+        shutil.copy2(source, binary)
     for sub in ("projects", "workspaces", "tmp"):
         os.makedirs(os.path.join(DAEMON, sub), exist_ok=True)
     env = dict(os.environ, HAPPY_HOME_DIR=HOME, HAPPY_AGENT_PROJECTS_DIRECTORY=os.path.join(DAEMON, "projects"),
@@ -753,8 +770,9 @@ def cmd_run(args):
     if not args.no_prime:
         say("priming: reading the chats back to their first message")
         run_test(udid, dd, "testPrime", label, env, results_dir)
-    out = {"label": label, "date": time.strftime("%Y-%m-%dT%H:%M:%S"), "commit": git("rev-parse", "--short", "HEAD"), "simulator": SIMULATOR,
-           "chats": titles, "workloads": {}}
+    agent = subprocess.run([os.path.join(DAEMON, "happy-agent"), "--version"], capture_output=True, text=True).stdout.strip()
+    out = {"label": label, "date": time.strftime("%Y-%m-%dT%H:%M:%S"), "commit": git("rev-parse", "--short", "HEAD"), "agent": agent,
+           "simulator": SIMULATOR, "chats": titles, "workloads": {}}
     for name in names:
         test, forgets = WORKLOADS[name]
         if forgets:

@@ -15,8 +15,8 @@ scripted workloads, and budgets per workload.
   list, a table and code), streamed one word every W ms.
 - `scripts/perf-gym/budgets.json`: the most each workload may cost.
 - `scripts/perf-gym/baselines/`: measured runs on the synthetic chats, before
-  and after the October 2026 transcript work (e7363747a), with the same
-  Mac and simulator.
+  and after the October 2026 transcript work (e7363747a), and on the gym's
+  fixed daemon (`preview11.json`), with the same Mac and simulator.
 - `Tests/HappyDirectUITests/ScrollPerfGymTests.swift`: the workloads, as UI tests.
 - `Sources/HappyUI/Perf/GymFrameMeter.swift`: the app's own frame meter and
   scripted scroll. It is compiled only into DEBUG and `HAPPY_FIXTURES` builds,
@@ -32,7 +32,8 @@ configuration, the fixtures, derived data, logs and results. Nothing touches
 ```sh
 cd packages/happy-ios
 python3 scripts/perf-gym/gym.py up        # synthetic chats, throwaway daemon, fake model
-python3 scripts/perf-gym/gym.py run       # builds once, primes, runs every workload, checks budgets
+python3 scripts/perf-gym/gym.py build     # the app and its UI tests; again after changing the app
+python3 scripts/perf-gym/gym.py run       # primes, runs every workload, checks budgets
 python3 scripts/perf-gym/gym.py run fling-to-top image-heavy --no-prime
 python3 scripts/perf-gym/gym.py compare scripts/perf-gym/baselines/before.json scripts/perf-gym/baselines/after.json
 python3 scripts/perf-gym/gym.py down
@@ -46,11 +47,17 @@ them.
 What it needs:
 
 - Xcode and XcodeGen;
-- a `happy-agent` binary, taken from `--agent`, from `HAPPY_AGENT_BIN`, or the
-  newest one in `~/.happy/dist/version`;
-  0.4.110-preview.6 and .7 cut large history pages short over the mobile
-  connector (the app reads an empty chat), so the baselines were made with
-  0.4.110-preview.4 (`--agent ~/.happy/dist/version/0.4.110-preview.4/happy-agent`);
+- Happy Agent 0.4.110-preview.11, the gym's fixed daemon (`AGENT_VERSION` in
+  `gym.py`). The first run copies it from
+  `~/.happy/dist/version/0.4.110-preview.11/happy-agent` into
+  `<work>/../gym-agents/`, as Happy Agent's updater later prunes old versions
+  from `~/.happy/dist`, and checks its `--version`. Another daemon through
+  `--agent` or `HAPPY_AGENT_BIN`. Keep it fixed so a run compares the
+  app, not the daemon. From 0.4.110-preview.6 until the fix in .9, the mobile
+  connector cut history pages over about 130 KB short (the app reads an empty
+  chat), and the app asks for desktop's 100 runs a page;
+- full access outside the sandbox: it binds local ports and drives the
+  simulator;
 - free local ports 24821 for the mobile connector and 24823 for the fake model,
   or others through `GYM_CONNECTOR_PORT` and `GYM_FAKE_PORT`;
 - a short work folder, because the daemon's unix socket lives in it.
@@ -195,6 +202,13 @@ Mac, iOS 26 simulator, the gym's `-O` build:
 
 Hitch ratio is ms/s. Before, flings show no hitches only because the meter
 counts frames in motion: the cost was in every apply and in memory.
+
+Those two ran on daemon 0.4.110-preview.4, whose connector cut large pages
+short, so the prime read only part of each chat. `baselines/preview11.json`
+is the gym's fixed daemon, 0.4.110-preview.11, with the app asking for 100
+runs a page: the prime reads both chats whole (540 and 180 rows), and the
+history-paging peak is 274 MB, against 215 MB with 50-run pages. Compare a
+change with that one.
 
 ## What the gym found (October 2026)
 
