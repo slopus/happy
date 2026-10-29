@@ -2,7 +2,7 @@
 
 <h1>Happy Engineering</h1>
 
-<h2>The fun way of making things :D</h2>
+<p>The fun way of making things :D</p>
 
 </div>
 
