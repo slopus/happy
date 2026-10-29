@@ -232,7 +232,10 @@ final class StemCellsUITests: XCTestCase {
         pause(1)
         let sent = messages.element(boundBy: before)
         let viewport = input.frame.minY - 8 - top
-        let line = min(max((viewport * 0.3).rounded(), introLine), (viewport * 0.5).rounded())
+        // The intro's line raises the line only while the intro is on screen;
+        // scrolled away under the bar, the line is desktop's 30%.
+        let introShows = intro.frame.maxY > top + 1
+        let line = introShows ? min(max((viewport * 0.3).rounded(), introLine), (viewport * 0.5).rounded()) : (viewport * 0.3).rounded()
         XCTAssertEqual(sent.frame.minY - top, line, accuracy: 1.5, "the follow-up isn't lifted to the line (viewport \(viewport))")
         XCTAssertGreaterThan(input.frame.minY - sent.frame.maxY, 40, "no room held for the reply")
         capture("layout-follow-up")

@@ -122,6 +122,9 @@ final class StemCellChatViewController: UIViewController {
     private var copied: (id: String, until: Task<Void, Never>)?
     /// The newest row is in view: what arrives keeps it there.
     private var followsNewest = true
+    /// How far the end has grown under a follower while the scroll moved and
+    /// nothing followed it: still following until at rest, however far.
+    private var grownUnfollowed: CGFloat = 0
     /// The steering last drawn under the working line.
     private var queuedShown = Set<String>()
     /// The composer's text full screen, while it is up.
@@ -1070,7 +1073,13 @@ final class StemCellChatViewController: UIViewController {
         }
         // The room under a lift taken another height by the keyboard or the
         // composer may go once it is out of view.
-        if let held = lift, held.viewport != viewport { lift = (held.id, held.line, viewport, true) }
+        if let held = lift, held.viewport != viewport {
+            lift = (held.id, held.line, viewport, true)
+            // Resized with the reader up in history, the room already out of view.
+            if !followsNewest, StemCellSendLift.releases(resized: true, viewportBottom: scrollView.contentOffset.y + scrollView.bounds.height - scrollView.contentInset.bottom, rowsEnd: rowsEnd) {
+                lift = nil
+            }
+        }
         var stack = stacked()
         if let id = liftPending, let sent = row(id) {
             liftPending = nil
@@ -1117,7 +1126,7 @@ final class StemCellChatViewController: UIViewController {
         let scroll = scrollState
         if let height = scrollHold.laidOut(stack.contentHeight, scroll: scroll) { setContentHeight(height) }
         if jumping {
-            if previous != scrollView.contentSize.height { scrollView.setContentOffset(CGPoint(x: 0, y: newestOffset), animated: true) }
+            if previous != scrollView.contentSize.height, abs(scrollView.contentOffset.y - newestOffset) > 0.5 { scrollView.setContentOffset(CGPoint(x: 0, y: newestOffset), animated: true) }
         } else if StemCellChatScrollHold.follows(scroll), followsNewest ? scrollView.contentOffset.y != newestOffset : scrollView.contentOffset.y > newestOffset {
             // Following, at the end; else shorter than the place it was read
             // at (a section folded): no gap under the end.
@@ -1179,7 +1188,17 @@ final class StemCellChatViewController: UIViewController {
         #if DEBUG
         probe?.wrote(from, height)
         #endif
+        if followsNewest, scrollView.isTracking || scrollView.isDecelerating {
+            grownUnfollowed += max(0, height - scrollView.contentSize.height)
+        }
         scrollView.contentSize.height = height
+    }
+
+    /// While the scroll moves, whether the reader is at the end, counting
+    /// what grew under them meanwhile as reached.
+    private func updateFollowing() {
+        followsNewest = scrollView.contentOffset.y >= newestOffset - grownUnfollowed - 24
+        if !followsNewest { grownUnfollowed = 0 }
     }
 
     private func setOffset(_ y: CGFloat) {
@@ -1197,8 +1216,19 @@ final class StemCellChatViewController: UIViewController {
         var scroll = scrollState
         if lifted { scroll.tracking = false }
         scroll.decelerating = false
-        guard !scroll.tracking else { return }
+        guard !scroll.tracking else {
+            // A finger that stopped a glide and lifts without dragging is
+            // told by nothing: look again until it is off.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                guard let self, !scrollView.isDragging, !scrollView.isDecelerating else { return }
+                settleScroll(lifted: false)
+            }
+            return
+        }
         if let height = scrollHold.release(scroll: scroll) { setContentHeight(height, "size-settle") }
+        grownUnfollowed = 0
+        // Shorter than where it rests (a section folded meanwhile): no gap under the end.
+        if !followsNewest, scrollView.contentOffset.y > newestOffset { setOffset(newestOffset) }
         guard !jumping, followsNewest, abs(scrollView.contentOffset.y - newestOffset) > 0.5 else { return }
         #if DEBUG
         probe?.wrote("glide", newestOffset)
@@ -1229,6 +1259,10 @@ final class StemCellChatViewController: UIViewController {
 
     /// Back to the newest message, following it from there.
     @objc private func jumpToLatest() {
+        // To the end as it is, not as it was held while the scroll moved.
+        var scroll = scrollState
+        (scroll.tracking, scroll.decelerating) = (false, false)
+        if let height = scrollHold.release(scroll: scroll) { setContentHeight(height, "size-jump") }
         followsNewest = true
         jumping = true
         scrollView.setContentOffset(CGPoint(x: 0, y: newestOffset), animated: true)
@@ -1633,7 +1667,7 @@ extension StemCellChatViewController: UIScrollViewDelegate {
         #endif
         let moving = scrollView.isTracking || scrollView.isDecelerating
         // At the end of the height on screen, before a held one is given.
-        if moving { followsNewest = scrollView.contentOffset.y >= newestOffset - 24 }
+        if moving { updateFollowing() }
         // Back inside its ends after a bounce: what was held is given.
         if scrollHold.held != nil, let height = scrollHold.release(scroll: scrollState) { setContentHeight(height, "size-scroll") }
         guard moving else { return }
