@@ -87,6 +87,29 @@ final class DirectAccountsTests: XCTestCase {
         try await restored.remove(first.id)
         XCTAssertTrue(try store.all().isEmpty); XCTAssertNil(restored.activeID); XCTAssertTrue(restored.accounts.isEmpty)
     }
+    /// The app deleted and installed again: its Keychain item stays, its
+    /// registry doesn't. The computer is not brought back, and its
+    /// credential goes.
+    func testAReinstallForgetsTheComputersLeftInTheKeychain() async throws {
+        let backend = AccountsKeychain()
+        let store = KeychainDirectCredentialStore(backend: backend)
+        let installed = try directory()
+        let manager = DirectAccounts(credentials: store, directory: installed, makeTransport: { _ in IdentityTransport() })
+        await manager.setForeground(false)
+        let first = try await manager.add(value(), name: "Gone Mac")
+        XCTAssertEqual(try store.all().keys.sorted(), [first.id])
+        // Same install, launched again: still paired.
+        let relaunched = DirectAccounts(credentials: store, directory: installed)
+        await relaunched.setForeground(false); try await relaunched.restore()
+        XCTAssertEqual(relaunched.activeID, first.id)
+        // A fresh container beside the same Keychain.
+        let reinstalled = DirectAccounts(credentials: store, directory: try directory())
+        await reinstalled.setForeground(false); try await reinstalled.restore()
+        XCTAssertTrue(reinstalled.accounts.isEmpty)
+        XCTAssertNil(reinstalled.active)
+        XCTAssertTrue(try store.all().isEmpty)
+    }
+
     func testIdentityETagRefreshRenameAndAvatarRemoval() async throws {
         let transport = IdentityTransport()
         let original = DirectAccount(id: "direct-one", name: "QR name")

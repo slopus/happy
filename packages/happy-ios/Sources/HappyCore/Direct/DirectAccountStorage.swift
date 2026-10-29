@@ -74,7 +74,16 @@ actor DirectAccountStorage {
     }
     func configureDirectory(_ directory: URL?) { file = directory?.appendingPathComponent("direct-accounts.json") }
     func load() throws -> (accounts: [DirectAccount], activeID: String?, credentials: [String: DirectDeviceCredentials]) {
-        let values = try credentials.all()
+        var values = try credentials.all()
+        // The Keychain outlives the app; the registry beside it doesn't. A
+        // credential with no registry is from an install since deleted,
+        // whose computer may be long gone: a fresh install starts with
+        // nothing paired, so it opens on linking a computer, not on one
+        // that never answers.
+        if let file, !values.isEmpty, !FileManager.default.fileExists(atPath: file.path) {
+            for id in values.keys { try credentials.remove(id: id) }
+            values = [:]
+        }
         if let file, let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode(Registry.self, from: data) { registry = saved }
         registry.accounts.removeAll { values[$0.id] == nil }
         for id in values.keys.sorted() where !registry.accounts.contains(where: { $0.id == id }) { registry.accounts.append(DirectAccount(id: id, name: "Happy Agent")) }

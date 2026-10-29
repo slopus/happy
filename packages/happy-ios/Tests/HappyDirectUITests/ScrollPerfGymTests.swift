@@ -243,6 +243,31 @@ final class ScrollPerfGymTests: XCTestCase {
         pause(2)
     }
 
+    /// Not a workload: a fresh install over a computer the last install
+    /// paired, that no longer answers. The driver pairs, deletes the app
+    /// (the Keychain keeps the pairing), stops the daemon and installs the
+    /// app again. As SHIP BOSS had it: Relay and Direct off, as on any fresh
+    /// install, then Direct chosen and its button tapped. It stays on
+    /// linking a computer, not that computer's home or a chat on it.
+    func testLeftoverComputerLinks() {
+        app.launchEnvironment.removeValue(forKey: "STEM_DIRECT")
+        app.launchArguments = []
+        app.launch()
+        let link = app.descendants(matching: .any)["stem-link"]
+        XCTAssertTrue(link.waitForExistence(timeout: 15), "a fresh install didn't open on linking a computer")
+        app.segmentedControls["stem-link-method"].buttons.matching(NSPredicate(format: "label BEGINSWITH 'Direct'")).firstMatch.tap()
+        let scan = app.buttons["Scan QR code"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 5), "Direct didn't show its way to link")
+        pause(2)
+        let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:"))
+        XCTAssertTrue(link.exists, "choosing Direct left linking")
+        XCTAssertFalse(app.descendants(matching: .any)["stem-new-work"].exists || rows.firstMatch.exists, "choosing Direct opened the last install's computer")
+        scan.tap()
+        pause(2)
+        XCTAssertFalse(app.descendants(matching: .any)["stem-new-work"].exists, "Scan opened the last install's computer")
+        XCTAssertFalse(app.scrollViews["stem-transcript"].exists, "Scan opened a chat")
+    }
+
     /// The ring on `row` turns new, opens its viewer at a tap, and is seen once closed.
     private func watchRing(_ row: XCUIElement, _ when: String) {
         XCTAssertTrue(until(40) { (row.value as? String)?.contains("new stor") == true }, "\(when): no new story came to the ring: \(row.value ?? "")")
