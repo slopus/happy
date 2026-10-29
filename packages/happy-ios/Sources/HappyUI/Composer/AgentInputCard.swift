@@ -1787,7 +1787,7 @@ final class AttachmentThumbnailView: UIView {
 
     private func load() {
         if let mime = attachment.mimeType, !mime.hasPrefix("image/") {
-            imageView.image = UIImage.icon(.ionicons(mime.hasPrefix("video/") ? "videocam-outline" : "document-outline"), size: AgentInputCardLayout.Metrics.attachmentSize)
+            imageView.image = UIImage.icon(.ionicons(mime.hasPrefix("video/") ? "videocam" : "document-outline"), size: AgentInputCardLayout.Metrics.attachmentSize)
             imageView.contentMode = .scaleAspectFit
             imageView.tintColor = UIColor(Palette.textSecondary)
             imageView.alpha = 1

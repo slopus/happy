@@ -93,6 +93,17 @@ final class HostedComposerVideoTests: XCTestCase {
         let attachment = try XCTUnwrap(card.configuration.attachments.first)
         XCTAssertEqual(attachment.mimeType, "video/quicktime")
         XCTAssertEqual(try Data(contentsOf: attachment.fileURL), try Data(contentsOf: source))
+        let preview = try XCTUnwrap(subviews(card).compactMap { $0 as? AttachmentThumbnailView }.first)
+        let image = try XCTUnwrap(preview.subviews.compactMap { $0 as? UIImageView }.first?.image?.cgImage)
+        var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        try pixels.withUnsafeMutableBytes { bytes in
+            let context = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: image.width, height: image.height,
+                bitsPerComponent: 8, bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        }
+        XCTAssertTrue(stride(from: 3, to: pixels.count, by: 4).contains { pixels[$0] > 0 },
+            "The video preview icon must draw visible pixels, not an empty missing-glyph image")
     }
 
     private func plus(in card: AgentInputCardView) throws -> UIControl {
