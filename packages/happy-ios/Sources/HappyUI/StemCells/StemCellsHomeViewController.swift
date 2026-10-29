@@ -698,7 +698,7 @@ final class StemCellsHomeViewController: UIViewController {
 
     /// How a row's work is put away, as desktop offers it: new work nobody
     /// named closes; a task is left, and archived too when the person may;
-    /// a bot is archived. Never Happy.
+    /// a bot is archived; a Surface is left. Never Happy.
     private func closing(_ row: StemCellsRow) -> [(title: String, icon: String, destructive: Bool, run: () -> Void)] {
         guard let store = session?.store, !row.isHappy else { return [] }
         if row.kind == .session, let agentId = row.agentId {
@@ -720,6 +720,8 @@ final class StemCellsHomeViewController: UIViewController {
             return acts
         case "bot":
             return [(Strings.StemCells.archiveBot, "archive", true, { Task { await store.archive(kind: "bot", id: targetId, nodeId: row.nodeId) } })]
+        case "surface":
+            return [(Strings.StemCells.leaveSurface, "close", false, { Task { await store.leave(surfaceId: targetId, nodeId: row.nodeId) } })]
         default:
             return []
         }

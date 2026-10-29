@@ -43,6 +43,8 @@ extension Strings {
         public static let filesNotSentDetail = "A message to an agent carries text and pictures only for now."
         public static let closeNewWork = "Close new work"
         public static let leaveTask = "Leave task"
+        /// A Surface's, as desktop's menu says it.
+        public static let leaveSurface = "Leave"
         public static let archiveTask = "Archive task"
         public static let archiveBot = "Archive bot"
         public static let archiveSubtask = "Archive subtask"

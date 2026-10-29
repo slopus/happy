@@ -217,6 +217,11 @@ public final class DirectAgentClient: Sendable {
 
     // MARK: Surfaces
 
+    /// Takes a Surface out of the reader's sidebar; its content stays for everyone.
+    public func leaveSurface(_ surfaceId: String) async throws {
+        _ = try await send("POST", "/v0/surfaces/\(Self.escape(surfaceId))/leave", json: .object(["mutationId": .string(ClientID.make())]))
+    }
+
     /// The joined Surfaces; nil where the daemon serves none (`404`, `501`).
     public func surfaces() async throws -> [AgentWire.Surface]? {
         struct Response: Decodable { let surfaces: [Lossy<AgentWire.Surface>] }

@@ -94,18 +94,22 @@ public actor StemCellsStore {
     private var creating: Set<String> = []
     /// New work being made, by space: what putting it away waits for.
     private var creations: [String: Task<String, Error>] = [:]
-    /// Rows taken off here, by document node: off the sidebar at once,
-    /// before the computer hears (new work closed, work archived or left),
-    /// and kept off through every read and event until it confirms; back
-    /// only if it refuses.
+    /// Rows taken off here, by document node, as desktop's `removals`: off
+    /// the sidebar at once, before the computer hears (new work closed,
+    /// work archived or left), and kept off through every read and event
+    /// that still lists them. Let go of once the computer no longer has
+    /// them: a space at `space.removed` or a full read without it, a
+    /// subtask once no bot or task holds it. Back only on a refusal.
     private var removing: [String: Removal] = [:]
     private struct Removal {
-        /// When the computer said it was done; nil while it hasn't.
-        var confirmedAt: ContinuousClock.Instant?
+        /// A subtask's conversation, which the lists hold rather than the spaces.
+        let subtask: Bool
+        /// The ask, which a second press shares: true once the computer
+        /// took it or had nothing to take, false when it refused.
+        let asked: Task<Bool, Never>
     }
-    /// How long a confirmed removal still holds its row off when the
-    /// document keeps the node (a subtask's): the events have come by then.
-    static let removalLinger: Duration = .seconds(30)
+    /// Stopped: Close new work stops asking a computer out of reach.
+    private var stopped = false
     private var writes = 0
     private var dragging = false
     /// An event or read waited for the hand to lift.
@@ -198,6 +202,7 @@ public actor StemCellsStore {
     }
 
     public func stop() async {
+        stopped = true
         await flush()
         following?.cancel(); following = nil
         loading?.cancel(); loading = nil
@@ -330,6 +335,7 @@ public actor StemCellsStore {
             for owner in botList + taskList { if let agent = owner["agent"] { agents.absorb(agent) } }
             spaces = [:]
             for space in answer.spaces { adopt(space) }
+            letGo(listing: answer.spaces)
             agentIcons = answer.agentIcons ?? [:]
             artifactId = answer.artifactId
             if !(writes > 0 || dragging) {
@@ -371,6 +377,7 @@ public actor StemCellsStore {
         artifactId = answer.artifactId
         agentIcons = answer.agentIcons ?? agentIcons
         for space in answer.spaces { adopt(space) }
+        letGo(listing: answer.spaces)
         publish()
     }
 
@@ -503,6 +510,8 @@ public actor StemCellsStore {
             return (try? decoder.decode([Lossy<T>].self, from: data))?.compactMap(\.value) ?? []
         }
         places = StemCellsPlaces(bots: decode(composed(bots)), tasks: decode(composed(tasks)), surfaces: surfaces, drafts: draftsShown)
+        // A subtask being archived that no bot or task holds any more is gone.
+        for (id, removal) in removing where removal.subtask && places.agent(id) == nil { removing[id] = nil }
     }
 
     // MARK: Drafts
@@ -564,6 +573,7 @@ public actor StemCellsStore {
             if let id = payload["spaceId"]?.stringValue {
                 spaces.removeValue(forKey: id)
                 inserts.removeAll { $0.spaceId == id }
+                if removing[id]?.subtask == false { removing[id] = nil }
             }
         case "space.sidebar.changed":
             sidebarChanged(payload)
@@ -647,6 +657,13 @@ public actor StemCellsStore {
         if let mutationId = payload["mutationId"]?.stringValue { batches.removeAll { $0.mutationId == mutationId } }
     }
 
+    /// A full read: a space being taken off that it no longer lists is
+    /// gone, unless it is still being made here.
+    private func letGo(listing listed: [AgentWire.Space]) {
+        let ids = Set(listed.map(\.id))
+        for (id, removal) in removing where !removal.subtask && !ids.contains(id) && !creating.contains(id) { removing[id] = nil }
+    }
+
     private func adopt(_ space: AgentWire.Space) {
         if let current = spaces[space.id], current.version > space.version { return }
         var space = space
@@ -690,11 +707,6 @@ public actor StemCellsStore {
     /// What is on screen: the confirmed document and new work where it was made.
     private func shown() -> SpaceSidebarDocument? {
         guard var document = confirmedShown() else { return nil }
-        let now = ContinuousClock.now
-        for (id, removal) in removing {
-            guard let confirmed = removal.confirmedAt else { continue }
-            if SpaceSidebar.locate(document, id) == nil || now - confirmed > Self.removalLinger { removing[id] = nil }
-        }
         inserts.removeAll { insert in !creating.contains(insert.spaceId) && SpaceSidebar.locate(document, insert.spaceId) != nil }
         for insert in inserts where SpaceSidebar.locate(document, insert.spaceId) == nil {
             document = SidebarDocumentEdits.insert(document, spaceId: insert.spaceId, sectionId: insert.sectionId, happySpaceId: insert.happySpaceId) ?? document
@@ -916,49 +928,50 @@ public actor StemCellsStore {
         publish()
     }
 
-    /// Takes new work off the sidebar here only, or puts it back: leaving
-    /// it, while the leaving may still be undone.
-    public func putAway(_ spaceId: String, _ away: Bool) {
-        guard (removing[spaceId] != nil) != away else { return }
-        removing[spaceId] = away ? Removal() : nil
-        publish()
-    }
-
     /// Closes new work nobody wrote in ("Close new work"), as desktop's
     /// `stemCellDiscard`: off the sidebar at once, then off the computer,
     /// once it is made there if it is still being made. A lost answer is
-    /// asked again with the same mutation; only a refusal (the chat has a
-    /// message) brings it back.
-    public func discard(_ spaceId: String) {
-        putAway(spaceId, true)
-        let mutationId = ClientID.make()
+    /// asked again with the same mutation until the computer answers. Gone
+    /// already (404), it stays gone; a refusal (409, the chat has a
+    /// message) brings it back and reads the sidebar again.
+    @discardableResult
+    public func discard(_ spaceId: String) async -> Bool {
         let client = client
         let creation = creations[spaceId]
-        Task {
+        return await removeAtOnce(spaceId) {
             // Never made there: nothing to close.
-            if let creation, (try? await creation.value) == nil { return }
-            var wait = 0.5
-            for _ in 0..<20 {
+            if let creation, (try? await creation.value) == nil { return true }
+            let mutationId = ClientID.make()
+            var wait = 1.0
+            while !(await self.stopped) {
                 do {
                     try await client.removeSpace(spaceId, mutationId: mutationId)
-                    return await self.closed(spaceId)
-                } catch let error as DirectAgentError where error.status == 404 {
-                    // An earlier try closed it.
-                    return await self.closed(spaceId)
+                    await self.closed(spaceId)
+                    return true
+                } catch DirectAgentError.status(404, _, _) {
+                    await self.closed(spaceId)
+                    return true
                 } catch let error as DirectAgentError where (error.status ?? 500) < 500 {
-                    return await self.putAway(spaceId, false)
+                    await self.discardRefused(spaceId)
+                    return false
                 } catch {
                     try? await Task.sleep(for: .seconds(wait))
-                    wait = min(wait * 2, 30)
+                    wait = min(wait * 2, 10)
                 }
             }
+            return false
         }
     }
 
     private func closed(_ spaceId: String) {
         inserts.removeAll { $0.spaceId == spaceId }
-        removing[spaceId, default: Removal()].confirmedAt = .now
+    }
+
+    /// Real work after all, as the computer holds it.
+    private func discardRefused(_ spaceId: String) {
+        removing[spaceId] = nil
         publish()
+        reloadSidebar()
     }
 
     // MARK: Reuse
@@ -1062,46 +1075,63 @@ public actor StemCellsStore {
     }
 
     /// Leaves a task: its row goes at once, and comes back if the computer refuses.
-    public func leave(taskId: String, nodeId: String? = nil) {
+    @discardableResult
+    public func leave(taskId: String, nodeId: String) async -> Bool {
         let client = client
-        removeAtOnce(nodeId) { try await client.leaveTask(taskId) }
+        return await removeAtOnce(nodeId, asking: { try await client.leaveTask(taskId) })
+    }
+
+    /// Leaves a Surface: its row goes at once, and comes back if the computer refuses.
+    @discardableResult
+    public func leave(surfaceId: String, nodeId: String) async -> Bool {
+        let client = client
+        return await removeAtOnce(nodeId, asking: { try await client.leaveSurface(surfaceId) })
     }
 
     /// Archives a task or bot: its row goes at once, and comes back if the computer refuses.
-    public func archive(kind: String, id: String, nodeId: String? = nil) {
+    @discardableResult
+    public func archive(kind: String, id: String, nodeId: String) async -> Bool {
         let client = client
-        removeAtOnce(nodeId) { try await kind == "bot" ? client.archiveBot(id) : client.archiveTask(id) }
+        return await removeAtOnce(nodeId, asking: { try await kind == "bot" ? client.archiveBot(id) : client.archiveTask(id) })
     }
 
-    /// Archives a subtask: its row goes at once, and comes back if the computer refuses.
-    public func archiveSubtask(_ agentId: String, nodeId: String? = nil) {
+    /// Archives a subtask, and with its row everything under it: it goes
+    /// at once, and comes back if the computer refuses.
+    @discardableResult
+    public func archiveSubtask(_ agentId: String, nodeId: String) async -> Bool {
         let client = client
-        removeAtOnce(nodeId) { try await client.archiveAgent(agentId) }
+        return await removeAtOnce(nodeId, subtask: true, asking: { try await client.archiveAgent(agentId) })
     }
 
-    private func removeAtOnce(_ nodeId: String?, _ work: @escaping @Sendable () async throws -> Void) {
-        if let nodeId {
-            removing[nodeId] = Removal()
-            publish()
-        }
-        Task {
-            do {
-                try await work()
-                await self.removalConfirmed(nodeId)
-            } catch {
+    /// A leave or archive asked of the computer: gone already (404) counts
+    /// as taken; anything else it answers is a refusal, with its reason.
+    private func removeAtOnce(_ nodeId: String, subtask: Bool = false, asking work: @escaping @Sendable () async throws -> Void) async -> Bool {
+        await removeAtOnce(nodeId, subtask: subtask) {
+            do { try await work() }
+            catch DirectAgentError.status(404, _, _) {}
+            catch {
                 await self.removalRefused(nodeId, error)
+                return false
             }
+            return true
         }
     }
 
-    private func removalConfirmed(_ nodeId: String?) {
-        guard let nodeId, removing[nodeId] != nil else { return }
-        removing[nodeId]?.confirmedAt = .now
+    /// Takes `nodeId`'s row off at once and asks the computer with `ask`.
+    /// A second press while one is on its way sends nothing and shares its
+    /// answer; a row already gone answers true.
+    private func removeAtOnce(_ nodeId: String, subtask: Bool = false, _ ask: @escaping @Sendable () async -> Bool) async -> Bool {
+        if let pending = removing[nodeId] { return await pending.asked.value }
+        guard subtask ? places.agent(nodeId) != nil : spaces[nodeId] != nil else { return true }
+        let asked = Task { await ask() }
+        removing[nodeId] = Removal(subtask: subtask, asked: asked)
+        snapshot.error = nil
         publish()
+        return await asked.value
     }
 
-    private func removalRefused(_ nodeId: String?, _ error: Error) {
-        if let nodeId { removing[nodeId] = nil }
+    private func removalRefused(_ nodeId: String, _ error: Error) {
+        removing[nodeId] = nil
         failed(error)
     }
 
