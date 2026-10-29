@@ -332,6 +332,9 @@ public final class GymFrameMeter: NSObject {
             var y = scroll.contentOffset.y + velocity * CGFloat(dt)
             let hit = y <= top || y >= bottom
             y = min(max(y, top), bottom)
+            // Gliding from its first frame: a run that meets the top at once
+            // still asks for the page before, as a glide there does.
+            GymFrameMeter.scrolling = true
             scroll.contentOffset.y = y
             if drag {
                 remaining -= dt

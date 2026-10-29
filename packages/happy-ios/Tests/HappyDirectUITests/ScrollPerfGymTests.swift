@@ -52,16 +52,19 @@ final class ScrollPerfGymTests: XCTestCase {
     /// message, as someone who has read their long chats has them, so every
     /// workload after it starts from the whole history on the phone.
     func testPrime() {
-        app.launchEnvironment["STEM_GYM_SCRIPT"] = "top wait*6"
+        app.launchEnvironment["STEM_GYM_SCRIPT"] = "dragdown top wait*8"
         launch()
         for title in [chat, environment["GYM_IMAGES"] ?? "Gym Pictures"] {
             open(title)
-            // Up to the top until the rows stop growing twice: the first
-            // message is in. Each time at the top asks for the page before.
+            // Up to the top until the rows stop growing four times running:
+            // the first message is in. Each time at the top asks for the page
+            // before, and a page over a slow connection takes seconds. Down a
+            // little first: a page landing at the very top leaves nothing to
+            // scroll, and only a scroll asks for the next.
             var rows = -1
             var still = 0
-            for _ in 0..<200 where still < 2 {
-                runScript("top wait*6")
+            for _ in 0..<200 where still < 4 {
+                runScript("dragdown top wait*8")
                 let now = reading("rows")
                 still = now == rows ? still + 1 : 0
                 rows = now
