@@ -309,7 +309,7 @@ final class StemCellsSidebarView: UIScrollView {
             case .dot: .dot
             case .bar: .bar
             }
-            let story = row.story.map { _ in StemCellsSidebarLayout.StoryRow(hasSubtitle: row.hasAgent, corner: corner) }
+            let story = row.story.map { _ in StemCellsSidebarLayout.StoryRow(hasSubtitle: row.hasAgent, corner: corner, timeWidth: StemCellsStoryRowText.timeWidth(row)) }
             return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story)
         }
     }

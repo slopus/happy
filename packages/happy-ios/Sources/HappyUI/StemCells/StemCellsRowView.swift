@@ -25,7 +25,9 @@ final class StemCellsRowView: UIView {
     private let rule = UIView()
     private let ring = StemCellsStoryRingView()
     private let subtitle = UILabel()
+    private let time = UILabel()
     private let corner = StemCellsCornerView()
+    private let separator = UIView()
     private var pictureJob: Task<Void, Never>?
 
     private(set) var row: StemCellsRow?
@@ -81,12 +83,17 @@ final class StemCellsRowView: UIView {
         add.contentMode = .center
         add.image = StemCellsGlyphs.image("add", size: StemCellsMetrics.addGlyph)
         rule.backgroundColor = UIColor(Palette.stemCellsDivider)
-        subtitle.font = StemCellsFonts.ui(.regular, size: StemCellsStoryRowMetrics.subtitleSize)
+        subtitle.numberOfLines = StemCellsStoryRowMetrics.subtitleLines
         subtitle.textColor = UIColor(Palette.stemCellsRowText)
-        subtitle.lineBreakMode = .byTruncatingTail
+        time.font = StemCellsStoryRowText.timeFont
+        time.textColor = UIColor(Palette.stemCellsRowText)
+        time.textAlignment = .right
+        separator.backgroundColor = UIColor(Palette.stemCellsDivider)
         ring.isHidden = true
         subtitle.isHidden = true
-        for view in [fill, ring, stemCell, picture, label, subtitle, trailing, chevron, add, rule, corner] { addSubview(view) }
+        time.isHidden = true
+        separator.isHidden = true
+        for view in [fill, separator, ring, stemCell, picture, label, subtitle, time, trailing, chevron, add, rule, corner] { addSubview(view) }
         isAccessibilityElement = true
     }
 
@@ -137,7 +144,11 @@ final class StemCellsRowView: UIView {
         ring.apply(story ?? .init())
         ring.accessibilityIdentifier = "stem-ring:\(row.label)"
         subtitle.isHidden = story == nil || !row.hasAgent
-        subtitle.text = row.statusLine
+        subtitle.attributedText = row.statusLine.map(StemCellsStoryRowText.status)
+        subtitle.lineBreakMode = .byTruncatingTail
+        let time = story == nil ? nil : StemCellsStoryRowText.time(row)
+        self.time.isHidden = time == nil
+        self.time.text = time
         corner.apply(story == nil ? .none : row.corner)
     }
 
@@ -240,7 +251,8 @@ final class StemCellsRowView: UIView {
     }
 
     private func applyState() {
-        let ink = UIColor(selected || row?.unread == true || row?.isNew == true ? Palette.stemCellsRowTextActive : Palette.stemCellsRowText)
+        // A story row's title is always in full ink, as Telegram's are; unread is its weight.
+        let ink = UIColor(selected || row?.unread == true || row?.isNew == true || row?.story != nil ? Palette.stemCellsRowTextActive : Palette.stemCellsRowText)
         label.textColor = ink
         label.ground = UIColor(selected ? Palette.stemCellsRowSelected : Palette.surface)
         picture.tintColor = picture.contentMode == .center ? ink : nil
@@ -253,6 +265,8 @@ final class StemCellsRowView: UIView {
         layer.shadowOpacity = lifted ? 0.14 : 0
         layer.shadowRadius = 12
         layer.shadowOffset = CGSize(width: 0, height: 4)
+        // The hairline goes where the row is filled.
+        separator.alpha = selected || pressed || lifted || row?.isNew == true ? 0 : 1
     }
 
     override func layoutSubviews() {
@@ -277,7 +291,23 @@ final class StemCellsRowView: UIView {
         }
         stemCell.frame = mark
         picture.frame = mark
-        subtitle.frame = frames.subtitle.map(local) ?? .zero
+        // The status hangs from its first line: one line or two, nothing moves.
+        if let frame = frames.subtitle.map(local) {
+            subtitle.frame = CGRect(origin: frame.origin, size: CGSize(width: frame.width, height: min(frame.height, ceil(subtitle.sizeThatFits(frame.size).height))))
+        } else {
+            subtitle.frame = .zero
+        }
+        if let frame = frames.time.map(local) {
+            // On the title's baseline.
+            let title = StemCellsFonts.ui(.medium, size: StemCellsStoryRowMetrics.titleSize)
+            let small = StemCellsStoryRowText.timeFont
+            let drop = ((title.lineHeight - small.lineHeight) / 2 + small.descender - title.descender).rounded()
+            time.frame = frame.offsetBy(dx: 0, dy: drop)
+        } else {
+            time.frame = .zero
+        }
+        separator.frame = frames.separator.map(local) ?? .zero
+        separator.isHidden = frames.separator == nil
         corner.frame = frames.corner.map(local) ?? .zero
         label.frame = local(frames.label)
         field?.frame = label.frame

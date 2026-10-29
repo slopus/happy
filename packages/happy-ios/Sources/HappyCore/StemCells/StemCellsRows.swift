@@ -116,6 +116,9 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
     public var surfaceType: String?
     /// The agent's own line about where its work stands (`set_status`).
     public var statusLine: String?
+    /// When the agent last set its status line (ms since 1970): the time a
+    /// story row shows at the end of its first line.
+    public var statusTime: Double?
     /// The row has an agent behind it, so a story row keeps a second line for it.
     public var hasAgent = false
     /// Set while agent stories are on: drawn as sidebar v2's story row.
@@ -293,6 +296,7 @@ public enum StemCellsRows {
         if space.target.kind == "surface" { row.surfaceType = places.surface(space.target.id)?.type }
         row.hasAgent = conversation != nil
         row.statusLine = conversation?.statusLine?.text
+        row.statusTime = conversation?.statusLine?.updatedAt
         // A bot can always be archived; a task only where the daemon says so.
         row.canArchive = space.target.kind == "bot" || places.task(space.target.id)?.canArchive == true
         return [row] + children
@@ -336,6 +340,7 @@ public enum StemCellsRows {
             )
             row.hasAgent = true
             row.statusLine = agent.statusLine?.text
+            row.statusTime = agent.statusLine?.updatedAt
             // A subtask's own subtasks show and hide under it as a row's do.
             row.sessions = sessionTree(agent.subtasks ?? [])
             row.hasHiddenSessions = hasMissing(row.sessions, under: node, held: held)

@@ -166,4 +166,34 @@ final class StemCellsCornerView: UIView {
         fill.layer.add(slide, forKey: "slide")
     }
 }
+
+/// What a story row writes beside its title, measured the same way by the
+/// list's layout and drawn by the row.
+enum StemCellsStoryRowText {
+    static let timeFont = StemCellsFonts.ui(.regular, size: StemCellsStoryRowMetrics.timeSize)
+
+    /// When the agent last said where it is, as Telegram dates a chat.
+    static func time(_ row: StemCellsRow, now: Date = Date()) -> String? {
+        guard row.statusLine?.isEmpty == false, let ms = row.statusTime else { return nil }
+        return StemCellsRowTime.text(ms, now: now)
+    }
+
+    static func timeWidth(_ row: StemCellsRow) -> CGFloat {
+        guard let text = time(row) else { return 0 }
+        return ceil((text as NSString).size(withAttributes: [.font: timeFont]).width)
+    }
+
+    /// The status on its own 19-point lines.
+    static func status(_ text: String) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = StemCellsStoryRowMetrics.subtitleLine
+        paragraph.maximumLineHeight = StemCellsStoryRowMetrics.subtitleLine
+        paragraph.lineBreakMode = .byWordWrapping
+        let font = StemCellsFonts.ui(.regular, size: StemCellsStoryRowMetrics.subtitleSize)
+        return NSAttributedString(string: text, attributes: [
+            .font: font, .paragraphStyle: paragraph,
+            .baselineOffset: (StemCellsStoryRowMetrics.subtitleLine - font.lineHeight) / 4,
+        ])
+    }
+}
 #endif

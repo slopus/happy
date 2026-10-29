@@ -51,14 +51,18 @@ public enum StemCellsSidebarLayout {
 
     /// What a story row draws beside its title.
     public struct StoryRow: Equatable, Sendable {
-        /// A second line under the title: the agent's own status. A row
-        /// with no agent behind it (a Surface) has none and centres its title.
+        /// The agent's own status under the title, in up to two lines. A
+        /// row with no agent behind it (a Surface) has none; its title
+        /// stays where every title is.
         public var hasSubtitle: Bool
         public var corner: Corner
+        /// The time at the end of the first line, as measured; 0 for none.
+        public var timeWidth: CGFloat
 
-        public init(hasSubtitle: Bool = true, corner: Corner = .none) {
+        public init(hasSubtitle: Bool = true, corner: Corner = .none, timeWidth: CGFloat = 0) {
             self.hasSubtitle = hasSubtitle
             self.corner = corner
+            self.timeWidth = timeWidth
         }
     }
 
@@ -86,8 +90,13 @@ public enum StemCellsSidebarLayout {
         public var subtitle: CGRect?
         /// A story row's corner signal: the dot or the bar, as `Row.story` asks.
         public var corner: CGRect?
+        /// A story row's time, at the end of its first line.
+        public var time: CGRect?
+        /// The hairline under a story row followed by another, from its
+        /// text's start to the box's end, on whole pixels.
+        public var separator: CGRect?
 
-        public init(box: CGRect, mark: CGRect? = nil, label: CGRect = .zero, trailing: CGRect? = nil, chevron: CGRect? = nil, chevronGlyph: CGRect? = nil, add: CGRect? = nil, rule: CGRect? = nil, ring: CGRect? = nil, subtitle: CGRect? = nil, corner: CGRect? = nil) {
+        public init(box: CGRect, mark: CGRect? = nil, label: CGRect = .zero, trailing: CGRect? = nil, chevron: CGRect? = nil, chevronGlyph: CGRect? = nil, add: CGRect? = nil, rule: CGRect? = nil, ring: CGRect? = nil, subtitle: CGRect? = nil, corner: CGRect? = nil, time: CGRect? = nil, separator: CGRect? = nil) {
             self.box = box
             self.mark = mark
             self.label = label
@@ -99,6 +108,8 @@ public enum StemCellsSidebarLayout {
             self.ring = ring
             self.subtitle = subtitle
             self.corner = corner
+            self.time = time
+            self.separator = separator
         }
     }
 
@@ -139,7 +150,7 @@ public enum StemCellsSidebarLayout {
             let trailingRect = CGRect(x: pixel(width - M.trailingCenter - M.trailing / 2), y: pixel(midY - M.trailing / 2), width: M.trailing, height: M.trailing)
             let inkRight = trailingRect.maxX
             var frame = Frame(box: box)
-            func fold() -> CGRect {
+            func fold(_ midY: CGFloat = midY) -> CGRect {
                 let ink = row.foldClosed ? M.chevronRightInk : M.chevronDownInk
                 let size = M.chevronGlyph
                 return CGRect(x: pixel(width - M.trailingCenter - size / 2 - ink.dx), y: pixel(midY - size / 2 - ink.dy), width: size, height: size)
@@ -162,7 +173,9 @@ public enum StemCellsSidebarLayout {
                 frame.chevron = trailingRect
                 frame.chevronGlyph = fold()
             case .row where row.story != nil:
-                frame = storyRow(row, box: box, trailingRect: trailingRect, fold: row.hasFold ? fold() : nil, pixel: pixel)
+                // The fold rides on the title's line, as the time does.
+                let line = y + StemCellsStoryRowMetrics.titleTop + StemCellsStoryRowMetrics.titleLine / 2
+                frame = storyRow(row, box: box, trailingRect: trailingRect.offsetBy(dx: 0, dy: pixel(line - midY)), fold: row.hasFold ? fold(line) : nil, pixel: pixel)
             case .widget, .row:
                 var x = leadingX(depth: row.depth)
                 if row.hasMark {
@@ -187,15 +200,23 @@ public enum StemCellsSidebarLayout {
             frames.append(frame)
             y += height
         }
+        // Telegram's hairline between one story row and the next, none
+        // after a section's last.
+        let hairline = 1 / max(1, scale)
+        for index in rows.indices.dropLast() where rows[index].story != nil && rows[index].kind == .row && rows[index + 1].story != nil && rows[index + 1].kind == .row {
+            let box = frames[index].box
+            let x = frames[index].label.minX
+            frames[index].separator = CGRect(x: x, y: box.maxY - hairline, width: max(0, box.maxX - x), height: hairline)
+        }
         return Result(frames: frames, connectors: connectors(rows, frames), contentHeight: y + bottom)
     }
 
-    /// Sidebar v2's story row (design "Sidebar v2: agent story rings"):
-    /// the ring 12 into the box and centred on its height, the mark's plate
-    /// inside it, the title and the status as one block centred beside it
-    /// (the title alone, centred, without a status line), the fold where a
-    /// row's always is, and the corner signal 15 in from the box's
-    /// bottom-right corner, the text keeping 21 clear of the box's end.
+    /// Sidebar v2's story row, on Telegram's chat list: the ring 12 into
+    /// the box and centred on its height, the mark's plate inside it; the
+    /// title on a fixed first line, the time and the fold at its end; the
+    /// status under it in up to two lines; the corner signal centred on the
+    /// status's second line at the text's end. Every row is one height and
+    /// nothing moves whether the status is empty, one line or two.
     static func storyRow(_ row: Row, box: CGRect, trailingRect: CGRect, fold: CGRect?, pixel: (CGFloat) -> CGFloat) -> Frame {
         typealias S = StemCellsStoryRowMetrics
         typealias M = StemCellsMetrics
@@ -209,26 +230,32 @@ public enum StemCellsSidebarLayout {
             frame.mark = ring.insetBy(dx: inset, dy: inset)
         }
         let x = row.hasMark ? ring.maxX + S.textGap : ringX
-        var right = box.maxX - S.textTrailing
+        let end = box.maxX - S.textTrailing
+        let titleY = box.minY + S.titleTop
+        var titleEnd = end
         if let fold {
             frame.chevron = trailingRect
             frame.chevronGlyph = fold
-            right = min(right, trailingRect.minX - M.trailingGap)
+            titleEnd = min(titleEnd, trailingRect.minX - M.trailingGap)
         }
-        let textWidth = max(0, right - x)
+        if story.timeWidth > 0 {
+            let width = min(story.timeWidth, max(0, titleEnd - x))
+            let time = CGRect(x: titleEnd - width, y: titleY, width: width, height: S.titleLine)
+            frame.time = time
+            titleEnd = time.minX - S.timeGap
+        }
+        frame.label = CGRect(x: x, y: titleY, width: max(0, titleEnd - x), height: S.titleLine)
+        let subtitleY = titleY + S.titleLine + S.lineGap
         if story.hasSubtitle {
-            let top = pixel(box.midY - S.textBlock / 2)
-            frame.label = CGRect(x: x, y: top, width: textWidth, height: S.titleLine)
-            frame.subtitle = CGRect(x: x, y: top + S.titleLine + S.lineGap, width: textWidth, height: S.subtitleLine)
-        } else {
-            frame.label = CGRect(x: x, y: pixel(box.midY - S.titleLine / 2), width: textWidth, height: S.titleLine)
+            frame.subtitle = CGRect(x: x, y: subtitleY, width: max(0, end - S.cornerSlot - x), height: S.subtitleLine * CGFloat(S.subtitleLines))
         }
+        let cornerMid = subtitleY + S.subtitleLine * (CGFloat(S.subtitleLines) - 0.5)
         switch story.corner {
         case .none: break
         case .dot:
-            frame.corner = CGRect(x: box.maxX - S.cornerInset - S.dot, y: box.maxY - S.cornerInset - S.dot, width: S.dot, height: S.dot)
+            frame.corner = CGRect(x: end - S.dot, y: pixel(cornerMid - S.dot / 2), width: S.dot, height: S.dot)
         case .bar:
-            frame.corner = CGRect(x: box.maxX - S.cornerInset - S.bar.width, y: box.maxY - S.cornerInset - S.bar.height, width: S.bar.width, height: S.bar.height)
+            frame.corner = CGRect(x: end - S.bar.width, y: pixel(cornerMid - S.bar.height / 2), width: S.bar.width, height: S.bar.height)
         }
         return frame
     }

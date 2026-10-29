@@ -54,6 +54,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     #if DEBUG || HAPPY_FIXTURES
     private var homeRenderer: HomeRendererHarness?
     private var agent: AgentHarness?
+    private var storyRows: StoryRowsHarness?
     private var realArchive: RealArchiveHarness?
     private var qaProbe: ChatUltraQAProbe?
     private var motionScript: ChatMotionScript?
@@ -90,6 +91,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
            let socket = arguments.firstIndex(of: "-agentSocket").map({ arguments[$0 + 1] }),
            let token = arguments.firstIndex(of: "-agentToken").map({ arguments[$0 + 1] }) {
             agent = AgentHarness(window: window, socket: socket, token: token)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "storyRows" {
+            storyRows = StoryRowsHarness(window: window)
             return
         }
         #endif
