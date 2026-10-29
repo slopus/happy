@@ -217,6 +217,32 @@ final class ScrollPerfGymTests: XCTestCase {
         watchRing(row, "posted in its chat")
     }
 
+    /// Not a workload: with the photo library never asked about, the composer's + opens its sheet and Photos opens the
+    /// system's picker without either asking for the library; a photo
+    /// picked there waits in the composer.
+    func testAttachAsksNothing() {
+        app.resetAuthorizationStatus(for: .photos)
+        launch()
+        open(environment["GYM_STORY_TASK"] ?? "Release notes")
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        app.buttons["Add a picture"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["attach-sheet"].waitForExistence(timeout: 5), "+ didn't open its sheet")
+        XCTAssertFalse(springboard.alerts.firstMatch.waitForExistence(timeout: 3), "+ asked for the photo library")
+        app.buttons["attach-photos"].tap()
+        XCTAssertFalse(springboard.alerts.firstMatch.waitForExistence(timeout: 3), "Photos asked for the photo library")
+        XCTAssertFalse(app.descendants(matching: .any)["library-picker"].exists, "Photos opened the app's own library, which needs it")
+        let photo = app.images.matching(NSPredicate(format: "label BEGINSWITH 'Photo'")).firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 10), "the system's picker shows no photo")
+        pause(1.5)
+        // The picker runs in its own process: its photos are found, not hittable.
+        photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let add = app.buttons.matching(NSPredicate(format: "label == 'Add' OR identifier == 'Add'")).firstMatch
+        if add.waitForExistence(timeout: 3) { add.tap() }
+        let attached = app.descendants(matching: .any).matching(identifier: "composer-attachment").firstMatch
+        XCTAssertTrue(attached.waitForExistence(timeout: 10), "the picked photo didn't attach")
+        pause(2)
+    }
+
     /// The ring on `row` turns new, opens its viewer at a tap, and is seen once closed.
     private func watchRing(_ row: XCUIElement, _ when: String) {
         XCTAssertTrue(until(40) { (row.value as? String)?.contains("new stor") == true }, "\(when): no new story came to the ring: \(row.value ?? "")")

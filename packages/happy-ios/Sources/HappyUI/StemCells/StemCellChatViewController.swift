@@ -665,12 +665,23 @@ final class StemCellChatViewController: UIViewController {
         Strings.StemCells.permissionName(mode?.permissionMode ?? session.models.catalog?.defaultPermissionMode ?? "auto")
     }
 
-    /// Photos and videos from the whole library, uploaded through the direct connection.
+    /// Photos and videos from the whole library, uploaded through the
+    /// direct connection: in the library sheet when the person has let the
+    /// app read their library, else in the system's picker, which asks
+    /// nothing.
     private func presentLibrary() {
         let room = pictures.room()
         guard room > 0 else { return settleFocus(added: false) }
-        let picker = LibraryPicker.present(from: self, options: .init(limit: room)) { [weak self] picks in self?.take(picks) }
-        picker.onCancel = { [weak self] in self?.settleFocus(added: false) }
+        let options = LibraryPicker.Options(limit: room)
+        let onPick: ([LibraryPick]) -> Void = { [weak self] picks in
+            guard let self else { return LibraryPicker.discard(picks) }
+            take(picks)
+        }
+        if StemCellAttachSheetViewController.mayReadLibrary {
+            LibraryPicker.present(from: self, options: options, onPick: onPick).onCancel = { [weak self] in self?.settleFocus(added: false) }
+        } else {
+            LibrarySystemPicker.present(from: self, options: options, onPick: onPick).onCancel = { [weak self] in self?.settleFocus(added: false) }
+        }
     }
 
     /// Photos and videos picked in the sheet's strip, read in full off the main thread.

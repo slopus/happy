@@ -132,18 +132,18 @@ final class StemCellAttachSheetViewController: UIViewController {
 
     // MARK: Photos
 
+    /// The strip's photos, only from a library the person already let the
+    /// app read: opening the sheet never asks. Without it, the strip is
+    /// the camera alone, and Photos opens the system's picker, which needs
+    /// no permission.
     private func loadPhotos() {
-        switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
-        case .authorized, .limited:
-            fetch()
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { @Sendable status in
-                guard status == .authorized || status == .limited else { return }
-                DispatchQueue.main.async { [weak self] in self?.fetch() }
-            }
-        default:
-            break
-        }
+        guard Self.mayReadLibrary else { return }
+        fetch()
+    }
+
+    static var mayReadLibrary: Bool {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        return status == .authorized || status == .limited
     }
 
     /// The newest photos, as many as the strip is worth scrolling through.

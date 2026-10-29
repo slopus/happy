@@ -24,7 +24,11 @@ private let skipsQuiescence: Bool = {
 /// Stem Cells against a real throwaway Happy Agent on this Mac. A driver
 /// outside the test opens the daemon's pairing link on this simulator,
 /// confirms the pairing on the daemon's side and records the screen; the
-/// test is the person's finger. Nothing here holds a credential.
+/// test is the person's finger. Nothing here holds a credential. The
+/// "+" sheet's strip and the app's own library sheet show the library
+/// only once the app may read it, and the app never asks for that from
+/// the composer: the driver grants it first
+/// (`xcrun simctl privacy <udid> grant photos <bundle>`).
 @MainActor
 final class StemCellsUITests: XCTestCase {
     private let app = XCUIApplication()
