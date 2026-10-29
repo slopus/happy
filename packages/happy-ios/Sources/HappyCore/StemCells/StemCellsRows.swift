@@ -89,6 +89,8 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
     public var kind: Kind
     public var depth: Int
     public var label: String
+    /// A space's row has a name of its own; without one its label is "New".
+    public var titled = false
     public var mark: Mark
     public var status: Status
     public var unread: Bool
@@ -311,6 +313,7 @@ public enum StemCellsRows {
             isUntouchedStemCell: space.target.kind == "task" && space.title == nil && space.icon == .stemCell
         )
         if row.workspaceId == nil, let agentId = row.agentId { row.workspaceId = places.agent(agentId)?.workspaceId }
+        row.titled = space.title != nil
         row.targetId = space.target.id
         // Looped in by someone and not yet read.
         row.isNew = space.target.kind == "task" && places.task(space.target.id)?.membership?.unread != nil

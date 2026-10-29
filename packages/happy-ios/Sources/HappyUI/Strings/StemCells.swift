@@ -118,6 +118,13 @@ extension Strings {
         }
         public static let sending = "Sending…"
         public static let sendFailed = "Not sent. Tap to retry."
+        /// A failed turn's card (happyAgentConversationProject.ts, conversationFailureText.ts).
+        public static let failure = "Failure"
+        public static let retry = "Retry"
+        public static let retried = "Retried"
+        public static let handled = "Handled"
+        public static func switchAndContinue(_ target: String) -> String { "Switch to \(target) and continue" }
+        public static func switched(_ target: String) -> String { "Switched to \(target)" }
         /// Under a long message cut to its first lines, and opened (desktop's).
         public static let showFull = "Show full"
         public static let showLess = "Show less"

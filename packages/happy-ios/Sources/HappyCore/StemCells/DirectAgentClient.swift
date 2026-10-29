@@ -349,6 +349,20 @@ public final class DirectAgentClient: Sendable {
         _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/abort", json: .object([:]))
     }
 
+    /// A failed turn run again (`…/messages/:id/retry`), or moved to another
+    /// model and continued there (`…/switch`): the failure's message, now
+    /// carrying its resolution. The continued run comes as events.
+    public func resolveFailure(_ agentId: String, messageId: String, switchTo mode: AgentWire.Mode?, mutationId: String) async throws -> AgentWire.Message {
+        struct Response: Decodable { var message: AgentWire.Message }
+        var body: [String: JSONValue] = ["mutationId": .string(mutationId)]
+        if let mode {
+            body["providerId"] = .string(mode.providerId)
+            body["modelId"] = .string(mode.modelId)
+        }
+        let path = "/v0/agents/\(Self.escape(agentId))/messages/\(Self.escape(messageId))/\(mode == nil ? "retry" : "switch")"
+        return try await decode(Response.self, "POST", path, json: .object(body)).message
+    }
+
     public func markRead(_ agentId: String) async throws {
         _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/read", json: .object([:]))
     }

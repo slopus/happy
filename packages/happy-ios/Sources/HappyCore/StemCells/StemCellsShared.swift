@@ -64,7 +64,10 @@ public struct StemCellsShared: Equatable, Sendable {
     /// One item's media and links, in its order.
     static func of(item: StemCellChatItem) -> StemCellsShared {
         var shared = StemCellsShared()
-        if case .collaborator = item.role { return shared }
+        switch item.role {
+        case .collaborator, .failure: return shared
+        case .user, .agent: break
+        }
         var media: [Media] = []
         var texts: [String] = []
         for piece in item.pieces {

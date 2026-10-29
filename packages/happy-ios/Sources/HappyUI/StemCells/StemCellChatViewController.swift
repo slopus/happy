@@ -315,7 +315,8 @@ final class StemCellChatViewController: UIViewController {
             let drafts = session.drafts
             Task { await conversation.useDrafts(drafts) }
         }
-        modelsWatch = session.models.watch { [weak self] in self?.updateChips() }
+        // A failure card names the models it offers from the catalog.
+        modelsWatch = session.models.watch { [weak self] in self?.updateChips(); self?.replan() }
         session.models.load()
         updateChips()
         if opensOverHome {
@@ -511,13 +512,8 @@ final class StemCellChatViewController: UIViewController {
             proposals.spacesChanged()
         }
         guard let spaceId, let row = snapshot.allRows.first(where: { $0.spaceId == spaceId }) else { return }
-        if title != row.label { title = row.label }
-        titleView.text = row.label
-        if previewing, previewTitle.text != row.label {
-            previewTitle.text = row.label
-            previewPill.accessibilityLabel = row.label
-            view.setNeedsLayout()
-        }
+        rowName = (row.label, row.titled)
+        applyTitle()
         let next: Intro? = switch row.mark {
         case .stemCell(let seed): .stemCell(seed: seed)
         case .clay(let slug): .clay(slug)
@@ -526,6 +522,23 @@ final class StemCellChatViewController: UIViewController {
         if next != intro {
             intro = next
             applyIntro()
+        }
+    }
+
+    /// The row's name as the sidebar has it, and whether it is one of its own.
+    private var rowName: (label: String, titled: Bool)?
+
+    /// The row's name, or, while it has none ("New"), the conversation's
+    /// own title once the daemon has written one, as desktop's header reads it.
+    private func applyTitle() {
+        guard let rowName else { return }
+        let label = rowName.titled ? rowName.label : chat.title.flatMap { $0.isEmpty ? nil : $0 } ?? rowName.label
+        if title != label { title = label }
+        if titleView.text != label { titleView.text = label }
+        if previewing, previewTitle.text != label {
+            previewTitle.text = label
+            previewPill.accessibilityLabel = label
+            view.setNeedsLayout()
         }
     }
 
@@ -559,6 +572,7 @@ final class StemCellChatViewController: UIViewController {
     private func apply(_ snapshot: StemCellChatSnapshot) {
         let wasSettled = settled(chat)
         chat = snapshot
+        applyTitle()
         if picked == snapshot.mode { picked = nil }
         media.register(snapshot.items)
         if snapshot.draftArrivals != draftArrivals {
@@ -789,12 +803,43 @@ final class StemCellChatViewController: UIViewController {
             // Held here at once, so the chips read it before the conversation says so.
             self?.picked = next
             self?.updateChips()
+            // A failure card offers to continue on what was picked.
+            self?.replan()
             Task { await conversation.setMode(next) }
         }
     }
 
     private var planKey: StemCellChatPlanner.Key {
-        StemCellChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
+        var key = StemCellChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
+        // Only a failure card reads the composer's model; without one the
+        // key stays the warm chat's, so its rows planned ahead are taken.
+        if chat.items.contains(where: { if case .failure = $0.role { true } else { false } }) {
+            key.switchTarget = switchTarget
+            key.modelNames = Dictionary((session.models.catalog?.models ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        }
+        return key
+    }
+
+    /// The composer's model, named as its picker names it.
+    private var switchTarget: StemCellChatPlanner.SwitchTarget? {
+        guard let mode else { return nil }
+        return StemCellChatPlanner.SwitchTarget(mode: mode, label: session.models.catalog?.model(mode)?.name ?? mode.modelId)
+    }
+
+    /// A failure card's action: the turn again, or continued on the
+    /// composer's model. What went wrong doing it is said, not swallowed.
+    private func resolveFailure(_ failure: StemCellFailure) {
+        guard let action = StemCellChatPlanner.action(failure, target: switchTarget) else { return }
+        let conversation = conversation
+        let mode: AgentWire.Mode? = if case .switchTo(let target) = action { target.mode } else { nil }
+        Task { [weak self] in
+            do { try await conversation.resolveFailure(failure.messageId, switchTo: mode) }
+            catch {
+                let alert = UIAlertController(title: Strings.Common.error, message: StemCellsStore.describe(error), preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
+                self?.present(alert, animated: true)
+            }
+        }
     }
 
     /// Plans the rows off the main thread, then shows them in one frame.
@@ -1507,6 +1552,11 @@ final class StemCellChatViewController: UIViewController {
                 UIPasteboard.general.string = text
                 showCopied(id)
             case .retry(let localId):
+                // A failure card's action names its service message.
+                if let item = chat.items.first(where: { $0.id == localId }), case .failure(let failure) = item.role {
+                    resolveFailure(failure)
+                    return
+                }
                 let conversation = conversation
                 Task { await conversation.retry(localId) }
             case .openMedia(let key):

@@ -438,8 +438,12 @@ extension AgentWire {
         public var status: String?
         public var runId: String?
         public var metadata: MessageMetadata?
+        /// An error service message's diagnostics (`error`) and typed
+        /// failure (`failure`), kept as sent; `StemCellFailure` reads them.
+        public var error: JSONValue?
+        public var failure: JSONValue?
 
-        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil) {
+        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil, error: JSONValue? = nil, failure: JSONValue? = nil) {
             self.id = id
             self.role = role
             self.createdAt = createdAt
@@ -447,6 +451,8 @@ extension AgentWire {
             self.status = status
             self.runId = runId
             self.metadata = metadata
+            self.error = error
+            self.failure = failure
         }
     }
 

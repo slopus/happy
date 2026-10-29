@@ -149,7 +149,11 @@ public actor DirectSyncEngine {
                        let setting = try? JSONDecoder().decode(DirectUserSetting.self, from: JSONEncoder().encode(value)) {
                         try await database().receiveSetting(setting.key, value: setting.value, version: setting.version)
                         snapshot.settings = try await database().settings()
+                        // Stem Cells turned on here: its sidebar is read now,
+                        // or the home has nothing to draw until a relaunch.
+                        let previouslySpaces = snapshot.usesSpaces
                         derive()
+                        if snapshot.usesSpaces && !previouslySpaces { await spaces.externalResync(loadSidebar: true) }
                     }
                     // Events are delivery hints, never a durable checkpoint.
                     // Coalesce catalog invalidations; message token events go

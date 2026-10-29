@@ -478,6 +478,9 @@ final class StemCellPickerPanelView: UIView {
         let scrolls = max(0, layout.contentHeight - layout.viewport.height)
         scrollView.contentOffset.y = opening ? layout.initialOffset : min(scrolls, offset)
         scrollView.isScrollEnabled = scrolls > 0
+        // Opened on the choice with lines above or below it: the indicator
+        // says there is more, once the panel is on screen.
+        if opening, scrolls > 0 { DispatchQueue.main.async { [scrollView] in scrollView.flashScrollIndicators() } }
     }
 
     private func lineViews(in host: UIView) -> [StemCellPickerLineView] {

@@ -51,12 +51,24 @@ private actor DirectSyncFixture: DirectTransport {
         value = .object(object)
         emit(.object(["type": .string("user_settings.updated"), "payload": .object(["setting": setting])]))
     }
+    var requested: [String] = []
+    func requestedPaths() -> [String] { requested }
+    /// Stem Cells turned on from the computer while the phone watches.
+    func turnOnStemCells() {
+        version += 1
+        let setting: JSONValue = .object(["key": .string(DirectSettings.stemCells), "value": .bool(true), "version": .string(String(format: "%08d", version)), "updatedAt": .number(Date().timeIntervalSince1970 * 1000)])
+        var object = value.objectValue!
+        object["userSettings"] = .array([setting])
+        value = .object(object)
+        emit(.object(["type": .string("user_settings.updated"), "payload": .object(["setting": setting])]))
+    }
     func emit(_ event: JSONValue) {
         let json = String(data: try! JSONEncoder().encode(event), encoding: .utf8)!
         continuations.forEach { $0.yield(Data("event: message\ndata: \(json)\n\n".utf8)) }
     }
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
         guard online else { throw URLError(.notConnectedToInternet) }
+        requested.append(path)
         if path == "/v0/bootstrap/desktop" {
             if bootstrapFailures > 0 { bootstrapFailures -= 1; throw URLError(.timedOut) }
             return .init(status: 200, body: try JSONEncoder().encode(value))
@@ -228,6 +240,27 @@ final class DirectSyncEngineTests: XCTestCase {
         await transport.setProjectsHidden(true, stamp: Date().timeIntervalSince1970 * 1000 + 1000)
         await engine.start()
         _ = try await wait(engine) { $0.live && DirectSettings.projectsHidden($0.settings) }
+        await engine.stop()
+    }
+
+    /// Stem Cells switched on from the computer while home is open: the
+    /// sidebar it now draws is read at once, not after a relaunch.
+    func testStemCellsTurnedOnRemotelyReadsTheSidebar() async throws {
+        let transport = DirectSyncFixture()
+        let engine = DirectSyncEngine(client: DirectAgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && $0.loaded && !$0.usesSpaces }
+        let sidebar = "/v0/spaces/sidebar?widgets=true"
+        let before = await transport.requestedPaths()
+        XCTAssertFalse(before.contains(sidebar))
+        await transport.turnOnStemCells()
+        _ = try await wait(engine) { $0.usesSpaces }
+        for _ in 0..<200 {
+            if (await transport.requestedPaths()).contains(sidebar) { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let after = await transport.requestedPaths()
+        XCTAssertTrue(after.contains(sidebar))
         await engine.stop()
     }
 }

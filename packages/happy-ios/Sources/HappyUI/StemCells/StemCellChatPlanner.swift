@@ -20,6 +20,10 @@ actor StemCellChatPlanner {
         var subagentTitles: [String: String] = [:]
         /// Inline pages' heights as they measured themselves, by artifact ID.
         var pageHeights: [String: CGFloat] = [:]
+        /// The composer's model, which a failure card offers to continue on.
+        var switchTarget: SwitchTarget?
+        /// Models' names by ID, for what a failure was switched to.
+        var modelNames: [String: String] = [:]
     }
 
     /// An inline page's height until it has measured itself.
@@ -37,17 +41,24 @@ actor StemCellChatPlanner {
     func plans(_ items: [StemCellChatItem], key: Key, copied: String?, opened: Set<String> = [], proposals: [String: StemCellProposalShown] = [:]) -> [ChatRowPlan] {
         var next: [String: (item: StemCellChatItem, key: Key, copied: Bool, opened: Bool, proposals: [StemCellProposalShown?], plan: ChatRowPlan)] = [:]
         var plans: [ChatRowPlan] = []
+        // Only a failure card reads the composer's model: another pick
+        // plans no other row again.
+        var others = key
+        others.switchTarget = nil
+        others.modelNames = [:]
         for item in items {
             let isCopied = copied == item.id
             let isOpened = opened.contains(item.id)
             let shown = item.proposalIds.map { proposals[$0] }
+            var reads = others
+            if case .failure = item.role { reads = key }
             let plan: ChatRowPlan
-            if let cached = cache[item.id], cached.item == item, cached.key == key, cached.copied == isCopied, cached.opened == isOpened, cached.proposals == shown {
+            if let cached = cache[item.id], cached.item == item, cached.key == reads, cached.copied == isCopied, cached.opened == isOpened, cached.proposals == shown {
                 plan = cached.plan
             } else {
-                plan = Self.plan(item, key: key, copied: isCopied, opened: isOpened, syntax: syntax, proposals: proposals)
+                plan = Self.plan(item, key: reads, copied: isCopied, opened: isOpened, syntax: syntax, proposals: proposals)
             }
-            next[item.id] = (item, key, isCopied, isOpened, shown, plan)
+            next[item.id] = (item, reads, isCopied, isOpened, shown, plan)
             if plan.size.height > 0 { plans.append(plan) }
         }
         cache = next
@@ -58,6 +69,9 @@ actor StemCellChatPlanner {
         let (width, environment) = (key.width, key.environment)
         if case .collaborator(let agentId, let explanation) = item.role {
             return collaborator(item, agentId: agentId, explanation: explanation, key: key, opened: opened, syntax: syntax)
+        }
+        if case .failure(let failure) = item.role {
+            return Self.failure(failure, id: item.id, key: key, syntax: syntax)
         }
         guard !item.pieces.isEmpty else { return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: []) }
         typealias M = StemCellMessageLayout.Metrics
@@ -219,10 +233,76 @@ actor StemCellChatPlanner {
             let alpha: CGFloat = item.delivery == .sending || item.delivery == .pending ? 0.6 : 1
             let label = [text, failure ? Strings.StemCells.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
             return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, alpha: alpha, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles)
-        case .collaborator:
+        case .collaborator, .failure:
             // Planned above.
             return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])
         }
+    }
+
+    /// What a failure card's action does, as desktop's card offers it:
+    /// run the turn again, or, with another model picked in the composer,
+    /// move there and continue.
+    enum FailureAction: Equatable {
+        case retry
+        case switchTo(SwitchTarget)
+    }
+
+    /// The model the composer would send with, which a failure card offers
+    /// to continue on; `label` names the model as its picker does.
+    struct SwitchTarget: Equatable {
+        var mode: AgentWire.Mode
+        var label: String
+    }
+
+    /// The action a failure's card offers now; nil once it was acted on,
+    /// or where running it again can't help.
+    static func action(_ failure: StemCellFailure, target: SwitchTarget?) -> FailureAction? {
+        guard failure.resolution == nil, failure.retryable else { return nil }
+        if let target, let providerId = failure.providerId,
+           target.mode.providerId != providerId || (failure.modelId.map { $0 != target.mode.modelId } ?? false) {
+            return .switchTo(target)
+        }
+        return .retry
+    }
+
+    /// desktop's failure card (`ConversationErrorCard`): "Failure", the
+    /// reason, the daemon's steps, and Retry or a switch, which becomes
+    /// what was done once it is.
+    static func failure(_ failure: StemCellFailure, id: String, key: Key, syntax: CodeSyntaxService) -> ChatRowPlan {
+        let environment = key.environment
+        func piece(_ text: String, _ color: ColorToken, selectable: Bool = false) -> MarkdownPiece {
+            MarkdownPiece(text, color: color, selectable: selectable, diagrams: ChatMermaidHeights(row: id), syntax: syntax, in: environment, body: ChatTextStyles.stemCellsText, header: ChatTextStyles.stemCellsHeader)
+        }
+        var pieces: [MarkdownPiece] = [piece("**\(Strings.StemCells.failure)**", Palette.statusError), piece(failure.reason, Palette.text, selectable: true)]
+        pieces += failure.steps.map { piece($0, Palette.textSecondary) }
+        let action = Self.action(failure, target: key.switchTarget)
+        let actionText: String? = switch action {
+        case .retry?: Strings.StemCells.retry
+        case .switchTo(let target)?: Strings.StemCells.switchAndContinue(target.label)
+        case nil:
+            switch failure.resolution {
+            case .retried?: Strings.StemCells.retried
+            case .switched(_, let modelId)?: Strings.StemCells.switched(key.modelNames[modelId] ?? modelId)
+            case .handled?: Strings.StemCells.handled
+            case nil: nil
+            }
+        }
+        if let actionText { pieces.append(piece(actionText, action == nil ? Palette.textSecondary : Palette.textLink)) }
+        let layout = StemCellMessageLayout.agent(width: key.width, maxContentWidth: key.maxContentWidth, parts: pieces.map { .markdown($0.blocks) })
+        var items: [ChatDrawItem] = []
+        var hits: [ChatHit] = []
+        for (placed, piece) in zip(layout.parts, pieces) {
+            guard case .markdown(let markdown, let origin) = placed else { continue }
+            let drawn = piece.draw(markdown, origin: origin)
+            items += drawn.items
+            hits += drawn.hits
+        }
+        // The action's whole line answers, a finger's room above and below.
+        if action != nil, case .markdown(let markdown, let origin)? = layout.parts.last {
+            hits.insert(ChatHit(frame: CGRect(origin: origin, size: markdown.size).insetBy(dx: 0, dy: -8), action: .retry(localId: failure.messageId)), at: 0)
+        }
+        let spoken = [Strings.StemCells.failure, failure.reason] + failure.steps + (actionText.map { [$0] } ?? [])
+        return ChatRowPlan(id: id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"))
     }
 
     /// happy-desktop's `AgentMessageActivity`: who it came from on one line,

@@ -12,6 +12,9 @@ public struct StemCellChatItem: Equatable, Sendable, Identifiable {
         /// not the one that manages it: one compact row naming the sender,
         /// opened to read what it said (happy-desktop's `agentMessage` activity).
         case collaborator(agentId: String, explanation: String?)
+        /// A turn that failed: desktop's failure card, its reason the item's
+        /// text, with Retry or a switch to the composer's model.
+        case failure(StemCellFailure)
     }
 
     public enum Delivery: Equatable, Sendable {
@@ -195,6 +198,9 @@ public struct StemCellChatSnapshot: Equatable, Sendable {
     public var subagentTitles: [String: String] = [:]
     /// Why the conversation could not be read.
     public var error: String?
+    /// The conversation's own title, once the daemon has written one: what
+    /// the header reads while its row has no name of its own.
+    public var title: String?
     /// The model, account and effort the next message goes with: the last
     /// one sent, a pick, or the computer's default.
     public var mode: AgentWire.Mode?
@@ -486,7 +492,10 @@ public actor StemCellConversation {
     }
 
     private func adopt(_ start: AgentWire.Bootstrap, _ history: AgentWire.MessagesResponse) {
-        mode = picked ?? start.mode ?? mode
+        // The draft carries the mode the next message goes with (the last
+        // pick, on any device), so it stands over what the agent last ran
+        // with; this phone's own draft coming back would otherwise drop it.
+        mode = picked ?? start.draft?.value?.mode ?? start.mode ?? mode
         snapshot.mode = mode
         if let draft = start.draft { adoptDraft(draft, publishes: false) }
         if mode == nil, defaultMode == nil { defaultMode = Task { [client] in try await client.defaultMode() } }
@@ -624,6 +633,7 @@ public actor StemCellConversation {
             if let value = changes["retrying"] { retrying = value == .null ? nil : Self.decode(AgentWire.AgentRetrying.self, value) }
             if let value = changes["pendingQuestionId"] { question = value.stringValue != nil }
             if let running = changes["subagents"]?["running"]?.numberValue { subagentsRunning = Int(running) }
+            if let value = changes["title"] { snapshot.title = value.stringValue }
         case "agent.draft.updated":
             guard let draft = payload["draft"].flatMap({ Self.decode(AgentWire.Draft.self, $0) }) else { return }
             adoptDraft(draft, publishes: false)
@@ -1104,6 +1114,17 @@ public actor StemCellConversation {
         try? await client.abort(agentId)
     }
 
+    /// Desktop's failure card actions: the failed turn run again, or with
+    /// `mode` moved to that model and continued there. The card shows what
+    /// was done at once; the continued run comes as events.
+    public func resolveFailure(_ messageId: String, switchTo mode: AgentWire.Mode? = nil) async throws {
+        let message = try await client.resolveFailure(agentId, messageId: messageId, switchTo: mode, mutationId: ClientID.make())
+        messages[message.id] = message
+        // Moved there: the next message goes with it too, here and where
+        // the draft is read again.
+        if let mode { setMode(mode) } else { publish() }
+    }
+
     private func markRead() {
         let client = client
         let agentId = agentId
@@ -1227,7 +1248,10 @@ public actor StemCellConversation {
         retrying = agent.retrying
         question = agent.pendingQuestionId != nil
         subagentsRunning = agent.subagents?.running ?? 0
-        if agent.id == agentId { parentAgentId = agent.parentAgentId }
+        if agent.id == agentId {
+            parentAgentId = agent.parentAgentId
+            snapshot.title = agent.title
+        }
     }
 
     /// The agent that sent `message`, when it is neither this one nor the
@@ -1254,6 +1278,12 @@ public actor StemCellConversation {
     }
 
     private func item(_ message: AgentWire.Message, shown: inout [String: StemCellMedia], streaming: Bool) -> StemCellChatItem? {
+        if message.role == "service" {
+            // Only a failure is shown, as desktop's card; other service
+            // messages are the daemon's housekeeping.
+            guard let failure = StemCellFailure.of(message) else { return nil }
+            return StemCellChatItem(id: message.id, role: .failure(failure), pieces: [.text(failure.reason)], delivery: .sent)
+        }
         if message.role == "user" || message.role == "agent", let sender = Self.collaborator(message, agentId: agentId, parentAgentId: parentAgentId) {
             // Its words as they came, read only when opened; desktop trims the
             // daemon's addressing line from an agent-role message alone.
