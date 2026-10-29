@@ -274,8 +274,8 @@ private extension CGFloat {
 }
 
 /// The glass bar on a screen, as a child of it, so it follows the screen's
-/// own comings and goings: appearing, the system bar goes and the edge
-/// swipe goes back as the hidden bar's would (`StemCellsSwipeBack`);
+/// own comings and goings: appearing, the system bar goes and both edge
+/// and content-area back swipes work with the hidden bar (`StemCellsSwipeBack`);
 /// covered by a screen of the system bar's, the bar comes back for it.
 /// Settings and the link sheet make their own bars; the screens pushed
 /// from them, at any depth, get one made from their navigation item: back
@@ -399,7 +399,6 @@ final class StemCellsGlassChrome: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        swipeBack.detach()
         guard let screen = parent, let navigation = screen.navigationController,
               let top = navigation.topViewController, top !== screen else { return }
         // Pushed over this one, the stack under it kept: it wears glass too,
@@ -410,6 +409,11 @@ final class StemCellsGlassChrome: UIViewController {
         // Otherwise it has the bar it expects (home hides it again itself);
         // a chat has its own header.
         if Self.chrome(of: top) == nil, !(top is StemCellChatViewController) { navigation.setNavigationBarHidden(false, animated: animated) }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        swipeBack.detach()
     }
 }
 #endif
