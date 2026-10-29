@@ -27,7 +27,9 @@ final class StemCellsRowTimeTests: XCTestCase {
         XCTAssertEqual(text(hoursAgo: 24 * 6), "Thu")
     }
 
-    func testOlderIsTheDate() {
-        XCTAssertEqual(text(hoursAgo: 24 * 7), "21/10/26")
+    func testOlderIsTheDayAndMonth() {
+        XCTAssertEqual(text(hoursAgo: 24 * 7), "21/10")
+        XCTAssertEqual(StemCellsRowTime.text((now.timeIntervalSince1970 - 24 * 7 * 3600) * 1000, now: now, calendar: calendar, locale: Locale(identifier: "ru_RU")), "21.10")
+        XCTAssertEqual(StemCellsRowTime.text((now.timeIntervalSince1970 - 24 * 7 * 3600) * 1000, now: now, calendar: calendar, locale: Locale(identifier: "en_US")), "10/21")
     }
 }

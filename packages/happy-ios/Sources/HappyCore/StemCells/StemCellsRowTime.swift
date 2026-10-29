@@ -2,7 +2,7 @@ import Foundation
 
 /// The time at the end of a story row's first line, as Telegram's chat
 /// list writes a chat's last message: the clock time today, the weekday
-/// within the week, the date before that.
+/// within the week, the day and month before that (desktop's too).
 public enum StemCellsRowTime {
     public static func text(_ ms: Double, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
         let date = Date(timeIntervalSince1970: ms / 1000)
@@ -16,7 +16,7 @@ public enum StemCellsRowTime {
         } else if let week = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)), date >= week {
             formatter.setLocalizedDateFormatFromTemplate("EEE")
         } else {
-            formatter.setLocalizedDateFormatFromTemplate("dMMyy")
+            formatter.setLocalizedDateFormatFromTemplate("dM")
         }
         return formatter.string(from: date)
     }

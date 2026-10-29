@@ -41,6 +41,10 @@ final class StemCellsRowView: UIView {
     var pressed = false {
         didSet { if pressed != oldValue { applyState() } }
     }
+    /// The row right above the selected one: its hairline goes.
+    var aboveSelected = false {
+        didSet { if aboveSelected != oldValue { applyState() } }
+    }
     /// The row is being carried: it rides above the others.
     var lifted = false {
         didSet { if lifted != oldValue { applyState() } }
@@ -266,7 +270,7 @@ final class StemCellsRowView: UIView {
         layer.shadowRadius = 12
         layer.shadowOffset = CGSize(width: 0, height: 4)
         // The hairline goes where the row is filled.
-        separator.alpha = selected || pressed || lifted || row?.isNew == true ? 0 : 1
+        separator.alpha = selected || aboveSelected || pressed || lifted || row?.isNew == true ? 0 : 1
     }
 
     override func layoutSubviews() {

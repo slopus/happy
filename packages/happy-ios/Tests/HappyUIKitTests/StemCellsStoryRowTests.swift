@@ -140,6 +140,10 @@ final class StemCellsStoryRowTests: XCTestCase {
         // Hairlines between them, none after the last.
         XCTAssertEqual(frames.dropLast().filter { $0.separator != nil }.count, 9)
         XCTAssertNil(frames.last?.separator)
+        // A selected row parts the hairlines on both its sides.
+        sidebar.selectedRowId = rows[4].id
+        XCTAssertEqual(rows.compactMap { rowView(sidebar, $0.id)?.aboveSelected == true ? $0.id : nil }, [rows[3].id])
+        XCTAssertEqual(rowView(sidebar, rows[4].id)?.selected, true)
     }
 
     func testTheRingOpensStoriesAndTheTextOpensTheChat() throws {

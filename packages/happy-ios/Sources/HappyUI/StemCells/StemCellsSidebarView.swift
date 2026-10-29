@@ -49,6 +49,7 @@ final class StemCellsSidebarView: UIScrollView {
         didSet {
             guard selectedRowId != oldValue else { return }
             for (id, view) in views { view.selected = id == selectedRowId }
+            applyAboveSelected()
         }
     }
 
@@ -175,6 +176,7 @@ final class StemCellsSidebarView: UIScrollView {
             view.selected = row.id == selectedRowId
             touched += 1
         }
+        applyAboveSelected()
         for (id, view) in views where !live.contains(id) {
             view.removeFromSuperview()
             views.removeValue(forKey: id)
@@ -358,6 +360,14 @@ final class StemCellsSidebarView: UIScrollView {
     }
 
     func view(for rowId: String) -> StemCellsRowView? { views[rowId] }
+
+    /// The row just above the selected one drops its hairline: the
+    /// selection's fill parts the list there, as desktop's does.
+    private func applyAboveSelected() {
+        for (index, row) in rows.enumerated() {
+            views[row.id]?.aboveSelected = index + 1 < rows.count && rows[index + 1].id == selectedRowId
+        }
+    }
 
     private func row(at point: CGPoint) -> StemCellsRowView? {
         for view in views.values where view.frame.contains(point) { return view }
