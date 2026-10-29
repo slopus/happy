@@ -159,13 +159,17 @@ public enum Markdown {
                     rows.append((number(next.group(1, in: nextTrimmed)), leadingWhitespace(raw), String(nextTrimmed.utf16Dropping(next.range.length))))
                     index += 1
                 }
-                let base = rows[0].indent
+                let base = rows.map(\.indent).min() ?? 0
                 blocks.append(.numberedList(rows.map {
                     MarkdownNumberedItem(number: $0.number, depth: floorHalf($0.indent - base), spans: parseSpans($0.content, header: false))
                 }))
                 continue
             }
 
+            // Depth counts from the list's least indented item, never its
+            // first: a list can open on a nested item (sub-bullets under a
+            // numbered line, which the numbered list doesn't take) and go
+            // back out, and a negative depth is no depth at all.
             if let match = Patterns.bullet.firstMatch(in: trimmed) {
                 let indent = leadingWhitespace(line)
                 var rows = [(indent: indent, content: String(trimmed.utf16Dropping(match.range.length)))]
@@ -176,7 +180,7 @@ public enum Markdown {
                     rows.append((leadingWhitespace(raw), String(nextTrimmed.utf16Dropping(next.range.length))))
                     index += 1
                 }
-                let base = rows[0].indent
+                let base = rows.map(\.indent).min() ?? 0
                 blocks.append(.list(rows.map {
                     MarkdownListItem(depth: floorHalf($0.indent - base), spans: parseSpans($0.content, header: false))
                 }))

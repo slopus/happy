@@ -318,6 +318,12 @@ struct MarkdownPiece {
 
     static let bullets = ["•", "◦", "▪"]
 
+    /// The marker at `depth`, whatever the parser said: off the planner's
+    /// thread, one odd message must never trap the app.
+    static func bullet(depth: Int) -> String {
+        bullets[min(max(0, depth), bullets.count - 1)]
+    }
+
     /// `selectable`: each paragraph, list item, code block and table cell
     /// answers a long press (MarkdownView's `selectable` Text). Off where
     /// the message copies as a whole instead (`externalCopyHandler`).
@@ -366,7 +372,7 @@ struct MarkdownPiece {
 
             case .list(let items):
                 let rows = items.map { item in
-                    (MeasuredText(body.string(Self.bullets[min(item.depth, Self.bullets.count - 1)], color: color, in: environment)),
+                    (MeasuredText(body.string(Self.bullet(depth: item.depth), color: color, in: environment)),
                      MeasuredText(ChatSpans.string(item.spans, style: body, color: color, in: environment)), item.depth)
                 }
                 blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))

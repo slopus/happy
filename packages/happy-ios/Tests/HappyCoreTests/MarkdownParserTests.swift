@@ -153,10 +153,12 @@ final class MarkdownParserTests: XCTestCase {
         ])
     }
 
-    func testListDepthIsMeasuredFromTheFirstItemAndRoundsDown() {
+    /// From the least indented item, not the first (happy-app's -1 here
+    /// trapped build 47's bullets), rounding down.
+    func testListDepthIsMeasuredFromTheLeastIndentedItemAndRoundsDown() {
         let md = ["   - a", " - b", "      - c"].joined(separator: "\n")
         guard case .list(let items) = Markdown.parse(md).first else { return XCTFail() }
-        XCTAssertEqual(items.map(\.depth), [0, -1, 1])
+        XCTAssertEqual(items.map(\.depth), [1, 0, 2])
     }
 
     func testABlankLineEndsAList() {

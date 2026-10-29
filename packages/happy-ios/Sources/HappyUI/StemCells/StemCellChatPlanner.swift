@@ -147,7 +147,7 @@ actor StemCellChatPlanner {
                 case (.media(let frames), .gallery(let gallery)):
                     for (one, frame) in zip(gallery, frames) { media(one, frame) }
                 case (.tree(let tree, let origin), .tree(let planned)):
-                    for (index, frame) in tree.items.sorted(by: { $0.key < $1.key }) {
+                    for (index, frame) in tree.items.sorted(by: { $0.key < $1.key }) where planned.media.indices.contains(index) {
                         let one = planned.media[index]
                         let placed = frame.offsetBy(dx: origin.x, dy: origin.y)
                         if one.isVisual { media(one, placed) } else { card(StemCellChatMediaPlan.card(file: one), placed) }
