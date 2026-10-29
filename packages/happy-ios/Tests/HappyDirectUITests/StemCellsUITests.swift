@@ -245,33 +245,178 @@ final class StemCellsUITests: XCTestCase {
         capture("layout-follow-up-answered")
     }
 
-    /// New work left with nothing in it goes: the sidebar comes back without
-    /// its row, never showing it on the way, and the computer drops it too
-    /// (it isn't there after a fresh launch either).
-    func testEmptyNewWorkGoes() {
+    /// New work stands until it is used: leaving it, any way, closes
+    /// nothing, and the next new work opens that same one instead of
+    /// making another, so there is never more than one empty. Each way out
+    /// in turn: the back button with the keyboard up or down, the edge
+    /// swipe, a swipe let go of halfway then the back button, the "+"
+    /// sheet opened and closed (from the chat and from the dock), a model
+    /// or effort picked, and the app killed. New work with a draft on the
+    /// computer (the driver's `draft-newest`) is not reused.
+    func testNewWorkIsReused() {
+        // Every way is reported, not only the first that fails.
+        continueAfterFailure = true
+        print("STEM_STEP undraft")
         home()
         pause(1.5)
         let untitled = app.descendants(matching: .any).matching(identifier: "stem-row:space:New")
-        let before = untitled.count
-        app.descendants(matching: .any)["stem-new-work"].tap()
-        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 3))
-        pause(1)
-        if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
-        capture("empty-new-work")
-        app.tapBack()
-        var most = 0
-        for _ in 0..<6 {
-            most = max(most, untitled.count)
-            pause(0.25)
+        let composer = app.textViews["stem-composer"]
+        // How many the computer holds, as the driver's `count-new` reads it.
+        let counted = URL(fileURLWithPath: "/Users/kirilldubovitskiy/Happy/Workspaces/happy/ios-settings-rework/.context/tmp/count-new")
+        func onComputer() -> Int? {
+            try? FileManager.default.removeItem(at: counted)
+            print("STEM_STEP count-new")
+            let deadline = Date().addingTimeInterval(10)
+            while Date() < deadline {
+                if let text = try? String(contentsOf: counted, encoding: .utf8), let count = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)) { return count }
+                pause(0.3)
+            }
+            return nil
         }
-        XCTAssertEqual(most, before, "the empty new work's row showed as the sidebar came back")
-        capture("empty-new-work-gone")
+        let only = ProcessInfo.processInfo.environment["STEM_EXIT_PATHS"]?.split(separator: ",").map(String.init)
+        func start(fromPlus: Bool = false, settle: Bool = true) {
+            if fromPlus {
+                app.buttons["Add a picture"].firstMatch.tap()
+            } else {
+                app.descendants(matching: .any)["stem-new-work"].tap()
+            }
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            guard settle else { return }
+            pause(1)
+            if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
+        }
+        func swipeFromEdge(to x: CGFloat) {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.005, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: 0.5)), withVelocity: x < 0.5 ? .slow : .fast, thenHoldForDuration: x < 0.5 ? 0.3 : 0)
+        }
+        func closeSheet() {
+            let close = app.buttons["attach-close"]
+            XCTAssertTrue(close.waitForExistence(timeout: 5), "+ opened no sheet")
+            pause(0.8)
+            close.tap()
+            pause(1)
+        }
+        func keyboardDown() {
+            app.descendants(matching: .any)["stem-intro"].firstMatch.tap()
+            pause(1)
+            if app.keyboards.firstMatch.exists { app.swipeDown(velocity: .slow); pause(1) }
+        }
+        func pickEffort() {
+            let effort = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Effort: ")).firstMatch
+            XCTAssertTrue(effort.waitForExistence(timeout: 5), "no effort chip")
+            pickIn(effort, "stem-picker-efforts", effort.label.contains("High") ? "Low" : "High", shot: "reuse-effort")
+        }
+        func pickModel() {
+            let model = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
+            XCTAssertTrue(model.waitForExistence(timeout: 5), "no model chip")
+            open(model, "stem-picker-models")
+            // A model's line, not the panel's links out (benchmarks).
+            let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND selected == false AND NOT (identifier IN %@)", "stem-picker-row:", ["stem-picker-row:benchmarks"]))
+            let other = rows.allElementsBoundByIndex.first { $0.isHittable }
+            XCTAssertNotNil(other, "no other model to pick")
+            other?.tap()
+            pause(1.5)
+        }
+        // The first new work: the one every way below comes back to.
+        start()
+        capture("reuse-first")
+        app.tapBack()
         pause(2)
+        let shown = untitled.count
+        let held = onComputer()
+        XCTAssertGreaterThan(shown, 0, "leaving new work closed it")
+        let paths: [(String, () -> Void)] = [
+            ("again", { start(); self.app.tapBack() }),
+            ("back-keyboard-down", { start(); keyboardDown(); self.app.tapBack() }),
+            ("edge-swipe", { start(); swipeFromEdge(to: 0.9) }),
+            ("edge-swipe-cancelled-then-back", {
+                start()
+                swipeFromEdge(to: 0.15)
+                self.pause(1.5)
+                XCTAssertTrue(composer.exists, "a swipe let go of early left the chat")
+                self.app.tapBack()
+            }),
+            ("plus-sheet-then-back", { start(); self.app.buttons["Add a picture"].firstMatch.tap(); closeSheet(); self.app.tapBack() }),
+            ("dock-plus-then-back", { start(fromPlus: true); closeSheet(); self.app.tapBack() }),
+            ("effort-then-back", { start(); pickEffort(); self.app.tapBack() }),
+            ("model-then-back", { start(); pickModel(); self.app.tapBack() }),
+            ("back-at-once", { start(settle: false); self.app.tapBack() }),
+            ("killed", {
+                start()
+                self.pause(1)
+                self.app.terminate()
+                self.app.launch()
+                self.home()
+                self.pause(3)
+            }),
+        ]
+        for (name, leave) in paths where only?.contains(name) ?? true {
+            print("STEM_REUSE \(name)")
+            leave()
+            pause(2)
+            capture("reuse-\(name)")
+            XCTAssertEqual(untitled.count, shown, "\(name): another new work showed")
+            if let held { XCTAssertEqual(onComputer(), held, "\(name): the computer made another") }
+        }
+        // Written in on another device (a draft there): not offered as
+        // empty. Another empty one may be; the drafted one never is.
+        print("STEM_STEP draft-newest")
+        pause(2)
+        start()
+        XCTAssertFalse((composer.value as? String ?? "").contains("keep this"), "new work holding a draft was reused")
+        capture("reuse-drafted")
+        app.tapBack()
+        pause(2)
+        print("STEM_STEP undraft")
+        pause(2)
+    }
+
+    /// Archive and Leave from a row's hold menu take the row off at once,
+    /// with the computer made to answer seconds later
+    /// (`STEM_SLOW_WRITES`), and nothing brings it back while it does or
+    /// after: no read, no event. Two fresh tasks each run (the driver's
+    /// `make-removables`).
+    func testRemovalsAreOptimistic() {
+        let run = String(Int(Date().timeIntervalSince1970) % 100_000)
+        try? run.write(toFile: "/Users/kirilldubovitskiy/Happy/Workspaces/happy/ios-settings-rework/.context/tmp/remove-run", atomically: true, encoding: .utf8)
+        print("STEM_STEP make-removables")
+        pause(3)
         app.terminate()
+        app.launchEnvironment["STEM_SLOW_WRITES"] = "4"
         app.launch()
         home()
         pause(2)
-        XCTAssertEqual(untitled.count, before, "the computer kept the empty new work")
+        for (name, act) in [("Archive me \(run)", "Archive task"), ("Leave me \(run)", "Leave task")] {
+            let target = row("space", name)
+            XCTAssertTrue(target.waitForExistence(timeout: 10), "no \(name)")
+            bringIntoView(target)
+            pause(1)
+            capture("remove-\(act)-before")
+            target.press(forDuration: 1.0)
+            let item = app.buttons[act]
+            XCTAssertTrue(item.waitForExistence(timeout: 3), "\(name)'s menu has no \(act)")
+            print("STEM_REMOVE \(act)")
+            item.tap()
+            let tapped = Date()
+            XCTAssertTrue(until(1.5) { !target.exists }, "\(act): the row waited for the computer")
+            print("STEM_REMOVE_GONE \(act) \(Date().timeIntervalSince(tapped))")
+            capture("remove-\(act)-at-once")
+            // Through the slow answer and the events after it.
+            var back = false
+            for _ in 0..<40 {
+                if target.exists { back = true }
+                pause(0.25)
+            }
+            XCTAssertFalse(back, "\(act): the row came back before or after the computer answered")
+        }
+        app.terminate()
+        app.launchEnvironment["STEM_SLOW_WRITES"] = nil
+        app.launch()
+        home()
+        pause(3)
+        for name in ["Archive me \(run)", "Leave me \(run)"] {
+            XCTAssertFalse(row("space", name).exists, "the computer still has \(name)")
+        }
     }
 
     /// New work, then back to the sidebar to watch its stem cell hatch into
@@ -581,6 +726,15 @@ final class StemCellsUITests: XCTestCase {
         let made = rowUnder(section)
         XCTAssertEqual(made?.identifier, "stem-row:space:New", "the new work isn't right under its section")
         capture("section-add-made")
+        // The same "+" again opens that one: no second empty one under it.
+        let untitled = app.descendants(matching: .any).matching(identifier: "stem-row:space:New")
+        let count = untitled.count
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: section.frame.maxX - 70, dy: section.frame.midY)).tap()
+        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 6), "the + opened nothing the second time")
+        pause(1)
+        app.tapBack()
+        pause(1.5)
+        XCTAssertEqual(untitled.count, count, "the + made a second empty new work under its section")
         // Put away again.
         if let made {
             made.press(forDuration: 1.0)

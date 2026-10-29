@@ -604,14 +604,23 @@ final class StemCellsHomeViewController: UIViewController {
     /// at once, and the conversation opens over home without going anywhere
     /// (`StemCellsNewWorkTransition`): the composer rides the keyboard up from
     /// the dock as the intro fades in, or, from the dock's "+", stays and the
-    /// "+" sheet comes up over it.
+    /// "+" sheet comes up over it. Leaving new work never closes it, so
+    /// new work already standing empty is opened instead, where it is
+    /// (desktop's rule): from the dock any, newest first; from a heading's
+    /// "+" only one under that heading.
     func makeNewWork(in sectionId: String? = nil, library: Bool = false) {
         guard let session, !creating, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         creating = true
         StemCellsHaptics.play(.newWork)
         let store = session.store
         Task { @MainActor in
-            let creation = await store.createStemCell(sectionId: sectionId)
+            let creation: StemCellCreation
+            if let empty = await emptyNewWork(under: sectionId) {
+                let agentId = empty.agentId
+                creation = StemCellCreation(spaceId: empty.spaceId, agentId: agentId, workspaceId: empty.workspaceId, created: empty.creation ?? Task { agentId })
+            } else {
+                creation = await store.createStemCell(sectionId: sectionId)
+            }
             creating = false
             let rowId = "space:\(creation.spaceId)"
             session.selectedRowId = rowId
@@ -625,6 +634,18 @@ final class StemCellsHomeViewController: UIViewController {
             // Over the screen it goes to, as that screen comes in.
             if library { chat.presentAttach(from: navigation) }
         }
+    }
+
+    /// The newest new work nothing was written in, here or on the
+    /// computer: under `heading` when a heading's "+" asks, else anywhere.
+    private func emptyNewWork(under heading: String?) async -> StemCellsStore.NewWork? {
+        guard let session else { return nil }
+        // The newest few: each costs the computer a read, and a tap waits on them.
+        for work in await session.store.newWork(under: heading).prefix(3) {
+            if let draft = await session.drafts.draft(work.agentId), !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
+            if await session.store.isEmpty(work) { return work }
+        }
+        return nil
     }
 
     @objc private func dockTapped(_ gesture: UITapGestureRecognizer) {
@@ -693,7 +714,7 @@ final class StemCellsHomeViewController: UIViewController {
     private func closing(_ row: StemCellsRow) -> [(title: String, icon: String, destructive: Bool, run: () -> Void)] {
         guard let store = session?.store, !row.isHappy else { return [] }
         if row.kind == .session, let agentId = row.agentId {
-            return [(Strings.StemCells.archiveSubtask, "archive", true, { Task { await store.archiveSubtask(agentId) } })]
+            return [(Strings.StemCells.archiveSubtask, "archive", true, { Task { await store.archiveSubtask(agentId, nodeId: row.nodeId) } })]
         }
         guard row.kind == .space else { return [] }
         if row.isUntouchedStemCell, let spaceId = row.spaceId {
@@ -703,14 +724,14 @@ final class StemCellsHomeViewController: UIViewController {
         switch row.targetKind {
         case "task":
             var acts: [(title: String, icon: String, destructive: Bool, run: () -> Void)] = [
-                (Strings.StemCells.leaveTask, "close", false, { Task { await store.leave(taskId: targetId) } }),
+                (Strings.StemCells.leaveTask, "close", false, { Task { await store.leave(taskId: targetId, nodeId: row.nodeId) } }),
             ]
             if row.canArchive {
-                acts.append((Strings.StemCells.archiveTask, "archive", true, { Task { await store.archive(kind: "task", id: targetId) } }))
+                acts.append((Strings.StemCells.archiveTask, "archive", true, { Task { await store.archive(kind: "task", id: targetId, nodeId: row.nodeId) } }))
             }
             return acts
         case "bot":
-            return [(Strings.StemCells.archiveBot, "archive", true, { Task { await store.archive(kind: "bot", id: targetId) } })]
+            return [(Strings.StemCells.archiveBot, "archive", true, { Task { await store.archive(kind: "bot", id: targetId, nodeId: row.nodeId) } })]
         default:
             return []
         }

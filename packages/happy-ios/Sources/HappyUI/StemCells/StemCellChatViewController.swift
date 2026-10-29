@@ -32,11 +32,6 @@ final class StemCellChatViewController: UIViewController {
     /// What the push's first frame had: the transcript, or nothing yet.
     private var firstFrame: Bool?
     private let spaceId: String?
-    /// New work nobody named or wrote in, as its row says.
-    private var untouched: Bool
-    /// Named or written in here: kept, whatever the row says until the
-    /// store catches up.
-    private var kept = false
     private let opensFocused: Bool
     /// New work brings the keyboard up as it opens, unless it opens on the "+" sheet.
     var focusesOnOpen = true
@@ -172,7 +167,6 @@ final class StemCellChatViewController: UIViewController {
         self.intro = intro
         self.previewing = previewing
         opensFocused = creation != nil
-        untouched = creation != nil
         focusPending = creation != nil
         if creation == nil {
             let held = session.warm.hold(agentId)
@@ -342,7 +336,12 @@ final class StemCellChatViewController: UIViewController {
         // Leaving keeps a name being typed, as a tap away does.
         titleView.finishEditing()
         picker?.close(animated: false)
-        if isMovingFromParent { putAwayIfEmpty() }
+        // Left holding something, new work isn't offered again as empty.
+        if isMovingFromParent, !previewing, let spaceId {
+            let holding = !composerIsEmpty
+            let store = session.store
+            Task { await store.leftHolding(spaceId, holding) }
+        }
         if !previewing {
             let conversation = conversation
             Task { await conversation.flushDraft() }
@@ -352,25 +351,6 @@ final class StemCellChatViewController: UIViewController {
         // A screen pushed over this one has the bar it expects.
         if !previewing, !isMovingFromParent, let top = navigationController?.topViewController, top !== self, !(top is StemCellChatViewController), !(top is StemCellSessionDetailViewController) {
             navigationController?.setNavigationBarHidden(false, animated: animated)
-        }
-    }
-
-    /// New work left with nothing in it goes: off the sidebar as the screen
-    /// starts to go, so the sidebar comes back without it, and off the
-    /// computer once it has gone. A swipe back let go of halfway keeps it.
-    private func putAwayIfEmpty() {
-        guard !previewing, let spaceId, untouched, !kept, chat.loaded, chat.items.isEmpty, !card.hasContent else { return }
-        putAway = true
-        let store = session.store
-        Task { await store.putAway(spaceId, true) }
-        guard let coordinator = transitionCoordinator else {
-            Task { await store.discard(spaceId) }
-            return
-        }
-        coordinator.animate(alongsideTransition: nil) { context in
-            // Read now: the context doesn't outlive this call.
-            let cancelled = context.isCancelled
-            Task { cancelled ? await store.putAway(spaceId, false) : await store.discard(spaceId) }
         }
     }
 
@@ -389,7 +369,7 @@ final class StemCellChatViewController: UIViewController {
             proposals.stop()
             // Read ahead, it stays read for a quick way back.
             if let warm {
-                session.warm.release(warm.chat, token: warm.token, opened: !previewing, putAway: putAway)
+                session.warm.release(warm.chat, token: warm.token, opened: !previewing)
             } else {
                 Task { await conversation.stop() }
             }
@@ -405,7 +385,6 @@ final class StemCellChatViewController: UIViewController {
         let agentId = media.agentId
         card.blur()
         let detail = StemCellSessionDetailViewController(session: session, agentId: agentId, title: title ?? "", spaceId: spaceId)
-        detail.onRenamed = { [weak self] in self?.kept = true }
         navigationController?.pushViewController(detail, animated: true)
     }
 
@@ -505,8 +484,6 @@ final class StemCellChatViewController: UIViewController {
             sidebarRows = snapshot.allRows
             proposals.spacesChanged()
         }
-        // Under a folded section too.
-        if let spaceId, let row = snapshot.allRows.first(where: { $0.spaceId == spaceId }) { untouched = row.isUntouchedStemCell }
         guard let spaceId, let row = snapshot.allRows.first(where: { $0.spaceId == spaceId }) else { return }
         if title != row.label { title = row.label }
         titleView.text = row.label
@@ -538,8 +515,6 @@ final class StemCellChatViewController: UIViewController {
     private func showIntro() {
         introView.isHidden = intro == nil || reading(chat) || (!chat.items.isEmpty && !planShown)
     }
-    /// Left empty and put away as the screen went: nothing to keep of it.
-    private var putAway = false
 
     /// New work the daemon hasn't made yet: it has no detail to open.
     private var creating = false
@@ -1298,7 +1273,6 @@ final class StemCellChatViewController: UIViewController {
         let text = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let picked = pictures.images.map(\.attachment)
         guard !text.isEmpty || !picked.isEmpty else { return }
-        kept = true
         card.setText("", selection: NSRange(location: 0, length: 0))
         StemCellsHaptics.play(.send)
         // Idle, a reader at the end sees it lifted; mid-turn it waits under
