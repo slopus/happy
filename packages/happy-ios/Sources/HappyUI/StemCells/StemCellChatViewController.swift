@@ -57,6 +57,7 @@ final class StemCellChatViewController: UIViewController {
     private let planner: StemCellChatPlanner
     private let media: StemCellMediaLoader
     private let pictures: ComposerImagePicker
+    private var acceptingSend = false
 
     private let scrollView = UIScrollView()
     private let introView = StemCellIntroView()
@@ -201,7 +202,7 @@ final class StemCellChatViewController: UIViewController {
         proposals = StemCellSidebarProposals(client: session.client, store: session.store)
         media = StemCellMediaLoader(client: session.client, agentId: agentId)
         let files = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("StemCells", isDirectory: true)
-        pictures = ComposerImagePicker(staging: ComposerAttachmentStaging(filesDirectory: files))
+        pictures = ComposerImagePicker(staging: ComposerAttachmentStaging(filesDirectory: files), maxFileBytes: DirectAttachmentRules.maxFileBytes)
         super.init(nibName: nil, bundle: nil)
         self.title = title
         titleView.text = title
@@ -244,7 +245,9 @@ final class StemCellChatViewController: UIViewController {
         pictures.host = { [weak self] in self }
         pictures.onChange = { [weak self] in
             guard let self else { return }
-            card.configuration.attachments = pictures.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) }
+            card.configuration.attachments = pictures.images.map {
+                AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL, name: $0.attachment.name, mimeType: $0.attachment.mimeType)
+            }
             updatePrimary()
         }
         view.addSubview(composerScrim)
@@ -742,26 +745,23 @@ final class StemCellChatViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    /// What the sheet, the library or Files gave: pictures wait in the
-    /// composer; any other file is said, not sent (the daemon takes text
-    /// and image blocks alone).
+    /// Preserve the library's order and copy every file before its temporary
+    /// representation is discarded. Direct uploads accept videos and documents.
     private func take(_ picks: [LibraryPick]) {
-        pictures.add(pictures: picks.compactMap { if case .image(let data, _) = $0.media { data } else { nil } })
-        let others = picks.filter { if case .image = $0.media { false } else { true } }
-        LibraryPicker.discard(others)
-        let added = picks.count > others.count
-        if !others.isEmpty {
-            let names = others.compactMap { pick -> String? in
+        let before = pictures.images.count
+        Task {
+            for pick in picks {
                 switch pick.media {
-                case .file(let url, _), .video(let url): url.lastPathComponent
-                case .image: nil
+                case .image(let data, _): await pictures.add(picture: data)
+                case .video(let url):
+                    let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "video/mp4"
+                    await pictures.add(file: url, name: url.lastPathComponent, mimeType: mime)
+                case .file(let url, let type):
+                    await pictures.add(file: url, name: url.lastPathComponent, mimeType: type.preferredMIMEType ?? "application/octet-stream")
                 }
             }
-            let alert = UIAlertController(title: Strings.StemCells.filesNotSent(names), message: Strings.StemCells.filesNotSentDetail, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: Strings.StemCells.done, style: .default) { [weak self] _ in self?.settleFocus(added: added) })
-            present(alert, animated: true)
-        } else {
-            settleFocus(added: added)
+            LibraryPicker.discard(picks)
+            settleFocus(added: pictures.images.count > before)
         }
     }
 
@@ -1359,10 +1359,12 @@ final class StemCellChatViewController: UIViewController {
     }
 
     private func send() {
+        guard !acceptingSend else { return }
         let text = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let picked = pictures.images.map(\.attachment)
+        let pickedIDs = pictures.images.map(\.id)
         guard !text.isEmpty || !picked.isEmpty else { return }
-        card.setText("", selection: NSRange(location: 0, length: 0))
+        acceptingSend = true
         StemCellsHaptics.play(.send)
         // Idle, a reader at the end sees it lifted; mid-turn it waits under
         // the reply at the end, which a reader near it follows. One reading
@@ -1375,13 +1377,19 @@ final class StemCellChatViewController: UIViewController {
         let store = session.store
         let staged = pictures
         Task {
-            // Read off the main thread; the staged files go once they are read.
-            let photos = await Task.detached {
-                picked.compactMap { attachment in (try? Data(contentsOf: attachment.fileURL)).map { (mimeType: attachment.mimeType, data: $0) } }
-            }.value
-            staged.clear()
             await store.attentionInput()
-            await conversation.send(id: id, text: text, pictures: photos)
+            let accepted = await conversation.send(id: id, text: text, attachments: picked)
+            acceptingSend = false
+            if accepted {
+                if card.text.trimmingCharacters(in: .whitespacesAndNewlines) == text {
+                    card.setText("", selection: NSRange(location: 0, length: 0))
+                }
+                staged.removeSent(pickedIDs)
+            } else {
+                let alert = UIAlertController(title: Strings.Common.error, message: "The message could not be saved. Your text and attachments are still here.", preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
+                present(alert, animated: true)
+            }
         }
     }
 

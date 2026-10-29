@@ -51,7 +51,10 @@ public final class DirectAccounts {
         // paired device receives its own ID even on the same installation.
         let id = credentials.first { $0.value.address == value.address && $0.value.deviceID == value.deviceID }?.key ?? "direct-\(UUID().uuidString.lowercased())"
         await stop(id)
-        if let engine = engines.removeValue(forKey: id) { await engine.stop() }
+        if let engine = engines[id] {
+            await engine.stop()
+            if engines[id] === engine { engines.removeValue(forKey: id) }
+        }
         var account = DirectAccount(id: id, name: "Happy Agent")
         let transport = makeTransport(value)
         do { account = try await DirectIdentity.refresh(account, transport: transport, token: value.deviceToken) }
@@ -108,7 +111,10 @@ public final class DirectAccounts {
         // Await teardown before deleting credentials. The loop can no longer
         // publish or save an old identity after removal completes.
         await stop(id)
-        if let engine = engines.removeValue(forKey: id) { await engine.stop() }
+        if let engine = engines[id] {
+            await engine.stop()
+            if engines[id] === engine { engines.removeValue(forKey: id) }
+        }
         do { try await storage.remove(id) }
         catch { startConnections(); throw error }
         credentials.removeValue(forKey: id); accounts.removeAll { $0.id == id }

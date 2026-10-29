@@ -13,6 +13,8 @@ public struct DirectHTTPResponse: Sendable {
 
 public protocol DirectTransport: Sendable {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse
+    /// A bounded file write with a longer deadline than small API requests.
+    func upload(path: String, credential: String, body: Data) async throws -> DirectHTTPResponse
     /// A GET whose body arrives as it is written, for an event stream.
     func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream
     /// Lets go of the connection so the next request makes a new one.
@@ -32,6 +34,9 @@ public struct DirectHTTPStream: Sendable {
 }
 
 extension DirectTransport {
+    public func upload(path: String, credential: String, body: Data) async throws -> DirectHTTPResponse {
+        try await request(method: "PUT", path: path, credential: credential, body: body, headers: ["Content-Type": "application/json"])
+    }
     public func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream {
         throw DirectPairingError.unavailable
     }
@@ -98,7 +103,7 @@ public actor TailcatHTTPTransport: DirectTransport {
         let client = try await connection()
         let port = port
         do {
-            return try await exchange(client: client, port: port, method: method, path: path, credential: credential, body: body, headers: headers)
+            return try await exchange(client: client, port: port, method: method, path: path, credential: credential, body: body, headers: headers, timeout: .seconds(35))
         } catch {
             if Self.lostTunnel(error) { await reset(client) }
             throw error
@@ -113,7 +118,21 @@ public actor TailcatHTTPTransport: DirectTransport {
         return true
     }
 
-    private nonisolated func exchange(client: TailcatClient, port: UInt16, method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+    public func upload(path: String, credential: String, body: Data) async throws -> DirectHTTPResponse {
+        guard body.count <= 72 * 1024 * 1024, Self.safe(path: path, credential: credential, headers: [:]) else {
+            throw DirectPairingError.invalidResponse
+        }
+        let client = try await connection()
+        do {
+            return try await exchange(client: client, port: port, method: "PUT", path: path, credential: credential,
+                body: body, headers: [:], timeout: .seconds(15 * 60))
+        } catch {
+            if Self.lostTunnel(error) { await reset(client) }
+            throw error
+        }
+    }
+
+    private nonisolated func exchange(client: TailcatClient, port: UInt16, method: String, path: String, credential: String, body: Data?, headers: [String: String], timeout: Duration) async throws -> DirectHTTPResponse {
         try await withThrowingTaskGroup(of: DirectHTTPResponse.self) { group in
             group.addTask {
                 let stream = try await client.openTCP(port: port)
@@ -122,7 +141,16 @@ public actor TailcatHTTPTransport: DirectTransport {
                         var head = "\(method) \(path) HTTP/1.1\r\nHost: server.tailcat:\(port)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: application/json\r\nContent-Length: \(body?.count ?? 0)\r\n"
                         if body != nil { head += "Content-Type: application/json\r\n" }
                         for (name, value) in headers { head += "\(name): \(value)\r\n" }
-                        try await stream.write(Data((head + "\r\n").utf8) + (body ?? Data()))
+                        try await stream.write(Data((head + "\r\n").utf8))
+                        if let body {
+                            var offset = 0
+                            while offset < body.count {
+                                try Task.checkCancellation()
+                                let end = min(body.count, offset + 256 * 1024)
+                                try await stream.write(Data(body[offset..<end]))
+                                offset = end
+                            }
+                        }
                         var parser = DirectHTTPParser()
                         while true {
                             try Task.checkCancellation()
@@ -135,7 +163,7 @@ public actor TailcatHTTPTransport: DirectTransport {
                     } catch { await stream.close(); throw error }
                 } onCancel: { Task { await stream.close() } }
             }
-            group.addTask { try await Task.sleep(for: .seconds(35)); throw DirectPairingError.unavailable }
+            group.addTask { try await Task.sleep(for: timeout); throw DirectPairingError.unavailable }
             defer { group.cancelAll() }
             guard let response = try await group.next() else { throw DirectPairingError.unavailable }
             return response

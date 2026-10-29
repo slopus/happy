@@ -7,6 +7,11 @@ import HappyWire
 /// credentials or relay records. Snapshot data and its cursor commit together;
 /// a process can never resume beyond changes that made it to disk.
 public actor DirectSyncStorage {
+    struct ConversationOwner: Equatable, Sendable {
+        let id = UUID()
+        let created = ContinuousClock.now
+    }
+    private var conversationOwners: [String: ConversationOwner] = [:]
     public struct Checkpoint: Codable, Equatable, Sendable {
         public var value: JSONValue
         public var cursor: String?
@@ -66,6 +71,22 @@ public actor DirectSyncStorage {
             guard let row = try Row.fetchOne(db, sql: "SELECT value, cursor FROM checkpoint WHERE name = ?", arguments: [name]) else { return nil }
             return Checkpoint(value: try JSONDecoder().decode(JSONValue.self, from: row["value"] as Data), cursor: row["cursor"])
         }
+    }
+
+    func claimConversation(_ name: String, owner: ConversationOwner) throws {
+        try checkOpen()
+        // A newly created chat can receive its real agent ID later than a
+        // newer warm chat. Late registration must not reclaim ownership.
+        if let current = conversationOwners[name], current.created >= owner.created { return }
+        conversationOwners[name] = owner
+    }
+
+    func commitConversation(_ checkpoint: Checkpoint, named name: String, owner: ConversationOwner) throws -> Bool {
+        try checkOpen()
+        guard conversationOwners[name] == owner else { return false }
+        // No suspension separates ownership validation and the SQLite write.
+        try commit(checkpoint, named: name)
+        return true
     }
 
     public func commit(_ checkpoint: Checkpoint, named name: String, settings: [DirectUserSetting]? = nil, expectedSettingsRevision: Int? = nil) throws {

@@ -229,11 +229,16 @@ public actor StemCellConversation {
     private var deliveryWatch: Task<Void, Never>?
     private var outgoingModes: [String: AgentWire.Mode] = [:]
     private var lastKept: KeptConversation?
+    private var conversationWrite: Task<Bool, Error>?
+    private let checkpointOwner = DirectSyncStorage.ConversationOwner()
+    private var checkpointClaims: [String: Task<Void, Error>] = [:]
+    private var attachmentCleanup: Set<String> = []
     private struct KeptConversation: Codable, Equatable, Sendable {
         struct Run: Codable, Equatable, Sendable { var id: String; var messageIds: [String] }
         struct Picture: Codable, Equatable, Sendable { var mimeType: String; var data: Data }
         struct Send: Codable, Equatable, Sendable {
             var id: String; var text: String; var pictures: [Picture]; var accepted: Bool; var failure: String?; var mode: AgentWire.Mode?
+            var files: [DirectQueuedFile]?
         }
         var runs: [Run]
         var messages: [String: AgentWire.Message]
@@ -266,6 +271,11 @@ public actor StemCellConversation {
     /// stays here until history or an event carries it, so no read that
     /// began before the send can take it off the screen.
     private var outgoing: [(id: String, text: String, pictures: [(mimeType: String, data: Data)], accepted: Bool, failure: String?)] = []
+    private var outgoingFiles: [String: [DirectQueuedFile]] = [:]
+    private var admitting: Set<String> = []
+    /// Standalone consumers and fixtures never persist a conversation. Every
+    /// production StemCellsSession supplies its account's durable engine.
+    private let temporaryAttachments = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     /// Pictures already decoded, by message and block.
     private var pictures: [String: Data] = [:]
     private var mode: AgentWire.Mode?
@@ -315,8 +325,13 @@ public actor StemCellConversation {
 
     // MARK: Life
 
-    public func start() {
+    public func start() async {
         guard following == nil else { return }
+        do { try await checkpointClaim(for: "conversation:\(agentId)").value }
+        catch {
+            checkpointClaims.removeValue(forKey: "conversation:\(agentId)")
+            snapshot.error = "Could not open this conversation on this device."; publish(); return
+        }
         if let creation {
             // New work has nothing to read yet: it is shown at once, empty.
             snapshot.loaded = true
@@ -357,6 +372,8 @@ public actor StemCellConversation {
     private func created(_ id: String) async {
         creation = nil
         agentId = id
+        do { try await checkpointClaim(for: "conversation:\(id)").value }
+        catch { snapshot.error = "Could not open this conversation on this device."; publish(); return }
         // Typed while the daemon made it: newer than the draft it was made
         // with, which would otherwise take its place on the first read.
         if !draft.synced {
@@ -386,6 +403,7 @@ public actor StemCellConversation {
                 if let index = outgoing.firstIndex(where: { $0.id == queued.id }) { outgoing[index] = copy }
                 else { outgoing.append(copy) }
                 outgoingModes[queued.id] = queued.mode
+                outgoingFiles[queued.id] = queued.files
             }
         }
         let events = await store.conversationEvents(agentId)
@@ -469,6 +487,7 @@ public actor StemCellConversation {
             pending.append(message.id)
         }
         let echoed = Set(messages.keys)
+        attachmentCleanup.formUnion(echoed)
         outgoing.removeAll { echoed.contains($0.id) }
         // A send taken before the daemon started its run keeps the line
         // and the send's clock until the run's own events come.
@@ -531,6 +550,7 @@ public actor StemCellConversation {
         case "message.created", "message.updated":
             guard let message = payload["message"].flatMap(Self.decodeMessage) else { return }
             messages[message.id] = message
+            attachmentCleanup.insert(message.id)
             outgoing.removeAll { $0.id == message.id }
             if let runId = payload["runId"]?.stringValue {
                 place(message.id, in: runId)
@@ -663,22 +683,51 @@ public actor StemCellConversation {
 
     /// Draws the message at once and sends it, after the new work it is in
     /// has been made.
-    public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = []) async {
-        guard !outgoing.contains(where: { $0.id == id }), messages[id] == nil else { return }
-        outgoing.append((id, text, pictures, false, nil))
+    @discardableResult
+    public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = [], attachments: [OutgoingAttachment] = []) async -> Bool {
+        guard !outgoing.contains(where: { $0.id == id }), messages[id] == nil else { return false }
+        admitting.insert(id)
+        defer { admitting.remove(id) }
+        var inline = pictures
+        var files: [DirectQueuedFile] = []
+        do {
+            let staged = try DirectAttachmentRules.stage(attachments, messageID: id,
+                directory: persistence?.attachmentDirectory ?? temporaryAttachments)
+            var inlineBytes = inline.reduce(0) { $0 + $1.data.count }
+            for file in staged {
+                let supportedImage = ["image/jpeg", "image/png", "image/gif", "image/webp"].contains(file.mimeType)
+                if supportedImage, file.size <= DirectAttachmentRules.maxInlineImageBytes,
+                   inlineBytes + file.size <= DirectAttachmentRules.maxInlineImageTotalBytes {
+                    let bytes = try Data(contentsOf: file.fileURL)
+                    guard bytes.count == file.size else { throw DirectAttachmentRules.invalid("The attachment changed while being read.") }
+                    inline.append((file.mimeType, bytes)); inlineBytes += bytes.count
+                } else { files.append(file) }
+            }
+        } catch {
+            snapshot.error = StemCellsStore.describe(error)
+            publish()
+            return false
+        }
+        outgoingFiles[id] = files
+        outgoing.append((id, text, inline, false, nil))
         outgoingModes[id] = mode
         guard await saveConversationNow() else {
             failed(id, "Could not save this message on this device. Retry when storage is available.")
-            return
+            return false
         }
-        if let persistence, creation == nil {
-            do { try await persistence.enqueueMessage(queuedMessage(id: id, text: text, pictures: pictures)) }
-            catch { failed(id, "Could not save this message on this device."); return }
+        if let persistence {
+            do {
+                if let creation { agentId = try await creation.value }
+                try await checkpointClaim(for: "conversation:\(agentId)").value
+                try await persistence.enqueueMessage(queuedMessage(id: id, text: text, pictures: inline))
+            }
+            catch { failed(id, "Could not save this message on this device."); return false }
             publish()
-            return
+            return true
         }
         publish()
         deliver(id)
+        return true
     }
 
     public func retry(_ id: String) {
@@ -701,7 +750,7 @@ public actor StemCellConversation {
     }
 
     private func deliver(_ id: String) {
-        guard delivering[id] == nil else { return }
+        guard delivering[id] == nil, !admitting.contains(id) else { return }
         let client = client
         delivering[id] = Task {
             defer { delivering.removeValue(forKey: id) }
@@ -715,6 +764,7 @@ public actor StemCellConversation {
                 guard let outgoingIndex = outgoing.firstIndex(where: { $0.id == id }) else { return }
                 let send = outgoing[outgoingIndex]
                 if let persistence {
+                    try await checkpointClaim(for: "conversation:\(agentId)").value
                     try await persistence.enqueueMessage(queuedMessage(id: id, text: send.text, pictures: send.pictures))
                     return
                 }
@@ -730,7 +780,9 @@ public actor StemCellConversation {
                     try Task.checkCancellation()
                     if let persistence, !(await persistence.deliveryAllowed) { return }
                     do {
-                        try await client.sendMessage(agentId, id: id, text: send.text, images: send.pictures, mode: mode)
+                        var payload = queuedMessage(id: id, text: send.text, pictures: send.pictures)
+                        payload.mode = mode
+                        try await client.deliverMessage(payload) { _ in }
                         break
                     } catch let error as DirectAgentError where (error.status ?? 500) < 500 {
                         throw error
@@ -752,7 +804,7 @@ public actor StemCellConversation {
     }
 
     private func queuedMessage(id: String, text: String, pictures: [(mimeType: String, data: Data)]) -> DirectQueuedMessage {
-        DirectQueuedMessage(id: id, agentID: agentId, text: text, pictures: pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, mode: outgoingModes[id])
+        DirectQueuedMessage(id: id, agentID: agentId, text: text, pictures: pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, mode: outgoingModes[id], files: outgoingFiles[id])
     }
 
     private func restoreConversation() async {
@@ -763,6 +815,7 @@ public actor StemCellConversation {
         pending = kept.pending
         outgoing = kept.outgoing.map { ($0.id, $0.text, $0.pictures.map { ($0.mimeType, $0.data) }, $0.accepted, $0.failure) }
         outgoingModes = Dictionary(kept.outgoing.compactMap { send in send.mode.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
+        outgoingFiles = Dictionary(kept.outgoing.compactMap { send in send.files.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
         mode = picked ?? kept.mode
         snapshot.mode = mode
         snapshot.hasMore = kept.hasMore
@@ -813,15 +866,55 @@ public actor StemCellConversation {
         guard let persistence, snapshot.loaded || !outgoing.isEmpty else { return true }
         let window = Self.kept(runs: runs, messages: messages, pending: pending)
         let kept = KeptConversation(runs: window.runs.map { .init(id: $0.id, messageIds: $0.messageIds) }, messages: window.messages, pending: pending,
-            outgoing: outgoing.map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed)
-        guard kept != lastKept else { return true }
+            outgoing: outgoing.map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id], files: outgoingFiles[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed)
+        guard kept != lastKept || conversationWrite != nil else { return true }
         let key = "conversation:\(agentId)"
+        let claim = checkpointClaim(for: key)
+        let owner = checkpointOwner
+        let cleanedIDs = attachmentCleanup.subtracting(kept.outgoing.map(\.id))
         do {
             let value = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(kept))
-            try await persistence.keepResource(key, value: value)
-            lastKept = kept
+            // A forced save can enter while a debounced save is suspended.
+            // Chain writes so an older snapshot cannot follow this checkpoint
+            // and restore a reference after its files have been removed.
+            let preceding = conversationWrite
+            let write = Task {
+                _ = try? await preceding?.value
+                try await claim.value
+                return try await persistence.keepConversation(key, value: value, owner: owner)
+            }
+            conversationWrite = write
+            let committed = try await write.value
+            if conversationWrite == write {
+                conversationWrite = nil
+                if committed { lastKept = kept }
+            }
+            // Another instance now owns this cache. Sends still enter the
+            // account outbox before the composer clears, but this old view
+            // cannot overwrite the new checkpoint or delete its files.
+            guard committed else { return true }
+            for id in cleanedIDs {
+                guard !id.isEmpty, id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else { continue }
+                try? FileManager.default.removeItem(at: persistence.attachmentDirectory.appendingPathComponent(id, isDirectory: true))
+                outgoingFiles.removeValue(forKey: id)
+                attachmentCleanup.remove(id)
+            }
             return true
-        } catch { snapshot.error = "Could not save this conversation on this device."; return false }
+        } catch {
+            checkpointClaims.removeValue(forKey: key)
+            snapshot.error = "Could not save this conversation on this device."; return false
+        }
+    }
+
+    private func checkpointClaim(for key: String) -> Task<Void, Error> {
+        if let claim = checkpointClaims[key] { return claim }
+        let persistence = persistence
+        let owner = checkpointOwner
+        let claim = Task<Void, Error> {
+            if let persistence { try await persistence.claimConversation(key, owner: owner) }
+        }
+        checkpointClaims[key] = claim
+        return claim
     }
 
     /// The next message goes with this model, account and effort.
@@ -1055,6 +1148,9 @@ public actor StemCellConversation {
             var pieces: [StemCellChatItem.Piece] = send.text.isEmpty ? [] : [.text(send.text)]
             for (offset, picture) in send.pictures.enumerated() {
                 pieces.append(.picture(id: "\(send.id):\(offset + 1)", mimeType: picture.mimeType, data: picture.data))
+            }
+            if let files = outgoingFiles[send.id], !files.isEmpty {
+                pieces.append(.text(files.map { "📎 \(DirectAttachmentRules.safeName($0.name))" }.joined(separator: "\n")))
             }
             items.append(StemCellChatItem(id: send.id, role: .user, pieces: pieces, delivery: send.failure.map { .failed($0) } ?? (send.accepted ? .pending : .sending)))
         }

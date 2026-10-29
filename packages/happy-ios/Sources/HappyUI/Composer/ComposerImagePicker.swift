@@ -31,9 +31,11 @@ final class ComposerImagePicker: NSObject, PHPickerViewControllerDelegate {
     var host: (() -> UIViewController?)?
 
     private let staging: ComposerAttachmentStaging
+    private let maxFileBytes: Int
 
-    init(staging: ComposerAttachmentStaging) {
+    init(staging: ComposerAttachmentStaging, maxFileBytes: Int = ComposerAttachmentRules.maxFileSize) {
         self.staging = staging
+        self.maxFileBytes = maxFileBytes
     }
 
     /// `attachImages`: asks, every time, whether to paste or to pick.
@@ -63,6 +65,32 @@ final class ComposerImagePicker: NSObject, PHPickerViewControllerDelegate {
         let picked = Array(pictures.prefix(ComposerAttachmentRules.remaining(selected: images.count)))
         Task { for data in picked { await stage(data, name: nil) } }
     }
+
+    /// The shared library picker hands ownership of videos and documents to
+    /// this staging directory before its temporary copies are discarded.
+    func add(file: URL, name: String, mimeType: String) async {
+        guard room() > 0 else { return }
+        let staging = staging
+        let limit = maxFileBytes
+        do {
+            let attachment = try await Task.detached { () -> OutgoingAttachment in
+                let values = try URL(fileURLWithPath: file.path).resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+                guard values.isRegularFile == true, let size = values.fileSize, size <= limit else {
+                    throw ComposerImageError.tooLarge
+                }
+                let destination = try staging.newFile(extension: file.pathExtension)
+                try FileManager.default.copyItem(at: file, to: destination)
+                return OutgoingAttachment(fileURL: destination, name: name, mimeType: mimeType, size: size)
+            }.value
+            guard images.count < ComposerAttachmentRules.maxImages else { staging.remove(attachment.fileURL); return }
+            images.append(ComposerPickedImage(id: ComposerAttachmentRules.previewId(), attachment: attachment))
+        } catch ComposerImageError.tooLarge {
+            alert(Strings.ImageUpload.fileTooLargeTitle,
+                Strings.ImageUpload.fileTooLargeMessage(name: name, maxMb: limit / 1024 / 1024))
+        } catch { uploadFailedAlert() }
+    }
+
+    func add(picture: Data) async { await stage(picture, name: nil) }
 
     /// The pasteboard's picture, attached: what a paste in the text view
     /// does when there is one.
@@ -206,11 +234,11 @@ final class ComposerImagePicker: NSObject, PHPickerViewControllerDelegate {
 
     /// `previewForAsset`'s size check, then onto the end of the list.
     private func admit(_ image: ComposerNormalizedImage, name: String?) {
-        guard image.size <= ComposerAttachmentRules.maxFileSize else {
+        guard image.size <= maxFileBytes else {
             staging.remove(image.fileURL)
             alert(
                 Strings.ImageUpload.fileTooLargeTitle,
-                Strings.ImageUpload.fileTooLargeMessage(name: name ?? "image", maxMb: ComposerAttachmentRules.maxFileSizeMegabytes)
+                Strings.ImageUpload.fileTooLargeMessage(name: name ?? "image", maxMb: maxFileBytes / 1024 / 1024)
             )
             return
         }
@@ -265,6 +293,7 @@ private struct PickedItem: @unchecked Sendable {
 }
 
 enum ComposerImageError: Error {
+    case tooLarge
     case unreadable
     case unwritable
 }

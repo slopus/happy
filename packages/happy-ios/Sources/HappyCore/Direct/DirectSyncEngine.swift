@@ -19,6 +19,7 @@ public actor DirectSyncEngine {
     public nonisolated let client: DirectAgentClient
     public nonisolated let spaces: StemCellsStore
     public nonisolated let offline: StemCellsOfflineFile?
+    public nonisolated let attachmentDirectory: URL
     private let url: URL?
     private var storage: DirectSyncStorage?
     private var desktop: DirectDesktopSnapshot?
@@ -43,6 +44,8 @@ public actor DirectSyncEngine {
         self.client = client
         url = directory?.appendingPathComponent("direct.sqlite")
         offline = directory.map(StemCellsOfflineFile.init(directory:))
+        attachmentDirectory = (directory ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+            .appendingPathComponent("outbox-files", isDirectory: true)
         spaces = StemCellsStore(client: client, offline: offline)
     }
 
@@ -244,6 +247,16 @@ public actor DirectSyncEngine {
         try await database().commit(.init(value: value, cursor: nil), named: key)
     }
 
+    func claimConversation(_ key: String, owner: DirectSyncStorage.ConversationOwner) async throws {
+        guard !stopped else { throw CancellationError() }
+        try await database().claimConversation(key, owner: owner)
+    }
+
+    func keepConversation(_ key: String, value: JSONValue, owner: DirectSyncStorage.ConversationOwner) async throws -> Bool {
+        guard !stopped else { throw CancellationError() }
+        return try await database().commitConversation(.init(value: value, cursor: nil), named: key, owner: owner)
+    }
+
     public func setSetting(_ key: String, value: JSONValue) async throws {
         guard !stopped else { throw CancellationError() }
         let database = try database()
@@ -366,21 +379,31 @@ public actor DirectSyncEngine {
             }
             guard var message = candidate else { return }
             do {
+                let migrated = try DirectAttachmentRules.migratePictures(message, directory: attachmentDirectory)
+                if migrated != message {
+                    message = migrated
+                    try await database.updateMessage(message)
+                }
                 if message.mode == nil {
                     message.mode = try await client.defaultMode()
                     guard current(generation) else { return }
                     try await database.updateMessage(message)
                 }
-                guard current(generation), let mode = message.mode else { return }
-                try await client.sendMessage(message.agentID, id: message.id, text: message.text,
-                    images: message.pictures.map { ($0.mimeType, $0.data) }, mode: mode)
+                guard current(generation), message.mode != nil else { return }
+                try await client.deliverMessage(message) { updated in try await database.updateMessage(updated) }
                 guard current(generation) else { return }
                 try await database.acknowledgeMessage(message.id)
+                // A conversation checkpoint may still restore this send as
+                // unaccepted. Its owned bytes live until an echoed-message
+                // checkpoint durably removes the outgoing ID.
                 for listener in messageListeners.values where listener.agentID == message.agentID { listener.continuation.yield(.accepted(message.id)) }
                 attempt = 0
             } catch {
                 guard current(generation) else { return }
                 if let error = error as? DirectAgentError, error == .revoked || (error.status.map { (400..<500).contains($0) } ?? false) {
+                    // A later file may have failed after earlier progress was
+                    // persisted. Mark that latest record, preserving its paths.
+                    message = (try? await database.queuedMessages().first { $0.id == message.id }) ?? message
                     message.failure = StemCellsStore.describe(error)
                     try? await database.updateMessage(message)
                     for listener in messageListeners.values where listener.agentID == message.agentID { listener.continuation.yield(.failed(message.id, message.failure ?? "")) }

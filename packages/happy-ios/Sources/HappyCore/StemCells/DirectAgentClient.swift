@@ -20,7 +20,7 @@ public enum DirectAgentError: Error, Equatable, Sendable {
 /// one a device token may use (happy-agent `API.md`, "Mobile connector").
 public final class DirectAgentClient: Sendable {
     let transport: any DirectTransport
-    private let token: String
+    let token: String
 
     init(transport: any DirectTransport, token: String) {
         self.transport = transport
@@ -42,7 +42,9 @@ public final class DirectAgentClient: Sendable {
         #if DEBUG
         if method != "GET", let slow = Self.slowWrites { try await Task.sleep(for: .seconds(slow)) }
         #endif
-        let body = try raw ?? json.map { try JSONEncoder().encode($0) }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        let body = try raw ?? json.map { try encoder.encode($0) }
         let response = try await transport.request(method: method, path: path, credential: token, body: body, headers: headers)
         if response.status == 401 { throw DirectAgentError.revoked }
         guard (200..<300).contains(response.status) || response.status == 304 || response.status == 206 else {
@@ -244,7 +246,8 @@ public final class DirectAgentClient: Sendable {
     // MARK: Conversations
 
     public func agent(_ agentId: String) async throws -> AgentWire.Agent {
-        try await decode(AgentWire.Agent.self, "GET", "/v0/agents/\(Self.escape(agentId))")
+        struct Response: Decodable { let agent: AgentWire.Agent }
+        return try await decode(Response.self, "GET", "/v0/agents/\(Self.escape(agentId))").agent
     }
 
     public func bootstrap(_ agentId: String) async throws -> AgentWire.Bootstrap {
@@ -303,11 +306,17 @@ public final class DirectAgentClient: Sendable {
     /// Always steering, as desktop sends: mid-turn it is taken at the next
     /// boundary rather than waiting behind the run; idle, it starts one.
     public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], mode: AgentWire.Mode) async throws {
+        guard images.allSatisfy({ $0.data.count <= DirectAttachmentRules.maxInlineImageBytes }),
+              images.reduce(0, { $0 + $1.data.count }) <= DirectAttachmentRules.maxInlineImageTotalBytes else {
+            throw DirectAttachmentRules.invalid("Inline images exceed the model's image limit.")
+        }
+        let caption = text.isEmpty && !images.isEmpty ? (images.count == 1 ? "Attached image." : "Attached images.") : text
         var object: [String: JSONValue] = [
-            "id": .string(id), "text": .string(text), "delivery": .string("steer"),
+            "id": .string(id), "text": .string(caption), "delivery": .string("steer"),
             "clientMetadata": .object(["composer": .string("mobile")]),
         ]
         if !images.isEmpty {
+            // /send prepends its required top-level text to these rich blocks.
             object["content"] = .array(images.map {
                 .object(["type": .string("image"), "mimeType": .string($0.mimeType), "data": .string($0.data.base64EncodedString())])
             })

@@ -183,10 +183,14 @@ public struct AgentInputAttachmentPreview: Equatable, Sendable {
     public var id: String
     /// A local image file.
     public var fileURL: URL
+    public var name: String?
+    public var mimeType: String?
 
-    public init(id: String, fileURL: URL) {
+    public init(id: String, fileURL: URL, name: String? = nil, mimeType: String? = nil) {
         self.id = id
         self.fileURL = fileURL
+        self.name = name
+        self.mimeType = mimeType
     }
 }
 
@@ -1782,6 +1786,14 @@ final class AttachmentThumbnailView: UIView {
     }
 
     private func load() {
+        if let mime = attachment.mimeType, !mime.hasPrefix("image/") {
+            imageView.image = UIImage.icon(.ionicons(mime.hasPrefix("video/") ? "videocam-outline" : "document-outline"), size: AgentInputCardLayout.Metrics.attachmentSize)
+            imageView.contentMode = .scaleAspectFit
+            imageView.tintColor = UIColor(Palette.textSecondary)
+            imageView.alpha = 1
+            accessibilityLabel = attachment.name
+            return
+        }
         let url = attachment.fileURL
         let side = AgentInputCardLayout.Metrics.attachmentSize * max(1, traitCollection.displayScale)
         Task { [weak self] in
