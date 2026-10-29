@@ -54,6 +54,12 @@
   "peakMB": 250,
   "views": 1200
  },
+ "sidebar": {
+  "allLate": 10,
+  "allMax": 70,
+  "mainMax": 60,
+  "peakMB": 120
+ },
  "history-paging": {
   "hitchRatio": 15,
   "dropped": 30,

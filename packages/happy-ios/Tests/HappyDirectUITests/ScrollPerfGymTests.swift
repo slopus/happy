@@ -154,6 +154,30 @@ final class ScrollPerfGymTests: XCTestCase {
         while Date() < deadline, working.exists { pause(1) }
     }
 
+    /// The sidebar itself: flung down its rows and back, then each heading
+    /// folded and unfolded, so the rows after it move up and back.
+    func testSidebar() {
+        launch()
+        pause(3)
+        resetMeter()
+        for _ in 0..<2 {
+            fling(down: false)
+            fling(down: true)
+        }
+        let headings = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:section:"))
+        XCTAssertTrue(headings.firstMatch.waitForExistence(timeout: 5), "no section headings")
+        for index in (0..<min(2, headings.count)).reversed() {
+            let heading = headings.element(boundBy: index)
+            // The heading's title, clear of its "+".
+            let title = heading.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+            title.tap()
+            pause(1.5)
+            title.tap()
+            pause(1.5)
+        }
+        report("sidebar")
+    }
+
     /// Opens `title`, plays `before` unmeasured, then `script` measured
     /// (`GymFrameMeter`'s scripted scroll), and reports it as `workload`.
     private func scripted(_ workload: String, _ title: String, _ script: String, before: String? = nil) {

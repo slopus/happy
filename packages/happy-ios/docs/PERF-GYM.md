@@ -12,7 +12,9 @@ scripted workloads, and budgets per workload.
   throwaway daemon, builds the app, runs the workloads, and checks the budgets.
 - `scripts/perf-gym/fakellm.py`: the fake model the throwaway daemon talks to.
   A message `stream P W` gets a reply of P Markdown sections (a paragraph, a
-  list, a table and code), streamed one word every W ms.
+  list, a table and code), streamed one word every W ms. A message
+  `status TEXT` makes the agent call its `set_status` tool with TEXT, so a
+  sidebar row has a status line to show.
 - `scripts/perf-gym/budgets.json`: the most each workload may cost.
 - `scripts/perf-gym/baselines/`: measured runs on the synthetic chats, before
   and after the October 2026 transcript work (e7363747a), and on the gym's
@@ -81,6 +83,7 @@ close to a release build's.
 | `slow-drag` | Drags at 300 pt/s, a finger reading line by line, up into history and down again. |
 | `image-heavy` | Flings through the chat heaviest with pictures. |
 | `scroll-while-streaming` | Sends `stream 30 40`, then flings and drags through history while the reply streams in. |
+| `sidebar` | Flings the sidebar down its rows and back twice, then folds and unfolds two section headings. Frame-meter totals over the whole run (`allLate`, `allMax`, `mainMax`): the transcript-only counts stay 0. |
 | `history-paging` | Makes the phone forget the long chat, then runs to the top three times (`top`, 40,000 pt/s) and flings around it while each older page lands. |
 
 Before the workloads, `testPrime` runs both chats to the top until no more
@@ -101,6 +104,10 @@ generated pictures:
   without them.
 - "Gym Pictures": 90 turns, four in five presenting one to four pictures in
   columns.
+
+`gym.py up` also turns Stories on, so the sidebar draws story rows, and adds
+twelve short tasks (`SIDEBAR` in `gym.py`) whose agents set a status through
+the fake model, enough rows for the `sidebar` workload to scroll.
 
 ### Real conversations, locally only
 

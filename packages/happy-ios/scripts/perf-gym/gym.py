@@ -46,6 +46,7 @@ WORKLOADS = {
     "slow-drag": ("testSlowDrag", None),
     "image-heavy": ("testImageHeavy", None),
     "scroll-while-streaming": ("testScrollWhileStreaming", None),
+    "sidebar": ("testSidebar", None),
     # Last: it leaves the long chat only partly on the phone.
     "history-paging": ("testHistoryPaging", "paging"),
 }
@@ -583,6 +584,42 @@ def load(fixtures):
     database.close()
 
 
+# The sidebar's other work: short synthetic tasks, each with a status its agent set, so
+# the sidebar has story rows enough to scroll. None for the last, which shows the empty mark.
+SIDEBAR = {
+    "Release notes": "Shipped to preview",
+    "Landing page copy": "Two headlines drafted; waiting on the pricing table before the hero section can be written",
+    "Bug triage": "● ● [●] ○ Sorting 14 new reports",
+    "Perf budget": "Rows hold 120 fps while flinging; the open is 56 ms on a cold start",
+    "Android build": "Stuck on the signing key",
+    "Docs cleanup": "Merged the setup pages into one guide and removed the old screenshots",
+    "Onboarding flow": "On main",
+    "Billing webhook": "Retries are idempotent now; next is the refund path",
+    "Search index": "Reindexing 2,400 chats",
+    "Design review": "Visualization ready",
+    "Weekly report": "Draft is in the shared doc for a read before Friday",
+    "Icon set": None,
+}
+
+
+def send(agent, text):
+    """A message to the agent in the daemon's default mode (the fake model)."""
+    mode = dict(api("GET", "/v0/config")["config"]["defaults"], serviceTier=None)
+    ident = random.choice("abcdefghijklmnopqrstuvwxyz") + "".join(random.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(23))
+    api("POST", f"/v0/agents/{q(agent)}/send", {"id": ident, "text": text, "delivery": "steer", "mode": mode})
+
+
+def seed_sidebar():
+    """Stories on (story rows), and the sidebar's other tasks with their statuses."""
+    api("PUT", "/v0/user-settings/happy-desktop.experiments.stories", {"value": True})
+    tasks = {task["name"]: task for task in api("GET", "/v0/tasks")["tasks"]}
+    for name, status in SIDEBAR.items():
+        task = tasks.get(name) or api("POST", "/v0/tasks", {"name": name})["task"]
+        if status and ((task["agent"].get("statusLine") or {}).get("text") != status):
+            send(task["agent"]["id"], f"status {status}")
+            time.sleep(1)
+
+
 def cmd_up(args):
     if len(SOCK.encode()) > 100:
         sys.exit(f"gym: {SOCK} is too long for a unix socket; set GYM_WORK to a shorter folder")
@@ -596,6 +633,7 @@ def cmd_up(args):
     start_daemon(args)
     load(fixtures)
     start_daemon(args)
+    seed_sidebar()
     json.dump({"fixtures": fixtures}, open(os.path.join(WORK, "state.json"), "w"))
     say("up:", ", ".join(row["title"] for folder, row in json.load(open(MAP)).items() if folder.startswith(fixtures)))
 

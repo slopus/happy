@@ -3,6 +3,8 @@ its throwaway daemon (`gym.py up` starts it; WORK only names whose it is).
 
 The person's last message picks the reply:
   "stream P W"  -> P markdown sections (paragraph, list, table, code), W ms a word
+  "status TEXT" -> the agent's `set_status` tool called with TEXT, so the sidebar's
+                   story row has a status to show; then one short line
 anything else -> one short line at once (titles and other internal asks).
 """
 import json, re, sys, time
@@ -61,6 +63,24 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length) or b"{}")
         text = last_user_text(body)
         m = re.search(r"stream (\d+) (\d+)", text)
+        status = re.match(r"status (.+)", text.strip())
+        answered = (body.get("messages") or [{}])[-1].get("role") == "tool"
+        tool = next((t["function"] for t in body.get("tools") or [] if t.get("function", {}).get("name") == "set_status"), None)
+        if status and tool and not answered and body.get("stream"):
+            # The tool's one required argument, whatever the daemon names it.
+            argument = (tool.get("parameters", {}).get("required") or ["status"])[0]
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            call = {"index": 0, "id": f"call_{int(time.time() * 1000)}", "type": "function",
+                    "function": {"name": "set_status", "arguments": json.dumps({argument: status.group(1)})}}
+            self.chunk({"role": "assistant", "content": None, "tool_calls": [call]})
+            self.chunk({}, "tool_calls")
+            data = b"data: [DONE]\n\n"
+            self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n0\r\n\r\n")
+            self.wfile.flush()
+            return
         if m:
             reply, delay = "".join(section(i) for i in range(int(m.group(1)))), int(m.group(2)) / 1000
         else:
