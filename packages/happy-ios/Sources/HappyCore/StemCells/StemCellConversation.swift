@@ -367,6 +367,21 @@ public actor StemCellConversation {
     public func setVisible(_ visible: Bool) {
         self.visible = visible
         if visible, !runs.isEmpty { markRead() }
+        // Left: desktop's `releaseSession`.
+        if !visible { trimHistory() }
+    }
+
+    /// desktop's `trimHistory`: a conversation nobody reads keeps only its
+    /// newest `keptRuns` runs in memory, as on disk; scrolling back pages
+    /// the rest in again.
+    private func trimHistory() {
+        guard !visible else { return }
+        let window = Self.kept(runs: runs, messages: messages, pending: pending)
+        guard window.trimmed else { return }
+        runs = window.runs
+        messages = window.messages
+        snapshot.hasMore = true
+        publish()
     }
 
     private func created(_ id: String) async {
@@ -528,6 +543,8 @@ public actor StemCellConversation {
             for run in older { for message in run.messages ?? [] { messages[message.id] = message } }
             snapshot.hasMore = page.hasMore
             publish()
+            // A page that lands after its reader left goes again with the rest.
+            trimHistory()
         } catch {}
     }
 
@@ -585,6 +602,7 @@ public actor StemCellConversation {
             snapshot.working = false
             settle()
             if visible { markRead() }
+            trimHistory()
         case "agent.updated":
             guard let changes = payload["changes"] else { return }
             if let status = changes["status"]?.stringValue {

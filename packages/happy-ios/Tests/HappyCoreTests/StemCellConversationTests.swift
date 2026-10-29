@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import HappyWire
 @testable import HappyCore
 
 /// `message.delta` applied exactly as happy-agent's API asks.
@@ -72,6 +73,31 @@ final class StemCellConversationTests: XCTestCase {
         XCTAssertEqual(short.messages.count, messages.count)
     }
 
+    /// desktop's `trimHistory`: left, a long conversation keeps its newest
+    /// runs in memory too, and can page the rest in again.
+    func testALeftConversationKeepsTheNewestRuns() async throws {
+        let client = DirectAgentClient(transport: LongHistoryServer(runs: 150), token: "t")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let engine = DirectSyncEngine(client: client, directory: root)
+        let conversation = StemCellConversation(client: client, store: engine.spaces, agentId: "long")
+        var updates = conversation.updates.makeAsyncIterator()
+        func asked(_ users: Int) async -> StemCellChatSnapshot? {
+            while let snapshot = await updates.next() {
+                if snapshot.loaded, snapshot.items.filter({ $0.role == .user }).count == users { return snapshot }
+            }
+            return nil
+        }
+        await conversation.start()
+        await conversation.setVisible(true)
+        let open = await asked(150)
+        XCTAssertEqual(open?.hasMore, false)
+        await conversation.setVisible(false)
+        let left = await asked(100)
+        XCTAssertEqual(left?.hasMore, true)
+        XCTAssertEqual(left?.items.first { $0.role == .user }?.text, "asked 50")
+        await conversation.stop()
+    }
+
     func testAMessageWithoutAPictureBytesStillDecodes() throws {
         let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"},{"type":"image","mimeType":"image/png"}],"metadata":{}}"#
         let decoded = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))
@@ -108,4 +134,29 @@ final class StemCellMarkdownTests: XCTestCase {
     func testAListItemRunsOnLazily() {
         XCTAssertEqual(join("- first\n  more\n- second"), "- first more\n- second")
     }
+}
+
+/// A daemon with one conversation of `runs` runs, all on its first page.
+private actor LongHistoryServer: DirectTransport {
+    let runs: Int
+    init(runs: Int) { self.runs = runs }
+
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> DirectHTTPResponse {
+        let value: JSONValue
+        if path.contains("/messages?") {
+            value = .object(["hasMore": .bool(false), "runs": .array((0..<runs).map { index in
+                .object(["id": .string("r\(index)"), "status": .string("completed"), "startedAt": .number(Double(index)), "messages": .array([
+                    .object(["id": .string("u\(index)"), "role": .string("user"), "createdAt": .number(Double(index)), "metadata": .object([:]),
+                             "content": .array([.object(["type": .string("text"), "text": .string("asked \(index)")])])]),
+                ])])
+            })])
+        } else if path.hasSuffix("/bootstrap") {
+            value = .object(["agent": .object(["id": .string("long"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([])])
+        } else {
+            value = .object([:])
+        }
+        return .init(status: 200, body: try JSONEncoder().encode(value))
+    }
+
+    func close() {}
 }
