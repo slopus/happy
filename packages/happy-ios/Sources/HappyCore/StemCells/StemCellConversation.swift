@@ -297,6 +297,8 @@ public actor StemCellConversation {
     /// New work the daemon may not have made yet; sends wait for it.
     private var creation: Task<String, Error>?
     private var visible = false
+    /// On screen, the reader at the newest message and at rest.
+    private var readsNewest = false
 
     /// The draft as desktop keeps it (`connectHappyAgent` `setDraft`): this
     /// phone's copy first, saved to the computer 300 ms after the last
@@ -371,11 +373,18 @@ public actor StemCellConversation {
         if !visible { trimHistory() }
     }
 
+    /// The reader is at the newest message and the scroll at rest: a run's
+    /// end may trim what is above, as nothing read is there.
+    public func setReadsNewest(_ readsNewest: Bool) {
+        self.readsNewest = readsNewest
+    }
+
     /// desktop's `trimHistory`: a conversation nobody reads keeps only its
     /// newest `keptRuns` runs in memory, as on disk; scrolling back pages
-    /// the rest in again.
+    /// the rest in again. One on screen is trimmed the same way only past
+    /// twice that, and only while its reader follows the newest message.
     private func trimHistory() {
-        guard !visible else { return }
+        if visible, !readsNewest || runs.count <= Self.keptRuns * 2 { return }
         let window = Self.kept(runs: runs, messages: messages, pending: pending)
         guard window.trimmed else { return }
         runs = window.runs
@@ -544,7 +553,7 @@ public actor StemCellConversation {
             snapshot.hasMore = page.hasMore
             publish()
             // A page that lands after its reader left goes again with the rest.
-            trimHistory()
+            if !visible { trimHistory() }
         } catch {}
     }
 

@@ -136,7 +136,11 @@ final class StemCellChatViewController: UIViewController {
     private var modelsWatch: StemCellsWatch?
     private var copied: (id: String, until: Task<Void, Never>)?
     /// The newest row is in view: what arrives keeps it there.
-    private var followsNewest = true
+    private var followsNewest = true {
+        didSet { if followsNewest != oldValue { tellReadsNewest(moving: scrollView.isTracking || gliding) } }
+    }
+    /// What the conversation was last told by `tellReadsNewest`.
+    private var toldReadsNewest: Bool?
     /// How far the end has grown under a follower while the scroll moved and
     /// nothing followed it: still following until at rest, however far.
     private var grownUnfollowed: CGFloat = 0
@@ -333,6 +337,8 @@ final class StemCellChatViewController: UIViewController {
         navigationController?.setNavigationBarHidden(true, animated: animated)
         let conversation = conversation
         Task { await conversation.setVisible(true) }
+        toldReadsNewest = nil
+        tellReadsNewest(moving: false)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -1318,6 +1324,7 @@ final class StemCellChatViewController: UIViewController {
             }
             return
         }
+        defer { tellReadsNewest(moving: false) }
         if let height = scrollHold.release(scroll: scroll) { setContentHeight(height, "size-settle") }
         grownUnfollowed = 0
         // Shorter than where it rests (a section folded meanwhile): no gap under the end.
@@ -1348,6 +1355,18 @@ final class StemCellChatViewController: UIViewController {
             // Shown again meanwhile, it stays.
             if !self.jumpShown { self.jump.isHidden = true }
         }
+    }
+
+    /// Tells the conversation, when it changes, whether the reader is at the
+    /// newest message with the scroll at rest: only then may a run's end trim
+    /// the runs above (desktop's `trimHistory` on a watched session), so
+    /// nothing moves under a finger or a glide.
+    private func tellReadsNewest(moving: Bool) {
+        let reads = followsNewest && !moving && !jumping
+        guard reads != toldReadsNewest else { return }
+        toldReadsNewest = reads
+        let conversation = conversation
+        Task { await conversation.setReadsNewest(reads) }
     }
 
     /// Back to the newest message, following it from there.
@@ -1745,10 +1764,12 @@ extension StemCellChatViewController: UIScrollViewDelegate {
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         fingerOnKeyboard = true
         jumping = false
+        tellReadsNewest(moving: true)
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
         jumping = false
+        tellReadsNewest(moving: false)
         view.setNeedsLayout()
     }
 
@@ -1782,7 +1803,10 @@ extension StemCellChatViewController: UIScrollViewDelegate {
         #endif
         let moving = scrollView.isTracking || gliding
         // At the end of the height on screen, before a held one is given.
-        if moving { updateFollowing() }
+        if moving {
+            updateFollowing()
+            tellReadsNewest(moving: true)
+        }
         // Back inside its ends after a bounce: what was held is given.
         if scrollHold.held != nil, let height = scrollHold.release(scroll: scrollState) { setContentHeight(height, "size-scroll") }
         guard moving else { return }

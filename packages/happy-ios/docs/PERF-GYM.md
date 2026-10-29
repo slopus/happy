@@ -233,5 +233,7 @@ after numbers per workload are in `baselines/` for the synthetic chats.
    rewrote the whole conversation to SQLite every 500 ms while it changed: 5 MB
    for the longest chat. It now keeps the newest 100 runs, desktop's window on a
    conversation nobody reads (`connectHappyAgent`'s `trimHistory`).
-   An open conversation still keeps everything it reads, and scrolling back
-   past the kept runs pages them in again.
+   An open conversation keeps what it reads until it passes 200 runs; then a
+   run's end trims it to the newest 100 while the reader is at the newest
+   message and the scroll at rest (desktop's rule for a watched session).
+   Scrolling back past the kept runs pages them in again.

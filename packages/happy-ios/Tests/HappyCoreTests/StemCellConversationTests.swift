@@ -98,6 +98,44 @@ final class StemCellConversationTests: XCTestCase {
         await conversation.stop()
     }
 
+    /// desktop's `trimHistory` on a watched session: past twice the window,
+    /// a run's end trims an open conversation to its newest runs, but only
+    /// while its reader follows the newest message.
+    func testAnOpenConversationPastTwiceTheWindowKeepsTheNewestRunsWhileFollowed() async throws {
+        let client = DirectAgentClient(transport: LongHistoryServer(runs: 250), token: "t")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let engine = DirectSyncEngine(client: client, directory: root)
+        let conversation = StemCellConversation(client: client, store: engine.spaces, agentId: "long")
+        var updates = conversation.updates.makeAsyncIterator()
+        func asked(_ users: Int) async -> StemCellChatSnapshot? {
+            while let snapshot = await updates.next() {
+                if snapshot.loaded, snapshot.items.filter({ $0.role == .user }).count == users { return snapshot }
+            }
+            return nil
+        }
+        let finished: JSONValue = .object(["type": .string("run.finished"), "payload": .object(["agentId": .string("long"), "runId": .string("r249")])])
+        await conversation.start()
+        await conversation.setVisible(true)
+        let open = await asked(250)
+        XCTAssertEqual(open?.hasMore, false)
+        // Read up in history: nothing goes.
+        await conversation.setReadsNewest(false)
+        await engine.spaces.externalEvent(finished)
+        await engine.spaces.externalEvent(.object(["type": .string("message.created"), "payload": .object(["agentId": .string("long"), "runId": .string("r249"),
+            "message": .object(["id": .string("again"), "role": .string("user"), "createdAt": .number(250), "metadata": .object([:]),
+                                "content": .array([.object(["type": .string("text"), "text": .string("asked again")])])])])]))
+        // Seen after the run's end: every run is still there.
+        let unfollowed = await asked(251)
+        XCTAssertEqual(unfollowed?.hasMore, false)
+        // At the newest message: the next run's end trims it.
+        await conversation.setReadsNewest(true)
+        await engine.spaces.externalEvent(finished)
+        let followed = await asked(101)
+        XCTAssertEqual(followed?.hasMore, true)
+        XCTAssertEqual(followed?.items.first { $0.role == .user }?.text, "asked 150")
+        await conversation.stop()
+    }
+
     func testAMessageWithoutAPictureBytesStillDecodes() throws {
         let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"},{"type":"image","mimeType":"image/png"}],"metadata":{}}"#
         let decoded = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))
