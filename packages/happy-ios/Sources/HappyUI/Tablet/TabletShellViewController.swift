@@ -205,8 +205,8 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
         update()
     }
 
-    /// A screen with its own way in and out (new work from home's dock)
-    /// brings it; every other one slides as UIKit's does.
+    /// A screen may bring its own opening animation (new work from home's
+    /// dock); ordinary navigation, including its pop, stays with UIKit.
     public func navigationController(
         _ navigationController: UINavigationController, animationControllerFor operation: UINavigationController.Operation,
         from fromVC: UIViewController, to toVC: UIViewController
@@ -216,12 +216,6 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
         case .pop: (fromVC as? NavigationTransitionProviding)?.navigationTransition(.pop, other: toVC)
         default: nil
         }
-    }
-
-    public func navigationController(
-        _ navigationController: UINavigationController, interactionControllerFor animationController: any UIViewControllerAnimatedTransitioning
-    ) -> (any UIViewControllerInteractiveTransitioning)? {
-        (animationController as? InteractiveNavigationTransition)?.interaction
     }
 
     // MARK: Header

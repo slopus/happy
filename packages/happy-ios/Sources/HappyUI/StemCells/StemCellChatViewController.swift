@@ -45,14 +45,11 @@ final class StemCellChatViewController: UIViewController {
     /// The keyboard was up as the "+" sheet opened: it comes back once the
     /// sheet, and whatever was chosen on it, is done.
     private var keyboardOwed = false
-    /// New work from home's dock: it fades in and out over home with the
-    /// composer where the dock is (`StemCellsNewWorkTransition`), and an
-    /// edge swipe drives the way back.
+    /// New work fades in over home's dock (`StemCellsNewWorkTransition`).
+    /// Going back always uses the navigation controller's normal slide.
     var opensOverHome = false
     /// The keyboard new work opens with, not yet asked for.
     private var focusPending = false
-    private var swipeHome: UIPercentDrivenInteractiveTransition?
-    private var focusedBeforeSwipe = false
     private let previewing: Bool
     private let previewPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
     /// The card's ground over the messages above the list, fading out under the capsule.
@@ -163,7 +160,7 @@ final class StemCellChatViewController: UIViewController {
     /// The glass header: back, and the name, renamed where it stands.
     private let header = StemCellChatHeaderView()
     private var titleView: StemCellChatTitleView { header.titleView }
-    /// The edge swipe back, which the hidden bar would otherwise take with it.
+    /// Native back gestures, which the hidden bar would otherwise take with it.
     private let swipeBack = StemCellsSwipeBack()
 
     init(session: StemCellsSession, agentId: String, title: String, spaceId: String?, stemCell intro: Intro?, creation: StemCellCreation? = nil, previewing: Bool = false) {
@@ -245,7 +242,7 @@ final class StemCellChatViewController: UIViewController {
         header.onBack = { [weak self] in
             guard let self else { return }
             // The keyboard goes down with the composer as the screen goes.
-            if opensOverHome { card.blur() }
+            card.blur()
             navigationController?.popViewController(animated: true)
         }
         header.onOpen = { [weak self] in self?.openDetail() }
@@ -300,11 +297,6 @@ final class StemCellChatViewController: UIViewController {
         modelsWatch = session.models.watch { [weak self] in self?.updateChips() }
         session.models.load()
         updateChips()
-        if opensOverHome {
-            let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(swipedHome(_:)))
-            edge.edges = .left
-            view.addGestureRecognizer(edge)
-        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -326,12 +318,7 @@ final class StemCellChatViewController: UIViewController {
         guard !previewing, let navigationController else { return }
         // New work: the keyboard comes up with the screen, if nothing asked yet.
         takeOpeningFocus()
-        // Over home, the way back is this screen's own swipe.
-        if opensOverHome, navigationController.viewControllers.first is StemCellsDockHosting {
-            navigationController.interactivePopGestureRecognizer?.isEnabled = false
-        } else {
-            swipeBack.attach(to: navigationController)
-        }
+        swipeBack.attach(to: navigationController)
         // A swipe back let go of halfway gives the bar back to the screen
         // under it after this one appeared: hidden again.
         if !navigationController.isNavigationBarHidden { navigationController.setNavigationBarHidden(true, animated: false) }
@@ -347,8 +334,6 @@ final class StemCellChatViewController: UIViewController {
             let conversation = conversation
             Task { await conversation.flushDraft() }
         }
-        swipeBack.detach()
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         // A screen pushed over this one has the bar it expects.
         if !previewing, !isMovingFromParent, let top = navigationController?.topViewController, top !== self, !(top is StemCellChatViewController), !(top is StemCellSessionDetailViewController) {
             navigationController?.setNavigationBarHidden(false, animated: animated)
@@ -376,6 +361,9 @@ final class StemCellChatViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        // A cancelled interactive pop never disappears. Keep both native
+        // gesture delegates until UIKit has finished the transition.
+        swipeBack.detach()
         let conversation = conversation
         Task { await conversation.setVisible(false) }
         if isMovingFromParent || navigationController == nil {
@@ -451,38 +439,6 @@ final class StemCellChatViewController: UIViewController {
 
     /// Nothing typed or picked: the composer is the dock's very picture.
     var composerIsEmpty: Bool { card.text.isEmpty && pictures.images.isEmpty }
-
-    /// A swipe home let go of: the keyboard comes back if it was up.
-    func newWorkPopCancelled() {
-        if focusedBeforeSwipe { card.focus() }
-        focusedBeforeSwipe = false
-    }
-
-    @objc private func swipedHome(_ pan: UIScreenEdgePanGestureRecognizer) {
-        let progress = min(1, max(0, pan.translation(in: view).x / max(1, view.bounds.width)))
-        switch pan.state {
-        case .began:
-            guard let navigationController, navigationController.transitionCoordinator == nil, navigationController.viewControllers.count > 1 else { return }
-            titleView.finishEditing()
-            swipeHome = UIPercentDrivenInteractiveTransition()
-            focusedBeforeSwipe = card.textView.isFirstResponder
-            card.blur()
-            navigationController.popViewController(animated: true)
-        case .changed:
-            swipeHome?.update(progress)
-        case .ended, .cancelled, .failed:
-            // Past a third and still going right, or flung: home. Flicked back: stays.
-            let velocity = pan.velocity(in: view).x
-            if pan.state == .ended, velocity > 600 || (progress > 0.35 && velocity >= -100) {
-                swipeHome?.finish()
-            } else {
-                swipeHome?.cancel()
-            }
-            swipeHome = nil
-        default:
-            break
-        }
-    }
 
     // MARK: State
 
@@ -1622,8 +1578,8 @@ extension StemCellChatViewController: UIImagePickerControllerDelegate, UINavigat
 
 extension StemCellChatViewController: NavigationTransitionProviding {
     func navigationTransition(_ operation: UINavigationController.Operation, other: UIViewController) -> UIViewControllerAnimatedTransitioning? {
-        guard opensOverHome, let home = other as? StemCellsDockHosting else { return nil }
-        return StemCellsNewWorkTransition(operation, chat: self, home: home, interaction: operation == .pop ? swipeHome : nil)
+        guard operation == .push, opensOverHome, let home = other as? StemCellsDockHosting else { return nil }
+        return StemCellsNewWorkTransition(chat: self, home: home)
     }
 }
 
@@ -1815,31 +1771,72 @@ final class StemCellsPreviewFadeView: UIView {
         layer.locations = [0, NSNumber(value: Double(clearFrom)), 1]
     }
 }
-/// The navigation controller's edge swipe back while a screen hides the
-/// bar: it begins whenever there is a screen to go back to, and the
-/// system's own delegate is given back on leaving.
+/// Keeps UIKit's edge and content-area back gestures working with
+/// a screen's hidden navigation bar. UIKit still drives the transition.
 @MainActor
-final class StemCellsSwipeBack: NSObject, UIGestureRecognizerDelegate {
-    private weak var navigation: UINavigationController?
-    private weak var system: (any UIGestureRecognizerDelegate)?
+final class StemCellsSwipeBack {
+    private var delegates: [StemCellsPopGestureDelegate] = []
 
     func attach(to navigation: UINavigationController) {
-        guard self.navigation == nil, let gesture = navigation.interactivePopGestureRecognizer else { return }
+        guard delegates.isEmpty else { return }
+        delegates = [navigation.interactivePopGestureRecognizer, navigation.interactiveContentPopGestureRecognizer]
+            .compactMap { $0 }
+            .map { StemCellsPopGestureDelegate(navigation: navigation, gesture: $0) }
+    }
+
+    func detach() {
+        delegates.forEach { $0.detach() }
+        delegates.removeAll()
+    }
+}
+
+@MainActor
+private final class StemCellsPopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
+    private weak var navigation: UINavigationController?
+    private weak var screen: UIViewController?
+    private weak var gesture: UIGestureRecognizer?
+    private weak var system: (any UIGestureRecognizerDelegate)?
+
+    init(navigation: UINavigationController, gesture: UIGestureRecognizer) {
         self.navigation = navigation
-        system = gesture.delegate
+        screen = navigation.topViewController
+        self.gesture = gesture
+        // Appearance callbacks can overlap when another glass screen takes
+        // over. Save the underlying delegate, never another screen's proxy.
+        if let previous = gesture.delegate as? StemCellsPopGestureDelegate {
+            system = previous.system
+        } else {
+            system = gesture.delegate
+        }
+        super.init()
         gesture.delegate = self
         gesture.isEnabled = true
     }
 
     func detach() {
-        guard let navigation else { return }
-        if navigation.interactivePopGestureRecognizer?.delegate === self { navigation.interactivePopGestureRecognizer?.delegate = system }
-        self.navigation = nil
-        system = nil
+        guard let gesture, gesture.delegate === self else { return }
+        gesture.delegate = system
+        // UIKit owns enablement after the delegate is returned.
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        (navigation?.viewControllers.count ?? 0) > 1 && navigation?.transitionCoordinator == nil
+        guard let navigation, let screen else { return false }
+        return navigation.topViewController === screen && navigation.viewControllers.count > 1
+            && navigation.transitionCoordinator == nil && screen.presentedViewController == nil
+    }
+
+    // Keep UIKit's arbitration with scrolling and other gestures, without
+    // forwarding its hidden-navigation-bar touch filters.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRequireFailureOf otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        system?.gestureRecognizer?(gestureRecognizer, shouldRequireFailureOf: otherGestureRecognizer) ?? false
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        system?.gestureRecognizer?(gestureRecognizer, shouldBeRequiredToFailBy: otherGestureRecognizer) ?? false
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        system?.gestureRecognizer?(gestureRecognizer, shouldRecognizeSimultaneouslyWith: otherGestureRecognizer) ?? false
     }
 }
 #endif
