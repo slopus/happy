@@ -158,20 +158,20 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
 
     /// Something stands in the trailing square: a question, a wait, or a new
     /// row's dot. A story row has none: its one signal is its corner.
-    public var hasTrailingMark: Bool { story == nil && (status == .waiting || status == .awaitingInput || isNew) }
+    public var hasTrailingMark: Bool { story == nil && status != .working && (status == .waiting || status == .awaitingInput || isNew) }
 
     /// A story row's corner: a dot while it waits on the person (a question
-    /// or an approval), a bar while a run is going, nothing on a timed wait
+    /// or an approval), braille dots while a run is going, nothing on a timed wait
     /// or at rest.
     public var corner: Corner {
         switch status {
         case .awaitingInput: .dot
-        case .working: .bar
+        case .working: .braille
         case .waiting, .none: .none
         }
     }
 
-    public enum Corner: Equatable, Sendable { case none, dot, bar }
+    public enum Corner: Equatable, Sendable { case none, dot, braille }
 }
 
 /// The document as the rows the sidebar draws.
@@ -258,6 +258,7 @@ public enum StemCellsRows {
         return rows.map { row in
             guard row.kind == .space || row.kind == .session else { return row }
             var row = row
+            if row.mark == .none { row.mark = .glyph(row.kind == .session ? "agents" : "tasks") }
             // A session row shows no ring; its stories roll up into its task's.
             let ring = row.kind == .space ? row.agentId.flatMap { rings[$0] } : nil
             row.story = StemCellsRow.StoryRowState(segments: ring?.storyIds.count ?? 0, unseen: min(ring?.unseenCount ?? 0, ring?.storyIds.count ?? 0))

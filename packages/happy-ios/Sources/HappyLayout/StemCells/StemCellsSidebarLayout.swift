@@ -18,6 +18,7 @@ public enum StemCellsSidebarLayout {
         public var hasMark: Bool
         /// A status mark or an unread dot in the trailing square.
         public var hasTrailing: Bool
+        public var hasWorkingSignal: Bool
         /// Rows nested under it fold: its chevron takes the trailing square,
         /// and a status or dot stands just before it.
         public var hasFold: Bool
@@ -30,11 +31,12 @@ public enum StemCellsSidebarLayout {
         /// mark in its story ring, one signal in the bottom-right corner.
         public var story: StoryRow?
 
-        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasFold: Bool = false, hasAdd: Bool = false, foldClosed: Bool = false, story: StoryRow? = nil) {
+        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, hasAdd: Bool = false, foldClosed: Bool = false, story: StoryRow? = nil) {
             self.kind = kind
             self.depth = depth
             self.hasMark = hasMark
             self.hasTrailing = hasTrailing
+            self.hasWorkingSignal = hasWorkingSignal
             self.hasFold = hasFold
             self.hasAdd = hasAdd
             self.foldClosed = foldClosed
@@ -44,16 +46,14 @@ public enum StemCellsSidebarLayout {
 
     /// The one signal a story row shows in its bottom-right corner, where
     /// Telegram puts its unread dot: a dot while it waits on the person, a
-    /// bar while it works, nothing otherwise.
+    /// braille loader while it works, nothing otherwise.
     public enum Corner: Equatable, Sendable {
-        case none, dot, bar
+        case none, dot, braille
     }
 
     /// What a story row draws beside its title.
     public struct StoryRow: Equatable, Sendable {
-        /// The agent's own status under the title, in up to two lines. A
-        /// row with no agent behind it (a Surface) has none; its title
-        /// stays where every title is.
+        /// One fixed status line under the title, blank when no status is available.
         public var hasSubtitle: Bool
         public var corner: Corner
         /// The time at the end of the first line, as measured; 0 for none.
@@ -88,7 +88,7 @@ public enum StemCellsSidebarLayout {
         public var ring: CGRect?
         /// A story row's second line.
         public var subtitle: CGRect?
-        /// A story row's corner signal: the dot or the bar, as `Row.story` asks.
+        /// A story row's corner signal: the dot or braille loader.
         public var corner: CGRect?
         /// A story row's time, at the end of its first line.
         public var time: CGRect?
@@ -121,7 +121,7 @@ public enum StemCellsSidebarLayout {
     }
 
     public static func height(_ row: Row) -> CGFloat {
-        row.kind == .row && row.story != nil ? StemCellsStoryRowMetrics.rowHeight : height(row.kind)
+        row.kind == .row && row.story != nil ? (row.depth > 0 ? StemCellsStoryRowMetrics.nestedRowHeight : StemCellsStoryRowMetrics.rowHeight) : height(row.kind)
     }
 
     public static func height(_ kind: Kind) -> CGFloat {
@@ -141,7 +141,7 @@ public enum StemCellsSidebarLayout {
         let boxX = M.inset
         let boxWidth = max(0, width - 2 * M.inset)
         for (index, row) in rows.enumerated() {
-            if index > 0 { y += M.rowGap }
+            if index > 0, row.story == nil || rows[index - 1].story == nil { y += M.rowGap }
             let height = height(row)
             let box = CGRect(x: boxX, y: y, width: boxWidth, height: height)
             let midY = y + height / 2
@@ -174,7 +174,8 @@ public enum StemCellsSidebarLayout {
                 frame.chevronGlyph = fold()
             case .row where row.story != nil:
                 // The fold rides on the title's line, as the time does.
-                let line = y + StemCellsStoryRowMetrics.titleTop + StemCellsStoryRowMetrics.titleLine / 2
+                let factor = row.depth > 0 ? StemCellsStoryRowMetrics.nestedScale : 1
+                let line = y + (StemCellsStoryRowMetrics.titleTop + StemCellsStoryRowMetrics.titleLine / 2) * factor
                 frame = storyRow(row, box: box, trailingRect: trailingRect.offsetBy(dx: 0, dy: pixel(line - midY)), fold: row.hasFold ? fold(line) : nil, pixel: pixel)
             case .widget, .row:
                 var x = leadingX(depth: row.depth)
@@ -196,6 +197,11 @@ public enum StemCellsSidebarLayout {
                 }
                 // A row's title rides up to its marks' middle.
                 frame.label = CGRect(x: x, y: row.kind == .row ? y - M.titleLift : y, width: max(0, right - x), height: height)
+                if row.hasTrailing == false, row.story == nil, row.kind == .row, row.hasWorkingSignal {
+                    let signal = StemCellsStoryRowMetrics.braille
+                    frame.corner = CGRect(x: slot.midX - signal.width / 2, y: slot.midY - signal.height / 2, width: signal.width, height: signal.height)
+                    frame.label.size.width = max(0, slot.minX - M.trailingGap - x)
+                }
             }
             frames.append(frame)
             y += height
@@ -214,24 +220,25 @@ public enum StemCellsSidebarLayout {
     /// Sidebar v2's story row, on Telegram's chat list: the ring 12 into
     /// the box and centred on its height, the mark's plate inside it; the
     /// title on a fixed first line, the time and the fold at its end; the
-    /// status under it in up to two lines; the corner signal centred on the
-    /// status's second line at the text's end. Every row is one height and
-    /// nothing moves whether the status is empty, one line or two.
+    /// status under it on one line; the corner signal centred on that line
+    /// at the text's end. Nested rows use a smaller fixed size.
     static func storyRow(_ row: Row, box: CGRect, trailingRect: CGRect, fold: CGRect?, pixel: (CGFloat) -> CGFloat) -> Frame {
         typealias S = StemCellsStoryRowMetrics
         typealias M = StemCellsMetrics
         let story = row.story ?? StoryRow()
+        let factor = row.depth > 0 ? S.nestedScale : 1
         var frame = Frame(box: box)
         let ringX = storyLeadingX(depth: row.depth)
-        let ring = CGRect(x: ringX, y: pixel(box.midY - S.ring / 2), width: S.ring, height: S.ring)
-        let inset = (S.ring - S.plate) / 2
+        let side = S.ring * factor
+        let ring = CGRect(x: ringX, y: pixel(box.midY - side / 2), width: side, height: side)
+        let inset = (S.ring - S.plate) * factor / 2
         if row.hasMark {
             frame.ring = ring
             frame.mark = ring.insetBy(dx: inset, dy: inset)
         }
-        let x = row.hasMark ? ring.maxX + S.textGap : ringX
+        let x = row.hasMark ? ring.maxX + S.textGap * factor : ringX
         let end = box.maxX - S.textTrailing
-        let titleY = box.minY + S.titleTop
+        let titleY = box.minY + S.titleTop * factor
         var titleEnd = end
         if let fold {
             frame.chevron = trailingRect
@@ -240,29 +247,30 @@ public enum StemCellsSidebarLayout {
         }
         if story.timeWidth > 0 {
             let width = min(story.timeWidth, max(0, titleEnd - x))
-            let time = CGRect(x: titleEnd - width, y: titleY, width: width, height: S.titleLine)
+            let time = CGRect(x: titleEnd - width, y: titleY, width: width, height: S.titleLine * factor)
             frame.time = time
             titleEnd = time.minX - S.timeGap
         }
-        frame.label = CGRect(x: x, y: titleY, width: max(0, titleEnd - x), height: S.titleLine)
-        let subtitleY = titleY + S.titleLine + S.lineGap
+        frame.label = CGRect(x: x, y: titleY, width: max(0, titleEnd - x), height: S.titleLine * factor)
+        let subtitleY = titleY + (S.titleLine + S.lineGap) * factor
         if story.hasSubtitle {
-            frame.subtitle = CGRect(x: x, y: subtitleY, width: max(0, end - S.cornerSlot - x), height: S.subtitleLine * CGFloat(S.subtitleLines))
+            frame.subtitle = CGRect(x: x, y: subtitleY, width: max(0, end - S.cornerSlot - x), height: S.subtitleLine * factor)
         }
-        let cornerMid = subtitleY + S.subtitleLine * (CGFloat(S.subtitleLines) - 0.5)
+        let cornerMid = subtitleY + S.subtitleLine * factor / 2
         switch story.corner {
         case .none: break
         case .dot:
             frame.corner = CGRect(x: end - S.dot, y: pixel(cornerMid - S.dot / 2), width: S.dot, height: S.dot)
-        case .bar:
-            frame.corner = CGRect(x: end - S.bar.width, y: pixel(cornerMid - S.bar.height / 2), width: S.bar.width, height: S.bar.height)
+        case .braille:
+            frame.corner = CGRect(x: end - S.braille.width, y: pixel(cornerMid - S.braille.height / 2), width: S.braille.width, height: S.braille.height)
         }
         return frame
     }
 
     /// Where a story row's ring starts: 12 into the box, `indent` more per level.
     static func storyLeadingX(depth: Int) -> CGFloat {
-        StemCellsMetrics.inset + StemCellsStoryRowMetrics.ringInset + CGFloat(depth) * StemCellsStoryRowMetrics.indent
+        typealias S = StemCellsStoryRowMetrics
+        return StemCellsMetrics.inset + S.ringInset + (depth > 0 ? S.indent + CGFloat(depth - 1) * S.indent * S.nestedScale : 0)
     }
 
     /// Between a section's title and its fold: `22 − 18`.
@@ -284,7 +292,7 @@ public enum StemCellsSidebarLayout {
         var parents: [Int: Int] = [:]
         var children: [Int: [Int]] = [:]
         var order: [Int] = []
-        for (index, row) in rows.enumerated() where row.depth > 0 && row.kind == .row {
+        for (index, row) in rows.enumerated() where row.depth > 0 && row.kind == .row && row.story == nil {
             var parent = index - 1
             while parent >= 0, rows[parent].depth >= row.depth { parent -= 1 }
             guard parent >= 0, rows[parent].depth == row.depth - 1 else { continue }

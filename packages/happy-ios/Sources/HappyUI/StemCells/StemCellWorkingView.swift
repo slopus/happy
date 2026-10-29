@@ -178,6 +178,8 @@ final class StemCellWorkingView: UIView {
 /// 120Hz, offset by its phase.
 final class StemCellBrailleView: UIView {
     private var dots: [CALayer] = []
+    private var backgrounded = false
+    var animating: Bool { dots.first?.animation(forKey: "wave") != nil }
 
     var running = false {
         didSet { if running != oldValue { animate() } }
@@ -195,7 +197,9 @@ final class StemCellBrailleView: UIView {
             dots.append(dot)
         }
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.setNeedsLayout() }
-        NotificationCenter.default.addObserver(self, selector: #selector(animate), name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(foregrounded), name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(wentAway), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(animate), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -243,9 +247,12 @@ final class StemCellBrailleView: UIView {
         }.cgImage
     }
 
+    @objc private func wentAway() { backgrounded = true; animate() }
+    @objc private func foregrounded() { backgrounded = false; animate() }
+
     @objc private func animate() {
         for dot in dots { dot.removeAnimation(forKey: "wave") }
-        guard running, window != nil else { return }
+        guard running, window != nil, !backgrounded, !UIAccessibility.isReduceMotionEnabled else { return }
         let start = CACurrentMediaTime()
         let cycle = StemCellBraille.cycle / 1000
         for (dot, phase) in zip(dots, StemCellBraille.phases) {

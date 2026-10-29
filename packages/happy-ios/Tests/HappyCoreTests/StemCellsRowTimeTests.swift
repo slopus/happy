@@ -32,4 +32,14 @@ final class StemCellsRowTimeTests: XCTestCase {
         XCTAssertEqual(StemCellsRowTime.text((now.timeIntervalSince1970 - 24 * 7 * 3600) * 1000, now: now, calendar: calendar, locale: Locale(identifier: "ru_RU")), "21.10")
         XCTAssertEqual(StemCellsRowTime.text((now.timeIntervalSince1970 - 24 * 7 * 3600) * 1000, now: now, calendar: calendar, locale: Locale(identifier: "en_US")), "10/21")
     }
+
+    func testPreviousYearsIncludeTheYear() {
+        let date = calendar.date(from: DateComponents(year: 2025, month: 10, day: 21))!
+        XCTAssertEqual(StemCellsRowTime.text(date.timeIntervalSince1970 * 1000, now: now, calendar: calendar, locale: locale), "21/10/2025")
+    }
+
+    func testYesterdayNeverLooksLikeTodayAcrossMidnight() {
+        let midnight = calendar.startOfDay(for: now)
+        XCTAssertEqual(StemCellsRowTime.text((midnight.timeIntervalSince1970 - 60) * 1000, now: midnight, calendar: calendar, locale: locale), "Tue")
+    }
 }

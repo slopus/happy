@@ -15,8 +15,10 @@ public enum StemCellsRowTime {
             formatter.timeStyle = .short
         } else if let week = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)), date >= week {
             formatter.setLocalizedDateFormatFromTemplate("EEE")
-        } else {
+        } else if calendar.component(.year, from: date) == calendar.component(.year, from: now) {
             formatter.setLocalizedDateFormatFromTemplate("dM")
+        } else {
+            formatter.setLocalizedDateFormatFromTemplate("dMy")
         }
         return formatter.string(from: date)
     }

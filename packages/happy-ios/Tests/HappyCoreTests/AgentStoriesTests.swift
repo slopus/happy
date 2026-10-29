@@ -214,8 +214,9 @@ final class AgentStoriesTests: XCTestCase {
         XCTAssertEqual(on[1].story, StemCellsRow.StoryRowState(segments: 4, unseen: 2))
         // A session row is a story row without a ring.
         XCTAssertEqual(on[2].story, StemCellsRow.StoryRowState(segments: 0, unseen: 0))
+        XCTAssertEqual(on[2].mark, .glyph("agents"), "a nested session always has an icon")
         // One signal, in the corner; nothing in the trailing square.
-        XCTAssertEqual(on[1].corner, .bar)
+        XCTAssertEqual(on[1].corner, .braille)
         XCTAssertEqual(on[2].corner, .dot)
         XCTAssertFalse(on[2].hasTrailingMark)
         XCTAssertTrue(rows[2].hasTrailingMark)

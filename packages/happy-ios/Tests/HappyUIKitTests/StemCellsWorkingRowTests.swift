@@ -5,10 +5,8 @@ import HappyLayout
 import UIKit
 import XCTest
 
-/// A sidebar row whose work is running shimmers its title, as desktop's
-/// `ShimmerText sweep="sheen"` does: every working title on one clock, an
-/// idle one still, and the sweep gone once the turn ends or the row
-/// scrolls out of sight.
+/// Every row reuses the chat's braille loader. Titles stay still and the
+/// loader stops when work ends, leaves the screen or enters the background.
 @MainActor
 final class StemCellsWorkingRowTests: XCTestCase {
     private var window: UIWindow!
@@ -47,35 +45,33 @@ final class StemCellsWorkingRowTests: XCTestCase {
         try XCTUnwrap(sidebar.subviews.compactMap { $0 as? StemCellsRowView }.first { $0.row?.id == id })
     }
 
-    func testAWorkingRowShimmersAndStopsWhenTheTurnEnds() throws {
+    func testAWorkingRowUsesBrailleAndStopsWhenTheTurnEnds() throws {
         let sidebar = sidebar(Self.rows(working: true))
         let voice = try view(sidebar, "space:voice")
         let child = try view(sidebar, "session:child")
-        XCTAssertNotNil(voice.titleSweepBegan, "the working row is still")
-        XCTAssertNotNil(child.titleSweepBegan, "the working subtask is still")
-        XCTAssertEqual(voice.accessibilityValue, "waveform, working")
-        // One clock: the two sweep together.
-        XCTAssertEqual(voice.titleSweepBegan, child.titleSweepBegan)
+        XCTAssertTrue(voice.workingSignalRunning)
+        XCTAssertTrue(child.workingSignalRunning)
+        XCTAssertNil(voice.titleSweepBegan)
+        XCTAssertNil(child.titleSweepBegan)
+        XCTAssertEqual(voice.accessibilityValue, "waveform")
         // Idle, asking or waiting: no sweep.
         for id in ["space:mic", "space:ask", "space:wait", "section:work"] {
             XCTAssertNil(try view(sidebar, id).titleSweepBegan, "\(id) shimmers")
+            XCTAssertFalse(try view(sidebar, id).workingSignalRunning)
         }
         XCTAssertEqual(try view(sidebar, "space:mic").accessibilityValue, "microphone")
 
         // The turn ends.
         sidebar.apply(Self.rows(working: false))
         sidebar.layoutIfNeeded()
-        XCTAssertNil(voice.titleSweepBegan, "the row kept shimmering after its turn")
-        XCTAssertNil(child.titleSweepBegan)
+        XCTAssertFalse(voice.workingSignalRunning)
+        XCTAssertFalse(child.workingSignalRunning)
         XCTAssertEqual(voice.accessibilityValue, "waveform")
 
-        // And starts again on the same clock as before.
-        let began = try XCTUnwrap({ () -> CFTimeInterval? in
-            sidebar.apply(Self.rows(working: true))
-            sidebar.layoutIfNeeded()
-            return voice.titleSweepBegan
-        }())
-        XCTAssertEqual(began, child.titleSweepBegan)
+        sidebar.apply(Self.rows(working: true))
+        sidebar.layoutIfNeeded()
+        XCTAssertTrue(voice.workingSignalRunning)
+        XCTAssertTrue(child.workingSignalRunning)
     }
 
     func testAWorkingRowOutOfSightStops() throws {
@@ -84,25 +80,25 @@ final class StemCellsWorkingRowTests: XCTestCase {
         rows += (0..<30).map { StemCellsRow(id: "space:more\($0)", nodeId: "more\($0)", kind: .space, label: "More work \($0)") }
         let sidebar = sidebar(rows, height: 200)
         let voice = try view(sidebar, "space:voice")
-        XCTAssertNotNil(voice.titleSweepBegan)
+        XCTAssertTrue(voice.workingSignalRunning)
         sidebar.contentOffset.y = 600
         sidebar.layoutIfNeeded()
-        XCTAssertNil(voice.titleSweepBegan, "a row out of sight still sweeps")
+        XCTAssertFalse(voice.workingSignalRunning)
         sidebar.contentOffset.y = 0
         sidebar.layoutIfNeeded()
-        XCTAssertNotNil(voice.titleSweepBegan, "back in sight, the row is still")
+        XCTAssertTrue(voice.workingSignalRunning)
         // Out of the window altogether.
         sidebar.removeFromSuperview()
-        XCTAssertNil(voice.titleSweepBegan)
+        XCTAssertFalse(voice.workingSignalRunning)
     }
 
-    func testTheAppGoingAwayStopsTheSweep() throws {
+    func testTheAppGoingAwayStopsTheLoader() throws {
         let sidebar = sidebar(Self.rows(working: true))
         let voice = try view(sidebar, "space:voice")
         NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
-        XCTAssertNil(voice.titleSweepBegan, "it sweeps in the background")
+        XCTAssertFalse(voice.workingSignalRunning)
         NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: nil)
-        XCTAssertNotNil(voice.titleSweepBegan)
+        XCTAssertTrue(voice.workingSignalRunning)
     }
 }
 #endif

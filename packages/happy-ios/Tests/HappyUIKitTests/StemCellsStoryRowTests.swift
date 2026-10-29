@@ -16,6 +16,12 @@ final class StemCellsStoryRowTests: XCTestCase {
             var row = StemCellsRow(id: "space:\(id)", nodeId: id, kind: .space, label: label, mark: mark, status: status, agentId: agent)
             row.hasAgent = true
             row.statusLine = line
+            if line != nil { row.statusTime = Date().addingTimeInterval(-1_800).timeIntervalSince1970 * 1000 }
+            if id == "stories" { row.statusTime = Date().addingTimeInterval(-300).timeIntervalSince1970 * 1000 }
+            if id == "ios" {
+                let tuesday = Calendar.current.nextDate(after: Calendar.current.startOfDay(for: Date()), matching: DateComponents(weekday: 3), matchingPolicy: .nextTime, direction: .backward)!
+                row.statusTime = tuesday.timeIntervalSince1970 * 1000
+            }
             return row
         }
         let rows = [
@@ -37,11 +43,16 @@ final class StemCellsStoryRowTests: XCTestCase {
     }
 
     private func keep(_ view: UIView, _ name: String) {
-        guard let directory = ProcessInfo.processInfo.environment["HAPPY_PREVIEW_DIR"] else { return }
         let format = UIGraphicsImageRendererFormat()
         format.scale = 3
         let image = UIGraphicsImageRenderer(bounds: view.bounds, format: format).image { context in view.layer.render(in: context.cgContext) }
-        try? image.pngData()?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(name).png"))
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if let directory = ProcessInfo.processInfo.environment["HAPPY_PREVIEW_DIR"] {
+            try? image.pngData()?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(name).png"))
+        }
     }
 
     func testStoryRowsWearRingsStatusesAndOneCornerSignal() throws {
@@ -59,10 +70,10 @@ final class StemCellsStoryRowTests: XCTestCase {
             XCTAssertNotNil(frames[index].subtitle)
             XCTAssertNil(frames[index].trailing)
         }
-        // A dot waiting on the person, a bar working, nothing on a timed wait.
+        // A dot waiting on the person, braille while running, nothing on a timed wait.
         XCTAssertNotNil(frames[4].corner)
         XCTAssertEqual(frames[4].corner?.width, StemCellsStoryRowMetrics.dot)
-        XCTAssertEqual(frames[3].corner?.size, StemCellsStoryRowMetrics.bar)
+        XCTAssertEqual(frames[3].corner?.size, StemCellsStoryRowMetrics.braille)
         XCTAssertNil(frames[5].corner)
 
         let stories = try XCTUnwrap(rowView(sidebar, "space:stories"))
@@ -87,7 +98,7 @@ final class StemCellsStoryRowTests: XCTestCase {
         var rows: [StemCellsRow] = []
         for (line, text) in lines {
             for (name, status) in states {
-                var row = StemCellsRow(id: "space:\(line)-\(name)", nodeId: "\(line)-\(name)", kind: .space, label: "\(line.capitalized) line, \(name)", mark: .glyph("tasks"), status: status, agentId: "\(line)-\(name)")
+                var row = StemCellsRow(id: "space:\(line)-\(name)", nodeId: "\(line)-\(name)", kind: .space, label: "\(line == "none" ? "New task" : line == "one" ? "Sidebar polish" : "Preview release")", mark: .glyph("tasks"), status: status, agentId: "\(line)-\(name)")
                 row.hasAgent = true
                 row.statusLine = text
                 row.statusTime = now - 3_600_000
@@ -119,21 +130,22 @@ final class StemCellsStoryRowTests: XCTestCase {
             let view = try XCTUnwrap(rowView(sidebar, row.id))
             view.layoutIfNeeded()
             // One height, and the title, ring and status where every row has them.
-            XCTAssertEqual(frame.box.height, 78, row.id)
+            XCTAssertEqual(frame.box.height, 64, row.id)
             XCTAssertEqual(frame.label.minY - frame.box.minY, first.label.minY - first.box.minY, row.id)
             XCTAssertEqual(frame.ring!.minY - frame.box.minY, first.ring!.minY - first.box.minY, row.id)
             XCTAssertEqual(frame.subtitle!.minY - frame.box.minY, first.subtitle!.minY - first.box.minY, row.id)
-            // The status takes no line, one or two, hanging from the first.
-            let subtitle = try XCTUnwrap(view.subviews.compactMap { $0 as? UILabel }.first { $0.numberOfLines == 2 })
-            let lines = row.statusLine == nil ? 0 : row.statusLine!.count < 40 ? 1 : 2
-            XCTAssertEqual(subtitle.frame.height, CGFloat(lines) * 19, row.id)
+            // An empty or truncated status occupies the same single line.
+            let subtitle = try XCTUnwrap(view.subviews.compactMap { $0 as? UILabel }.first { $0.attributedText?.string == row.statusLine && $0.frame.minY > 25 })
+            XCTAssertLessThanOrEqual(subtitle.frame.height, 18, row.id)
+            XCTAssertEqual(subtitle.numberOfLines, 1)
+            XCTAssertEqual(subtitle.lineBreakMode, .byTruncatingTail)
             XCTAssertEqual(subtitle.frame.minY, frame.subtitle!.minY - frame.box.minY, row.id)
             // The time ends the first line while there is a status.
             XCTAssertEqual(frame.time != nil, row.statusLine != nil, row.id)
-            // One signal: a dot asking, a bar working, nothing idle or on a timed wait.
+            // One signal: a dot asking, braille running, nothing at rest or on a timed wait.
             switch row.status {
             case .awaitingInput: XCTAssertEqual(frame.corner?.size, CGSize(width: 12, height: 12), row.id)
-            case .working: XCTAssertEqual(frame.corner?.size, StemCellsStoryRowMetrics.bar, row.id)
+            case .working: XCTAssertEqual(frame.corner?.size, StemCellsStoryRowMetrics.braille, row.id)
             case .none, .waiting: XCTAssertNil(frame.corner, row.id)
             }
         }
@@ -163,6 +175,43 @@ final class StemCellsStoryRowTests: XCTestCase {
         sidebar.tap(view, at: CGPoint(x: frame.label.midX, y: frame.label.midY))
         XCTAssertEqual(opened, ["space:diffs"])
         XCTAssertEqual(selected, ["space:diffs"])
+    }
+
+    func testNestedRowsAndSectionControlsInBothThemes() throws {
+        var parent = StemCellsRow(id: "parent", nodeId: "parent", kind: .space, label: "iOS row polish", mark: .clay("navigation"), status: .working, collapsed: false)
+        parent.statusLine = "Polishing the session list for iPhone"
+        parent.statusTime = Date().addingTimeInterval(-9 * 86_400).timeIntervalSince1970 * 1000
+        var child = StemCellsRow(id: "child", nodeId: "child", kind: .session, depth: 1, label: "Snapshot coverage", mark: .glyph("tasks"), status: .working, collapsed: false)
+        child.statusLine = "Checking every state and nested row at phone widths"
+        child.statusTime = Date().addingTimeInterval(-600).timeIntervalSince1970 * 1000
+        var grandchild = StemCellsRow(id: "grandchild", nodeId: "grandchild", kind: .session, depth: 2, label: "Small phone", status: .awaitingInput)
+        grandchild.statusLine = "Ready for your review"
+        grandchild.statusTime = Date().addingTimeInterval(-120).timeIntervalSince1970 * 1000
+        var rows = [StemCellsRow(id: "section", nodeId: "section", kind: .section, label: "Priority", collapsed: false), parent, child, grandchild]
+        rows += Self.rows().filter { $0.kind == .space }
+        rows = StemCellsRows.withStories(rows, rings: [
+            "a1": StoryRing(agentId: "a1", storyIds: ["s1", "s2", "s3"], unseenCount: 3, latestPostedAt: nil),
+            "a2": StoryRing(agentId: "a2", storyIds: ["s4", "s5", "s6", "s7"], unseenCount: 2, latestPostedAt: nil),
+        ])
+        for style: UIUserInterfaceStyle in [.light, .dark] {
+            let sidebar = StemCellsSidebarView(frame: CGRect(x: 0, y: 0, width: 402, height: 570))
+            sidebar.overrideUserInterfaceStyle = style
+            sidebar.backgroundColor = UIColor(Palette.surface)
+            sidebar.apply(rows)
+            sidebar.layoutIfNeeded()
+            let frames = try XCTUnwrap(sidebar.layoutResult?.frames)
+            XCTAssertNotNil(frames[0].add)
+            XCTAssertNotNil(frames[0].chevronGlyph)
+            XCTAssertEqual(frames[2].ring!.minX, frames[1].label.minX)
+            XCTAssertEqual(frames[3].ring!.minX, frames[2].label.minX)
+            XCTAssertNotNil(frames[3].mark)
+            XCTAssertTrue(sidebar.layoutResult!.connectors.isEmpty)
+            for index in 4..<frames.count {
+                XCTAssertNotNil(frames[index].subtitle)
+                XCTAssertEqual(frames[index].time != nil, rows[index].statusLine != nil)
+            }
+            keep(sidebar, style == .light ? "story-rows-nested-light" : "story-rows-nested-dark")
+        }
     }
 }
 #endif

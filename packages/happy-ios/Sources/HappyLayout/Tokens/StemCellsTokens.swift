@@ -279,58 +279,52 @@ public enum StemCellsMetrics {
     public static let contentBottom: CGFloat = 6 * phone
 }
 
-/// Sidebar v2's story row (design "Sidebar v2: agent story rings", its
-/// 300-wide sidebar), `StemCellsMetrics.phone` times on the phone as the
-/// sidebar's other rows are: a 40 ring round a 30 plate, two lines of 13
-/// and 12, and the corner's 8 dot or 18 × 3 bar 10 in from the corner.
+/// Compact conversation rows: a story ring, a title and one status line,
+/// with the chat's braille loader in the bottom-right corner while running.
 public enum StemCellsStoryRowMetrics {
     static let phone = StemCellsMetrics.phone
-    /// Telegram's chat list row: one height whatever the status says, a
-    /// 60 avatar centred on it, the title on a fixed first line and the
-    /// status under it in up to two lines.
-    public static let rowHeight: CGFloat = 78
+    /// One height whatever the status says, with a smaller nested variant.
+    public static let rowHeight: CGFloat = 64
+    public static let nestedScale: CGFloat = 0.875
+    public static let nestedRowHeight: CGFloat = 56
     /// The ring 12 into the row box.
     public static let ringInset: CGFloat = 12
-    /// The avatar, and the ring's own radius in it (18.5 of 20 on desktop).
-    public static let ring: CGFloat = 60
-    public static let ringRadius: CGFloat = 27.75
+    /// The avatar, and the ring's own radius in it.
+    public static let ring: CGFloat = 48
+    public static let ringRadius: CGFloat = 22
     /// Unseen segments 3 wide, seen ones 1.875, 4.5 between segments when there are several.
     public static let unseenWidth: CGFloat = 2 * phone
     public static let seenWidth: CGFloat = 1.25 * phone
     public static let segmentGap: CGFloat = 3 * phone
     /// The mark's round plate inside the ring, its ink at 8%.
-    public static let plate: CGFloat = 45
+    public static let plate: CGFloat = 36
     public static let plateInk: CGFloat = 0.08
     /// A glyph, and clay art, on the plate.
-    public static let plateGlyph: CGFloat = 24
-    public static let plateArt: CGFloat = 30
+    public static let plateGlyph: CGFloat = 22
+    public static let plateArt: CGFloat = 26
     /// Ring to text, and the text's end to the box's.
     public static let textGap: CGFloat = 12
     public static let textTrailing: CGFloat = 16
-    /// The title: 17 on a 22 line whose top is 9 into the row.
+    /// The title: 17 on a 22 line whose top is 10 into the row.
     public static let titleSize: CGFloat = 17
     public static let titleLine: CGFloat = 22
-    public static let titleTop: CGFloat = 9
-    /// The status: 15 on 19 lines, two at most, 1 under the title.
-    public static let subtitleSize: CGFloat = 15
-    public static let subtitleLine: CGFloat = 19
-    public static let subtitleLines = 2
-    public static let lineGap: CGFloat = 1
+    public static let titleTop: CGFloat = 10
+    /// The status: 14 on one 18-point line, 2 under the title.
+    public static let subtitleSize: CGFloat = 14
+    public static let subtitleLine: CGFloat = 18
+    public static let subtitleLines = 1
+    public static let lineGap: CGFloat = 2
     /// The time at the end of the first line, and its room from the title.
-    public static let timeSize: CGFloat = 14
+    public static let timeSize: CGFloat = 12
     public static let timeGap: CGFloat = 8
-    /// The corner signal, centred on the status's second line at the text's
+    /// The corner signal, centred on the status line at the text's
     /// end; the status always keeps `cornerSlot` clear of it, so it never
     /// reflows when the signal comes or goes.
     public static let dot: CGFloat = 12
-    public static let bar = CGSize(width: 27, height: 4.5)
-    public static let cornerSlot: CGFloat = 27 + 8
-    /// The bar's fill: 40% of the track, sliding across in 1.4 s.
-    public static let barFill: CGFloat = 0.4
-    public static let barDuration: Double = 1.4
-    /// A nested story row's ring stands this far right of its parent's: clear of
-    /// the parent's ring, so its elbow shows (desktop's 28, scaled here).
-    public static let indent: CGFloat = 28 * phone
+    public static let braille = CGSize(width: 8, height: 14)
+    public static let cornerSlot: CGFloat = 12 + 8
+    /// A nested row starts at its parent's text column.
+    public static let indent: CGFloat = ring + textGap
 }
 
 extension ChatTextStyles {

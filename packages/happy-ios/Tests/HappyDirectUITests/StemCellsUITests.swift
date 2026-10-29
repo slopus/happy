@@ -772,10 +772,9 @@ final class StemCellsUITests: XCTestCase {
     }
 
     /// Two tasks set working on the computer (the driver's `work-rows`):
-    /// their titles shimmer, light and dark, while an idle row stays
-    /// still, and each stops once its turn ends. Rows say "working" in
-    /// their value exactly while they shimmer.
-    func testWorkingRowsShimmer() {
+    /// their titles and row heights stay fixed in both themes. Braille
+    /// lifecycle and run-state transitions are covered by UIKit tests.
+    func testWorkingRowsKeepTheirTitlesAndHeight() {
         home()
         pause(2)
         // The computer's Theme, gone round to `name`; what it was before.
@@ -806,27 +805,27 @@ final class StemCellsUITests: XCTestCase {
             if row.frame.midY < height * 0.15 || row.frame.midY > height * 0.75 { bringIntoView(row) }
         }
         show(garden)
-        func shimmers(_ element: XCUIElement) -> Bool { (element.value as? String)?.contains("working") == true }
-        XCTAssertFalse(shimmers(garden), "the row shimmers before its turn")
-        capture("shimmer-before")
+        let title = garden.label
+        let height = garden.frame.height
+        capture("braille-before")
         print("STEM_STEP work-rows")
-        XCTAssertTrue(until(30) { shimmers(garden) && shimmers(flights) }, "the working rows never shimmered")
-        XCTAssertFalse(shimmers(idle), "an idle row shimmers")
         for frame in 0..<6 {
-            capture("shimmer-light-\(frame)")
+            XCTAssertEqual(garden.label, title)
+            XCTAssertEqual(garden.frame.height, height)
+            for element in [garden, flights, idle] {
+                XCTAssertFalse((element.value as? String)?.contains("working") == true)
+            }
+            capture("braille-light-\(frame)")
             pause(0.27)
         }
         theme("Dark")
         show(garden)
         for frame in 0..<6 {
-            capture("shimmer-dark-\(frame)")
+            XCTAssertEqual(garden.label, title)
+            XCTAssertEqual(garden.frame.height, height)
+            capture("braille-dark-\(frame)")
             pause(0.27)
         }
-        XCTAssertTrue(shimmers(garden))
-        // The turn ends: the title stops.
-        XCTAssertTrue(until(120) { !shimmers(garden) && !shimmers(flights) }, "the rows kept shimmering after their turns")
-        pause(1)
-        capture("shimmer-ended")
         for name in ["Adaptive", "Light", "Dark"] where was.contains(name) { theme(name); break }
     }
 

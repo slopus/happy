@@ -21,7 +21,7 @@ final class StemCellsSidebarView: UIScrollView {
     /// A finger came down on a row that opens: it may be opened next.
     var onIntent: ((StemCellsRow) -> Void)?
     var onFold: ((StemCellsRow) -> Void)?
-    /// A section's "+": new work in that section. Sections show it only when set.
+    /// A section's "+": new work in that section. The control is always shown.
     var onAdd: ((StemCellsRow) -> Void)?
     /// What a hold on the row offers, in groups; nil for a row that has nothing.
     var menu: ((StemCellsRow) -> [[StemCellsMenuItem]]?)?
@@ -295,10 +295,10 @@ final class StemCellsSidebarView: UIScrollView {
     }
 
     private func layoutRows(_ rows: [StemCellsRow]) -> [StemCellsSidebarLayout.Row] {
-        Self.layoutRows(rows, adds: onAdd != nil)
+        Self.layoutRows(rows)
     }
 
-    nonisolated static func layoutRows(_ rows: [StemCellsRow], adds: Bool = false) -> [StemCellsSidebarLayout.Row] {
+    nonisolated static func layoutRows(_ rows: [StemCellsRow]) -> [StemCellsSidebarLayout.Row] {
         rows.map { row in
             let kind: StemCellsSidebarLayout.Kind = switch row.kind {
             case .section: .section
@@ -309,10 +309,10 @@ final class StemCellsSidebarView: UIScrollView {
             let corner: StemCellsSidebarLayout.Corner = switch row.corner {
             case .none: .none
             case .dot: .dot
-            case .bar: .bar
+            case .braille: .braille
             }
-            let story = row.story.map { _ in StemCellsSidebarLayout.StoryRow(hasSubtitle: row.hasAgent, corner: corner, timeWidth: StemCellsStoryRowText.timeWidth(row)) }
-            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: adds && row.kind == .section && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story)
+            let story = row.story.map { _ in StemCellsSidebarLayout.StoryRow(hasSubtitle: true, corner: corner, timeWidth: StemCellsStoryRowText.timeWidth(row)) }
+            return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: row.kind == .section, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story)
         }
     }
 

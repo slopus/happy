@@ -64,7 +64,7 @@ final class StemCellsStoryRingView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         typealias S = StemCellsStoryRowMetrics
-        let inset = (bounds.width - S.plate) / 2
+        let inset = bounds.width * (S.ring - S.plate) / S.ring / 2
         plate.frame = bounds.insetBy(dx: inset, dy: inset)
         plate.layer.cornerRadius = plate.bounds.width / 2
         // Round, for the viewer that grows out of it.
@@ -91,24 +91,22 @@ final class StemCellsStoryRingView: UIView {
     }
 }
 
-/// A story row's one corner signal: the accent dot while the agent waits
-/// on the person, or a quiet loading bar while it works (a track with a
-/// 40% fill sliding across, no shimmer). Nothing otherwise.
+/// The chat's own braille animation while work runs, or the accent dot
+/// while it needs an answer. At rest the corner is empty.
 final class StemCellsCornerView: UIView {
-    private let fill = UIView()
+    private let loader = StemCellBrailleView()
     private(set) var corner = StemCellsRow.Corner.none
+    var animating: Bool { loader.animating }
+    var onScreen = true { didSet { loader.running = onScreen && corner == .braille } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         clipsToBounds = true
-        fill.isUserInteractionEnabled = false
-        addSubview(fill)
+        addSubview(loader)
         isHidden = true
         applyColors()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyColors() }
-        NotificationCenter.default.addObserver(self, selector: #selector(restart), name: UIApplication.willEnterForegroundNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(restart), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -117,53 +115,25 @@ final class StemCellsCornerView: UIView {
         guard corner != self.corner else { return }
         self.corner = corner
         isHidden = corner == .none
-        fill.isHidden = corner != .bar
+        loader.isHidden = corner != .braille
+        loader.running = onScreen && corner == .braille
         accessibilityIdentifier = "stem-corner:\(corner)"
         applyColors()
         setNeedsLayout()
-        restart()
     }
 
     private func applyColors() {
         switch corner {
         case .dot: backgroundColor = UIColor(Palette.stemCellsRowNewDot)
-        case .bar: backgroundColor = UIColor(Palette.stemCellsRowTextActive).withAlphaComponent(0.14)
-        case .none: backgroundColor = .clear
+        case .braille, .none: backgroundColor = .clear
         }
-        fill.backgroundColor = UIColor(Palette.stemCellsRowText)
+        loader.tintColor = UIColor(Palette.stemCellsRowText)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        layer.cornerRadius = bounds.height / 2
-        let width = bounds.width * StemCellsStoryRowMetrics.barFill
-        let place = CGRect(x: 0, y: 0, width: width, height: bounds.height)
-        if fill.bounds.size != place.size {
-            fill.bounds = place
-            fill.layer.cornerRadius = bounds.height / 2
-            restart()
-        }
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        restart()
-    }
-
-    /// The fill slides from just off the left to past the right, over and
-    /// over; still with less motion, and off screen.
-    @objc private func restart() {
-        fill.layer.removeAnimation(forKey: "slide")
-        let width = fill.bounds.width
-        fill.center = CGPoint(x: bounds.width * 0.3, y: bounds.midY)
-        guard corner == .bar, window != nil, width > 0, !UIAccessibility.isReduceMotionEnabled else { return }
-        let slide = CABasicAnimation(keyPath: "position.x")
-        slide.fromValue = -width / 2
-        slide.toValue = bounds.width + width / 2
-        slide.duration = StemCellsStoryRowMetrics.barDuration
-        slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        slide.repeatCount = .infinity
-        fill.layer.add(slide, forKey: "slide")
+        layer.cornerRadius = corner == .dot ? bounds.height / 2 : 0
+        loader.frame = bounds
     }
 }
 
@@ -171,6 +141,8 @@ final class StemCellsCornerView: UIView {
 /// list's layout and drawn by the row.
 enum StemCellsStoryRowText {
     static let timeFont = StemCellsFonts.ui(.regular, size: StemCellsStoryRowMetrics.timeSize)
+    static func scale(_ row: StemCellsRow) -> CGFloat { row.depth > 0 ? StemCellsStoryRowMetrics.nestedScale : 1 }
+    static func timeFont(_ row: StemCellsRow) -> UIFont { StemCellsFonts.ui(.regular, size: StemCellsStoryRowMetrics.timeSize * scale(row)) }
 
     /// When the agent last said where it is, as Telegram dates a chat.
     static func time(_ row: StemCellsRow, now: Date = Date()) -> String? {
@@ -180,19 +152,19 @@ enum StemCellsStoryRowText {
 
     static func timeWidth(_ row: StemCellsRow) -> CGFloat {
         guard let text = time(row) else { return 0 }
-        return ceil((text as NSString).size(withAttributes: [.font: timeFont]).width)
+        return ceil((text as NSString).size(withAttributes: [.font: timeFont(row)]).width)
     }
 
     /// The status on its own 19-point lines.
-    static func status(_ text: String) -> NSAttributedString {
+    static func status(_ text: String, scale: CGFloat = 1) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = StemCellsStoryRowMetrics.subtitleLine
-        paragraph.maximumLineHeight = StemCellsStoryRowMetrics.subtitleLine
-        paragraph.lineBreakMode = .byWordWrapping
-        let font = StemCellsFonts.ui(.regular, size: StemCellsStoryRowMetrics.subtitleSize)
+        paragraph.minimumLineHeight = StemCellsStoryRowMetrics.subtitleLine * scale
+        paragraph.maximumLineHeight = StemCellsStoryRowMetrics.subtitleLine * scale
+        paragraph.lineBreakMode = .byTruncatingTail
+        let font = StemCellsFonts.ui(.regular, size: StemCellsStoryRowMetrics.subtitleSize * scale)
         return NSAttributedString(string: text, attributes: [
             .font: font, .paragraphStyle: paragraph,
-            .baselineOffset: (StemCellsStoryRowMetrics.subtitleLine - font.lineHeight) / 4,
+            .baselineOffset: (StemCellsStoryRowMetrics.subtitleLine * scale - font.lineHeight) / 4,
         ])
     }
 }

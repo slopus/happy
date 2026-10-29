@@ -52,10 +52,11 @@ final class StemCellsRowView: UIView {
     /// False while the list has the row scrolled out of sight: its title's
     /// sweep stops until it is back.
     var onScreen = true {
-        didSet { label.onScreen = onScreen }
+        didSet { label.onScreen = onScreen; corner.onScreen = onScreen }
     }
     /// When the title's running sweep began; nil while it doesn't run.
     var titleSweepBegan: CFTimeInterval? { label.sweepBegan }
+    var workingSignalRunning: Bool { corner.animating }
     /// The story ring, for the viewer to grow out of and close into.
     var ringView: UIView? { ring.isHidden ? nil : ring }
     /// What the row wears as its mark, for the viewer's avatar.
@@ -132,7 +133,7 @@ final class StemCellsRowView: UIView {
         case .clay(let slug): slug
         default: nil
         }
-        let value = [row.isNew ? Strings.StemCells.newRow : nil, wears, Self.shimmers(row) ? Strings.StemCells.workingRow : nil].compactMap { $0 }
+        let value = [row.isNew ? Strings.StemCells.newRow : nil, wears].compactMap { $0 }
         accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
         if let story = row.story {
             accessibilityValue = [row.statusLine, story.unseen > 0 ? Strings.Stories.newStories(story.unseen) : nil, row.corner == .dot ? Strings.Stories.waitingOnYou : nil]
@@ -147,13 +148,14 @@ final class StemCellsRowView: UIView {
         ring.isHidden = story == nil || row.mark == .none
         ring.apply(story ?? .init())
         ring.accessibilityIdentifier = "stem-ring:\(row.label)"
-        subtitle.isHidden = story == nil || !row.hasAgent
-        subtitle.attributedText = row.statusLine.map(StemCellsStoryRowText.status)
+        subtitle.isHidden = story == nil
+        subtitle.attributedText = row.statusLine.map { StemCellsStoryRowText.status($0, scale: StemCellsStoryRowText.scale(row)) }
         subtitle.lineBreakMode = .byTruncatingTail
         let time = story == nil ? nil : StemCellsStoryRowText.time(row)
         self.time.isHidden = time == nil
         self.time.text = time
-        corner.apply(story == nil ? .none : row.corner)
+        self.time.font = StemCellsStoryRowText.timeFont(row)
+        corner.apply(story == nil && row.status != .working ? .none : row.corner)
     }
 
     private func applyMark(_ mark: StemCellsRow.Mark) {
@@ -211,23 +213,15 @@ final class StemCellsRowView: UIView {
             label.attributedText = nil
         default:
             let weight: StemCellsFonts.Weight = row.unread || row.isNew ? .bold : selected ? .semiBold : .medium
-            let size = row.story != nil ? StemCellsStoryRowMetrics.titleSize : StemCellsMetrics.labelSize
+            let size = row.story != nil ? StemCellsStoryRowMetrics.titleSize * StemCellsStoryRowText.scale(row) : StemCellsMetrics.labelSize
             label.attributedText = NSAttributedString(string: row.label, attributes: [.font: StemCellsFonts.ui(weight, size: size)])
         }
-        label.shimmering = Self.shimmers(row)
-    }
-
-    /// Desktop's `shimmerLabel`: a place with work running in it, or in
-    /// the work it handed on, says so in its title; nothing else spins. A
-    /// story row's corner says it instead.
-    static func shimmers(_ row: StemCellsRow) -> Bool {
-        row.story == nil && row.status == .working && (row.kind == .space || row.kind == .session)
     }
 
     private func applyTrailing(_ row: StemCellsRow) {
         trailing.isHidden = true
         // A heading search shows (`collapsed` nil) folds nothing.
-        let folds = (row.kind == .section || row.kind == .space || row.kind == .session) && row.collapsed != nil
+        let folds = row.kind == .section || ((row.kind == .space || row.kind == .session) && row.collapsed != nil)
         chevron.isHidden = !folds
         rule.isHidden = row.kind != .separator
         if folds {
@@ -291,20 +285,20 @@ final class StemCellsRowView: UIView {
             case .glyph: StemCellsStoryRowMetrics.plateGlyph
             default: nil
             }
-            if let side { mark = mark.insetBy(dx: (mark.width - side) / 2, dy: (mark.height - side) / 2) }
+            if let side {
+                let scaled = side * StemCellsStoryRowText.scale(row)
+                mark = mark.insetBy(dx: (mark.width - scaled) / 2, dy: (mark.height - scaled) / 2)
+            }
         }
         stemCell.frame = mark
         picture.frame = mark
-        // The status hangs from its first line: one line or two, nothing moves.
-        if let frame = frames.subtitle.map(local) {
-            subtitle.frame = CGRect(origin: frame.origin, size: CGSize(width: frame.width, height: min(frame.height, ceil(subtitle.sizeThatFits(frame.size).height))))
-        } else {
-            subtitle.frame = .zero
-        }
+        // One fixed line, including while empty; no measuring on apply.
+        subtitle.frame = frames.subtitle.map(local) ?? .zero
         if let frame = frames.time.map(local) {
             // On the title's baseline.
-            let title = StemCellsFonts.ui(.medium, size: StemCellsStoryRowMetrics.titleSize)
-            let small = StemCellsStoryRowText.timeFont
+            let factor = row.map(StemCellsStoryRowText.scale) ?? 1
+            let title = StemCellsFonts.ui(.medium, size: StemCellsStoryRowMetrics.titleSize * factor)
+            let small = row.map(StemCellsStoryRowText.timeFont) ?? StemCellsStoryRowText.timeFont
             let drop = ((title.lineHeight - small.lineHeight) / 2 + small.descender - title.descender).rounded()
             time.frame = frame.offsetBy(dx: 0, dy: drop)
         } else {
