@@ -1,0 +1,65 @@
+{
+ "_about": "Per-workload ceilings for gym.py run/check (docs/PERF-GYM.md). Set about 50% over the synthetic baseline in baselines/after.json; a workload over any of them fails.",
+ "open-cold": {
+  "ms": 400,
+  "applyMax": 150,
+  "mainMax": 300,
+  "peakMB": 200,
+  "views": 200
+ },
+ "open-warm": {
+  "ms": 300,
+  "applyMax": 100,
+  "mainMax": 250,
+  "peakMB": 200,
+  "views": 200
+ },
+ "fling-to-top": {
+  "hitchRatio": 10,
+  "dropped": 20,
+  "p95": 17.5,
+  "mainMax": 100,
+  "peakMB": 250,
+  "views": 1200
+ },
+ "fling-to-bottom": {
+  "hitchRatio": 10,
+  "dropped": 20,
+  "p95": 17.5,
+  "mainMax": 100,
+  "peakMB": 250,
+  "views": 1200
+ },
+ "slow-drag": {
+  "hitchRatio": 5,
+  "dropped": 10,
+  "p95": 17.5,
+  "mainMax": 50,
+  "peakMB": 200,
+  "views": 800
+ },
+ "image-heavy": {
+  "hitchRatio": 10,
+  "dropped": 20,
+  "p95": 17.5,
+  "mainMax": 100,
+  "peakMB": 250,
+  "views": 800
+ },
+ "scroll-while-streaming": {
+  "hitchRatio": 100,
+  "dropped": 150,
+  "p95": 40,
+  "mainMax": 100,
+  "peakMB": 250,
+  "views": 1200
+ },
+ "history-paging": {
+  "hitchRatio": 15,
+  "dropped": 30,
+  "p95": 17.5,
+  "mainMax": 100,
+  "peakMB": 320,
+  "views": 2800
+ }
+}
