@@ -942,8 +942,42 @@ public actor StemCellsStore {
 
     /// New work left holding something (text, a picture), whose draft may
     /// not have reached the computer and whose pictures never do: not
-    /// reused until it is left empty again.
+    /// reused until it is left empty again. Kept for this launch only, as
+    /// desktop keeps it for its window.
     private var heldOnLeaving: Set<String> = []
+
+    /// New work being made or looked for, by the heading whose "+" asked
+    /// for it, nil for new work from the dock: what another ask meanwhile
+    /// gets instead of a second one.
+    private var goingToNewWork: [String?: (id: UUID, work: Task<StemCellCreation, Never>)] = [:]
+
+    /// New work to go to, as desktop's `stemCellCreate`: from the dock,
+    /// new work holding nothing wherever it is, newest first; from a
+    /// heading's "+", only such new work under that heading. Made, right
+    /// below Happy or that heading, only when none is empty. Asked again
+    /// while one is on its way, the dock gets any, a "+" its own
+    /// heading's: the same `id`, so it is opened once.
+    public func goToNewWork(under heading: String?) -> (id: UUID, work: Task<StemCellCreation, Never>) {
+        if let waiting = heading == nil ? goingToNewWork.values.first : goingToNewWork[heading] { return waiting }
+        let id = UUID()
+        let candidates = newWork(under: heading)
+        let work = Task<StemCellCreation, Never> {
+            defer { Task { await self.wentToNewWork(heading, id) } }
+            for candidate in candidates where await isEmpty(candidate) {
+                // Still new work, and still on the sidebar, once the computer has answered.
+                guard let space = spaces[candidate.spaceId], Self.untouched(space), removing[space.id] == nil else { continue }
+                let agentId = candidate.agentId
+                return StemCellCreation(spaceId: candidate.spaceId, agentId: agentId, workspaceId: candidate.workspaceId, created: candidate.creation ?? Task { agentId })
+            }
+            return createStemCell(sectionId: heading)
+        }
+        goingToNewWork[heading] = (id, work)
+        return (id, work)
+    }
+
+    private func wentToNewWork(_ heading: String?, _ id: UUID) {
+        if goingToNewWork[heading]?.id == id { goingToNewWork[heading] = nil }
+    }
 
     public func leftHolding(_ spaceId: String, _ holding: Bool) {
         if holding { heldOnLeaving.insert(spaceId) } else { heldOnLeaving.remove(spaceId) }

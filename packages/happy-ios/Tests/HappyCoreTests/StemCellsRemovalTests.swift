@@ -73,20 +73,52 @@ final class StemCellsRemovalTests: XCTestCase {
     }
 }
 
+/// New work asked for again while the first ask is still on its way gets
+/// that same one, as desktop's `stemCellCreate` does: the dock any, a
+/// heading's "+" only its own heading's.
+final class StemCellsNewWorkGuardTests: XCTestCase {
+    func testAnAskOnItsWayAnswersTheNextOne() async throws {
+        var empty = AgentWire.Space(
+            id: "n", title: nil, icon: .stemCell,
+            target: AgentWire.SpaceTarget(kind: "task", id: "tn", agentId: "an", workspaceId: "wn"),
+            placement: "settled", version: 1, createdAt: 1, updatedAt: 1
+        )
+        empty.sectionId = nil
+        let computer = Computer(spaces: [empty])
+        let store = StemCellsStore(client: DirectAgentClient(transport: computer, token: "t"))
+        await store.externalResync(loadSidebar: true)
+        // The computer is slow to say whether the new work is empty.
+        await computer.hold(reads: true)
+        let dock = await store.goToNewWork(under: nil)
+        let again = await store.goToNewWork(under: nil)
+        XCTAssertEqual(dock.id, again.id, "a second tap made a second ask")
+        let plus = await store.goToNewWork(under: "work")
+        XCTAssertNotEqual(plus.id, dock.id, "a heading's + took the dock's ask")
+        let plusAgain = await store.goToNewWork(under: "work")
+        XCTAssertEqual(plus.id, plusAgain.id)
+        await computer.answer(200)
+        let went = await dock.work.value
+        XCTAssertEqual(went.spaceId, "n", "the empty new work wasn't reused")
+    }
+}
+
 /// A computer holding a sidebar of spaces. A write waits while `hold` is
 /// on, until `answer` says how it went.
 private actor Computer: DirectTransport {
     private var spaces: [AgentWire.Space]
     private var holding = false
+    /// Reads of a conversation wait too.
+    private var holdingReads = false
     private var waiting: [CheckedContinuation<Int, Never>] = []
     private var held: Int?
 
     init(spaces: [AgentWire.Space]) { self.spaces = spaces }
 
-    func hold() { holding = true }
+    func hold(reads: Bool = false) { holding = true; holdingReads = reads }
 
     func answer(_ status: Int) {
         holding = false
+        holdingReads = false
         held = status
         for waiter in waiting { waiter.resume(returning: status) }
         waiting = []
@@ -101,6 +133,13 @@ private actor Computer: DirectTransport {
     private func respond(_ method: String, _ path: String) async throws -> DirectHTTPResponse {
         func json(_ value: Any) -> DirectHTTPResponse {
             DirectHTTPResponse(status: 200, body: try! JSONSerialization.data(withJSONObject: value))
+        }
+        if holdingReads, path.hasPrefix("/v0/agents/") {
+            _ = await withCheckedContinuation { waiting.append($0) }
+        }
+        if path.hasPrefix("/v0/agents/") {
+            if path.contains("/messages") { return json(["runs": [], "hasMore": false]) }
+            if path.hasSuffix("/bootstrap") { return json(["agent": ["id": "an", "workspaceId": "wn", "status": "idle"], "pending": [], "draft": ["value": NSNull(), "updatedAt": NSNull()]]) }
         }
         if method != "GET" {
             let status = holding ? await withCheckedContinuation { waiting.append($0) } : (held ?? 200)

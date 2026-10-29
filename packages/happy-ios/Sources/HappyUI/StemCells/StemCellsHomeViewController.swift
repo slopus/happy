@@ -36,7 +36,9 @@ final class StemCellsHomeViewController: UIViewController {
     private var directHome = DirectHomeSnapshot()
     private var directWatch: Task<Void, Never>?
     private var usesSpaces: Bool { directHome.usesSpaces && session?.snapshot.availability != .unsupported }
-    private var creating = false
+    /// New work on its way to the screen, by the store's ask: a second tap
+    /// meanwhile gets the same and opens nothing more.
+    private var opening: Set<UUID> = []
     /// Stories, in home's header: open under it, or closed into its title.
     /// Nothing at all while Stories are off.
     private lazy var stories = StoriesHomeController(host: self)
@@ -611,19 +613,16 @@ final class StemCellsHomeViewController: UIViewController {
     /// (desktop's rule): from the dock any, newest first; from a heading's
     /// "+" only one under that heading.
     func makeNewWork(in sectionId: String? = nil, library: Bool = false) {
-        guard let session, !creating, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
-        creating = true
-        StemCellsHaptics.play(.newWork)
+        guard let session, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         let store = session.store
         Task { @MainActor in
-            let creation: StemCellCreation
-            if let empty = await emptyNewWork(under: sectionId) {
-                let agentId = empty.agentId
-                creation = StemCellCreation(spaceId: empty.spaceId, agentId: agentId, workspaceId: empty.workspaceId, created: empty.creation ?? Task { agentId })
-            } else {
-                creation = await store.createStemCell(sectionId: sectionId)
-            }
-            creating = false
+            let going = await store.goToNewWork(under: sectionId)
+            guard opening.insert(going.id).inserted else { return }
+            StemCellsHaptics.play(.newWork)
+            let creation = await going.work.value
+            opening.remove(going.id)
+            // Another ask got to the screen first.
+            guard navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
             let rowId = "space:\(creation.spaceId)"
             sidebar.selectedRowId = rowId
             let chat = StemCellChatViewController(session: session, agentId: creation.agentId, title: Strings.StemCells.untitled, spaceId: creation.spaceId, stemCell: .stemCell(seed: creation.spaceId), creation: creation)
@@ -635,18 +634,6 @@ final class StemCellsHomeViewController: UIViewController {
             // Over the screen it goes to, as that screen comes in.
             if library { chat.presentAttach(from: navigation) }
         }
-    }
-
-    /// The newest new work nothing was written in, here or on the
-    /// computer: under `heading` when a heading's "+" asks, else anywhere.
-    private func emptyNewWork(under heading: String?) async -> StemCellsStore.NewWork? {
-        guard let session else { return nil }
-        // The newest few: each costs the computer a read, and a tap waits on them.
-        for work in await session.store.newWork(under: heading).prefix(3) {
-            if let draft = await session.drafts.draft(work.agentId), !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
-            if await session.store.isEmpty(work) { return work }
-        }
-        return nil
     }
 
     @objc private func dockTapped(_ gesture: UITapGestureRecognizer) {
