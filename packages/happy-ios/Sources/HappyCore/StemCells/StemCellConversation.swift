@@ -794,10 +794,26 @@ public actor StemCellConversation {
         return saved
     }
 
+    /// The runs the phone keeps of a conversation: desktop's window on one
+    /// nobody reads (connectHappyAgent's `trimHistory`), its newest page.
+    /// Older runs stay while the conversation is open, and are read again
+    /// once someone scrolls back to them after it was closed.
+    static let keptRuns = 100
+
+    /// What of `runs` the phone keeps (`keptRuns`): the newest, their
+    /// messages and the pending ones; `trimmed` when older runs were left out.
+    static func kept(runs: [(id: String, messageIds: [String])], messages: [String: AgentWire.Message], pending: [String]) -> (runs: [(id: String, messageIds: [String])], messages: [String: AgentWire.Message], trimmed: Bool) {
+        guard runs.count > keptRuns else { return (runs, messages, false) }
+        let newest = Array(runs.suffix(keptRuns))
+        let ids = Set(newest.flatMap(\.messageIds) + pending)
+        return (newest, messages.filter { ids.contains($0.key) }, true)
+    }
+
     private func persistConversation() async -> Bool {
         guard let persistence, snapshot.loaded || !outgoing.isEmpty else { return true }
-        let kept = KeptConversation(runs: runs.map { .init(id: $0.id, messageIds: $0.messageIds) }, messages: messages, pending: pending,
-            outgoing: outgoing.map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id]) }, mode: mode, hasMore: snapshot.hasMore)
+        let window = Self.kept(runs: runs, messages: messages, pending: pending)
+        let kept = KeptConversation(runs: window.runs.map { .init(id: $0.id, messageIds: $0.messageIds) }, messages: window.messages, pending: pending,
+            outgoing: outgoing.map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed)
         guard kept != lastKept else { return true }
         let key = "conversation:\(agentId)"
         do {

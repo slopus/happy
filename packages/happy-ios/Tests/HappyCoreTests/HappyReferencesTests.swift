@@ -105,6 +105,9 @@ final class HappyReferencesTests: XCTestCase {
         XCTAssertEqual(markdown(text, references), "See Old report.")
         references.artifacts["r1"] = .missing
         XCTAssertEqual(markdown(text, references), "See an unavailable artifact.")
+        // Found by its bytes past any other script, and only whole.
+        XCTAssertEqual(StemCellReferences().unread(in: "Привет 👋🏽 " + text), ["r1"])
+        XCTAssertEqual(StemCellReferences().unread(in: "<happy-artifac"), [])
     }
 
     func testAPersonReadsAsAMentionSetApartForTheReader() {

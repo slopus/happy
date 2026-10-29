@@ -269,13 +269,20 @@ final class MeasuredText {
 }
 
 /// Draws a `ChatTextLayout`. Nothing is measured here.
-final class ChatTextView: UIView {
+class ChatTextView: UIView {
     var layout: ChatTextLayout? {
         didSet {
-            guard layout !== oldValue else { return }
+            guard layout !== oldValue, !Self.drawsAlike(layout, oldValue) else { return }
             setNeedsDisplay()
             accessibilityLabel = layout?.string.string
         }
+    }
+
+    /// The same words at the same width, planned again as a reply streams
+    /// on below them: what is drawn stands.
+    static func drawsAlike(_ a: ChatTextLayout?, _ b: ChatTextLayout?) -> Bool {
+        guard let a, let b else { return false }
+        return a.width == b.width && a.size == b.size && a.maxLines == b.maxLines && a.string.isEqual(to: b.string)
     }
 
     override init(frame: CGRect) {
@@ -311,6 +318,65 @@ final class ChatTextView: UIView {
 
     func link(at point: CGPoint) -> String? {
         layout?.link(at: point)
+    }
+}
+
+/// A `ChatTextView` that draws text coming on screen, as UltraList draws
+/// its rows (`ChatNodeDrawing`), into a bitmap off the main thread: a row
+/// brought in ahead of the scroll costs the main thread nothing to draw.
+/// Text on screen with nothing drawn yet is drawn at once, so nothing
+/// shows blank; text that grew shows its last drawing meanwhile.
+final class ChatOffMainTextView: ChatTextView {
+    private var drawing: Task<Void, Never>?
+    /// The size the shown bitmap was drawn at.
+    private var drawn: CGSize?
+
+    override var layout: ChatTextLayout? {
+        didSet {
+            // Other words than it showed: none until they are drawn. The
+            // same words grown, as a reply streams: the last ones meanwhile.
+            guard layout !== oldValue else { return }
+            if let old = oldValue?.string.string, let new = layout?.string.string, new.hasPrefix(old) { return }
+            layer.contents = nil
+        }
+    }
+
+    override func display(_ layer: CALayer) {
+        drawing?.cancel()
+        drawing = nil
+        guard let layout, bounds.width > 0, bounds.height > 0 else {
+            layer.contents = nil
+            return
+        }
+        let size = bounds.size
+        let traits = traitCollection
+        let scale = layer.contentsScale
+        // On screen with nothing drawn at this size yet: now. Words that
+        // grew within it, as a reply streams, keep showing the last of them
+        // until the rest is drawn.
+        if layer.contents == nil || drawn != size, let window, convert(bounds, to: window).intersects(window.bounds) {
+            layer.contents = Self.draw(layout, size: size, scale: scale, traits: traits)
+            drawn = size
+            return
+        }
+        drawing = Task { [weak self] in
+            let image = await Task.detached(priority: .userInitiated) { Self.draw(layout, size: size, scale: scale, traits: traits) }.value
+            guard !Task.isCancelled, let self else { return }
+            self.layer.contents = image
+            self.drawn = size
+        }
+    }
+
+    private nonisolated static func draw(_ layout: ChatTextLayout, size: CGSize, scale: CGFloat, traits: UITraitCollection) -> CGImage? {
+        let format = UIGraphicsImageRendererFormat(for: traits)
+        format.scale = scale
+        format.opaque = false
+        // The palette is sRGB: 8 bits a channel, not the wide format's 16,
+        // half the bytes to draw and to hand to the render server.
+        format.preferredRange = .standard
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            traits.performAsCurrent { layout.draw(at: .zero) }
+        }.cgImage
     }
 }
 #endif

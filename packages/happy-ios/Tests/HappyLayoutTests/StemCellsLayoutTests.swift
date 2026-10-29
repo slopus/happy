@@ -232,6 +232,59 @@ final class StemCellsLayoutTests: XCTestCase {
         XCTAssertEqual(long.contentHeight, 816)
     }
 
+    /// Only rows within a screen of what shows are views; they stay until
+    /// two screens away.
+    func testOnlyRowsNearTheScreenAreViews() {
+        // Ten rows of 300 under an intro of 116, on a screen of 600.
+        let stack = StemCellChatStackLayout(heights: [116] + Array(repeating: 300, count: 10), width: 390, viewport: 600, pinsFirst: true)
+        XCTAssertEqual(stack.contentHeight, 3116)
+        // At the top: the intro, and rows down to 1200, a screen below the screen.
+        let top = StemCellChatMountedRows(frames: stack.frames, top: 0, height: 600)
+        XCTAssertEqual(top.mount, 0..<5)
+        XCTAssertEqual(top.keep, 0..<7)
+        // In the middle, 1316..1916 showing: from 716 to 2516.
+        let middle = StemCellChatMountedRows(frames: stack.frames, top: 1316, height: 600)
+        XCTAssertEqual(middle.mount, 3..<9)
+        XCTAssertEqual(middle.keep, 1..<11)
+        // At the end: the last rows, and nothing past them.
+        let end = StemCellChatMountedRows(frames: stack.frames, top: 2516, height: 600)
+        XCTAssertEqual(end.mount, 7..<11)
+        XCTAssertEqual(end.keep, 5..<11)
+        // A row ending where the band starts, or starting where it ends, is out.
+        XCTAssertEqual(StemCellChatMountedRows.rows(stack.frames, from: 416, to: 1016), 2..<4)
+        // Nothing to show: no rows.
+        XCTAssertEqual(StemCellChatMountedRows(frames: [], top: 0, height: 600).mount, 0..<0)
+        // Rows of no height, the working line at rest, come in with their neighbours.
+        let resting = [CGRect(x: 0, y: 0, width: 390, height: 300), CGRect(x: 0, y: 300, width: 390, height: 0), CGRect(x: 0, y: 300, width: 390, height: 300)]
+        XCTAssertEqual(StemCellChatMountedRows.rows(resting, from: 0, to: 600), 0..<3)
+        XCTAssertEqual(StemCellChatMountedRows.rows(resting, from: 400, to: 600), 2..<3)
+    }
+
+    /// A tall reply is cut between its marks, never through one, each chunk
+    /// at least 1024 tall; a short one is one chunk.
+    func testATallRowIsCutBetweenItsMarks() {
+        func mark(_ y: CGFloat, _ height: CGFloat) -> CGRect { CGRect(x: 16, y: y, width: 358, height: height) }
+        // Three paragraphs, then a code card (its box, then its lines over it), then more paragraphs.
+        let frames = [mark(0, 300), mark(300, 400), mark(700, 400), mark(1100, 1400), mark(1120, 600), mark(1720, 700), mark(2500, 500), mark(3000, 600), mark(3600, 900)]
+        let size = CGSize(width: 390, height: 4500)
+        let cut = StemCellChatChunks(frames: frames, size: size)
+        XCTAssertEqual(cut.chunks, [
+            // 1100 tall at the card: cut before it.
+            .init(items: 0..<3, frame: CGRect(x: 0, y: 0, width: 390, height: 1100)),
+            // The card's lines reach no further than its box: it ends at 2500, 1400 tall.
+            .init(items: 3..<6, frame: CGRect(x: 0, y: 1100, width: 390, height: 1400)),
+            // 1100 by the paragraph at 3600: cut there, and the rest to the row's end.
+            .init(items: 6..<8, frame: CGRect(x: 0, y: 2500, width: 390, height: 1100)),
+            .init(items: 8..<9, frame: CGRect(x: 0, y: 3600, width: 390, height: 900)),
+        ])
+        // A mark reaching past the next one's top is never cut from it.
+        let overlapping = StemCellChatChunks(frames: [mark(0, 3000), mark(1500, 100), mark(2900, 1200)], size: CGSize(width: 390, height: 4100))
+        XCTAssertEqual(overlapping.chunks, [.init(items: 0..<3, frame: CGRect(x: 0, y: 0, width: 390, height: 4100))])
+        // Up to twice a chunk tall: not cut.
+        let short = StemCellChatChunks(frames: [mark(0, 1100), mark(1100, 900)], size: CGSize(width: 390, height: 2048))
+        XCTAssertEqual(short.chunks, [.init(items: 0..<2, frame: CGRect(x: 0, y: 0, width: 390, height: 2048))])
+    }
+
     /// A send while the agent is idle goes 30% down the viewport, no
     /// higher than a pinned intro's line and no lower than half.
     func testTheSendLiftLineIsDesktopsUnderTheIntro() {

@@ -55,6 +55,23 @@ final class StemCellConversationTests: XCTestCase {
         XCTAssertEqual(StemCellConversation.inboundText("Message from agent c2: Done.", agentId: "c1"), "Message from agent c2: Done.")
     }
 
+    /// The phone keeps a conversation's newest page of runs, as desktop keeps
+    /// one nobody reads; what is pending stays whatever run it is in.
+    func testThePhoneKeepsTheNewestRuns() {
+        let runs = (0..<150).map { (id: "r\($0)", messageIds: ["u\($0)", "a\($0)"]) }
+        var messages = Dictionary(uniqueKeysWithValues: runs.flatMap(\.messageIds).map { ($0, AgentWire.Message(id: $0, role: "user", createdAt: 0, content: [.text($0)])) })
+        messages["p"] = AgentWire.Message(id: "p", role: "user", createdAt: 0, content: [.text("p")])
+        let kept = StemCellConversation.kept(runs: runs, messages: messages, pending: ["p", "u3"])
+        XCTAssertTrue(kept.trimmed)
+        XCTAssertEqual(kept.runs.map(\.id), (50..<150).map { "r\($0)" })
+        XCTAssertEqual(Set(kept.messages.keys), Set((50..<150).flatMap { ["u\($0)", "a\($0)"] } + ["p", "u3"]))
+        // A short one is kept whole.
+        let short = StemCellConversation.kept(runs: Array(runs.prefix(100)), messages: messages, pending: [])
+        XCTAssertFalse(short.trimmed)
+        XCTAssertEqual(short.runs.count, 100)
+        XCTAssertEqual(short.messages.count, messages.count)
+    }
+
     func testAMessageWithoutAPictureBytesStillDecodes() throws {
         let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"},{"type":"image","mimeType":"image/png"}],"metadata":{}}"#
         let decoded = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))

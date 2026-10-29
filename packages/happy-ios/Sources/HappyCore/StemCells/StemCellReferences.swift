@@ -130,7 +130,7 @@ public struct StemCellReferences: Equatable, Sendable {
 
     /// The artifacts `text` names whose titles haven't been read.
     public func unread(in text: String) -> [String] {
-        guard text.contains("<happy-artifact") else { return [] }
+        guard Self.holds(text, "<happy-artifact") else { return [] }
         var ids: [String] = []
         for case .reference(let reference, _) in HappyReferences.parse(text) where reference.kind == "artifact" && artifacts[reference.id] == nil && !ids.contains(reference.id) {
             ids.append(reference.id)
@@ -140,7 +140,7 @@ public struct StemCellReferences: Equatable, Sendable {
 
     /// The people `text` mentions whose names haven't been read.
     public func unknownUsers(in text: String) -> [String] {
-        guard text.contains("<happy-user") else { return [] }
+        guard Self.holds(text, "<happy-user") else { return [] }
         var ids: [String] = []
         for case .reference(let reference, _) in HappyReferences.parse(text) where reference.kind == "user" && users[reference.id] == nil && !ids.contains(reference.id) {
             ids.append(reference.id)
@@ -190,6 +190,17 @@ public struct StemCellReferences: Equatable, Sendable {
         case "agent": agents[reference.id]
         case "workspace": workspaces[reference.id]
         default: nil
+        }
+    }
+
+    /// Whether `text` holds `tag`, by a scan of its bytes: Foundation's
+    /// `contains` walks a long reply character by character, and it is
+    /// asked again of a streaming reply on every token.
+    static func holds(_ text: String, _ tag: StaticString) -> Bool {
+        var text = text
+        return text.withUTF8 { bytes in
+            guard let base = bytes.baseAddress else { return false }
+            return memmem(base, bytes.count, tag.utf8Start, tag.utf8CodeUnitCount) != nil
         }
     }
 }

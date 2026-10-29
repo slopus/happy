@@ -120,6 +120,102 @@ public struct StemCellChatStackLayout: Equatable, Sendable {
     }
 }
 
+/// The transcript's rows that are views, as desktop's virtualised list
+/// keeps only what is near the screen (Message.tsx's overscan): every
+/// row's frame is planned, but a long conversation has views only for the
+/// rows within a screen of the one shown. A row comes in a screen away
+/// (`mount`) and goes only two screens away (`keep`), so one near the edge
+/// doesn't come and go as the scroll wavers.
+public struct StemCellChatMountedRows: Equatable, Sendable {
+    public enum Metrics {
+        /// Past each edge of what shows, in screens: where rows come in.
+        public static let mount: CGFloat = 1
+        /// Where rows already there go.
+        public static let keep: CGFloat = 2
+    }
+
+    /// The rows to be views now.
+    public var mount: Range<Int>
+    /// The rows that, already views, stay.
+    public var keep: Range<Int>
+
+    /// `frames` top to bottom, as `StemCellChatStackLayout` stacks them;
+    /// `top` and `height`: the band of content on screen.
+    public init(frames: [CGRect], top: CGFloat, height: CGFloat) {
+        typealias M = Metrics
+        let bottom = top + height
+        mount = Self.rows(frames, from: top - height * M.mount, to: bottom + height * M.mount)
+        keep = Self.rows(frames, from: top - height * M.keep, to: bottom + height * M.keep)
+    }
+
+    /// The rows reaching into `from..<to`: those ending below `from` and
+    /// starting above `to`, found by halving, as the frames only go down.
+    static func rows(_ frames: [CGRect], from: CGFloat, to: CGFloat) -> Range<Int> {
+        func first(_ past: (CGRect) -> Bool) -> Int {
+            var low = 0
+            var high = frames.count
+            while low < high {
+                let middle = (low + high) / 2
+                if past(frames[middle]) { high = middle } else { low = middle + 1 }
+            }
+            return low
+        }
+        let start = first { $0.maxY > from }
+        let end = first { $0.minY >= to }
+        return start..<max(start, end)
+    }
+}
+
+/// A tall row cut into chunks, each drawn by a view of its own, so that
+/// only the chunks near the screen have views (`StemCellChatMountedRows`
+/// within the row), as a long reply is read a screen at a time. A cut
+/// falls between two of the row's marks, in drawing order, where nothing
+/// drawn before it reaches below the next one's top, once a chunk is at
+/// least `height` tall: no mark is ever split, and every chunk draws over
+/// the ones before it as the row's marks did.
+public struct StemCellChatChunks: Equatable, Sendable {
+    public enum Metrics {
+        /// A chunk's least height; rows up to twice it aren't cut.
+        public static let height: CGFloat = 1024
+    }
+
+    public struct Chunk: Equatable, Sendable {
+        /// Its marks, by their place in the row's drawing order.
+        public var items: Range<Int>
+        /// The band of the row they cover, the row's width wide.
+        public var frame: CGRect
+
+        public init(items: Range<Int>, frame: CGRect) {
+            self.items = items
+            self.frame = frame
+        }
+    }
+
+    public var chunks: [Chunk]
+
+    /// `frames`: the row's marks in drawing order, in its coordinates.
+    public init(frames: [CGRect], size: CGSize, height: CGFloat = Metrics.height) {
+        guard size.height > height * 2, !frames.isEmpty else {
+            chunks = [Chunk(items: frames.indices, frame: CGRect(origin: .zero, size: size))]
+            return
+        }
+        var chunks: [Chunk] = []
+        var start = 0
+        var top: CGFloat = 0
+        var reach: CGFloat = 0
+        for (index, frame) in frames.enumerated() {
+            if index > start, frame.minY >= reach, reach - top >= height {
+                chunks.append(Chunk(items: start..<index, frame: CGRect(x: 0, y: top, width: size.width, height: frame.minY - top)))
+                start = index
+                top = frame.minY
+            }
+            reach = max(reach, frame.maxY)
+        }
+        chunks.append(Chunk(items: start..<frames.count, frame: CGRect(x: 0, y: top, width: size.width, height: max(reach, size.height) - top)))
+        self.chunks = chunks
+    }
+}
+
 /// Desktop's send lift (Message.tsx `sendLift`, `SEND_LIFT_TOP`): a message
 /// sent while the agent is idle, by a reader at the end, is lifted to 30%
 /// down the viewport, the turns before it still in view above, and the

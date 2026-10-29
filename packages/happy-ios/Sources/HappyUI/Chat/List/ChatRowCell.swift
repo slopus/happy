@@ -71,8 +71,29 @@ final class ChatPlanView: UIView {
     /// (a diff's "Show N more lines").
     var onAction: ((ChatRowAction) -> Void)?
     private(set) var plan: ChatRowPlan?
+    /// A tall plan is cut into chunks (`StemCellChatChunks`), each drawn by
+    /// a view of its own, and only the chunks near `band` have one: a long
+    /// reply costs what shows of it. Off, every mark has its view.
+    var cutsTallPlans = false {
+        didSet { if cutsTallPlans != oldValue { plan = nil } }
+    }
+    /// Text coming on screen is drawn off the main thread (`ChatOffMainTextView`).
+    var drawsTextOffMain = false
+    /// The part of the row on screen, in its coordinates; nil: all of it,
+    /// `.null`: none.
+    var band: CGRect? {
+        didSet { if band != oldValue { placeChunks() } }
+    }
+    private var chunks: [(plan: ChatRowPlan, frame: CGRect)] = []
+    private var chunkViews: [Int: ChatPlanView] = [:]
+    private var chunksPlaced: (mount: Range<Int>, keep: Range<Int>)?
+    /// A chunk of a tall plan: touches go through it to the row's other chunks.
+    private var passesTouches = false
     /// The pictures, recordings and stories the plan shows now.
-    var mediaViews: [UIView] { (media as [UIView] + stories as [UIView] + pages as [UIView]).filter { !$0.isHidden } }
+    var mediaViews: [UIView] {
+        (media as [UIView] + stories as [UIView] + pages as [UIView]).filter { !$0.isHidden }
+            + chunkViews.keys.sorted().flatMap { chunkViews[$0]?.mediaViews ?? [] }
+    }
     private var boxes: [UIView] = []
     private var texts: [ChatTextView] = []
     private var icons: [UIImageView] = []
@@ -109,7 +130,62 @@ final class ChatPlanView: UIView {
         guard plan !== self.plan else { return }
         self.plan = plan
         alpha = plan.alpha
+        let cut = cutsTallPlans ? StemCellChatChunks(frames: plan.items.map(\.markFrame), size: plan.size) : nil
+        if let cut, cut.chunks.count > 1 {
+            chunks = cut.chunks.map { chunk in
+                (ChatRowPlan(id: "\(plan.id)#\(chunk.items.lowerBound)", size: plan.size, items: Array(plan.items[chunk.items])), chunk.frame)
+            }
+            for (index, view) in chunkViews {
+                if index < chunks.count { view.apply(chunks[index].plan) } else { removeChunk(index) }
+            }
+            chunksPlaced = nil
+            placeChunks()
+            draw([], id: plan.id)
+        } else {
+            for index in Array(chunkViews.keys) { removeChunk(index) }
+            chunks = []
+            draw(plan.items, id: plan.id)
+        }
+    }
 
+    /// Brings in the chunks of a tall plan near `band` and lets go of
+    /// those far from it, as the transcript's rows are (`StemCellChatMountedRows`).
+    private func placeChunks() {
+        guard !chunks.isEmpty else { return }
+        let near = band.map { StemCellChatMountedRows(frames: chunks.map(\.frame), top: $0.minY, height: $0.height) }
+        var placed = (mount: near?.mount ?? chunks.indices, keep: near?.keep ?? chunks.indices)
+        if band?.isNull == true { placed = (0..<0, 0..<0) }
+        if let chunksPlaced, chunksPlaced == placed { return }
+        chunksPlaced = placed
+        for index in Array(chunkViews.keys) where !placed.keep.contains(index) { removeChunk(index) }
+        for index in placed.mount where chunkViews[index] == nil {
+            let view = ChatPlanView()
+            view.drawsStaticContent = drawsStaticContent
+            view.drawsTextOffMain = drawsTextOffMain
+            view.passesTouches = true
+            view.frame = CGRect(origin: .zero, size: chunks[index].plan.size)
+            view.onAction = { [weak self] action in self?.onAction?(action) }
+            view.apply(chunks[index].plan)
+            chunkViews[index] = view
+            addSubview(view)
+        }
+        // Later chunks draw over earlier ones, as the row's marks do.
+        for index in chunkViews.keys.sorted() {
+            if let view = chunkViews[index] { bringSubviewToFront(view) }
+        }
+    }
+
+    private func removeChunk(_ index: Int) {
+        chunkViews.removeValue(forKey: index)?.removeFromSuperview()
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        return passesTouches && hit === self ? nil : hit
+    }
+
+    /// Shows `items`, the views for them taken from the pools in order.
+    private func draw(_ items: [ChatDrawItem], id: String) {
         // Views are taken in draw order; keeping them in one subview order
         // means a box always sits under the text that follows it.
         var boxIndex = 0
@@ -128,7 +204,7 @@ final class ChatPlanView: UIView {
         var storyIndex = 0
         var pageIndex = 0
         var order: [UIView] = []
-        for item in plan.items {
+        for item in items {
             switch item {
             case .box(let box):
                 guard drawsStaticContent else { continue }
@@ -137,7 +213,7 @@ final class ChatPlanView: UIView {
                 order.append(view)
             case .text(let layout, let frame):
                 guard drawsStaticContent else { continue }
-                let view = take(&texts, &textIndex) { ChatTextView() }
+                let view = take(&texts, &textIndex) { drawsTextOffMain ? ChatOffMainTextView() : ChatTextView() }
                 view.isAccessibilityElement = false
                 view.setLayoutFrame(frame)
                 view.layout = layout
@@ -197,8 +273,10 @@ final class ChatPlanView: UIView {
                 order.append(view)
             case .scroller(let content, let frame, let radius, let vertical):
                 // The same strip of the same row keeps where it was scrolled to.
-                let key = "\(plan.id)#\(scrollerIndex)"
+                let key = "\(id)#\(scrollerIndex)"
                 let view = take(&scrollers, &scrollerIndex) { ChatScrollerView() }
+                // A code block's or table's words, like the row's.
+                view.content.drawsTextOffMain = drawsTextOffMain
                 view.setLayoutFrame(frame)
                 view.layer.cornerRadius = radius
                 view.layer.cornerCurve = .continuous
@@ -335,7 +413,8 @@ final class ChatPlanView: UIView {
 
     /// The sideways strip under `point`; what it shows is in front.
     private func scroller(at point: CGPoint) -> ChatScrollerView? {
-        scrollers.first { !$0.isHidden && $0.frame.contains(point) }
+        // A chunk lies over the whole row: its points are the row's.
+        scrollers.first { !$0.isHidden && $0.frame.contains(point) } ?? chunkViews.values.lazy.compactMap { $0.scroller(at: point) }.first
     }
 
     /// The link under `point`, if the tap landed on one.
@@ -353,7 +432,22 @@ final class ChatPlanView: UIView {
                 if let link = layout.link(at: CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)) { return link }
             }
         }
+        for view in chunkViews.values {
+            if let link = view.link(at: point) { return link }
+        }
         return nil
+    }
+}
+
+extension ChatDrawItem {
+    /// Where the mark is drawn in its row.
+    var markFrame: CGRect {
+        switch self {
+        case .box(let box), .pulse(let box): box.frame
+        case .text(_, let frame), .icon(_, _, let frame, _), .spinner(let frame, _, _), .elapsed(_, let frame, _),
+             .diff(_, let frame, _, _, _, _), .diffHeader(_, _, let frame), .scroller(_, let frame, _, _), .attachment(_, let frame),
+             .webImage(_, let frame, _), .mermaid(_, let frame), .media(_, let frame), .embed(_, let frame): frame
+        }
     }
 }
 
