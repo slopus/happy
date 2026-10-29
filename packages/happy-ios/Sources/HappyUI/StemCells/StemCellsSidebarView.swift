@@ -49,7 +49,6 @@ final class StemCellsSidebarView: UIScrollView {
         didSet {
             guard selectedRowId != oldValue else { return }
             for (id, view) in views { view.selected = id == selectedRowId }
-            applyAboveSelected()
         }
     }
 
@@ -83,6 +82,8 @@ final class StemCellsSidebarView: UIScrollView {
         return tap
     }()
     private var editing: (id: String, commit: (String) -> Void)?
+    /// Moves the story rows' times on, once a minute while on screen.
+    private var clock: Timer?
 
     private struct Carry {
         var drag: StemCellsDrag
@@ -121,6 +122,7 @@ final class StemCellsSidebarView: UIScrollView {
         away.cancelsTouchesInView = false
         away.delegate = PressRecognizer.simultaneous
         addGestureRecognizer(away)
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in self.setNeedsLayout() }
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.connectors.fillColor = UIColor(Palette.stemCellsRowText).withAlphaComponent(StemCellsMetrics.connectorAlpha).resolvedColor(with: self.traitCollection).cgColor
         }
@@ -132,6 +134,18 @@ final class StemCellsSidebarView: UIScrollView {
 
     override func willMove(toWindow newWindow: UIWindow?) {
         super.willMove(toWindow: newWindow)
+        clock?.invalidate()
+        clock = nil
+        if newWindow != nil {
+            // On the minute, so every time turns together.
+            let next = (Date().timeIntervalSince1970 / 60).rounded(.down) * 60 + 60
+            let timer = Timer(fire: Date(timeIntervalSince1970: next), interval: 60, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.tick() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            clock = timer
+            tick()
+        }
         guard newWindow == nil else { return }
         // Leaving the screen mid-hold or mid-carry: nothing is left behind
         // in the window, and the display link lets go of the list.
@@ -176,7 +190,6 @@ final class StemCellsSidebarView: UIScrollView {
             view.selected = row.id == selectedRowId
             touched += 1
         }
-        applyAboveSelected()
         for (id, view) in views where !live.contains(id) {
             view.removeFromSuperview()
             views.removeValue(forKey: id)
@@ -295,10 +308,11 @@ final class StemCellsSidebarView: UIScrollView {
     }
 
     private func layoutRows(_ rows: [StemCellsRow]) -> [StemCellsSidebarLayout.Row] {
-        Self.layoutRows(rows)
+        Self.layoutRows(rows, textScale: StemCellsStoryRowText.scale(traitCollection))
     }
 
-    nonisolated static func layoutRows(_ rows: [StemCellsRow]) -> [StemCellsSidebarLayout.Row] {
+    /// The rows as the layout needs them; story rows measured at `textScale`.
+    nonisolated static func layoutRows(_ rows: [StemCellsRow], textScale: CGFloat = 1) -> [StemCellsSidebarLayout.Row] {
         rows.map { row in
             let kind: StemCellsSidebarLayout.Kind = switch row.kind {
             case .section: .section
@@ -311,7 +325,9 @@ final class StemCellsSidebarView: UIScrollView {
             case .dot: .dot
             case .braille: .braille
             }
-            let story = row.story.map { _ in StemCellsSidebarLayout.StoryRow(hasSubtitle: true, corner: corner, timeWidth: StemCellsStoryRowText.timeWidth(row)) }
+            let story = row.story.map { _ in
+                StemCellsSidebarLayout.StoryRow(corner: corner, timeWidth: StemCellsStoryRowText.timeWidth(row, scale: textScale), last: StemCellsStoryRowText.lastLine(row), text: StemCellsStoryRowText.text(textScale))
+            }
             return StemCellsSidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: row.kind == .section, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story)
         }
     }
@@ -361,12 +377,11 @@ final class StemCellsSidebarView: UIScrollView {
 
     func view(for rowId: String) -> StemCellsRowView? { views[rowId] }
 
-    /// The row just above the selected one drops its hairline: the
-    /// selection's fill parts the list there, as desktop's does.
-    private func applyAboveSelected() {
-        for (index, row) in rows.enumerated() {
-            views[row.id]?.aboveSelected = index + 1 < rows.count && rows[index + 1].id == selectedRowId
-        }
+    /// The times as the clock reads them now; a width that changed lays the list out again.
+    private func tick() {
+        guard rows.contains(where: { $0.story != nil }) else { return }
+        for view in views.values { view.refreshTime() }
+        setNeedsLayout()
     }
 
     private func row(at point: CGPoint) -> StemCellsRowView? {

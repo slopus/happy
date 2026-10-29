@@ -65,6 +65,18 @@ final class StemCellsSession {
         models = StemCellModelState(client: client, offline: offline)
         drafts = StemCellDrafts(offline: offline)
         models.load()
+        // The rows' drafts: what this phone keeps, then every change, here
+        // or (through the store's events) on another device.
+        let drafts = drafts
+        let spaces = store
+        Task {
+            await drafts.observe { agentId, draft in
+                Task { await spaces.noteDraft(agentId, text: draft?.text, updatedAt: draft?.updatedAt ?? Date().timeIntervalSince1970 * 1000) }
+            }
+            for (agentId, draft) in await drafts.all() {
+                await spaces.noteDraft(agentId, text: draft.text, updatedAt: draft.updatedAt)
+            }
+        }
         let updates = store.updates
         following = Task { [weak self] in
             for await snapshot in updates {

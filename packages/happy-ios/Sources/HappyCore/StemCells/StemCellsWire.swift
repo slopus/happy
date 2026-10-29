@@ -194,8 +194,12 @@ extension AgentWire {
         public let retrying: AgentRetrying?
         public let subagents: AgentSubagents?
         public let statusLine: AgentStatusLine?
+        /// When the agent last did something the person would want to know
+        /// about (current daemons); older ones send only `updatedAt`.
+        public let lastActivityAt: Double?
+        public let updatedAt: Double?
 
-        public init(id: String, workspaceId: String, parentAgentId: String? = nil, title: String? = nil, status: String = "idle", wait: AgentWait? = nil, subtasks: [Agent]? = nil, pendingQuestionId: String? = nil, unread: AgentUnread? = nil, canSendMessages: Bool? = nil, archivedAt: Double? = nil, version: String? = nil, retrying: AgentRetrying? = nil, subagents: AgentSubagents? = nil, statusLine: AgentStatusLine? = nil) {
+        public init(id: String, workspaceId: String, parentAgentId: String? = nil, title: String? = nil, status: String = "idle", wait: AgentWait? = nil, subtasks: [Agent]? = nil, pendingQuestionId: String? = nil, unread: AgentUnread? = nil, canSendMessages: Bool? = nil, archivedAt: Double? = nil, version: String? = nil, retrying: AgentRetrying? = nil, subagents: AgentSubagents? = nil, statusLine: AgentStatusLine? = nil, lastActivityAt: Double? = nil, updatedAt: Double? = nil) {
             self.id = id
             self.workspaceId = workspaceId
             self.parentAgentId = parentAgentId
@@ -211,6 +215,8 @@ extension AgentWire {
             self.retrying = retrying
             self.subagents = subagents
             self.statusLine = statusLine
+            self.lastActivityAt = lastActivityAt
+            self.updatedAt = updatedAt
         }
 
         public static func == (lhs: Agent, rhs: Agent) -> Bool {
@@ -219,6 +225,16 @@ extension AgentWire {
                 && lhs.unread == rhs.unread && lhs.canSendMessages == rhs.canSendMessages && lhs.archivedAt == rhs.archivedAt
                 && lhs.parentAgentId == rhs.parentAgentId && lhs.version == rhs.version
                 && lhs.retrying == rhs.retrying && lhs.subagents == rhs.subagents && lhs.statusLine == rhs.statusLine
+                && lhs.lastActivityAt == rhs.lastActivityAt && lhs.updatedAt == rhs.updatedAt
+        }
+
+        /// When its row's time counts from: the daemon's last activity, else
+        /// the later of its last status and its last change (desktop's
+        /// `conversationActivityAt`). Nil when none is known.
+        public var activityAt: Double? {
+            if let lastActivityAt { return lastActivityAt }
+            let latest = max(statusLine?.updatedAt ?? 0, updatedAt ?? 0)
+            return latest > 0 ? latest : nil
         }
 
         public var isWorking: Bool { status != "idle" }

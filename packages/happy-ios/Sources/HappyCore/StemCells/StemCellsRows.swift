@@ -6,11 +6,15 @@ public struct StemCellsPlaces: Equatable, Sendable {
     public var bots: [AgentWire.Bot]
     public var tasks: [AgentWire.Task]
     public var surfaces: [AgentWire.Surface]
+    /// The start of each conversation's unsent draft, by agent, as its row
+    /// shows it after "Draft:".
+    public var drafts: [String: String]
 
-    public init(bots: [AgentWire.Bot] = [], tasks: [AgentWire.Task] = [], surfaces: [AgentWire.Surface] = []) {
+    public init(bots: [AgentWire.Bot] = [], tasks: [AgentWire.Task] = [], surfaces: [AgentWire.Surface] = [], drafts: [String: String] = [:]) {
         self.bots = bots
         self.tasks = tasks
         self.surfaces = surfaces
+        self.drafts = drafts
     }
 
     /// The system key of Happy's own bot.
@@ -116,9 +120,17 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
     public var surfaceType: String?
     /// The agent's own line about where its work stands (`set_status`).
     public var statusLine: String?
-    /// When the agent last set its status line (ms since 1970): the time a
-    /// story row shows at the end of its first line.
+    /// When the agent last set its status line (ms since 1970).
     public var statusTime: Double?
+    /// When the conversation last did something (ms since 1970, to the
+    /// minute): the time a story row shows at the end of its first line.
+    public var activityTime: Double?
+    /// The start of the person's unsent draft, on one line.
+    public var draft: String?
+    /// The lines the work behind the row added and deleted, summed over
+    /// every workspace it owns; nil while nothing says (this phone isn't
+    /// sent Git totals yet).
+    public var lineChanges: LineChanges?
     /// The row has an agent behind it, so a story row keeps a second line for it.
     public var hasAgent = false
     /// Set while agent stories are on: drawn as sidebar v2's story row.
@@ -126,6 +138,18 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
 
     /// What sidebar v2 draws of a row's stories: its ring's segments and how
     /// many of them are new (none: no ring).
+    public struct LineChanges: Equatable, Sendable {
+        public var added: Int
+        public var deleted: Int
+
+        public init(added: Int, deleted: Int) {
+            self.added = added
+            self.deleted = deleted
+        }
+
+        public var isEmpty: Bool { added <= 0 && deleted <= 0 }
+    }
+
     public struct StoryRowState: Equatable, Sendable {
         public var segments: Int
         public var unseen: Int
@@ -160,15 +184,12 @@ public struct StemCellsRow: Equatable, Sendable, Identifiable {
     /// row's dot. A story row has none: its one signal is its corner.
     public var hasTrailingMark: Bool { story == nil && status != .working && (status == .waiting || status == .awaitingInput || isNew) }
 
-    /// A story row's corner: a dot while it waits on the person (a question
-    /// or an approval), braille dots while a run is going, nothing on a timed wait
-    /// or at rest.
+    /// A story row's corner (desktop's `storySignal`): braille dots while a
+    /// run is going, else a dot while something is unread, else nothing. A
+    /// question waiting on the person is its status line's to say.
     public var corner: Corner {
-        switch status {
-        case .awaitingInput: .dot
-        case .working: .braille
-        case .waiting, .none: .none
-        }
+        if status == .working { return .braille }
+        return unread || isNew ? .dot : .none
     }
 
     public enum Corner: Equatable, Sendable { case none, dot, braille }
@@ -250,14 +271,18 @@ public enum StemCellsRows {
         return shown
     }
 
-    /// The rows as sidebar v2 draws them while agent stories are on
-    /// (`rings` set, keyed by agent): each conversation's row a story row,
-    /// a task's or bot's wearing its agent's ring. Off (nil), as they are.
+    /// The rows as the stem-cell sidebar draws them while agent stories are
+    /// on (`rings` set, keyed by agent): each conversation's row a story
+    /// row, a task's or bot's wearing its agent's ring. Stories don't nest:
+    /// only top-level rows are drawn, and none of them folds. Off (nil), as
+    /// they are.
     public static func withStories(_ rows: [StemCellsRow], rings: [String: StoryRing]?) -> [StemCellsRow] {
         guard let rings else { return rows }
-        return rows.map { row in
+        return rows.filter { $0.depth == 0 }.map { row in
             guard row.kind == .space || row.kind == .session else { return row }
             var row = row
+            row.collapsed = nil
+            row.hasHiddenSessions = false
             if row.mark == .none { row.mark = .glyph(row.kind == .session ? "agents" : "tasks") }
             // A session row shows no ring; its stories roll up into its task's.
             let ring = row.kind == .space ? row.agentId.flatMap { rings[$0] } : nil
@@ -298,9 +323,23 @@ public enum StemCellsRows {
         row.hasAgent = conversation != nil
         row.statusLine = conversation?.statusLine?.text
         row.statusTime = conversation?.statusLine?.updatedAt
+        row.activityTime = conversation?.activityAt.map(minute)
+        row.draft = conversation.flatMap { places.drafts[$0.id] }
         // A bot can always be archived; a task only where the daemon says so.
         row.canArchive = space.target.kind == "bot" || places.task(space.target.id)?.canArchive == true
         return [row] + children
+    }
+
+    /// A moment to its minute, the finest a row's time tells, so a change
+    /// within the minute redraws nothing.
+    static func minute(_ ms: Double) -> Double { (ms / 60_000).rounded(.down) * 60_000 }
+
+    /// How much of a draft a row shows: the start of it, on one line
+    /// (desktop's `draftPreviewOf`); nil while it holds nothing to show.
+    public static func draftPreview(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let line = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return line.isEmpty ? nil : String(line.prefix(120))
     }
 
     static func sessionTree(_ agents: [AgentWire.Agent]) -> [SidebarDocumentEdits.SessionTree] {
@@ -342,6 +381,8 @@ public enum StemCellsRows {
             row.hasAgent = true
             row.statusLine = agent.statusLine?.text
             row.statusTime = agent.statusLine?.updatedAt
+            row.activityTime = agent.activityAt.map(minute)
+            row.draft = places.drafts[agent.id]
             // A subtask's own subtasks show and hide under it as a row's do.
             row.sessions = sessionTree(agent.subtasks ?? [])
             row.hasHiddenSessions = hasMissing(row.sessions, under: node, held: held)

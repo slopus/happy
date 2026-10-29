@@ -204,6 +204,7 @@ public actor StemCellsStore {
         placesReload?.cancel(); placesReload = nil
         attentionIdle?.cancel(); attentionIdle = nil
         keeping?.cancel(); keeping = nil
+        draftPublish?.cancel(); draftPublish = nil
         continuation.finish()
         await client.close()
     }
@@ -501,7 +502,53 @@ public actor StemCellsStore {
             guard let data = try? JSONEncoder().encode(value) else { return [] }
             return (try? decoder.decode([Lossy<T>].self, from: data))?.compactMap(\.value) ?? []
         }
-        places = StemCellsPlaces(bots: decode(composed(bots)), tasks: decode(composed(tasks)), surfaces: surfaces)
+        places = StemCellsPlaces(bots: decode(composed(bots)), tasks: decode(composed(tasks)), surfaces: surfaces, drafts: draftsShown)
+    }
+
+    // MARK: Drafts
+
+    /// The latest stamp heard for each conversation's draft, the previews
+    /// rows show, and the ones waiting for typing to pause.
+    private var draftStamps: [String: Double] = [:]
+    private var draftsShown: [String: String] = [:]
+    private var draftsWaiting: [String: String] = [:]
+    private var draftPublish: Task<Void, Never>?
+    /// How long typing pauses before a row's draft follows the composer.
+    static let draftDelay: Duration = .seconds(1)
+
+    /// A conversation's draft changed, on this phone or another device: its
+    /// row follows a second after typing pauses, or at once when the draft
+    /// empties, so typing doesn't redraw the list on every keystroke. An
+    /// older stamp than one already heard changes nothing.
+    public func noteDraft(_ agentId: String, text: String?, updatedAt: Double) {
+        if let stamp = draftStamps[agentId], updatedAt < stamp { return }
+        draftStamps[agentId] = updatedAt
+        guard let preview = StemCellsRows.draftPreview(text) else {
+            draftsWaiting.removeValue(forKey: agentId)
+            guard draftsShown.removeValue(forKey: agentId) != nil else { return }
+            places.drafts = draftsShown
+            publish()
+            return
+        }
+        guard draftsShown[agentId] != preview else {
+            draftsWaiting.removeValue(forKey: agentId)
+            return
+        }
+        draftsWaiting[agentId] = preview
+        draftPublish?.cancel()
+        draftPublish = Task { [weak self] in
+            try? await Task.sleep(for: Self.draftDelay)
+            guard !Task.isCancelled else { return }
+            await self?.showWaitingDrafts()
+        }
+    }
+
+    private func showWaitingDrafts() {
+        guard !draftsWaiting.isEmpty else { return }
+        draftsShown.merge(draftsWaiting) { _, waiting in waiting }
+        draftsWaiting = [:]
+        places.drafts = draftsShown
+        publish()
     }
 
     // MARK: Events
@@ -568,6 +615,10 @@ public actor StemCellsStore {
                 // A page shown inline follows its latest version, entry and display.
                 read(artifacts: [id])
             }
+        case "agent.draft.updated":
+            guard let id = payload["agentId"]?.stringValue else { return }
+            noteDraft(id, text: payload["draft"]?["value"]?["text"]?.stringValue, updatedAt: payload["draft"]?["updatedAt"]?.numberValue ?? 0)
+            return
         case "user_settings.updated":
             if payload["setting"]?["key"]?.stringValue == Self.settingKey {
                 snapshot.prioritizing = payload["setting"]?["value"] == .bool(true)

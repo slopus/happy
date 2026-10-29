@@ -5,102 +5,177 @@ import CoreGraphics
 @testable import HappyLayout
 import XCTest
 
-/// Exact frames for sidebar v2's story rows, on Telegram's chat list: the
-/// ring, the title on a fixed first line with the time and fold at its end,
-/// the status on one line, the braille corner signal, the hairlines.
+/// Exact frames for the stem-cell sidebar's story rows, as desktop's
+/// (`sidebar.css` "Story rows", 82e56f80's corners): a 64 card on a 70.5
+/// pitch, the 50 disc with its ring outside it, the title, up to two status
+/// lines, the time and the signal one inset from the card's corners.
 final class StemCellsStoryRowLayoutTests: XCTestCase {
     typealias S = StemCellsStoryRowMetrics
+    typealias L = StemCellsSidebarLayout
 
-    func testTheStoryRowIsTelegramsChatRow() {
-        XCTAssertEqual([S.rowHeight, S.ring, S.plate, S.ringInset, S.textGap, S.textTrailing, S.indent], [64, 48, 36, 12, 12, 16, 60])
-        XCTAssertEqual([S.titleSize, S.titleLine, S.titleTop, S.subtitleSize, S.subtitleLine, S.lineGap, S.timeSize], [17, 22, 10, 14, 18, 2, 12])
-        XCTAssertEqual(S.subtitleLines, 1)
-        XCTAssertEqual([S.dot, S.cornerSlot, S.unseenWidth, S.seenWidth, S.segmentGap], [12, 20, 3, 1.875, 4.5])
-        XCTAssertEqual(S.braille, CGSize(width: 8, height: 14))
+    private func assertRect(_ rect: CGRect?, _ expected: CGRect, accuracy: CGFloat = 1e-9, file: StaticString = #filePath, line: UInt = #line) {
+        guard let rect else { return XCTFail("no frame", file: file, line: line) }
+        for (a, b) in [(rect.minX, expected.minX), (rect.minY, expected.minY), (rect.width, expected.width), (rect.height, expected.height)] {
+            XCTAssertEqual(a, b, accuracy: accuracy, "\(rect) is not \(expected)", file: file, line: line)
+        }
     }
 
-    func testARowsTitleStaysOnItsLineWhateverItsStatus() {
-        let result = StemCellsSidebarLayout.layout([
-            .init(kind: .row, story: .init(hasSubtitle: true, corner: .dot)),
-            .init(kind: .row, story: .init(hasSubtitle: true, corner: .braille)),
-            .init(kind: .row, story: .init(hasSubtitle: false)),
-        ], width: 390)
-        let frames = result.frames
-        // The box is 8 in, and 64 tall for every top-level row.
-        XCTAssertEqual(frames.map(\.box.height), [64, 64, 64])
-        XCTAssertEqual(frames[0].box, CGRect(x: 8, y: 9, width: 374, height: 64))
-        // The 48 ring is 12 into the box, with a 36 plate inside.
-        XCTAssertEqual(frames[0].ring, CGRect(x: 20, y: 17, width: 48, height: 48))
-        XCTAssertEqual(frames[0].mark, CGRect(x: 26, y: 23, width: 36, height: 36))
-        // The title is 12 past the ring on a 22 line, 10 into the box.
-        XCTAssertEqual(frames[0].label, CGRect(x: 80, y: 19, width: 286, height: 22))
-        // One 18-point status line, clear of the fixed corner slot.
-        XCTAssertEqual(frames[0].subtitle, CGRect(x: 80, y: 43, width: 266, height: 18))
-        // The dot at the text's end, centred on the status, on whole pixels.
-        XCTAssertEqual(frames[0].corner, CGRect(x: 354, y: 46, width: 12, height: 12))
-        XCTAssertNil(frames[0].trailing)
-        XCTAssertNil(frames[0].time)
-        // The chat's 8 × 14 braille loader uses the same corner.
-        XCTAssertEqual(frames[1].corner!.minX, 358)
-        XCTAssertEqual(frames[1].corner!.midY - frames[1].box.minY, frames[0].corner!.midY - frames[0].box.minY, accuracy: 1.0 / 3)
-        // Every title sits the same way, including while its status is empty.
-        for frame in frames { XCTAssertEqual(frame.label.minY - frame.box.minY, 10) }
-        // No agent behind it: no status and no corner.
-        XCTAssertNil(frames[2].subtitle)
+    func testTheMetricsAreDesktops() {
+        XCTAssertEqual([S.rowHeight, S.cardInset, S.cornerRadius, S.rowGap, S.pad, S.disc, S.ringRoom, S.ring, S.textGap], [64, 3, 14, 6.5, 7, 50, 4, 58, 10])
+        XCTAssertEqual([S.titleSize, S.titleBaseline, S.timeSize, S.statusSize, S.statusLine, S.corner], [15.5, 19.5, 12.5, 14, 16, 11.9])
+        XCTAssertEqual([S.signal, S.signalRoom, S.dot, S.countsGap], [14, 20, 10, 4])
+        XCTAssertEqual(S.statusLines, 2)
+        XCTAssertEqual([S.ringRadius, S.unseenWidth, S.seenWidth, S.segmentGap], [27.5, 2, 1.5, 3])
+    }
+
+    func testTheCardTheDiscAndTheText() {
+        let frame = L.layout([.init(kind: .row, story: .init(timeWidth: 20))], width: 390).frames[0]
+        // The card 3 in from the list, 64 tall.
+        XCTAssertEqual(frame.box, CGRect(x: 3, y: 9, width: 384, height: 64))
+        // The disc 7 into it and centred on its height; the ring's room around it.
+        XCTAssertEqual(frame.mark, CGRect(x: 10, y: 16, width: 50, height: 50))
+        XCTAssertEqual(frame.ring, CGRect(x: 6, y: 12, width: 58, height: 58))
+        // The text 10 past the disc; the title's baseline 19.5 into the card.
+        let text = L.StoryText.standard()
+        XCTAssertEqual(frame.label.minX, 70)
+        XCTAssertEqual(frame.label.minY + text.title.ascender - frame.box.minY, S.titleBaseline, accuracy: 1e-9)
+        // Two status lines, the last on the baseline 11.9 above the card's bottom.
+        let status = try! XCTUnwrap(frame.subtitle)
+        XCTAssertEqual(status.minX, 70)
+        XCTAssertEqual(status.height, 32)
+        XCTAssertEqual(status.minY + 16 + text.statusBaseline, frame.box.maxY - S.corner, accuracy: 1e-9)
+        XCTAssertNil(frame.draft)
+        XCTAssertNil(frame.empty)
+        XCTAssertNil(frame.trailing)
+        XCTAssertNil(frame.chevron)
+    }
+
+    func testTheTimeAndTheSignalStandOneInsetFromTheCorners() {
+        let frames = L.layout([
+            .init(kind: .row, story: .init(corner: .dot, timeWidth: 20)),
+            .init(kind: .row, story: .init(corner: .braille, timeWidth: 36)),
+            .init(kind: .row, story: .init(corner: .none)),
+        ], width: 390).frames
+        let text = L.StoryText.standard()
+        for frame in frames {
+            let card = frame.box
+            // The lane: one width whatever it holds, standing on the last baseline.
+            assertRect(frame.signalLane, CGRect(x: card.maxX - 11.9 - 14, y: card.maxY - 11.9 - 14, width: 14, height: 14))
+            // The status ends the lane's room before it, signal or not.
+            XCTAssertEqual(frame.subtitle!.maxX, card.maxX - 31.9, accuracy: 1e-9)
+        }
+        // The time's ink (its box less the digits' bearing) ends 11.9 in,
+        // and its cap top is the title's, 8.65 under the card's top.
+        for frame in frames.prefix(2) {
+            let time = try! XCTUnwrap(frame.time)
+            XCTAssertEqual(time.maxX - S.timeBearing, frame.box.maxX - 11.9, accuracy: 1e-9)
+            let timeCap = time.minY + text.time.ascender - text.time.capHeight
+            let titleCap = frame.label.minY + text.title.ascender - text.title.capHeight
+            XCTAssertEqual(timeCap, titleCap, accuracy: 1e-9)
+            XCTAssertEqual(timeCap - frame.box.minY, 8.65, accuracy: 1e-9)
+            XCTAssertEqual(frame.label.maxX, time.minX - S.timeGap, accuracy: 1e-9)
+        }
+        // The dot and the spinner end on the lane's right edge and the last
+        // baseline, on whole pixels at 3x.
+        let dot = try! XCTUnwrap(frames[0].corner)
+        XCTAssertEqual(dot.size, CGSize(width: 10, height: 10))
+        XCTAssertEqual(dot.maxX, frames[0].signalLane!.maxX, accuracy: 1.0 / 6)
+        XCTAssertEqual(dot.maxY, frames[0].box.maxY - 11.9, accuracy: 1.0 / 6)
+        let braille = try! XCTUnwrap(frames[1].corner)
+        XCTAssertEqual(braille.size, S.braille)
+        XCTAssertEqual(braille.maxX, frames[1].signalLane!.maxX, accuracy: 1.0 / 6)
+        XCTAssertEqual(braille.maxY, frames[1].box.maxY - 11.9, accuracy: 1.0 / 6)
+        for rect in [dot, braille] {
+            XCTAssertEqual((rect.minX * 3).rounded(), rect.minX * 3, accuracy: 1e-9)
+            XCTAssertEqual((rect.minY * 3).rounded(), rect.minY * 3, accuracy: 1e-9)
+        }
         XCTAssertNil(frames[2].corner)
-        XCTAssertEqual(result.contentHeight, 210)
+        XCTAssertNil(frames[2].time)
+        // No time: the title runs to the card's padding.
+        XCTAssertEqual(frames[2].label.maxX, frames[2].box.maxX - S.pad)
     }
 
-    func testTheTimeEndsTheFirstLineAndTheFoldRidesBesideIt() {
-        let plain = StemCellsSidebarLayout.layout([.init(kind: .row, story: .init(timeWidth: 40))], width: 390).frames[0]
-        // Right-aligned on the title's line, 8 clear of the title.
-        XCTAssertEqual(plain.time, CGRect(x: 326, y: 19, width: 40, height: 22))
-        XCTAssertEqual(plain.label.maxX, 318)
-        let classic = StemCellsSidebarLayout.layout([.init(kind: .row, hasFold: true)], width: 402).frames[0]
-        let folds = StemCellsSidebarLayout.layout([.init(kind: .row, hasFold: true, story: .init(timeWidth: 40))], width: 402).frames[0]
-        // The fold on the rows' column, on the title's line, the time before it.
-        XCTAssertEqual(folds.chevron!.midX, classic.chevron!.midX)
-        XCTAssertEqual(folds.chevron!.midY, folds.label.midY, accuracy: 1.0 / 3)
-        XCTAssertEqual(folds.time!.maxX, folds.chevron!.minX - StemCellsMetrics.trailingGap)
-        XCTAssertEqual(folds.label.maxX, folds.time!.minX - S.timeGap)
-        // The status and the corner don't make way for it.
-        XCTAssertEqual(folds.subtitle!.maxX, 402 - 8 - 16 - 20)
-    }
-
-    func testHairlinesRunBetweenStoryRowsFromTheText() {
-        let frames = StemCellsSidebarLayout.layout([
+    func testCardsAre70AndAHalfApartAndHeadingsKeepTheirRoom() {
+        let result = L.layout([
             .init(kind: .row, story: .init()),
             .init(kind: .row, story: .init()),
             .init(kind: .section),
             .init(kind: .row, story: .init()),
-            .init(kind: .row, depth: 1, story: .init()),
-        ], width: 390).frames
-        // A third of a point at the foot of the box, from the title's start to the box's end.
-        XCTAssertEqual(frames[0].separator, CGRect(x: 80, y: 73 - 1.0 / 3, width: 302, height: 1.0 / 3))
-        // None after the last of a run.
-        XCTAssertNil(frames[1].separator)
-        XCTAssertNil(frames[2].separator)
-        // Under a nested row's parent, it starts at the parent's text.
-        XCTAssertEqual(frames[3].separator?.minX, frames[3].label.minX)
-        XCTAssertNil(frames[4].separator)
-    }
-
-    func testNestedStoryRowsAlignWithParentTextWithoutConnectorsOrGaps() {
-        let result = StemCellsSidebarLayout.layout([
-            .init(kind: .row, story: .init()),
-            .init(kind: .row, depth: 1, story: .init()),
         ], width: 390)
-        let (parent, child) = (result.frames[0], result.frames[1])
-        XCTAssertEqual(child.ring!.minX, parent.label.minX)
-        XCTAssertEqual(child.ring!.width, 42)
-        XCTAssertEqual(child.box.height, 56)
-        XCTAssertEqual(child.box.minY, parent.box.maxY)
-        XCTAssertEqual(child.subtitle!.height, 15.75)
+        let boxes = result.frames.map(\.box)
+        XCTAssertEqual(boxes[1].minY - boxes[0].minY, 70.5)
+        XCTAssertEqual(boxes[2].minY - boxes[1].maxY, 12.5)
+        XCTAssertEqual(boxes[3].minY - boxes[2].maxY, 6.5)
+        XCTAssertEqual(result.contentHeight, boxes[3].maxY + StemCellsMetrics.contentBottom)
+        // No hairlines and no tree.
         XCTAssertTrue(result.connectors.isEmpty)
     }
 
+    func testTheDraftAndTheEmptyMarkTakeTheLastLine() {
+        let frames = L.layout([
+            .init(kind: .row, story: .init(last: .status)),
+            .init(kind: .row, story: .init(last: .draft)),
+            .init(kind: .row, story: .init(last: .empty)),
+        ], width: 390).frames
+        let text = L.StoryText.standard()
+        // The status keeps its first line where it always stands.
+        for frame in frames { XCTAssertEqual(frame.subtitle!.minY - frame.box.minY, frames[0].subtitle!.minY - frames[0].box.minY, accuracy: 1e-9) }
+        XCTAssertEqual(frames[1].subtitle!.height, 16)
+        XCTAssertEqual(frames[2].subtitle!.height, 16)
+        // The draft on the second line, ending where the status does.
+        let draft = try! XCTUnwrap(frames[1].draft)
+        XCTAssertEqual(draft.minY, frames[1].subtitle!.maxY, accuracy: 1e-9)
+        XCTAssertEqual(draft.minY + text.statusBaseline, frames[1].box.maxY - S.corner, accuracy: 1e-9)
+        XCTAssertEqual(draft.maxX, frames[1].subtitle!.maxX)
+        // The dinosaur as tall as "Ag" from the last line's cap top, its ground a
+        // cell under it, on whole pixels: 14 × 31 at 3x.
+        let empty = try! XCTUnwrap(frames[2].empty)
+        assertRect(empty.offsetBy(dx: 0, dy: -frames[2].box.minY), CGRect(x: 70, y: 127.0 / 3, width: 31, height: 14))
+        XCTAssertEqual(empty.minY, frames[2].box.maxY - S.corner - text.status.capHeight, accuracy: 1.0 / 6)
+        let atTwo = L.layout([.init(kind: .row, story: .init(last: .empty))], width: 390, scale: 2).frames[0].empty!
+        for value in [atTwo.minX, atTwo.minY, atTwo.width, atTwo.height] { XCTAssertEqual((value * 2).rounded(), value * 2, accuracy: 1e-9) }
+    }
+
+    func testNothingARowShowsMovesItsBoxes() {
+        let variants: [L.StoryRow] = [
+            .init(), .init(corner: .dot), .init(corner: .braille), .init(timeWidth: 30),
+            .init(last: .draft), .init(last: .empty), .init(corner: .braille, timeWidth: 12, last: .draft),
+        ]
+        let base = L.layout([.init(kind: .row, story: variants[0])], width: 390).frames[0]
+        for variant in variants {
+            let frame = L.layout([.init(kind: .row, story: variant)], width: 390).frames[0]
+            XCTAssertEqual(frame.box, base.box)
+            XCTAssertEqual(frame.mark, base.mark)
+            XCTAssertEqual(frame.ring, base.ring)
+            XCTAssertEqual(frame.label.minY, base.label.minY)
+            XCTAssertEqual(frame.subtitle!.minY, base.subtitle!.minY)
+            XCTAssertEqual(frame.subtitle!.maxX, base.subtitle!.maxX)
+            XCTAssertEqual(frame.signalLane, base.signalLane)
+        }
+        // A row with no mark keeps the disc's room, so its text starts on the same line.
+        let bare = L.layout([.init(kind: .row, hasMark: false, story: .init())], width: 390).frames[0]
+        XCTAssertNil(bare.ring)
+        XCTAssertEqual(bare.label.minX, base.label.minX)
+    }
+
+    func testALargerTextSizeGrowsTheLinesAndKeepsTheStructure() {
+        XCTAssertEqual(L.storyHeight(1), 64)
+        XCTAssertEqual(L.storyHeight(0.823), 64, "smaller text keeps the card")
+        XCTAssertEqual(L.storyHeight(2), 64 + 16.6 + 32, accuracy: 1e-9)
+        let text = L.StoryText.standard(scale: 2)
+        let frame = L.layout([.init(kind: .row, story: .init(corner: .dot, timeWidth: 40, text: text))], width: 390).frames[0]
+        // The disc stays 50 and centred; the text column, the lane and the insets stay.
+        XCTAssertEqual(frame.mark!.size, CGSize(width: 50, height: 50))
+        XCTAssertEqual(frame.mark!.midY, frame.box.midY, accuracy: 1.0 / 3)
+        XCTAssertEqual(frame.label.minX, 70)
+        XCTAssertEqual(frame.subtitle!.height, 64)
+        XCTAssertEqual(frame.subtitle!.minY + 32 + text.statusBaseline, frame.box.maxY - S.corner, accuracy: 1e-9)
+        XCTAssertGreaterThanOrEqual(frame.label.minY, frame.box.minY)
+        XCTAssertEqual(frame.signalLane!.maxX, frame.box.maxX - S.corner, accuracy: 1e-9)
+    }
+
     func testClassicRowsAreUntouched() {
-        let frame = StemCellsSidebarLayout.layout([.init(kind: .row)], width: 390).frames[0]
+        let frame = L.layout([.init(kind: .row)], width: 390).frames[0]
         XCTAssertNil(frame.ring)
         XCTAssertNil(frame.subtitle)
         XCTAssertNil(frame.corner)
@@ -108,16 +183,16 @@ final class StemCellsStoryRowLayoutTests: XCTestCase {
     }
 
     func testRingSegmentsRunClockwiseFromTwelveSeenFirst() {
-        XCTAssertEqual(StoryRingLayout.arcs(segments: 0, seen: 0, radius: 27.75, gap: 4.5), [])
+        XCTAssertEqual(StoryRingLayout.arcs(segments: 0, seen: 0, radius: 27.5, gap: 3), [])
         // One story: a whole circle, no gap.
-        let one = StoryRingLayout.arcs(segments: 1, seen: 0, radius: 27.75, gap: 4.5)
+        let one = StoryRingLayout.arcs(segments: 1, seen: 0, radius: 27.5, gap: 3)
         XCTAssertEqual(one.count, 1)
         XCTAssertEqual(one[0].start, -.pi / 2, accuracy: 1e-9)
         XCTAssertEqual(one[0].end - one[0].start, 2 * .pi, accuracy: 1e-9)
         XCTAssertFalse(one[0].seen)
         // Four with two seen: quarters less the gap, the first two grey.
-        let four = StoryRingLayout.arcs(segments: 4, seen: 2, radius: 27.75, gap: 4.5)
-        let gap = 4.5 / 27.75
+        let four = StoryRingLayout.arcs(segments: 4, seen: 2, radius: 27.5, gap: 3)
+        let gap = 3 / 27.5
         XCTAssertEqual(four.map(\.seen), [true, true, false, false])
         for (index, arc) in four.enumerated() {
             XCTAssertEqual(arc.start, -.pi / 2 + CGFloat(index) * .pi / 2 + gap / 2, accuracy: 1e-9)

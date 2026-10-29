@@ -26,6 +26,7 @@ public actor StemCellDrafts {
     private let offline: StemCellsOfflineFile?
     private var drafts: [String: StemCellDraft]?
     private var saving: Task<Void, Never>?
+    private var observer: (@Sendable (String, StemCellDraft?) -> Void)?
 
     static let fileName = "drafts.json"
 
@@ -37,6 +38,16 @@ public actor StemCellDrafts {
         loaded()[agentId]
     }
 
+    /// Every draft kept, by agent.
+    public func all() -> [String: StemCellDraft] {
+        loaded()
+    }
+
+    /// Hears every draft kept or forgotten from now on.
+    public func observe(_ observer: @escaping @Sendable (String, StemCellDraft?) -> Void) {
+        self.observer = observer
+    }
+
     /// Keeps `draft` for the agent, or forgets it with nil, and writes the
     /// file off this actor after any write before it.
     public func keep(_ agentId: String, _ draft: StemCellDraft?) {
@@ -44,6 +55,7 @@ public actor StemCellDrafts {
         guard all[agentId] != draft else { return }
         all[agentId] = draft
         drafts = all
+        observer?(agentId, draft)
         guard let offline else { return }
         let previous = saving
         saving = Task.detached(priority: .utility) {

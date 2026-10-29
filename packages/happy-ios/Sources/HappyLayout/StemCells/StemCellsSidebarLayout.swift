@@ -27,8 +27,8 @@ public enum StemCellsSidebarLayout {
         public var hasAdd: Bool
         /// The fold points right ("›"), not down ("⌄"): its ink weighs elsewhere.
         public var foldClosed: Bool
-        /// Drawn as sidebar v2's story row (Stories on): two lines, the
-        /// mark in its story ring, one signal in the bottom-right corner.
+        /// Drawn as a story row (Stories on): the card, the disc in its
+        /// ring, the title and up to two status lines, the time and one signal.
         public var story: StoryRow?
 
         public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, hasAdd: Bool = false, foldClosed: Bool = false, story: StoryRow? = nil) {
@@ -44,32 +44,92 @@ public enum StemCellsSidebarLayout {
         }
     }
 
-    /// The one signal a story row shows in its bottom-right corner, where
-    /// Telegram puts its unread dot: a dot while it waits on the person, a
-    /// braille loader while it works, nothing otherwise.
+    /// The one signal a story row shows in its bottom-right lane: the chat's
+    /// braille spinner while it works, a dot while something is unread,
+    /// nothing otherwise.
     public enum Corner: Equatable, Sendable {
         case none, dot, braille
     }
 
+    /// What a story row's last line holds: the status's second line, the
+    /// person's draft, or, with nothing at all to say, the empty mark.
+    public enum LastLine: Equatable, Sendable {
+        case status, draft, empty
+    }
+
+    /// One face as drawn: from a line box's top to its baseline, the cap
+    /// height above the baseline, the descender below it, and the line.
+    public struct FontMetrics: Equatable, Sendable {
+        public var ascender: CGFloat
+        public var capHeight: CGFloat
+        public var descender: CGFloat
+        public var lineHeight: CGFloat
+
+        public init(ascender: CGFloat, capHeight: CGFloat, descender: CGFloat, lineHeight: CGFloat) {
+            self.ascender = ascender
+            self.capHeight = capHeight
+            self.descender = descender
+            self.lineHeight = lineHeight
+        }
+
+        /// Figtree's own (ascender 0.95, cap 0.7, descender 0.25 of the
+        /// size, no line gap), for a size the views have not measured.
+        public static func figtree(_ size: CGFloat) -> FontMetrics {
+            FontMetrics(ascender: 0.95 * size, capHeight: 0.7 * size, descender: 0.25 * size, lineHeight: 1.2 * size)
+        }
+    }
+
+    /// A story row's type as the views measure it, at the person's text
+    /// size: the fonts grow, the card's structure stays.
+    public struct StoryText: Equatable, Sendable {
+        /// The text size's multiplier, 1 as designed.
+        public var scale: CGFloat
+        public var title: FontMetrics
+        public var time: FontMetrics
+        public var status: FontMetrics
+        /// Where a status line's baseline falls in its line box, as drawn.
+        public var statusBaseline: CGFloat
+
+        public init(scale: CGFloat, title: FontMetrics, time: FontMetrics, status: FontMetrics, statusBaseline: CGFloat) {
+            self.scale = scale
+            self.title = title
+            self.time = time
+            self.status = status
+            self.statusBaseline = statusBaseline
+        }
+
+        /// The design's sizes in Figtree's metrics, the baseline as CSS
+        /// centres a line's content in it.
+        public static func standard(scale: CGFloat = 1) -> StoryText {
+            typealias S = StemCellsStoryRowMetrics
+            let status = FontMetrics.figtree(S.statusSize * scale)
+            return StoryText(scale: scale, title: .figtree(S.titleSize * scale), time: .figtree(S.timeSize * scale), status: status, statusBaseline: (S.statusLine * scale - status.lineHeight) / 2 + status.ascender)
+        }
+
+        public var statusLine: CGFloat { StemCellsStoryRowMetrics.statusLine * scale }
+    }
+
     /// What a story row draws beside its title.
     public struct StoryRow: Equatable, Sendable {
-        /// One fixed status line under the title, blank when no status is available.
-        public var hasSubtitle: Bool
         public var corner: Corner
         /// The time at the end of the first line, as measured; 0 for none.
         public var timeWidth: CGFloat
+        public var last: LastLine
+        public var text: StoryText
 
-        public init(hasSubtitle: Bool = true, corner: Corner = .none, timeWidth: CGFloat = 0) {
-            self.hasSubtitle = hasSubtitle
+        public init(corner: Corner = .none, timeWidth: CGFloat = 0, last: LastLine = .status, text: StoryText = .standard()) {
             self.corner = corner
             self.timeWidth = timeWidth
+            self.last = last
+            self.text = text
         }
     }
 
     public struct Frame: Equatable, Sendable {
         /// The row box: the tap target and its fill, in content coordinates.
         public var box: CGRect
-        /// The leading mark, absent for a row without one; then the label starts there.
+        /// The leading mark, absent for a row without one; then the label
+        /// starts there. A story row's disc.
         public var mark: CGRect?
         public var label: CGRect
         /// The status mark or unread dot.
@@ -84,19 +144,22 @@ public enum StemCellsSidebarLayout {
         public var add: CGRect?
         /// A separator's hairline, across the row box's whole width.
         public var rule: CGRect?
-        /// A story row's ring, around its mark (the mark sits inside on its plate).
+        /// A story row's ring box, around its disc, kept with no ring too.
         public var ring: CGRect?
-        /// A story row's second line.
+        /// A story row's status, one or two lines tall.
         public var subtitle: CGRect?
-        /// A story row's corner signal: the dot or braille loader.
+        /// The signal: the dot or the braille loader, in `signalLane`.
         public var corner: CGRect?
+        /// A story row's signal lane, one width whatever it holds.
+        public var signalLane: CGRect?
         /// A story row's time, at the end of its first line.
         public var time: CGRect?
-        /// The hairline under a story row followed by another, from its
-        /// text's start to the box's end, on whole pixels.
-        public var separator: CGRect?
+        /// A story row's last line, holding the person's draft.
+        public var draft: CGRect?
+        /// A story row's empty mark, on its last line, on whole pixels.
+        public var empty: CGRect?
 
-        public init(box: CGRect, mark: CGRect? = nil, label: CGRect = .zero, trailing: CGRect? = nil, chevron: CGRect? = nil, chevronGlyph: CGRect? = nil, add: CGRect? = nil, rule: CGRect? = nil, ring: CGRect? = nil, subtitle: CGRect? = nil, corner: CGRect? = nil, time: CGRect? = nil, separator: CGRect? = nil) {
+        public init(box: CGRect, mark: CGRect? = nil, label: CGRect = .zero, trailing: CGRect? = nil, chevron: CGRect? = nil, chevronGlyph: CGRect? = nil, add: CGRect? = nil, rule: CGRect? = nil, ring: CGRect? = nil, subtitle: CGRect? = nil, corner: CGRect? = nil, signalLane: CGRect? = nil, time: CGRect? = nil, draft: CGRect? = nil, empty: CGRect? = nil) {
             self.box = box
             self.mark = mark
             self.label = label
@@ -108,8 +171,10 @@ public enum StemCellsSidebarLayout {
             self.ring = ring
             self.subtitle = subtitle
             self.corner = corner
+            self.signalLane = signalLane
             self.time = time
-            self.separator = separator
+            self.draft = draft
+            self.empty = empty
         }
     }
 
@@ -121,7 +186,16 @@ public enum StemCellsSidebarLayout {
     }
 
     public static func height(_ row: Row) -> CGFloat {
-        row.kind == .row && row.story != nil ? (row.depth > 0 ? StemCellsStoryRowMetrics.nestedRowHeight : StemCellsStoryRowMetrics.rowHeight) : height(row.kind)
+        if row.kind == .row, let story = row.story { return storyHeight(story.text.scale) }
+        return height(row.kind)
+    }
+
+    /// A story card: 64 as designed and smaller, and taller by what its
+    /// three lines grow at a larger text size.
+    public static func storyHeight(_ scale: CGFloat) -> CGFloat {
+        typealias S = StemCellsStoryRowMetrics
+        let lines = (S.titleToStatus + S.statusLine * CGFloat(S.statusLines)) * (scale - 1)
+        return S.rowHeight + max(0, lines)
     }
 
     public static func height(_ kind: Kind) -> CGFloat {
@@ -133,6 +207,15 @@ public enum StemCellsSidebarLayout {
         }
     }
 
+    /// Between a row and the one before it: 6.5 into a card from a card or
+    /// a heading, 12.5 from a card down to a heading, the column's gap otherwise.
+    static func gap(_ row: Row, after previous: Row) -> CGFloat {
+        typealias S = StemCellsStoryRowMetrics
+        if row.story != nil, previous.story != nil || previous.kind == .section { return S.rowGap }
+        if previous.story != nil, row.kind == .section { return S.headingGap }
+        return StemCellsMetrics.rowGap
+    }
+
     public static func layout(_ rows: [Row], width: CGFloat, top: CGFloat = StemCellsMetrics.contentTop, bottom: CGFloat = StemCellsMetrics.contentBottom, scale: CGFloat = 3) -> Result {
         typealias M = StemCellsMetrics
         var frames: [Frame] = []
@@ -140,12 +223,17 @@ public enum StemCellsSidebarLayout {
         var y = top
         let boxX = M.inset
         let boxWidth = max(0, width - 2 * M.inset)
+        func pixel(_ value: CGFloat) -> CGFloat { (value * max(1, scale)).rounded() / max(1, scale) }
         for (index, row) in rows.enumerated() {
-            if index > 0, row.story == nil || rows[index - 1].story == nil { y += M.rowGap }
+            if index > 0 { y += gap(row, after: rows[index - 1]) }
             let height = height(row)
+            if row.kind == .row, let story = row.story {
+                frames.append(storyRow(story, hasMark: row.hasMark, y: y, width: width, scale: scale))
+                y += height
+                continue
+            }
             let box = CGRect(x: boxX, y: y, width: boxWidth, height: height)
             let midY = y + height / 2
-            func pixel(_ value: CGFloat) -> CGFloat { (value * max(1, scale)).rounded() / max(1, scale) }
             // Centred `trailingCenter` in, on the row's middle, on whole pixels.
             let trailingRect = CGRect(x: pixel(width - M.trailingCenter - M.trailing / 2), y: pixel(midY - M.trailing / 2), width: M.trailing, height: M.trailing)
             let inkRight = trailingRect.maxX
@@ -172,11 +260,6 @@ public enum StemCellsSidebarLayout {
                 frame.label = CGRect(x: x, y: y, width: max(0, end - sectionFoldGap - x), height: height)
                 frame.chevron = trailingRect
                 frame.chevronGlyph = fold()
-            case .row where row.story != nil:
-                // The fold rides on the title's line, as the time does.
-                let factor = row.depth > 0 ? StemCellsStoryRowMetrics.nestedScale : 1
-                let line = y + (StemCellsStoryRowMetrics.titleTop + StemCellsStoryRowMetrics.titleLine / 2) * factor
-                frame = storyRow(row, box: box, trailingRect: trailingRect.offsetBy(dx: 0, dy: pixel(line - midY)), fold: row.hasFold ? fold(line) : nil, pixel: pixel)
             case .widget, .row:
                 var x = leadingX(depth: row.depth)
                 if row.hasMark {
@@ -197,7 +280,7 @@ public enum StemCellsSidebarLayout {
                 }
                 // A row's title rides up to its marks' middle.
                 frame.label = CGRect(x: x, y: row.kind == .row ? y - M.titleLift : y, width: max(0, right - x), height: height)
-                if row.hasTrailing == false, row.story == nil, row.kind == .row, row.hasWorkingSignal {
+                if row.hasTrailing == false, row.kind == .row, row.hasWorkingSignal {
                     let signal = StemCellsStoryRowMetrics.braille
                     frame.corner = CGRect(x: slot.midX - signal.width / 2, y: slot.midY - signal.height / 2, width: signal.width, height: signal.height)
                     frame.label.size.width = max(0, slot.minX - M.trailingGap - x)
@@ -206,71 +289,73 @@ public enum StemCellsSidebarLayout {
             frames.append(frame)
             y += height
         }
-        // Telegram's hairline between one story row and the next, none
-        // after a section's last.
-        let hairline = 1 / max(1, scale)
-        for index in rows.indices.dropLast() where rows[index].story != nil && rows[index].kind == .row && rows[index + 1].story != nil && rows[index + 1].kind == .row {
-            let box = frames[index].box
-            let x = frames[index].label.minX
-            frames[index].separator = CGRect(x: x, y: box.maxY - hairline, width: max(0, box.maxX - x), height: hairline)
-        }
         return Result(frames: frames, connectors: connectors(rows, frames), contentHeight: y + bottom)
     }
 
-    /// Sidebar v2's story row, on Telegram's chat list: the ring 12 into
-    /// the box and centred on its height, the mark's plate inside it; the
-    /// title on a fixed first line, the time and the fold at its end; the
-    /// status under it on one line; the corner signal centred on that line
-    /// at the text's end. Nested rows use a smaller fixed size.
-    static func storyRow(_ row: Row, box: CGRect, trailingRect: CGRect, fold: CGRect?, pixel: (CGFloat) -> CGFloat) -> Frame {
+    /// Desktop's story row, on Telegram's chat list: the card 3 in from
+    /// the list; the disc 7 into it and centred on its height, the ring's
+    /// box around it; the text 10 past the disc. The last status baseline
+    /// stands `corner` above the card's bottom, the first one line above
+    /// it, the title's baseline `titleToStatus` above that. The time ends
+    /// the title's line with its cap top on the title's; the signal's lane
+    /// stands on the last baseline. Both end `corner` inside the card, and
+    /// the status ends the lane's room before it, whatever the lane holds.
+    static func storyRow(_ story: StoryRow, hasMark: Bool, y: CGFloat, width: CGFloat, scale: CGFloat) -> Frame {
         typealias S = StemCellsStoryRowMetrics
-        typealias M = StemCellsMetrics
-        let story = row.story ?? StoryRow()
-        let factor = row.depth > 0 ? S.nestedScale : 1
+        func pixel(_ value: CGFloat) -> CGFloat { (value * max(1, scale)).rounded() / max(1, scale) }
+        let text = story.text
+        let box = CGRect(x: S.cardInset, y: y, width: max(0, width - 2 * S.cardInset), height: storyHeight(text.scale))
         var frame = Frame(box: box)
-        let ringX = storyLeadingX(depth: row.depth)
-        let side = S.ring * factor
-        let ring = CGRect(x: ringX, y: pixel(box.midY - side / 2), width: side, height: side)
-        let inset = (S.ring - S.plate) * factor / 2
-        if row.hasMark {
-            frame.ring = ring
-            frame.mark = ring.insetBy(dx: inset, dy: inset)
+        let disc = CGRect(x: box.minX + S.pad, y: pixel(box.midY - S.disc / 2), width: S.disc, height: S.disc)
+        if hasMark {
+            frame.mark = disc
+            frame.ring = disc.insetBy(dx: -S.ringRoom, dy: -S.ringRoom)
         }
-        let x = row.hasMark ? ring.maxX + S.textGap * factor : ringX
-        let end = box.maxX - S.textTrailing
-        let titleY = box.minY + S.titleTop * factor
-        var titleEnd = end
-        if let fold {
-            frame.chevron = trailingRect
-            frame.chevronGlyph = fold
-            titleEnd = min(titleEnd, trailingRect.minX - M.trailingGap)
-        }
-        if story.timeWidth > 0 {
-            let width = min(story.timeWidth, max(0, titleEnd - x))
-            let time = CGRect(x: titleEnd - width, y: titleY, width: width, height: S.titleLine * factor)
-            frame.time = time
-            titleEnd = time.minX - S.timeGap
-        }
-        frame.label = CGRect(x: x, y: titleY, width: max(0, titleEnd - x), height: S.titleLine * factor)
-        let subtitleY = titleY + (S.titleLine + S.lineGap) * factor
-        if story.hasSubtitle {
-            frame.subtitle = CGRect(x: x, y: subtitleY, width: max(0, end - S.cornerSlot - x), height: S.subtitleLine * factor)
-        }
-        let cornerMid = subtitleY + S.subtitleLine * factor / 2
+        // Every row keeps the disc's room, so the text starts on one line.
+        let x = disc.maxX + S.textGap
+        let last = box.maxY - S.corner
+        let first = last - text.statusLine
+        let titleBaseline = first - S.titleToStatus * text.scale
+
+        let lane = CGRect(x: box.maxX - S.corner - S.signal, y: last - S.signal, width: S.signal, height: S.signal)
+        frame.signalLane = lane
         switch story.corner {
         case .none: break
         case .dot:
-            frame.corner = CGRect(x: end - S.dot, y: pixel(cornerMid - S.dot / 2), width: S.dot, height: S.dot)
+            frame.corner = CGRect(x: pixel(lane.maxX - S.dot), y: pixel(last - S.dot), width: S.dot, height: S.dot)
         case .braille:
-            frame.corner = CGRect(x: end - S.braille.width, y: pixel(cornerMid - S.braille.height / 2), width: S.braille.width, height: S.braille.height)
+            frame.corner = CGRect(x: pixel(lane.maxX - S.braille.width), y: pixel(last - S.braille.height), width: S.braille.width, height: S.braille.height)
+        }
+
+        var titleEnd = box.maxX - S.pad
+        if story.timeWidth > 0 {
+            let right = box.maxX - S.corner + S.timeBearing
+            let width = min(story.timeWidth, max(0, right - x))
+            let baseline = titleBaseline - text.title.capHeight + text.time.capHeight
+            let time = CGRect(x: right - width, y: baseline - text.time.ascender, width: width, height: text.time.lineHeight)
+            frame.time = time
+            titleEnd = time.minX - S.timeGap
+        }
+        frame.label = CGRect(x: x, y: titleBaseline - text.title.ascender, width: max(0, titleEnd - x), height: text.title.lineHeight)
+
+        let statusEnd = lane.minX - (S.signalRoom - S.signal)
+        let statusWidth = max(0, statusEnd - x)
+        let lines = story.last == .status ? CGFloat(S.statusLines) : 1
+        frame.subtitle = CGRect(x: x, y: first - text.statusBaseline, width: statusWidth, height: text.statusLine * lines)
+        switch story.last {
+        case .status: break
+        case .draft:
+            frame.draft = CGRect(x: x, y: last - text.statusBaseline, width: statusWidth, height: text.statusLine)
+        case .empty:
+            // The dinosaur as tall as "Ag", its ground one cell under it,
+            // on whole pixels so every cell stays crisp.
+            let pixels = max(1, scale)
+            let tall = (text.status.capHeight + text.status.descender) * S.emptyRows / (S.emptyRows - 1)
+            let height = (tall * pixels).rounded() / pixels
+            let wide = ((tall * S.emptyColumns / S.emptyRows) * pixels).rounded() / pixels
+            frame.empty = CGRect(x: pixel(x), y: pixel(last - text.status.capHeight), width: wide, height: height)
         }
         return frame
-    }
-
-    /// Where a story row's ring starts: 12 into the box, `indent` more per level.
-    static func storyLeadingX(depth: Int) -> CGFloat {
-        typealias S = StemCellsStoryRowMetrics
-        return StemCellsMetrics.inset + S.ringInset + (depth > 0 ? S.indent + CGFloat(depth - 1) * S.indent * S.nestedScale : 0)
     }
 
     /// Between a section's title and its fold: `22 − 18`.
@@ -286,6 +371,7 @@ public enum StemCellsSidebarLayout {
     /// `SidebarTreeConnectors`: one stem per parent down its mark's centre,
     /// from under the mark to a point past its last child's middle, and an
     /// elbow into each child at its middle, stopping short of its mark.
+    /// Story rows don't nest.
     static func connectors(_ rows: [Row], _ frames: [Frame]) -> [CGRect] {
         typealias M = StemCellsMetrics
         var lines: [CGRect] = []
@@ -295,20 +381,20 @@ public enum StemCellsSidebarLayout {
         for (index, row) in rows.enumerated() where row.depth > 0 && row.kind == .row && row.story == nil {
             var parent = index - 1
             while parent >= 0, rows[parent].depth >= row.depth { parent -= 1 }
-            guard parent >= 0, rows[parent].depth == row.depth - 1 else { continue }
+            guard parent >= 0, rows[parent].depth == row.depth - 1, rows[parent].story == nil else { continue }
             parents[index] = parent
             if children[parent] == nil { order.append(parent) }
             children[parent, default: []].append(index)
         }
         for parent in order {
             let kids = children[parent] ?? []
-            let parentMark = frames[parent].ring ?? frames[parent].mark
+            let parentMark = frames[parent].mark
             let stemX = ((parentMark.map(\.midX) ?? leadingX(depth: rows[parent].depth) + M.mark / 2) - M.line / 2).rounded(.down)
             let top = frames[parent].box.midY + (parentMark.map { $0.height / 2 } ?? M.stemInset)
             let bottom = (kids.map { frames[$0].box.midY }.max() ?? top) + M.line
             lines.append(CGRect(x: stemX, y: top, width: M.line, height: max(0, bottom - top)))
             for kid in kids {
-                let end = (frames[kid].ring?.minX ?? leadingX(depth: rows[kid].depth)) - M.elbowGap
+                let end = leadingX(depth: rows[kid].depth) - M.elbowGap
                 lines.append(CGRect(x: stemX + M.line, y: (frames[kid].box.midY - M.line / 2).rounded(.down), width: max(0, end - stemX - M.line), height: M.line))
             }
         }

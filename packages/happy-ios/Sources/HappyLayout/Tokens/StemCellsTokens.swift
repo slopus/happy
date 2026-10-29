@@ -18,6 +18,11 @@ extension Palette {
     /// the dot in its trailing square.
     public static let stemCellsRowNew = ColorToken("#e3f3f7", "#16343c")
     public static let stemCellsRowNewDot = ColorToken("#2baccc")
+    /// A story row's unread dot (`--status-default`), and the lines its
+    /// work added and deleted (`--git-added-text`, `--git-removed-text`).
+    public static let stemCellsUnreadDot = ColorToken("#8e8e93")
+    public static let stemCellsLinesAdded = ColorToken("#22c55e", "#34c759")
+    public static let stemCellsLinesDeleted = ColorToken("#ef4444", "#ff453a")
     /// A person a message mentions ("@Steve"), and the tint behind a
     /// mention of the person reading.
     public static let stemCellsMention = ColorToken("#1a7f99", "#5cc8e2")
@@ -279,52 +284,72 @@ public enum StemCellsMetrics {
     public static let contentBottom: CGFloat = 6 * phone
 }
 
-/// Compact conversation rows: a story ring, a title and one status line,
-/// with the chat's braille loader in the bottom-right corner while running.
+/// The stem-cell sidebar's conversation rows while Stories are on, as
+/// desktop's story rows (`sidebar.css` "Story rows", measured from
+/// Telegram's chat list in points): a 64 card 3 in from the list, 70.5
+/// apart, its 50 disc 7 in with the ring drawn outside it, the title, then
+/// the status in up to two lines. The time and the signal stand `corner` in
+/// from the card's right edge. Every box is fixed, so nothing a row shows,
+/// and neither selection nor a press, moves anything.
 public enum StemCellsStoryRowMetrics {
-    static let phone = StemCellsMetrics.phone
-    /// One height whatever the status says, with a smaller nested variant.
+    /// The card, and its corners where it is filled.
     public static let rowHeight: CGFloat = 64
-    public static let nestedScale: CGFloat = 0.875
-    public static let nestedRowHeight: CGFloat = 56
-    /// The ring 12 into the row box.
-    public static let ringInset: CGFloat = 12
-    /// The avatar, and the ring's own radius in it.
-    public static let ring: CGFloat = 48
-    public static let ringRadius: CGFloat = 22
-    /// Unseen segments 3 wide, seen ones 1.875, 4.5 between segments when there are several.
-    public static let unseenWidth: CGFloat = 2 * phone
-    public static let seenWidth: CGFloat = 1.25 * phone
-    public static let segmentGap: CGFloat = 3 * phone
-    /// The mark's round plate inside the ring, its ink at 8%.
-    public static let plate: CGFloat = 36
-    public static let plateInk: CGFloat = 0.08
-    /// A glyph, and clay art, on the plate.
-    public static let plateGlyph: CGFloat = 22
-    public static let plateArt: CGFloat = 26
-    /// Ring to text, and the text's end to the box's.
-    public static let textGap: CGFloat = 12
-    public static let textTrailing: CGFloat = 16
-    /// The title: 17 on a 22 line whose top is 10 into the row.
-    public static let titleSize: CGFloat = 17
-    public static let titleLine: CGFloat = 22
-    public static let titleTop: CGFloat = 10
-    /// The status: 14 on one 18-point line, 2 under the title.
-    public static let subtitleSize: CGFloat = 14
-    public static let subtitleLine: CGFloat = 18
-    public static let subtitleLines = 1
-    public static let lineGap: CGFloat = 2
-    /// The time at the end of the first line, and its room from the title.
-    public static let timeSize: CGFloat = 12
+    public static let cardInset: CGFloat = 3
+    public static let cornerRadius: CGFloat = 14
+    /// From one card to the next (70.5 apart), and from a card down to a heading.
+    public static let rowGap: CGFloat = 6.5
+    public static let headingGap: CGFloat = 12.5
+    /// The disc, 7 into the card and centred on its height; the ring's box
+    /// keeps `ringRoom` around it on every row, ring or not.
+    public static let pad: CGFloat = 7
+    public static let disc: CGFloat = 50
+    public static let ringRoom: CGFloat = 4
+    public static let ring: CGFloat = disc + 2 * ringRoom
+    /// The ring's centre line, from the box's middle; unseen segments 2
+    /// wide, seen ones 1.5, 3 between segments when there are several.
+    public static let ringRadius: CGFloat = 27.5
+    public static let unseenWidth: CGFloat = 2
+    public static let seenWidth: CGFloat = 1.5
+    public static let segmentGap: CGFloat = 3
+    /// The disc's fill: the ink at 6%. Art and glyphs stand 32 and 26 in
+    /// its middle; a picture fills it.
+    public static let plateInk: CGFloat = 0.06
+    public static let plateArt: CGFloat = 32
+    public static let plateGlyph: CGFloat = 26
+    /// Disc to text.
+    public static let textGap: CGFloat = 10
+    /// The title: 15.5 semibold, its baseline 19.5 into the card.
+    public static let titleSize: CGFloat = 15.5
+    public static let titleBaseline: CGFloat = 19.5
+    /// The time: 12.5 in even figures, its cap top on the title's, 8 clear of it.
+    public static let timeSize: CGFloat = 12.5
     public static let timeGap: CGFloat = 8
-    /// The corner signal, centred on the status line at the text's
-    /// end; the status always keeps `cornerSlot` clear of it, so it never
-    /// reflows when the signal comes or goes.
-    public static let dot: CGFloat = 12
+    /// The digits' side bearing: the time's box ends this far past its ink.
+    public static let timeBearing: CGFloat = 0.5
+    /// The status: 14 on 16-point lines, at most two.
+    public static let statusSize: CGFloat = 14
+    public static let statusLine: CGFloat = 16
+    public static let statusLines = 2
+    /// From the title's baseline to the first status line's.
+    public static let titleToStatus: CGFloat = 16.6
+    /// One inset for the corners: the time's ink and the signal end this
+    /// far inside the card's right edge, and the last status baseline, which
+    /// the signal stands on, is this far above the card's bottom.
+    public static let corner: CGFloat = 11.9
+    /// The signal's one lane, the same for the spinner, the dot and
+    /// nothing, and the room the status keeps clear for it (the lane and 6).
+    public static let signal: CGFloat = 14
+    public static let signalRoom: CGFloat = 20
+    public static let dot: CGFloat = 10
     public static let braille = CGSize(width: 8, height: 14)
-    public static let cornerSlot: CGFloat = 12 + 8
-    /// A nested row starts at its parent's text column.
-    public static let indent: CGFloat = ring + textGap
+    /// The lines changed: 4 between "+N" and "−M", and 4 before the status.
+    public static let countsGap: CGFloat = 4
+    /// The empty mark's scene: 49 × 22 cells, the dinosaur on the top 21,
+    /// as tall as "Ag" (cap top to descender) in the status.
+    public static let emptyColumns: CGFloat = 49
+    public static let emptyRows: CGFloat = 22
+    /// The empty mark's ink: the status's at 55%.
+    public static let emptyInk: CGFloat = 0.55
 }
 
 extension ChatTextStyles {

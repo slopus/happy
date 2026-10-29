@@ -201,27 +201,65 @@ final class AgentStoriesTests: XCTestCase {
     // MARK: Rows
 
     func testRowsWearTheirRingsOnlyWhileAgentStoriesAreOn() {
-        var task = StemCellsRow(id: "space:1", nodeId: "1", kind: .space, label: "Stories", status: .working, agentId: "a1")
+        var task = StemCellsRow(id: "space:1", nodeId: "1", kind: .space, label: "Stories", status: .working, collapsed: false, agentId: "a1")
         task.hasAgent = true
         task.statusLine = "Testing with a few friends"
+        task.hasHiddenSessions = true
         let session = StemCellsRow(id: "session:sub", nodeId: "sub", kind: .session, depth: 1, label: "Sub", status: .awaitingInput, agentId: "sub")
         let section = StemCellsRow(id: "s", nodeId: "s", kind: .section, label: "Priority")
-        let rows = [section, task, session]
-        // Off: untouched.
+        var bot = StemCellsRow(id: "space:2", nodeId: "2", kind: .space, label: "Bot", unread: true, agentId: "a2")
+        bot.hasAgent = true
+        let rows = [section, task, session, bot]
+        // Off: untouched, nesting and all.
         XCTAssertEqual(StemCellsRows.withStories(rows, rings: nil), rows)
         let on = StemCellsRows.withStories(rows, rings: ["a1": StoryRing(agentId: "a1", storyIds: ["s1", "s2", "s3", "s4"], unseenCount: 2, latestPostedAt: nil), "sub": StoryRing(agentId: "sub", storyIds: ["x"], unseenCount: 1, latestPostedAt: nil)])
+        // Stories don't nest: only top-level rows, none of them folding.
+        XCTAssertEqual(on.map(\.id), ["s", "space:1", "space:2"])
+        XCTAssertNil(on[1].collapsed)
+        XCTAssertFalse(on[1].hasHiddenSessions)
         XCTAssertNil(on[0].story)
         XCTAssertEqual(on[1].story, StemCellsRow.StoryRowState(segments: 4, unseen: 2))
-        // A session row is a story row without a ring.
         XCTAssertEqual(on[2].story, StemCellsRow.StoryRowState(segments: 0, unseen: 0))
-        XCTAssertEqual(on[2].mark, .glyph("agents"), "a nested session always has an icon")
-        // One signal, in the corner; nothing in the trailing square.
+        // One signal, in the corner: the spinner working, else a dot while unread.
         XCTAssertEqual(on[1].corner, .braille)
         XCTAssertEqual(on[2].corner, .dot)
-        XCTAssertFalse(on[2].hasTrailingMark)
-        XCTAssertTrue(rows[2].hasTrailingMark)
+        XCTAssertFalse(on[1].hasTrailingMark)
+        var unreadAndWorking = task
+        unreadAndWorking.unread = true
+        XCTAssertEqual(unreadAndWorking.corner, .braille, "never both")
+        // A question or a timed wait is the status line's to say.
+        var asking = task
+        asking.status = .awaitingInput
+        XCTAssertEqual(asking.corner, .none)
         var waiting = task
         waiting.status = .waiting
         XCTAssertEqual(waiting.corner, .none)
+    }
+
+    func testARowsTimeCountsFromTheAgentsLastActivity() {
+        func row(_ agent: AgentWire.Agent) -> StemCellsRow? {
+            let space = AgentWire.Space(id: "sp", title: "T", icon: nil, target: .init(kind: "task", id: "t", agentId: agent.id, workspaceId: "w"), version: 1, createdAt: 0, updatedAt: 0)
+            let task = try! JSONDecoder().decode(AgentWire.Task.self, from: Data(#"{"id":"t","title":"T","workspaceId":"w"}"#.utf8))
+            var places = StemCellsPlaces(tasks: [task], drafts: ["a1": "Ask about the build"])
+            places.tasks[0].agent = agent
+            let document = try! SpaceSidebar.parse(#"<nav><happy-search/><happy-create/><happy-space id="sp"/></nav>"#)
+            return StemCellsRows.all(document, spaces: ["sp": space], places: places, agentIcons: [:]).first { $0.kind == .space }
+        }
+        let status = AgentWire.AgentStatusLine(text: "On main", updatedAt: 1_000_000)
+        // The daemon's last activity, to the minute.
+        let current = row(AgentWire.Agent(id: "a1", workspaceId: "w", statusLine: status, lastActivityAt: 1_234_567, updatedAt: 9_000_000))
+        XCTAssertEqual(current?.activityTime, 1_200_000)
+        XCTAssertEqual(current?.draft, "Ask about the build")
+        // An older daemon: the later of the status and the last change.
+        XCTAssertEqual(row(AgentWire.Agent(id: "a1", workspaceId: "w", statusLine: status, updatedAt: 2_000_000))?.activityTime, 1_980_000)
+        XCTAssertEqual(row(AgentWire.Agent(id: "a1", workspaceId: "w", statusLine: AgentWire.AgentStatusLine(text: "x", updatedAt: 3_000_000), updatedAt: 2_000_000))?.activityTime, 3_000_000)
+        XCTAssertNil(row(AgentWire.Agent(id: "a1", workspaceId: "w"))?.activityTime)
+    }
+
+    func testADraftShowsAsTheStartOfItsTextOnOneLine() {
+        XCTAssertNil(StemCellsRows.draftPreview(nil))
+        XCTAssertNil(StemCellsRows.draftPreview("  \n\t "))
+        XCTAssertEqual(StemCellsRows.draftPreview("  Ship it\n\nafter   the tests "), "Ship it after the tests")
+        XCTAssertEqual(StemCellsRows.draftPreview(String(repeating: "a", count: 300))?.count, 120)
     }
 }
