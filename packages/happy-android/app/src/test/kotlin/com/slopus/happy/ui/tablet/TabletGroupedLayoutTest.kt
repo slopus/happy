@@ -66,8 +66,6 @@ class TabletGroupedLayoutTest {
     )
     private val actions = HomeScreenActions(
         onSettings = {},
-        onAppearance = {},
-        onSetGrouping = {},
         onNewSession = {},
         onTroubleshoot = {},
         onOpenUrl = {},

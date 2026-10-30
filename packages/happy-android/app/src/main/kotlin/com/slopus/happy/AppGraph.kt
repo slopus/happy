@@ -268,6 +268,25 @@ class AppGraph(
         registry = context.getSharedPreferences(AgentConnections.REGISTRY_PREFS, Context.MODE_PRIVATE),
     )
 
+    /**
+     * The open agent connection's id, or null when a Happy account (or
+     * nothing) is open. Only one account of either kind is open at a time.
+     */
+    val openAgentId: StateFlow<String?> = combine(accountStore.registry, agentConnections.accounts) { registry, agents ->
+        registry.activeId?.takeIf { id -> agents.any { it.id == id } }
+    }.stateIn(scope, SharingStarted.Eagerly, accountStore.registry.value.activeId?.takeIf { id -> agentConnections.accounts.value.any { it.id == id } })
+
+    /**
+     * Opens the account [id] from Home's account menu: a Happy account or
+     * an agent connection. Whatever was open stays signed in.
+     */
+    fun open(id: String): Job = scope.launch {
+        if (accountStore.registry.value.activeId == id && (openAgentId.value == id || openAccountId() == id)) return@launch
+        addingAccountState.value = false
+        withContext(Dispatchers.IO) { accountStore.select(id) }
+        auth.reload()
+    }
+
     private val agentPairingState = MutableStateFlow<PairingFlow?>(null)
 
     /** The pairing on screen, if any. In memory only: its code is a secret. */
@@ -370,13 +389,6 @@ class AppGraph(
             store.use(database(openAccountId()))
             withContext(Dispatchers.IO) { leaving?.let { forgetDatabase(accountId(it.credentials)) } }
         }
-    }
-
-    /** Opens another signed-in Happy account. The one open now stays signed in. */
-    fun switchAccount(id: String): Job = scope.launch {
-        if (openAccountId() == id) return@launch
-        withContext(Dispatchers.IO) { accountStore.select(id) }
-        auth.reload()
     }
 
     /** The account's database goes with its sign-out, once the store has moved off it. */

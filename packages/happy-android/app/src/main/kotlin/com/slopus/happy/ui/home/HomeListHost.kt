@@ -137,12 +137,13 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
     val actions = remember(navigation, uriHandler) {
         HomeScreenActions(
             onSettings = navigation.onSettings,
-            onAppearance = navigation.onAppearance,
-            onSetGrouping = { grouping -> graph.settings.change { it.copy(sessionListGrouping = grouping) } },
             onNewSession = navigation.onNewSession,
             onTroubleshoot = navigation.onTroubleshoot,
             onOpenUrl = uriHandler::openUri,
             onWhatsNew = navigation.onWhatsNew,
+            onSwitchAccount = { id -> graph.open(id) },
+            onAddAccount = navigation.onAddAccount,
+            onConnectAgent = navigation.onConnectAgent,
         )
     }
 

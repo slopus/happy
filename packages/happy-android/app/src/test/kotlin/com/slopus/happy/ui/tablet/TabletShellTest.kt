@@ -29,6 +29,7 @@ import com.slopus.happy.ui.home.FlatRowTags
 import com.slopus.happy.ui.home.HomeDockTags
 import com.slopus.happy.ui.home.NewSessionTags
 import com.slopus.happy.ui.home.HomeTags
+import com.slopus.happy.ui.home.AccountMenuTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.session.SessionInfoTags
 import kotlinx.coroutines.runBlocking
@@ -104,7 +105,7 @@ class TabletShellTest {
         assertBox("detail", detail, 360.dp, 0.dp, (TABLET_WIDTH - 360).dp, detail.bottom)
         rule.node(HomeTags.TABLET_BLANK).assertExists()
         // The phone home's header is not drawn: its list lives in the sidebar.
-        rule.onAllNodesWithTag(HomeTags.FILTER, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(AccountMenuTags.BUTTON, useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithTag(FlatRowTags.ROW, useUnmergedTree = true).assertCountEquals(2)
 
         // The persistent header: 28 controls 16 in, 4 apart, centred in the 64 row; back dimmed with nowhere to go.
@@ -249,7 +250,7 @@ class TabletShellTest {
         waitFor(FlatRowTags.ROW)
         rule.onAllNodesWithTag(TabletSidebarTags.SIDEBAR, useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithTag(TabletShellTags.HEADER, useUnmergedTree = true).assertCountEquals(0)
-        rule.node(HomeTags.FILTER).assertExists()
+        rule.node(AccountMenuTags.BUTTON).assertExists()
         rule.node(HomeDockTags.DOCK).assertExists()
         assertDp("home row from the left edge", 0, rule.node(FlatRowTags.ROW).bounds.left)
         rule.node(FlatRowTags.ROW).performClick()

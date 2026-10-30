@@ -159,7 +159,7 @@ fun TabletShell(
         Box(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxSize()) {
                 if (shows && !zen) {
-                    val navigation = remember(nav, onOpenSession, onTroubleshoot) { HomeNavigation.of(nav, onOpenSession, onTroubleshoot) }
+                    val navigation = remember(nav, onOpenSession, onTroubleshoot) { HomeNavigation.of(graph, nav, onOpenSession, onTroubleshoot) }
                     TabletSidebar(
                         graph = graph,
                         navigation = navigation,

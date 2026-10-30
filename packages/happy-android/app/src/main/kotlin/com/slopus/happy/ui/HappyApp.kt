@@ -27,7 +27,11 @@ import com.slopus.happy.ui.chat.chatRoutes
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import androidx.activity.compose.BackHandler
+import com.slopus.happy.accounts.accountId
 import com.slopus.happy.ui.connect.DeepLinkEffect
+import com.slopus.happy.ui.connection.AgentHome
+import com.slopus.happy.ui.connection.ConnectAgentRoute
 import com.slopus.happy.ui.connect.LocalAgentPairing
 import com.slopus.happy.ui.tablet.TabletShell
 import com.slopus.happy.ui.connect.connectRoutes
@@ -56,6 +60,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object RestoreManualRoute
 @Serializable data object HomeRoute
 @Serializable data object SettingsRoute
+@Serializable data object AgentHomeRoute
 
 /**
  * The whole UI. Signed out and signed in are separate back stacks: when the
@@ -74,9 +79,14 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
         val dark = HappyTheme.colors.dark
         LaunchedEffect(dark) { onDarkThemeChange(dark) }
 
-        val signedIn = auth as? AuthState.SignedIn
+        val adding by graph.addingAccount.collectAsStateWithLifecycle()
+        val openAgent by graph.openAgentId.collectAsStateWithLifecycle()
+        // Adding an account shows the sign-in screens over the open one, which stays signed in.
+        val signedIn = (auth as? AuthState.SignedIn)?.takeUnless { adding }
+        val agent = openAgent.takeUnless { adding }
         PaywallHost(graph.purchases)
-        key(signedIn != null) {
+        // Each account has its own back stack, replaced when another opens.
+        key(signedIn?.let { accountId(it.credentials) }, agent, adding) {
             val nav = rememberNavController()
             val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
             val troubleshoot = { nav.navigate(TroubleshootRoute) }
@@ -85,8 +95,18 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
             CompositionLocalProvider(LocalAgentPairing provides connectAgent) {
                 // The tablet shell (sidebar beside the stack) or, on a phone, just the stack.
                 TabletShell(graph, nav, signedIn = signedIn != null, onOpenSession = openSession, onTroubleshoot = troubleshoot) {
-                    NavHost(navController = nav, startDestination = if (signedIn != null) HomeRoute else WelcomeRoute) {
-                        composable<WelcomeRoute> { Welcome(graph, nav) }
+                    val start: Any = when {
+                        agent != null -> AgentHomeRoute
+                        signedIn != null -> HomeRoute
+                        else -> WelcomeRoute
+                    }
+                    NavHost(navController = nav, startDestination = start) {
+                        composable<WelcomeRoute> { Welcome(graph, nav, onCancel = if (adding) graph::cancelAddingAccount else null) }
+                        composable<AgentHomeRoute> {
+                            agent?.let { id ->
+                                AgentHome(graph, id, onAddAccount = graph::beginAddingAccount, onConnectAgent = { nav.navigate(ConnectAgentRoute) })
+                            }
+                        }
                         composable<ServerRoute> { Server(graph, nav) }
                         composable<RestoreManualRoute> { RestoreManual(graph, nav) }
                         homeRoutes(
@@ -116,7 +136,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
  * the button stops spinning, which leaves the user with no word of why.
  */
 @Composable
-private fun Welcome(graph: AppGraph, nav: NavHostController) {
+private fun Welcome(graph: AppGraph, nav: NavHostController, onCancel: (() -> Unit)?) {
     val scope = rememberCoroutineScope()
     val serverUrl by graph.serverConfig.url.collectAsStateWithLifecycle()
     val customServerLabel = remember(serverUrl) { graph.serverConfig.customHostLabel }
@@ -147,7 +167,10 @@ private fun Welcome(graph: AppGraph, nav: NavHostController) {
         },
         onRestore = { nav.navigate(RestoreRoute) },
         onServer = { nav.navigate(ServerRoute) },
+        onBack = onCancel,
     )
+    // Adding an account: back returns to the account that is open.
+    if (onCancel != null) BackHandler(onBack = onCancel)
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
 }
 

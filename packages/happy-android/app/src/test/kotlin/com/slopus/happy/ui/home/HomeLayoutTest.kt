@@ -75,10 +75,9 @@ import java.time.ZoneOffset
 
 /**
  * The phone home screen against happy-app's layout:
- * - MainView's header: logo 19 in a 32 box; "Sessions" (`tabs.sessions`) 16/20 centred; the
- *   status line (11/16, 6 dot) hangs 2 into the title's bottom while the
- *   socket isn't connected; the filter and settings buttons are 44 squares
- *   split by a 22-high hairline, the gear 16 from the edge.
+ * - The header (AGENTS.md, design decisions): the account menu on the left;
+ *   settings, then compose 16 from the edge, 44 squares; no title, only the
+ *   status line (11/16, 6 dot) centred while the socket isn't connected.
  * - FlatSessionRow: 60 avatar at 16, 10 above and below; 12 to the text;
  *   title 17/22, project 15/20, workspace line 1 below at 18 minimum, so a
  *   row is 81; the top-right slot is at least 56 and ends 16 from the edge;
@@ -119,8 +118,6 @@ class HomeLayoutTest {
     private var whatsNew = 0
     private val actions = HomeScreenActions(
         onSettings = {},
-        onAppearance = {},
-        onSetGrouping = {},
         onNewSession = { newSession++ },
         onTroubleshoot = {},
         onOpenUrl = {},
@@ -155,29 +152,21 @@ class HomeLayoutTest {
     @Test
     fun header() {
         show(state(listOf(cli("a"))))
-        assertBox("logo box", rule.node(HomeTags.LOGO).bounds, 24.dp, 16.dp, 32.dp, 32.dp)
-        val settings = rule.node(HomeTags.SETTINGS).bounds
-        assertBox("settings", settings, (PHONE_WIDTH - 16 - 44).dp, 10.dp, 44.dp, 44.dp)
-        val divider = rule.node(HomeTags.ACTION_DIVIDER).bounds
-        assertDp("divider meets the gear", settings.left, divider.right)
-        assertDp("divider height", 22, divider.bottom - divider.top)
-        assertDp("divider centred", 32, (divider.top + divider.bottom) / 2)
-        assertBox("filter", rule.node(HomeTags.FILTER).bounds, divider.left - 44.dp, 10.dp, 44.dp, 44.dp)
-        val title = rule.node(HomeTags.TITLE).bounds
-        assertDp("title centred", (PHONE_WIDTH / 2f).dp, (title.left + title.right) / 2)
-        assertDp("title centred in the bar", 32, (title.top + title.bottom) / 2)
-        assertDp("title line height", 20, title.bottom - title.top)
+        // The account menu on the left; settings, then compose at the far right.
+        val account = rule.node(AccountMenuTags.BUTTON).bounds
+        assertDp("account menu centred in the bar", 32, (account.top + account.bottom) / 2)
+        assertDp("account menu size", 44, account.right - account.left)
+        val compose = rule.node(HomeTags.COMPOSE).bounds
+        assertBox("compose", compose, (PHONE_WIDTH - 16 - 44).dp, 10.dp, 44.dp, 44.dp)
+        assertBox("settings", rule.node(HomeTags.SETTINGS).bounds, compose.left - 44.dp, 10.dp, 44.dp, 44.dp)
         rule.onAllNodesWithTag(HomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test
-    fun headerStatusHangsUnderTheTitle() {
+    fun anUnhealthyConnectionShowsInTheMiddleOfTheBar() {
         show(state(listOf(cli("a"))), ConnectionStatus.DISCONNECTED)
-        val title = rule.node(HomeTags.TITLE).bounds
         val status = rule.node(HomeTags.STATUS).bounds
-        assertDp("title stays centred in the bar", 32, (title.top + title.bottom) / 2)
-        assertDp("status top", title.bottom - 2.dp, status.top)
-        assertDp("status line", 16, status.bottom - status.top)
+        assertDp("status centred in the bar", 32, (status.top + status.bottom) / 2)
         assertDp("status centred", (PHONE_WIDTH / 2f).dp, (status.left + status.right) / 2)
     }
 
@@ -296,7 +285,7 @@ class HomeLayoutTest {
         current = state(emptyList(), machines = emptyList())
         rule.waitForIdle()
         rule.node(HomeTags.LINK).assertExists()
-        rule.onAllNodesWithTag(HomeTags.FILTER, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(AccountMenuTags.BUTTON, useUnmergedTree = true).assertCountEquals(0)
         val link = rule.node(HomeTags.LINK).bounds
         assertDp("link page from the top", 0, link.top)
         assertDp("link page full width", PHONE_WIDTH, link.right - link.left)
@@ -304,7 +293,7 @@ class HomeLayoutTest {
 
     /**
      * TalkBack over Home, as MainView, FlatSessionRow and SessionsList label
-     * it: "Sessions" is a header; Filter and Settings are named buttons; an
+     * it: the account menu, Settings and New chat are named buttons; an
      * unread row's top-right reads "new results" and not the stamp hidden
      * under the dot; the archive toggle is a button, selected while the
      * archive shows. Grouped by project, every row is a button.
@@ -312,8 +301,8 @@ class HomeLayoutTest {
     @Test
     fun homeReadsForTalkBack() {
         show(state(listOf(cli("a"), cli("gone", noon, active = false)), hidden = false, unread = setOf("a")))
-        rule.onNode(hasText("Sessions") and isHeading(), useUnmergedTree = true).assertExists()
-        rule.onNode(hasContentDescription("Filter") and hasRole(Role.Button)).assertExists()
+        rule.onNode(hasContentDescription("Accounts", substring = true) and hasRole(Role.Button), useUnmergedTree = true).assertExists()
+        rule.onNode(hasContentDescription("New chat") and hasRole(Role.Button)).assertExists()
         rule.onNode(hasContentDescription("Settings") and hasRole(Role.Button)).assertExists()
         rule.onAllNodesWithTag(FlatRowTags.TOP_RIGHT, useUnmergedTree = true)[0].assert(hasContentDescription("new results"))
         rule.onAllNodesWithTag(FlatRowTags.TIMESTAMP, useUnmergedTree = true)[0].assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.HideFromAccessibility))

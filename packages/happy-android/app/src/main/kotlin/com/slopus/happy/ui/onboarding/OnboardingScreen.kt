@@ -48,6 +48,7 @@ import com.slopus.happy.R
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.components.HeaderBackButton
 import com.slopus.happy.ui.components.Header
 import com.slopus.happy.ui.components.HeaderIconButton
 import com.slopus.happy.ui.components.Icon
@@ -263,10 +264,12 @@ fun OnboardingHeader(
     customServerLabel: String?,
     onServer: () -> Unit,
     gearDescription: String = stringResource(R.string.server_title),
+    onBack: (() -> Unit)? = null,
 ) {
     val colors = HappyTheme.colors
     Header(
         alignment = TitleAlignment.Center,
+        left = onBack?.let { back -> { HeaderBackButton(onClick = back) } },
         titleContent = {
             if (customServerLabel != null) {
                 Text(

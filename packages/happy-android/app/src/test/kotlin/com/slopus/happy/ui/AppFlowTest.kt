@@ -23,6 +23,7 @@ import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.ui.home.HomeTags
+import com.slopus.happy.ui.home.AccountMenuTags
 import com.slopus.happy.ui.onboarding.RestoreTags
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -94,7 +95,7 @@ class AppFlowTest {
             .performTextReplacement(SecretKeyBackup.format(encodeBase64(server.secret, Base64Variant.Url)))
         rule.onNodeWithText("Restore").performClick()
 
-        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 5_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(AccountMenuTags.BUTTON), 5_000)
         rule.waitUntil(5_000) { graph.store.sessionIds() == setOf("s1") && graph.store.settings() != null }
         assertEquals(server.publicKey, server.authenticatedKeys.single())
     }

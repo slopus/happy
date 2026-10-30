@@ -108,9 +108,14 @@ win:
   Computer page swallows back; here back leaves the app as on any root.
 - **Home's top bar:** the current account's avatar on the left opens a
   drop-down of the relay accounts and agent connections (avatar and
-  name each), plus "Add account"; picking one switches. Settings and then
-  compose (far right) on the right. No logo, filter menu or centred
-  "Sessions" title.
+  name each, a check on the open one), then "Add Account" and "Connect
+  Agent" (`ui/home/AccountMenu.kt`); picking one switches
+  (`AppGraph.open`). Settings and then compose (far right) on the right.
+  No logo, filter menu (grouping is in Appearance) or centred "Sessions"
+  title; an unhealthy connection shows centred. One account is open at a
+  time: a Happy account or an agent connection (`openAgentId`); each has
+  its own back stack. Add Account shows Welcome with a back arrow over
+  the open account, which stays signed in.
 - **Compose:** from home it opens an empty new chat; from a chat it
   replaces that chat with an empty one, animated, with Back going to home.
   The empty chat becomes the real session in place on the first send, with

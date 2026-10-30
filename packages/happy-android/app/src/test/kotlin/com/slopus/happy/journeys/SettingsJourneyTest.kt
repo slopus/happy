@@ -122,7 +122,8 @@ class SettingsJourneyTest {
 
         // Home and the chat, in Russian and dark; the session's row and settings unchanged.
         back()
-        rule.waitForText("Сессии")
+        rule.waitFor(HomeTags.SETTINGS)
+        rule.onNode(androidx.compose.ui.test.hasContentDescription("Настройки"), useUnmergedTree = true).assertExists()
         assertEquals(true, dark)
         rule.node(FlatRowTags.ROW).performClick()
         rule.waitFor(ChatScreenTags.SCREEN)

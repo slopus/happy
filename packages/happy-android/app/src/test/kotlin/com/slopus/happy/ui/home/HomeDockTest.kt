@@ -113,7 +113,7 @@ class HomeDockTest {
         onOpenMachine = {}, onCreateWorkspace = {}, onProjectMenu = { _, _ -> },
     )
     private val actions = HomeScreenActions(
-        onSettings = {}, onAppearance = {}, onSetGrouping = {}, onNewSession = {}, onTroubleshoot = {}, onOpenUrl = {}, onWhatsNew = {},
+        onSettings = {}, onNewSession = {}, onTroubleshoot = {}, onOpenUrl = {}, onWhatsNew = {},
     )
 
     private fun dock(

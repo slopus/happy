@@ -18,10 +18,12 @@ fun WelcomeScreen(
     onRestore: () -> Unit,
     onServer: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Adding an account: back to the open one. */
+    onBack: (() -> Unit)? = null,
 ) {
     OnboardingScreen(
         modifier = modifier,
-        header = { OnboardingHeader(customServerLabel = customServerLabel, onServer = onServer) },
+        header = { OnboardingHeader(customServerLabel = customServerLabel, onServer = onServer, onBack = onBack) },
         content = { WelcomeContent() },
         primary = {
             RoundButton(

@@ -118,7 +118,7 @@ class MultipleAccountsTest {
         val (a, b) = registry.ordered.map { it.id }
         assertEquals(b, registry.activeId)
 
-        runBlocking { graph.switchAccount(a).join() }
+        runBlocking { graph.open(a).join() }
         eventually(message = "switched") { openId(graph) == a }
         syncedTo(graph, setOf("a1"))
 
@@ -138,5 +138,20 @@ class MultipleAccountsTest {
         assertEquals(AuthState.SignedOut, graph.auth.state.value)
         assertTrue(graph.accountStore.registry.value.entries.isEmpty())
         assertTrue(sessionIds(graph).isEmpty())
+    }
+
+    @Test
+    fun anOpenAgentConnectionKeepsTheHappyAccountSignedIn() {
+        val graph = graph(defaultServer = first.url)
+        runBlocking { graph.auth.restore(backup(first)) }
+        val account = graph.accountStore.registry.value.activeId!!
+        // An agent connection opens: no Happy account is open, none is signed out.
+        graph.accountStore.select("agent-connection-1")
+        runBlocking { graph.auth.reload() }
+        assertEquals(AuthState.SignedOut, graph.auth.state.value)
+        assertEquals("agent-connection-1", graph(defaultServer = first.url).accountStore.registry.value.activeId)
+        assertEquals(listOf(account), graph.accountStore.registry.value.entries.map { it.id })
+        runBlocking { graph.open(account).join() }
+        eventually(message = "account again") { openId(graph) == account }
     }
 }

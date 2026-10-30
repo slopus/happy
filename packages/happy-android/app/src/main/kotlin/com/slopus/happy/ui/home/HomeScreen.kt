@@ -65,10 +65,8 @@ import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
 object HomeTags {
-    const val LOGO = "home.logo"
-    const val FILTER = "home.filter"
-    const val ACTION_DIVIDER = "home.actionDivider"
     const val SETTINGS = "home.settings"
+    const val COMPOSE = "home.compose"
     const val TITLE = "home.title"
     const val STATUS = "home.status"
     const val LOADING = "home.loading"
@@ -83,19 +81,13 @@ object HomeTags {
     const val SHOW_ARCHIVED = "home.showArchived"
 }
 
-/** MainView.tsx, HomeHeaderTitle.tsx and SessionsList.tsx on a phone. */
+/** MainView.tsx and SessionsList.tsx on a phone. */
 object HomeSpec {
-    val logoBox = 32.dp
-    val logo = 19.dp
     val actionButton = 44.dp
     val actionIcon = 22.dp
-    val actionDividerHeight = 22.dp
-    val title = happyTextStyle(fontSize = 16, lineHeight = 20, weight = FontWeight.SemiBold)
     val status = happyTextStyle(fontSize = 11, lineHeight = 16, weight = FontWeight.Medium)
     val statusDot = 6.dp
     val statusDotGap = 4.dp
-    val statusOverlap = 2.dp
-    val statusMinHeight = 16.dp
 
     /** The content starts 12 below the header (topContentInset). */
     val contentTop = 12.dp
@@ -116,12 +108,13 @@ object HomeSpec {
 @Immutable
 class HomeScreenActions(
     val onSettings: () -> Unit,
-    val onAppearance: () -> Unit,
-    val onSetGrouping: (SessionListGrouping) -> Unit,
     val onNewSession: () -> Unit,
     val onTroubleshoot: () -> Unit,
     val onOpenUrl: (String) -> Unit,
     val onWhatsNew: () -> Unit,
+    val onSwitchAccount: (String) -> Unit = {},
+    val onAddAccount: () -> Unit = {},
+    val onConnectAgent: () -> Unit = {},
 )
 
 /**
@@ -148,14 +141,14 @@ fun HomeScreen(
     offlineContent: @Composable (computers: List<String>, onShowArchived: (() -> Unit)?) -> Unit = { _, _ -> },
     dock: HomeDockState? = null,
     dockActions: HomeDockActions? = null,
+    accounts: AccountMenu = AccountMenu(),
 ) {
-    val colors = HappyTheme.colors
     if (state?.showsInstallStep == true) {
         Box(modifier = modifier.fillMaxSize().testTag(HomeTags.LINK)) { linkContent() }
         return
     }
     Box(modifier = modifier.fillMaxSize()) {
-        HomeContent(state, connectionStatus, grouping, callbacks, actions, update, offlineContent, dock, dockActions)
+        HomeContent(state, connectionStatus, accounts, callbacks, actions, update, offlineContent, dock, dockActions)
         if (dock != null && dockActions != null && dock.focused) HomeDockFocus(dock, dockActions)
     }
 }
@@ -164,7 +157,7 @@ fun HomeScreen(
 private fun HomeContent(
     state: HomeListState?,
     connectionStatus: ConnectionStatus,
-    grouping: SessionListGrouping,
+    accounts: AccountMenu,
     callbacks: HomeListCallbacks,
     actions: HomeScreenActions,
     update: HomeUpdate?,
@@ -174,7 +167,7 @@ private fun HomeContent(
 ) {
     val colors = HappyTheme.colors
     Column(modifier = Modifier.fillMaxSize().background(colors.grouped.background)) {
-        HomeHeader(connectionStatus, grouping, actions)
+        HomeHeader(connectionStatus, accounts, actions)
         com.slopus.happy.ui.voice.VoiceStatusBar()
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val showArchived = { callbacks.onSetArchiveHidden(false) }
@@ -210,69 +203,21 @@ private fun HomeContent(
     }
 }
 
+/**
+ * Home's top bar (AGENTS.md, design decisions): the account menu on the
+ * left; settings, then compose at the far right. No title: only an
+ * unhealthy connection shows, centred.
+ */
 @Composable
-private fun HomeHeader(connectionStatus: ConnectionStatus, grouping: SessionListGrouping, actions: HomeScreenActions) {
-    val colors = HappyTheme.colors
+private fun HomeHeader(connectionStatus: ConnectionStatus, accounts: AccountMenu, actions: HomeScreenActions) {
     Header(
         alignment = TitleAlignment.Center,
-        // MainView's phone header names the tab (`tabs.sessions`); HomeHeader's "Happy" is no longer mounted.
-        titleContent = { HomeHeaderTitle(stringResource(R.string.tabs_sessions), connectionStatus) },
+        titleContent = { HomeConnectionStatus(connectionStatus) },
         left = {
-            Box(modifier = Modifier.size(HomeSpec.logoBox).testTag(HomeTags.LOGO), contentAlignment = Alignment.Center) {
-                Image(
-                    painter = painterResource(R.drawable.happy_logo),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    colorFilter = ColorFilter.tint(colors.header.tint),
-                    modifier = Modifier.size(HomeSpec.logo),
-                )
-            }
+            AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAddAccount, actions.onConnectAgent)
         },
         right = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                var menuOpen by remember { mutableStateOf(false) }
-                val groupingTitle = stringResource(R.string.sessions_filter_grouping_title)
-                val flatLabel = stringResource(R.string.sessions_filter_flat_list)
-                val projectLabel = stringResource(R.string.sessions_filter_group_by_project)
-                val appearanceLabel = stringResource(R.string.sessions_filter_appearance_settings)
-                val groups = remember(grouping, groupingTitle, flatLabel, projectLabel, appearanceLabel, actions) {
-                    listOf(
-                        MenuGroup(
-                            key = "grouping",
-                            label = groupingTitle,
-                            options = listOf(MenuOption(SessionListGrouping.Flat.wire, flatLabel), MenuOption(SessionListGrouping.Project.wire, projectLabel)),
-                            selectedKey = grouping.wire,
-                            onSelect = { key -> SessionListGrouping.entries.find { it.wire == key }?.let(actions.onSetGrouping) },
-                        ),
-                        // A plain row, not a choice: it leaves for the appearance settings.
-                        MenuGroup(
-                            key = "appearance",
-                            label = "",
-                            options = listOf(MenuOption("open", appearanceLabel, action = true)),
-                            selectedKey = null,
-                            onSelect = { actions.onAppearance() },
-                        ),
-                    )
-                }
-                SettingsMenu(groups = groups, expanded = menuOpen, onDismiss = { menuOpen = false }) {
-                    Box(modifier = Modifier.testTag(HomeTags.FILTER)) {
-                        HeaderIconButton(
-                            icon = Ionicon.Filter,
-                            contentDescription = stringResource(R.string.sessions_filter_title),
-                            onClick = { menuOpen = true },
-                            iconSize = HomeSpec.actionIcon,
-                            buttonSize = HomeSpec.actionButton,
-                        )
-                    }
-                }
-                // Shorter than the buttons, so it reads as a seam inside one control.
-                Box(
-                    modifier = Modifier
-                        .testTag(HomeTags.ACTION_DIVIDER)
-                        .width(hairline())
-                        .height(HomeSpec.actionDividerHeight)
-                        .background(colors.divider),
-                )
                 Box(modifier = Modifier.testTag(HomeTags.SETTINGS)) {
                     HeaderIconButton(
                         icon = Ionicon.SettingsOutline,
@@ -282,9 +227,30 @@ private fun HomeHeader(connectionStatus: ConnectionStatus, grouping: SessionList
                         buttonSize = HomeSpec.actionButton,
                     )
                 }
+                Box(modifier = Modifier.testTag(HomeTags.COMPOSE)) {
+                    HeaderIconButton(
+                        icon = Ionicon.CreateOutline,
+                        contentDescription = stringResource(R.string.home_compose),
+                        onClick = actions.onNewSession,
+                        iconSize = HomeSpec.actionIcon,
+                        buttonSize = HomeSpec.actionButton,
+                    )
+                }
             }
         },
     )
+}
+
+/** The connection line, only while the socket isn't healthy (homeConnectionStatus.ts). */
+@Composable
+private fun HomeConnectionStatus(status: ConnectionStatus) {
+    if (!shouldShowHomeConnectionStatus(status)) return
+    val color = connectionStatusColor(HappyTheme.colors, status)
+    Row(modifier = Modifier.testTag(HomeTags.STATUS), verticalAlignment = Alignment.CenterVertically) {
+        StatusDot(color = color, pulsing = status == ConnectionStatus.CONNECTING, size = HomeSpec.statusDot)
+        Spacer(Modifier.width(HomeSpec.statusDotGap))
+        Text(text = stringResource(status.label), style = HomeSpec.status, color = color, maxLines = 1)
+    }
 }
 
 /** homeConnectionStatus.ts: only an unhealthy socket is worth a line. */
@@ -296,50 +262,6 @@ fun connectionStatusColor(colors: HappyColors, status: ConnectionStatus) = when 
     ConnectionStatus.CONNECTING -> colors.status.connecting
     ConnectionStatus.DISCONNECTED -> colors.status.disconnected
     ConnectionStatus.ERROR -> colors.status.error
-}
-
-/**
- * HomeHeaderTitle: the title is centred on its own; the status line hangs
- * under it (2 up, 16 minimum, 11/16 medium in the status colour, a 6 dot
- * pulsing while connecting) and never moves it.
- */
-@Composable
-fun HomeHeaderTitle(title: String, status: ConnectionStatus) {
-    val colors = HappyTheme.colors
-    val statusColor = connectionStatusColor(colors, status)
-    Layout(
-        content = {
-            Text(
-                text = title,
-                style = HomeSpec.title,
-                color = colors.header.tint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.testTag(HomeTags.TITLE).semantics { heading() },
-            )
-            if (shouldShowHomeConnectionStatus(status)) {
-                Row(modifier = Modifier.testTag(HomeTags.STATUS), verticalAlignment = Alignment.CenterVertically) {
-                    StatusDot(color = statusColor, pulsing = status == ConnectionStatus.CONNECTING, size = HomeSpec.statusDot)
-                    Spacer(Modifier.width(HomeSpec.statusDotGap))
-                    Text(text = stringResource(status.label), style = HomeSpec.status, color = statusColor, maxLines = 1)
-                }
-            }
-        },
-    ) { measurables, constraints ->
-        val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val titlePlaceable = measurables[0].measure(loose)
-        val statusPlaceable = measurables.getOrNull(1)?.measure(loose)
-        val width = maxOf(titlePlaceable.width, statusPlaceable?.width ?: 0).coerceIn(constraints.minWidth, constraints.maxWidth)
-        layout(width, titlePlaceable.height) {
-            titlePlaceable.place((width - titlePlaceable.width) / 2, 0)
-            statusPlaceable?.let {
-                val slot = HomeSpec.statusMinHeight.roundToPx()
-                val top = titlePlaceable.height - HomeSpec.statusOverlap.roundToPx() + maxOf(0, (slot - it.height) / 2)
-                it.place((width - it.width) / 2, top)
-            }
-        }
-    }
 }
 
 private val ConnectionStatus.label: Int

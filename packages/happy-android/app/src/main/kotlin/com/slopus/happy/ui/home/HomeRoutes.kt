@@ -47,7 +47,7 @@ import com.slopus.happy.ui.session.SessionInfoActions
 import com.slopus.happy.ui.session.SessionInfoLive
 import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.session.SessionInfoScreen
-import com.slopus.happy.ui.settings.AppearanceRoute
+import com.slopus.happy.ui.connection.ConnectAgentRoute
 import com.slopus.happy.ui.settings.ChangelogRoute
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.Dispatchers
@@ -58,7 +58,6 @@ import kotlinx.serialization.json.JsonObject
 /** Where the home list's taps lead: the same for the phone home and the tablet sidebar. */
 class HomeNavigation(
     val onSettings: () -> Unit,
-    val onAppearance: () -> Unit,
     val onWhatsNew: () -> Unit,
     val onOnboardingSettings: () -> Unit,
     val onOpenSession: (String) -> Unit,
@@ -66,11 +65,12 @@ class HomeNavigation(
     val onTroubleshoot: () -> Unit,
     val onNewSession: () -> Unit,
     val onDetails: (String) -> Unit,
+    val onAddAccount: () -> Unit = {},
+    val onConnectAgent: () -> Unit = {},
 ) {
     companion object {
-        fun of(nav: NavHostController, onOpenSession: (String) -> Unit, onTroubleshoot: () -> Unit) = HomeNavigation(
+        fun of(graph: AppGraph, nav: NavHostController, onOpenSession: (String) -> Unit, onTroubleshoot: () -> Unit) = HomeNavigation(
             onSettings = { nav.navigate(SettingsRoute) },
-            onAppearance = { nav.navigate(AppearanceRoute) },
             onWhatsNew = { nav.navigate(ChangelogRoute) },
             onOnboardingSettings = { nav.navigate(OnboardingSettingsRoute) },
             onOpenSession = onOpenSession,
@@ -79,6 +79,8 @@ class HomeNavigation(
             // router.navigate('/new'): a second tap while it is on top stays one screen.
             onNewSession = { nav.navigate(NewSessionRoute) { launchSingleTop = true } },
             onDetails = { id -> nav.navigate(SessionInfoRoute(id)) },
+            onAddAccount = graph::beginAddingAccount,
+            onConnectAgent = { nav.navigate(ConnectAgentRoute) },
         )
     }
 }
@@ -100,7 +102,7 @@ fun NavGraphBuilder.homeRoutes(
         if (LocalHomeInSidebar.current) {
             Box(Modifier.fillMaxSize().background(HappyTheme.colors.grouped.background).testTag(HomeTags.TABLET_BLANK))
         } else {
-            HomeListHost(graph, remember(nav) { HomeNavigation.of(nav, onOpenSession, onTroubleshoot) }, withDock = true) { host ->
+            HomeListHost(graph, remember(nav) { HomeNavigation.of(graph, nav, onOpenSession, onTroubleshoot) }, withDock = true) { host ->
                 HomeScreen(
                     state = host.state,
                     connectionStatus = host.connectionStatus,
@@ -114,6 +116,7 @@ fun NavGraphBuilder.homeRoutes(
                     },
                     dock = host.dock?.state,
                     dockActions = host.dock?.actions,
+                    accounts = rememberAccountMenu(graph),
                 )
             }
         }

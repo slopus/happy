@@ -14,6 +14,8 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
 
 /** One HTTP answer from a paired agent. Header names are lower case. */
 class TransportResponse(val status: Int, val headers: Map<String, String> = emptyMap(), val body: ByteArray = ByteArray(0)) {
@@ -111,15 +113,24 @@ class TailcatTransport(
 
     private suspend fun resetIfCurrent(used: TailcatClient) {
         val old = lock.withLock { client.takeIf { it === used }?.also { client = null } }
-        old?.close()
+        old?.let { closeOffMain(it) }
     }
 
     override suspend fun reset() {
-        lock.withLock { client.also { client = null } }?.close()
+        lock.withLock { client.also { client = null } }?.let { closeOffMain(it) }
     }
 
     override suspend fun close() {
-        lock.withLock { closed = true; client.also { client = null } }?.close()
+        lock.withLock { closed = true; client.also { client = null } }?.let { closeOffMain(it) }
+    }
+
+    /** Closing a client tells the relay, which is network I/O: never on the caller's (maybe main) thread. */
+    private suspend fun closeOffMain(client: TailcatClient) = withContext(NonCancellable + Dispatchers.IO) {
+        try {
+            client.close()
+        } catch (_: Exception) {
+            // Already gone.
+        }
     }
 
     companion object {

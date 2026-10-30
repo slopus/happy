@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Several accounts and agent connections (ui/home/AccountMenu, ui/connection).
+  Not in happy-app's catalogs; English only, as iOS's are.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="account_menu_title">Accounts</string>
+    <string name="account_menu_add_account">Add Account</string>
+    <string name="account_menu_connect_agent">Connect Agent</string>
+    <string name="account_menu_unnamed_account">Happy account</string>
+    <string name="account_menu_unnamed_agent">Agent</string>
+    <string name="account_menu_agent">Agent connection</string>
+    <string name="home_compose">New chat</string>
+    <string name="connect_agent_title">Connect Agent</string>
+    <string name="connect_agent_body">In Happy Agent on your computer, open the code to connect a phone. Scan it, or paste its link.</string>
+    <string name="connect_agent_scan">Scan QR Code</string>
+    <string name="connect_agent_paste">Enter Link Manually</string>
+    <string name="connect_agent_paste_message">Paste the happy://direct link from Happy Agent.</string>
+    <string name="connect_agent_connect">Connect</string>
+    <string name="agent_home_connected">Connected to %1$s</string>
+</resources>

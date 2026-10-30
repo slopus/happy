@@ -111,6 +111,9 @@ class ConnectFlow internal constructor(
 enum class ConnectKind(val prefix: String) {
     Terminal(TERMINAL_URL_PREFIX),
     Account(AccountLink.URL_PREFIX),
+
+    /** Connect Agent: only pairing codes, which [ConnectFlow.route] hands to pairing. */
+    Agent("happy://direct"),
 }
 
 /** What a scan that can't be approved here says. */
@@ -255,6 +258,13 @@ private fun rememberConnectFlow(
     return flow
 }
 
+
+/**
+ * Connect Agent: scans or takes a pasted `happy://direct?` code and opens
+ * pairing ([LocalAgentPairing]); any other code says where it belongs.
+ */
+@Composable
+fun rememberAgentConnect(): ConnectFlow = rememberConnectFlow(ConnectKind.Agent, approve = {}) { _, _ -> }
 
 /**
  * Settings' "Enter URL manually" (SettingsView.tsx): the prompt for a
