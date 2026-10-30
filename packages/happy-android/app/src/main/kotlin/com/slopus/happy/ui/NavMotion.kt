@@ -31,9 +31,10 @@ private typealias NavScope = AnimatedContentTransitionScope<NavBackStackEntry>
  * not a share of the pane, so a wide tablet detail moves no further than a
  * phone. With animations off ([rememberReduceMotion]) screens change at once.
  *
- * Only the four ordinary transitions: the back gesture keeps
- * navigation-compose's own predictive animation. Left to its defaults the
- * library crossfades every push and pop over 700 ms (DefaultNavTransitions).
+ * [HappyApp] also passes the two pop transitions to the NavHost's predictive
+ * callbacks: an edge gesture scrubs the same reverse motion and the library
+ * handles its completion or cancellation. Leaving those callbacks at their
+ * defaults would scale the outgoing screen down instead of sliding it.
  */
 @Immutable
 class NavMotion(

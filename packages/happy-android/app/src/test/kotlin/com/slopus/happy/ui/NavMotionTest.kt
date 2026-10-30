@@ -14,6 +14,10 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.navigationevent.NavigationEvent
+import androidx.navigationevent.NavigationEventDispatcher
+import androidx.navigationevent.NavigationEventInput
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import com.slopus.happy.AppGraph
 import com.slopus.happy.crypto.Base64Variant
 import com.slopus.happy.crypto.SecretKeyBackup
@@ -54,6 +58,16 @@ class NavMotionTest {
     private val server = FakeHappyServer().start()
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private lateinit var graph: AppGraph
+    private lateinit var events: NavigationEventDispatcher
+
+    private class BackInput : NavigationEventInput() {
+        fun start(edge: Int) = dispatchOnBackStarted(NavigationEvent(swipeEdge = edge))
+        fun progress(value: Float, edge: Int) = dispatchOnBackProgressed(NavigationEvent(swipeEdge = edge, progress = value))
+        fun complete() = dispatchOnBackCompleted()
+        fun cancel() = dispatchOnBackCancelled()
+    }
+
+    private fun backInput() = BackInput().also { input -> rule.runOnUiThread { events.addInput(input) } }
 
     @After
     fun tearDown() {
@@ -63,7 +77,10 @@ class NavMotionTest {
 
     private fun show(direction: LayoutDirection = LayoutDirection.Ltr) {
         graph = AppGraph(context, clientId = "android/test", defaultServerUrl = server.url, secureStoreKeys = SoftwareKeys(), databaseName = null)
-        rule.setContent { CompositionLocalProvider(LocalLayoutDirection provides direction) { HappyApp(graph) } }
+        rule.setContent {
+            events = checkNotNull(LocalNavigationEventDispatcherOwner.current).navigationEventDispatcher
+            CompositionLocalProvider(LocalLayoutDirection provides direction) { HappyApp(graph) }
+        }
         rule.waitUntilAtLeastOneExists(hasTestTag(StartTags.CONTENT), 5_000)
     }
 
@@ -128,6 +145,72 @@ class NavMotionTest {
         assertTravelling("the screen Back returns to", incoming, towardsEnd = false)
         assertTravelling("the screen Back leaves", outgoing, towardsEnd = true)
         assertEquals(startAtRest, left(StartTags.CONTENT))
+    }
+
+    @Test
+    fun aSystemBackWithoutGestureProgressUsesTheSameReverseSlide() {
+        show()
+        val startAtRest = left(StartTags.CONTENT)
+        pushServer()
+        settle()
+        val serverAtRest = left(ServerTags.FORM)
+        val input = backInput()
+        rule.mainClock.autoAdvance = false
+        rule.runOnUiThread { input.complete() }
+        rule.mainClock.advanceTimeByFrame()
+        halfway()
+        val incoming = left(StartTags.CONTENT) - startAtRest
+        val outgoing = left(ServerTags.FORM) - serverAtRest
+        settle()
+        assertTravelling("system Back returns to", incoming, towardsEnd = false)
+        assertTravelling("system Back leaves", outgoing, towardsEnd = true)
+        rule.node(ServerTags.FORM).assertDoesNotExist()
+    }
+
+    @Test
+    fun predictiveBackScrubsTheReverseSlideAndCanCancelThenComplete() =
+        predictiveBack(LayoutDirection.Ltr, NavigationEvent.EDGE_LEFT)
+
+    @Test
+    fun rightToLeftPredictiveBackFromTheOtherEdgeMirrorsTheSameMotion() =
+        predictiveBack(LayoutDirection.Rtl, NavigationEvent.EDGE_RIGHT)
+
+    private fun predictiveBack(direction: LayoutDirection, edge: Int) {
+        show(direction)
+        val startAtRest = left(StartTags.CONTENT)
+        pushServer()
+        settle()
+        val serverAtRest = left(ServerTags.FORM)
+        val serverBounds = rule.node(ServerTags.FORM).bounds
+        val input = backInput()
+        rule.mainClock.autoAdvance = false
+        rule.runOnUiThread { input.start(edge) }
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+        rule.runOnUiThread { input.progress(0.5f, edge) }
+        repeat(3) { rule.mainClock.advanceTimeByFrame() }
+        rule.waitForIdle()
+        val sign = if (direction == LayoutDirection.Ltr) 1 else -1
+        assertTravelling("gesture returns to", (left(StartTags.CONTENT) - startAtRest) * sign, towardsEnd = false)
+        assertTravelling("gesture leaves", (left(ServerTags.FORM) - serverAtRest) * sign, towardsEnd = true)
+        val during = rule.node(ServerTags.FORM).bounds
+        assertEquals("the gesture never scales the outgoing page", serverBounds.right - serverBounds.left, during.right - during.left)
+        rule.runOnUiThread { input.cancel() }
+        settle()
+        assertEquals("cancel restores the outgoing page", serverAtRest, left(ServerTags.FORM))
+        rule.node(StartTags.CONTENT).assertDoesNotExist()
+
+        rule.mainClock.autoAdvance = false
+        rule.runOnUiThread { input.start(edge) }
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+        rule.runOnUiThread { input.progress(0.5f, edge) }
+        repeat(3) { rule.mainClock.advanceTimeByFrame() }
+        rule.waitForIdle()
+        rule.runOnUiThread { input.complete() }
+        settle()
+        rule.node(ServerTags.FORM).assertDoesNotExist()
+        assertEquals("complete returns to the previous page", startAtRest, left(StartTags.CONTENT))
     }
 
     @Test

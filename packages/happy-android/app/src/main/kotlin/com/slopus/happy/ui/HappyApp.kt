@@ -114,6 +114,8 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                         exitTransition = motion.exit,
                         popEnterTransition = motion.popEnter,
                         popExitTransition = motion.popExit,
+                        predictivePopEnterTransition = { _ -> motion.popEnter.invoke(this) },
+                        predictivePopExitTransition = { _ -> motion.popExit.invoke(this) },
                     ) {
                         composable<StartRoute> { Start(graph, nav, add) }
                         composable<AgentHomeRoute> {
