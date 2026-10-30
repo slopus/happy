@@ -107,6 +107,27 @@ class ConversationTest {
         assertEquals("ls", (state.rows[2] as ConversationRow.Tool).detail)
     }
 
+    @Test fun `home's name is the title before anything is read, and the computer's title wins once it is`() = runTest {
+        val agent = FakeAgent()
+        val chat = Conversation(
+            api = ConversationApi(agent.request),
+            signals = signals,
+            scope = CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }),
+            agentId = "a1",
+            knownTitle = "Chief of Staff",
+            lane = StandardTestDispatcher(testScheduler),
+            now = { 1000 },
+        )
+        // The very first state, before start(): nothing has been asked yet.
+        assertEquals("Chief of Staff", chat.state.value.title)
+        assertTrue(!chat.state.value.loaded)
+        assertTrue(agent.requests.isEmpty())
+
+        chat.start()
+        advanceUntilIdle()
+        assertEquals("Fix it", chat.state.value.title)
+    }
+
     @Test fun `streams deltas exactly and reloads on a gap`() = runTest {
         val agent = FakeAgent()
         val chat = conversation(agent)

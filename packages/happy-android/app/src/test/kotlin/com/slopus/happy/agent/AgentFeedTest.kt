@@ -51,6 +51,14 @@ class AgentFeedTest {
     }
 
     @Test
+    fun aChatOpenedFromARowGetsThatRowsName() {
+        val feed = AgentFeed.derive(catalog(sample))
+        assertEquals("Happy", feed.title("ab1"))
+        assertEquals(null, feed.title("nobody"))
+        assertEquals(null, AgentFeed.Empty.title("ab1"))
+    }
+
+    @Test
     fun anAgentUpdateMergesByVersionAndKeepsUnchangedRows() {
         val before = catalog(sample)
         val feed = AgentFeed.derive(before)

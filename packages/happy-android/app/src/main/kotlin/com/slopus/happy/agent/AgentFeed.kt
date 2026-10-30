@@ -64,6 +64,11 @@ sealed interface AgentFeedSection {
 data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> = emptyList()) {
     val conversations: List<AgentFeedRow.Conversation> get() = rows.filterIsInstance<AgentFeedRow.Conversation>()
 
+    /** The name home shows for [agentId]'s row; null if home has no row for it or the row has no name yet. */
+    fun title(agentId: String): String? = rows.firstNotNullOfOrNull { row ->
+        (row as? AgentFeedRow.Conversation)?.takeIf { it.agentId == agentId }?.title
+    }
+
     companion object {
         val Empty = AgentFeed()
 

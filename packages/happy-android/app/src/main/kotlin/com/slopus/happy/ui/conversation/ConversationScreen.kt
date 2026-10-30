@@ -173,8 +173,13 @@ fun ConversationScreen(
         TopAppBar(
             title = {
                 Column {
+                    // An existing chat is never "New chat", not even before it's read: blank until then.
                     Text(
-                        state.title ?: stringResource(if (state.created && state.loaded) R.string.conversation_untitled else R.string.conversation_compose),
+                        state.title ?: when {
+                            !state.created -> stringResource(R.string.conversation_compose)
+                            state.loaded -> stringResource(R.string.conversation_untitled)
+                            else -> ""
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.testTag(ConversationScreenTags.TITLE),

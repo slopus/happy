@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -90,6 +91,19 @@ class ConversationLayoutTest {
 
     private fun show(state: ConversationState, connection: String? = null, dark: Boolean = false, actions: ConversationScreenActions = ConversationScreenActions()) {
         rule.setHappyContent(dark) { ConversationScreen(state, connection, actions) }
+    }
+
+    @Test fun `an opened chat has home's name from its first frame, and is never called New chat`() {
+        // The first frame: nothing read yet, the name home showed on the row.
+        show(ConversationState(created = true, loaded = false, knownTitle = "Chief of Staff"))
+        rule.node(ConversationScreenTags.TITLE).assertTextEquals("Chief of Staff")
+        rule.onNodeWithText("New chat").assertDoesNotExist()
+    }
+
+    @Test fun `an opened chat home has no name for is blank until read, not New chat`() {
+        show(ConversationState(created = true, loaded = false))
+        rule.node(ConversationScreenTags.TITLE).assertTextEquals("")
+        rule.onNodeWithText("New chat").assertDoesNotExist()
     }
 
     @Test fun `a new chat is empty with New chat and only compose in the header`() {

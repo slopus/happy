@@ -70,8 +70,10 @@ data class ConversationState(
     val error: String? = null,
     /** A refused action, shown once. */
     val alert: String? = null,
+    /** What home calls this conversation, so the screen has its name before the computer is asked. */
+    val knownTitle: String? = null,
 ) {
-    val title: String? get() = agent?.title?.takeIf { it.isNotBlank() }
+    val title: String? get() = agent?.title?.takeIf { it.isNotBlank() } ?: knownTitle?.takeIf { it.isNotBlank() }
     /** A subagent is driven by its parent: it takes no messages. */
     val canSend: Boolean get() = agent?.isSubagent != true && agent?.archivedAt == null
 }
@@ -94,6 +96,8 @@ class Conversation(
     val agentId: String,
     private var newTask: NewTask? = null,
     initialDraft: String = "",
+    /** [ConversationState.knownTitle]. */
+    knownTitle: String? = null,
     /** The answer to `POST /v0/tasks`, so home lists the task at once. */
     private val onTaskCreated: (JsonObject) -> Unit = {},
     private val lane: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
@@ -103,7 +107,9 @@ class Conversation(
 ) {
     private class Outgoing(val id: String, val text: String, val images: List<Block.Image>, var accepted: Boolean = false, var failure: String? = null)
 
-    private val _state = MutableStateFlow(ConversationState(created = newTask == null, loaded = newTask != null, draft = initialDraft))
+    private val _state = MutableStateFlow(
+        ConversationState(created = newTask == null, loaded = newTask != null, draft = initialDraft, knownTitle = knownTitle),
+    )
     val state: StateFlow<ConversationState> = _state.asStateFlow()
 
     private var snapshot = _state.value

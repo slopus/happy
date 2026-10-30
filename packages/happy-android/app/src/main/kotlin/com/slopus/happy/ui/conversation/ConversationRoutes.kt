@@ -158,6 +158,8 @@ private class ConversationHolder(session: AgentSession, route: ConversationRoute
             scope = scope,
             agentId = agentId,
             newTask = task.takeIf { saved.get<Boolean>(CREATED) != true },
+            // The row that was tapped already had a name: the bar has it from the first frame.
+            knownTitle = route.agentId?.let(session.feed.value::title),
             onTaskCreated = { answer ->
                 saved[CREATED] = true
                 answer["task"].obj?.let { session.upsertTask(it, answer["membership"].obj) }
