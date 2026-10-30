@@ -48,6 +48,7 @@ export const ru: TranslationStructure = {
     },
 
     common: {
+        managedByOrganization: "Управляется вашей организацией",
         // Simple string constants
         cancel: 'Отмена',
         authenticate: 'Авторизация',
