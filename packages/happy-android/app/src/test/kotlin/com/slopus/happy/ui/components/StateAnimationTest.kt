@@ -1,11 +1,19 @@
 package com.slopus.happy.ui.components
 
+import android.provider.Settings
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
@@ -61,5 +69,28 @@ class StateAnimationTest {
         rule.onNodeWithText("Start one.").assertExists()
         rule.onNodeWithText("New chat").performClick()
         assertEquals(1, tapped)
+    }
+
+    // Motion on: the replay tap is a button TalkBack names, so the page has no unlabelled action.
+    @Test
+    fun theReplayTapIsANamedButton() {
+        rule.setHappyContent { StatePage(title = "Link Your Computer", body = "Install Happy.", art = StateArt.Make) }
+        rule.node(StateAnimationTags.ANIMATION)
+            .assertContentDescriptionEquals("Play again")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
+        rule.assertActionsLabelled()
+    }
+
+    // Motion off: nothing to replay, so no action, no role and no label, and no focus stop.
+    @Test
+    fun withReducedMotionThePictureIsNotAControl() {
+        Settings.Global.putFloat(RuntimeEnvironment.getApplication().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
+        rule.setHappyContent { StatePage(title = "Link Your Computer", body = "Install Happy.", art = StateArt.Make) }
+        rule.node(StateAnimationTags.ANIMATION)
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Role))
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.ContentDescription))
+        rule.assertActionsLabelled()
     }
 }
