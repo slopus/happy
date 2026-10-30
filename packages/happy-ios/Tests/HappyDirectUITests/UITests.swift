@@ -1364,6 +1364,100 @@ final class UITests: XCTestCase {
         while Date() < deadline, working.exists { pause(1) }
     }
 
+    /// A send against a streaming reply, step by step: a send by a reader
+    /// at the end lands at the foot, over the composer, and nothing is
+    /// held under it; the turns above it move up by what the send is tall
+    /// and no further; a send mid-turn does the same; and a send made
+    /// while reading history moves nothing at all, with a way back to the
+    /// newest. This is where the transcript used to lift a send 30% down
+    /// the viewport, which read as the chat jumping away on send
+    /// (`SendFollow`). Needs `fakellm.py` as above.
+    func testASendLandsAtTheFootAndLiftsNothing() {
+        let composer = openStreamLab(probe: "watch")
+        let transcript = app.scrollViews["transcript"]
+        let messages = app.descendants(matching: .any).matching(identifier: "message")
+        let working = app.descendants(matching: .any)["working"]
+        let input = app.descendants(matching: .any)["input"]
+        // Each run's sends are its own: the conversation keeps the last run's.
+        let run = String(Int(Date().timeIntervalSince1970) % 100_000)
+        func say(_ text: String) -> XCUIElement {
+            send(composer, "\(text) \(run)")
+            return app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "message", "\(text) \(run)")).firstMatch
+        }
+        func idle() {
+            let deadline = Date().addingTimeInterval(180)
+            while Date() < deadline, working.exists { pause(0.5) }
+            XCTAssertFalse(working.exists, "the turn never ended")
+            pause(1)
+        }
+        idle()
+
+        // 1. Idle, at the end. The reply waits before its first word, so
+        // what is measured is the send alone, with nothing yet under it.
+        let before = messages.count > 0 ? messages.element(boundBy: messages.count - 1).frame : .zero
+        let first = say("stream 4 120 wait 1500 first")
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        pause(0.4)
+        let counts = probeCounts(transcript)
+        let top = CGFloat(counts["top"] ?? 0)
+        let viewport = input.frame.minY - 8 - top
+        capture("send-1-landed")
+        XCTAssertLessThan(first.frame.maxY, input.frame.minY + 1, "the send went under the composer")
+        XCTAssertGreaterThan(first.frame.maxY, input.frame.minY - 24, "the send isn't at the foot: \(first.frame)")
+        XCTAssertGreaterThan(first.frame.minY - top, (viewport * 0.3).rounded() + 40,
+                             "the send was lifted towards the old 30% line (viewport \(viewport))")
+        if before != .zero {
+            // The turn above it moved up by the send's height, not a share
+            // of the screen. A lift moved it by 30% of the viewport.
+            let moved = before.minY - messages.element(boundBy: messages.count - 2).frame.minY
+            XCTAssertLessThan(moved, first.frame.height + 24, "the rows above moved more than the send is tall: \(moved)")
+        }
+
+        // 2. The reply arrives under it: the send keeps moving up with it,
+        // never standing still on a line with room held under it.
+        var stoodStill = 0
+        var at = first.frame.minY
+        let growing = Date().addingTimeInterval(60)
+        while Date() < growing, working.exists {
+            pause(0.3)
+            let now = first.frame.minY
+            if abs(now - at) < 1 { stoodStill += 1 } else { stoodStill = 0 }
+            XCTAssertLessThanOrEqual(now, at + 1, "the send moved down the screen")
+            at = now
+            if stoodStill > 6 { break }
+        }
+        capture("send-2-reply")
+        let end = max(messages.element(boundBy: messages.count - 1).frame.maxY, working.frame.maxY)
+        XCTAssertEqual(end, input.frame.minY - 8, accuracy: 6, "the reply's end isn't followed")
+        idle()
+
+        // 3. Mid-turn, as before: it waits at the end, lifted by nothing.
+        let mid = say("stream 6 150 midturn")
+        XCTAssertTrue(mid.waitForExistence(timeout: 5))
+        pause(0.8)
+        let second = say("stream 1 40 alsomidturn")
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+        pause(0.8)
+        capture("send-3-midturn")
+        XCTAssertLessThan(second.frame.maxY, input.frame.minY + 1, "a send mid-turn is under the composer")
+        XCTAssertGreaterThan(second.frame.minY - top, (viewport * 0.3).rounded() + 40, "a send mid-turn was lifted")
+        idle()
+
+        // 4. Reading history: a send moves nothing, and there is a way back.
+        dismissKeyboard()
+        pause(1)
+        let anchor = mid
+        XCTAssertTrue(transcript.frame.contains(CGPoint(x: anchor.frame.midX, y: anchor.frame.minY)), "the anchor isn't on screen")
+        composer.tap()
+        pause(1)
+        let parked = anchor.frame.minY
+        _ = say("stream 1 40 parked")
+        pause(1.5)
+        capture("send-4-parked")
+        XCTAssertEqual(anchor.frame.minY, parked, accuracy: 1, "a send from history moved the reader")
+        XCTAssertTrue(app.descendants(matching: .any)["jump-latest"].exists, "no way back to the newest")
+        idle()
+    }
 
     /// A phone held sideways with the keyboard up leaves the full card a
     /// sliver of transcript: the card goes to one row, the chips behind its
