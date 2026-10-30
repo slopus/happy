@@ -23,6 +23,9 @@ final class Session {
     let syntax = CodeSyntaxService()
     /// The conversations read ahead and kept, so they open drawn.
     let warm: WarmChats
+    /// The person's settings for this phone, the transcript's renderer
+    /// among them (`LocalSettings.chatListRenderer`).
+    let localSettings: LocalSettings
     private(set) var snapshot = Snapshot()
     private var watchers: [UUID: (Snapshot) -> Void] = [:]
     /// Readable, not settable, so a test can say the follow was let go of
@@ -98,6 +101,7 @@ final class Session {
     private init(accountID: String, engine: SyncEngine, account: AccountController) {
         self.accountID = accountID
         self.engine = engine
+        self.localSettings = account.localSettings
         let client = engine.client
         self.client = client
         let offline = engine.offline

@@ -31,6 +31,13 @@ private let skipsQuiescence: Bool = {
 /// (`xcrun simctl privacy <udid> grant photos <bundle>`).
 @MainActor
 final class UITests: XCTestCase {
+    /// The transcript, whichever renderer drew it: the agents' chat draws
+    /// on UltraList, which is not a scroll view, so it is found by its
+    /// identifier rather than by kind.
+    var transcriptElement: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "transcript").firstMatch
+    }
+
     private let app = XCUIApplication()
 
     override func setUp() {
@@ -80,6 +87,7 @@ final class UITests: XCTestCase {
                 withVelocity: .slow, thenHoldForDuration: 0.4
             )
             pause(0.8)
+            if abs(element.frame.midY - y) < 1, element.isHittable { break }
         }
     }
 
@@ -1039,7 +1047,7 @@ final class UITests: XCTestCase {
             let target = row("space", label).firstMatch
             guard target.exists, target.isHittable else { continue }
             target.tap()
-            let transcript = app.scrollViews["transcript"]
+            let transcript = transcriptElement
             XCTAssertTrue(transcript.waitForExistence(timeout: 8), "\(label) didn't open")
             var value = ""
             let deadline = Date().addingTimeInterval(10)
@@ -1068,7 +1076,7 @@ final class UITests: XCTestCase {
         // One left a moment ago comes back drawn too.
         if warm, let first = opened.first {
             row("space", first).firstMatch.tap()
-            let transcript = app.scrollViews["transcript"]
+            let transcript = transcriptElement
             XCTAssertTrue(transcript.waitForExistence(timeout: 8))
             var value = ""
             for _ in 0..<100 where value.isEmpty {
@@ -1333,7 +1341,7 @@ final class UITests: XCTestCase {
         send(composer, "stream 40 30")
         let working = app.descendants(matching: .any)["working"]
         XCTAssertTrue(working.waitForExistence(timeout: 15), "the reply never started")
-        let transcript = app.scrollViews["transcript"]
+        let transcript = transcriptElement
         // Long enough to scroll before the pulls.
         pause(8)
         dismissKeyboard()
@@ -1364,18 +1372,45 @@ final class UITests: XCTestCase {
         while Date() < deadline, working.exists { pause(1) }
     }
 
-    /// Desktop's send lift, step by step against a streaming reply: an idle
-    /// send by a reader at the end is lifted to 30% down the transcript
-    /// with room held under it; the reply grows into that room without
-    /// moving the send, then, once it outgrows it, is followed at its end;
-    /// a send mid-turn waits at the end, lifted by nothing; another send
-    /// once idle is lifted again; and one sent by a reader scrolled up into
-    /// history moves nothing. Needs `fakellm.py` as above.
-    func testSendLiftMatchesDesktop() {
+    /// Uses the same paired synthetic conversation as the streaming checks.
+    func checkComposerTracksHeldKeyboardDrag() {
+        XCUIDevice.shared.orientation = .portrait
         let composer = openStreamLab(probe: "watch")
-        let transcript = app.scrollViews["transcript"]
+        composer.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        pause(1.5)
+        let input = app.descendants(matching: .any)["input"]
+        let keyboard = app.keyboards.firstMatch.frame
+        print("HAPPY_KEYBOARD before input=\(input.frame) keyboard=\(keyboard) probe=\(transcriptElement.value ?? "")")
+        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.midX, dy: input.frame.minY - 40))
+        let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.midX, dy: keyboard.minY + 110))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: 160, thenHoldForDuration: 2)
+        pause(1)
+        let value = transcriptElement.value as? String ?? ""
+        print("HAPPY_KEYBOARD after \(value)")
+        capture("keyboard-held-drag")
+        let fields = Dictionary(uniqueKeysWithValues: value.split(separator: " ").compactMap { item -> (String, Double)? in
+            let pair = item.split(separator: "=")
+            guard pair.count == 2, let number = Double(pair[1]) else { return nil }
+            return (String(pair[0]), number)
+        })
+        XCTAssertGreaterThan(fields["keyboardFrames"] ?? 0, 20, "the keyboard was never held partially dismissed")
+        XCTAssertLessThan(fields["keyboardGap"] ?? 999, 2, "the composer left the keyboard while the finger held it")
+    }
+
+    /// A send against a streaming reply, step by step: a send by a reader
+    /// at the end lands at the foot, over the composer, and nothing is
+    /// held under it; the turns above it move up by what the send is tall
+    /// and no further; a send mid-turn does the same; and a send made
+    /// while reading history moves nothing at all, with a way back to the
+    /// newest. This is where the transcript used to lift a send 30% down
+    /// the viewport, which read as the chat jumping away on send
+    /// (`SendFollow`). Needs `fakellm.py` as above.
+    func testASendLandsAtTheFootAndLiftsNothing() throws {
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let composer = openStreamLab(probe: "watch")
+        let transcript = transcriptElement
         let messages = app.descendants(matching: .any).matching(identifier: "message")
-        let working = app.descendants(matching: .any)["working"]
         let input = app.descendants(matching: .any)["input"]
         // Each run's sends are its own: the conversation keeps the last run's.
         let run = String(Int(Date().timeIntervalSince1970) % 100_000)
@@ -1383,79 +1418,87 @@ final class UITests: XCTestCase {
             send(composer, "\(text) \(run)")
             return app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "message", "\(text) \(run)")).firstMatch
         }
-        func idle() {
-            let deadline = Date().addingTimeInterval(180)
-            while Date() < deadline, working.exists { pause(0.5) }
-            XCTAssertFalse(working.exists, "the turn never ended")
-            pause(1)
-        }
-        idle()
-        // 1. Idle, at the end: lifted, room held.
-        // The reply waits a moment before its first word: the lift is seen
-        // before the reply grows into the room.
-        let first = say("stream 4 120 wait 1500 first")
-        XCTAssertTrue(first.waitForExistence(timeout: 5))
-        pause(0.3)
-        let counts = probeCounts(transcript)
-        let top = CGFloat(counts["top"] ?? 0)
-        let viewport = input.frame.minY - 8 - top
-        let line = (viewport * 0.3).rounded()
-        capture("lift-1-sent")
-        XCTAssertEqual(first.frame.minY - top, line, accuracy: 1.5, "the send isn't lifted to the line (viewport \(viewport))")
-        XCTAssertGreaterThan(input.frame.minY - first.frame.maxY, viewport / 3, "no room held for the reply")
-        // 2. The reply grows into the room, the send held, then followed.
-        let liftedAt = first.frame.minY
-        var held = 0
-        var followed = false
-        let deadline = Date().addingTimeInterval(60)
-        while Date() < deadline, working.exists {
-            let now = first.frame.minY
-            if abs(now - liftedAt) < 1 {
-                held += 1
-            } else {
-                XCTAssertLessThan(now, liftedAt, "the send moved down")
-                pause(0.3)
-                let end = max(messages.element(boundBy: messages.count - 1).frame.maxY, working.frame.maxY)
-                XCTAssertEqual(end, input.frame.minY - 8, accuracy: 4, "outgrown, the reply's end isn't followed")
-                followed = true
-                break
-            }
-            pause(0.3)
-        }
-        capture("lift-2-outgrown")
-        XCTAssertGreaterThan(held, 2, "the room under the send didn't hold")
-        XCTAssertTrue(followed, "the reply never outgrew the room")
-        // 3. Mid-turn: it waits at the end, nothing lifted.
-        let mid = say("stream 2 40 midturn")
-        XCTAssertTrue(mid.waitForExistence(timeout: 5))
-        pause(0.8)
-        capture("lift-3-midturn")
-        XCTAssertGreaterThan(mid.frame.minY - top, line + 40, "a send mid-turn was lifted")
-        XCTAssertLessThan(mid.frame.maxY, input.frame.minY + 1, "a send mid-turn is under the composer")
-        idle()
-        // 4. Idle again: lifted again.
-        let again = say("stream 2 120 wait 1500 again")
-        XCTAssertTrue(again.waitForExistence(timeout: 5))
-        pause(0.3)
-        capture("lift-4-again")
-        XCTAssertEqual(again.frame.minY - top, line, accuracy: 1.5, "the next idle send isn't lifted")
-        idle()
-        // 5. Scrolled up into history: a send moves nothing.
-        // The drag that puts the keyboard away takes the reader up too.
-        dismissKeyboard()
-        pause(1)
-        let anchor = mid
-        let parked = anchor.frame.minY
-        XCTAssertTrue(transcript.frame.contains(CGPoint(x: anchor.frame.midX, y: parked)), "the anchor isn't on screen")
         composer.tap()
         pause(1)
-        let parkedNow = anchor.frame.minY
-        _ = say("stream 1 40 parked")
+        func assertKeyboardDock(file: StaticString = #filePath, line: UInt = #line) {
+            // XCUI's keyboard frame can exclude the 44pt prediction strip.
+            // The UIKit keyboard notification includes it; the card sits
+            // eight points above that full frame in either orientation.
+            let gap = app.keyboards.firstMatch.frame.minY - input.frame.maxY
+            XCTAssertTrue(abs(gap - 8) <= 2 || abs(gap - 52) <= 2,
+                          "the composer does not ride the full keyboard (XCUI gap \(gap))", file: file, line: line)
+        }
+        assertKeyboardDock()
+        // Leave enough time for XCUI's screenshot and repeated accessibility
+        // reads before the first reply word; those reads take seconds.
+        let first = say("stream 1 20 wait 10000 first")
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        pause(0.2)
+        let top = app.navigationBars.firstMatch.frame.maxY
+        let viewport = input.frame.minY - 8 - top
+        let firstID = (first.value as? String)?.components(separatedBy: ",").first
+        let firstY = first.frame.minY
+        print("HAPPY_SEND initial \(first.value ?? "") frame=\(first.frame)")
+        capture("send-1-landed")
+        XCTAssertLessThan(first.frame.maxY, input.frame.minY + 1, "the send went under the composer")
+        XCTAssertGreaterThan(first.frame.maxY, input.frame.minY - 24, "the send isn't at the foot: \(first.frame)")
+        XCTAssertGreaterThan(first.frame.minY - top, (viewport * 0.3).rounded() + 40,
+                             "the send was lifted towards the old 30% line (viewport \(viewport))")
+        pause(0.5)
+        XCTAssertNotNil(firstID)
+        XCTAssertEqual((first.value as? String)?.components(separatedBy: ",").first, firstID)
+        XCTAssertEqual(first.frame.minY, firstY, accuracy: 1, "accepting the send moved its row before the reply")
+        print("HAPPY_SEND accepted \(first.value ?? "") frame=\(first.frame)")
+        pause(16)
+        capture("send-2-reply")
+        let end = messages.allElementsBoundByIndex.map(\.frame).filter { $0.minY < input.frame.minY && $0.maxY > top }.map(\.maxY).max() ?? 0
+        XCTAssertEqual(end, input.frame.minY - 8, accuracy: 6, "the reply's end isn't followed")
+
+        // A send during a reply is appended at the end too.
+        let mid = say("stream 2 20 midturn")
+        XCTAssertTrue(mid.waitForExistence(timeout: 5))
+        pause(0.8)
+        // Keep the reply out of the screenshot/AX reads: once it arrives,
+        // following it correctly carries this older user row upwards.
+        let second = say("stream 1 5 wait 10000 alsomidturn")
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+        pause(0.8)
+        capture("send-3-midturn")
+        XCTAssertLessThan(second.frame.maxY, input.frame.minY + 1, "a send mid-turn is under the composer")
+        XCTAssertGreaterThan(second.frame.minY - top, (viewport * 0.3).rounded() + 40, "a send mid-turn was lifted")
+        pause(12)
+        XCUIDevice.shared.orientation = .landscapeLeft
         pause(1.5)
-        capture("lift-5-parked")
-        XCTAssertEqual(anchor.frame.minY, parkedNow, accuracy: 1, "a send from history moved the reader (\(parked) before the keyboard)")
+        capture("send-landscape-keyboard")
+        assertKeyboardDock()
+        let landscapeEnd = messages.allElementsBoundByIndex.map(\.frame).filter { $0.minY < input.frame.minY }.map(\.maxY).max() ?? 0
+        XCTAssertEqual(landscapeEnd, input.frame.minY - 8, accuracy: 6, "rotation put the newest message under the composer")
+        XCUIDevice.shared.orientation = .portrait
+        pause(1.5)
+
+        // Actually move into history. UltraList keeps a window, so retain
+        // a visible row by identity rather than by its index in that window.
+        dismissKeyboard()
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "the transcript did not dismiss the keyboard interactively")
+        for _ in 0..<3 { transcript.swipeDown(velocity: .fast) }
+        composer.tap()
+        pause(1)
+        let visible = messages.allElementsBoundByIndex.filter { $0.frame.maxY > top + 40 && $0.frame.minY < input.frame.minY - 40 }
+        let anchor = try XCTUnwrap(visible.first, "no history row is visible")
+        let anchorLabel = anchor.label
+        let anchorID = (anchor.value as? String)?.components(separatedBy: ",").first
+        XCTAssertNotNil(anchorID)
+        let parked = anchor.frame.minY
+        print("HAPPY_SEND history-before \(anchor.value ?? "") frame=\(anchor.frame)")
+        _ = say("stream 1 5 parked")
+        pause(1.5)
+        capture("send-4-parked")
+        let kept = messages.matching(NSPredicate(format: "label == %@", anchorLabel)).firstMatch
+        XCTAssertTrue(kept.exists, "sending unmounted the history anchor")
+        XCTAssertEqual((kept.value as? String)?.components(separatedBy: ",").first, anchorID)
+        XCTAssertEqual(kept.frame.minY, parked, accuracy: 1, "a send from history moved the reader")
+        print("HAPPY_SEND history-after \(kept.value ?? "") frame=\(kept.frame)")
         XCTAssertTrue(app.descendants(matching: .any)["jump-latest"].exists, "no way back to the newest")
-        idle()
     }
 
     /// A phone held sideways with the keyboard up leaves the full card a
@@ -1582,7 +1625,7 @@ final class UITests: XCTestCase {
         bot.tap()
         let composer = app.textViews["composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.scrollViews["transcript"].waitForExistence(timeout: 5))
+        XCTAssertTrue(transcriptElement.waitForExistence(timeout: 5))
         pause(2)
         return composer
     }

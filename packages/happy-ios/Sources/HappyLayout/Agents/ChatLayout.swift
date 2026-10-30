@@ -40,9 +40,11 @@ public struct ChatScreenLayout: Equatable, Sendable {
         public static let paddingBottom: CGFloat = 8
         /// Room between the newest row and the card.
         public static let listGap: CGFloat = 8
+        public static let headerOverhang: CGFloat = 8
     }
 
     public var card: CGRect
+    public var headerScrim: CGRect
     /// The transcript's insets inside the whole screen.
     public var listTop: CGFloat
     public var listBottom: CGFloat
@@ -56,6 +58,7 @@ public struct ChatScreenLayout: Equatable, Sendable {
         let height = cardHeight(width)
         let foot = min(keyboardTop, size.height - safeArea.bottom)
         card = CGRect(x: M.paddingH, y: foot - M.paddingBottom - height, width: width, height: height)
+        headerScrim = CGRect(x: 0, y: 0, width: size.width, height: max(0, safeArea.top) + M.headerOverhang)
         listTop = safeArea.top
         listBottom = max(0, size.height - card.minY + M.listGap)
         viewport = max(0, size.height - listTop - listBottom)
@@ -88,33 +91,18 @@ public struct ChatScreenLayout: Equatable, Sendable {
 /// A conversation that opens on its intro (desktop's leading header) keeps
 /// it pinned under the bar instead, and its rows fill in under it.
 ///
-/// A lifted send (`SendLift`) stands on its line from the
-/// viewport's top while the reply has not filled the room under it: the
-/// content reaches a viewport below the line, so following the end keeps
-/// it there whatever the viewport does (the keyboard, the composer
-/// growing). Once the rows below it fill that room the lift is spent, and
-/// the stack is as it would be without it, at the same place.
+/// A send is a row like any other: it is stacked at the end, and no room
+/// is held above or under it for the reply (`SendFollow`). Short content
+/// resting on the composer slides up by the new row's height, as it does
+/// for any row; content past the viewport keeps the frames it had.
 public struct ChatStackLayout: Equatable, Sendable {
-    /// Row `row` held `line` down from the viewport's top.
-    public struct Lift: Equatable, Sendable {
-        public var row: Int
-        public var line: CGFloat
-
-        public init(row: Int, line: CGFloat) {
-            self.row = row
-            self.line = line
-        }
-    }
-
     public var frames: [CGRect]
     public var contentHeight: CGFloat
-    /// The lift still holds room for the reply.
-    public var holding: Bool
 
     /// `heights` top to bottom; `viewport` is the height between the top
     /// inset and the composer, which short content rests at the foot of.
     /// `pinsFirst`: the first row is the intro, at the top whatever follows.
-    public init(heights: [CGFloat], width: CGFloat, viewport: CGFloat, pinsFirst: Bool = false, lift: Lift? = nil) {
+    public init(heights: [CGFloat], width: CGFloat, viewport: CGFloat, pinsFirst: Bool = false) {
         let total = heights.reduce(0, +)
         var starts: [CGFloat] = []
         starts.reserveCapacity(heights.count)
@@ -123,21 +111,9 @@ public struct ChatStackLayout: Equatable, Sendable {
             starts.append(end)
             end += height
         }
-        var lead = pinsFirst ? 0 : max(0, viewport - total)
-        contentHeight = max(viewport, total)
-        holding = false
-        if let lift, starts.indices.contains(lift.row) {
-            let start = starts[lift.row]
-            // Shorter below it than the room under its line: held. At the
-            // moment the room fills, the natural rest is this same place.
-            if total - start < viewport - lift.line {
-                holding = true
-                if !pinsFirst { lead = max(0, lift.line - start) }
-                contentHeight = lead + start - lift.line + viewport
-            }
-        }
+        let lead = pinsFirst ? 0 : max(0, viewport - total)
         frames = zip(starts, heights).map { CGRect(x: 0, y: lead + $0, width: width, height: $1) }
-        if !holding { contentHeight = max(viewport, lead + total) }
+        contentHeight = max(viewport, lead + total)
     }
 }
 
@@ -237,69 +213,32 @@ public struct ChatChunks: Equatable, Sendable {
     }
 }
 
-/// Desktop's send lift (Message.tsx `sendLift`, `SEND_LIFT_TOP`): a message
-/// sent while the agent is idle, by a reader at the end, is lifted to 30%
-/// down the viewport, the turns before it still in view above, and the
-/// room under it is held for the reply until the reply fills it
-/// (`LegacyChatStackLayout.Lift`). A lift only ever moves a send up: one
-/// already at the line or above it stays where it landed.
+/// What a send does to the reader. A send is appended at the end like any
+/// other row, and a reader at or near the end follows it there. Nothing is
+/// lifted and no room is held for the reply, so a reader up in history is
+/// not moved at all and one at the end moves only by what arrived.
 ///
-/// Under a pinned intro still on screen (`introLine`; once it has scrolled
-/// away the line is plain 30%) the line is no higher than its own line, so
-/// the first send, landing right under the intro, is already there and
-/// nothing moves; every later one is lifted to the same slot or lower.
-public struct SendLift: Equatable, Sendable {
+/// Desktop lifts an idle send to 30% of the viewport and holds the reply's
+/// room under it (Message.tsx's `sendLift`, `SEND_LIFT_TOP`). That was
+/// ported here and taken out again: on a phone, where that share is a
+/// couple of turns, it reads as the transcript jumping away on send.
+public struct SendFollow: Equatable, Sendable {
     public enum Metrics {
-        /// `SEND_LIFT_TOP`: of the viewport's height, from its top.
-        public static let share: CGFloat = 0.3
-        /// No lower than this share, however tall the intro: the reply's room.
-        public static let lowest: CGFloat = 0.5
-        /// `SEND_FOLLOW_THRESHOLD`: a send made mid-turn this close to the
-        /// end carries the reader to it.
+        /// `SEND_FOLLOW_THRESHOLD`: a send made this close to the end
+        /// carries the reader to it.
         public static let follow: CGFloat = 80
     }
 
-    /// From the viewport's top, where the send's top edge sits.
-    public var line: CGFloat
-
-    /// `introLine`: where a pinned intro's line ends.
-    public init(viewport: CGFloat, introLine: CGFloat? = nil) {
-        typealias M = Metrics
-        line = min(max((viewport * M.share).rounded(), introLine ?? 0), (viewport * M.lowest).rounded())
-    }
-
-    /// A send whose top is `shownAt` from the viewport's top, as it landed.
-    public func lifts(shownAt: CGFloat) -> Bool { shownAt > line }
-
-    /// What a send does to the reader (ConversationView's `liftKey` and
-    /// `followKey`, MessageList's commit). Sent while the agent is idle,
-    /// it is lifted, but only for a reader following the newest row; one
-    /// reading further up stays where they are. Sent mid-turn, it waits
-    /// at the end, and a reader within `Metrics.follow` of the end is
-    /// carried there and follows it, with no room held.
+    /// Whether the send carries the reader to the end: only one already
+    /// there, or within `Metrics.follow` of it. A reader up in history
+    /// stays exactly where they are. Whether the agent is working makes
+    /// no difference now that no send is lifted.
     public struct Send: Equatable, Sendable {
-        public var lifts: Bool
         public var follows: Bool
 
-        public init(working: Bool, following: Bool, distanceFromEnd: CGFloat) {
-            if working {
-                lifts = false
-                follows = following || distanceFromEnd <= Metrics.follow
-            } else {
-                lifts = following
-                follows = following
-            }
+        public init(following: Bool, distanceFromEnd: CGFloat) {
+            follows = following || distanceFromEnd <= Metrics.follow
         }
-    }
-
-    /// The room a lift holds stays while the reader scrolls away and back
-    /// (`geometryExtent`), until the rows below the send fill it. Only
-    /// once the viewport has changed height under it (the keyboard, the
-    /// composer) does it go early: as soon as the reader is far enough up
-    /// that none of it shows (`geometryExtentOffscreenRelease`).
-    public static func releases(resized: Bool, viewportBottom: CGFloat, rowsEnd: CGFloat?) -> Bool {
-        guard resized, let rowsEnd else { return false }
-        return viewportBottom <= rowsEnd
     }
 }
 

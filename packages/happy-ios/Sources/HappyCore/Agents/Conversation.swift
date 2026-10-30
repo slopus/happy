@@ -210,6 +210,10 @@ public struct ChatSnapshot: Equatable, Sendable {
     /// own typing echoed back.
     public var draft = ""
     public var draftArrivals = 0
+    /// The phone's kept draft has been checked, including an empty or
+    /// missing copy. A screen's unsent prefill waits for this, since a
+    /// conversation read ahead may publish before its draft is attached.
+    public var localDraftLoaded = false
     /// When `draft` was written (ms since 1970): a draft from elsewhere
     /// older than what is being typed here isn't shown over it.
     public var draftUpdatedAt: Double = 0
@@ -1010,12 +1014,15 @@ public actor Conversation {
     /// at once, and goes to the computer if it never did.
     public func useDrafts(_ drafts: Drafts) async {
         self.drafts = drafts
+        defer {
+            snapshot.localDraftLoaded = true
+            publish()
+        }
         guard creation == nil, let kept = await drafts.draft(agentId), kept.updatedAt > draft.updatedAt else { return }
         draft = kept
         snapshot.draft = kept.text
         snapshot.draftUpdatedAt = kept.updatedAt
         snapshot.draftArrivals += 1
-        publish()
         if !kept.synced { saveDraftSoon(after: .zero) }
     }
 

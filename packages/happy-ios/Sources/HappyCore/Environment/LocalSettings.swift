@@ -46,6 +46,9 @@ public enum HomeListRenderer: String, CaseIterable, Sendable {
     case ultraList = "UltraList"
 }
 
+/// The local chat renderer. UltraList draws the transcript now; the
+/// collection renderer stays under Settings › Appearance, so a chat that
+/// draws wrong can be read on the renderer it was written against.
 public enum ChatListRenderer: String, CaseIterable, Sendable {
     case collectionView = "UICollectionView"
     case ultraList = "UltraList"
@@ -93,7 +96,7 @@ public final class LocalSettings: Sendable {
     }
 
     public var chatListRenderer: ChatListRenderer {
-        get { storage.string(forKey: Keys.chatListRenderer).flatMap(ChatListRenderer.init(rawValue:)) ?? .collectionView }
+        get { storage.string(forKey: Keys.chatListRenderer).flatMap(ChatListRenderer.init(rawValue:)) ?? .ultraList }
         set { storage.set(newValue.rawValue, forKey: Keys.chatListRenderer) }
     }
 

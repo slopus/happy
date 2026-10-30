@@ -33,6 +33,13 @@ private let skipsQuiescence: Bool = {
 /// metrics (default 3).
 @MainActor
 final class ScrollPerfGymTests: XCTestCase {
+    /// The transcript, whichever renderer drew it: the agents' chat draws
+    /// on UltraList, which is not a scroll view, so it is found by its
+    /// identifier rather than by kind.
+    var transcriptElement: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "transcript").firstMatch
+    }
+
     private let app = XCUIApplication()
     private var environment: [String: String] { ProcessInfo.processInfo.environment }
     private var chat: String { environment["GYM_CHAT"] ?? "Gym Long Chat" }
@@ -46,6 +53,28 @@ final class ScrollPerfGymTests: XCTestCase {
     }
 
     // MARK: Workloads
+
+    /// Rendered evidence of the actual agent transcript's header, at the
+    /// oldest loaded row and with content under it, then with the keyboard.
+    func testAgentHeaderEdges() {
+        app.launchEnvironment["HAPPY_GYM_SCRIPT"] = "top wait*3"
+        launch()
+        open(chat)
+        runScript("top wait*3")
+        func keep(_ name: String) {
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        keep("agent-header-top")
+        transcriptElement.swipeUp(velocity: .slow)
+        pause(1)
+        keep("agent-header-scrolled")
+        app.textViews["composer"].tap()
+        pause(1)
+        keep("agent-header-keyboard")
+    }
 
     /// Not a workload: reads the gym's conversations back to their first
     /// message, as someone who has read their long chats has them, so every
@@ -263,7 +292,7 @@ final class ScrollPerfGymTests: XCTestCase {
         scan.tap()
         pause(2)
         XCTAssertFalse(app.descendants(matching: .any)["new-work"].exists, "Scan opened the last install's computer")
-        XCTAssertFalse(app.scrollViews["transcript"].exists, "Scan opened a chat")
+        XCTAssertFalse(transcriptElement.exists, "Scan opened a chat")
     }
 
     /// The ring on `row` turns new, opens its viewer at a tap, and is seen once closed.
@@ -274,7 +303,7 @@ final class ScrollPerfGymTests: XCTestCase {
         row.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 7 + 29, dy: row.frame.height / 2)).tap()
         let viewer = app.descendants(matching: .any)["story-viewer-page"]
         XCTAssertTrue(viewer.waitForExistence(timeout: 10), "\(when): a tap on the ring opened no viewer")
-        XCTAssertFalse(app.scrollViews["transcript"].exists, "\(when): the ring opened the chat")
+        XCTAssertFalse(transcriptElement.exists, "\(when): the ring opened the chat")
         pause(2)
         app.descendants(matching: .any)["story-close"].firstMatch.tap()
         XCTAssertTrue(until(10) { !viewer.exists }, "\(when): the viewer never closed")
@@ -298,6 +327,8 @@ final class ScrollPerfGymTests: XCTestCase {
         launch()
         open(title)
         runScript(whole)
+        XCTAssertGreaterThan(reading("frames"), 0, "the script measured no scrolling frames")
+        XCTAssertGreaterThan(reading("scriptPoints"), 100, "the script moved no transcript rows")
         report(workload)
     }
 
@@ -351,12 +382,14 @@ final class ScrollPerfGymTests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 15), "no row \(title)")
         let height = app.frame.height
         for _ in 0..<20 where !(row.frame.midY > height * 0.15 && row.frame.midY < height * 0.75) {
+            let before = row.frame.midY
             let up = row.frame.midY > height * 0.5
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.7 : 0.3)).press(
                 forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.4 : 0.6)),
                 withVelocity: .slow, thenHoldForDuration: 0.3
             )
             pause(0.6)
+            if abs(row.frame.midY - before) < 1, row.isHittable { break }
         }
         return row
     }
@@ -371,7 +404,7 @@ final class ScrollPerfGymTests: XCTestCase {
     /// The transcript's value once it is up: the open's timing.
     @discardableResult
     private func waitForTranscript() -> String {
-        let transcript = app.scrollViews["transcript"]
+        let transcript = transcriptElement
         XCTAssertTrue(transcript.waitForExistence(timeout: 30), "the transcript never showed")
         let deadline = Date().addingTimeInterval(30)
         while Date() < deadline, !((transcript.value as? String) ?? "").hasPrefix("first=") { pause(0.2) }
@@ -414,11 +447,11 @@ final class ScrollPerfGymTests: XCTestCase {
 
     private var meter: XCUIElement { app.buttons["gym-meter"] }
 
-    /// One integer of the meter's reading.
+    /// Counts or whole points of the meter's reading.
     private func reading(_ key: String) -> Int {
         let value = (meter.value as? String) ?? ""
         let pair = value.split(separator: " ").first { $0.hasPrefix("\(key)=") }
-        return pair.flatMap { Int($0.dropFirst(key.count + 1)) } ?? -1
+        return pair.flatMap { Double($0.dropFirst(key.count + 1)) }.map { Int($0) } ?? -1
     }
 
     private func resetMeter() {
