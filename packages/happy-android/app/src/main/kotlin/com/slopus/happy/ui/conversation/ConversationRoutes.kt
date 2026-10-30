@@ -237,6 +237,11 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                 onRetryLoad = conversation::retryLoad,
                 loadMedia = conversation::media,
                 onVisible = conversation::setVisible,
+                // The values typed into a secret go in this one request to the computer and nowhere else.
+                secrets = SecretRequestActions(
+                    secrets = { ConversationApi(session.conversationRequest()).secrets() },
+                    create = { id, description, values -> ConversationApi(session.conversationRequest()).createSecret(id, description, values) },
+                ),
             )
         },
     )

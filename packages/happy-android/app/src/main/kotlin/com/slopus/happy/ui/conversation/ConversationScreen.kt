@@ -107,6 +107,8 @@ class ConversationScreenActions(
     val onOpenArtifact: ((String) -> Unit)? = null,
     /** The newest message is on screen while the app is up: unread clears. */
     val onVisible: (Boolean) -> Unit = {},
+    /** How a secret request is made and answered; null where this build cannot. */
+    val secrets: SecretRequestActions? = null,
 )
 
 /**
@@ -254,7 +256,11 @@ fun ConversationScreen(
         }
         Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).imePadding()) {
             state.question?.let { question ->
-                ConversationQuestionCard(question, onAnswer = { answers -> actions.onAnswer(question.id, answers) })
+                ConversationQuestionCard(
+                    question = question,
+                    onAnswer = { answers -> actions.onAnswer(question.id, answers) },
+                    secrets = actions.secrets,
+                )
             }
             if (state.created && !state.canSend) {
                 Text(

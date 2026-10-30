@@ -81,7 +81,13 @@ object ConversationQuestionSpec {
  * a secret can't be answered here and says where to answer it.
  */
 @Composable
-fun ConversationQuestionCard(question: Question, onAnswer: suspend (Map<String, List<String>>) -> Unit, modifier: Modifier = Modifier) {
+fun ConversationQuestionCard(
+    question: Question,
+    onAnswer: suspend (Map<String, List<String>>) -> Unit,
+    modifier: Modifier = Modifier,
+    /** How a secret request is made and answered; null where this build cannot. */
+    secrets: SecretRequestActions? = null,
+) {
     val colors = HappyTheme.colors
     Column(
         modifier = modifier
@@ -104,8 +110,13 @@ fun ConversationQuestionCard(question: Question, onAnswer: suspend (Map<String, 
         }
         Text(title, style = ConversationQuestionSpec.title, color = colors.textSecondary, modifier = Modifier.testTag(ConversationQuestionTags.TITLE))
         question.context?.let { context -> MarkdownView(remember(context) { parseMarkdown(context) }) }
+        val secret = question.secret
         when {
-            !question.answerable -> Text(
+            secret != null && secrets != null -> SecretRequestForm(secret, secrets) { secretId ->
+                // The answer is the secret's id under the prompt that asked, never a value.
+                onAnswer(mapOf((question.prompts.singleOrNull()?.id ?: "secret") to listOf(secretId)))
+            }
+            secret != null -> Text(
                 stringResource(R.string.conversation_secret_unavailable),
                 style = ConversationQuestionSpec.field,
                 color = colors.textSecondary,

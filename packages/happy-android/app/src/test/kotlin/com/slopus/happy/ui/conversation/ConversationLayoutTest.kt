@@ -204,7 +204,7 @@ class ConversationLayoutTest {
     @Test fun `a question shows over the composer and answers`() {
         val question = Question(
             "q1", "pending", "The billing service needs storage.",
-            listOf(Question.Prompt("p1", "Database", "Which database should it use?", false, listOf(Question.Option("PostgreSQL", "Matches the stack."), Question.Option("SQLite", null)), false)),
+            listOf(Question.Prompt("p1", "Database", "Which database should it use?", false, listOf(Question.Option("PostgreSQL", "Matches the stack."), Question.Option("SQLite", null)), null)),
             null, false,
         )
         show(ConversationState(created = true, loaded = true, rows = history, agent = agent, question = question, activity = Activity.AwaitingAnswer))

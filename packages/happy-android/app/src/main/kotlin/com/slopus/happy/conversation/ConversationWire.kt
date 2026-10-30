@@ -287,18 +287,32 @@ data class Question(
     val isPermission: Boolean,
 ) {
     data class Option(val label: String, val description: String?)
+
+    /** One variable a secret request needs: its name, and what the agent says it is. */
+    data class SecretVariable(val name: String, val description: String?)
+
+    /**
+     * What an agent needs a credential for (API.md "Secret requests"). The
+     * person types the values into a form this describes; the answer is the
+     * secret's id, never a value.
+     */
+    data class SecretRequest(val suggestedId: String?, val description: String?, val variables: List<SecretVariable>)
     data class Prompt(
         val id: String,
         val header: String?,
         val question: String,
         val multiSelect: Boolean,
         val options: List<Option>,
-        /** Answered with a secret's id, which this phone cannot create or pick. */
-        val asksForSecret: Boolean,
-    )
+        /** Set when the answer is a secret's id rather than words. */
+        val secret: SecretRequest?,
+    ) {
+        val asksForSecret: Boolean get() = secret != null
+    }
 
-    /** Every prompt this phone can answer: none asks for a secret. */
-    val answerable: Boolean get() = prompts.isNotEmpty() && prompts.none { it.asksForSecret }
+    /** The one secret this question asks for, if it asks for one at all. */
+    val secret: SecretRequest? get() = prompts.singleOrNull()?.secret
+
+    val answerable: Boolean get() = prompts.isNotEmpty()
 
     companion object {
         fun parse(value: JsonElement?): Question? {
@@ -319,11 +333,46 @@ data class Question(
                             val opt = option.obj ?: return@mapNotNull null
                             Option(opt["label"].str ?: return@mapNotNull null, opt["description"].str)
                         },
-                        asksForSecret = p["secretRequest"].obj != null,
+                        secret = p["secretRequest"].obj?.let { request ->
+                            SecretRequest(
+                                suggestedId = request["suggestedId"].str,
+                                description = request["description"].str,
+                                variables = request["environmentVariables"].arr.orEmpty().mapNotNull { value ->
+                                    val variable = value.obj ?: return@mapNotNull null
+                                    SecretVariable(variable["name"].str ?: return@mapNotNull null, variable["description"].str)
+                                },
+                            )
+                        },
                     )
                 },
                 permissionFrom = permission?.let { it["serverTitle"].str ?: it["server"].str },
                 isPermission = permission != null,
+            )
+        }
+    }
+}
+
+/** One secret as the catalog lists it: safe metadata, never a value (API.md "The secret object"). */
+data class SecretSummary(
+    val id: String,
+    val description: String?,
+    val variables: List<String>,
+    val availableToAgents: Boolean,
+) {
+    /** Whether this secret carries every variable the request names, however they are cased. */
+    fun covers(request: Question.SecretRequest): Boolean {
+        val held = variables.mapTo(HashSet()) { it.lowercase() }
+        return request.variables.all { it.name.lowercase() in held }
+    }
+
+    companion object {
+        fun parse(value: JsonElement?): SecretSummary? {
+            val o = value.obj ?: return null
+            return SecretSummary(
+                id = o["id"].str ?: return null,
+                description = o["description"].str,
+                variables = o["environmentVariables"].arr.orEmpty().mapNotNull { it.str },
+                availableToAgents = o["availableToAgents"].bool ?: true,
             )
         }
     }

@@ -137,6 +137,29 @@ open class ConversationApi(private val request: AgentRequest) {
         return response.body
     }
 
+    /**
+     * The secrets an agent may be given (API.md "Secrets"), as safe
+     * metadata: names and variable names, never a value.
+     */
+    open suspend fun secrets(): List<SecretSummary> =
+        call("GET", "/v0/secrets")["secrets"].arr.orEmpty().mapNotNull { SecretSummary.parse(it) }.filter { it.availableToAgents }
+
+    /**
+     * Makes a secret from the values the person typed and answers with its
+     * id alone. The values go in this one request and nowhere else: not a
+     * draft, not saved state, not a log, not an error.
+     */
+    open suspend fun createSecret(id: String?, description: String?, values: Map<String, String>): String {
+        val body = buildJsonObject {
+            id?.takeIf { it.isNotBlank() }?.let { put("id", it) }
+            description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
+            put("environment", buildJsonObject { values.forEach { (name, value) -> put(name, value) } })
+            put("availableToAgents", true)
+            put("mutationId", clientId())
+        }
+        return call("POST", "/v0/secrets", body)["secret"].obj?.get("id").str ?: throw invalid()
+    }
+
     /** One artifact as the catalog has it (API.md "Artifacts"). */
     open suspend fun artifact(artifactId: String): JsonObject =
         call("GET", "/v0/artifacts/${escape(artifactId)}")["artifact"].obj ?: throw invalid()

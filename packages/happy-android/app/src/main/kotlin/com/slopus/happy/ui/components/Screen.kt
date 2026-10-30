@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import com.slopus.happy.ui.theme.HappyTheme
 
@@ -74,6 +75,8 @@ fun HappyTextField(
     singleLine: Boolean = false,
     enabled: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    /** Hides what is typed, for a value no one should read over a shoulder. */
+    visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
     val colors = HappyTheme.colors
     val style = textStyle.copy(color = colors.input.text)
@@ -90,6 +93,7 @@ fun HappyTextField(
         textStyle = style,
         cursorBrush = SolidColor(colors.text),
         keyboardOptions = keyboardOptions,
+        visualTransformation = visualTransformation,
         decorationBox = { inner ->
             Box(modifier = Modifier.padding(contentPadding)) {
                 if (value.isEmpty()) Text(text = placeholder, style = style.copy(color = colors.input.placeholder))
