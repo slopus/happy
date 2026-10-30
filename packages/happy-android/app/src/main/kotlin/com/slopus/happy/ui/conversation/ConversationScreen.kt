@@ -38,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -62,6 +63,7 @@ import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
+import com.slopus.happy.ui.components.TitleWithStatus
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
@@ -174,40 +176,43 @@ fun ConversationScreen(
     Column(modifier.testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface)) {
         TopAppBar(
             title = {
-                Column {
-                    // An existing chat is never "New chat", not even before it's read: blank until then.
-                    Text(
-                        state.title ?: when {
-                            !state.created -> stringResource(R.string.conversation_compose)
-                            state.loaded -> stringResource(R.string.conversation_untitled)
-                            else -> ""
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.testTag(ConversationScreenTags.TITLE),
-                    )
-                    // One status line, under the title and nowhere else: the
-                    // connection while it isn't live, otherwise what the agent
-                    // is doing. The bar's own height never changes with it, so
-                    // the transcript doesn't move when a send starts the work.
-                    val working = activityLabel(state.activity)
-                    val status = connection ?: working
-                    if (status != null) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier
-                                .testTag(ConversationScreenTags.SUBTITLE)
-                                .semantics { liveRegion = LiveRegionMode.Polite },
-                        ) {
-                            if (connection == null && state.activity != null) {
-                                StatusDot(
-                                    if (state.activity == Activity.AwaitingAnswer) SessionStatusColors.attention else SessionStatusColors.thinking,
-                                    pulsing = true,
-                                )
-                            }
-                            Text(status, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+                // One status line, under the title and nowhere else: the
+                // connection while it isn't live, otherwise what the agent
+                // is doing. Its room is always kept, so neither the title nor
+                // the transcript moves when the link or the work changes.
+                val working = activityLabel(state.activity)
+                val dot = when {
+                    connection != null || state.activity == null -> null
+                    state.activity == Activity.AwaitingAnswer -> SessionStatusColors.attention
+                    else -> SessionStatusColors.thinking
+                }
+                val style = MaterialTheme.typography.bodySmall
+                TitleWithStatus(
+                    status = (connection ?: working)?.let { BarStatus(it, dot) },
+                    statusStyle = style,
+                    title = {
+                        // An existing chat is never "New chat", not even before it's read: blank until then.
+                        Text(
+                            state.title ?: when {
+                                !state.created -> stringResource(R.string.conversation_compose)
+                                state.loaded -> stringResource(R.string.conversation_untitled)
+                                else -> ""
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag(ConversationScreenTags.TITLE),
+                        )
+                    },
+                ) { status ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .testTag(ConversationScreenTags.SUBTITLE)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                    ) {
+                        status.dot?.let { StatusDot(it, pulsing = true) }
+                        Text(status.text, style = style, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             },
@@ -346,6 +351,9 @@ private fun Transcript(
         }
     }
 }
+
+/** The bar's status line: its words, and the dot before them while the agent works. */
+private data class BarStatus(val text: String, val dot: Color?)
 
 /** What the agent is doing, as the bar's status line says it. */
 @Composable

@@ -49,7 +49,10 @@ import androidx.compose.ui.unit.width
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.onAllNodesWithTag
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -192,6 +195,39 @@ class ConversationLayoutTest {
         rule.onNodeWithText("Waiting for the model…").assertIsDisplayed()
         rule.node(ConversationScreenTags.SUBTITLE).assertIsDisplayed()
         shot("working-line")
+    }
+
+    @Test fun `the link and the work coming and going move neither the title nor the transcript`() {
+        var state by mutableStateOf(ConversationState(created = true, loaded = true, rows = history, agent = agent))
+        var connection by mutableStateOf<String?>(null)
+        rule.setHappyContent { ConversationScreen(state, connection, ConversationScreenActions()) }
+        val bar = rule.node(ConversationScreenTags.BAR).bounds
+        val title = rule.node(ConversationScreenTags.TITLE).bounds
+        val list = rule.node(ConversationScreenTags.LIST).bounds
+        val idle = state
+        val flips = listOf<Pair<String?, Activity?>>(
+            "Connecting…" to null, null to null, "Offline" to null, "Connecting…" to Activity.Thinking,
+            null to Activity.Thinking, null to Activity.AwaitingAnswer, "Connecting…" to Activity.AwaitingAnswer, null to null,
+        )
+        for ((link, activity) in flips) {
+            val at = "${link ?: "live"}, ${activity ?: "idle"}"
+            rule.mainClock.autoAdvance = false
+            connection = link
+            state = if (activity == null) idle else idle.copy(working = true, activity = activity)
+            Snapshot.sendApplyNotifications()
+            rule.mainClock.advanceTimeByFrame()
+            rule.mainClock.advanceTimeBy(64)
+            if (link != null || activity != null) {
+                assertTrue("the line is on its way, $at", rule.onAllNodesWithTag(ConversationScreenTags.SUBTITLE, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+            }
+            assertEquals("bar, fading to $at", bar, rule.node(ConversationScreenTags.BAR).bounds)
+            assertEquals("title, fading to $at", title, rule.node(ConversationScreenTags.TITLE).bounds)
+            rule.mainClock.autoAdvance = true
+            rule.waitForIdle()
+            assertEquals("bar, $at", bar, rule.node(ConversationScreenTags.BAR).bounds)
+            assertEquals("title, $at", title, rule.node(ConversationScreenTags.TITLE).bounds)
+            assertEquals("transcript, $at", list, rule.node(ConversationScreenTags.LIST).bounds)
+        }
     }
 
     @Test fun `a sent message stays in view, and reading older history is left alone`() {

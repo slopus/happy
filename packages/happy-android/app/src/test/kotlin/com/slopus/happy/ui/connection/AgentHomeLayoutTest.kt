@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -263,6 +264,42 @@ class AgentHomeLayoutTest {
         rule.node(AgentSearchTags.FIELD).performTextReplacement("remove")
         rule.node(AgentSearchTags.result("entry-remove")).performClick()
         assertEquals(2, settings)
+    }
+
+    @Test
+    fun theLinkDroppingAndComingBackMovesNothing() {
+        val rows = feed()
+        var status by mutableStateOf(AgentLinkStatus.Connected)
+        rule.setHappyContent { AgentHomeScreen("Studio", rows, status, accounts, actions, now = NOW) }
+        val bar = rule.node(AgentHomeTags.BAR).bounds
+        val title = rule.node(AgentHomeTags.TITLE).bounds
+        val first = rule.node(AgentHomeTags.row("section-bots")).bounds
+        fun stillPut(at: String) {
+            assertEquals("bar, $at", bar, rule.node(AgentHomeTags.BAR).bounds)
+            assertEquals("title, $at", title, rule.node(AgentHomeTags.TITLE).bounds)
+            assertEquals("first row, $at", first, rule.node(AgentHomeTags.row("section-bots")).bounds)
+        }
+        val flips = listOf(
+            AgentLinkStatus.Connecting, AgentLinkStatus.Connected, AgentLinkStatus.Offline, AgentLinkStatus.Connecting,
+            AgentLinkStatus.Offline, AgentLinkStatus.Connected, AgentLinkStatus.Connecting, AgentLinkStatus.Connected,
+        )
+        for (next in flips) {
+            // Mid-fade, with the old line and the new one both drawn, and once it has settled.
+            rule.mainClock.autoAdvance = false
+            status = next
+            Snapshot.sendApplyNotifications()
+            rule.mainClock.advanceTimeByFrame()
+            rule.mainClock.advanceTimeBy(64)
+            if (next != AgentLinkStatus.Connected) {
+                assertTrue("the line is on its way, $next", rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+            }
+            stillPut("fading to $next")
+            rule.mainClock.autoAdvance = true
+            rule.waitForIdle()
+            stillPut("settled on $next")
+            rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true)
+                .assertCountEquals(if (next == AgentLinkStatus.Connected) 0 else 1)
+        }
     }
 
     @Test

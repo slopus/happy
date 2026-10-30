@@ -53,6 +53,7 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
 import com.slopus.happy.ui.components.StatusDot
+import com.slopus.happy.ui.components.TitleWithStatus
 import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuButton
@@ -287,35 +288,43 @@ private fun rememberSearchEntries(actions: AgentHomeActions): Pair<List<AgentSea
     }
 }
 
-/** The agent's name, the bar's title; under it, while the link isn't up, how it stands. */
+/**
+ * The agent's name, the bar's title; under it, while the link isn't up, how
+ * it stands. The line's room is always there, so the name holds still as
+ * the link drops and comes back.
+ */
 @Composable
 private fun BarTitle(name: String, status: AgentLinkStatus) {
     val colors = HappyTheme.colors
-    Column {
-        Text(name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (status != AgentLinkStatus.Connected) {
-            val color = when (status) {
-                AgentLinkStatus.Connecting -> colors.status.connecting
-                AgentLinkStatus.Offline -> colors.status.disconnected
-                else -> colors.status.error
-            }
-            Row(modifier = Modifier.testTag(AgentHomeTags.STATUS), verticalAlignment = Alignment.CenterVertically) {
-                StatusDot(color = color, pulsing = status == AgentLinkStatus.Connecting, size = 6.dp)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    stringResource(
-                        when (status) {
-                            AgentLinkStatus.Connecting -> R.string.status_connecting
-                            AgentLinkStatus.Offline -> R.string.agent_home_status_offline
-                            AgentLinkStatus.Revoked -> R.string.agent_home_status_revoked
-                            else -> R.string.agent_home_status_update
-                        },
-                    ),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = color,
-                    maxLines = 1,
-                )
-            }
+    val style = MaterialTheme.typography.labelMedium
+    TitleWithStatus(
+        status = status.takeIf { it != AgentLinkStatus.Connected },
+        statusStyle = style,
+        title = {
+            Text(name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag(AgentHomeTags.TITLE))
+        },
+    ) { shown ->
+        val color = when (shown) {
+            AgentLinkStatus.Connecting -> colors.status.connecting
+            AgentLinkStatus.Offline -> colors.status.disconnected
+            else -> colors.status.error
+        }
+        Row(modifier = Modifier.testTag(AgentHomeTags.STATUS), verticalAlignment = Alignment.CenterVertically) {
+            StatusDot(color = color, pulsing = shown == AgentLinkStatus.Connecting, size = 6.dp)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                stringResource(
+                    when (shown) {
+                        AgentLinkStatus.Connecting -> R.string.status_connecting
+                        AgentLinkStatus.Offline -> R.string.agent_home_status_offline
+                        AgentLinkStatus.Revoked -> R.string.agent_home_status_revoked
+                        else -> R.string.agent_home_status_update
+                    },
+                ),
+                style = style,
+                color = color,
+                maxLines = 1,
+            )
         }
     }
 }
