@@ -20,9 +20,14 @@ class NewSessionDraftStore(private val prefs: SharedPreferences, private val clo
         state.value = stamped
     }
 
-    /** Logout: the stored draft is already gone; the one in memory follows it. */
+    /**
+     * Logout: the draft goes, stored and in memory, under [change]'s lock. The
+     * logout's wipe of the file runs first, and a change landing between the
+     * two (the dock following its computer) would otherwise store it again.
+     */
     @Synchronized
     fun reset() {
+        prefs.edit().remove(KEY).commit()
         state.value = NewSessionDraft()
     }
 
