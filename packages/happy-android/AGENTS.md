@@ -129,7 +129,7 @@ win:
   added. Deliberately not iOS's:
   Paper's Grain Gradient (AGSL port, Apache-2.0, attribution in
   `GrainGradient.kt`) behind everything, edge to edge; the logotype
-  centred; one centred "Start" that scans, halfway between the logo and the bottom. The code is routed
+  centred; one centred "Start" that scans, in the lower third. The code is routed
   (`ConnectKind.Add`): `happy://terminal?` creates a Happy account and
   approves that terminal in one step (`AuthRepository.createAccount`'s
   `prepare`; a failed approval keeps no account), `happy:///account?`

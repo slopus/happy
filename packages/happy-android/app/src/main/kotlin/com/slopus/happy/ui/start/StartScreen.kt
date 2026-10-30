@@ -105,10 +105,13 @@ object StartSpec {
  *
  *   ⋮ (top right)  a drop-down: enter a link, restore, create an account,
  *                  server, get help
- *   logo           twice as far from the top as from Start
+ *   logo           about the middle of the screen
  *   Start          centred across, as wide as its label (at least 200),
- *                  halfway between the logo and 16 above the bottom
- *                  inset: scan a code, routed by kind
+ *                  about the middle of the lower third: scan a code,
+ *                  routed by kind
+ *
+ * The free height splits 3 : 2 : 1 above the logo, between the logo and
+ * Start, and below Start (then 16 above the bottom inset).
  *
  * If it all outgrows the window (large text) it scrolls.
  */
@@ -146,14 +149,14 @@ fun StartScreen(
                     .padding(bottom = StartSpec.bottomPadding),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Spacer(Modifier.weight(2f))
+                Spacer(Modifier.weight(3f))
                 Image(
                     painter = painterResource(if (dark) R.drawable.logotype_light else R.drawable.logotype_dark),
                     contentDescription = stringResource(R.string.start_logo),
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.width(StartSpec.logoWidth).aspectRatio(StartSpec.LOGO_ASPECT).testTag(StartTags.LOGO),
                 )
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.weight(2f))
                 RoundButton(
                     title = stringResource(R.string.start_button),
                     onClick = onConnect,
