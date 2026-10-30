@@ -25,6 +25,7 @@ zxing = "3.5.4"
 tailcat = "0.1.0-4f041f4"
 firebase-messaging = "25.0.1"
 coil = "3.6.3"
+lottie = "6.7.1"
 revenuecat = "10.28.1"
 livekit = "2.26.0"
 gson = "2.10.1"
@@ -68,6 +69,7 @@ zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 tailcat = { module = "io.tailcat:tailcat-kotlin", version.ref = "tailcat" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottie" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 coil-test = { module = "io.coil-kt.coil3:coil-test", version.ref = "coil" }
 revenuecat-purchases = { module = "com.revenuecat.purchases:purchases", version.ref = "revenuecat" }

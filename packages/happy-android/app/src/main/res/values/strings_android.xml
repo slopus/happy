@@ -35,4 +35,7 @@
     <string name="scan_open_settings">Open Settings</string>
     <string name="scan_torch_on">Turn on flashlight</string>
     <string name="scan_torch_off">Turn off flashlight</string>
+
+    <!-- State pictures (ui/components/StateAnimation.kt). -->
+    <string name="state_animation_replay">Play again</string>
 </resources>

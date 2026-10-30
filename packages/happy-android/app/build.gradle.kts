@@ -355,6 +355,7 @@ dependencies {
     // Push (AGENTS.md "Push"): FCM, configured from google-services.json when it is there.
     implementation(libs.firebase.messaging)
     implementation(libs.coil.compose)
+    implementation(libs.lottie.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.revenuecat.purchases)
     implementation(libs.revenuecat.ui)

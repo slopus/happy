@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -49,6 +48,8 @@ import com.slopus.happy.ui.components.HeaderIconButton
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.StatusDot
+import com.slopus.happy.ui.components.StateArt
+import com.slopus.happy.ui.components.StatePage
 import com.slopus.happy.ui.components.TitleAlignment
 import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.home.AccountMenu
@@ -153,11 +154,17 @@ fun AgentHomeScreen(
         }
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when {
-                !feed.loaded && status == AgentLinkStatus.Connecting -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = colors.textSecondary, strokeWidth = 2.dp, modifier = Modifier.size(20.dp).testTag(AgentHomeTags.SPINNER))
-                }
-                !feed.loaded -> Message(
+                // Desktop's pictures: the snail while it is read, the wand beside the button that makes the first chat;
+                // offline and removed keep a plain glyph, as desktop's errors do.
+                !feed.loaded && status == AgentLinkStatus.Connecting -> StatePage(
+                    tag = AgentHomeTags.SPINNER,
+                    art = StateArt.Waiting,
+                    title = null,
+                    body = stringResource(R.string.agent_home_connecting, name),
+                )
+                !feed.loaded -> StatePage(
                     tag = AgentHomeTags.OFFLINE,
+                    icon = if (status == AgentLinkStatus.Offline) Ionicon.CloudOfflineOutline else Ionicon.AlertCircleOutline,
                     title = when (status) {
                         AgentLinkStatus.Revoked -> null
                         AgentLinkStatus.UpdateRequired -> null
@@ -165,8 +172,9 @@ fun AgentHomeScreen(
                     },
                     body = statusMessage(status) ?: stringResource(R.string.agent_home_offline_body),
                 )
-                items.isEmpty() -> Message(
+                items.isEmpty() -> StatePage(
                     tag = AgentHomeTags.EMPTY,
+                    art = if (statusMessage(status) == null) StateArt.Make else null,
                     title = stringResource(R.string.agent_home_empty_title),
                     body = statusMessage(status) ?: stringResource(R.string.agent_home_empty_body),
                     action = stringResource(R.string.home_compose) to actions.onCompose,
@@ -300,30 +308,6 @@ private fun Banner(text: String) {
     )
 }
 
-@Composable
-private fun Message(tag: String, title: String?, body: String, action: Pair<String, () -> Unit>? = null) {
-    val colors = HappyTheme.colors
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(
-            modifier = Modifier
-                .contentMaxWidth(LocalWindowLayout.current)
-                .fillMaxWidth()
-                .padding(horizontal = 32.dp, vertical = 72.dp)
-                .testTag(tag),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (title != null) {
-                Text(title, style = happyTextStyle(fontSize = 20, lineHeight = 26, weight = FontWeight.SemiBold), color = colors.text, textAlign = TextAlign.Center)
-            }
-            Text(body, style = happyTextStyle(fontSize = 15, lineHeight = 21), color = colors.textSecondary, textAlign = TextAlign.Center)
-            if (action != null) {
-                Spacer(Modifier.size(16.dp))
-                RoundButton(title = action.first, onClick = action.second)
-            }
-        }
-    }
-}
 
 /**
  * [AgentHomeScreen] for the agent connection [id], from its session

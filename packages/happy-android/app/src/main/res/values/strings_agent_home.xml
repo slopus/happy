@@ -15,6 +15,7 @@
     <string name="agent_home_waiting">Waiting for your answer</string>
     <string name="agent_home_show_subtasks">Show subtasks</string>
     <string name="agent_home_hide_subtasks">Hide subtasks</string>
+    <string name="agent_home_connecting">Connecting to %1$s…</string>
     <string name="agent_home_empty_title">No conversations yet</string>
     <string name="agent_home_empty_body">Start a chat with this agent and it shows here.</string>
     <string name="agent_home_offline_title">Can\'t reach %1$s</string>
