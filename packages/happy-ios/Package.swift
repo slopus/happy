@@ -47,7 +47,7 @@ let package = Package(
         .package(url: "https://github.com/elevenlabs/elevenlabs-swift-sdk.git", exact: "3.4.0"),
         // Native Home and chat's optional renderer. Pin the pre-1.0 API used by
         // NodeRow and the custom keyframe scroller.
-        .package(url: "https://github.com/slopus/ultraview.git", revision: "976a5234dd4942c95f9f97b24edfdad26e53b2b4"),
+        .package(url: "https://github.com/slopus/ultraview.git", revision: "2c2e35147b42f4e88edde4ec1ec36e53eaf27d1c"),
         .package(url: "https://github.com/slopus/tailcat-swift.git", revision: "70a66d473b32e5c8217cf8652237d9848af4ce3e"),
         // Animated (tgs) stickers in Stories. lottie-spm is Lottie's prebuilt
         // xcframework, so it adds no source build; stickers play on its Core
