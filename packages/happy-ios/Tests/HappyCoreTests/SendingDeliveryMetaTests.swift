@@ -41,7 +41,13 @@ final class SendingDeliveryMetaTests: XCTestCase, @unchecked Sendable {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "sending", withExtension: "json", subdirectory: "Fixtures"))
         let cases = try XCTUnwrap(JSONValue.decode(Data(contentsOf: url)).arrayValue)
         let test = try XCTUnwrap(cases.first { $0["name"]?.stringValue == name })
-        return Data(try XCTUnwrap(test["wire"]?.stringValue).utf8)
+        let wire = try XCTUnwrap(test["wire"]?.stringValue)
+        #if os(macOS)
+        // The engine sends as the Mac app on a Mac host (`swift test` there).
+        return Data(wire.replacingOccurrences(of: #""sentFrom":"ios""#, with: #""sentFrom":"mac""#).utf8)
+        #else
+        return Data(wire.utf8)
+        #endif
     }
 
     /// Accepts "idle" without delivering it and returns its wire bytes.

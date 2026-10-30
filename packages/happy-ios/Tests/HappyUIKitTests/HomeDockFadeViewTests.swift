@@ -30,7 +30,8 @@ final class HomeDockFadeViewTests: XCTestCase {
         XCTAssertEqual(dock.alpha, 1)
         XCTAssertEqual(dock.sendButton.alpha, 0.4, accuracy: 1e-6)
         let blurs = effectViews(in: dock).compactMap { $0 as? PartialBlurView }
-        XCTAssertEqual(blurs.count, 2, "the capsule's material and the scrim's blur")
+        // The foot's scrim is a fade with no blur (HeaderScrimView `.bottom`).
+        XCTAssertEqual(blurs.count, 1, "the capsule's material")
         for blur in blurs {
             var view: UIView? = blur
             while let current = view, current !== window {
@@ -38,14 +39,17 @@ final class HomeDockFadeViewTests: XCTestCase {
                 view = current.superview
             }
         }
-        // The capsule's material takes the surface's, the scrim's blur the
+        // The capsule's material takes the surface's, the scrim the
         // content's.
-        XCTAssertEqual(Set(blurs.map(\.presence)), [0.6, 0.4])
+        XCTAssertEqual(blurs.map(\.presence), [0.6])
+        XCTAssertEqual(dock.scrim.presence, 0.4)
+        XCTAssertEqual(dock.scrim.alpha, 1)
 
         dock.finishFade()
         XCTAssertEqual(dock.presence, 1)
         XCTAssertEqual(dock.contentPresence, 1)
         XCTAssertEqual(dock.sendButton.alpha, 1)
+        XCTAssertEqual(dock.scrim.presence, 1)
         for blur in blurs { XCTAssertEqual(blur.presence, 1) }
     }
 
