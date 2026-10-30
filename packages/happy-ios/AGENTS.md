@@ -78,6 +78,12 @@ nothing here is wired to the release skill or to EAS.
        apply, and a streamed token re-measures only the last bubble.
 
      A change that adds work to a sync path keeps them green.
+9. **Every screen has the standard navigation header**: `UINavigationBar`
+   with the system back button, its title and buttons in the
+   `navigationItem`. Hiding it, or drawing a custom or floating bar instead,
+   needs Steve's OK in the current conversation. Custom bars once hid the
+   header across the app without anyone asking, and silently broke swipe
+   back.
 
 ## Scope
 

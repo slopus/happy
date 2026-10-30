@@ -6,8 +6,8 @@ import UIKit
 
 /// Stem Cells settings, pushed from the picture in either home's header,
 /// laid out as Telegram's settings are (its techniques, none of its code):
-/// a glass bar (`StemCellsGlassBar`) with back at the left, and search then
-/// the QR button in one capsule at the right; every computer and account as story circles, the chosen one
+/// the navigation bar with back at the left, search (the bar's own
+/// integrated search) and the QR button at the right; every computer and account as story circles, the chosen one
 /// centred and ringed, its name and line under it; then every setting the
 /// chosen profile has, in grouped cards, none of it behind a "More".
 /// Direct connection to computers is an experiment, off until turned on
@@ -23,7 +23,7 @@ import UIKit
 /// (Account, Appearance, Language, Voice, Agents), its connected services,
 /// connecting a terminal, Support us, adding; About; Sign out. Those pages
 /// write to that account's synced settings, so they are on its page alone.
-final class StemCellsSettingsViewController: UIViewController, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+final class StemCellsSettingsViewController: UIViewController, UIScrollViewDelegate, UIGestureRecognizerDelegate, UISearchResultsUpdating, UISearchControllerDelegate {
     /// Pushes settings over `controller`, on `computer`'s page (the active
     /// profile's when nil), showing the row `reveal` names if there is one.
     /// Once: a second tap meanwhile does nothing.
@@ -56,7 +56,7 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     private var rows: [[StemCellsSettingsRow]] = []
     /// The frames last applied.
     private var settingsLayout = StemCellsSettingsLayout(width: 0, nameHeight: 0, subtitleHeight: 0, cards: [])
-    private let bar = StemCellsGlassBar()
+    private lazy var searchController = UISearchController(searchResultsController: nil)
     private var query: String?
     private let empty = UILabel()
     private var observation: AccountsObservation?
@@ -169,26 +169,24 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
 
     // MARK: Bar
 
-    /// Back; no title, as Telegram's has none; search, then the QR button
-    /// at the far right, in one capsule.
+    /// The system's back, the title, the QR button, and the bar's own
+    /// search, which grows into a field in the bar.
     private func setUpBar() {
-        // On a tablet the shell's header holds back.
-        bar.leading = traitCollection.isTabletLayout ? nil : .back
-        bar.onLeading = { [weak self] in self?.navigationController?.popViewController(animated: true) }
-        bar.actions = [
-            StemCellsGlassBar.Action(image: StemCellsGlyphs.image("search", size: 22), label: Strings.StemCells.searchSettings, id: "stem-settings-search") { [weak self] in self?.beginSearch() },
-            StemCellsGlassBar.Action(image: StemCellsGlyphs.image("qr-code-outline", size: 22), label: Strings.StemCells.showQR, id: "stem-settings-qr") { [weak self] in self?.showQR() },
-        ]
-        let field = bar.searchField
-        field.placeholder = Strings.StemCells.searchSettings
-        field.accessibilityIdentifier = "stem-settings-search-field"
-        field.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            query = bar.searchField.text ?? ""
-            rebuild(animated: false)
-        }, for: .editingChanged)
-        bar.onEndSearch = { [weak self] in self?.endSearch() }
-        StemCellsGlassChrome.install(bar, on: self)
+        title = Strings.Settings.title
+        navigationItem.largeTitleDisplayMode = .never
+        let qr = UIBarButtonItem(image: StemCellsGlyphs.image("qr-code-outline", size: 22), primaryAction: UIAction { [weak self] _ in self?.showQR() })
+        qr.accessibilityLabel = Strings.StemCells.showQR
+        qr.accessibilityIdentifier = "stem-settings-qr"
+        navigationItem.rightBarButtonItem = qr
+        searchController.searchResultsUpdater = self
+        searchController.delegate = self
+        searchController.obscuresBackgroundDuringPresentation = false
+        searchController.searchBar.placeholder = Strings.StemCells.searchSettings
+        searchController.searchBar.searchTextField.accessibilityIdentifier = "stem-settings-search-field"
+        navigationItem.searchController = searchController
+        navigationItem.hidesSearchBarWhenScrolling = false
+        navigationItem.preferredSearchBarPlacement = .integratedButton
+        definesPresentationContext = true
     }
 
     // MARK: Profiles
@@ -495,9 +493,6 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        // On a tablet the shell's header holds back, as the window resizes too.
-        let leading: StemCellsGlassBar.Leading? = traitCollection.isTabletLayout ? nil : .back
-        if bar.leading != leading { bar.leading = leading }
         let width = view.bounds.width
         let searching = query != nil
         // Under the bar, whose row is in the safe area: the cards scroll under it.
@@ -522,21 +517,27 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
 
     // MARK: Search
 
-    /// A field takes the bar's row, as Telegram's does.
-    private func beginSearch() {
+    /// The bar's search field opened: the page narrows as it is typed in.
+    func willPresentSearchController(_ searchController: UISearchController) {
         endEditingName(keep: true)
         query = ""
-        bar.searchField.text = ""
         rebuild(animated: false)
-        UIView.animate(withDuration: 0.25) { self.bar.isSearching = true }
-        bar.searchField.becomeFirstResponder()
+    }
+
+    func updateSearchResults(for searchController: UISearchController) {
+        guard query != nil else { return }
+        query = searchController.searchBar.text ?? ""
+        rebuild(animated: false)
+    }
+
+    func willDismissSearchController(_ searchController: UISearchController) {
+        guard query != nil else { return }
+        query = nil
+        rebuild(animated: false)
     }
 
     private func endSearch() {
-        query = nil
-        bar.searchField.resignFirstResponder()
-        rebuild(animated: false)
-        UIView.animate(withDuration: 0.25) { self.bar.isSearching = false }
+        searchController.isActive = false
     }
 
     // MARK: Rename
@@ -657,16 +658,14 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
         show(Screens.make(route, context: context, session: session))
     }
 
-    /// Pushed in the glass bar this page wears.
     private func show(_ controller: UIViewController) {
         guard isTop else { return }
-        StemCellsGlassChrome.dress(controller, over: self)
         navigationController?.pushViewController(controller, animated: true)
     }
 
     /// Nothing pushed or on its way: a second tap meanwhile opens nothing.
     private var isTop: Bool {
-        navigationController?.topViewController === self && navigationController?.transitionCoordinator == nil && presentedViewController == nil
+        navigationController?.topViewController === self && navigationController?.transitionCoordinator == nil && (presentedViewController == nil || presentedViewController === searchController)
     }
 
     private var activeSession: AccountSession? {

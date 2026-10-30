@@ -63,6 +63,8 @@ public struct StoriesHeaderLayout: Equatable, Sendable {
         public static let balanceRamp: CGFloat = 20
         /// The closed avatars' target, as tall as a header button.
         public static let buttonHeight: CGFloat = 44
+        /// The title's line `bandTitle` stands in for.
+        public static let bandTitleHeight: CGFloat = 20
         /// The one-time tooltip's arrow points up at the closed avatars'
         /// middle from this far under their target, 1 right of it, as
         /// Telegram places it (`anchorForTooltip`, nudged 6 down and 1 right).
@@ -252,6 +254,15 @@ public struct StoriesHeaderLayout: Equatable, Sendable {
         tooltipTip = count > 0
             ? CGPoint(x: origin + collapsedWidth / 2 + 1, y: input.title.midY + M.buttonHeight / 2 + M.tooltipDrop)
             : nil
+    }
+
+    /// Under a navigation bar the stories have a band of their own, from
+    /// the bar's foot down: the open row at its top. The title they would
+    /// close into is above the band, so closed they are out of sight; the
+    /// band is laid out as if that title were there, `width` wide.
+    public static func bandTitle(width: CGFloat) -> CGRect {
+        let midY = Metrics.rowTop + Metrics.avatarMid - Metrics.rowDrop
+        return CGRect(x: Swift.max(0, width) / 2, y: midY - Metrics.bandTitleHeight / 2, width: 0, height: Metrics.bandTitleHeight)
     }
 
     /// The open row's items as Telegram's list spaces them: one centred; a

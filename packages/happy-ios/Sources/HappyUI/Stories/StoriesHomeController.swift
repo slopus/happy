@@ -4,11 +4,11 @@ import HappyLayout
 import OSLog
 import UIKit
 
-/// Stories on Stem Cells home, in the header as Telegram's chat list has
-/// them (`ChatListNavigationBar` over `StoryPeerListComponent`): open above
-/// the list, or closed into the title as small avatars; opened by pulling
-/// the list down past 65 or tapping the avatars, and put away by scrolling
-/// the list up past 61 or by seeing everything.
+/// Stories on Stem Cells home, in a band under the navigation bar
+/// (`StoriesBandView`), after Telegram's chat list (`StoryPeerListComponent`):
+/// a row open above the list, or put away; opened by pulling the list
+/// down past 65, and put away by scrolling the list up past 61 or by
+/// seeing everything. Put away, nothing of them shows.
 ///
 /// Home starts with them open when there is something to look at, until
 /// the person puts them away; that is remembered, and only a launch with a
@@ -61,7 +61,7 @@ final class StoriesHomeController {
         }
     }
     private weak var host: UIViewController?
-    private weak var header: HomeHeaderView?
+    private weak var header: StoriesBandView?
     private(set) var session: StoriesSession?
     private var watch: StemCellsWatch?
     private var snapshot = StoriesSnapshot()
@@ -128,13 +128,12 @@ final class StoriesHomeController {
         return !list.isDragging && !list.isDecelerating && !carrying
     }
 
-    /// Puts the stories in `header`, or takes them out with nil.
-    func install(in header: HomeHeaderView?) {
+    /// Puts the stories in `header`, the band under the bar, or takes
+    /// them out with nil.
+    func install(in header: StoriesBandView?) {
         guard header !== self.header else { return }
         if let previous = self.header, previous.accessory === view {
             previous.accessory = nil
-            previous.titleX = nil
-            previous.backdropExtension = 0
         }
         hideTooltip()
         self.header = header
@@ -543,8 +542,6 @@ final class StoriesHomeController {
             return
         }
         guard isShown else {
-            header.titleX = nil
-            header.backdropExtension = 0
             view.ticking = false
             return
         }
@@ -565,19 +562,16 @@ final class StoriesHomeController {
         }
         drawn = state
         let width = header.bounds.width
-        let base = header.layout(width: width)
         let layout = StoriesHeaderLayout(.init(
-            width: width, title: base.title, bandMinX: base.logoControl.maxX, bandMaxX: base.actions.minX,
+            width: width, title: StoriesHeaderLayout.bandTitle(width: width), bandMinX: 0, bandMaxX: width,
             count: items.count, collapseStart: StoriesRow.collapseStart(items),
             scroll: view.pager.contentOffset.x, state: state
         ))
         view.place(layout, unlocked: unlocked, side: state.side)
-        tooltipTip = layout.tooltipTip
-        if let tooltip, let container = tooltip.superview {
-            if let tip = layout.tooltipTip { tooltip.point(at: header.convert(tip, to: container)) } else { hideTooltip() }
-        }
-        header.titleX = layout.titleX
-        header.backdropExtension = StoriesHeaderLayout.Metrics.scrollHeight * max(0, min(1, state.max))
+        // The tooltip points at avatars closed into a title, which the
+        // band has none of.
+        tooltipTip = nil
+        if tooltip != nil { hideTooltip() }
     }
 }
 
@@ -615,6 +609,35 @@ private final class StoriesOpening {
         } onCancel: {
             Task { @MainActor in gate.finish() }
         }
+    }
+}
+/// The stories' band under the navigation bar: as tall as the room under
+/// the bar, cut at its top so the row put away is out of sight. Touches
+/// off the row go through to the list.
+final class StoriesBandView: UIView {
+    var accessory: UIView? {
+        didSet {
+            guard accessory !== oldValue else { return }
+            oldValue?.removeFromSuperview()
+            if let accessory { addSubview(accessory) }
+            setNeedsLayout()
+        }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        clipsToBounds = true
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        accessory?.frame = bounds
+    }
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        return hit === self ? nil : hit
     }
 }
 #endif

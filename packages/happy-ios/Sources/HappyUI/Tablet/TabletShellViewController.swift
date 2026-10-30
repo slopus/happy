@@ -218,12 +218,6 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
         }
     }
 
-    public func navigationController(
-        _ navigationController: UINavigationController, interactionControllerFor animationController: any UIViewControllerAnimatedTransitioning
-    ) -> (any UIViewControllerInteractiveTransitioning)? {
-        (animationController as? InteractiveNavigationTransition)?.interaction
-    }
-
     // MARK: Header
 
     private func toggleZen() {

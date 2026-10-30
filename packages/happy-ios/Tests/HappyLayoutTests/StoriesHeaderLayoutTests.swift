@@ -42,6 +42,21 @@ final class StoriesHeaderLayoutTests: XCTestCase {
         XCTAssertGreaterThan(open.items[0].zPosition, open.items[1].zPosition)
     }
 
+    /// Under a navigation bar: the open row starts at the band's top, and
+    /// closed, every avatar is above it, out of sight.
+    func testInABandUnderTheBarTheOpenRowIsAtItsTop() {
+        let title = StoriesHeaderLayout.bandTitle(width: 390)
+        XCTAssertEqual(title, rect(195, -34, 0, 20))
+        func band(_ state: State) -> StoriesHeaderLayout {
+            StoriesHeaderLayout(.init(width: 390, title: title, bandMinX: 0, bandMaxX: 390, count: 3, collapseStart: 0, scroll: 0, state: state))
+        }
+        let open = band(.target(unlocked: true, pull: 96))
+        XCTAssertEqual(open.row, rect(0, 0, 390, 98))
+        assertPoint(open.items[0].center, 89, 42)
+        let closed = band(.target(unlocked: false, pull: 0))
+        XCTAssertTrue(closed.items.allSatisfy { $0.center.y + 26 * $0.scale <= 0 }, "\(closed.items.map(\.center))")
+    }
+
     /// Closed: 24 pt avatars 14 apart before the title, the group centred
     /// as far as the pill allows, each cut around the one before it.
     func testClosedIntoTheTitle() {

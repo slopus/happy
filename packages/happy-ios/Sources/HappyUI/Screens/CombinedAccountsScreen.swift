@@ -8,7 +8,6 @@ import UIKit
 final class HomeAccountControl: NSObject {
     private let context: AppContext
     private weak var controller: UIViewController?
-    private weak var header: HomeHeaderView?
     private var observation: AccountsObservation?
     private var imageJob: Task<Void, Never>?
     private var accounts: [AccountSummary] = []
@@ -18,10 +17,9 @@ final class HomeAccountControl: NSObject {
         didSet { update(accounts) }
     }
 
-    init(context: AppContext, controller: UIViewController, header: HomeHeaderView? = nil) {
-        self.context = context; self.controller = controller; self.header = header
+    init(context: AppContext, controller: UIViewController) {
+        self.context = context; self.controller = controller
         super.init()
-        if let header { header.logoControl.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(open))) }
         observation = context.account.observeAccounts { [weak self] accounts in self?.update(accounts) }
     }
 
@@ -30,12 +28,6 @@ final class HomeAccountControl: NSObject {
         let settings = opensSettings != nil
         let multiple = accounts.count > 1 || settings
         let active = accounts.first(where: \.isActive)
-        header?.showsAccountAvatar = multiple
-        header?.logoControl.isUserInteractionEnabled = multiple
-        header?.logoControl.isAccessibilityElement = multiple
-        header?.logoControl.accessibilityLabel = settings ? Strings.StemCells.openSettings : "Switch account"
-        header?.logoControl.accessibilityIdentifier = settings ? "stem-settings-mark" : nil
-        header?.logoControl.accessibilityTraits = .button
         imageJob?.cancel()
         let fallback = multiple ? UIImage(systemName: active?.isDirect == true ? "desktopcomputer" : "person.crop.circle.fill") : UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
         apply(fallback, multiple: multiple)
@@ -53,7 +45,6 @@ final class HomeAccountControl: NSObject {
     }
 
     private func apply(_ image: UIImage?, multiple: Bool) {
-        if let header { header.logo.image = image; header.logo.contentMode = .scaleAspectFill }
         let side = multiple ? HomeHeaderLayout.Metrics.logoBox : HomeHeaderLayout.Metrics.logoSize
         let size = CGSize(width: side, height: side)
         let icon = image.map { image in

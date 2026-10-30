@@ -34,16 +34,15 @@ final class StemCellsLinkNavigationController: UINavigationController {
 /// switch shows it as it stands; choosing Relay turns it off too, unless
 /// computers are paired, which only Settings hides. Nothing of a profile
 /// shows; the first screen keeps its gear, to the server and the
-/// experiment. Bars and buttons are liquid glass, and so are those of the
-/// screens it opens.
+/// experiment. Its buttons are liquid glass, and so are those of the screens it
+/// opens.
 final class StemCellsLinkViewController: UIViewController {
     private let context: AppContext
     private let inSheet: Bool
-    private let bar = StemCellsGlassBar()
     private let control = UISegmentedControl(items: [Strings.StemCells.relay, Strings.StemCells.direct])
     private let tag = StemCellsBetaTag()
     /// Holds the switch and its tag clipped to the shown screen's scroll
-    /// area, under the glass bar: they scroll with the screen, never over
+    /// area, under the navigation bar: they scroll with the screen, never over
     /// the bar or Get help. Touches off them go through.
     private let switchClip = PassthroughView()
     private var scrollWatch: NSKeyValueObservation?
@@ -78,13 +77,17 @@ final class StemCellsLinkViewController: UIViewController {
         switchClip.addSubview(control)
         switchClip.addSubview(tag)
         view.addSubview(switchClip)
+        navigationItem.largeTitleDisplayMode = .never
         if inSheet {
-            bar.closes = true
-            bar.onClose = { [weak self] in self?.dismiss(animated: true) }
+            let close = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+            close.accessibilityIdentifier = "stem-glass-close"
+            navigationItem.rightBarButtonItem = close
         } else {
-            bar.actions = [StemCellsGlassBar.Action(image: .icon(.ionicons("settings-outline"), size: 22), label: Strings.Onboarding.settingsTitle, id: "stem-link-settings") { [weak self] in self?.openSettings() }]
+            let settings = UIBarButtonItem(image: .icon(.ionicons("settings-outline"), size: 22), primaryAction: UIAction { [weak self] _ in self?.openSettings() })
+            settings.accessibilityLabel = Strings.Onboarding.settingsTitle
+            settings.accessibilityIdentifier = "stem-link-settings"
+            navigationItem.rightBarButtonItem = settings
         }
-        StemCellsGlassChrome.install(bar, on: self)
         show(method, animated: false)
     }
 
@@ -208,7 +211,6 @@ final class StemCellsLinkViewController: UIViewController {
     private func openSettings() {
         guard navigationController?.topViewController === self, navigationController?.transitionCoordinator == nil else { return }
         let settings = OnboardingSettingsViewController(context: context)
-        StemCellsGlassChrome.dress(settings, over: self)
         navigationController?.pushViewController(settings, animated: true)
     }
 

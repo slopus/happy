@@ -43,7 +43,11 @@ final class StemCellAttachSheetViewController: UIViewController {
     private let limit: Int
     /// Going because something was chosen.
     private var chose = false
-    private let closeGlass = StemCellChatHeaderView.glass()
+    private let closeGlass: UIVisualEffectView = {
+        let effect = UIGlassEffect(style: .regular)
+        effect.isInteractive = true
+        return UIVisualEffectView(effect: effect)
+    }()
     private let closeButton = UIButton(type: .system)
     private let titleLabel = UILabel()
     private let photosButton = UIButton(type: .system)

@@ -61,10 +61,10 @@ public struct TabletBranches: Equatable, Sendable {
     /// :449 `MobileGlassBackdrop`.
     public var chatGlassBackdrop: Bool { !isTablet }
 
-    /// :131 `hidesLandscapeHeader`: an iPhone on its side drops the header
-    /// for a floating back button (:1327) and a status-bar shadow; an iPad
-    /// window that is a phone layout does too, a tablet never.
-    public var chatHidesHeaderInLandscape: Bool { isLandscape && !isTablet }
+    /// :131 `hidesLandscapeHeader` drops the header on a phone held
+    /// sideways. Not here: every screen keeps the navigation bar
+    /// (AGENTS.md, "Navigation header").
+    public var chatHidesHeaderInLandscape: Bool { false }
 
     /// :1327 the floating back button that stands in for the header.
     public var chatShowsLandscapeBackButton: Bool { chatHidesHeaderInLandscape }

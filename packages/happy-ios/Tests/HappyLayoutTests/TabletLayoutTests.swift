@@ -337,12 +337,12 @@ final class TabletBranchesTests: XCTestCase {
         XCTAssertTrue(phone.plainHeaderShowsBackButton(isOnboardingRoute: false))
     }
 
-    func testALandscapePhoneDropsTheHeader() {
+    func testALandscapePhoneKeepsTheHeader() {
         let phone = TabletBranches(isTablet: false, isLandscape: true, headerHeight: 44)
-        XCTAssertTrue(phone.chatHidesHeaderInLandscape)
-        XCTAssertTrue(phone.chatShowsLandscapeBackButton)
+        XCTAssertFalse(phone.chatHidesHeaderInLandscape)
+        XCTAssertFalse(phone.chatShowsLandscapeBackButton)
         XCTAssertFalse(phone.chatContentRunsUnderHeader)
-        XCTAssertEqual(phone.chatContentTop(safeTop: 0, tabStrip: 0), 0)
+        XCTAssertEqual(phone.chatContentTop(safeTop: 0, tabStrip: 0), 52)
         XCTAssertFalse(phone.chatFloatingDock)
         XCTAssertEqual(phone.chatOldestEndSpacer(safeTop: 0, headerAccessory: 0), 12)
         XCTAssertFalse(phone.chatShowsCliWarning)

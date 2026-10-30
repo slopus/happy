@@ -4,7 +4,7 @@ import CoreGraphics
 #endif
 
 /// Stem Cells settings, after Telegram's settings (techniques only): under
-/// the glass bar (`StemCellsGlassBarLayout`), scrolling, the profiles as a
+/// the navigation bar, scrolling, the profiles as a
 /// strip of circles, the chosen one's name and line, and grouped cards.
 ///
 /// The profiles as story circles: the chosen one centred, larger and

@@ -52,7 +52,6 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
     private var completedOpen = false
     private var heldName: String?
 
-    private let bar = StemCellsGlassBar()
     private let scroll = StemCellDetailScrollView()
     private let mark = StemCellDetailMarkView()
     private let name = UILabel()
@@ -160,11 +159,7 @@ final class StemCellSessionDetailViewController: UIViewController, UIGestureReco
             return tap
         }())
 
-        bar.leading = .back
-        // Nothing is over this screen's top but the back button.
-        bar.scrims = false
-        bar.onLeading = { [weak self] in self?.navigationController?.popViewController(animated: true) }
-        StemCellsGlassChrome.install(bar, on: self)
+        navigationItem.largeTitleDisplayMode = .never
 
         watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
         session.warm.watch(warm.chat, token: warm.token) { [weak self] snapshot in

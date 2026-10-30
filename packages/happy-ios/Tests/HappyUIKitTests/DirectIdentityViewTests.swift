@@ -27,15 +27,6 @@ final class DirectIdentityViewTests: XCTestCase {
             XCTAssertLessThanOrEqual(content.emoji.frame.maxY, size.height)
         }
     }
-    func testHomeLogoAndAvatarUseMeasuredHeaderSlots() {
-        let header = HomeHeaderView()
-        header.frame = CGRect(x: 0, y: 0, width: 390, height: 111)
-        header.layoutIfNeeded()
-        XCTAssertEqual(header.logo.frame.width, 19)
-        header.showsAccountAvatar = true; header.layoutIfNeeded()
-        XCTAssertEqual(header.logo.frame.width, 32)
-        XCTAssertEqual(header.logo.layer.cornerRadius, 16)
-    }
     func testVerificationUsesEmojiFaceAndReadableSize() {
         let label = PairingEmojiLabel()
         label.string = "🐟  🚤  🐻  🍒"

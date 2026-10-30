@@ -14,8 +14,9 @@ import UIKit
 ///   - the session list otherwise.
 ///
 /// Link Your Computer keeps the onboarding header in the navigation bar.
-/// Every other state is MainView.tsx's phone home: the bar is hidden, and
-/// the home header floats over content that scrolls under it.
+/// Every other state has home's bar: the account's picture at the left,
+/// "Sessions" with the connection under it, and the filter menu and
+/// settings at the right.
 ///
 /// The dock sits at the foot of every state but Link Your Computer, which
 /// is not MainView in happy-app; content leaves it 108pt. Where a computer
@@ -30,7 +31,6 @@ public final class HomeViewController: UIViewController {
     private let context: AppContext
     private let session: AccountSession
     private let titleView = NavigationTitleView()
-    private let header = HomeHeaderView()
     private let dockView = HomeDockView()
     private var dock: HomeDockController?
     /// Home's content worked out off the main thread from the account's
@@ -61,20 +61,13 @@ public final class HomeViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.groupedBackground)
-        header.scrim.ground = UIColor(Palette.groupedBackground)
         dockView.scrim.ground = UIColor(Palette.groupedBackground)
         // OnboardingHeader's title, which scales; the rows below don't yet.
         setScaledTitleView(titleView)
         showsBackTitle()
-        header.isHidden = true
-        header.settingsButton.addAction(UIAction { [weak self] _ in self?.openSettings() }, for: .primaryActionTriggered)
-        header.filterButton.menu = filterMenu()
-        header.filterButton.showsMenuAsPrimaryAction = true
-        header.filterButton.preferredMenuElementOrder = .fixed
         dockView.isHidden = true
         view.addSubview(dockView)
-        view.addSubview(header)
-        accountControl = HomeAccountControl(context: context, controller: self, header: header)
+        accountControl = HomeAccountControl(context: context, controller: self)
         if StemCellsPreference(variant: context.variant).isAvailable {
             accountControl?.opensSettings = { [weak self] in
                 guard let self else { return }
@@ -114,7 +107,7 @@ public final class HomeViewController: UIViewController {
         let statusUpdates = session.statusUpdates
         Task { @MainActor [weak self] in
             for await status in statusUpdates {
-                self?.header.status = status
+                self?.status = status
             }
         }
         // sync.ts `nativeUpdateSync`: asked at start and whenever the app
@@ -163,27 +156,13 @@ public final class HomeViewController: UIViewController {
         updateNavigation(animated: animated)
     }
 
-    public override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        // Screens pushed from here have the ordinary bar; settings, its glass one.
-        if let top = navigationController?.topViewController, top !== self, !(top is StemCellsSettingsViewController) {
-            navigationController?.setNavigationBarHidden(false, animated: animated)
-        }
-    }
-
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         // The dock's text heights for this width and text size, made off
         // the main thread before the composer opens.
         dock?.prepareText(width: view.bounds.width, text: TextEnvironment(traitCollection))
-        let layout = HomeScreenLayout(
-            size: view.bounds.size,
-            safeArea: LayoutInsets(view.safeAreaInsets),
-            dock: showsDock ? HomeDockLayout.Metrics.contentInset : 0
-        )
-        header.frame = layout.header
         dockView.frame = view.bounds
-        applyInsets(layout.insets)
+        applyInsets(HomeContentInsets(underBar: LayoutInsets(view.safeAreaInsets), dock: showsDock ? HomeDockLayout.Metrics.contentInset : 0))
     }
 
     private var isCurrentAccount: Bool {
@@ -317,7 +296,7 @@ public final class HomeViewController: UIViewController {
 
     /// The link screen has happy-app's onboarding header: no title, the
     /// custom server under it, and a gear to the onboarding settings. Every
-    /// other state hides the bar for the floating home header.
+    /// other state has home's own title and buttons in the bar.
     private func updateNavigation(animated: Bool) {
         guard let state else { return }
         let floating = state != .link
@@ -325,15 +304,11 @@ public final class HomeViewController: UIViewController {
         // nothing, nor its header and dock (MainView.tsx `isTablet`).
         let blank = floating && traitCollection.isTabletLayout
         content?.view.isHidden = blank
-        header.isHidden = !floating || blank
         dock?.isAvailable = showsDock && !blank
-        if navigationController?.topViewController === self {
-            navigationController?.setNavigationBarHidden(floating, animated: animated)
-        }
         if floating {
-            titleView.title = nil
-            titleView.subtitle = nil
-            navigationItem.rightBarButtonItem = nil
+            titleView.title = blank ? nil : Strings.Home.sessionsTitle
+            titleView.subtitle = blank || !HomeConnectionStatus.shows(status) ? nil : Strings.Home.connectionStatus(status)
+            navigationItem.rightBarButtonItems = blank ? nil : [settingsItem, filterItem]
         } else {
             titleView.title = nil
             titleView.subtitle = context.customServerHost
@@ -379,6 +354,24 @@ public final class HomeViewController: UIViewController {
         }
         return [grouping, UIMenu(options: .displayInline, children: [appearance])]
     }
+
+    /// The connection, under "Sessions" while it isn't connected.
+    private var status: RealtimeStatus = HomeConnectionStatus.initial {
+        didSet { if status != oldValue { updateNavigation(animated: false) } }
+    }
+
+    private lazy var settingsItem: UIBarButtonItem = {
+        let item = UIBarButtonItem(image: .icon(.ionicons("settings-outline"), size: 22), primaryAction: UIAction { [weak self] _ in self?.openSettings() })
+        item.accessibilityLabel = Strings.Settings.title
+        return item
+    }()
+
+    private lazy var filterItem: UIBarButtonItem = {
+        let item = UIBarButtonItem(image: .icon(.ionicons("filter"), size: 22), menu: filterMenu())
+        item.accessibilityLabel = Strings.Home.filterTitle
+        item.preferredMenuElementOrder = .fixed
+        return item
+    }()
 
     @objc private func openOnboardingSettings() {
         navigationController?.pushViewController(OnboardingSettingsViewController(context: context), animated: true)

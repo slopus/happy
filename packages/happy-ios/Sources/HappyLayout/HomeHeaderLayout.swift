@@ -186,6 +186,15 @@ public struct HomeContentInsets: Equatable, Sendable {
         listBottom = safeArea.bottom + dock
     }
 
+    /// Under the navigation bar, whose height is already in `safeArea.top`:
+    /// the chrome ends at the bar's foot and content starts 12 below it.
+    public init(underBar safeArea: LayoutInsets, dock: CGFloat) {
+        chromeTop = safeArea.top
+        contentTop = chromeTop + HomeHeaderLayout.Metrics.contentGap
+        self.dock = dock
+        listBottom = safeArea.bottom + dock
+    }
+
     /// The safe area the empty states lay out in: they are padded by
     /// `topContentInset` and `bottomContentInset` alone.
     public var emptyStateSafeArea: LayoutInsets {

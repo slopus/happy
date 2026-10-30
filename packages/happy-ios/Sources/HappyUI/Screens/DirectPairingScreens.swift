@@ -66,7 +66,6 @@ enum DirectPairingFlow {
         do {
             let link = try DirectPairingLink(text)
             let pairing = DirectPairingViewController(context: context, link: link, start: start)
-            StemCellsGlassChrome.dress(pairing, over: controller)
             controller.navigationController?.pushViewController(pairing, animated: true)
         } catch {
             PairingAnalytics.shared.log(.failed(method: .direct, start: start))

@@ -9,12 +9,6 @@ protocol NavigationTransitionProviding: AnyObject {
     func navigationTransition(_ operation: UINavigationController.Operation, other: UIViewController) -> UIViewControllerAnimatedTransitioning?
 }
 
-/// A transition a finger may drive: the interaction it brings, if one is.
-@MainActor
-protocol InteractiveNavigationTransition: AnyObject {
-    var interaction: UIViewControllerInteractiveTransitioning? { get }
-}
-
 /// A screen with home's dock: the composer new work opens on.
 @MainActor
 protocol StemCellsDockHosting: UIViewController {
@@ -25,22 +19,20 @@ protocol StemCellsDockHosting: UIViewController {
 /// composer is drawn where the dock is and rides the keyboard up, while the
 /// rest of new work (its ground, intro and glass header) fades in
 /// over the sidebar. Popping is the same backwards, the keyboard going down
-/// with the composer to the dock; an edge swipe drives it with the finger.
+/// with the composer to the dock; the swipe back drives it with the finger.
 @MainActor
-final class StemCellsNewWorkTransition: NSObject, UIViewControllerAnimatedTransitioning, InteractiveNavigationTransition {
+final class StemCellsNewWorkTransition: NSObject, UIViewControllerAnimatedTransitioning {
     static let duration: TimeInterval = 0.35
 
     private let operation: UINavigationController.Operation
     private weak var chat: StemCellChatViewController?
     private weak var home: StemCellsDockHosting?
-    let interaction: UIViewControllerInteractiveTransitioning?
     private var animator: UIViewPropertyAnimator?
 
-    init(_ operation: UINavigationController.Operation, chat: StemCellChatViewController, home: StemCellsDockHosting, interaction: UIViewControllerInteractiveTransitioning?) {
+    init(_ operation: UINavigationController.Operation, chat: StemCellChatViewController, home: StemCellsDockHosting) {
         self.operation = operation
         self.chat = chat
         self.home = home
-        self.interaction = interaction
     }
 
     func transitionDuration(using transitionContext: UIViewControllerContextTransitioning?) -> TimeInterval { Self.duration }
