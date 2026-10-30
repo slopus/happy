@@ -375,13 +375,16 @@ final class HomeViewController: UIViewController {
         let bannerHeight = banner.isEmpty ? 0 : banner.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height
         // Search's results keep clear of the keyboard; home's list never
         // changes for them.
-        resultsView.frame = bounds
+        // On a wide window the list, the stories, what search finds and the
+        // empty state all hold to `ContentWidth.maxWidth` and sit in the
+        // middle; a phone is as wide as it ever was.
+        let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset, maxWidth: ContentWidth.maxWidth)
+        resultsView.frame = layout.content
         resultsView.insets = UIEdgeInsets(top: contentInsets.contentTop, left: 0, bottom: view.safeAreaInsets.bottom, right: 0)
-        let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset)
         banner.frame = layout.banner
-        storiesBand.frame = CGRect(x: 0, y: contentInsets.chromeTop, width: bounds.width, height: max(0, bounds.height - contentInsets.chromeTop))
-        sidebar.frame = bounds
-        session?.warm.layOut(width: bounds.width, environment: traitCollection.textEnvironment)
+        storiesBand.frame = CGRect(x: layout.content.minX, y: contentInsets.chromeTop, width: layout.content.width, height: max(0, bounds.height - contentInsets.chromeTop))
+        sidebar.frame = layout.content
+        session?.warm.layOut(width: layout.content.width, environment: traitCollection.textEnvironment)
         let insets = UIEdgeInsets(layout.listInsets)
         if sidebar.contentInset != insets {
             let atTop = sidebar.contentOffset.y <= -sidebar.contentInset.top + 1

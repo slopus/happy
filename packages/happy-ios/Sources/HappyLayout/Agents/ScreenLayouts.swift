@@ -11,16 +11,24 @@ public struct HomeLayout: Equatable, Sendable {
     public var listInsets: LayoutInsets
     public var indicatorInsets: LayoutInsets
     public var empty: CGRect
+    /// Where the list and what stands in for it go: the whole width on a
+    /// phone, and `maxWidth` centred on a window wider than that
+    /// (`ContentWidth.maxWidth`, layout.ts), so rows aren't a yard long.
+    public var content: CGRect
 
     /// `contentTop` is where content starts under the header, `chromeTop`
     /// the header's own foot, `listBottom` the room the dock keeps,
     /// `storiesHeight` the room the stories open under the header (0:
-    /// closed into the title, or not drawn).
-    public init(size: CGSize, contentTop: CGFloat, chromeTop: CGFloat, listBottom: CGFloat, bannerHeight: CGFloat, storiesHeight: CGFloat = 0) {
-        banner = CGRect(x: 0, y: contentTop + max(0, storiesHeight), width: size.width, height: bannerHeight)
+    /// closed into the title, or not drawn), `maxWidth` how wide the
+    /// content may grow.
+    public init(size: CGSize, contentTop: CGFloat, chromeTop: CGFloat, listBottom: CGFloat, bannerHeight: CGFloat, storiesHeight: CGFloat = 0, maxWidth: CGFloat = .greatestFiniteMagnitude) {
+        let width = max(0, min(size.width, maxWidth))
+        let left = ((size.width - width) / 2).rounded()
+        content = CGRect(x: left, y: 0, width: width, height: size.height)
+        banner = CGRect(x: left, y: contentTop + max(0, storiesHeight), width: width, height: bannerHeight)
         listInsets = LayoutInsets(top: banner.maxY, left: 0, bottom: listBottom, right: 0)
         indicatorInsets = LayoutInsets(top: chromeTop, left: 0, bottom: listBottom, right: 0)
-        empty = CGRect(x: 0, y: contentTop, width: size.width, height: max(0, size.height - contentTop - listBottom))
+        empty = CGRect(x: left, y: contentTop, width: width, height: max(0, size.height - contentTop - listBottom))
     }
 }
 

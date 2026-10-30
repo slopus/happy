@@ -14,6 +14,50 @@ final class ScreenLayoutTests: XCTestCase {
         XCTAssertEqual(layout.listInsets, LayoutInsets(top: 210, left: 0, bottom: 90, right: 0))
         XCTAssertEqual(layout.indicatorInsets, LayoutInsets(top: 110, left: 0, bottom: 90, right: 0))
         XCTAssertEqual(layout.empty, rect(0, 120, 390, 634))
+        XCTAssertEqual(layout.content, rect(0, 0, 390, 844))
+    }
+
+    /// A phone's window is narrower than the limit, so nothing moves;
+    /// an iPad's is wider, so the list, the banner and the empty state
+    /// are 800 in the middle. `content` is where the list and search's
+    /// results go, full height, since both scroll under the header.
+    func testHomeHoldsItsContentToTheWidthLimitOnAWideWindow() {
+        let phone = HomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, bannerHeight: 90, maxWidth: 844)
+        XCTAssertEqual(phone.content, rect(0, 0, 390, 844))
+        XCTAssertEqual(phone.banner, rect(0, 120, 390, 90))
+        XCTAssertEqual(phone.empty, rect(0, 120, 390, 634))
+
+        // 1366 less 800 is 566, half of it 283.
+        let pad = HomeLayout(size: CGSize(width: 1366, height: 1024), contentTop: 120, chromeTop: 110, listBottom: 90, bannerHeight: 90, maxWidth: ContentWidthLimit.tablet)
+        XCTAssertEqual(pad.content, rect(283, 0, 800, 1024))
+        XCTAssertEqual(pad.banner, rect(283, 120, 800, 90))
+        XCTAssertEqual(pad.empty, rect(283, 120, 800, 814))
+        // The insets are the list's own, so they stay as they were.
+        XCTAssertEqual(pad.listInsets, LayoutInsets(top: 210, left: 0, bottom: 90, right: 0))
+        XCTAssertEqual(pad.indicatorInsets, LayoutInsets(top: 110, left: 0, bottom: 90, right: 0))
+    }
+
+    /// Half a pixel is rounded the same way every time, so a window of
+    /// an odd width doesn't blur its rows, and the stories band that
+    /// follows `content.minX` lines up with the list under it.
+    func testHomeRoundsAnOddWidthsMarginToAWholePoint() {
+        let odd = HomeLayout(size: CGSize(width: 1001, height: 800), contentTop: 100, chromeTop: 100, listBottom: 0, bannerHeight: 0, maxWidth: 800)
+        // 1001 less 800 is 201, half of it 100.5, rounded to 101.
+        XCTAssertEqual(odd.content, rect(101, 0, 800, 800))
+        XCTAssertEqual(odd.empty.minX, 101)
+        // Stories open under the header and push the banner down; the
+        // band itself follows the same left edge.
+        let stories = HomeLayout(size: CGSize(width: 1001, height: 800), contentTop: 100, chromeTop: 100, listBottom: 0, bannerHeight: 40, storiesHeight: 60, maxWidth: 800)
+        XCTAssertEqual(stories.banner, rect(101, 160, 800, 40))
+    }
+
+    /// A window narrower than the limit, or one of no width at all,
+    /// is left where it is rather than given a negative frame.
+    func testHomeNeverGivesItsContentANegativeWidth() {
+        let none = HomeLayout(size: .zero, contentTop: 0, chromeTop: 0, listBottom: 0, bannerHeight: 0, maxWidth: 800)
+        XCTAssertEqual(none.content, rect(0, 0, 0, 0))
+        let unset = HomeLayout(size: CGSize(width: 390, height: 844), contentTop: 0, chromeTop: 0, listBottom: 0, bannerHeight: 0)
+        XCTAssertEqual(unset.content, rect(0, 0, 390, 844))
     }
 
     func testTheBannerHoldsItsButtonAtTheRight() {
