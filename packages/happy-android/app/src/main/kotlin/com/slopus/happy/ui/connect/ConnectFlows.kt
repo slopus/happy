@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
  */
 @Stable
 class ConnectFlow internal constructor(
-    private val prefix: String,
+    private val kind: ConnectKind,
     private val scope: CoroutineScope,
 ) {
     /** A link is being approved (the hooks' `isLoading`). */
@@ -45,30 +45,60 @@ class ConnectFlow internal constructor(
     internal var alert by mutableStateOf<Alert?>(null)
     internal var errorTitle = ""
     internal var okTitle = ""
+    internal var messages = ScanMessages()
     internal var scanner: QrScanner = QrScanner { ScanResult.Cancelled }
+    internal var pairProtocolV2: ((String) -> Unit)? = null
     internal var process: suspend (String) -> Boolean = { false }
     private var scanning = false
 
     /**
-     * connectTerminal / connectAccount: opens the scanner and approves the
-     * code it reads. Codes of the other kind, a cancel and a failed scan do
-     * nothing, as in happy-app.
+     * connectTerminal / connectAccount: opens the scanner and routes the
+     * code it reads ([route]). Only a cancel does nothing. Unlike happy-app,
+     * a code of another kind or a failed scan says so.
      */
     fun scan() {
         if (scanning) return
         scanning = true
         scope.launch {
             try {
-                acceptScan(scanner.scan(), prefix)?.let { process(it) }
+                when (val result = scanner.scan()) {
+                    ScanResult.Cancelled -> Unit
+                    is ScanResult.Failed -> alert = errorAlert(messages.unavailable)
+                    is ScanResult.Scanned -> route(result.value)
+                }
             } finally {
                 scanning = false
             }
         }
     }
 
-    /** connectWithUrl: a pasted link. Anything without the prefix is "Invalid authentication URL". */
+    /**
+     * A scanned code by kind: this flow's own is approved, a Protocol V2
+     * pairing code starts pairing, and anything else is an alert naming
+     * where it belongs.
+     */
+    internal suspend fun route(text: String) {
+        when (val code = HappyCode.classify(text)) {
+            is HappyCode.ProtocolV2Pairing -> pairProtocolV2?.invoke(code.text)
+                ?: run { alert = errorAlert(messages.protocolV2Unavailable) }
+            is HappyCode.Terminal ->
+                if (kind == ConnectKind.Terminal) process(code.url) else alert = errorAlert(messages.terminalElsewhere)
+            is HappyCode.Account ->
+                if (kind == ConnectKind.Account) process(code.url) else alert = errorAlert(messages.accountElsewhere)
+            is HappyCode.UnknownHappy, is HappyCode.NotHappy -> alert = errorAlert(messages.notHappy)
+        }
+    }
+
+    /**
+     * connectWithUrl: a pasted link. A Protocol V2 pairing link pairs;
+     * anything else without the flow's prefix is "Invalid authentication URL".
+     */
     fun connectWithUrl(url: String) {
-        scope.launch { process(url) }
+        scope.launch {
+            val pairing = HappyCode.classify(url) as? HappyCode.ProtocolV2Pairing
+            val pair = pairProtocolV2
+            if (pairing != null && pair != null) pair(pairing.text) else process(url.trim())
+        }
     }
 
     /** processAuthUrl, awaited. True when the link was approved. */
@@ -76,6 +106,21 @@ class ConnectFlow internal constructor(
 
     internal fun errorAlert(message: String) = Alert(errorTitle, message, listOf(AlertButton(okTitle)))
 }
+
+/** Which code a [ConnectFlow] approves itself. */
+enum class ConnectKind(val prefix: String) {
+    Terminal(TERMINAL_URL_PREFIX),
+    Account(AccountLink.URL_PREFIX),
+}
+
+/** What a scan that can't be approved here says. */
+internal data class ScanMessages(
+    val unavailable: String = "",
+    val notHappy: String = "",
+    val terminalElsewhere: String = "",
+    val accountElsewhere: String = "",
+    val protocolV2Unavailable: String = "",
+)
 
 /**
  * useConnectTerminal.ts: connects a terminal (the CLI or Happy Desktop) to
@@ -107,7 +152,7 @@ fun rememberTerminalConnect(
     val currentOnSuccess by rememberUpdatedState(onSuccess)
     val currentOnError by rememberUpdatedState(onError)
     val failed = stringResource(R.string.modals_failed_to_connect_terminal)
-    return rememberConnectFlow(TERMINAL_URL_PREFIX, approve) { flow, error ->
+    return rememberConnectFlow(ConnectKind.Terminal, approve) { flow, error ->
         if (error == null) {
             haptics.performHapticFeedback(HapticFeedbackType.Confirm)
             currentOnSuccess()
@@ -151,7 +196,7 @@ fun rememberAccountLink(
     val linked = stringResource(R.string.modals_device_linked_successfully)
     val ok = stringResource(R.string.common_ok)
     val failed = stringResource(R.string.modals_failed_to_link_device)
-    return rememberConnectFlow(AccountLink.URL_PREFIX, approve) { flow, error ->
+    return rememberConnectFlow(ConnectKind.Account, approve) { flow, error ->
         if (error == null) {
             flow.alert = Alert(successTitle, linked, listOf(AlertButton(ok) { currentOnSuccess() }))
         } else {
@@ -163,12 +208,12 @@ fun rememberAccountLink(
 
 @Composable
 private fun rememberConnectFlow(
-    prefix: String,
+    kind: ConnectKind,
     approve: suspend (String) -> Unit,
     onResult: (flow: ConnectFlow, error: Throwable?) -> Unit,
 ): ConnectFlow {
     val scope = rememberCoroutineScope()
-    val flow = remember(prefix) { ConnectFlow(prefix, scope) }
+    val flow = remember(kind) { ConnectFlow(kind, scope) }
     val currentApprove by rememberUpdatedState(approve)
     val currentOnResult by rememberUpdatedState(onResult)
     val error = stringResource(R.string.common_error)
@@ -176,7 +221,16 @@ private fun rememberConnectFlow(
     val invalid = stringResource(R.string.modals_invalid_auth_url)
     flow.errorTitle = error
     flow.okTitle = ok
+    flow.messages = ScanMessages(
+        unavailable = stringResource(R.string.scan_unavailable),
+        notHappy = stringResource(R.string.scan_not_happy_code),
+        terminalElsewhere = stringResource(R.string.scan_terminal_code_elsewhere),
+        accountElsewhere = stringResource(R.string.scan_account_code_elsewhere),
+        protocolV2Unavailable = stringResource(R.string.scan_protocol_v2_unavailable),
+    )
     flow.scanner = rememberQrScanner()
+    flow.pairProtocolV2 = LocalProtocolV2Pairing.current
+    val prefix = kind.prefix
     flow.process = process@{ url ->
         if (!url.startsWith(prefix)) {
             flow.alert = flow.errorAlert(invalid)

@@ -90,10 +90,8 @@ fun rememberQrScanner(): QrScanner {
 }
 
 /**
- * The scan listeners in useConnectTerminal.ts and useConnectAccount.ts act
- * only on codes with their own prefix; anything else, a cancel or a failed
- * scan is dropped without a word (`launchScanner`'s rejection is never
- * caught there). Returns the link to process, or null.
+ * Where a code goes once classified ([HappyCode]): the Protocol V2 pairing
+ * for `happy://direct?` codes, provided at the app's root. Null where
+ * nothing can pair (tests, signed-out screens); such a code is then an error.
  */
-fun acceptScan(result: ScanResult, prefix: String): String? =
-    (result as? ScanResult.Scanned)?.value?.takeIf { it.startsWith(prefix) }
+val LocalProtocolV2Pairing: ProvidableCompositionLocal<((String) -> Unit)?> = compositionLocalOf { null }
