@@ -51,6 +51,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     func presentChatMenu(in host: UIView, anchor: @escaping () -> CGRect, onInfo: @escaping () -> Void) {
         closeChatMenu()
+        card.closeMenus()
         let presenter = ComposerMenuPresenter(card: card, chips: permissionChips)
         presenter.title = Strings.ChatActions.more
         presenter.rootID = "chat-menu"

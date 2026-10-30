@@ -759,9 +759,13 @@ public final class AgentInputCardView: UIView {
     }
 
     public func blur() {
+        closeMenus()
+        textView.resignFirstResponder()
+    }
+
+    func closeMenus() {
         menuPresenter?.close()
         menuPresenter = nil
-        textView.resignFirstResponder()
     }
 
     private func showMenu(chip: AgentInputChip?) {
