@@ -273,24 +273,28 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(short.chunks, [.init(items: 0..<2, frame: CGRect(x: 0, y: 0, width: 390, height: 2048))])
     }
 
-    /// A send never moves the transcript on its own: the rows keep the
-    /// frames they had and the content keeps its height, whether the
-    /// conversation rests on the composer or runs past the viewport. It
-    /// used to be lifted 30% down with room held under it, which read as
-    /// the transcript jumping on send.
-    func testASendMovesNothingInTheStack() {
+    /// A send is an appended row and nothing else: the stack is what it is
+    /// with that row on the end, and no room is held for the reply. A short
+    /// conversation resting on the composer does slide up, by exactly the
+    /// row's own height, as any append does. What is gone is the 30% lift,
+    /// which moved the rows much further than they grew.
+    func testASendAppendsARowAndHoldsNoRoom() {
         // Short: the rows rest on the composer, the send among them.
         let resting = ChatStackLayout(heights: [80, 60], width: 390, viewport: 600)
         XCTAssertEqual(resting.frames.map(\.minY), [460, 540])
         XCTAssertEqual(resting.contentHeight, 600)
-        // The send lands: the rows above it have not moved up.
+        // A 40pt send lands: the rows above slide up 40, the appended
+        // height, and no further. A lift put the send's top at 180.
         let sent = ChatStackLayout(heights: [80, 60, 40], width: 390, viewport: 600)
-        XCTAssertEqual(sent.frames[0].minY, 420)
+        XCTAssertEqual(sent.frames.map(\.minY), [420, 500, 560])
         XCTAssertEqual(sent.contentHeight, 600, "no room is held under it")
-        // Long: the content is its rows and nothing more.
-        let long = ChatStackLayout(heights: [400, 300, 40], width: 390, viewport: 600)
-        XCTAssertEqual(long.frames.map(\.minY), [0, 400, 700])
-        XCTAssertEqual(long.contentHeight, 740)
+        // Past the viewport, where the reader is: the rows keep the frames
+        // they had and the content is its rows and nothing more.
+        let read = ChatStackLayout(heights: [400, 300], width: 390, viewport: 600)
+        let after = ChatStackLayout(heights: [400, 300, 40], width: 390, viewport: 600)
+        XCTAssertEqual(read.frames.map(\.minY), [0, 400])
+        XCTAssertEqual(after.frames.map(\.minY), [0, 400, 700])
+        XCTAssertEqual(after.contentHeight, read.contentHeight + 40)
     }
 
     /// A send carries a reader at or near the end to it, and leaves one

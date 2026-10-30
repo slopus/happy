@@ -88,8 +88,10 @@ public struct ChatScreenLayout: Equatable, Sendable {
 /// A conversation that opens on its intro (desktop's leading header) keeps
 /// it pinned under the bar instead, and its rows fill in under it.
 ///
-/// A send is a row like any other: it is stacked at the end, and nothing
-/// above it moves to make room for it or for the reply (`SendFollow`).
+/// A send is a row like any other: it is stacked at the end, and no room
+/// is held above or under it for the reply (`SendFollow`). Short content
+/// resting on the composer slides up by the new row's height, as it does
+/// for any row; content past the viewport keeps the frames it had.
 public struct ChatStackLayout: Equatable, Sendable {
     public var frames: [CGRect]
     public var contentHeight: CGFloat
@@ -208,10 +210,10 @@ public struct ChatChunks: Equatable, Sendable {
     }
 }
 
-/// What a send does to the reader. A send never moves the transcript on
-/// its own: it is written at the end like any other row, and a reader at
-/// or near the end follows it there. Nothing is lifted and no room is
-/// held, so the rows under the reader's eye never shift upward.
+/// What a send does to the reader. A send is appended at the end like any
+/// other row, and a reader at or near the end follows it there. Nothing is
+/// lifted and no room is held for the reply, so a reader up in history is
+/// not moved at all and one at the end moves only by what arrived.
 ///
 /// Desktop lifts an idle send to 30% of the viewport and holds the reply's
 /// room under it (Message.tsx's `sendLift`, `SEND_LIFT_TOP`). That was
