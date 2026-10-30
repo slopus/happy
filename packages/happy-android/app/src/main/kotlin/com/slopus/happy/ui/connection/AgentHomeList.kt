@@ -63,6 +63,7 @@ import com.slopus.happy.ui.theme.happyTextStyle
 
 object AgentHomeTags {
     const val LIST = "agentHome.list"
+    const val BAR = "agentHome.bar"
     const val SPINNER = "agentHome.spinner"
     const val STATUS = "agentHome.status"
     const val EMPTY = "agentHome.empty"

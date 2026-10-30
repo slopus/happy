@@ -3,7 +3,6 @@ package com.slopus.happy.ui.connection
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,9 +16,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarColors
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,35 +36,27 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentLinkStatus
-import com.slopus.happy.ui.components.Header
-import com.slopus.happy.ui.components.HeaderBackButton
-import com.slopus.happy.ui.components.HeaderIconButton
+import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
-import com.slopus.happy.ui.components.RoundButton
-import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
-import com.slopus.happy.ui.components.TitleAlignment
+import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuButton
-import com.slopus.happy.ui.home.HomeSpec
 import com.slopus.happy.ui.home.rememberAccountMenu
-import com.slopus.happy.ui.layout.LocalWindowLayout
-import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.delay
 
 /** Everything an agent connection's home asks of the app. */
@@ -76,17 +73,39 @@ class AgentHomeActions(
     val onAdd: () -> Unit,
 )
 
+/** The colours of every bar on an agent connection's screens: the page's own [container], scrolled or not. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun agentBarColors(container: Color = HappyTheme.colors.surface): TopAppBarColors {
+    val colors = HappyTheme.colors
+    return TopAppBarDefaults.topAppBarColors(
+        containerColor = container,
+        scrolledContainerColor = container,
+        navigationIconContentColor = colors.text,
+        titleContentColor = colors.text,
+        actionIconContentColor = colors.text,
+    )
+}
+
+/** A Material icon button around one of the app's glyphs, at Material's 24. */
+@Composable
+internal fun BarIconButton(icon: Ionicon, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(onClick = onClick, modifier = modifier) {
+        Icon(icon, 24.dp, LocalContentColor.current, contentDescription = label)
+    }
+}
+
 /**
- * Home while an agent connection is open (AGENTS.md, design decisions:
- * Home's top bar): the account menu and the agent's name on the left,
- * search, settings and compose on the right; while the link isn't up its
- * state shows under the name. No composer. Then the conversations
- * ([AgentHomeList]), or the spinner, the offline page or the empty state
- * while there are none to show. Search keeps the bar's height: the field
- * takes the name's place, and the results lie over home in a panel of
- * their own ([AgentSearchResults]), so opening and closing it moves
+ * Home while an agent connection is open: a Material top app bar with the
+ * account menu as its navigation, the agent's name (and, while the link
+ * isn't up, how it stands) as its title, and search, settings and new chat
+ * as its actions. No composer. Then the conversations ([AgentHomeList]),
+ * or a state page while there are none to show. Search swaps the bar for a
+ * search bar of the same height, and the results lie over home in a panel
+ * of their own ([AgentSearchResults]), so opening and closing it moves
  * nothing and home keeps its scroll.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentHomeScreen(
     name: String,
@@ -124,31 +143,29 @@ fun AgentHomeScreen(
     // One surface under the bar and the page, the chat's own (surface), light and dark.
     Column(modifier = Modifier.fillMaxSize().background(colors.surface)) {
         if (searching) {
-            Header(
-                alignment = TitleAlignment.Start,
-                background = colors.surface,
-                left = { HeaderBackButton(onClick = closeSearch) },
-                titleContent = { AgentSearchField(query, { query = it }) },
-                right = {
+            TopAppBar(
+                modifier = Modifier.testTag(AgentHomeTags.BAR),
+                colors = agentBarColors(),
+                navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), closeSearch) },
+                title = { AgentSearchField(query, { query = it }) },
+                actions = {
                     if (query.isNotEmpty()) {
-                        Box(Modifier.testTag(AgentSearchTags.CLEAR)) {
-                            HeaderIconButton(Ionicon.CloseCircle, stringResource(R.string.agent_search_clear), { query = "" }, iconSize = 20.dp, buttonSize = HomeSpec.actionButton)
-                        }
+                        BarIconButton(Ionicon.Close, stringResource(R.string.agent_search_clear), { query = "" }, Modifier.testTag(AgentSearchTags.CLEAR))
                     }
                 },
             )
         } else {
-            Header(
-                alignment = TitleAlignment.Start,
-                background = colors.surface,
-                left = { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) },
-                titleContent = { HeaderTitle(name, status) },
-                right = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        HeaderAction(AgentHomeTags.SEARCH, Ionicon.SearchOutline, stringResource(R.string.agent_search_open)) { searching = true }
-                        HeaderAction(AgentHomeTags.SETTINGS, Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings)
-                        HeaderAction(AgentHomeTags.COMPOSE, Ionicon.CreateOutline, stringResource(R.string.home_compose), actions.onCompose)
-                    }
+            TopAppBar(
+                modifier = Modifier.testTag(AgentHomeTags.BAR),
+                colors = agentBarColors(),
+                navigationIcon = {
+                    Box(Modifier.padding(horizontal = 4.dp)) { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) }
+                },
+                title = { BarTitle(name, status) },
+                actions = {
+                    BarIconButton(Ionicon.SearchOutline, stringResource(R.string.agent_search_open), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
+                    BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
+                    BarIconButton(Ionicon.CreateOutline, stringResource(R.string.home_compose), actions.onCompose, Modifier.testTag(AgentHomeTags.COMPOSE))
                 },
             )
         }
@@ -185,7 +202,7 @@ fun AgentHomeScreen(
                     now = now,
                     onOpen = actions.onOpenConversation,
                     onToggle = { id -> expanded = if (id in expanded) expanded - id else expanded + id },
-                    contentPadding = PaddingValues(top = HomeSpec.contentTop),
+                    contentPadding = PaddingValues(top = 4.dp),
                     header = statusMessage(status)?.let { text ->
                         { item(key = "banner", contentType = "banner") { Banner(text) } }
                     },
@@ -197,7 +214,7 @@ fun AgentHomeScreen(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(colors.text.copy(alpha = if (colors.dark) 0.16f else 0.12f))
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
                         .clickable(interactionSource = null, indication = null, onClick = closeSearch)
                         .testTag(AgentSearchTags.SCRIM),
                 )
@@ -239,25 +256,12 @@ private fun rememberSearchEntries(actions: AgentHomeActions): Pair<List<AgentSea
     }
 }
 
+/** The agent's name, the bar's title; under it, while the link isn't up, how it stands. */
 @Composable
-private fun HeaderAction(tag: String, icon: Ionicon, label: String, onClick: () -> Unit) {
-    Box(modifier = Modifier.testTag(tag)) {
-        HeaderIconButton(icon = icon, contentDescription = label, onClick = onClick, iconSize = HomeSpec.actionIcon, buttonSize = HomeSpec.actionButton)
-    }
-}
-
-/** The agent's name; under it, while the link isn't up, how it stands. */
-@Composable
-private fun HeaderTitle(name: String, status: AgentLinkStatus) {
+private fun BarTitle(name: String, status: AgentLinkStatus) {
     val colors = HappyTheme.colors
-    Column(modifier = Modifier.wrapContentHeight(unbounded = true)) {
-        Text(
-            name,
-            style = happyTextStyle(fontSize = 16, lineHeight = 20, weight = FontWeight.SemiBold),
-            color = colors.header.tint,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-        )
+    Column {
+        Text(name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (status != AgentLinkStatus.Connected) {
             val color = when (status) {
                 AgentLinkStatus.Connecting -> colors.status.connecting
@@ -265,8 +269,8 @@ private fun HeaderTitle(name: String, status: AgentLinkStatus) {
                 else -> colors.status.error
             }
             Row(modifier = Modifier.testTag(AgentHomeTags.STATUS), verticalAlignment = Alignment.CenterVertically) {
-                StatusDot(color = color, pulsing = status == AgentLinkStatus.Connecting, size = HomeSpec.statusDot)
-                Spacer(Modifier.width(HomeSpec.statusDotGap))
+                StatusDot(color = color, pulsing = status == AgentLinkStatus.Connecting, size = 6.dp)
+                Spacer(Modifier.width(6.dp))
                 Text(
                     stringResource(
                         when (status) {
@@ -276,7 +280,7 @@ private fun HeaderTitle(name: String, status: AgentLinkStatus) {
                             else -> R.string.agent_home_status_update
                         },
                     ),
-                    style = HomeSpec.status,
+                    style = MaterialTheme.typography.labelMedium,
                     color = color,
                     maxLines = 1,
                 )
@@ -295,19 +299,21 @@ private fun statusMessage(status: AgentLinkStatus): String? = when (status) {
 /** Above the rows: why the agent can't be reached for good (removed, or too new). */
 @Composable
 private fun Banner(text: String) {
-    val colors = HappyTheme.colors
-    Text(
-        text,
-        style = happyTextStyle(fontSize = 14, lineHeight = 20),
-        color = colors.textDestructive,
+    val scheme = MaterialTheme.colorScheme
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.surface)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .background(scheme.errorContainer, MaterialTheme.shapes.medium)
+            .padding(16.dp)
             .testTag(AgentHomeTags.BANNER),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Ionicon.AlertCircleOutline, 24.dp, scheme.onErrorContainer)
+        Spacer(Modifier.size(16.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = scheme.onErrorContainer)
+    }
 }
-
 
 /**
  * [AgentHomeScreen] for the agent connection [id], from its session

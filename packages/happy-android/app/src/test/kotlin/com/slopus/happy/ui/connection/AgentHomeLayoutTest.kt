@@ -30,7 +30,6 @@ import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import androidx.compose.ui.unit.height
-import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuEntry
 import com.slopus.happy.ui.home.AccountMenuTags
@@ -116,15 +115,23 @@ class AgentHomeLayoutTest {
     @Test
     fun theTopBarHasTheMenuAndNameLeftAndSearchSettingsComposeRight() {
         show(feed())
-        val bar = rule.node(HeaderTags.BAR).bounds
+        val bar = rule.node(AgentHomeTags.BAR).bounds
         val menu = rule.node(AccountMenuTags.BUTTON).bounds
         assertTrue(menu.left < 30.dp)
-        rule.onNodeWithTag(HeaderTags.BAR, useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag(AgentHomeTags.BAR, useUnmergedTree = true).assertExists()
         val search = rule.node(AgentHomeTags.SEARCH).bounds
         val settingsButton = rule.node(AgentHomeTags.SETTINGS).bounds
         val compose = rule.node(AgentHomeTags.COMPOSE).bounds
         assertTrue(search.right <= settingsButton.left + 0.5.dp && settingsButton.right <= compose.left + 0.5.dp)
-        assertDp("compose at the far right", bar.right - 16.dp, compose.right)
+        // Every bar control takes a full 48 touch (Compose widens a smaller one's), and is drawn whole inside the bar.
+        val tags = mapOf("menu" to AccountMenuTags.BUTTON, "search" to AgentHomeTags.SEARCH, "settings" to AgentHomeTags.SETTINGS, "compose" to AgentHomeTags.COMPOSE)
+        for ((label, rect) in listOf("menu" to menu, "search" to search, "settings" to settingsButton, "compose" to compose)) {
+            val touch = rule.node(tags.getValue(label)).fetchSemanticsNode().touchBoundsInRoot
+            val density = rule.density.density
+            assertTrue("$label takes a 48 touch: $touch", touch.width / density >= 47.5f && touch.height / density >= 47.5f)
+            assertTrue("$label is inside the bar", rect.left >= bar.left && rect.right <= bar.right && rect.top >= bar.top - 0.5.dp && rect.bottom <= bar.bottom + 0.5.dp)
+        }
+        assertTrue("compose ends at the bar's end inset", bar.right - compose.right <= 16.dp)
         rule.node(AgentHomeTags.COMPOSE).performClick()
         rule.node(AgentHomeTags.SETTINGS).performClick()
         assertEquals(1, composed)
@@ -138,7 +145,7 @@ class AgentHomeLayoutTest {
             surface = com.slopus.happy.ui.theme.HappyTheme.colors.surface.toArgb()
             AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions, now = 1L)
         }
-        val bar = rule.node(HeaderTags.BAR).captureToImage().toPixelMap()
+        val bar = rule.node(AgentHomeTags.BAR).captureToImage().toPixelMap()
         assertEquals(surface, bar[bar.width / 2, 4].toArgb())
         val list = rule.node(AgentHomeTags.LIST).captureToImage().toPixelMap()
         assertEquals(surface, list[list.width / 2, list.height - 4].toArgb())
@@ -204,11 +211,11 @@ class AgentHomeLayoutTest {
         rule.node(AgentHomeTags.LIST).performScrollToIndex(20)
         rule.waitForIdle()
         val row = rule.node(AgentHomeTags.row("agent-at20")).bounds
-        val bar = rule.node(HeaderTags.BAR).bounds
+        val bar = rule.node(AgentHomeTags.BAR).bounds
 
         rule.node(AgentHomeTags.SEARCH).performClick()
         rule.waitForIdle()
-        assertEquals(bar, rule.node(HeaderTags.BAR).bounds)
+        assertEquals(bar, rule.node(AgentHomeTags.BAR).bounds)
         assertEquals(row, rule.node(AgentHomeTags.row("agent-at20")).bounds)
         rule.onAllNodesWithTag(AgentSearchTags.RESULTS, useUnmergedTree = true).assertCountEquals(0)
 

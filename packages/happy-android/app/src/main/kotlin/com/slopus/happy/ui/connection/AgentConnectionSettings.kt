@@ -31,8 +31,10 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.components.ItemGroup
 import com.slopus.happy.ui.components.Screen
-import com.slopus.happy.ui.components.Header
-import com.slopus.happy.ui.components.HeaderBackButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -50,6 +52,7 @@ fun NavGraphBuilder.agentHomeRoutes(graph: AppGraph, nav: NavHostController, onA
 }
 
 object AgentSettingsTags {
+    const val BAR = "agentSettings.bar"
     const val STATUS = "agentSettings.status"
     const val APPEARANCE = "agentSettings.appearance"
     const val REMOVE = "agentSettings.remove"
@@ -62,6 +65,7 @@ object AgentSettingsTags {
  * (API.md, "Credentials on the connector's socket"), so removing forgets
  * the agent here only; the footer says so.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentConnectionSettingsScreen(
     name: String,
@@ -77,10 +81,11 @@ fun AgentConnectionSettingsScreen(
     // The bar on the page's own grey (black in dark), the cards on it: one surface, as the chat's details.
     Screen(
         header = {
-            Header(
-                title = stringResource(R.string.settings_title),
-                left = { HeaderBackButton(onClick = onBack) },
-                background = colors.grouped.background,
+            TopAppBar(
+                modifier = Modifier.testTag(AgentSettingsTags.BAR),
+                colors = agentBarColors(colors.grouped.background),
+                navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), onBack) },
+                title = { Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.titleLarge, maxLines = 1) },
             )
         },
     ) {

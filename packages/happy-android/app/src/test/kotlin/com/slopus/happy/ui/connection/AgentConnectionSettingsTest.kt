@@ -11,7 +11,6 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.ui.PHONE
-import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.theme.HappyTheme
@@ -63,7 +62,7 @@ class AgentConnectionSettingsTest {
     }
 
     private fun barCorner(): Int {
-        val bar = rule.node(HeaderTags.BAR).captureToImage().toPixelMap()
+        val bar = rule.node(AgentSettingsTags.BAR).captureToImage().toPixelMap()
         // A corner of the bar, clear of the back arrow and the title.
         return bar[bar.width - 4, 4].toArgb()
     }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -42,7 +43,6 @@ import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
-import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import java.text.Normalizer
@@ -197,12 +197,9 @@ fun AgentSearchResults(
     if (query.isBlank()) return
     val colors = HappyTheme.colors
     Box(modifier = modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.surface)
-                .testTag(AgentSearchTags.RESULTS),
-        ) {
+        // A Material surface lifted over home, its shadow the edge where home shows on.
+        Surface(color = colors.surface, shadowElevation = 6.dp, modifier = Modifier.fillMaxWidth()) {
+        LazyColumn(modifier = Modifier.fillMaxWidth().testTag(AgentSearchTags.RESULTS)) {
             if (results.isEmpty()) {
                 item(key = "none") {
                     Text(
@@ -238,15 +235,15 @@ fun AgentSearchResults(
                 }
             }
         }
-        // The panel's lower edge, where home shows on.
-        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(hairline()).background(colors.divider))
+        }
     }
 }
 
 @Composable
 private fun ResultRow(key: String, title: String, onClick: () -> Unit, icon: @Composable () -> Unit) {
     val colors = HappyTheme.colors
-    val height = with(LocalDensity.current) { 22.dp + AgentSearchSpec.ROW_LINE.sp.toDp() }
+    // Material's one-line list item: 56, more when the font is larger.
+    val height = with(LocalDensity.current) { maxOf(56.dp, 22.dp + AgentSearchSpec.ROW_LINE.sp.toDp()) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
