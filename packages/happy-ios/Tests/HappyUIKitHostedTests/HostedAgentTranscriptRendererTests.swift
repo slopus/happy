@@ -77,6 +77,7 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         let chat = self.chat(session)
         let list = try XCTUnwrap(find(UltraListView.self, in: chat.view), "no UltraList in the chat")
         XCTAssertEqual(list.accessibilityIdentifier, "transcript")
+        XCTAssertNotNil(chat.view.subviews.compactMap { $0 as? HeaderScrimView }.first { $0.edge == .top })
         XCTAssertNil(find(UIScrollView.self, in: chat.view)?.accessibilityIdentifier,
                      "a scroll view also claimed to be the transcript")
     }
@@ -89,6 +90,7 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         addTeardownBlock { @MainActor in session.localSettings.chatListRenderer = .ultraList }
         let chat = self.chat(session)
         XCTAssertNil(find(UltraListView.self, in: chat.view))
+        XCTAssertFalse(chat.view.subviews.compactMap { $0 as? HeaderScrimView }.contains { $0.edge == .top })
         let scroll = try XCTUnwrap(find(UIScrollView.self, in: chat.view))
         XCTAssertEqual(scroll.accessibilityIdentifier, "transcript")
     }
@@ -103,10 +105,29 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         // Let the offline conversation and its empty initial plan arrive.
         try await Task.sleep(for: .milliseconds(250))
         let transcript = try XCTUnwrap(find(AgentChatUltraList.self, in: chat.view))
+        let scrim = try XCTUnwrap(chat.view.subviews.compactMap { $0 as? HeaderScrimView }.first { $0.edge == .top })
+        XCTAssertFalse(scrim.isUserInteractionEnabled)
+        for style: UIUserInterfaceStyle in [.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            XCTAssertEqual(scrim.ground.resolvedColor(with: traits), chat.view.backgroundColor?.resolvedColor(with: traits))
+        }
+        let input = try XCTUnwrap(find(AgentInputCardView.self, in: chat.view))
+        XCTAssertEqual(transcript.list.viewportInsets.top, Double(chat.view.bounds.height - input.frame.minY + ChatScreenLayout.Metrics.listGap), accuracy: 1)
+        XCTAssertEqual(transcript.list.viewportInsets.bottom, Double(chat.view.safeAreaInsets.top), accuracy: 1)
+        transcript.apply([ChatRowPlan(id: "short", size: CGSize(width: chat.view.bounds.width, height: 60), items: [])])
+        try await until { transcript.list.loadedItemView(at: 0) != nil }
+        let short = try XCTUnwrap(transcript.list.loadedItemView(at: 0))
+        XCTAssertEqual(short.convert(short.bounds, to: chat.view).maxY, input.frame.minY - ChatScreenLayout.Metrics.listGap, accuracy: 1,
+                       "a short conversation must rest above the composer")
         let plans = (0..<40).map { ChatRowPlan(id: "row-\($0)", size: CGSize(width: chat.view.bounds.width, height: 80), items: []) }
         transcript.apply(plans)
         try await until { transcript.list.loadedItemView(at: 0) != nil }
         XCTAssertTrue(chat.sendFollowsNewest)
+        XCTAssertEqual(scrim.presence, 1)
+
+        transcript.list.scrollToTop(animated: false)
+        try await until { transcript.distanceFromOldest < 1 }
+        XCTAssertEqual(scrim.presence, 0)
 
         transcript.list.scrollTo(.init(index: 15), transition: .none)
         try await until { transcript.distanceFromNewest > 200 }
@@ -137,6 +158,7 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         let preview = chat(session, previewing: true)
         XCTAssertNil(find(UltraListView.self, in: preview.view), "a preview was given the list")
         XCTAssertNotNil(find(UIScrollView.self, in: preview.view))
+        XCTAssertFalse(preview.view.subviews.compactMap { $0 as? HeaderScrimView }.contains { $0.edge == .top })
     }
 }
 #endif

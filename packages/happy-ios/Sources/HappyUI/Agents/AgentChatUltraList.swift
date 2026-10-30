@@ -45,6 +45,7 @@ final class AgentChatUltraList: UIView {
     private var revision: UInt64 = 0
     private var insets = UIEdgeInsets.zero
     private var viewportSize = CGSize.zero
+    private var contentHeight: CGFloat = 0
     /// The newest row is at the foot and the reader is on it.
     private(set) var followsNewest = true
     /// As close to the newest row as the mounted transcript counts as on
@@ -76,6 +77,8 @@ final class AgentChatUltraList: UIView {
 
     /// The room the rows have between the bar and the composer.
     var viewportHeight: CGFloat { max(0, bounds.height - insets.top - insets.bottom) }
+
+    var distanceFromOldest: CGFloat { max(0, contentHeight - viewportHeight - distanceFromNewest) }
 
     /// How far the reader is from the newest row, which is at the foot:
     /// zero on it, growing as they read up into history, from the first
@@ -140,7 +143,9 @@ final class AgentChatUltraList: UIView {
         starts = places
         if let intro {
             items.append(AgentChatIntroRow(content: intro.view, height: intro.height))
+            start += intro.height
         }
+        contentHeight = start
         let follows = followsNewest && !list.isTracking && !list.isDragging && !list.isDecelerating
         list.applyChanges(items: items, newSize: viewportSize,
                           newInsets: .init(top: insets.top, bottom: insets.bottom),

@@ -382,12 +382,14 @@ final class ScrollPerfGymTests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 15), "no row \(title)")
         let height = app.frame.height
         for _ in 0..<20 where !(row.frame.midY > height * 0.15 && row.frame.midY < height * 0.75) {
+            let before = row.frame.midY
             let up = row.frame.midY > height * 0.5
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.7 : 0.3)).press(
                 forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.4 : 0.6)),
                 withVelocity: .slow, thenHoldForDuration: 0.3
             )
             pause(0.6)
+            if abs(row.frame.midY - before) < 1, row.isHittable { break }
         }
         return row
     }

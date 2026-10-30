@@ -87,6 +87,7 @@ final class UITests: XCTestCase {
                 withVelocity: .slow, thenHoldForDuration: 0.4
             )
             pause(0.8)
+            if abs(element.frame.midY - y) < 1, element.isHittable { break }
         }
     }
 
@@ -1380,6 +1381,7 @@ final class UITests: XCTestCase {
     /// the viewport, which read as the chat jumping away on send
     /// (`SendFollow`). Needs `fakellm.py` as above.
     func testASendLandsAtTheFootAndLiftsNothing() throws {
+        defer { XCUIDevice.shared.orientation = .portrait }
         let composer = openStreamLab(probe: "watch")
         let transcript = transcriptElement
         let messages = app.descendants(matching: .any).matching(identifier: "message")
@@ -1392,6 +1394,7 @@ final class UITests: XCTestCase {
         }
         composer.tap()
         pause(1)
+        XCTAssertEqual(input.frame.maxY, app.keyboards.firstMatch.frame.minY - 8, accuracy: 2, "the composer does not ride the keyboard")
         let first = say("stream 1 20 wait 2500 first")
         XCTAssertTrue(first.waitForExistence(timeout: 5))
         pause(0.2)
@@ -1426,9 +1429,19 @@ final class UITests: XCTestCase {
         XCTAssertLessThan(second.frame.maxY, input.frame.minY + 1, "a send mid-turn is under the composer")
         XCTAssertGreaterThan(second.frame.minY - top, (viewport * 0.3).rounded() + 40, "a send mid-turn was lifted")
         pause(12)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        pause(1.5)
+        capture("send-landscape-keyboard")
+        XCTAssertEqual(input.frame.maxY, app.keyboards.firstMatch.frame.minY - 8, accuracy: 2)
+        let landscapeEnd = messages.allElementsBoundByIndex.map(\.frame).filter { $0.minY < input.frame.minY }.map(\.maxY).max() ?? 0
+        XCTAssertEqual(landscapeEnd, input.frame.minY - 8, accuracy: 6, "rotation put the newest message under the composer")
+        XCUIDevice.shared.orientation = .portrait
+        pause(1.5)
 
         // Actually move into history. UltraList keeps a window, so retain
         // a visible row by identity rather than by its index in that window.
+        dismissKeyboard()
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "the transcript did not dismiss the keyboard interactively")
         for _ in 0..<3 { transcript.swipeDown(velocity: .fast) }
         composer.tap()
         pause(1)

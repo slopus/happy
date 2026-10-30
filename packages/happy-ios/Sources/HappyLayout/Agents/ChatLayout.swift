@@ -40,9 +40,11 @@ public struct ChatScreenLayout: Equatable, Sendable {
         public static let paddingBottom: CGFloat = 8
         /// Room between the newest row and the card.
         public static let listGap: CGFloat = 8
+        public static let headerOverhang: CGFloat = 8
     }
 
     public var card: CGRect
+    public var headerScrim: CGRect
     /// The transcript's insets inside the whole screen.
     public var listTop: CGFloat
     public var listBottom: CGFloat
@@ -56,6 +58,7 @@ public struct ChatScreenLayout: Equatable, Sendable {
         let height = cardHeight(width)
         let foot = min(keyboardTop, size.height - safeArea.bottom)
         card = CGRect(x: M.paddingH, y: foot - M.paddingBottom - height, width: width, height: height)
+        headerScrim = CGRect(x: 0, y: 0, width: size.width, height: max(0, safeArea.top) + M.headerOverhang)
         listTop = safeArea.top
         listBottom = max(0, size.height - card.minY + M.listGap)
         viewport = max(0, size.height - listTop - listBottom)

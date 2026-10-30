@@ -193,11 +193,13 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(down.listTop, 103)
         XCTAssertEqual(down.listBottom, 110)
         XCTAssertEqual(down.viewport, 631)
+        XCTAssertEqual(down.headerScrim, CGRect(x: 0, y: 0, width: 390, height: 111))
         // Keyboard up: the card sits 8 above it.
         let up = ChatScreenLayout(size: size, safeArea: safe, keyboardTop: 508) { width in width == 374 ? 92 : 0 }
         XCTAssertEqual(up.card, CGRect(x: 8, y: 408, width: 374, height: 92))
         XCTAssertEqual(up.listBottom, 444)
         XCTAssertEqual(up.viewport, 297)
+        XCTAssertEqual(up.headerScrim, down.headerScrim)
     }
 
     func testShortConversationsRestOnTheComposer() {

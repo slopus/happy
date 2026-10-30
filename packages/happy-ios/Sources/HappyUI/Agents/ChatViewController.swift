@@ -69,6 +69,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// keeps the scroll view it fills itself, whose offset its fade and
     /// its title measure.
     private let ultra: AgentChatUltraList?
+    private lazy var transcriptHeaderScrim = HeaderScrimView()
     private let introView = IntroView()
     /// The rows near the screen, the only ones that are views
     /// (`ChatMountedRows`), by plan id.
@@ -147,7 +148,12 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private var copied: (id: String, until: Task<Void, Never>)?
     /// The newest row is in view: what arrives keeps it there.
     private var followsNewest = true {
-        didSet { if followsNewest != oldValue { tellReadsNewest(moving: scrollView.isTracking || gliding) } }
+        didSet {
+            if followsNewest != oldValue {
+                let moving = ultra.map { $0.list.isTracking || $0.list.isDecelerating } ?? (scrollView.isTracking || gliding)
+                tellReadsNewest(moving: moving)
+            }
+        }
     }
     /// What the conversation was last told by `tellReadsNewest`.
     private var toldReadsNewest: Bool?
@@ -236,8 +242,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
             ultra.host = self
             ultra.onReachedOldest = { [weak self] in self?.loadOlder() }
             view.addSubview(ultra)
-            // The bar's scrolled edge follows a scroll view, which the
-            // list is not; the sessions' chat on UltraList is the same.
+            transcriptHeaderScrim.presence = 0
+            view.addSubview(transcriptHeaderScrim)
         } else {
             scrollView.alwaysBounceVertical = true
             scrollView.keyboardDismissMode = .interactive
@@ -1170,8 +1176,12 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let insets = UIEdgeInsets(top: view.safeAreaInsets.top, left: 0, bottom: screen.listBottom, right: 0)
         if let ultra {
             if ultra.frame != view.bounds { ultra.frame = view.bounds }
-            ultra.setViewport(size: view.bounds.size, insets: insets)
+            transcriptHeaderScrim.setLayoutFrame(screen.headerScrim)
+            // The list is inverted: its top edge is the composer's edge.
+            let flipped = UIEdgeInsets(top: insets.bottom, left: 0, bottom: insets.top, right: 0)
+            ultra.setViewport(size: view.bounds.size, insets: flipped)
             layoutTranscript()
+            updateHeaderEdge()
             return
         }
         // Set again only when it changed: a scroll view given its frame,
@@ -2064,6 +2074,7 @@ final class PreviewFadeView: UIView {
 }
 #endif
 
+#if canImport(UIKit)
 /// The transcript on UltraList (`AgentChatUltraList`) asks the screen for
 /// the same things the rows it mounts itself do: what a row shows, and
 /// what a tap or a press on one means.
@@ -2082,8 +2093,14 @@ extension ChatViewController: AgentChatTranscriptHost {
         #endif
         guard let ultra else { return }
         followsNewest = ultra.followsNewest
+        updateHeaderEdge()
         updateJump()
         tellReadsNewest(moving: ultra.list.isTracking || ultra.list.isDecelerating)
+    }
+
+    private func updateHeaderEdge() {
+        guard let ultra else { return }
+        transcriptHeaderScrim.presence = HeaderScrim.presence(scrolledUnder: ultra.distanceFromOldest)
     }
 
     func transcriptTapped(_ action: ChatRowAction) {
@@ -2098,3 +2115,4 @@ extension ChatViewController: AgentChatTranscriptHost {
         hold(action)
     }
 }
+#endif
