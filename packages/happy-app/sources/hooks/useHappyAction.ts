@@ -13,27 +13,12 @@ export function useHappyAction(action: () => Promise<void>) {
         setLoading(true);
         (async () => {
             try {
-                while (true) {
-                    try {
-                        await action();
-                        break;
-                    } catch (e) {
-                        if (e instanceof HappyError) {
-                            // if (e.canTryAgain) {
-                            //     Modal.alert('Error', e.message, [{ text: 'Try again' }, { text: 'Cancel', style: 'cancel' }]) 
-                            //         break;
-                            //     }
-                            // } else {
-                            //     await alert('Error', e.message, [{ text: 'OK', style: 'cancel' }]);
-                            //     break;
-                            // }
-                            Modal.alert('Error', e.message, [{ text: 'OK', style: 'cancel' }]);
-                            break;
-                        } else {
-                            Modal.alert('Error', 'Unknown error', [{ text: 'OK', style: 'cancel' }]);
-                            break;
-                        }
-                    }
+                await action();
+            } catch (e) {
+                if (e instanceof HappyError) {
+                    Modal.alert('Error', e.message, [{ text: 'OK', style: 'cancel' }]);
+                } else {
+                    Modal.alert('Error', 'Unknown error', [{ text: 'OK', style: 'cancel' }]);
                 }
             } finally {
                 loadingRef.current = false;
