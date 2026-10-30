@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
+import java.io.File
 import kotlin.coroutines.CoroutineContext
 
 /** What a conversation hears from the agent connection's event stream. */
@@ -47,6 +48,8 @@ data class ConversationState(
     val olderFailed: Boolean = false,
     val agent: AgentInfo? = null,
     val mode: Mode? = null,
+    /** What the composer can pick from; null until the computer's configuration is read. */
+    val catalog: ModeCatalog? = null,
     val working: Boolean = false,
     val activity: Activity? = null,
     /** The composer's text as this conversation keeps it, and a count that moves only when it came from elsewhere. */
@@ -104,7 +107,8 @@ class Conversation(
     private var agent: AgentInfo? = null
     private var mode: Mode? = null
     private var picked: Mode? = null
-    private var defaultMode: Deferred<Mode?>? = null
+    private var catalog: ModeCatalog? = null
+    private var catalogRead: Deferred<ModeCatalog>? = null
     private var activeRunStartedAt: Long? = null
     /** A run is going: from `run.started` until it finishes or the agent goes idle. */
     private var running = false
@@ -128,6 +132,8 @@ class Conversation(
     fun start() {
         if (following != null) return
         following = scope.launch(lane) {
+            // The picker's choices; a failure here is asked again when a send needs the default.
+            launch { try { readCatalog() } catch (e: CancellationException) { throw e } catch (_: Exception) {} }
             if (created) reload()
             signals.collect { signal ->
                 if (!created) return@collect
@@ -364,6 +370,32 @@ class Conversation(
         return true
     }
 
+    /**
+     * [send] with the pictures in [files], read in order with the sends
+     * around it. Pictures that can't be read send nothing: the words go
+     * back to an empty composer and an alert says why.
+     */
+    fun send(text: String, files: List<File>, readPictures: (List<File>) -> List<Block.Image> = InlinePictures::read): Boolean {
+        if (files.isEmpty()) return send(text)
+        val trimmed = text.trim()
+        val id = ConversationApi.clientId()
+        scope.launch(lane) {
+            val images = try {
+                readPictures(files)
+            } catch (e: Exception) {
+                val restore = draft.isBlank() && trimmed.isNotEmpty()
+                if (restore) setDraftNow(trimmed)
+                publish { it.copy(draftArrivals = it.draftArrivals + if (restore) 1 else 0, alert = "Couldn't read the pictures to send.") }
+                return@launch
+            }
+            outgoing += Outgoing(id, trimmed, images)
+            setDraftNow("")
+            publish()
+            pump()
+        }
+        return true
+    }
+
     /** A failed send, queued again under the same id. */
     fun retrySend(id: String) {
         scope.launch(lane) {
@@ -452,17 +484,48 @@ class Conversation(
 
     private suspend fun sendingMode(): Mode? {
         mode?.let { return it }
-        val read = defaultMode ?: scope.async(lane) { api.defaultMode() }.also { defaultMode = it }
+        val found = readCatalog().defaults
+        // A pick made while the default was read wins.
+        return mode ?: found?.also { mode = it; publish() }
+    }
+
+    /** The computer's models, read once; a failed read is asked again next time. */
+    private suspend fun readCatalog(): ModeCatalog {
+        catalog?.let { return it }
+        val read = catalogRead ?: scope.async(lane) { api.catalog() }.also { catalogRead = it }
         val found = try {
             read.await()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            defaultMode = null
+            catalogRead = null
             throw e
         }
-        // A pick made while the default was read wins.
-        return mode ?: found?.also { mode = it; publish() }
+        if (catalog == null) {
+            catalog = found
+            publish()
+        }
+        return found
+    }
+
+    /**
+     * The composer picked a model, effort or permission mode: the next
+     * message runs with it, and it is kept with the draft at once, as
+     * desktop keeps it, so another device opening this chat sees it.
+     */
+    fun setMode(next: Mode) {
+        scope.launch(lane) {
+            if (next == mode) return@launch
+            picked = next
+            mode = next
+            publish()
+            if (created) {
+                draftUpdatedAt = maxOf(now(), draftUpdatedAt + 1)
+                draftSynced = false
+                draftRevision++
+                saveDraftSoon(0)
+            }
+        }
     }
 
     /** Stops the running turn. */
@@ -648,6 +711,7 @@ class Conversation(
             rows = rows.asReversed().toList(),
             agent = agent,
             mode = mode,
+            catalog = catalog,
             working = working,
             activity = activity,
             draft = draft,

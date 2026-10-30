@@ -38,7 +38,7 @@ private class FakeAgent {
             route.endsWith("/messages") -> ok(page)
             route.endsWith("/send") && failSends > 0 -> { failSends--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/send") -> TransportResponse(sendStatus, body = """{"error":"Unknown model.","code":"invalid_request"}""".toByteArray())
-            route == "/v0/config" -> ok("""{"config":{"defaults":{"providerId":"claude","modelId":"anthropic/opus-5","permissionMode":"auto"},"models":{"anthropic/opus-5":{"defaultEffort":"high"}}}}""")
+            route == "/v0/config" -> ok(CONFIG)
             route.endsWith("/draft") -> ok("""{"draft":${(body as JsonObject).let { """{"value":${it["draft"]},"updatedAt":${it["updatedAt"]}}""" }}}""")
             else -> ok("{}")
         }
@@ -48,6 +48,19 @@ private class FakeAgent {
 
     companion object {
         const val MODE = """{"providerId":"codex","modelId":"openai/gpt-5.6-sol","effort":"medium","serviceTier":null,"permissionMode":"auto"}"""
+        const val CONFIG = """{"config":{
+            "defaults":{"providerId":"claude","modelId":"anthropic/opus-5","permissionMode":"auto"},
+            "models":{
+                "anthropic/opus-5":{"name":"Opus 5 1M","efforts":["low","medium","high","max"],"defaultEffort":"high","serviceTiers":[]},
+                "openai/gpt-5.6-sol":{"name":"GPT-5.6 Sol","efforts":["low","medium","high","xhigh"],"defaultEffort":"medium","serviceTiers":["priority"]},
+                "openai/gpt-5.6-luna":{"name":"GPT-5.6 Luna","efforts":["low"],"defaultEffort":"low","serviceTiers":[]},
+                "xai/grok-4.5":{"name":"Grok 4.5","efforts":["high"],"defaultEffort":"high","serviceTiers":[]}
+            },
+            "providers":{
+                "claude":{"name":"Current CLI","type":"claude","enabled":true,"hidden":false,"models":[{"id":"anthropic/opus-5","enabled":true},{"id":"anthropic/opus-4-8","enabled":false}]},
+                "codex":{"type":"codex","enabled":true,"hidden":false,"models":[{"id":"openai/gpt-5.6-sol","enabled":true},{"id":"openai/gpt-5.6-luna","enabled":true}]},
+                "grok":{"type":"grok","enabled":false,"hidden":false,"models":[{"id":"xai/grok-4.5","enabled":true}]}
+            }}}"""
         fun ok(text: String) = TransportResponse(200, body = text.toByteArray())
     }
 }
@@ -210,11 +223,13 @@ class ConversationTest {
         advanceUntilIdle()
         assertFalse(chat.state.value.created)
         assertTrue(chat.state.value.loaded)
-        assertTrue(agent.requests.isEmpty())
+        // Only the picker's models are read.
+        assertEquals(listOf("/v0/config"), agent.paths("GET"))
+        assertTrue(agent.paths("POST").isEmpty())
         chat.setDraft("typed")
         advanceUntilIdle()
         // Nothing is saved for an agent that doesn't exist yet.
-        assertTrue(agent.requests.isEmpty())
+        assertEquals(listOf("/v0/config"), agent.requests.map { it.second })
         chat.send("First")
         chat.send("Second")
         advanceUntilIdle()
@@ -314,6 +329,73 @@ class ConversationTest {
         assertEquals("do this", (ConversationRowBuilder.build(fromParent, "a1", "p", false).single() as ConversationRow.User).text)
         val media = Message("m", "agent", 1, listOf(Block.ToolCall("c", "show", "completed", Presentation.Media(listOf(MediaItem("image", "a.png", "image/png"))))))
         assertEquals(MediaRef("c", 0, MediaItem("image", "a.png", "image/png")), (ConversationRowBuilder.build(media, "a1", null, false).single() as ConversationRow.Media).items.single())
+    }
+
+    @Test fun `the catalog lists enabled models of enabled providers`() {
+        val catalog = ModeCatalog.parse(Json.parseToJsonElement(FakeAgent.CONFIG).jsonObject)
+        assertEquals(
+            listOf("claude/anthropic/opus-5", "codex/openai/gpt-5.6-sol", "codex/openai/gpt-5.6-luna"),
+            catalog.models.map { "${it.providerId}/${it.modelId}" },
+        )
+        assertEquals(listOf("Current CLI", "Codex", "Codex"), catalog.models.map { it.providerName })
+        assertEquals("Opus 5 1M", catalog.models[0].name)
+        assertEquals(Mode("claude", "anthropic/opus-5", "high", null, "auto"), catalog.defaults)
+    }
+
+    @Test fun `another model keeps the effort and tier it runs, else its defaults`() {
+        val catalog = ModeCatalog.parse(Json.parseToJsonElement(FakeAgent.CONFIG).jsonObject)
+        val sol = Mode("codex", "openai/gpt-5.6-sol", "xhigh", "priority", "auto")
+        assertEquals(Mode("claude", "anthropic/opus-5", "high", null, "auto"), catalog.pick(sol, "claude", "anthropic/opus-5"))
+        assertEquals(Mode("codex", "openai/gpt-5.6-luna", "low", null, "auto"), catalog.pick(sol, "codex", "openai/gpt-5.6-luna"))
+        assertEquals(sol.copy(effort = "low"), catalog.pick(sol.copy(effort = "low"), "codex", "openai/gpt-5.6-sol"))
+        assertEquals(sol, catalog.pick(sol, "grok", "xai/grok-4.5"))
+    }
+
+    @Test fun `a picked mode is kept with the draft at once and sends with the next message`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        assertEquals(3, chat.state.value.catalog?.models?.size)
+        val picked = Mode("claude", "anthropic/opus-5", "max", null, "read_only")
+        chat.setMode(picked)
+        advanceUntilIdle()
+        assertEquals(picked, chat.state.value.mode)
+        val saved = agent.requests.last { it.second.endsWith("/draft") }.third!!
+        assertEquals(picked.json(), JsonObject(saved["draft"]!!.jsonObject - "text"))
+        chat.send("Go")
+        advanceUntilIdle()
+        assertEquals(picked.json(), agent.requests.last { it.second.endsWith("/send") }.third!!["mode"])
+    }
+
+    @Test fun `pictures go inline with the words, in order`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val files = listOf(java.io.File("a.jpg"))
+        assertTrue(chat.send("Look", files) { list -> list.map { Block.Image("image/jpeg", it.name) } })
+        chat.send("After")
+        advanceUntilIdle()
+        val sends = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!! }
+        assertEquals(listOf("Look", "After"), sends.map { it["text"]!!.toString().trim('"') })
+        assertEquals("""[{"type":"image","mimeType":"image/jpeg","data":"a.jpg"}]""", sends[0]["content"].toString())
+    }
+
+    @Test fun `unreadable pictures send nothing and give the words back`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.send("Look", listOf(java.io.File("gone.jpg"))) { throw java.io.IOException("gone") }
+        advanceUntilIdle()
+        assertTrue(agent.requests.none { it.second.endsWith("/send") })
+        assertEquals("Look", chat.state.value.draft)
+        assertEquals("Couldn't read the pictures to send.", chat.state.value.alert)
+    }
+
+    @Test fun `pictures fit one message up to the inline limits`() {
+        val mib = 1024L * 1024
+        assertTrue(InlinePictures.fit(List(5) { 5 * mib }))
+        assertTrue(InlinePictures.fit(List(5) { 9 * mib }))
+        assertFalse(InlinePictures.fit(List(6) { 5 * mib }))
     }
 
     @Test fun `default mode reads config defaults`() {

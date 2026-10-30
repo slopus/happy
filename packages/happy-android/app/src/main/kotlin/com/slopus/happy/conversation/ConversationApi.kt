@@ -60,8 +60,8 @@ open class ConversationApi(private val request: AgentRequest) {
         return MessagesPage.parse(call("GET", "/v0/agents/${escape(agentId)}/messages?$query")) ?: throw invalid()
     }
 
-    /** The mode new work is sent with when nothing was picked: `config.defaults`. */
-    open suspend fun defaultMode(): Mode? = defaultModeOf(call("GET", "/v0/config"))
+    /** The models a message can run with, and the mode new work is sent with when nothing was picked. */
+    open suspend fun catalog(): ModeCatalog = ModeCatalog.parse(call("GET", "/v0/config"))
 
     /**
      * Sends [text] (and pictures) under the client's [id]: the same id again
