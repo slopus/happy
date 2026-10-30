@@ -67,6 +67,17 @@ import com.slopus.happy.ui.components.TitleWithStatus
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import com.slopus.happy.ui.components.GlassSource
+import com.slopus.happy.ui.components.GlassSpec
+import com.slopus.happy.ui.components.glassFade
+import com.slopus.happy.ui.components.glassSource
+import com.slopus.happy.ui.components.rememberGlassBlur
+import com.slopus.happy.ui.components.rememberGlassSource
 import java.io.File
 
 object ConversationScreenTags {
@@ -85,6 +96,8 @@ object ConversationScreenTags {
     const val OLDER_RETRY = "conversation.older.retry"
     const val COMPOSE = "conversation.header.compose"
     const val DETAILS = "conversation.header.details"
+    /** The fade behind the dock. */
+    const val FADE = "conversation.fade"
 }
 
 class ConversationScreenActions(
@@ -241,6 +254,12 @@ fun ConversationScreen(
             ),
             modifier = Modifier.testTag(ConversationScreenTags.BAR),
         )
+        // The dock floats over the transcript, which scrolls on under its glass; the list keeps the
+        // dock's height free at its newest end, so the last message is never left under it.
+        val glass = rememberGlassSource()
+        val blurs = rememberGlassBlur()
+        var dock by remember { mutableIntStateOf(0) }
+        val dockHeight = with(LocalDensity.current) { dock.toDp() }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 !state.loaded -> StatePage(
@@ -248,6 +267,7 @@ fun ConversationScreen(
                     body = null,
                     art = StateArt.Waiting,
                     tag = ConversationScreenTags.LOADING,
+                    modifier = Modifier.padding(bottom = dockHeight),
                 )
                 state.error != null && state.rows.isEmpty() -> StatePage(
                     title = stringResource(R.string.conversation_load_failed),
@@ -255,51 +275,70 @@ fun ConversationScreen(
                     icon = Ionicon.CloudOfflineOutline,
                     action = stringResource(R.string.common_retry) to actions.onRetryLoad,
                     tag = ConversationScreenTags.ERROR,
+                    modifier = Modifier.padding(bottom = dockHeight),
                 )
                 state.rows.isEmpty() -> StatePage(
                     title = null,
                     body = stringResource(if (state.created) R.string.conversation_empty else R.string.conversation_empty_new),
                     art = StateArt.Ready,
                     tag = ConversationScreenTags.EMPTY,
+                    modifier = Modifier.padding(bottom = dockHeight),
                 )
-                else -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder)
+                else -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, dockHeight, glass)
+            }
+            // What scrolls under the dock goes soft and pale over its top 32, Telegram's way, full width.
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(dockHeight + GlassSpec.fade)
+                    .glassFade(glass, colors.surface, blurs)
+                    .testTag(ConversationScreenTags.FADE),
+            )
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .onSizeChanged { dock = it.height }
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .imePadding(),
+            ) {
+                state.question?.let { question ->
+                    ConversationQuestionCard(
+                        question = question,
+                        onAnswer = { answers -> actions.onAnswer(question.id, answers) },
+                        secrets = actions.secrets,
+                        // Half the screen at most, so a short one keeps the bar and the composer in view.
+                        maxHeight = minOf(ConversationQuestionSpec.maxHeight, androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp / 2),
+                    )
+                }
+                if (state.created && !state.canSend) {
+                    Text(
+                        stringResource(if (state.agent?.archivedAt != null) R.string.conversation_archived else R.string.conversation_read_only),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.contentMaxWidth(LocalWindowLayout.current).padding(16.dp).testTag(ConversationScreenTags.READ_ONLY),
+                    )
+                } else {
+                    ConversationComposer(
+                        state = state,
+                        text = text,
+                        onTextChange = {
+                            text = it
+                            actions.onDraftChange(it)
+                        },
+                        onSend = actions.onSend,
+                        onSent = { text = "" },
+                        onStop = actions.onStop,
+                        onModeChange = actions.onModeChange,
+                        // The same centred column as the messages; the bar above stays full width.
+                        modifier = Modifier.contentMaxWidth(LocalWindowLayout.current),
+                        backdrop = glass,
+                    )
+                }
             }
             PictureViewerHost(pictures)
-        }
-        Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).imePadding()) {
-            state.question?.let { question ->
-                ConversationQuestionCard(
-                    question = question,
-                    onAnswer = { answers -> actions.onAnswer(question.id, answers) },
-                    secrets = actions.secrets,
-                    // Half the screen at most, so a short one keeps the bar and the composer in view.
-                    maxHeight = minOf(ConversationQuestionSpec.maxHeight, androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp / 2),
-                )
-            }
-            if (state.created && !state.canSend) {
-                Text(
-                    stringResource(if (state.agent?.archivedAt != null) R.string.conversation_archived else R.string.conversation_read_only),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.contentMaxWidth(LocalWindowLayout.current).padding(16.dp).testTag(ConversationScreenTags.READ_ONLY),
-                )
-            } else {
-                ConversationComposer(
-                    state = state,
-                    text = text,
-                    onTextChange = {
-                        text = it
-                        actions.onDraftChange(it)
-                    },
-                    onSend = actions.onSend,
-                    onSent = { text = "" },
-                    onStop = actions.onStop,
-                    onModeChange = actions.onModeChange,
-                    // The same centred column as the messages; the bar above stays full width.
-                    modifier = Modifier.contentMaxWidth(LocalWindowLayout.current),
-                )
-            }
         }
     }
 }
@@ -311,6 +350,9 @@ private fun Transcript(
     bubble: com.slopus.happy.ui.chat.BubblePalette,
     actions: ConversationRowActions,
     onLoadOlder: (retry: Boolean) -> Unit,
+    /** The dock's height over the list's newest end, kept clear. */
+    dock: Dp,
+    glass: GlassSource,
 ) {
     val nearOldest by remember {
         derivedStateOf {
@@ -326,8 +368,8 @@ private fun Transcript(
     LazyColumn(
         state = listState,
         reverseLayout = true,
-        contentPadding = PaddingValues(bottom = 8.dp),
-        modifier = Modifier.fillMaxSize().testTag(ConversationScreenTags.LIST),
+        contentPadding = PaddingValues(bottom = dock + 8.dp),
+        modifier = Modifier.fillMaxSize().glassSource(glass).testTag(ConversationScreenTags.LIST),
     ) {
         items(state.rows, key = ConversationRow::key, contentType = { it::class }) { row ->
             ConversationRowView(row, bubble, actions)

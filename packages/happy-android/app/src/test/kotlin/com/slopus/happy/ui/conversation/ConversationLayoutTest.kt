@@ -1,6 +1,8 @@
 package com.slopus.happy.ui.conversation
 
 import android.graphics.Bitmap
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
@@ -333,10 +335,12 @@ class ConversationLayoutTest {
             ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode, catalog = catalog),
             actions = ConversationScreenActions(onModeChange = { picks += it }),
         )
-        rule.onNodeWithText("Opus 5 1M").assertIsDisplayed()
-        rule.onNodeWithText("High").assertIsDisplayed()
-        rule.onNodeWithText("Auto").assertIsDisplayed()
-        rule.node(ConversationComposerTags.ATTACH).assertIsDisplayed()
+        // ChatGPT's Work composer: at rest no label; in use, model and effort as one label beside send.
+        rule.node(ConversationModeTags.MODEL).assertDoesNotExist()
+        rule.node(ConversationComposerTags.INPUT).performSemanticsAction(SemanticsActions.RequestFocus)
+        rule.waitForIdle()
+        rule.onNodeWithText("Opus 5 1M", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("High", substring = true).assertIsDisplayed()
         shot("modes")
         rule.node(ConversationModeTags.MODEL).performClick()
         rule.waitForIdle()
@@ -344,6 +348,11 @@ class ConversationLayoutTest {
         rule.onNodeWithText("GPT-5.6 Sol").performClick()
         rule.waitForIdle()
         assertEquals(listOf(Mode("codex", "openai/gpt-5.6-sol", "high", null, "auto")), picks)
+        // The permission mode and Add picture live in the [+] menu.
+        rule.node(ConversationComposerTags.MORE).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Permissions: Auto").assertIsDisplayed()
+        rule.node(ConversationComposerTags.ATTACH).assertIsDisplayed()
     }
 
     @Test fun `the permission sheet lists the four modes`() {
@@ -352,6 +361,8 @@ class ConversationLayoutTest {
             ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode, catalog = ModeCatalog(emptyList(), mode)),
             actions = ConversationScreenActions(onModeChange = { picks += it }),
         )
+        rule.node(ConversationComposerTags.MORE).performClick()
+        rule.waitForIdle()
         rule.node(ConversationModeTags.PERMISSION).performClick()
         rule.waitForIdle()
         rule.onNodeWithText("Workspace write").assertIsDisplayed()

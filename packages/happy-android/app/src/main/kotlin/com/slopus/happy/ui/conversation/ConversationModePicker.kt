@@ -1,22 +1,15 @@
 package com.slopus.happy.ui.conversation
 
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -25,34 +18,38 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.conversation.ModeCatalog
 import com.slopus.happy.conversation.ModelChoice
 import com.slopus.happy.model.settings.ModeOptions
-import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.theme.HappyTheme
 
 object ConversationModeTags {
-    const val CHIPS = "conversation.modes"
-    const val PERMISSION = "conversation.modes.permission"
+    /** The composer's one "model effort" label. */
     const val MODEL = "conversation.modes.model"
+    /** The [+] menu's permissions row. */
+    const val PERMISSION = "conversation.modes.permission"
+    /** The effort rows' heading in the model sheet. */
     const val EFFORT = "conversation.modes.effort"
     const val SHEET = "conversation.modes.sheet"
 }
 
-private enum class ModeSheet { Permission, Model, Effort }
+/** Which mode sheet is open: permissions (from the [+] menu), or model and effort (from the label). */
+internal enum class ModeSheet { Permission, Model }
 
 /** Each permission mode, least to most trusted, with its name and what it allows. */
 private val permissionText = mapOf(
@@ -66,54 +63,66 @@ private val permissionText = mapOf(
 internal fun conversationModelPick(catalog: ModeCatalog, current: Mode, choice: ModelChoice): Mode? =
     catalog.pick(current, choice.providerId, choice.modelId).takeIf { it != current }
 
+/** A permission mode's name, as the [+] menu shows it. */
+@Composable
+internal fun permissionName(key: String): String = permissionText[key]?.first?.let { stringResource(it) } ?: key
+
 /**
- * The permission, model and effort a message runs with, as Material 3 assist
- * chips under the composer's field, scrolling sideways when they don't fit;
- * each opens a modal bottom sheet of radio rows (models under their
- * provider's name), and a pick closes it. Before the computer's models are
- * read the model and effort chips show what the chat runs with, disabled;
- * effort is there only when the model has levels.
+ * The model and effort a message runs with as one label, ChatGPT's way: the
+ * model in bold, the effort after it in regular weight. One button for
+ * TalkBack ("Model Opus 5 1M, effort High") that opens the model sheet,
+ * where effort is picked too. Before the computer's models are read it shows
+ * what the chat runs with and does nothing.
  */
 @Composable
-internal fun ConversationModeChips(catalog: ModeCatalog?, mode: Mode?, onModeChange: (Mode) -> Unit, modifier: Modifier = Modifier) {
+internal fun ConversationModeLabel(catalog: ModeCatalog?, mode: Mode?, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val current = mode ?: catalog?.defaults ?: return
-    val focus = LocalFocusManager.current
-    var open by rememberSaveable { mutableStateOf<ModeSheet?>(null) }
     val choice = catalog?.model(current.providerId, current.modelId)
-    val efforts = choice?.efforts.orEmpty()
-    val chipColors = AssistChipDefaults.assistChipColors(
-        labelColor = HappyTheme.colors.text,
-        trailingIconContentColor = HappyTheme.colors.textSecondary,
-    )
-    fun show(sheet: ModeSheet) {
-        // The sheet takes the keyboard's place.
-        focus.clearFocus()
-        open = sheet
+    val model = choice?.name ?: current.modelId
+    val showsEffort = choice == null || choice.efforts.isNotEmpty()
+    val effort = ModeOptions.effortDisplayName(current.effort)
+    val enabled = catalog != null && (catalog.models.isNotEmpty() || (choice?.efforts?.size ?: 0) > 1)
+    val spoken = if (showsEffort) {
+        stringResource(R.string.conversation_mode_label, model, effort)
+    } else {
+        stringResource(R.string.conversation_mode_label_model_only, model)
     }
-    Row(
-        modifier = modifier.testTag(ConversationModeTags.CHIPS).horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        val permission = permissionText[current.permissionMode]?.first?.let { stringResource(it) } ?: current.permissionMode
-        ModeChip(permission, ConversationModeTags.PERMISSION, enabled = true, chipColors) { show(ModeSheet.Permission) }
-        ModeChip(choice?.name ?: current.modelId, ConversationModeTags.MODEL, enabled = catalog != null && catalog.models.isNotEmpty(), chipColors) {
-            show(ModeSheet.Model)
-        }
-        if (efforts.isNotEmpty() || choice == null) {
-            ModeChip(ModeOptions.effortDisplayName(current.effort), ConversationModeTags.EFFORT, enabled = efforts.size > 1, chipColors) {
-                show(ModeSheet.Effort)
+    Text(
+        buildAnnotatedString {
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(model) }
+            if (showsEffort) {
+                withStyle(SpanStyle(fontWeight = FontWeight.Normal)) { append(" $effort") }
             }
-        }
-    }
+        },
+        style = MaterialTheme.typography.labelLarge,
+        color = HappyTheme.colors.text,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .clip(MaterialTheme.shapes.small)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onOpen)
+            .semantics(mergeDescendants = true) { contentDescription = spoken }
+            .padding(horizontal = 8.dp, vertical = 12.dp)
+            .testTag(ConversationModeTags.MODEL),
+    )
+}
 
+/**
+ * The open mode sheet ([open]), a Material 3 modal bottom sheet of radio
+ * rows: the permission modes, or the models under their provider's name
+ * with the chosen model's effort levels after them. A pick closes it.
+ */
+@Composable
+internal fun ConversationModeSheets(open: ModeSheet?, onClose: () -> Unit, catalog: ModeCatalog?, mode: Mode?, onModeChange: (Mode) -> Unit) {
+    val current = mode ?: catalog?.defaults ?: return
     val sheet = open ?: return
-    val close = { open = null }
+    val efforts = catalog?.model(current.providerId, current.modelId)?.efforts.orEmpty()
     fun pick(next: Mode?) {
-        close()
+        onClose()
         next?.let(onModeChange)
     }
     when (sheet) {
-        ModeSheet.Permission -> ModeSheet(stringResource(R.string.conversation_mode_permission), close) {
+        ModeSheet.Permission -> ModeSheet(stringResource(R.string.conversation_mode_permission), onClose) {
             ModeCatalog.PERMISSION_MODES.forEach { key ->
                 val (name, description) = permissionText.getValue(key)
                 item(key) {
@@ -123,16 +132,11 @@ internal fun ConversationModeChips(catalog: ModeCatalog?, mode: Mode?, onModeCha
                 }
             }
         }
-        ModeSheet.Model -> ModeSheet(stringResource(R.string.conversation_mode_model), close) {
+        ModeSheet.Model -> ModeSheet(stringResource(R.string.conversation_mode_model), onClose) {
             catalog?.models.orEmpty().groupBy { it.providerId }.values.forEachIndexed { index, models ->
                 item("provider:${models[0].providerId}") {
                     if (index > 0) HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    Text(
-                        models[0].providerName,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = HappyTheme.colors.textSecondary,
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
-                    )
+                    SheetHeading(models[0].providerName)
                 }
                 models.forEach { model ->
                     item("${model.providerId}/${model.modelId}") {
@@ -142,12 +146,16 @@ internal fun ConversationModeChips(catalog: ModeCatalog?, mode: Mode?, onModeCha
                     }
                 }
             }
-        }
-        ModeSheet.Effort -> ModeSheet(stringResource(R.string.conversation_mode_effort), close) {
-            efforts.forEach { level ->
-                item(level) {
-                    ModeRow(ModeOptions.effortDisplayName(level), null, selected = level == current.effort) {
-                        pick(current.copy(effort = level).takeIf { it != current })
+            if (efforts.size > 1) {
+                item("effort") {
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    SheetHeading(stringResource(R.string.conversation_mode_effort), Modifier.testTag(ConversationModeTags.EFFORT))
+                }
+                efforts.forEach { level ->
+                    item("effort:$level") {
+                        ModeRow(ModeOptions.effortDisplayName(level), null, selected = level == current.effort) {
+                            pick(current.copy(effort = level).takeIf { it != current })
+                        }
                     }
                 }
             }
@@ -156,14 +164,12 @@ internal fun ConversationModeChips(catalog: ModeCatalog?, mode: Mode?, onModeCha
 }
 
 @Composable
-private fun ModeChip(label: String, tag: String, enabled: Boolean, colors: androidx.compose.material3.ChipColors, onClick: () -> Unit) {
-    AssistChip(
-        onClick = onClick,
-        enabled = enabled,
-        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        trailingIcon = { Icon(MaterialSymbols.ExpandMore, contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
-        colors = colors,
-        modifier = Modifier.testTag(tag),
+private fun SheetHeading(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = HappyTheme.colors.textSecondary,
+        modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
     )
 }
 
