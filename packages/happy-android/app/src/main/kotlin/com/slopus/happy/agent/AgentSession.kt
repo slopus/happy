@@ -87,6 +87,11 @@ class AgentSession internal constructor(
     private val statusState = MutableStateFlow(AgentLinkStatus.Connecting)
     val status: StateFlow<AgentLinkStatus> = statusState.asStateFlow()
 
+    private val reads = MutableStateFlow(0)
+    /** Bootstrap or a resource whose event version chain broke is being caught up. */
+    val isSyncing: StateFlow<Boolean> = reads.map { it > 0 }
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
     private val eventFlow = MutableSharedFlow<AgentEvent>(extraBufferCapacity = 1024)
 
     /**
@@ -196,8 +201,13 @@ class AgentSession internal constructor(
     }
 
     private suspend fun readSnapshot() {
-        val bootstrap = client.decode<WireDesktopBootstrap>("GET", "/v0/bootstrap/desktop")
-        catalogLock.withLock { catalogState.update { it.withBootstrap(bootstrap) } }
+        reads.update { it + 1 }
+        try {
+            val bootstrap = client.decode<WireDesktopBootstrap>("GET", "/v0/bootstrap/desktop")
+            catalogLock.withLock { catalogState.update { it.withBootstrap(bootstrap) } }
+        } finally {
+            reads.update { it - 1 }
+        }
     }
 
     /** The journal from the catalog's cursor until the stream ends or fails. */
@@ -236,6 +246,7 @@ class AgentSession internal constructor(
 
     /** Reads again one resource whose version chain broke. */
     private suspend fun reread(stale: AgentCatalog.Stale) {
+        reads.update { it + 1 }
         val (path, key) = when (stale.kind) {
             "project" -> "/v0/projects/${AgentClient.escape(stale.id)}" to "project"
             "workspace" -> "/v0/workspaces/${AgentClient.escape(stale.id)}" to "workspace"
@@ -255,6 +266,8 @@ class AgentSession internal constructor(
             throw e
         } catch (_: Exception) {
             // The next snapshot (a reconnect after a gap) catches it up.
+        } finally {
+            reads.update { it - 1 }
         }
     }
 

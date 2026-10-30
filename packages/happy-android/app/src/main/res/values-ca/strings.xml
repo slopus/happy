@@ -55,6 +55,7 @@
     <string name="profile_username">Nom d\'usuari</string>
     <string name="profile_status">Estat</string>
 
+    <string name="status_syncing">sincronitzant</string>
     <string name="status_connected">connectat</string>
     <string name="status_connecting">connectant</string>
     <string name="status_disconnected">desconnectat</string>

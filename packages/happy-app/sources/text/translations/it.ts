@@ -80,6 +80,7 @@ export const it: TranslationStructure = {
     },
 
     status: {
+        syncing: 'sincronizzazione',
         connected: 'connesso',
         connecting: 'connessione in corso',
         disconnected: 'disconnesso',

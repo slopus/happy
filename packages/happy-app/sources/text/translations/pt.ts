@@ -81,6 +81,7 @@ export const pt: TranslationStructure = {
 
 
     status: {
+        syncing: 'sincronizando',
         connected: 'conectado',
         connecting: 'conectando',
         disconnected: 'desconectado',

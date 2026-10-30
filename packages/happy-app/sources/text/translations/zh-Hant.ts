@@ -82,6 +82,7 @@ export const zhHant: TranslationStructure = {
     },
 
     status: {
+        syncing: '同步中',
         connected: '已連線',
         connecting: '連線中',
         disconnected: '已中斷連線',

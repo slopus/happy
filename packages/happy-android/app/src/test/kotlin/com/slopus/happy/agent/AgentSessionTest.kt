@@ -12,6 +12,7 @@ import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.ui.conversation.conversationRequest
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -128,6 +129,32 @@ class AgentSessionTest {
         agent.bootstrap = Wire.bootstrap(bots = listOf(Wire.bot("b2", "Other", Wire.agent("ab2"))), cursor = "c7")
         agent.frames.send(Wire.hello("c7", gap = true))
         eventually({ session.feed.value.conversations.map { it.agentId } }) { it == listOf("ab2") }
+    }
+
+    @Test
+    fun bootstrapAndGapReadsStaySyncingUntilTheirResponsesArrive() = runBlocking {
+        var gate = CompletableDeferred<Unit>()
+        val session = sessions {
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                    if (path == "/v0/bootstrap/desktop") gate.await()
+                    return agent.request(method, path, credential, body, headers)
+                }
+            }
+        }.session(id)!!
+        eventually({ session.isSyncing.value }) { it }
+        assertFalse(session.feed.value.loaded)
+        gate.complete(Unit)
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        eventually({ session.isSyncing.value }) { !it }
+
+        gate = CompletableDeferred()
+        agent.frames.send(Wire.hello("c7", gap = true))
+        eventually({ session.isSyncing.value }) { it }
+        assertEquals(AgentLinkStatus.Connected, session.status.value)
+        gate.complete(Unit)
+        eventually({ session.isSyncing.value }) { !it }
     }
 
     @Test

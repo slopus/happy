@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
@@ -270,7 +271,8 @@ class AgentHomeLayoutTest {
     fun theLinkDroppingAndComingBackMovesNothing() {
         val rows = feed()
         var status by mutableStateOf(AgentLinkStatus.Connected)
-        rule.setHappyContent { AgentHomeScreen("Studio", rows, status, accounts, actions, now = NOW) }
+        var syncing by mutableStateOf(false)
+        rule.setHappyContent { AgentHomeScreen("Studio", rows, status, accounts, actions, now = NOW, syncing = syncing) }
         val bar = rule.node(AgentHomeTags.BAR).bounds
         val title = rule.node(AgentHomeTags.TITLE).bounds
         val first = rule.node(AgentHomeTags.row("section-bots")).bounds
@@ -280,25 +282,32 @@ class AgentHomeLayoutTest {
             assertEquals("first row, $at", first, rule.node(AgentHomeTags.row("section-bots")).bounds)
         }
         val flips = listOf(
-            AgentLinkStatus.Connecting, AgentLinkStatus.Connected, AgentLinkStatus.Offline, AgentLinkStatus.Connecting,
-            AgentLinkStatus.Offline, AgentLinkStatus.Connected, AgentLinkStatus.Connecting, AgentLinkStatus.Connected,
+            AgentLinkStatus.Connecting to false, AgentLinkStatus.Connected to true,
+            AgentLinkStatus.Connected to false, AgentLinkStatus.Offline to false,
+            AgentLinkStatus.Connecting to false, AgentLinkStatus.Connected to true,
+            AgentLinkStatus.Connected to false, AgentLinkStatus.Connected to false,
         )
-        for (next in flips) {
+        for ((next, catchingUp) in flips) {
             // Mid-fade, with the old line and the new one both drawn, and once it has settled.
             rule.mainClock.autoAdvance = false
             status = next
+            syncing = catchingUp
             Snapshot.sendApplyNotifications()
             rule.mainClock.advanceTimeByFrame()
             rule.mainClock.advanceTimeBy(64)
-            if (next != AgentLinkStatus.Connected) {
-                assertTrue("the line is on its way, $next", rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-            }
+            assertTrue("the line is on its way, $next", rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
             stillPut("fading to $next")
             rule.mainClock.autoAdvance = true
             rule.waitForIdle()
             stillPut("settled on $next")
             rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true)
-                .assertCountEquals(if (next == AgentLinkStatus.Connected) 0 else 1)
+                .assertCountEquals(1)
+            val label = when (next) {
+                AgentLinkStatus.Connected -> if (catchingUp) "syncing" else "online"
+                AgentLinkStatus.Connecting -> "connecting"
+                else -> "offline"
+            }
+            rule.onNodeWithText(label, useUnmergedTree = true).assertExists()
         }
     }
 
@@ -324,7 +333,7 @@ class AgentHomeLayoutTest {
         current = feed(Wire.bootstrap())
         rule.waitForIdle()
         rule.node(AgentHomeTags.EMPTY).assertExists()
-        rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(1)
     }
 
     @Test

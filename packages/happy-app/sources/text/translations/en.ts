@@ -96,6 +96,7 @@ export const en: TranslationStructure = {
 
 
     status: {
+        syncing: 'syncing',
         connected: 'connected',
         connecting: 'connecting',
         disconnected: 'disconnected',

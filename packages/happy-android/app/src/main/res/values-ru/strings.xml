@@ -55,6 +55,7 @@
     <string name="profile_username">Имя пользователя</string>
     <string name="profile_status">Статус</string>
 
+    <string name="status_syncing">синхронизация</string>
     <string name="status_connected">подключено</string>
     <string name="status_connecting">подключение</string>
     <string name="status_disconnected">отключено</string>

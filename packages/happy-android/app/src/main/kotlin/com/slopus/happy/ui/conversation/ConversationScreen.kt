@@ -132,7 +132,7 @@ class ConversationScreenActions(
  * One conversation with a paired agent, in Android's own forms: a Material 3
  * top app bar in the transcript's surface colour, scrolled or not (back
  * arrow; the chat's title, or "New chat" before its first send, with the
- * connection's state under it while it isn't live, never in the content;
+ * connection or activity state always under it, never in the content;
  * new chat, then details once the chat exists), the transcript newest at
  * the bottom, and the dock above the keyboard and navigation bar: the open
  * question ([ConversationQuestionCard]), then [ConversationComposer]. A
@@ -194,14 +194,22 @@ fun ConversationScreen(
                 // is doing. Its room is always kept, so neither the title nor
                 // the transcript moves when the link or the work changes.
                 val working = activityLabel(state.activity)
+                val syncing = state.syncing || (state.created && !state.loaded)
                 val dot = when {
-                    connection != null || state.activity == null -> null
+                    connection != null -> null
+                    syncing -> colors.status.connecting
+                    state.activity == null -> colors.status.connected
                     state.activity == Activity.AwaitingAnswer -> SessionStatusColors.attention
                     else -> SessionStatusColors.thinking
                 }
                 val style = MaterialTheme.typography.bodySmall
                 TitleWithStatus(
-                    status = (connection ?: working)?.let { BarStatus(it, dot) },
+                    status = BarStatus(
+                        connection ?: if (syncing) stringResource(R.string.status_syncing)
+                        else working ?: stringResource(R.string.status_online),
+                        dot,
+                        connection == null && (syncing || state.activity != null),
+                    ),
                     statusStyle = style,
                     title = {
                         // An existing chat is never "New chat", not even before it's read: blank until then.
@@ -224,7 +232,7 @@ fun ConversationScreen(
                             .testTag(ConversationScreenTags.SUBTITLE)
                             .semantics { liveRegion = LiveRegionMode.Polite },
                     ) {
-                        status.dot?.let { StatusDot(it, pulsing = true) }
+                        status.dot?.let { StatusDot(it, pulsing = status.pulsing) }
                         Text(status.text, style = style, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
@@ -394,8 +402,8 @@ private fun Transcript(
     }
 }
 
-/** The bar's status line: its words, and the dot before them while the agent works. */
-private data class BarStatus(val text: String, val dot: Color?)
+/** The bar's status line: its words, dot and whether the dot pulses. */
+private data class BarStatus(val text: String, val dot: Color?, val pulsing: Boolean)
 
 /** What the agent is doing, as the bar's status line says it. */
 @Composable

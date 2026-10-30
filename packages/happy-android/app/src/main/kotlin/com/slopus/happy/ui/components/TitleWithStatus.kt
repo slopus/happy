@@ -13,15 +13,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 
 /**
- * A bar's title with a status line under it that comes and goes in place.
- * The line's room, one [statusStyle] line, is kept whether or not there is
- * a [status], so the title never moves when the connection or the work
+ * A bar's title with an always-present status line under it.
+ * The line's room, one [statusStyle] line, stays fixed for every
+ * [status], so the title never moves when the connection or the work
  * changes; the line crossfades from one status to the next, at once with
- * animations off. [line] draws a status; null draws nothing.
+ * animations off. [line] draws each status.
  */
 @Composable
 fun <T : Any> TitleWithStatus(
-    status: T?,
+    status: T,
     statusStyle: TextStyle,
     title: @Composable () -> Unit,
     line: @Composable (T) -> Unit,
@@ -36,7 +36,7 @@ fun <T : Any> TitleWithStatus(
                 animationSpec = if (reduceMotion) snap() else tween(STATUS_FADE_MILLIS),
                 label = "status",
             ) { shown ->
-                if (shown != null) line(shown)
+                line(shown)
             }
         }
     }

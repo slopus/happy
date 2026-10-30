@@ -83,6 +83,7 @@ export const ja: TranslationStructure = {
     },
 
     status: {
+        syncing: '同期中',
         connected: '接続済み',
         connecting: '接続中',
         disconnected: '切断済み',

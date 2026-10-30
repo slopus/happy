@@ -55,6 +55,7 @@
     <string name="profile_username">使用者名稱</string>
     <string name="profile_status">狀態</string>
 
+    <string name="status_syncing">同步中</string>
     <string name="status_connected">已連線</string>
     <string name="status_connecting">連線中</string>
     <string name="status_disconnected">已中斷連線</string>

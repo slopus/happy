@@ -311,11 +311,4 @@ class HomeListTest {
         assertEquals("12/31/25", formatSessionListTimestamp(LocalDate.of(2025, 12, 31).atStartOfDay(zone).toInstant().toEpochMilli(), now, zone, Locale.US))
     }
 
-    @Test fun headerShowsOnlyAnUnhealthySocket() {
-        assertFalse(shouldShowHomeConnectionStatus(ConnectionStatus.CONNECTED))
-        assertTrue(shouldShowHomeConnectionStatus(ConnectionStatus.CONNECTING))
-        assertTrue(shouldShowHomeConnectionStatus(ConnectionStatus.DISCONNECTED))
-        assertTrue(shouldShowHomeConnectionStatus(ConnectionStatus.ERROR))
-        assertFalse(shouldShowHomeConnectionStatus(ConnectionStatus.ERROR, hasCustomSubtitle = true))
-    }
 }

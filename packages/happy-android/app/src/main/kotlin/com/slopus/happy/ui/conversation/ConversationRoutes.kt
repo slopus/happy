@@ -196,10 +196,10 @@ internal fun SavedStateHandle.takePrefill(prefill: String?): String? {
 private const val PREFILLED = "prefilled"
 
 @Composable
-internal fun linkStatusText(status: AgentLinkStatus?): String? = when (status) {
-    null, AgentLinkStatus.Connected -> null
-    AgentLinkStatus.Connecting -> stringResource(R.string.conversation_connecting)
-    AgentLinkStatus.Offline -> stringResource(R.string.conversation_offline)
+internal fun linkStatusText(status: AgentLinkStatus?, syncing: Boolean = false): String? = when (status) {
+    null, AgentLinkStatus.Connected -> if (syncing) stringResource(R.string.status_syncing) else null
+    AgentLinkStatus.Connecting -> stringResource(R.string.status_connecting)
+    AgentLinkStatus.Offline -> stringResource(R.string.status_offline)
     AgentLinkStatus.Revoked -> stringResource(R.string.conversation_revoked)
     AgentLinkStatus.UpdateRequired -> stringResource(R.string.conversation_update_required)
 }
@@ -215,11 +215,12 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val conversation = holder.conversation
     val state by conversation.state.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
+    val syncing by session.isSyncing.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     DisposableEffect(conversation) { onDispose { conversation.setVisible(false) } }
     ConversationScreen(
         state = state,
-        connection = linkStatusText(status),
+        connection = linkStatusText(status, syncing),
         bubbleColor = settings.userMessageBubbleColor,
         actions = remember(conversation, nav) {
             ConversationScreenActions(

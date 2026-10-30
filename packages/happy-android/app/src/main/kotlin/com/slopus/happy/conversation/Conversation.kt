@@ -47,6 +47,8 @@ data class ConversationState(
     val created: Boolean = false,
     /** History has been read, or there is none to read yet. */
     val loaded: Boolean = false,
+    /** Bootstrap and newest history are being refreshed, including after a reconnect. */
+    val syncing: Boolean = false,
     val rows: List<ConversationRow> = emptyList(),
     val hasMore: Boolean = false,
     val loadingOlder: Boolean = false,
@@ -191,6 +193,7 @@ class Conversation(
         reading?.cancel()
         if (held == null) held = ArrayList()
         reading = scope.launch(lane) {
+            publish { it.copy(syncing = true) }
             try {
                 // Their own scope: a failed read is this read's failure, not the conversation's.
                 val (start, page) = coroutineScope {
@@ -205,7 +208,7 @@ class Conversation(
                 val events = held.orEmpty()
                 held = null
                 events.forEach(::receive)
-                publish { it.copy(loaded = true, error = describe(e)) }
+                publish { it.copy(loaded = true, syncing = false, error = describe(e)) }
             }
         }
     }
@@ -231,7 +234,7 @@ class Conversation(
         val events = held.orEmpty()
         held = null
         events.forEach(::receive)
-        publish { it.copy(loaded = true, hasMore = page.hasMore, error = null) }
+        publish { it.copy(loaded = true, syncing = false, hasMore = page.hasMore, error = null) }
         if (start.agent.pendingQuestionId != null) readQuestion() else publish { it.copy(question = null) }
         if (visible) markRead()
     }

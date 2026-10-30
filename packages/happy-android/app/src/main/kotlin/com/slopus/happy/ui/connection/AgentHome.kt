@@ -129,8 +129,8 @@ internal fun AgentTopBar(
 
 /**
  * Home while an agent connection is open: a Material top app bar with the
- * account menu as its navigation, the agent's name (and, while the link
- * isn't up, how it stands) as its title, and search, settings and new chat
+ * account menu as its navigation, the agent's name and connection status
+ * as its title, and search, settings and new chat
  * as its actions. No composer. Then the conversations ([AgentHomeList]),
  * or a state page while there are none to show. Search swaps the bar for a
  * search bar of the same height, and the results lie over home in a panel
@@ -146,6 +146,7 @@ fun AgentHomeScreen(
     accounts: AccountMenu,
     actions: AgentHomeActions,
     now: Long = System.currentTimeMillis(),
+    syncing: Boolean = false,
 ) {
     val colors = HappyTheme.colors
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -193,7 +194,7 @@ fun AgentHomeScreen(
                 navigationIcon = {
                     Box(Modifier.padding(horizontal = 4.dp)) { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) }
                 },
-                title = { BarTitle(name, status) },
+                title = { BarTitle(name, status, syncing || !feed.loaded) },
                 actions = {
                     BarIconButton(Ionicon.SearchOutline, stringResource(R.string.agent_search_open), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
                     BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
@@ -289,34 +290,36 @@ private fun rememberSearchEntries(actions: AgentHomeActions): Pair<List<AgentSea
 }
 
 /**
- * The agent's name, the bar's title; under it, while the link isn't up, how
- * it stands. The line's room is always there, so the name holds still as
+ * The agent's name, the bar's title; under it, how the connection
+ * stands. The line is always there, so the name holds still as
  * the link drops and comes back.
  */
 @Composable
-private fun BarTitle(name: String, status: AgentLinkStatus) {
+private fun BarTitle(name: String, status: AgentLinkStatus, syncing: Boolean) {
     val colors = HappyTheme.colors
     val style = MaterialTheme.typography.labelMedium
     TitleWithStatus(
-        status = status.takeIf { it != AgentLinkStatus.Connected },
+        status = status to syncing,
         statusStyle = style,
         title = {
             Text(name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag(AgentHomeTags.TITLE))
         },
-    ) { shown ->
+    ) { (shown, catchingUp) ->
         val color = when (shown) {
+            AgentLinkStatus.Connected -> if (catchingUp) colors.status.connecting else colors.status.connected
             AgentLinkStatus.Connecting -> colors.status.connecting
             AgentLinkStatus.Offline -> colors.status.disconnected
             else -> colors.status.error
         }
         Row(modifier = Modifier.testTag(AgentHomeTags.STATUS), verticalAlignment = Alignment.CenterVertically) {
-            StatusDot(color = color, pulsing = shown == AgentLinkStatus.Connecting, size = 6.dp)
+            StatusDot(color = color, pulsing = shown == AgentLinkStatus.Connecting || (shown == AgentLinkStatus.Connected && catchingUp), size = 6.dp)
             Spacer(Modifier.width(6.dp))
             Text(
                 stringResource(
                     when (shown) {
+                        AgentLinkStatus.Connected -> if (catchingUp) R.string.status_syncing else R.string.status_online
                         AgentLinkStatus.Connecting -> R.string.status_connecting
-                        AgentLinkStatus.Offline -> R.string.agent_home_status_offline
+                        AgentLinkStatus.Offline -> R.string.status_offline
                         AgentLinkStatus.Revoked -> R.string.agent_home_status_revoked
                         else -> R.string.agent_home_status_update
                     },
@@ -372,6 +375,7 @@ fun AgentHome(
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val feed by session.feed.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
+    val syncing by session.isSyncing.collectAsStateWithLifecycle()
     // The times in the corners move on once a minute; nothing else does.
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -398,5 +402,6 @@ fun AgentHome(
         accounts = rememberAccountMenu(graph),
         actions = actions,
         now = now,
+        syncing = syncing,
     )
 }

@@ -92,6 +92,7 @@ export const pl: TranslationStructure = {
 
 
     status: {
+        syncing: 'synchronizacja',
         connected: 'połączono',
         connecting: 'łączenie',
         disconnected: 'rozłączono',

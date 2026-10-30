@@ -122,9 +122,8 @@ class HomeScreenActions(
 )
 
 /**
- * Signed in, on a phone. Home is always home: the header (logo; "Happy" centred
- * with the connection status under it while the socket isn't healthy; the
- * filter menu and settings gear sharing one control), the account menu and
+ * Signed in, on a phone. Home is always home: the header (account menu;
+ * the connection status always centred; settings and compose), the account menu and
  * the composer are there whether or not a computer is linked, and whatever the
  * account already lists stays listed. Under the header: the loading spinner,
  * the link state (no computer and nothing to list: what's missing and the way
@@ -147,9 +146,10 @@ fun HomeScreen(
     dockActions: HomeDockActions? = null,
     accounts: AccountMenu = AccountMenu(),
     listState: LazyListState = rememberLazyListState(),
+    syncing: Boolean = false,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
-        HomeContent(state, connectionStatus, accounts, callbacks, actions, update, offlineContent, dock, dockActions, listState)
+        HomeContent(state, connectionStatus, accounts, callbacks, actions, update, offlineContent, dock, dockActions, listState, syncing)
         if (dock != null && dockActions != null && dock.focused) HomeDockFocus(dock, dockActions)
     }
 }
@@ -166,10 +166,11 @@ private fun HomeContent(
     dock: HomeDockState?,
     dockActions: HomeDockActions?,
     listState: LazyListState,
+    syncing: Boolean,
 ) {
     val colors = HappyTheme.colors
     Column(modifier = Modifier.fillMaxSize().background(colors.grouped.background)) {
-        HomeHeader(connectionStatus, accounts, actions)
+        HomeHeader(connectionStatus, accounts, actions, syncing || state == null)
         com.slopus.happy.ui.voice.VoiceStatusBar()
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val showArchived = { callbacks.onSetArchiveHidden(false) }
@@ -219,13 +220,13 @@ private fun HomeContent(
 /**
  * Home's top bar (AGENTS.md, design decisions): the account menu on the
  * left; settings, then compose at the far right. No title: only an
- * unhealthy connection shows, centred.
+ * connection status shows, centred, including online and syncing.
  */
 @Composable
-private fun HomeHeader(connectionStatus: ConnectionStatus, accounts: AccountMenu, actions: HomeScreenActions) {
+private fun HomeHeader(connectionStatus: ConnectionStatus, accounts: AccountMenu, actions: HomeScreenActions, syncing: Boolean) {
     Header(
         alignment = TitleAlignment.Center,
-        titleContent = { HomeConnectionStatus(connectionStatus) },
+        titleContent = { HomeConnectionStatus(connectionStatus, syncing) },
         left = {
             AccountMenuButton(accounts, actions.onSwitchAccount)
         },
@@ -254,21 +255,17 @@ private fun HomeHeader(connectionStatus: ConnectionStatus, accounts: AccountMenu
     )
 }
 
-/** The connection line, only while the socket isn't healthy (homeConnectionStatus.ts). */
+/** The connection line always shows; a healthy socket can still be catching up. */
 @Composable
-private fun HomeConnectionStatus(status: ConnectionStatus) {
-    if (!shouldShowHomeConnectionStatus(status)) return
-    val color = connectionStatusColor(HappyTheme.colors, status)
+private fun HomeConnectionStatus(status: ConnectionStatus, syncing: Boolean) {
+    val catchingUp = status == ConnectionStatus.CONNECTED && syncing
+    val color = connectionStatusColor(HappyTheme.colors, if (catchingUp) ConnectionStatus.CONNECTING else status)
     Row(modifier = Modifier.testTag(HomeTags.STATUS), verticalAlignment = Alignment.CenterVertically) {
-        StatusDot(color = color, pulsing = status == ConnectionStatus.CONNECTING, size = HomeSpec.statusDot)
+        StatusDot(color = color, pulsing = status == ConnectionStatus.CONNECTING || catchingUp, size = HomeSpec.statusDot)
         Spacer(Modifier.width(HomeSpec.statusDotGap))
-        Text(text = stringResource(status.label), style = HomeSpec.status, color = color, maxLines = 1)
+        Text(text = stringResource(if (catchingUp) R.string.status_syncing else status.label), style = HomeSpec.status, color = color, maxLines = 1)
     }
 }
-
-/** homeConnectionStatus.ts: only an unhealthy socket is worth a line. */
-fun shouldShowHomeConnectionStatus(status: ConnectionStatus, hasCustomSubtitle: Boolean = false): Boolean =
-    status != ConnectionStatus.CONNECTED && !hasCustomSubtitle
 
 fun connectionStatusColor(colors: HappyColors, status: ConnectionStatus) = when (status) {
     ConnectionStatus.CONNECTED -> colors.status.connected
@@ -279,10 +276,9 @@ fun connectionStatusColor(colors: HappyColors, status: ConnectionStatus) = when 
 
 private val ConnectionStatus.label: Int
     get() = when (this) {
-        ConnectionStatus.CONNECTED -> R.string.status_connected
+        ConnectionStatus.CONNECTED -> R.string.status_online
         ConnectionStatus.CONNECTING -> R.string.status_connecting
-        ConnectionStatus.DISCONNECTED -> R.string.status_disconnected
-        ConnectionStatus.ERROR -> R.string.status_error
+        ConnectionStatus.DISCONNECTED, ConnectionStatus.ERROR -> R.string.status_offline
     }
 
 /**

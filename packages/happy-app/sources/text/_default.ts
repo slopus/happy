@@ -80,6 +80,7 @@ export const en = {
     },
 
     status: {
+        syncing: 'syncing',
         connected: 'connected',
         connecting: 'connecting',
         disconnected: 'disconnected',

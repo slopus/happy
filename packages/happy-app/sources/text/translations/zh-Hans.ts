@@ -83,6 +83,7 @@ export const zhHans: TranslationStructure = {
 
 
     status: {
+        syncing: '同步中',
         connected: '已连接',
         connecting: '连接中',
         disconnected: '已断开',

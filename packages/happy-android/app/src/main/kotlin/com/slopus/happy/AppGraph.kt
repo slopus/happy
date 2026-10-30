@@ -302,6 +302,12 @@ class AppGraph(
         .flatMapLatest { it?.connectionStatus ?: flowOf(ConnectionStatus.DISCONNECTED) }
         .stateIn(scope, SharingStarted.Eagerly, ConnectionStatus.DISCONNECTED)
 
+    /** The open relay account is catching up its stored state. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val isSyncing: StateFlow<Boolean> = accountState
+        .flatMapLatest { it?.isSyncing ?: flowOf(false) }
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
     init {
         scope.launch {
             combine(auth.state, serverConfig.url, accountStore.registry) { _, _, _ -> purchaseAccount() }.collect(purchases::setAccount)

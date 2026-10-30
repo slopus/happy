@@ -2,6 +2,7 @@ package com.slopus.happy.conversation
 
 import com.slopus.happy.connection.TransportResponse
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -28,13 +29,14 @@ private class FakeAgent {
     var failSends = 0
     var failOlder = false
     var sendStatus = 202
+    var beforeBootstrap: suspend () -> Unit = {}
 
     val request: AgentRequest = { method, path, body ->
         requests += Triple(method, path, body as? JsonObject)
         val route = path.substringBefore('?')
         when {
             route == "/v0/tasks" -> ok("""{"task":{"id":${(body as JsonObject)["id"]},"agent":{"id":"${(body as JsonObject)["agentId"]!!.toString().trim('"')}","workspaceId":"w","status":"idle"}},"membership":{}}""")
-            route.endsWith("/bootstrap") -> ok(bootstrap)
+            route.endsWith("/bootstrap") -> { beforeBootstrap(); ok(bootstrap) }
             route.endsWith("/messages") && failOlder && "before=" in path -> TransportResponse(503, body = "{}".toByteArray())
             route.endsWith("/messages") -> ok(page)
             route.endsWith("/send") && failSends > 0 -> { failSends--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
@@ -87,6 +89,30 @@ class ConversationTest {
     ).also { it.start() }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
+
+    @Test fun `initial history and reconnect stay syncing until bootstrap completes or fails`() = runTest {
+        val agent = FakeAgent()
+        var gate = CompletableDeferred<Unit>()
+        agent.beforeBootstrap = { gate.await() }
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        assertTrue(chat.state.value.syncing)
+        assertFalse(chat.state.value.loaded)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(chat.state.value.loaded)
+        assertFalse(chat.state.value.syncing)
+
+        gate = CompletableDeferred()
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        assertTrue(chat.state.value.syncing)
+        assertTrue(chat.state.value.loaded)
+        gate.completeExceptionally(IllegalStateException("fixture unavailable"))
+        advanceUntilIdle()
+        assertFalse(chat.state.value.syncing)
+        assertTrue(chat.state.value.error != null)
+    }
 
     @Test fun `reads history and pending messages in run order`() = runTest {
         val agent = FakeAgent()

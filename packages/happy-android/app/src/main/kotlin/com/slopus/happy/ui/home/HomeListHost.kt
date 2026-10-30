@@ -48,6 +48,7 @@ class HomeListScope(
      * phone list for sidebar list keeps the reader's place.
      */
     val listState: LazyListState,
+    val syncing: Boolean = false,
 )
 
 /**
@@ -64,6 +65,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val local by graph.localSettings.values.collectAsStateWithLifecycle()
     val connection by graph.connectionStatus.collectAsStateWithLifecycle()
+    val syncing by graph.isSyncing.collectAsStateWithLifecycle()
     val registry by graph.accountStore.registry.collectAsStateWithLifecycle()
     val updateUrl by services.updateUrl.collectAsStateWithLifecycle()
     val resources = LocalResources.current
@@ -177,7 +179,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
     }
 
     ProvideAvatarSettings(settings) {
-        content(HomeListScope(state, connection, settings.sessionListGrouping, callbacks, actions, update, navigation, dock, listState))
+        content(HomeListScope(state, connection, settings.sessionListGrouping, callbacks, actions, update, navigation, dock, listState, syncing))
     }
     dock?.dialogs?.invoke()
     duplicating?.let { session ->

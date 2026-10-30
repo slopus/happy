@@ -417,6 +417,7 @@ export const ru: TranslationStructure = {
 
 
     status: {
+        syncing: 'синхронизация',
         connected: 'подключено',
         connecting: 'подключение',
         disconnected: 'отключено',

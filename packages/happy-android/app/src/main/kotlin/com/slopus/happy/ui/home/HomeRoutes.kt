@@ -108,6 +108,7 @@ fun NavGraphBuilder.homeRoutes(
                     dockActions = host.dock?.actions,
                     accounts = rememberAccountMenu(graph),
                     listState = host.listState,
+                    syncing = host.syncing,
                 )
             }
         }

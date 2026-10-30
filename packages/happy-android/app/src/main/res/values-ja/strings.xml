@@ -55,6 +55,7 @@
     <string name="profile_username">ユーザー名</string>
     <string name="profile_status">ステータス</string>
 
+    <string name="status_syncing">同期中</string>
     <string name="status_connected">接続済み</string>
     <string name="status_connecting">接続中</string>
     <string name="status_disconnected">切断済み</string>

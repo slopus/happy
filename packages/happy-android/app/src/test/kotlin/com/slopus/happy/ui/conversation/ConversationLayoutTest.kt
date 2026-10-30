@@ -187,7 +187,8 @@ class ConversationLayoutTest {
         rule.setHappyContent { ConversationScreen(state, null, ConversationScreenActions()) }
         val bar = rule.node(ConversationScreenTags.BAR).bounds
         val list = rule.node(ConversationScreenTags.LIST).bounds
-        rule.node(ConversationScreenTags.SUBTITLE).assertDoesNotExist()
+        rule.node(ConversationScreenTags.SUBTITLE).assertExists()
+        rule.onNodeWithText("online").assertIsDisplayed()
         state = state.copy(working = true, activity = Activity.WaitingForModel)
         rule.waitForIdle()
         // Neither the bar nor the transcript gives up any room for it.
@@ -207,21 +208,21 @@ class ConversationLayoutTest {
         val title = rule.node(ConversationScreenTags.TITLE).bounds
         val list = rule.node(ConversationScreenTags.LIST).bounds
         val idle = state
-        val flips = listOf<Pair<String?, Activity?>>(
-            "Connecting…" to null, null to null, "Offline" to null, "Connecting…" to Activity.Thinking,
-            null to Activity.Thinking, null to Activity.AwaitingAnswer, "Connecting…" to Activity.AwaitingAnswer, null to null,
+        val flips = listOf<Triple<String?, Activity?, Boolean>>(
+            Triple("connecting", null, false), Triple(null, null, false),
+            Triple("offline", Activity.Thinking, false), Triple(null, Activity.Thinking, true),
+            Triple(null, Activity.Thinking, false), Triple(null, Activity.AwaitingAnswer, false),
+            Triple("connecting", Activity.AwaitingAnswer, false), Triple(null, null, false),
         )
-        for ((link, activity) in flips) {
+        for ((link, activity, syncing) in flips) {
             val at = "${link ?: "live"}, ${activity ?: "idle"}"
             rule.mainClock.autoAdvance = false
             connection = link
-            state = if (activity == null) idle else idle.copy(working = true, activity = activity)
+            state = idle.copy(working = activity != null, activity = activity, syncing = syncing)
             Snapshot.sendApplyNotifications()
             rule.mainClock.advanceTimeByFrame()
             rule.mainClock.advanceTimeBy(64)
-            if (link != null || activity != null) {
-                assertTrue("the line is on its way, $at", rule.onAllNodesWithTag(ConversationScreenTags.SUBTITLE, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-            }
+            assertTrue("the line is on its way, $at", rule.onAllNodesWithTag(ConversationScreenTags.SUBTITLE, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
             assertEquals("bar, fading to $at", bar, rule.node(ConversationScreenTags.BAR).bounds)
             assertEquals("title, fading to $at", title, rule.node(ConversationScreenTags.TITLE).bounds)
             rule.mainClock.autoAdvance = true
@@ -229,6 +230,14 @@ class ConversationLayoutTest {
             assertEquals("bar, $at", bar, rule.node(ConversationScreenTags.BAR).bounds)
             assertEquals("title, $at", title, rule.node(ConversationScreenTags.TITLE).bounds)
             assertEquals("transcript, $at", list, rule.node(ConversationScreenTags.LIST).bounds)
+            rule.node(ConversationScreenTags.SUBTITLE).assertExists()
+            val label = link ?: when {
+                syncing -> "syncing"
+                activity == Activity.Thinking -> "Thinking…"
+                activity == Activity.AwaitingAnswer -> "Waiting for your answer"
+                else -> "online"
+            }
+            rule.onNodeWithText(label, useUnmergedTree = true).assertExists()
         }
     }
 

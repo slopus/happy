@@ -55,6 +55,7 @@
     <string name="profile_username">Nazwa użytkownika</string>
     <string name="profile_status">Status</string>
 
+    <string name="status_syncing">synchronizacja</string>
     <string name="status_connected">połączono</string>
     <string name="status_connecting">łączenie</string>
     <string name="status_disconnected">rozłączono</string>

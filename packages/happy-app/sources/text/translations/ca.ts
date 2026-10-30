@@ -81,6 +81,7 @@ export const ca: TranslationStructure = {
 
 
     status: {
+        syncing: 'sincronitzant',
         connected: 'connectat',
         connecting: 'connectant',
         disconnected: 'desconnectat',

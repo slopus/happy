@@ -1,4 +1,4 @@
-{"sources":{"_default.ts":"f56a49e318a08af2ad9b391b279aab191bd6213ab639557c6ed815277d7bcf97","translations/ru.ts":"69afb044cf34d75912ee072f4920f71fff2117ea4a6f62be3bee7190c0daa524","translations/pl.ts":"d8e361487d282df1c382dfd3a925afb8b702df46adf84ccf49127f69f9235c0c","translations/es.ts":"50895d218e49195459e0e38bee8c37f2873bf18679db6ab045f9e3242d2ce2c8","translations/it.ts":"c2d3daf25cc506a1f8fa5928037d8159bc64bd9fdebe9fb7b105b3f5cb942907","translations/pt.ts":"8e4fb3672a89799b7b3ef4c622e13ef5d333bf34e2b52ce7e642e8f823adf9bc","translations/ca.ts":"bb52ceea4b4becfe5ebb6b6b7d186fb0c5e422cda3a10702c006ded840e40e57","translations/zh-Hans.ts":"76b6d36b180c459e3bf7d8937263c7c017a4e456af0ed21e36d7d27f80c3f6c9","translations/zh-Hant.ts":"f1a9693152329feea3b20ecbc929cd970b79240d52151d4ef2f04daad7128246","translations/ja.ts":"afeb27891657c98b6b41c47ff206b64a7611b7f812454c0d136831722fe9c35e"},
+{"sources":{"_default.ts":"47671e1cc241798fb78ea1fe91190f68db189cfa66cb2d3e5c605ed6db97f33c","translations/ru.ts":"b91c36b466afc6e69bface1ba5b5b7776610975c9d0fc54c69d6dfd98afc7426","translations/pl.ts":"b6fb1472516f0b109ed5f9bdb51b141f740447be9c3746e0cf271f35e6180964","translations/es.ts":"c2f7639bc0498871b193024543ee296f565f8b6c99923d460a4514a7dce11a0e","translations/it.ts":"4f0027b1f609acd2f2cdaba8db53de21bae8729c9a2f2d1385b42f04efd17864","translations/pt.ts":"626cf290186868cf5689b5a153fb3708e994599c2c1f8f5942acf3d9b7fedbbd","translations/ca.ts":"e3adb4b56877f0e9f8762e639ab473c276dfeb1de847690c40e9faeed1f4ac34","translations/zh-Hans.ts":"a9def3b6b2b3592d62f3972af2710dcc442a07eec180dba9a60c92ffbceded26","translations/zh-Hant.ts":"da15a2d9e3470377ad90d0bda6a9005cf37a78287dd8e5fd0804177a95bfa673","translations/ja.ts":"97a3d29201573e70e92f04872906e15b8b9b87a5a58d3598d95c2cb1c293dfcd"},
 "keys":{
 "voiceStatusBar.tapToEnd":{"name":"voice_status_bar_tap_to_end","kind":"string","value":"tap to end"},
 "voiceStatusBar.connecting":{"name":"voice_status_bar_connecting","kind":"string","value":"Connecting…"},
@@ -46,6 +46,7 @@
 "profile.lastName":{"name":"profile_last_name","kind":"string","value":"Last Name"},
 "profile.username":{"name":"profile_username","kind":"string","value":"Username"},
 "profile.status":{"name":"profile_status","kind":"string","value":"Status"},
+"status.syncing":{"name":"status_syncing","kind":"string","value":"syncing"},
 "status.connected":{"name":"status_connected","kind":"string","value":"connected"},
 "status.connecting":{"name":"status_connecting","kind":"string","value":"connecting"},
 "status.disconnected":{"name":"status_disconnected","kind":"string","value":"disconnected"},
