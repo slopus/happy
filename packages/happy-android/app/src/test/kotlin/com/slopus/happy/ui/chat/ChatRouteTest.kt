@@ -9,6 +9,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.composable
+import androidx.navigation.NavHostController
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.Text
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.AppGraph
@@ -24,6 +29,7 @@ import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.home.HomeServices
+import com.slopus.happy.ui.home.NewSessionRoute
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
@@ -94,6 +100,39 @@ class ChatRouteTest {
         rule.waitUntilAtLeastOneExists(hasText("Ported, with tests."), 5_000)
         rule.onNodeWithText("Can you port it?").assertExists()
         rule.onNodeWithText("Port the chat").assertExists()
+    }
+
+    @Test
+    fun composeOpensExistingCreationFlowWithoutResettingDraftsAndBackReturnsHome() {
+        val creation = HomeServices.of(graph).newSession(ApplicationProvider.getApplicationContext())
+        creation.setInput("unfinished new session")
+        val writes = mutableListOf<String>()
+        val actions = object : ChatActions by UnavailableChatActions {
+            override suspend fun setDraft(sessionId: String, text: String) { writes += text }
+        }
+        lateinit var nav: NavHostController
+        rule.setHappyContent {
+            nav = rememberNavController()
+            NavHost(nav, startDestination = "fixture-home") {
+                composable("fixture-home") { Text("Home fixture") }
+                composable<NewSessionRoute> { Text("Creation fixture") }
+                chatRoutes(graph, nav, actions)
+            }
+            LaunchedEffect(nav) { nav.navigate(SessionRoute("s1")) }
+        }
+        rule.waitUntilAtLeastOneExists(hasText("Ported, with tests."), 5_000)
+        rule.node(ComposerTags.INPUT).performTextInput("unfinished current chat")
+        rule.waitUntil(5_000) { writes.lastOrNull() == "unfinished current chat" }
+        rule.node(ChatScreenTags.COMPOSE).performClick()
+        rule.waitUntilAtLeastOneExists(hasText("Creation fixture"), 5_000)
+        assertEquals("unfinished new session", creation.draft.value.input)
+        assertEquals(listOf("unfinished current chat"), writes)
+        rule.runOnIdle {
+            assertEquals(true, nav.currentDestination?.hasRoute<NewSessionRoute>())
+            assertEquals("fixture-home", nav.previousBackStackEntry?.destination?.route)
+            nav.popBackStack()
+        }
+        rule.waitUntilAtLeastOneExists(hasText("Home fixture"), 5_000)
     }
 
     @Test

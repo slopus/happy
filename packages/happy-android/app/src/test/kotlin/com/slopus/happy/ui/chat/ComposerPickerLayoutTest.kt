@@ -9,6 +9,8 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.chat.ComposerModeResolver
 import com.slopus.happy.chat.ComposerModes
+import com.slopus.happy.chat.ChatSessionInfo
+import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.sync.AgentModeField
@@ -59,17 +61,20 @@ class ComposerPickerLayoutTest {
         }
     }
 
-    // [permission ......... model · effort] [send]: 2 apart, 40 high in the 42 row.
+    private fun showHeader(modes: ComposerModes, metadata: SessionMetadata? = this.metadata) {
+        val session = ChatSessionInfo.from(SessionRecord("s", 0, 0, 1, true, 0, """{"path":"/repo","host":"h"}""", 1, null, 1, "", null))
+        rule.setHappyContent { Box(Modifier.fillMaxSize()) { ChatHeaderActions(session, modes, metadata, ChatScreenActions()) } }
+        rule.node(ChatScreenTags.MORE).performClick()
+        rule.waitForIdle()
+    }
+
+    // [......... model · effort] [send]: 2 apart, 40 high in the 42 row.
     @Test
     fun chipsFillTheActionRowMiddle() {
         showComposer(modes())
         val row = rule.node(ComposerTags.ACTION_ROW).bounds
         val primary = rule.node(ComposerTags.PRIMARY).bounds
-        val permission = rule.node(ComposerPickerTags.PERMISSION).bounds
-        assertDp("permission at the row start", row.left, permission.left)
-        assertDp("permission 40 high", 40, permission.height)
-        assertDp("centred in the 42 row", row.top + 1.dp, permission.top)
-        rule.onNodeWithText("Auto", useUnmergedTree = true).assertExists()
+        rule.node(ComposerPickerTags.PERMISSION).assertDoesNotExist()
 
         val effort = rule.node(ComposerPickerTags.EFFORT).bounds
         // The middle ends 10 before send: the 8 margin plus the row's 2 gap.
@@ -120,16 +125,13 @@ class ComposerPickerLayoutTest {
     @Test
     fun thePermissionSheetListsAnUnknownPickDisabled() {
         val modes = modes(ComposerMirror(permissionMode = "plan_only"))
-        showComposer(modes)
-        // The unknown pick leads the list and names the chip.
-        rule.onNodeWithText("plan_only", useUnmergedTree = true).assertExists()
-        rule.node(ComposerPickerTags.PERMISSION).performClick()
-        rule.waitForIdle()
+        showHeader(modes)
+        // The unknown pick remains in the header list, disabled.
         rule.onNodeWithText("PERMISSION MODE", useUnmergedTree = true).assertExists()
         rule.node(PickerSheetTags.option("plan_only")).assertIsNotEnabled()
         rule.onNodeWithText("Uses the workspace sandbox.", useUnmergedTree = true).assertExists()
         // The kind's 14 glyph 6 before the label, after the 20 radio and its 16 gap.
-        assertDp("label after the kind glyph", 24 + 20 + 16 + 14 + 6, rule.onNodeWithText("Read only", useUnmergedTree = true).bounds.left)
+        assertDp("label after the kind glyph", rule.node(ChatScreenTags.MENU).bounds.left + (24 + 20 + 16 + 14 + 6).dp, rule.onNodeWithText("Read only", useUnmergedTree = true).bounds.left)
     }
 
     @Test
@@ -138,11 +140,7 @@ class ComposerPickerLayoutTest {
             SessionMetadata.parse("""{"path":"/repo","host":"h","flavor":"codex","sandbox":{"enabled":true}}"""),
         )
         val modes = modes(metadata = sandboxed)
-        rule.setHappyContent {
-            ChatComposer("", {}, null, PrimaryAction.Idle, {}, middle = { ComposerModeChips(modes, sandboxed, { _, _ -> }) })
-        }
-        rule.node(ComposerPickerTags.PERMISSION).performClick()
-        rule.waitForIdle()
+        showHeader(modes, sandboxed)
         rule.onNodeWithText("CODEX PERMISSION MODE", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("Yolo (sandboxed)", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("Read", useUnmergedTree = true).assertExists()

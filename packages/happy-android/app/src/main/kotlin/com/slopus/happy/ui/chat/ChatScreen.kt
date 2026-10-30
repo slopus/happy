@@ -56,6 +56,10 @@ object ChatScreenTags {
     const val TITLE_BUTTON = "chat.header.titleButton"
     const val GIT_CHANGES = "chat.header.git"
     const val AVATAR = "chat.header.avatar"
+    const val COMPOSE = "chat.header.compose"
+    const val MORE = "chat.header.more"
+    const val MENU = "chat.header.menu"
+    const val INFO = "chat.header.info"
     const val LOADING = "chat.loading"
     const val DELETED = "chat.deleted"
     const val DELETED_ICON = "chat.deleted.icon"
@@ -103,7 +107,7 @@ object ChatScreenSpec {
 /** What the chat screen asks of whoever hosts it. */
 class ChatScreenActions(
     val onBack: () -> Unit = {},
-    /** The title and the avatar open `/session/{id}/info`. */
+    /** The title and More's Details open `/session/{id}/info`. */
     val onInfo: () -> Unit = {},
     val onDraftChange: (String) -> Unit = {},
     val onSend: (String) -> Unit = {},
@@ -119,12 +123,14 @@ class ChatScreenActions(
     val onDiscard: (String) -> Unit = {},
     val onAnswerQuestion: suspend (communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) -> Unit = { _, _, _ -> },
     val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
-    /** A pick from the composer's permission, model or effort sheet. */
+    /** A pick from header permissions or the composer's model/effort picker. */
     val onModeChange: (AgentModeField, ModeOption) -> Unit = { _, _ -> },
     /** The CLI warning pill was tapped: this machine's CLI version is acknowledged. */
     val onDismissCliWarning: () -> Unit = {},
     /** Resume, from the inactive-session hint. */
     val onResume: () -> Unit = {},
+    /** Open the relay account's existing new-session creation flow. */
+    val onCompose: () -> Unit = {},
 )
 
 /**
@@ -152,9 +158,9 @@ class ChatPendingSlot(val anchor: ChatSessionInfo?, val placeholder: @Composable
 /**
  * One chat (SessionView.tsx). Spec: the header ([ChatHeaderTitle]: back;
  * the title, 16/20 semibold, with the workspace or branch and the git
- * counts under it in 12/16 secondary; on a phone the 28 avatar, monochrome
- * while offline, in the right slot; title and avatar open the session
- * info), then [ChatScreenSlots.headerAccessory] (Home's tab strip), the
+ * counts under it in 12/16 secondary; New chat and More in 48 dp right
+ * slots; title and More's Details open session info, while supported
+ * permission choices live in More), then [ChatScreenSlots.headerAccessory] (Home's tab strip), the
  * transcript and the dock ([ChatDock]) above the keyboard and the
  * navigation bar. The CLI warning pill floats over the transcript, 8 below
  * the header, except on a landscape phone. The placeholders
@@ -233,8 +239,7 @@ fun ChatScreen(
         else -> session.title ?: stringResource(R.string.session_new_chat)
     }
 
-    // SessionView.tsx: a tablet reaches session info through the title, so the avatar goes;
-    // the bars over the composer sit 12 in rather than 8 (`sessionInputHorizontalPadding`).
+    // The bars over a tablet's composer sit 12 in rather than 8 (`sessionInputHorizontalPadding`).
     val tablet = LocalWindowLayout.current.isTablet
     Column(
         modifier = modifier
@@ -249,11 +254,7 @@ fun ChatScreen(
             titleContent = {
                 ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle)
             },
-            right = if (session != null && !tablet) {
-                { HeaderAvatar(session, state.online, actions.onInfo) }
-            } else {
-                null
-            },
+            right = { ChatHeaderActions(session, modes, session?.metadata ?: pending?.anchor?.metadata, actions) },
         )
         slots.headerAccessory?.invoke()
         if (!tablet) com.slopus.happy.ui.voice.VoiceStatusBar()

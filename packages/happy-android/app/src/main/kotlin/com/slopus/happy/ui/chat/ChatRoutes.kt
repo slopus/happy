@@ -63,6 +63,7 @@ import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.files.MessageDetailRoute
 import com.slopus.happy.ui.files.toolPressRoute
 import com.slopus.happy.ui.home.SessionViewingEffect
+import com.slopus.happy.ui.home.NewSessionRoute
 import com.slopus.happy.ui.home.resumeAvailability
 import com.slopus.happy.ui.usage.LocalUsageDisplay
 import com.slopus.happy.ui.usage.UsageDisplay
@@ -93,6 +94,9 @@ fun NavGraphBuilder.chatRoutes(
             graph, route.id, actions,
             onBack = { nav.popBackStack() },
             onInfo = { onInfo(route.id) },
+            // The existing relay creation flow owns its own draft. Replacing
+            // this route leaves Back at Home without clearing either draft.
+            onCompose = { nav.navigate(NewSessionRoute) { popUpTo<SessionRoute> { inclusive = true }; launchSingleTop = true } },
             onToolPress = { message -> nav.navigate(toolPressRoute(route.id, message)) },
             onToolFilePress = { message, file -> nav.navigate(MessageDetailRoute(route.id, message.id, file = file)) },
             // A resume that comes back as another session, or another tab of the checkout, replaces this chat in place.
@@ -108,6 +112,7 @@ private fun ChatRoute(
     actions: ChatActions,
     onBack: () -> Unit,
     onInfo: () -> Unit,
+    onCompose: () -> Unit,
     onToolPress: (ChatMessage.ToolCallMessage) -> Unit,
     onToolFilePress: (ChatMessage.ToolCallMessage, String) -> Unit,
     onOpenSession: (String) -> Unit,
@@ -171,10 +176,12 @@ private fun ChatRoute(
         failure = e.message?.takeIf { it.isNotBlank() } ?: notSent
     }
 
+    val compose by rememberUpdatedState(onCompose)
     val screenActions = remember(sessionId, actions, feed, draft, resources, route) {
         ChatScreenActions(
             onBack = onBack,
             onInfo = onInfo,
+            onCompose = { compose() },
             onToolPress = onToolPress,
             onToolFilePress = onToolFilePress,
             onDraftChange = draft::set,

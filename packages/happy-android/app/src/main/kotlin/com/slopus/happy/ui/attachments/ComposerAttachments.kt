@@ -3,6 +3,27 @@ package com.slopus.happy.ui.attachments
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachmentNotice
@@ -18,6 +39,10 @@ import com.slopus.happy.sync.rigCanUseAttachments
 import com.slopus.happy.text.plural
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
+import com.slopus.happy.ui.components.PickerSheetSection
+import com.slopus.happy.ui.components.PickerSheetSpec
+import com.slopus.happy.ui.conversation.ConversationPopup
+import com.slopus.happy.ui.theme.HappyTheme
 import android.content.res.Resources
 
 /** The open chat's image picker; null where the session takes no images (no strip, no add button). */
@@ -48,11 +73,42 @@ fun ComposerAttachmentStrip() {
     AttachmentStrip(picker.images, onRemove = picker::remove)
 }
 
-/** The composer's add-image button (in the action row). Nothing without a picker. */
+/** A 280 dp floating chooser at the add-image button, with 48 dp actions and a scrollable list. */
 @Composable
 fun ComposerAddImageButton() {
     val picker = LocalComposerImages.current ?: return
-    AddImageButton(attached = picker.images.isNotEmpty(), onClick = picker::attach)
+    var open by remember(picker) { mutableStateOf(false) }
+    var anchorCenterY by remember { mutableIntStateOf(0) }
+    val title = stringResource(R.string.image_upload_attach_title)
+    Box(Modifier.onGloballyPositioned { anchorCenterY = it.boundsInWindow().center.y.toInt() }) {
+        AddImageButton(attached = picker.images.isNotEmpty(), onClick = { open = !open })
+        if (open) ConversationPopup(title, onDismiss = { open = false }, anchorCenterY = anchorCenterY, alignEnd = false, width = 280.dp) {
+            Column(Modifier.testTag(ComposerAttachmentTags.MENU).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+                PickerSheetSection("attachments", title, separated = false)
+                AttachmentMenuAction(ComposerAttachmentTags.PASTE, stringResource(R.string.image_upload_paste_from_clipboard)) {
+                    open = false
+                    picker.paste()
+                }
+                AttachmentMenuAction(ComposerAttachmentTags.LIBRARY, stringResource(R.string.image_upload_choose_from_library)) {
+                    open = false
+                    picker.pick()
+                }
+            }
+        }
+    }
+}
+
+object ComposerAttachmentTags {
+    const val MENU = "composer.attachments.menu"
+    const val PASTE = "composer.attachments.paste"
+    const val LIBRARY = "composer.attachments.library"
+}
+
+@Composable
+private fun AttachmentMenuAction(tag: String, label: String, action: () -> Unit) {
+    Text(label, style = PickerSheetSpec.label, color = HappyTheme.colors.text,
+        modifier = Modifier.testTag(tag).fillMaxWidth().heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = action).padding(horizontal = 24.dp, vertical = 14.dp))
 }
 
 /** Whether images wait to be sent: the send button is live with images and no text. */

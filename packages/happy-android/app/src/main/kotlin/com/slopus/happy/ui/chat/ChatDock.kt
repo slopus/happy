@@ -203,7 +203,7 @@ private fun ChatComposerFor(
         showDetails = showDetails,
         onPanelPositioned = onPanelPositioned,
         middle = {
-            // [+] [permission ... model · effort]: the chips take what the add button leaves.
+            // [+] [... model · effort]: permissions live in the header overflow.
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ComposerSpec.actionRowGap)) {
                 ComposerAddImageButton()
                 ComposerModeChips(modes, metadata, actions.onModeChange, Modifier.weight(1f))

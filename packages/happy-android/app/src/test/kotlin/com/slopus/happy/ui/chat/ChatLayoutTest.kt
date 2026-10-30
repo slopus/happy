@@ -279,9 +279,12 @@ class ChatLayoutTest {
         rule.onNodeWithText("Fix the login").assertExists()
         rule.onNodeWithText("online").assertExists()
         val bar = rule.node(HeaderTags.BAR).bounds
-        val avatar = rule.node(ChatScreenTags.AVATAR).bounds
-        assertDp("avatar 28", 28, avatar.right - avatar.left)
-        assertDp("avatar centred in the bar", (bar.top + bar.bottom) / 2, (avatar.top + avatar.bottom) / 2)
+        val compose = rule.node(ChatScreenTags.COMPOSE).bounds
+        val more = rule.node(ChatScreenTags.MORE).bounds
+        assertDp("compose touch target", 48, compose.right - compose.left)
+        assertDp("overflow touch target", 48, more.right - more.left)
+        assertDp("compose centred in the bar", (bar.top + bar.bottom) / 2, (compose.top + compose.bottom) / 2)
+        assertDp("overflow after compose", compose.right, more.left)
         // Inverted: the newest row sits lowest, 8 above the composer.
         val agent = rule.node(MessageTags.AGENT).bounds
         val user = rule.node(MessageTags.USER).bounds
@@ -292,8 +295,7 @@ class ChatLayoutTest {
     }
 
     /**
-     * TalkBack over a chat: the header's back and avatar are named buttons
-     * (the avatar, unnamed in happy-app, after the Details it opens); the
+     * TalkBack over a chat: the header's back, New chat and More are named buttons; the
      * agent's copy action is "Copy", the primary button "Send" (AgentInput's
      * labels); the input reads its draft. Nothing actionable goes unnamed.
      */
@@ -312,7 +314,8 @@ class ChatLayoutTest {
             )
         }
         rule.onNode(hasContentDescription("Back") and hasRole(Role.Button)).assertExists()
-        rule.node(ChatScreenTags.AVATAR).assert(hasContentDescription("Details") and hasRole(Role.Button))
+        rule.node(ChatScreenTags.COMPOSE).assert(hasContentDescription("New chat") and hasRole(Role.Button))
+        rule.node(ChatScreenTags.MORE).assert(hasContentDescription("More") and hasRole(Role.Button))
         rule.onNode(hasContentDescription("Send") and hasRole(Role.Button)).assertExists()
         rule.onNode(hasSetTextAction()).assert(hasText("Draft"))
         rule.assertActionsLabelled()
