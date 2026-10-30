@@ -56,6 +56,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var agent: AgentHarness?
     private var storyRows: StoryRowsHarness?
     private var agentList: AgentListScrollHarness?
+    private var composerKeyboardProbe: ComposerKeyboardProbe?
     private var realArchive: RealArchiveHarness?
     private var qaProbe: ChatUltraQAProbe?
     private var motionScript: ChatMotionScript?
@@ -72,6 +73,9 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         let arguments = ProcessInfo.processInfo.arguments
         #if DEBUG || HAPPY_FIXTURES
+        if arguments.contains("-composerKeyboardProbe") {
+            composerKeyboardProbe = ComposerKeyboardProbe(window: window, arguments: arguments)
+        }
         if arguments.contains("-qaRealChat") {
             qaReal = ChatUltraQAReal(window: window)
             return
