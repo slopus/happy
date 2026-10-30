@@ -77,12 +77,10 @@ class StartLayoutTest {
         }
     }
 
-    /** The free height splits 3 : 2 : 1 above the logo, between the logo and Start, and below Start (16 above [bottom]). */
+    /** Start 48 above [bottom]; the logo centred in the space between [top] and Start. */
     private fun assertMiddle(logo: DpRect, connect: DpRect, bottom: Dp, top: Dp = 0.dp) {
-        val gap = connect.top - logo.bottom
-        assertDp("below start is half the gap", gap / 2, bottom - 16.dp - connect.bottom)
-        assertDp("above the logo is 1.5 times the gap", gap * 1.5f, logo.top - top)
-        assertTrue("start in the lower third", (connect.top + connect.bottom) / 2 > top + (bottom - top) * 2 / 3)
+        assertDp("start 48 above the bottom", bottom - 48.dp, connect.bottom)
+        assertDp("logo centred above start", logo.top - top, connect.top - logo.bottom)
     }
 
     @Test
@@ -102,7 +100,7 @@ class StartLayoutTest {
         assertDp("connect height", 50, connect.height)
         assertDp("connect centred", (PHONE_WIDTH / 2f).dp, (connect.left + connect.right) / 2)
 
-        // The logo about the middle, Start about the middle of the lower third.
+        // Start 48 above the bottom, the logo centred in the space above it.
         val logo = rule.node(StartTags.LOGO).bounds
         assertDp("logo width", 220, logo.width)
         assertDp("logo keeps the logotype's aspect", (220f * 319f / 1200f).dp, logo.height)
