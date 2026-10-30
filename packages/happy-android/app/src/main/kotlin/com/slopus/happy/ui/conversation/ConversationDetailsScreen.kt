@@ -50,7 +50,7 @@ fun ConversationDetailsScreen(agent: AgentInfo?, mode: Mode?, error: String?, on
         when {
             agent == null && error != null -> Text(
                 error,
-                style = ConversationScreenSpec.placeholder,
+                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
                 color = colors.textSecondary,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.align(Alignment.Center).padding(32.dp).testTag(ConversationDetailsTags.ERROR),

@@ -21,15 +21,15 @@ import com.slopus.happy.conversation.Delivery
 import com.slopus.happy.conversation.MediaItem
 import com.slopus.happy.conversation.Message
 import com.slopus.happy.conversation.Mode
+import com.slopus.happy.conversation.ModeCatalog
+import com.slopus.happy.conversation.ModelChoice
 import com.slopus.happy.conversation.Presentation
 import com.slopus.happy.conversation.Question
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
-import com.slopus.happy.ui.chat.ComposerTags
 import com.slopus.happy.ui.chat.PrimaryAction
-import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import androidx.compose.ui.unit.height
@@ -85,13 +85,13 @@ class ConversationLayoutTest {
 
     @Test fun `a new chat is empty with New chat and only compose in the header`() {
         show(ConversationState(created = false, loaded = true))
-        rule.node(HeaderTags.TITLE).assertIsDisplayed()
+        rule.node(ConversationScreenTags.TITLE).assertIsDisplayed()
         rule.onNodeWithText("New chat").assertIsDisplayed()
         rule.node(ConversationScreenTags.EMPTY).assertIsDisplayed()
         rule.node(ConversationScreenTags.COMPOSE).assertIsDisplayed()
         rule.node(ConversationScreenTags.DETAILS).assertDoesNotExist()
         // The composer runs edge to edge, 8 in, above the navigation bar.
-        val composer = rule.node(ComposerTags.COMPOSER).bounds
+        val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
         assertDp("composer left", 0, composer.left)
         assertDp("composer width", 411, composer.width)
         shot("new-chat")
@@ -100,12 +100,12 @@ class ConversationLayoutTest {
     @Test fun `history renders text, tools, media and a failure, with the connection state in the header`() {
         show(ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode), connection = "Offline")
         rule.onNodeWithText("Fix the login redirect").assertIsDisplayed()
-        rule.node(HeaderTags.SUBTITLE).assertIsDisplayed()
+        rule.node(ConversationScreenTags.SUBTITLE).assertIsDisplayed()
         rule.onNodeWithText("Offline").assertIsDisplayed()
         rule.node(ConversationScreenTags.DETAILS).assertIsDisplayed()
         rule.node(ConversationRowTags.FAILURE).assertIsDisplayed()
         // The header is the standard 64 bar.
-        assertDp("header", 64, rule.node(HeaderTags.BAR).bounds.height)
+        assertDp("header", 64, rule.node(ConversationScreenTags.BAR).bounds.height)
         shot("history-offline")
     }
 
@@ -121,7 +121,7 @@ class ConversationLayoutTest {
         show(state, actions = ConversationScreenActions(onStop = { stops++ }))
         rule.onNodeWithText("Running tools…").assertIsDisplayed()
         assertEquals(PrimaryAction.Stop, primaryActionOf(false, state))
-        rule.node(ComposerTags.PRIMARY).performClick()
+        rule.node(ConversationComposerTags.PRIMARY).performClick()
         assertEquals(1, stops)
         shot("working")
     }
@@ -131,12 +131,12 @@ class ConversationLayoutTest {
         val sent = ArrayList<String>()
         show(
             ConversationState(created = true, loaded = true, rows = history, agent = agent),
-            actions = ConversationScreenActions(onDraftChange = { drafts += it }, onSend = { sent += it; true }),
+            actions = ConversationScreenActions(onDraftChange = { drafts += it }, onSend = { words, _ -> sent += words; true }),
         )
-        rule.node(ComposerTags.INPUT).performTextInput("Ship it")
+        rule.node(ConversationComposerTags.INPUT).performTextInput("Ship it")
         assertEquals("Ship it", drafts.last())
         shot("typed")
-        rule.node(ComposerTags.PRIMARY).performClick()
+        rule.node(ConversationComposerTags.PRIMARY).performClick()
         assertEquals(listOf("Ship it"), sent)
         rule.onNodeWithText("Ship it").assertDoesNotExist()
     }
@@ -177,7 +177,7 @@ class ConversationLayoutTest {
             dark = mode
             rule.waitForIdle()
             val image = rule.onRoot().captureToImage().asAndroidBitmap()
-            val bar = rule.node(HeaderTags.BAR).bounds
+            val bar = rule.node(ConversationScreenTags.BAR).bounds
             val list = rule.node(ConversationScreenTags.LIST).bounds
             val density = image.width / 411f
             // The bar's right half below its icons, and the list's right edge: both plain background.
@@ -201,13 +201,54 @@ class ConversationLayoutTest {
     @Test fun `a subagent can't take messages`() {
         show(ConversationState(created = true, loaded = true, rows = history, agent = agent.copy(parentAgentId = "p")))
         rule.node(ConversationScreenTags.READ_ONLY).assertIsDisplayed()
-        rule.node(ComposerTags.COMPOSER).assertDoesNotExist()
+        rule.node(ConversationComposerTags.COMPOSER).assertDoesNotExist()
     }
 
     @Test fun `a chat that could not be read says why`() {
         show(ConversationState(created = true, loaded = true, error = "Could not reach the agent."))
         rule.node(ConversationScreenTags.ERROR).assertIsDisplayed()
         shot("error")
+    }
+
+    @Test fun `the composer picks the model, keeping the effort it runs`() {
+        val catalog = ModeCatalog(
+            listOf(
+                ModelChoice("claude", "Current CLI", "claude", "anthropic/opus-5", "Opus 5 1M", listOf("low", "medium", "high", "max"), "high", emptyList()),
+                ModelChoice("codex", "Codex", "codex", "openai/gpt-5.6-sol", "GPT-5.6 Sol", listOf("low", "medium", "high", "xhigh"), "medium", listOf("priority")),
+            ),
+            mode,
+        )
+        val picks = ArrayList<Mode>()
+        show(
+            ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode, catalog = catalog),
+            actions = ConversationScreenActions(onModeChange = { picks += it }),
+        )
+        rule.onNodeWithText("Opus 5 1M").assertIsDisplayed()
+        rule.onNodeWithText("High").assertIsDisplayed()
+        rule.onNodeWithText("Auto").assertIsDisplayed()
+        rule.node(ConversationComposerTags.ATTACH).assertIsDisplayed()
+        shot("modes")
+        rule.node(ConversationModeTags.MODEL).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("GPT-5.6 Sol").assertIsDisplayed()
+        rule.onNodeWithText("GPT-5.6 Sol").performClick()
+        rule.waitForIdle()
+        assertEquals(listOf(Mode("codex", "openai/gpt-5.6-sol", "high", null, "auto")), picks)
+    }
+
+    @Test fun `the permission sheet lists the four modes`() {
+        val picks = ArrayList<Mode>()
+        show(
+            ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode, catalog = ModeCatalog(emptyList(), mode)),
+            actions = ConversationScreenActions(onModeChange = { picks += it }),
+        )
+        rule.node(ConversationModeTags.PERMISSION).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Workspace write").assertIsDisplayed()
+        rule.onNodeWithText("Full access").assertIsDisplayed()
+        rule.onNodeWithText("Read only").performClick()
+        rule.waitForIdle()
+        assertEquals(listOf(mode.copy(permissionMode = "read_only")), picks)
     }
 
     @Test fun `details list the agent and its mode`() {

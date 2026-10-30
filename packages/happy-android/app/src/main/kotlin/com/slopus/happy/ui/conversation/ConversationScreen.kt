@@ -1,7 +1,6 @@
 package com.slopus.happy.ui.conversation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +19,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -34,32 +40,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
-import com.slopus.happy.conversation.Activity
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.MediaRef
-import com.slopus.happy.ui.chat.ChatComposer
-import com.slopus.happy.ui.chat.ComposerStatus
+import com.slopus.happy.conversation.Mode
 import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.PrimaryAction
-import com.slopus.happy.ui.chat.SessionStatusColors
 import com.slopus.happy.ui.chat.resolvePrimaryAction
 import com.slopus.happy.ui.chat.userMessageBubblePalette
-import com.slopus.happy.ui.components.Header
-import com.slopus.happy.ui.components.HeaderBackButton
-import com.slopus.happy.ui.components.HeaderIconButton
-import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.happyTextStyle
+import java.io.File
 
 object ConversationScreenTags {
     const val SCREEN = "conversation.screen"
+    const val BAR = "conversation.bar"
+    const val TITLE = "conversation.bar.title"
+    const val SUBTITLE = "conversation.bar.subtitle"
+    const val BACK = "conversation.bar.back"
     const val LIST = "conversation.list"
     const val LOADING = "conversation.loading"
     const val EMPTY = "conversation.empty"
@@ -72,15 +76,6 @@ object ConversationScreenTags {
     const val DETAILS = "conversation.header.details"
 }
 
-object ConversationScreenSpec {
-    val placeholder = happyTextStyle(fontSize = 16, lineHeight = 24)
-    val placeholderPadding = 32.dp
-    val newestPadding = 8.dp
-    val olderSlot = 32.dp
-    val notice = happyTextStyle(fontSize = 14, lineHeight = 20)
-}
-
-/** What the conversation screen asks of whoever hosts it. */
 class ConversationScreenActions(
     val onBack: () -> Unit = {},
     /** A new empty chat in place of this one. */
@@ -88,8 +83,10 @@ class ConversationScreenActions(
     /** The chat's details; only once the chat exists. */
     val onDetails: () -> Unit = {},
     val onDraftChange: (String) -> Unit = {},
-    /** True when the message was taken (the composer then clears). */
-    val onSend: (String) -> Boolean = { false },
+    /** The words and the attached pictures' files; true when the message was taken (the composer then clears). */
+    val onSend: (String, List<File>) -> Boolean = { _, _ -> false },
+    /** The composer picked another model, effort or permission mode. */
+    val onModeChange: (Mode) -> Unit = {},
     val onStop: () -> Unit = {},
     val onRetrySend: (String) -> Unit = {},
     val onDiscardSend: (String) -> Unit = {},
@@ -104,25 +101,21 @@ class ConversationScreenActions(
 )
 
 /**
- * One conversation with a paired agent. Spec: the standard header, in the
- * transcript's own surface colour so bar and content are one (back;
- * the chat's title, or "New chat" before its first send, with the
- * connection's state under it in the header's subtitle while it isn't
- * live, never in the content; compose, then details once the chat
- * exists, 32 buttons with 22 icons), then the transcript, newest at the
- * bottom with 8 under it, and the dock above the keyboard and the
- * navigation bar: the open question ([ConversationQuestionCard]), then the
- * legacy composer (ChatComposer) whose status line is the working line
- * (blue dot pulsing while the agent works, orange while it waits on an
- * answer). Stop takes the round button while the agent works and the
- * composer is empty. A subagent or archived chat has no composer, a 14/20
- * textSecondary line in its place. Past the oldest row a 32 slot: a 16
- * spinner while a page loads; after a failed page "Couldn't load earlier
- * messages." (13/18 textSecondary) and Retry (13/18 semibold, link
- * colour), 12 apart, and nothing asks again until Retry. Before history is read a 24 spinner
- * sits centred; a new chat and an empty one say so in 16/24 textSecondary,
- * 32 in; a chat that could not be read says why the same way.
+ * One conversation with a paired agent, in Android's own forms: a Material 3
+ * top app bar in the transcript's surface colour, scrolled or not (back
+ * arrow; the chat's title, or "New chat" before its first send, with the
+ * connection's state under it while it isn't live, never in the content;
+ * new chat, then details once the chat exists), the transcript newest at
+ * the bottom, and the dock above the keyboard and navigation bar: the open
+ * question ([ConversationQuestionCard]), then [ConversationComposer]. A
+ * subagent or archived chat has a line saying so instead. Past the oldest
+ * row a 32 slot: a spinner while a page loads; after a failed page
+ * "Couldn't load earlier messages." and a Retry text button, and nothing
+ * asks again until Retry. Before history is read a spinner sits centred; a
+ * new chat, an empty one and one that could not be read say so in
+ * bodyLarge, 32 in.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationScreen(
     state: ConversationState,
@@ -143,7 +136,7 @@ fun ConversationScreen(
     val bubble = userMessageBubblePalette(bubbleColor, colors.dark)
     val legacy = remember(actions) {
         MessageCallbacks(
-            onOptionPress = { actions.onSend(it) },
+            onOptionPress = { actions.onSend(it, emptyList()) },
             onRetry = actions.onRetrySend,
             onDiscard = actions.onDiscardSend,
         )
@@ -156,29 +149,56 @@ fun ConversationScreen(
     LaunchedEffect(atNewest, state.created) { if (state.created) visible(atNewest) }
 
     Column(modifier.testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface)) {
-        Header(
-            title = state.title ?: stringResource(if (state.created && state.loaded) R.string.conversation_untitled else R.string.conversation_compose),
-            subtitle = connection,
-            // One surface with the transcript, light and dark: no tint when it scrolls under.
-            background = colors.surface,
-            left = { HeaderBackButton(actions.onBack) },
-            right = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.testTag(ConversationScreenTags.COMPOSE)) {
-                        HeaderIconButton(Ionicon.CreateOutline, stringResource(R.string.conversation_compose), actions.onCompose)
-                    }
-                    if (state.created) Box(Modifier.testTag(ConversationScreenTags.DETAILS)) {
-                        HeaderIconButton(Ionicon.InformationCircleOutline, stringResource(R.string.conversation_details), actions.onDetails)
+        TopAppBar(
+            title = {
+                Column {
+                    Text(
+                        state.title ?: stringResource(if (state.created && state.loaded) R.string.conversation_untitled else R.string.conversation_compose),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag(ConversationScreenTags.TITLE),
+                    )
+                    connection?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textSecondary,
+                            maxLines = 1,
+                            modifier = Modifier.testTag(ConversationScreenTags.SUBTITLE),
+                        )
                     }
                 }
             },
+            navigationIcon = {
+                IconButton(onClick = actions.onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
+                    Icon(MaterialSymbols.ArrowBack, stringResource(R.string.conversation_back))
+                }
+            },
+            actions = {
+                IconButton(onClick = actions.onCompose, modifier = Modifier.testTag(ConversationScreenTags.COMPOSE)) {
+                    Icon(MaterialSymbols.Edit, stringResource(R.string.conversation_compose))
+                }
+                if (state.created) {
+                    IconButton(onClick = actions.onDetails, modifier = Modifier.testTag(ConversationScreenTags.DETAILS)) {
+                        Icon(MaterialSymbols.Info, stringResource(R.string.conversation_details))
+                    }
+                }
+            },
+            // One surface with the transcript, light and dark: no tint when it scrolls under.
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = colors.surface,
+                scrolledContainerColor = colors.surface,
+                titleContentColor = colors.text,
+                navigationIconContentColor = colors.text,
+                actionIconContentColor = colors.text,
+            ),
+            modifier = Modifier.testTag(ConversationScreenTags.BAR),
         )
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 !state.loaded -> CircularProgressIndicator(
                     color = colors.textSecondary,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.align(Alignment.Center).size(24.dp).testTag(ConversationScreenTags.LOADING),
+                    modifier = Modifier.align(Alignment.Center).testTag(ConversationScreenTags.LOADING),
                 )
                 state.rows.isEmpty() -> Placeholder(
                     text = state.error?.let { stringResource(R.string.conversation_load_failed) + "\n" + it }
@@ -195,29 +215,23 @@ fun ConversationScreen(
             if (state.created && !state.canSend) {
                 Text(
                     stringResource(if (state.agent?.archivedAt != null) R.string.conversation_archived else R.string.conversation_read_only),
-                    style = ConversationScreenSpec.notice,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(16.dp).testTag(ConversationScreenTags.READ_ONLY),
                 )
             } else {
-                val hasText = text.isNotBlank()
-                ChatComposer(
+                ConversationComposer(
+                    state = state,
                     text = text,
                     onTextChange = {
                         text = it
                         actions.onDraftChange(it)
                     },
-                    status = activityStatus(state.activity),
-                    primary = primaryActionOf(hasText, state),
-                    aborting = state.stopping,
-                    onPrimary = {
-                        if (hasText) {
-                            if (actions.onSend(text)) text = ""
-                        } else if (state.working) {
-                            actions.onStop()
-                        }
-                    },
+                    onSend = actions.onSend,
+                    onSent = { text = "" },
+                    onStop = actions.onStop,
+                    onModeChange = actions.onModeChange,
                 )
             }
         }
@@ -225,32 +239,14 @@ fun ConversationScreen(
 }
 
 @Composable
-private fun activityStatus(activity: Activity?): ComposerStatus? {
-    activity ?: return null
-    val text = stringResource(
-        when (activity) {
-            Activity.AwaitingAnswer -> R.string.conversation_activity_awaiting_answer
-            Activity.WaitingForModel -> R.string.conversation_activity_waiting_for_model
-            Activity.Thinking -> R.string.conversation_activity_thinking
-            Activity.PreparingTools -> R.string.conversation_activity_preparing_tools
-            Activity.RunningTools -> R.string.conversation_activity_running_tools
-            Activity.Working -> R.string.conversation_activity_working
-            Activity.Delegating -> R.string.conversation_activity_delegating
-        },
-    )
-    val color = if (activity == Activity.AwaitingAnswer) SessionStatusColors.attention else SessionStatusColors.thinking
-    return ComposerStatus(text, color, pulsing = true)
-}
-
-@Composable
 private fun Placeholder(text: String, tag: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
             text,
-            style = ConversationScreenSpec.placeholder,
+            style = MaterialTheme.typography.bodyLarge,
             color = HappyTheme.colors.textSecondary,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(ConversationScreenSpec.placeholderPadding).contentMaxWidth(LocalWindowLayout.current).testTag(tag),
+            modifier = Modifier.padding(32.dp).contentMaxWidth(LocalWindowLayout.current).testTag(tag),
         )
     }
 }
@@ -277,31 +273,25 @@ private fun Transcript(
     LazyColumn(
         state = listState,
         reverseLayout = true,
-        contentPadding = PaddingValues(bottom = ConversationScreenSpec.newestPadding),
+        contentPadding = PaddingValues(bottom = 8.dp),
         modifier = Modifier.fillMaxSize().testTag(ConversationScreenTags.LIST),
     ) {
         items(state.rows, key = ConversationRow::key, contentType = { it::class }) { row ->
             ConversationRowView(row, bubble, actions)
         }
         item(key = "older", contentType = "older") {
-            Box(Modifier.fillMaxWidth().heightIn(min = ConversationScreenSpec.olderSlot).testTag(ConversationScreenTags.OLDER), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().heightIn(min = 32.dp).testTag(ConversationScreenTags.OLDER), contentAlignment = Alignment.Center) {
                 when {
                     state.loadingOlder -> CircularProgressIndicator(Modifier.size(16.dp), color = HappyTheme.colors.textSecondary, strokeWidth = 2.dp)
                     state.olderFailed -> Row(
-                        Modifier.padding(vertical = 8.dp).testTag(ConversationScreenTags.OLDER_FAILED),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        Modifier.testTag(ConversationScreenTags.OLDER_FAILED),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(stringResource(R.string.conversation_older_failed), style = ConversationRowSpec.notice, color = HappyTheme.colors.textSecondary)
-                        Text(
-                            stringResource(R.string.common_retry),
-                            style = ConversationRowSpec.label,
-                            color = HappyTheme.colors.textLink,
-                            modifier = Modifier
-                                .testTag(ConversationScreenTags.OLDER_RETRY)
-                                .clickable(role = Role.Button) { onLoadOlder(true) }
-                                .padding(vertical = 6.dp),
-                        )
+                        Text(stringResource(R.string.conversation_older_failed), style = MaterialTheme.typography.bodySmall, color = HappyTheme.colors.textSecondary)
+                        TextButton(onClick = { onLoadOlder(true) }, modifier = Modifier.testTag(ConversationScreenTags.OLDER_RETRY)) {
+                            Text(stringResource(R.string.common_retry))
+                        }
                     }
                 }
             }
@@ -310,5 +300,5 @@ private fun Transcript(
 }
 
 /** The send/stop button the composer shows; kept beside the screen for its tests. */
-internal fun primaryActionOf(hasText: Boolean, state: ConversationState): PrimaryAction =
-    resolvePrimaryAction(hasContent = hasText, showAbort = state.working, canAbort = state.created, blocked = false)
+internal fun primaryActionOf(hasContent: Boolean, state: ConversationState): PrimaryAction =
+    resolvePrimaryAction(hasContent = hasContent, showAbort = state.working, canAbort = state.created, blocked = false)

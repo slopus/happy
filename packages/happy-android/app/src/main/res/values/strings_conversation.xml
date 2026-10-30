@@ -65,4 +65,23 @@
     <string name="conversation_status_idle">Idle</string>
     <string name="conversation_status_working">Working</string>
     <string name="conversation_untitled">New Task</string>
+    <string name="conversation_permission_auto">Auto</string>
+    <string name="conversation_permission_auto_description">Works in its folder; anything beyond is reviewed first.</string>
+    <string name="conversation_permission_workspace_write">Workspace write</string>
+    <string name="conversation_permission_workspace_write_description">Reads anywhere, writes only in its folder.</string>
+    <string name="conversation_permission_read_only">Read only</string>
+    <string name="conversation_permission_read_only_description">Reads and answers, changes nothing.</string>
+    <string name="conversation_permission_full_access">Full access</string>
+    <string name="conversation_permission_full_access_description">Runs anything on this computer without asking.</string>
+    <string name="conversation_mode_permission">Permissions</string>
+    <string name="conversation_mode_model">Model</string>
+    <string name="conversation_mode_effort">Effort</string>
+    <string name="conversation_back">Back</string>
+    <string name="conversation_send">Send</string>
+    <string name="conversation_stop">Stop</string>
+    <string name="conversation_message_placeholder">Message</string>
+    <string name="conversation_attach_picture">Add picture</string>
+    <string name="conversation_remove_picture">Remove picture</string>
+    <string name="conversation_pictures_too_large_title">Pictures too large</string>
+    <string name="conversation_pictures_too_large_message">Together these pictures are more than one message can carry. Remove some and send again.</string>
 </resources>
