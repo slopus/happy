@@ -112,6 +112,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
             try {
                 await claudeLocal({
                     path: session.path,
+                    model: session.model,
                     sessionId: session.sessionId,
                     onSessionFound: handleSessionStart,
                     onThinkingChange: session.onThinkingChange,

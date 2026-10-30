@@ -73,6 +73,7 @@ describe('claudeLocalLauncher', () => {
 
         const session = {
             sessionId: 'claude-session-1',
+            model: 'claude-opus-5-5',
             path: '/tmp/project',
             client: {
                 sendClaudeSessionMessage: vi.fn(),
@@ -109,6 +110,7 @@ describe('claudeLocalLauncher', () => {
 
         await vi.waitFor(() => {
             expect(observed.localAbortSignal).toBeDefined();
+            expect(mockClaudeLocal.mock.calls[0][0].model).toBe('claude-opus-5-5');
             expect(observed.queueHandler).toBeDefined();
         });
 

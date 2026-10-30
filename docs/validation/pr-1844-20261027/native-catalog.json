@@ -1,0 +1,93 @@
+{
+  "scope": "native CLI control initialize only; zero user turns",
+  "responseSubtype": "success",
+  "models": [
+    {
+      "value": "default",
+      "resolvedModel": "claude-opus-5-5",
+      "displayName": "Default (recommended)",
+      "description": "Opus 5.5 · Best for everyday, complex tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsFastMode": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    },
+    {
+      "value": "opus",
+      "resolvedModel": "claude-opus-5-5",
+      "displayName": "Opus",
+      "description": "Opus 5.5 · Best for everyday, complex tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsFastMode": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    },
+    {
+      "value": "claude-fable-5-1[1m]",
+      "resolvedModel": "claude-fable-5-1",
+      "displayName": "Fable",
+      "description": "Fable 5.1 · Most capable for your hardest and longest-running tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    },
+    {
+      "value": "sonnet",
+      "resolvedModel": "claude-sonnet-5-5",
+      "displayName": "Sonnet",
+      "description": "Sonnet 5.5 · Efficient for routine tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    },
+    {
+      "value": "haiku",
+      "resolvedModel": "claude-haiku-5-5",
+      "displayName": "Haiku",
+      "description": "Haiku 5.5 · Fastest for quick answers",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    }
+  ]
+}

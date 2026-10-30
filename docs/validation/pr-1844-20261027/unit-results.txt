@@ -1,0 +1,13 @@
+pnpm --filter happy exec vitest run --project unit src/claude/claudeRemote.test.ts src/claude/claudeRemoteLauncher.test.ts src/claude/claudeLocal.test.ts src/claude/claudeLocalLauncher.test.ts src/claude/runClaude.test.ts src/claude/utils/modelCatalog.test.ts src/claude/utils/discoverClaudeModels.test.ts
+
+ ✓ |unit| src/claude/utils/modelCatalog.test.ts (20 tests) 12ms
+ ✓ |unit| src/claude/claudeLocal.test.ts (14 tests) 32ms
+ ✓ |unit| src/claude/claudeRemote.test.ts (11 tests) 25ms
+ ✓ |unit| src/claude/claudeLocalLauncher.test.ts (3 tests) 118ms
+ ✓ |unit| src/claude/claudeRemoteLauncher.test.ts (3 tests) 32ms
+ ✓ |unit| src/claude/utils/discoverClaudeModels.test.ts (3 tests) 647ms
+ ✓ |unit| src/claude/runClaude.test.ts (19 tests) 1113ms
+ Test Files  7 passed (7)
+      Tests  73 passed (73)
+   Start at  01:08:18
+   Duration  28.98s (transform 1.31s, setup 0ms, collect 2.79s, tests 1.98s, environment 1ms, prepare 2.02s)
