@@ -8,3 +8,4 @@ packages:
   - "packages/happy-app-logs"
   - "packages/happy-mobile-gym"
   - "packages/expo-tailcat"
+  - "packages/happy-push-server"

@@ -36,7 +36,8 @@
             "packages/happy-wire",
             "packages/happy-app-logs",
             "packages/happy-mobile-gym",
-            "packages/expo-tailcat"
+            "packages/expo-tailcat",
+            "packages/happy-push-server"
         ]
     },
     "pnpm": {
@@ -54,7 +55,8 @@
             "better-sqlite3",
             "esbuild",
             "prisma",
-            "sharp"
+            "sharp",
+            "workerd"
         ]
     },
     "devDependencies": {

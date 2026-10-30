@@ -1,0 +1,46 @@
+{
+    "$schema": "../../node_modules/wrangler/config-schema.json",
+    "name": "happy-push-server",
+    "main": "src/index.ts",
+    "compatibility_date": "2026-10-01",
+    "observability": {
+        "enabled": true
+    },
+    "routes": [
+        { "pattern": "push.cluster-fluster.com", "custom_domain": true }
+    ],
+    "d1_databases": [
+        {
+            "binding": "DB",
+            "database_name": "happy-push-server",
+            "database_id": "bd3bda07-d7cd-471c-8c50-ef6303a19522",
+            "migrations_dir": "migrations"
+        }
+    ],
+    // Limits are approximate and counted per Cloudflare location.
+    // namespace_id must be unique within the Cloudflare account.
+    "ratelimits": [
+        {
+            // Sends per recipient push token. A session-event push is a few a
+            // minute at most; this only stops someone flooding one device.
+            "name": "SEND_RATE_LIMITER",
+            "namespace_id": "71001",
+            "simple": { "limit": 60, "period": 60 }
+        },
+        {
+            // register/unregister per client IP. Apps register on launch and
+            // token rotation, so even a carrier NAT IP stays well below this.
+            "name": "REGISTER_RATE_LIMITER",
+            "namespace_id": "71002",
+            "simple": { "limit": 60, "period": 60 }
+        }
+    ],
+    "vars": {
+        // Comma-separated bundle ids / Android packages allowed to register.
+        // Empty allows any app id. Mobile (happy-app/happy-ios) production,
+        // preview, dev; then the native macOS app (happy-ios HappyMac target).
+        "ALLOWED_APP_IDS": "com.ex3ndr.happy,com.slopus.happy.preview,com.slopus.happy.dev,com.slopus.happy.native.mac,com.slopus.happy.native.mac.preview,com.slopus.happy.native.mac.dev"
+    }
+    // Secrets (set with `wrangler secret put <NAME>`, never in this file):
+    //   APNS_KEY_ID, APNS_TEAM_ID, APNS_PRIVATE_KEY, FCM_SERVICE_ACCOUNT
+}

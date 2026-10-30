@@ -1,0 +1,33 @@
+{
+  "name": "happy-push-server",
+  "version": "0.0.0",
+  "description": "Happy push relay: native APNs/FCM delivery behind stable HPPY- tokens, an Expo push service replacement",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/slopus/happy"
+  },
+  "homepage": "https://happy.engineering",
+  "bugs": "https://github.com/slopus/happy/issues",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate:local": "wrangler d1 migrations apply happy-push-server --local",
+    "db:migrate:remote": "wrangler d1 migrations apply happy-push-server --remote"
+  },
+  "dependencies": {
+    "hono": "^4.12.12",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261030.1",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.156.0"
+  },
+  "packageManager": "pnpm@10.11.0"
+}

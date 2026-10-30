@@ -68,5 +68,6 @@ happy codex
 - [happy-cli](packages/happy-cli): the original Happy CLI (`happy` on npm)
 - [happy-agent](packages/happy-agent): remote session control for the original Happy CLI (not the Happy Agent runtime)
 - [happy-server](packages/happy-server): the relay server for encrypted sync
+- [happy-push-server](packages/happy-push-server): Cloudflare Worker that delivers push notifications via APNs/FCM (replaces the Expo push service)
 
 Migrated from the `happy-coder` package. Thanks to [@franciscop](https://github.com/franciscop) for donating the `happy` package name!

@@ -1,0 +1,13 @@
+# Copy to .dev.vars for `pnpm dev`. In production set each with
+# `wrangler secret put <NAME>`; never commit real values.
+
+# APNs token auth: the .p8 key from Apple Developer > Keys (APNs enabled).
+APNS_KEY_ID="ABC123DEFG"
+APNS_TEAM_ID="TEAM123456"
+APNS_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+
+# Firebase service-account JSON (Project settings > Service accounts), one line.
+FCM_SERVICE_ACCOUNT='{"type":"service_account","project_id":"...","client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","token_uri":"https://oauth2.googleapis.com/token"}'
+
+# Optional override of the comma-separated allow list in wrangler.jsonc.
+# ALLOWED_APP_IDS="com.ex3ndr.happy,com.slopus.happy.preview,com.slopus.happy.dev,com.slopus.happy.native.mac,com.slopus.happy.native.mac.preview,com.slopus.happy.native.mac.dev"
