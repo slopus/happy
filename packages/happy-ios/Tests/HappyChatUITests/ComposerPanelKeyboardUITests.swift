@@ -177,47 +177,75 @@ final class ComposerPanelKeyboardUITests: XCTestCase {
         _ = try preserve(baseline, phase: "attachment outside dismissal")
     }
 
-    func testHeaderPermissionChoicePreservesKeyboardDraftAndSelection() throws {
+    func testNativeHeaderMenuMeasuresKeyboardAndPreservesDraft() throws {
         let baseline = try startAgent()
         let more = app.buttons["chat-more"]
         XCTAssertTrue(more.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["compose"].exists)
-        more.tap()
-        _ = try waitForState { self.hasPanel("chat-menu", $0) }
-        let root = try preserve(baseline, phase: "header menu open")
-        try assertPanel("chat-menu", in: root)
         let composeFrame = app.buttons["compose"].frame
         let moreFrame = more.frame
-        let titleFrame = try rectangle(root["headerTitleFrame"])
+        let titleFrame = try rectangle(baseline["headerTitleFrame"])
         XCTAssertLessThanOrEqual(composeFrame.maxX, moreFrame.minX + 1, "LTR compose precedes More")
         XCTAssertLessThanOrEqual(titleFrame.maxX, composeFrame.minX + 1, "title must fit before header actions")
         let headerFrames = XCTAttachment(string: "title=\(titleFrame) compose=\(composeFrame) more=\(moreFrame)")
         headerFrames.name = "actual portrait header frames"
         headerFrames.lifetime = .keepAlways
         add(headerFrames)
-        app.buttons["picker-row:chip:0"].tap()
-        _ = try waitForState { self.hasPanel("chat-permissions", $0) }
-        let permissions = try preserve(baseline, phase: "header permission choices")
-        try assertPanel("chat-permissions", in: permissions)
-        let key = "picker-row:permission\tread_only"
-        let choice = app.buttons[key]
-        XCTAssertTrue(choice.isEnabled)
-        choice.tap()
-        _ = try waitForState { !self.hasPanel("chat-menu", $0) }
-        _ = try preserve(baseline, phase: "header permission selected")
+
+        // The system owns this menu's focus and presentation. Record its
+        // actual behavior without imposing the custom panel's IME contract.
+        func capture(_ phase: String) throws -> [String: Any] {
+            let state = try read()
+            XCTAssertEqual(state["draft"] as? String, baseline["draft"] as? String, phase)
+            let json = XCTAttachment(string: String(data: try JSONSerialization.data(withJSONObject: state), encoding: .utf8)!)
+            json.name = phase
+            json.lifetime = .keepAlways
+            add(json)
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.name = phase
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            return state
+        }
+        _ = try capture("native header before")
+        FileHandle.standardOutput.write(Data("NATIVE_HEADER_VIDEO_BEGIN\n".utf8))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
         more.tap()
-        _ = try waitForState { self.hasPanel("chat-menu", $0) }
-        app.buttons["picker-row:chip:0"].tap()
-        _ = try waitForState { self.hasPanel("chat-permissions", $0) }
+        let permission = app.buttons["Permission mode"]
+        XCTAssertTrue(permission.waitForExistence(timeout: 3), app.debugDescription)
+        let opened = try capture("native header open")
+        XCTAssertFalse(hasPanel("chat-menu", opened), "the native toolbar menu replaces the custom overlay")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 20, dy: 300)).tap()
+        XCTAssertFalse(permission.exists)
+        let dismissed = try capture("native header dismissed")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        FileHandle.standardOutput.write(Data("NATIVE_HEADER_VIDEO_END\n".utf8))
+
+        more.tap()
+        XCTAssertTrue(permission.waitForExistence(timeout: 3))
+        permission.tap()
+        let key = "permission\tworkspace_write"
+        let choice = app.buttons[key]
+        XCTAssertTrue(choice.waitForExistence(timeout: 3), app.debugDescription)
+        XCTAssertTrue(choice.isEnabled)
+        _ = try capture("native header permission choices")
+        choice.tap()
+        XCTAssertFalse(choice.exists)
+        let selected = try capture("native header permission selected")
+        more.tap()
+        XCTAssertTrue(permission.waitForExistence(timeout: 3))
+        permission.tap()
+        XCTAssertTrue(app.buttons[key].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons[key].isSelected, "the chosen permission must be checked on reopening")
-        let reopened = try preserve(baseline, phase: "header permission checked")
-        try outsidePanel("chat-permissions", state: reopened)
-        _ = try waitForState { !self.hasPanel("chat-permissions", $0) }
-        let rootAgain = try preserve(baseline, phase: "permission page outside dismissal")
-        XCTAssertTrue(hasPanel("chat-menu", rootAgain), "outside dismisses only the top page")
-        try outsidePanel("chat-menu", state: rootAgain)
-        _ = try waitForState { !self.hasPanel("chat-menu", $0) }
-        _ = try preserve(baseline, phase: "header menu outside dismissal")
+        _ = try capture("native header permission checked")
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 20, dy: 300)).tap()
+        let fields = ["editorID", "responderID", "firstResponder", "selection", "keyboardVisible", "keyboardFrame", "cardFrame", "keyboardHides", "editingEnds", "lostResponderFrames", "missingKeyboardFrames"]
+        let evidence = ["before": baseline, "open": opened, "dismissed": dismissed, "selected": selected].mapValues { state in state.filter { fields.contains($0.key) } }
+        let measurement = XCTAttachment(string: String(data: try JSONSerialization.data(withJSONObject: evidence, options: .prettyPrinted), encoding: .utf8)!)
+        measurement.name = "native toolbar keyboard measurement"
+        measurement.lifetime = .keepAlways
+        add(measurement)
         app.buttons["Back"].tap()
         let row = try XCTUnwrap(ProcessInfo.processInfo.environment["COMPOSER_PANEL_ROW"])
         let task = app.descendants(matching: .any).matching(identifier: "row:space:\(row)").firstMatch
