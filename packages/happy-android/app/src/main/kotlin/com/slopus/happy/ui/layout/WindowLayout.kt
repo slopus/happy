@@ -66,15 +66,18 @@ object TabletBreakpoint {
 }
 
 /**
- * components/layout.ts: how wide content may grow. A phone gets its longest
- * side, so in effect no limit; a tablet ([DeviceCalculations]) gets 800.
- * Android has no Mac branch, so `maxWidth` and `headerMaxWidth` agree.
+ * components/layout.ts: how wide content may grow. It answers to the width
+ * the window actually has, not to what kind of device it is: a 900dp window
+ * is a long line to read whether it is a tablet, a phone on its side or half
+ * a desktop, and the device-class rule (a 9in diagonal) left exactly those
+ * windows running to the glass. Up to [tablet] the window's own width, so a
+ * narrow one is never padded in; past it, [tablet]. Android has no Mac
+ * branch, so `maxWidth` and `headerMaxWidth` agree.
  */
 object ContentWidth {
     val tablet = 800.dp
 
-    fun maxWidth(deviceType: DeviceType, width: Dp, height: Dp): Dp =
-        if (deviceType == DeviceType.Phone) maxOf(width, height) else tablet
+    fun maxWidth(width: Dp): Dp = minOf(width, tablet)
 }
 
 /**
@@ -109,7 +112,7 @@ data class WindowLayout(
                 isTablet = isTablet,
                 isLandscape = isLandscape,
                 deviceType = deviceType,
-                contentMaxWidth = ContentWidth.maxWidth(deviceType, width, height),
+                contentMaxWidth = ContentWidth.maxWidth(width),
                 headerHeight = DeviceCalculations.headerHeight(if (isTablet) DeviceType.Tablet else DeviceType.Phone, isLandscape),
             )
         }

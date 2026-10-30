@@ -85,18 +85,19 @@ class WindowLayoutTest {
         assertTrue(tablet.isLandscape)
         assertEquals(64.dp, tablet.headerHeight)
 
-        // layout.ts gives a phone its longest side, so nothing is held in.
+        // A window narrower than the cap keeps its own width, so nothing is held in.
         val phone = WindowLayout.of(411.dp, 891.dp)
         assertEquals(DeviceType.Phone, phone.deviceType)
-        assertEquals(891.dp, phone.contentMaxWidth)
+        assertEquals(411.dp, phone.contentMaxWidth)
         assertFalse(phone.isTablet)
         assertEquals(64.dp, phone.headerHeight)
 
-        // An unfolded foldable gets the tablet shell from 768 wide but stays a phone for content width.
+        // An unfolded foldable: the tablet shell from 768 wide, and held to the cap too, though
+        // its diagonal still reads as a phone. Content width answers to the window, not the class.
         val unfolded = WindowLayout.of(841.dp, 701.dp)
         assertTrue(unfolded.isTablet)
         assertEquals(DeviceType.Phone, unfolded.deviceType)
-        assertEquals(841.dp, unfolded.contentMaxWidth)
+        assertEquals(800.dp, unfolded.contentMaxWidth)
 
         // A small phone on its side: the 48 bar.
         val sideways = WindowLayout.of(740.dp, 360.dp)
