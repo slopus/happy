@@ -188,6 +188,8 @@ final class HostedHeaderBarTests: XCTestCase {
             try await settle(navigation)
             let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
             XCTAssertEqual(chat.navigationItem.rightBarButtonItems?.map(\.accessibilityIdentifier), ["chat-more", "compose"])
+            XCTAssertNil(chat.navigationItem.rightBarButtonItems?.first?.primaryAction, "UIKit owns the toolbar menu presentation")
+            XCTAssertNotNil(chat.navigationItem.rightBarButtonItems?.first?.menu)
             let more = try XCTUnwrap(chat.navigationItem.rightBarButtonItems?.first?.image)
             var pixels = [UInt8](repeating: 0, count: 32 * 32 * 4)
             let drawn = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32)).image { _ in
