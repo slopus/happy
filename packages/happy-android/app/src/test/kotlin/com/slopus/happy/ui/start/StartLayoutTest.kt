@@ -56,13 +56,13 @@ class StartLayoutTest {
     private val taps = mutableListOf<String>()
     private lateinit var view: View
 
-    private fun show(dark: Boolean = false, density: Density? = null, height: Int? = null) {
+    private fun show(dark: Boolean = false, density: Density? = null, height: Int? = null, server: String? = "happy.example.com") {
         rule.setHappyContent(dark = dark) {
             view = LocalView.current
             val screen = @Composable {
                 StartScreen(
                     connecting = false,
-                    customServerLabel = "happy.example.com",
+                    customServerLabel = server,
                     onConnect = { taps += "connect" },
                     onEnterLink = { taps += "link" },
                     onRestore = { taps += "restore" },
@@ -131,6 +131,15 @@ class StartLayoutTest {
         rule.onNodeWithText("Create account").assertDoesNotExist()
         rule.onNodeWithText("Get help").performClick()
         rule.onNodeWithText("Stuck? Come ask us.").assertExists()
+    }
+
+    /** Legacy Server names a custom server under it, and says nothing for the default one. */
+    @Test
+    fun theDefaultServerHasNoSubtitle() {
+        show(server = null)
+        rule.onNodeWithContentDescription("More").performClick()
+        rule.onNodeWithText("Legacy Server").assertExists()
+        rule.onNodeWithText("Default").assertDoesNotExist()
     }
 
     /** The content keeps out of the status and navigation bars; the gradient still fills the window behind them. */

@@ -250,7 +250,7 @@ private fun StartMenu(
             stringResource(R.string.start_legacy_server),
             Ionicon.ServerOutline,
             StartTags.SERVER,
-            detail = customServerLabel ?: stringResource(R.string.onboarding_settings_server_default),
+            detail = customServerLabel,
             onClick = onServer,
         )
         HorizontalDivider(color = colors.divider)
