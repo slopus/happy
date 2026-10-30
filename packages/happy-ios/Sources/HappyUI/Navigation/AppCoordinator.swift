@@ -55,13 +55,7 @@ public final class AppCoordinator {
         // Where a computer is a home of its own, the profile chosen last
         // opens; with none, a paired computer rather than Welcome.
         let v2 = Preference(variant: context.variant)
-        #if DEBUG || HAPPY_FIXTURES
-        // UI tests choose the Direct connection experiment's state.
-        if let direct = ProcessInfo.processInfo.environment["HAPPY_AGENT_CONNECTIONS"] { v2.agentConnectionsEnabled = direct == "1" }
-        #endif
         context.account.fallsBackToAgentConnection = v2.isAvailable
-        // Paired computers stay hidden while the experiment is off.
-        context.account.showsAgentConnections = v2.showsAgentConnections
         PairingAnalytics.shared.variant = context.variant
         Task { @MainActor [weak self] in
             guard let account = self?.context.account else { return }
@@ -284,10 +278,10 @@ public final class AppCoordinator {
             root = LegacyHomeViewController(context: context, session: session)
         } else {
             // Nothing paired or signed in: where a computer can be a home,
-            // the first screen links one, through the relay unless the
-            // Direct connection experiment is on.
+            // the first screen, whose Start scans any code; Welcome in
+            // production.
             root = Preference(variant: context.variant).isAvailable
-                ? LinkViewController(context: context, inSheet: false)
+                ? StartViewController(context: context)
                 : WelcomeViewController(context: context)
         }
         // V2' settings stays on top while the profile it chose
