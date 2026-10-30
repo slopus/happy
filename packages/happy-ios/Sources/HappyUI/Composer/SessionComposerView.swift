@@ -49,6 +49,21 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     var hasPermissionMenu: Bool { card.configuration.permission?.menu != nil }
 
+    func chatMenuElements(onInfo: @escaping () -> Void) -> [UIMenuElement] {
+        closeChatMenu()
+        card.closeMenus()
+        var elements: [UIMenuElement] = []
+        if let configuration = permissionChips.first?.1, let menu = configuration.menu {
+            let permissions = UIMenu(menu) { [weak self] key in
+                guard let self else { return }
+                self.agentInputCard(self.card, didSelect: key, in: .permission)
+            }
+            elements.append(UIMenu(title: configuration.accessibilityLabel, children: permissions.children))
+        }
+        elements.append(UIAction(title: Strings.Home.details) { _ in onInfo() })
+        return elements
+    }
+
     func presentChatMenu(in host: UIView, anchor: @escaping () -> CGRect, onInfo: @escaping () -> Void) {
         closeChatMenu()
         card.closeMenus()

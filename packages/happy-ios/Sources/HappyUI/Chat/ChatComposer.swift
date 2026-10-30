@@ -128,6 +128,7 @@ public protocol ChatComposerView: UIView {
     func focus()
     func blur()
     var hasPermissionMenu: Bool { get }
+    func chatMenuElements(onInfo: @escaping () -> Void) -> [UIMenuElement]
     func presentChatMenu(in host: UIView, anchor: @escaping () -> CGRect, onInfo: @escaping () -> Void)
     func closeChatMenu()
     func followChatMenu()
@@ -135,6 +136,9 @@ public protocol ChatComposerView: UIView {
 
 extension ChatComposerView {
     public var hasPermissionMenu: Bool { false }
+    public func chatMenuElements(onInfo: @escaping () -> Void) -> [UIMenuElement] {
+        [UIAction(title: Strings.Home.details) { _ in onInfo() }]
+    }
     public func presentChatMenu(in host: UIView, anchor: @escaping () -> CGRect, onInfo: @escaping () -> Void) {}
     public func closeChatMenu() {}
     public func followChatMenu() {}
