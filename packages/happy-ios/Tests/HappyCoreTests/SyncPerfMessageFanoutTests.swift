@@ -41,7 +41,7 @@ final class SyncPerfMessageFanoutTests: XCTestCase {
             decoder.session(APISession(
                 id: "s\(index)", seq: 0, createdAt: 1, updatedAt: 1000 + Int64(index),
                 active: true, activeAt: ApplyPerfFixtures.now, metadata: try cipher.encrypt(.object([
-                    "machineId": .string("computer"), "path": .string("/work/project\(index)"),
+                    "machineId": .string("agent"), "path": .string("/work/project\(index)"),
                     "summary": .object(["text": .string("Session \(index)")]),
                     "lastMeaningfulMessageAt": .number(Double(ApplyPerfFixtures.now - Int64(index) * 60_000)),
                 ]), random: MessageFanoutRandom()), metadataVersion: 1, agentState: nil,
@@ -53,7 +53,7 @@ final class SyncPerfMessageFanoutTests: XCTestCase {
         try store.setCursor(.machinesLastSync, 1)
         try store.setCursor(.sessionsChangedSince, 1)
         let http = FakeHTTP()
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: keys, now: { ApplyPerfFixtures.now })
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: keys, now: { ApplyPerfFixtures.now })
         let initialHome = expectation(description: "home is subscribed and derived")
         let unexpectedHome = expectation(description: "message burst does not publish home")
         unexpectedHome.isInverted = true

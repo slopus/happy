@@ -76,9 +76,9 @@ final class ConversationTests: XCTestCase {
     /// desktop's `trimHistory`: left, a long conversation keeps its newest
     /// runs in memory too, and can page the rest in again.
     func testALeftConversationKeepsTheNewestRuns() async throws {
-        let client = DirectAgentClient(transport: LongHistoryServer(runs: 150), token: "t")
+        let client = AgentClient(transport: LongHistoryServer(runs: 150), token: "t")
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let engine = DirectSyncEngine(client: client, directory: root)
+        let engine = SyncEngine(client: client, directory: root)
         let conversation = Conversation(client: client, store: engine.spaces, agentId: "long")
         var updates = conversation.updates.makeAsyncIterator()
         func asked(_ users: Int) async -> ChatSnapshot? {
@@ -102,9 +102,9 @@ final class ConversationTests: XCTestCase {
     /// a run's end trims an open conversation to its newest runs, but only
     /// while its reader follows the newest message.
     func testAnOpenConversationPastTwiceTheWindowKeepsTheNewestRunsWhileFollowed() async throws {
-        let client = DirectAgentClient(transport: LongHistoryServer(runs: 250), token: "t")
+        let client = AgentClient(transport: LongHistoryServer(runs: 250), token: "t")
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let engine = DirectSyncEngine(client: client, directory: root)
+        let engine = SyncEngine(client: client, directory: root)
         let conversation = Conversation(client: client, store: engine.spaces, agentId: "long")
         var updates = conversation.updates.makeAsyncIterator()
         func asked(_ users: Int) async -> ChatSnapshot? {
@@ -175,11 +175,11 @@ final class MarkdownTests: XCTestCase {
 }
 
 /// A daemon with one conversation of `runs` runs, all on its first page.
-private actor LongHistoryServer: DirectTransport {
+private actor LongHistoryServer: AgentTransport {
     let runs: Int
     init(runs: Int) { self.runs = runs }
 
-    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> DirectHTTPResponse {
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
         let value: JSONValue
         if path.contains("/messages?") {
             value = .object(["hasMore": .bool(false), "runs": .array((0..<runs).map { index in

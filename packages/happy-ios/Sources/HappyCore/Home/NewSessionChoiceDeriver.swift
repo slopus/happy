@@ -31,7 +31,7 @@ actor NewSessionChoiceDeriver {
         var worktrees: [Worktrees.Entry]
     }
 
-    private let beforeDerivation: @Sendable (HomeSnapshot, NewSessionDraft) async -> Void
+    private let beforeDerivation: @Sendable (LegacyHomeSnapshot, NewSessionDraft) async -> Void
     private var snapshotRevision: UInt64?
     private var catalog: Catalog?
     private var catalogVersion: UInt64 = 0
@@ -47,13 +47,13 @@ actor NewSessionChoiceDeriver {
 
     /// The default `beforeDerivation`, compiled once, here, as
     /// `InvalidateSync.taskSleep` explains.
-    static let noHook: @Sendable (HomeSnapshot, NewSessionDraft) async -> Void = { _, _ in }
+    static let noHook: @Sendable (LegacyHomeSnapshot, NewSessionDraft) async -> Void = { _, _ in }
 
-    init(beforeDerivation: @escaping @Sendable (HomeSnapshot, NewSessionDraft) async -> Void = NewSessionChoiceDeriver.noHook) {
+    init(beforeDerivation: @escaping @Sendable (LegacyHomeSnapshot, NewSessionDraft) async -> Void = NewSessionChoiceDeriver.noHook) {
         self.beforeDerivation = beforeDerivation
     }
 
-    func choices(snapshot: HomeSnapshot, revision: UInt64, generation: UInt64, draft: NewSessionDraft,
+    func choices(snapshot: LegacyHomeSnapshot, revision: UInt64, generation: UInt64, draft: NewSessionDraft,
                  createsBot: Bool, worktrees: [Worktrees.Entry]) async -> DerivedChoices? {
         guard generation >= latestGeneration else { return nil }
         latestGeneration = generation
@@ -122,7 +122,7 @@ actor NewSessionChoiceDeriver {
         return result
     }
 
-    func launch(snapshot: HomeSnapshot, revision: UInt64, draft: NewSessionDraft,
+    func launch(snapshot: LegacyHomeSnapshot, revision: UInt64, draft: NewSessionDraft,
                 bot: (name: String, faceSeed: String)? = nil, createsTask: Bool = false, prompt: String,
                 attachments: [OutgoingAttachment]) -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
         ThreadRules.assertOffMain()

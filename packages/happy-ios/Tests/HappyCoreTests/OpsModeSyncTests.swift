@@ -35,11 +35,11 @@ final class OpsModeSyncTests: XCTestCase {
         XCTAssertTrue(first.pending(sessionId: "s").isEmpty)
     }
 
-    func fixture() throws -> (ServerFixture, LocalStore, FakeHTTP, SyncEngine) {
+    func fixture() throws -> (ServerFixture, LocalStore, FakeHTTP, LegacySyncEngine) {
         let fixture = ServerFixture()
         let store = try LocalStore.inMemory()
         let http = FakeHTTP()
-        let sync = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
+        let sync = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
         let row = RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))
         try store.upsertSessions([row])
         try store.saveComposerState(ComposerStateRecord(sessionId: "s", values: .object(["modelMode": .string("local"), "effortLevel": .string("high")])) )

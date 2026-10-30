@@ -150,7 +150,7 @@ final class HomeArchiveProbe: NSObject {
     private let archivedPrefixes: [String]?
     var report: Data { (try? JSONEncoder().encode(samples)) ?? Data() }
 
-    init(window: HarnessWindow, snapshots: AsyncStream<HomeSnapshot>, archivedPrefixes: [String]? = nil) {
+    init(window: HarnessWindow, snapshots: AsyncStream<LegacyHomeSnapshot>, archivedPrefixes: [String]? = nil) {
         self.window = window
         self.archivedPrefixes = archivedPrefixes
         super.init()

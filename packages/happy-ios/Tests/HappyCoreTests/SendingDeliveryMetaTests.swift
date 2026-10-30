@@ -20,7 +20,7 @@ final class SendingDeliveryMetaTests: XCTestCase, @unchecked Sendable {
     /// The keys of the last `setup()`, to read what was posted.
     private var fixture = ServerFixture()
 
-    private func setup() throws -> (LocalStore, SyncEngine, FakeHTTP) {
+    private func setup() throws -> (LocalStore, LegacySyncEngine, FakeHTTP) {
         fixture = ServerFixture()
         let fixture = fixture
         let http = FakeHTTP()
@@ -33,7 +33,7 @@ final class SendingDeliveryMetaTests: XCTestCase, @unchecked Sendable {
             session.metadataVersion += 1
             try store.upsertSessions([session])
         }
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys, now: { 1_000 })
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys, now: { 1_000 })
         return (store, engine, http)
     }
 
@@ -51,7 +51,7 @@ final class SendingDeliveryMetaTests: XCTestCase, @unchecked Sendable {
     }
 
     /// Accepts "idle" without delivering it and returns its wire bytes.
-    private func acceptIdle(_ store: LocalStore, _ engine: SyncEngine, source: OutgoingMessage.Source = .chat) async throws -> Data {
+    private func acceptIdle(_ store: LocalStore, _ engine: LegacySyncEngine, source: OutgoingMessage.Source = .chat) async throws -> Data {
         await engine.setBackgrounded(true)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

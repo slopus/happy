@@ -65,7 +65,7 @@ final class HomeProjectListTests: XCTestCase {
         settings: [String: JSONValue] = [:]
     ) -> ProjectHomeData {
         ProjectHomeData(
-            HomeSnapshot(
+            LegacyHomeSnapshot(
                 machines: MachinesSnapshot(synced: true, machines: machines),
                 sessions: sessions,
                 projects: [],
@@ -220,9 +220,9 @@ final class HomeProjectListTests: XCTestCase {
     }
 
     func testTheGroupingSettingBuildsTheProjectList() {
-        let flat = SessionList(HomeSnapshot(machines: MachinesSnapshot(synced: true, machines: []), sessions: [record("a", path: "/x")]), clock: clock)
+        let flat = SessionList(LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: []), sessions: [record("a", path: "/x")]), clock: clock)
         XCTAssertNil(flat.projects)
-        let grouped = SessionList(HomeSnapshot(
+        let grouped = SessionList(LegacyHomeSnapshot(
             machines: MachinesSnapshot(synced: true, machines: []),
             sessions: [record("a", path: "/x")],
             projects: [],

@@ -82,7 +82,7 @@ final class SessionInfoDerivationTests: XCTestCase {
     /// own snapshot, holding the same record, changes no title.
     func testHomesRecordSeedsTheTitleTheFirstFrameShows() throws {
         let untitled = Fixture.session("s2", machine: "m1", path: "/work/other")
-        let home = HomeSnapshot(machines: MachinesSnapshot(synced: true, machines: []), sessions: [untitled, Self.record])
+        let home = LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: []), sessions: [untitled, Self.record])
         for record in [Self.record, untitled] {
             let seed = try XCTUnwrap(SessionInfoSeed(home, sessionId: record.id))
             let first = try XCTUnwrap(derive(Self.detail(record)))

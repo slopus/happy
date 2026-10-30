@@ -59,7 +59,7 @@ final class HappyScanTests: XCTestCase {
 
     private func direct() throws -> String {
         let bundle: [String: Any] = ["v": 1, "a": "tcAddress", "p": 24781, "t": CanonicalBase64URL.encode(Data(repeating: 3, count: 32)), "n": "Mac", "e": 2_000_000_000_000.0]
-        return DirectPairingLink.prefix + CanonicalBase64URL.encode(try JSONSerialization.data(withJSONObject: bundle))
+        return PairingLink.prefix + CanonicalBase64URL.encode(try JSONSerialization.data(withJSONObject: bundle))
     }
 
     /// What the screen shows after `text` was opened: an alert's title and
@@ -84,10 +84,10 @@ final class HappyScanTests: XCTestCase {
         let keyText = CanonicalBase64URL.encode(key)
         let terminal = "happy://terminal?" + keyText
         let account = "happy:///account?" + keyText
-        let directCode = try direct()
+        let agentPairingCode = try direct()
 
         for intent in [ScanIntent.connect, .addAccount] {
-            for text in [terminal, account, directCode, "happy://terminal?xx", "happy:///account?xx", "happy://direct?bad", "garbage", "https://example.com"] {
+            for text in [terminal, account, agentPairingCode, "happy://terminal?xx", "happy:///account?xx", "happy://direct?bad", "garbage", "https://example.com"] {
                 let result = try await shown(text, intent, context: context)
                 XCTAssertNotEqual(result, "nothing", "\(intent) \(text.prefix(20)) showed nothing")
             }

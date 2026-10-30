@@ -33,7 +33,7 @@ final class ScreenLayoutTests: XCTestCase {
     }
 
     func testTheEmptyStateCentresItsThree() {
-        let layout = EmptyLayout(size: CGSize(width: 390, height: 600), label: text("Pair a computer to see its work.", lineHeight: 20), button: CGSize(width: 180, height: 44))
+        let layout = EmptyLayout(size: CGSize(width: 390, height: 600), label: text("Connect an agent to see its work.", lineHeight: 20), button: CGSize(width: 180, height: 44))
         XCTAssertEqual(layout.mark, rect(163, 214, 64, 64))
         XCTAssertEqual(layout.label, rect(24, 298, 342, 20))
         XCTAssertEqual(layout.button, rect(105, 342, 180, 44))

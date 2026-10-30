@@ -218,7 +218,7 @@ final class OpsRigComposerTests: XCTestCase {
     func testComposerFacadeRoutesRigDraftAndClearsAfterAcceptance() async throws {
         let fixture = ServerFixture()
         let store = try LocalStore.inMemory()
-        let sync = SyncEngine(api: testAPI(FakeHTTP()), store: store, keys: fixture.keys, now: { 100 })
+        let sync = LegacySyncEngine(api: testAPI(FakeHTTP()), store: store, keys: fixture.keys, now: { 100 })
         var session = RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))
         session.metadata = metadata()
         try store.upsertSessions([session], reconcileComposer: sync.modePushes.reconciliation)

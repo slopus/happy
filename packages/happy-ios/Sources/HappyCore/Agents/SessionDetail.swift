@@ -272,7 +272,7 @@ public actor SessionDetailFeed {
         public var error: String?
     }
 
-    private let client: DirectAgentClient
+    private let client: AgentClient
     private let store: Store
     private let agentId: String
     private let continuation: AsyncStream<State>.Continuation
@@ -283,7 +283,7 @@ public actor SessionDetailFeed {
     private var stale = false
     private var state = State()
 
-    public init(client: DirectAgentClient, store: Store, agentId: String) {
+    public init(client: AgentClient, store: Store, agentId: String) {
         self.client = client
         self.store = store
         self.agentId = agentId

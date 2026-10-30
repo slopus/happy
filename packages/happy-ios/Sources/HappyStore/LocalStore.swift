@@ -20,11 +20,11 @@ import HappyWire
 public final class LocalStore: Sendable {
     public let writer: any DatabaseWriter
     let lifecycle = StoreLifecycle()
-    let homeObservation: SharedValueObservation<HomeSnapshot>
+    let homeObservation: SharedValueObservation<LegacyHomeSnapshot>
     let settingsObservation: SharedValueObservation<SettingsSnapshot>
     let machinesObservation: SharedValueObservation<MachinesSnapshot>
     let draftSessionsObservation: SharedValueObservation<Set<String>>
-    let homeHub: SnapshotHub<HomeSnapshot>
+    let homeHub: SnapshotHub<LegacyHomeSnapshot>
     let machinesHub: SnapshotHub<MachinesSnapshot>
     let troubleshootingHub: SnapshotHub<TroubleshootingSnapshot>
     let draftSessionsHub: SnapshotHub<Set<String>>
@@ -566,17 +566,17 @@ public final class LocalStore: Sendable {
 
     /// Everything home draws: machines, sessions, the projects they belong
     /// to and the settings that shape the list.
-    public func homeSnapshot() throws -> HomeSnapshot {
+    public func homeSnapshot() throws -> LegacyHomeSnapshot {
         try performRead { db in try Self.fetchHomeSnapshot(db) }
     }
 
     @MainActor
-    public func observeHome(onChange: @escaping @MainActor (HomeSnapshot) -> Void) -> StoreObservation {
+    public func observeHome(onChange: @escaping @MainActor (LegacyHomeSnapshot) -> Void) -> StoreObservation {
         Self.deliverOnMain(homeSnapshots(), onChange: onChange)
     }
 
-    static func fetchHomeSnapshot(_ db: Database) throws -> HomeSnapshot {
-        HomeSnapshot(
+    static func fetchHomeSnapshot(_ db: Database) throws -> LegacyHomeSnapshot {
+        LegacyHomeSnapshot(
             machines: try fetchMachinesSnapshot(db),
             sessions: try SessionRecord.order(Column("updatedAt").desc).fetchAll(db),
             projects: try ProjectRecord.fetchAll(db),
@@ -991,7 +991,7 @@ public struct MachinesSnapshot: Equatable, Sendable {
 }
 
 /// What home is built from, read in one transaction so the parts agree.
-public struct HomeSnapshot: Equatable, Sendable {
+public struct LegacyHomeSnapshot: Equatable, Sendable {
     public var machines: MachinesSnapshot
     public var sessions: [SessionRecord]
     public var projects: [ProjectRecord]

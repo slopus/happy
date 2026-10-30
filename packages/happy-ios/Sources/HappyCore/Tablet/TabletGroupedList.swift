@@ -48,7 +48,7 @@ public struct TabletGroupedList: Equatable, Sendable {
     /// the presence clock, which can stand still for hours. `git` is each
     /// checkout's status as far as it is known (`useSessionGitStatus`).
     public init(
-        _ snapshot: HomeSnapshot,
+        _ snapshot: LegacyHomeSnapshot,
         offline: [MachineChoice]?,
         clock: SessionList.Clock = SessionList.Clock(),
         git: [GitCheckoutKey: GitHeadingStatus] = [:],

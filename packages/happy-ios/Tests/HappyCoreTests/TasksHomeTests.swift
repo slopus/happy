@@ -45,8 +45,8 @@ final class TasksHomeTests: XCTestCase {
         "id": .string("bot1"), "name": .string("Helper"), "username": .string("helper"), "orderKey": .string("a"),
     ])]
 
-    static func snapshot(_ sessions: [SessionRecord], grouping: String = "project") -> HomeSnapshot {
-        HomeSnapshot(
+    static func snapshot(_ sessions: [SessionRecord], grouping: String = "project") -> LegacyHomeSnapshot {
+        LegacyHomeSnapshot(
             machines: MachinesSnapshot(synced: true, machines: [Fixture.machine("m1", active: true, name: "Studio")]),
             sessions: sessions,
             settings: SettingsSnapshot(pending: [

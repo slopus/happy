@@ -87,8 +87,8 @@ final class FailureTests: XCTestCase {
     /// wrote, and a retry shows what was done.
     func testAFailedFirstTurnShowsItsFailureTitleAndRetry() async throws {
         let server = FailedTurnServer()
-        let client = DirectAgentClient(transport: server, token: "t")
-        let engine = DirectSyncEngine(client: client, directory: nil)
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: nil)
         let conversation = Conversation(client: client, store: engine.spaces, agentId: "a1")
         var updates = conversation.updates.makeAsyncIterator()
         func next(_ predicate: (ChatSnapshot) -> Bool) async -> ChatSnapshot? {
@@ -130,13 +130,13 @@ final class FailureTests: XCTestCase {
 }
 
 /// A daemon holding one conversation whose only run failed.
-private actor FailedTurnServer: DirectTransport {
+private actor FailedTurnServer: AgentTransport {
     private var resolved: JSONValue?
     private var posted: [(path: String, body: JSONValue)] = []
 
     func posts() -> [(path: String, body: JSONValue)] { posted }
 
-    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> DirectHTTPResponse {
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
         let value: JSONValue
         if method == "POST", path.hasPrefix("/v0/agents/a1/messages/s1/") {
             let request = try body.map { try JSONDecoder().decode(JSONValue.self, from: $0) } ?? .null

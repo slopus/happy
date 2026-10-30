@@ -11,7 +11,7 @@ public final class AccountController {
     public enum State {
         case signedOut
         case signedIn(AccountSession)
-        case direct(DirectAccount)
+        case agentConnection(AgentConnection)
     }
 
     public private(set) var state: State = .signedOut {
@@ -26,17 +26,17 @@ public final class AccountController {
     /// it across account transitions.
     public private(set) var localSettings: LocalSettings
     public private(set) var isAddingAccount = false
-    public let direct: DirectAccounts
+    public let agentConnections: AgentConnections
     /// With no Happy account to open (none chosen at launch, or the last
     /// one signed out), a paired computer opens instead of Welcome, at once.
     /// Set by builds
     /// where a computer is a home of its own (`Preference.isAvailable`).
-    public var fallsBackToComputer = false
+    public var fallsBackToAgentConnection = false
     /// Paired computers are offered at all. Off (the Direct connection
     /// experiment, off), they stay paired and stored but are neither listed
     /// nor opened, so turning it on again brings them back. Set before
     /// `restore`; afterwards through `setShowsComputers`.
-    public var showsComputers = true
+    public var showsAgentConnections = true
 
     private let accountCredentialStore: AccountCredentialStore
     private let rnServerImport: @Sendable () -> ImportedAccountServer
@@ -81,8 +81,8 @@ public final class AccountController {
         storeDirectory: URL?,
         localSettings: KeyValueStore = InMemoryKeyValueStore(),
         accountCredentialStore: AccountCredentialStore? = nil,
-        directCredentialStore: any DirectCredentialStore = InMemoryDirectCredentialStore(),
-        directTransport: @escaping @Sendable (DirectDeviceCredentials) -> any DirectTransport = { TailcatHTTPTransport(address: $0.address, port: $0.port) },
+        agentConnectionCredentialStore: any AgentConnectionCredentialStore = InMemoryAgentConnectionCredentialStore(),
+        agentTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { TailcatHTTPTransport(address: $0.address, port: $0.port) },
         rnServerImport: @escaping @Sendable () -> ImportedAccountServer = { RNServerConfigImporter.readFromDocuments() },
         localSettingsFactory: ((String) -> KeyValueStore)? = nil,
         transport: HTTPTransport = URLSessionTransport(),
@@ -101,11 +101,11 @@ public final class AccountController {
         self.connector = connector
         self.appState = appState
         self.deliveryActivity = deliveryActivity
-        self.direct = DirectAccounts(credentials: directCredentialStore, directory: storeDirectory, makeTransport: directTransport)
-        self.direct.onChange = { [weak self] in
+        self.agentConnections = AgentConnections(credentials: agentConnectionCredentialStore, directory: storeDirectory, makeTransport: agentTransport)
+        self.agentConnections.onChange = { [weak self] in
             guard let self else { return }
             self.notifyAccounts()
-            if case .direct = self.state, let account = self.direct.active { self.state = .direct(account) }
+            if case .agentConnection = self.state, let account = self.agentConnections.active { self.state = .agentConnection(account) }
         }
     }
 
@@ -124,10 +124,10 @@ public final class AccountController {
                            usesSharedItem: entry.location == .shared,
                            serverConfirmed: entry.serverConfirmed)
         }
-        guard showsComputers else { return legacy }
-        return legacy + direct.accounts.sorted { $0.addedAt < $1.addedAt }.map { account in
-            var value = AccountSummary(id: account.id, serverURL: URL(string: "http://server.tailcat")!, name: account.name, avatarThumbhash: account.thumbhash, isActive: direct.activeID == account.id, usesSharedItem: false)
-            value.isDirect = true; value.connectionStatus = account.status.title
+        guard showsAgentConnections else { return legacy }
+        return legacy + agentConnections.accounts.sorted { $0.addedAt < $1.addedAt }.map { account in
+            var value = AccountSummary(id: account.id, serverURL: URL(string: "http://server.tailcat")!, name: account.name, avatarThumbhash: account.thumbhash, isActive: agentConnections.activeID == account.id, usesSharedItem: false)
+            value.isAgentConnection = true; value.connectionStatus = account.status.title
             return value
         }
     }
@@ -243,8 +243,8 @@ public final class AccountController {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
         defer { finishOperation() }
-        if showsComputers, direct.accounts.contains(where: { $0.id == id }) {
-            try await activateDirect(id)
+        if showsAgentConnections, agentConnections.accounts.contains(where: { $0.id == id }) {
+            try await activateAgentConnection(id)
             return
         }
         let values = try await reconcile()
@@ -298,29 +298,29 @@ public final class AccountController {
     /// `openingComputer`: a paired computer opens rather than the Happy
     /// account chosen last, `preferred` if it is one (carrying over the
     /// filter that showed a computer's V2 over the account's home).
-    public func restore(openingComputer: Bool = false, preferred: String? = nil) async {
+    public func restore(openingAgentConnection: Bool = false, preferred: String? = nil) async {
         guard session == nil, !busy else { return }
         busy = true
         defer { finishOperation() }
         _ = await prepareStorageDirectory()
         do {
-            try await direct.restore()
-            if openingComputer, showsComputers, direct.active == nil {
-                let computers = direct.accounts.filter { !$0.revoked }
-                if let computer = computers.first(where: { $0.id == preferred }) ?? computers.first { try await direct.select(computer.id) }
+            try await agentConnections.restore()
+            if openingAgentConnection, showsAgentConnections, agentConnections.active == nil {
+                let computers = agentConnections.accounts.filter { !$0.revoked }
+                if let computer = computers.first(where: { $0.id == preferred }) ?? computers.first { try await agentConnections.select(computer.id) }
             }
-            if showsComputers, let active = direct.active {
+            if showsAgentConnections, let active = agentConnections.active {
                 _ = try await reconcile()
                 localSettings = settings(for: active.id)
-                state = .direct(active)
+                state = .agentConnection(active)
                 notifyAccounts()
                 return
             }
         } catch { }
         await restoreLegacy()
         // Nothing chosen opens: a paired computer does.
-        if fallsBackToComputer, showsComputers, case .signedOut = state, pendingServerConfirmation == nil, let computer = direct.accounts.first(where: { !$0.revoked }) ?? direct.accounts.first {
-            try? await activateDirect(computer.id)
+        if fallsBackToAgentConnection, showsAgentConnections, case .signedOut = state, pendingServerConfirmation == nil, let computer = agentConnections.accounts.first(where: { !$0.revoked }) ?? agentConnections.accounts.first {
+            try? await activateAgentConnection(computer.id)
         }
     }
 
@@ -367,7 +367,7 @@ public final class AccountController {
     /// Signs out the active account only. The next account by added order
     /// becomes active. Failures leave credentials and the active UI intact.
     public func signOut() async {
-        if let id = direct.activeID { try? await signOut(accountID: id); return }
+        if let id = agentConnections.activeID { try? await signOut(accountID: id); return }
         guard let id = session?.keys.anonID else {
             if !busy { localSettings.clear() }
             return
@@ -379,12 +379,12 @@ public final class AccountController {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
         defer { finishOperation() }
-        if direct.accounts.contains(where: { $0.id == id }) {
-            let wasActive = direct.activeID == id
-            try await direct.remove(id)
+        if agentConnections.accounts.contains(where: { $0.id == id }) {
+            let wasActive = agentConnections.activeID == id
+            try await agentConnections.remove(id)
             settings(for: id).clear()
             if wasActive {
-                if let next = direct.accounts.first { try await activateDirect(next.id) }
+                if let next = agentConnections.accounts.first { try await activateAgentConnection(next.id) }
                 else {
                     state = .signedOut
                     let values = try await reconcile()
@@ -404,7 +404,7 @@ public final class AccountController {
         var updated = registry
         let generation = profileGeneration
         updated.entries.removeAll { $0.id == id }
-        let wasActive = session.map { $0.keys.anonID == id } ?? (direct.activeID == nil && registry.activeID == id)
+        let wasActive = session.map { $0.keys.anonID == id } ?? (agentConnections.activeID == nil && registry.activeID == id)
         let oldSession = wasActive ? session : nil
         let following = updated.entries.sorted { $0.addedOrder < $1.addedOrder }.first
         let next: AccountSession?
@@ -433,10 +433,10 @@ public final class AccountController {
                 localSettings = settings(for: next.keys.anonID)
                 state = .signedIn(next)
                 observeProfile(of: next)
-            } else if fallsBackToComputer, showsComputers, let computer = direct.accounts.first(where: { !$0.revoked }) ?? direct.accounts.first {
+            } else if fallsBackToAgentConnection, showsAgentConnections, let computer = agentConnections.accounts.first(where: { !$0.revoked }) ?? agentConnections.accounts.first {
                 // The last Happy account went: a paired computer opens at
                 // once, with no Welcome between.
-                try? await activateDirect(computer.id)
+                try? await activateAgentConnection(computer.id)
             } else {
                 localSettings = LocalSettings(storage: InMemoryKeyValueStore())
                 state = .signedOut
@@ -485,7 +485,7 @@ public final class AccountController {
         memoryStores.removeValue(forKey: id)
         if wasActive {
             await next?.start()
-            if next == nil, showsComputers, direct.activeID == nil, let following = direct.accounts.first { try await activateDirect(following.id) }
+            if next == nil, showsAgentConnections, agentConnections.activeID == nil, let following = agentConnections.accounts.first { try await activateAgentConnection(following.id) }
         }
         if let cleanupError { throw cleanupError }
     }
@@ -691,7 +691,7 @@ public final class AccountController {
         }
         let directory = await task.value
         storageDirectory = directory
-        await direct.configureStorage(directory)
+        await agentConnections.configureStorage(directory)
         return directory
     }
 
@@ -724,7 +724,7 @@ public final class AccountController {
 
     private func activate(_ next: AccountSession, registry: AccountRegistry) async throws {
         // Persist selection before releasing the old session.
-        try await direct.select(nil)
+        try await agentConnections.select(nil)
         stopProfileObservation()
         await session?.stop()
         self.registry = registry
@@ -736,7 +736,7 @@ public final class AccountController {
     }
 
     private func selectUnconfirmed(registry: AccountRegistry) async throws {
-        try await direct.select(nil)
+        try await agentConnections.select(nil)
         stopProfileObservation()
         await session?.stop()
         self.registry = registry
@@ -779,50 +779,50 @@ public final class AccountController {
         scheduleProfilePersistence()
     }
 
-    public func addDirect(_ credentials: DirectDeviceCredentials, name: String) async throws {
+    public func addAgentConnection(_ credentials: AgentConnectionCredentials, name: String) async throws {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true; defer { finishOperation() }
         _ = await prepareStorageDirectory()
-        let account = try await direct.add(credentials, name: name)
+        let account = try await agentConnections.add(credentials, name: name)
         isAddingAccount = false
-        try await activateDirect(account.id)
+        try await activateAgentConnection(account.id)
     }
 
     /// Shows or hides the paired computers. Hidden while one is open, the
     /// Happy account chosen last opens instead, or Welcome with none. Shown
     /// again with nothing open, a paired computer opens, as at launch.
-    public func setShowsComputers(_ shown: Bool) async {
-        guard shown != showsComputers else { return }
-        showsComputers = shown
+    public func setShowsAgentConnections(_ shown: Bool) async {
+        guard shown != showsAgentConnections else { return }
+        showsAgentConnections = shown
         notifyAccounts()
         // A switch already in flight may still land on a computer, so look
         // only once it's done, and at what's asked for then.
         while busy { try? await Task.sleep(for: .milliseconds(20)) }
         busy = true
         defer { finishOperation() }
-        if showsComputers {
-            guard fallsBackToComputer, case .signedOut = state, pendingServerConfirmation == nil,
-                  let computer = direct.accounts.first(where: { !$0.revoked }) ?? direct.accounts.first else { return }
-            try? await activateDirect(computer.id)
+        if showsAgentConnections {
+            guard fallsBackToAgentConnection, case .signedOut = state, pendingServerConfirmation == nil,
+                  let computer = agentConnections.accounts.first(where: { !$0.revoked }) ?? agentConnections.accounts.first else { return }
+            try? await activateAgentConnection(computer.id)
             return
         }
-        guard case .direct = state else { return }
-        try? await direct.select(nil)
+        guard case .agentConnection = state else { return }
+        try? await agentConnections.select(nil)
         await restoreLegacy()
-        if case .direct = state {
+        if case .agentConnection = state {
             localSettings = LocalSettings(storage: InMemoryKeyValueStore())
             state = .signedOut
         }
         notifyAccounts()
     }
 
-    private func activateDirect(_ id: String) async throws {
-        try await direct.select(id)
+    private func activateAgentConnection(_ id: String) async throws {
+        try await agentConnections.select(id)
         stopProfileObservation()
         await session?.stop()
-        guard let account = direct.active else { throw AccountSwitchError.unknownAccount }
+        guard let account = agentConnections.active else { throw AccountSwitchError.unknownAccount }
         localSettings = settings(for: id)
-        state = .direct(account)
+        state = .agentConnection(account)
         notifyAccounts()
     }
 }

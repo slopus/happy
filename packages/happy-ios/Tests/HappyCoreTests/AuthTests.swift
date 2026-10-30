@@ -62,7 +62,7 @@ final class AuthServiceTests: XCTestCase {
         XCTAssertNil(pending)
 
         // The other phone scans the QR and answers.
-        guard case .account(let scannedKey)? = PairingLink(login.link.urlString) else { return XCTFail() }
+        guard case .account(let scannedKey)? = LegacyPairingLink(login.link.urlString) else { return XCTFail() }
         XCTAssertEqual(scannedKey, approvals.requestedKey)
         approvals.response = Base64.encode(try existingAccount.accountLinkApproval(devicePublicKey: scannedKey))
 
@@ -83,7 +83,7 @@ final class AuthServiceTests: XCTestCase {
     }
 }
 
-final class PairingServiceTests: XCTestCase {
+final class LegacyPairingServiceTests: XCTestCase {
     let keys = try! AccountKeys(secret: SystemRandom().bytes(32))
 
     func testConnectsAV2TerminalWithTheContentPublicKey() async throws {
@@ -92,7 +92,7 @@ final class PairingServiceTests: XCTestCase {
         http.onRaw("GET /v1/auth/request/status", #"{"status":"pending","supportsV2":true}"#)
         http.onRaw("POST /v1/auth/response", #"{"success":true}"#)
 
-        let outcome = try await PairingService(api: testAPI(http), keys: keys).approve(.terminal(publicKey: terminal.publicKey))
+        let outcome = try await LegacyPairingService(api: testAPI(http), keys: keys).approve(.terminal(publicKey: terminal.publicKey))
         XCTAssertEqual(outcome, .terminalConnected)
 
         XCTAssertEqual(http.requests[0].query("publicKey"), terminal.publicKey.base64EncodedString())
@@ -106,8 +106,8 @@ final class PairingServiceTests: XCTestCase {
     func testRefusesV1TerminalsInsteadOfSendingTheSecret() async throws {
         let http = FakeHTTP()
         http.onRaw("GET /v1/auth/request/status", #"{"status":"pending","supportsV2":false}"#)
-        await XCTAssertThrowsAsync(try await PairingService(api: testAPI(http), keys: self.keys).approve(.terminal(publicKey: Data(count: 32)))) {
-            XCTAssertEqual($0 as? PairingError, .terminalNeedsUpdate)
+        await XCTAssertThrowsAsync(try await LegacyPairingService(api: testAPI(http), keys: self.keys).approve(.terminal(publicKey: Data(count: 32)))) {
+            XCTAssertEqual($0 as? LegacyPairingError, .terminalNeedsUpdate)
         }
         XCTAssertTrue(http.requests("POST /v1/auth/response").isEmpty)
     }
@@ -115,7 +115,7 @@ final class PairingServiceTests: XCTestCase {
     func testAlreadyHandledRequestsSendNothing() async throws {
         let http = FakeHTTP()
         http.onRaw("GET /v1/auth/request/status", #"{"status":"not_found","supportsV2":false}"#)
-        let outcome = try await PairingService(api: testAPI(http), keys: keys).approve(.terminal(publicKey: Data(count: 32)))
+        let outcome = try await LegacyPairingService(api: testAPI(http), keys: keys).approve(.terminal(publicKey: Data(count: 32)))
         XCTAssertEqual(outcome, .alreadyHandled)
         XCTAssertEqual(http.requests.count, 1)
     }
@@ -124,7 +124,7 @@ final class PairingServiceTests: XCTestCase {
         let http = FakeHTTP()
         let device = try BoxKeyPair(seed: SystemRandom().bytes(32))
         http.onRaw("POST /v1/auth/account/response", #"{"success":true}"#)
-        let outcome = try await PairingService(api: testAPI(http), keys: keys).approve(.account(publicKey: device.publicKey))
+        let outcome = try await LegacyPairingService(api: testAPI(http), keys: keys).approve(.account(publicKey: device.publicKey))
         XCTAssertEqual(outcome, .deviceLinked)
         let approval = try http.requests[0].jsonBody(AuthApproval.self)
         XCTAssertEqual(Box.openAnonymous(Base64.decode(approval.response)!, recipientSecretKey: device.secretKey), keys.secret)

@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 @MainActor
 final class StoriesMedia {
     /// The computer the media comes from; live pages read their files through it too.
-    let client: DirectAgentClient
+    let client: AgentClient
     private let images = NSCache<NSString, Decoded>()
     private let placeholders = NSCache<NSString, UIImage>()
     private var loading: [String: Task<UIImage?, Never>] = [:]
@@ -26,7 +26,7 @@ final class StoriesMedia {
         init(pixels: Int, image: UIImage) { self.pixels = pixels; self.image = image }
     }
 
-    init(client: DirectAgentClient) {
+    init(client: AgentClient) {
         self.client = client
         images.totalCostLimit = 64 * 1024 * 1024
         observer = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
@@ -94,7 +94,7 @@ final class StoriesMedia {
     /// A conversation's picture, before a story holds it.
     func assetImage(_ asset: StoryAsset, pixels: Int) async -> UIImage? {
         let client = client
-        return await picture("asset/\(DirectAgentClient.path(asset))", pixels: pixels) { try? await client.asset(asset).body }
+        return await picture("asset/\(AgentClient.path(asset))", pixels: pixels) { try? await client.asset(asset).body }
     }
 
     /// A player for a conversation's recording, before a story holds it.
@@ -221,7 +221,7 @@ final class StoriesByteStream: NSObject, AVAssetResourceLoaderDelegate, @uncheck
     static let scheme = "happy-story-media"
     static let chunk = 512 * 1024
 
-    typealias Fetch = @Sendable (ClosedRange<Int>?) async throws -> DirectHTTPResponse
+    typealias Fetch = @Sendable (ClosedRange<Int>?) async throws -> HTTP1Response
 
     private let name: String
     private let mimeType: String

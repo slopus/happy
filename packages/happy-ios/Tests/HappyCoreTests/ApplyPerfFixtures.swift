@@ -16,7 +16,7 @@ enum ApplyPerfFixtures {
     }
 
     static let machine = MachineRecord(
-        id: "computer", seq: 1, createdAt: now, updatedAt: now, active: true, activeAt: now,
+        id: "agent", seq: 1, createdAt: now, updatedAt: now, active: true, activeAt: now,
         metadataVersion: 1, metadataCipher: "cipher", metadata: .object(["host": .string("Work")]),
         daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: "key", decryptable: true
     )
@@ -27,7 +27,7 @@ enum ApplyPerfFixtures {
             updatedAt: now, active: true, activeAt: now, projectId: nil,
             metadataVersion: 1, metadataCipher: "cipher",
             metadata: .object([
-                "machineId": .string("computer"), "path": .string("/work/project"),
+                "machineId": .string("agent"), "path": .string("/work/project"),
                 "summary": .object(["text": .string("Session \(index)")]),
                 "lastMeaningfulMessageAt": .number(Double(now - Int64(index) * 60_000)),
             ]),
@@ -35,8 +35,8 @@ enum ApplyPerfFixtures {
         )
     }
 
-    static func snapshot(_ count: Int) -> HomeSnapshot {
-        HomeSnapshot(machines: MachinesSnapshot(synced: true, machines: [machine]), sessions: (0..<count).map(session), sessionsSynced: true)
+    static func snapshot(_ count: Int) -> LegacyHomeSnapshot {
+        LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: [machine]), sessions: (0..<count).map(session), sessionsSynced: true)
     }
 
     static func retitled(_ record: SessionRecord, _ title: String) -> SessionRecord {
@@ -63,7 +63,7 @@ enum ApplyPerfFixtures {
 
     /// Session 1 leads by a millisecond, then session 0 overtakes it in the
     /// same minute: the order changes, every stamp reads the same.
-    static func overtaking() -> (before: HomeSnapshot, after: HomeSnapshot) {
+    static func overtaking() -> (before: LegacyHomeSnapshot, after: LegacyHomeSnapshot) {
         var before = snapshot(50)
         before.sessions[1] = active(before.sessions[1], at: now + 1)
         var after = before
@@ -79,7 +79,7 @@ enum ApplyPerfFixtures {
         return record
     }
 
-    static func derive(_ snapshot: HomeSnapshot, after applied: HomeDerivation.Applied?) -> (output: HomeUpdate, state: HomeDerivation.Applied)? {
+    static func derive(_ snapshot: LegacyHomeSnapshot, after applied: HomeDerivation.Applied?) -> (output: HomeUpdate, state: HomeDerivation.Applied)? {
         HomeDerivation.derive(HomeDerivation.Input(snapshot: snapshot, includesDock: true, clock: clock), applied: applied ?? .init())
     }
 }

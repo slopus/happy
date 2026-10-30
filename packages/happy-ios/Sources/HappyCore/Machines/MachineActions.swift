@@ -6,11 +6,11 @@ import HappyWire
 public struct MachineActions: Sendable {
     let api: HappyAPI
     let store: LocalStore
-    let sync: SyncEngine
+    let sync: LegacySyncEngine
     let rpc: any RPCTransport
     let metadataTransport: any MetadataUpdateTransport
 
-    public init(api: HappyAPI, store: LocalStore, sync: SyncEngine, rpc: any RPCTransport, metadataTransport: any MetadataUpdateTransport) {
+    public init(api: HappyAPI, store: LocalStore, sync: LegacySyncEngine, rpc: any RPCTransport, metadataTransport: any MetadataUpdateTransport) {
         self.api = api
         self.store = store
         self.sync = sync

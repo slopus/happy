@@ -26,7 +26,7 @@ final class RemovalTests: XCTestCase {
     }
 
     private func store(_ computer: Computer) -> (Store, AsyncStream<Snapshot>.AsyncIterator) {
-        let store = Store(client: DirectAgentClient(transport: computer, token: "t"))
+        let store = Store(client: AgentClient(transport: computer, token: "t"))
         return (store, store.updates.makeAsyncIterator())
     }
 
@@ -273,7 +273,7 @@ final class NewWorkGuardTests: XCTestCase {
         )
         empty.sectionId = nil
         let computer = Computer(spaces: [empty])
-        let store = Store(client: DirectAgentClient(transport: computer, token: "t"))
+        let store = Store(client: AgentClient(transport: computer, token: "t"))
         await store.externalResync(loadSidebar: true)
         // The computer is slow to say whether the new work is empty.
         await computer.hold(reads: true)
@@ -292,7 +292,7 @@ final class NewWorkGuardTests: XCTestCase {
 
 /// A computer holding a sidebar of spaces, and one bot's subtasks. A write
 /// waits while `hold` is on, until `answer` says how it went.
-private actor Computer: DirectTransport {
+private actor Computer: AgentTransport {
     private var spaces: [AgentWire.Space]
     /// The sessions the document nests under each space.
     private let nested: [String: [String]]
@@ -327,13 +327,13 @@ private actor Computer: DirectTransport {
     func add(_ space: AgentWire.Space) { spaces.append(space) }
     func setSubtasks(_ ids: [String]) { subtasks = ids }
 
-    nonisolated func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+    nonisolated func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         try await respond(method, path)
     }
 
-    private func respond(_ method: String, _ path: String) async throws -> DirectHTTPResponse {
-        func json(_ value: Any) -> DirectHTTPResponse {
-            DirectHTTPResponse(status: 200, body: try! JSONSerialization.data(withJSONObject: value))
+    private func respond(_ method: String, _ path: String) async throws -> HTTP1Response {
+        func json(_ value: Any) -> HTTP1Response {
+            HTTP1Response(status: 200, body: try! JSONSerialization.data(withJSONObject: value))
         }
         if holdingReads, path.hasPrefix("/v0/agents/") {
             _ = await withCheckedContinuation { waiting.append($0) }
@@ -346,7 +346,7 @@ private actor Computer: DirectTransport {
             writes.append(path)
             let (status, error) = holding ? await withCheckedContinuation { waiting.append($0) } : (held ?? (200, nil))
             let body = try JSONSerialization.data(withJSONObject: error.map { ["error": $0] } ?? [:])
-            return DirectHTTPResponse(status: status, body: body)
+            return HTTP1Response(status: status, body: body)
         }
         switch path.split(separator: "?").first.map(String.init) ?? path {
         case "/v0/health":
@@ -368,11 +368,11 @@ private actor Computer: DirectTransport {
         default:
             if path.hasPrefix("/v0/tasks/") { return json(["task": ["version": "v1"]]) }
             if path.hasPrefix("/v0/bots/") { return json(["bot": ["version": "v1"]]) }
-            return DirectHTTPResponse(status: 404, body: Data("{}".utf8))
+            return HTTP1Response(status: 404, body: Data("{}".utf8))
         }
     }
 
-    nonisolated func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream { throw DirectAgentError.invalidResponse }
+    nonisolated func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream { throw AgentClientError.invalidResponse }
     nonisolated func reset() async {}
     nonisolated func close() async {}
 }

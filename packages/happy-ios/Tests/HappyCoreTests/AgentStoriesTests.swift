@@ -112,7 +112,7 @@ final class AgentStoriesTests: XCTestCase {
     private func make(_ transport: StoriesTransport) -> StoriesStore {
         let (stream, continuation) = AsyncStream.makeStream(of: Store.ConversationEvent.self)
         self.continuation = continuation
-        return StoriesStore(client: DirectAgentClient(transport: transport, token: "t"), events: { stream }, offline: nil, now: { 2_000 }, firstReadDelay: .zero)
+        return StoriesStore(client: AgentClient(transport: transport, token: "t"), events: { stream }, offline: nil, now: { 2_000 }, firstReadDelay: .zero)
     }
 
     private struct TimedOut: Error {}

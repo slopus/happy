@@ -60,7 +60,7 @@ extension ChatSessionState {
     /// snapshot (one read, so the record and the settings agree). `record`
     /// replaces the stored one (the debug fixtures).
     /// `now` (ms) stands in when the presence clock has not started.
-    public init(_ snapshot: HomeSnapshot, sessionId: String, record override: SessionRecord? = nil, now: Int64? = nil) {
+    public init(_ snapshot: LegacyHomeSnapshot, sessionId: String, record override: SessionRecord? = nil, now: Int64? = nil) {
         let record = override ?? snapshot.sessions.first { $0.id == sessionId }
         let stopped = record.map { SessionState($0) == .disconnected } ?? false
         // Only a stopped session needs its machine, for resuming.

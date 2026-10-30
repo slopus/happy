@@ -4,7 +4,7 @@ import HappyWire
 /// The Stories and Stickers routes (happy-agent `API.md` "Stories",
 /// "Stickers"), over the same paired device's tunnel as V2. Each
 /// write carries a fresh `mutationId`, so the store knows its own echo.
-extension DirectAgentClient {
+extension AgentClient {
     /// The user setting that turns Stories on; only the JSON `true` does.
     public static let storiesSettingKey = "happy-desktop.experiments.stories"
 
@@ -58,7 +58,7 @@ extension DirectAgentClient {
     }
 
     /// A round video's bytes, whole or one range of them.
-    public func roundVideo(_ storyId: String, overlayId: String, range: ClosedRange<Int>? = nil) async throws -> DirectHTTPResponse {
+    public func roundVideo(_ storyId: String, overlayId: String, range: ClosedRange<Int>? = nil) async throws -> HTTP1Response {
         let headers = range.map { ["Range": "bytes=\($0.lowerBound)-\($0.upperBound)"] } ?? [:]
         return try await send("GET", Self.roundVideoPath(storyId: storyId, overlayId: overlayId), headers: headers)
     }
@@ -70,13 +70,13 @@ extension DirectAgentClient {
     }
 
     /// A frame's bytes, whole or one range of them.
-    public func storyFrame(_ storyId: String, frameId: String, range: ClosedRange<Int>? = nil) async throws -> DirectHTTPResponse {
+    public func storyFrame(_ storyId: String, frameId: String, range: ClosedRange<Int>? = nil) async throws -> HTTP1Response {
         let headers = range.map { ["Range": "bytes=\($0.lowerBound)-\($0.upperBound)"] } ?? [:]
         return try await send("GET", "/v0/stories/\(Self.escape(storyId))/frames/\(Self.escape(frameId))", headers: headers)
     }
 
     /// A conversation's media item's bytes, whole or one range of them.
-    public func asset(_ asset: StoryAsset, range: ClosedRange<Int>? = nil) async throws -> DirectHTTPResponse {
+    public func asset(_ asset: StoryAsset, range: ClosedRange<Int>? = nil) async throws -> HTTP1Response {
         let headers = range.map { ["Range": "bytes=\($0.lowerBound)-\($0.upperBound)"] } ?? [:]
         return try await send("GET", Self.path(asset), headers: headers)
     }
@@ -87,7 +87,7 @@ extension DirectAgentClient {
     public func upload(_ data: Data) async throws -> String {
         struct Response: Decodable { struct Upload: Decodable { let id: String }; let upload: Upload }
         let response = try await send("POST", "/v0/artifact-uploads", raw: data)
-        guard let upload = try? JSONDecoder().decode(Response.self, from: response.body) else { throw DirectAgentError.invalidResponse }
+        guard let upload = try? JSONDecoder().decode(Response.self, from: response.body) else { throw AgentClientError.invalidResponse }
         return upload.upload.id
     }
 
@@ -104,7 +104,7 @@ extension DirectAgentClient {
         if case .some(let caption) = caption { body["caption"] = caption.flatMap { $0.isEmpty ? nil : JSONValue.string($0) } ?? .null }
         if let frames { body["frames"] = try encoded(frames) }
         let response = try await send("PATCH", "/v0/stories/\(Self.escape(storyId))", json: .object(body), headers: ["If-Match": version])
-        guard let story = try? JSONDecoder().decode(StoryResponse.self, from: response.body).story else { throw DirectAgentError.invalidResponse }
+        guard let story = try? JSONDecoder().decode(StoryResponse.self, from: response.body).story else { throw AgentClientError.invalidResponse }
         return story
     }
 
@@ -115,7 +115,7 @@ extension DirectAgentClient {
 
     public func deleteStory(_ storyId: String, version: String) async throws -> Story {
         let response = try await send("POST", "/v0/stories/\(Self.escape(storyId))/delete", json: .object(["mutationId": .string(ClientID.make())]), headers: ["If-Match": version])
-        guard let story = try? JSONDecoder().decode(StoryResponse.self, from: response.body).story else { throw DirectAgentError.invalidResponse }
+        guard let story = try? JSONDecoder().decode(StoryResponse.self, from: response.body).story else { throw AgentClientError.invalidResponse }
         return story
     }
 
@@ -190,7 +190,7 @@ public struct StoryRefusal: Equatable, Sendable {
     public var message: String?
 
     public init?(_ error: Error) {
-        guard case DirectAgentError.status(let status, let code, let message) = error else { return nil }
+        guard case AgentClientError.status(let status, let code, let message) = error else { return nil }
         self.status = status
         self.code = code
         self.message = message

@@ -40,7 +40,7 @@ final class QRSheetViewController: UIViewController {
     var onScan: (() -> Void)?
     var onEnterLink: (() -> Void)?
     private let image: UIImage?
-    private let isDirect: Bool
+    private let isAgentConnection: Bool
     private let nameText: String
     private let ground = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
     private let avatar = UIImageView()
@@ -53,10 +53,10 @@ final class QRSheetViewController: UIViewController {
     private let secondary = UIButton(type: .system)
     private var shown = false
 
-    init(name: String, image: UIImage?, isDirect: Bool) {
+    init(name: String, image: UIImage?, isAgentConnection: Bool) {
         nameText = name
         self.image = image
-        self.isDirect = isDirect
+        self.isAgentConnection = isAgentConnection
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .overFullScreen
         modalTransitionStyle = .crossDissolve
@@ -76,7 +76,7 @@ final class QRSheetViewController: UIViewController {
             avatar.image = image
             avatar.contentMode = .scaleAspectFill
         } else {
-            avatar.image = isDirect ? UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate) : Glyphs.image("person-outline", size: 44)
+            avatar.image = isAgentConnection ? UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate) : Glyphs.image("person-outline", size: 44)
             avatar.contentMode = .center
         }
         view.addSubview(avatar)

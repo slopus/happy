@@ -62,7 +62,7 @@ final class SidebarProposals {
         var rows: [Row]
     }
 
-    private let client: DirectAgentClient
+    private let client: AgentClient
     private let store: Store
     private var held: [String: Held] = [:]
     /// Rows the reader folded or unfolded, by proposal.
@@ -73,7 +73,7 @@ final class SidebarProposals {
     private var following: Task<Void, Never>?
     private var refreshing: Task<Void, Never>?
 
-    init(client: DirectAgentClient, store: Store) {
+    init(client: AgentClient, store: Store) {
         self.client = client
         self.store = store
     }
@@ -177,7 +177,7 @@ final class SidebarProposals {
                 held[artifactId] = Held(proposal: answer.proposal, html: answer.html, rows: rows)
                 show(artifactId)
             case .failure(let error):
-                if (error as? DirectAgentError)?.status == 404 {
+                if (error as? AgentClientError)?.status == 404 {
                     held[artifactId] = nil
                     shown[artifactId]?.status = .missing
                     onChange?()
@@ -263,8 +263,8 @@ final class SidebarProposals {
             do {
                 return try await act()
             } catch {
-                let status = (error as? DirectAgentError)?.status
-                if tries >= 2 || error is CancellationError || error as? DirectAgentError == .revoked || (status.map { $0 < 500 } ?? false) { throw error }
+                let status = (error as? AgentClientError)?.status
+                if tries >= 2 || error is CancellationError || error as? AgentClientError == .revoked || (status.map { $0 < 500 } ?? false) { throw error }
                 tries += 1
                 try await Task.sleep(for: .milliseconds(400 * tries))
             }
@@ -272,7 +272,7 @@ final class SidebarProposals {
     }
 
     private static func notice(_ error: Error) -> String {
-        if case .status(_, _, let message?) = error as? DirectAgentError, !message.isEmpty { return message }
+        if case .status(_, _, let message?) = error as? AgentClientError, !message.isEmpty { return message }
         return Strings.proposalFailed
     }
 }

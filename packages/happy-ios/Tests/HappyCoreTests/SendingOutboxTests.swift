@@ -6,15 +6,15 @@ import HappyStore
 import HappyWire
 
 final class SendingOutboxTests: XCTestCase, @unchecked Sendable {
-    func setup() throws -> (LocalStore, SyncEngine, FakeHTTP, ServerFixture) {
+    func setup() throws -> (LocalStore, LegacySyncEngine, FakeHTTP, ServerFixture) {
         let fixture = ServerFixture()
         let http = FakeHTTP()
         let store = try LocalStore.inMemory()
         try store.upsertSessions([RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))])
-        var options = SyncEngine.Options()
+        var options = LegacySyncEngine.Options()
         options.sendAttempts = 2
         options.sendRetryInitialMs = 60_000
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys, options: options, now: { 1_000 })
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys, options: options, now: { 1_000 })
         return (store, engine, http, fixture)
     }
 

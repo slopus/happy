@@ -66,7 +66,7 @@ final class ArtifactViewController: UIViewController {
             } else {
                 showWeb(version: version.number, entry: entry.path)
             }
-        } catch DirectAgentError.status(404, _, _) {
+        } catch AgentClientError.status(404, _, _) {
             show(message: Strings.artifactDeleted)
         } catch {
             show(message: Strings.artifactUnavailable)
@@ -148,12 +148,12 @@ final class ArtifactViewController: UIViewController {
 final class ArtifactFiles: NSObject, WKURLSchemeHandler, @unchecked Sendable {
     static let scheme = "happy-artifact"
 
-    private let client: DirectAgentClient
+    private let client: AgentClient
     private let artifactId: String
     /// Touched only on the main thread, where WebKit calls.
     private var running: [ObjectIdentifier: Task<Void, Never>] = [:]
 
-    init(client: DirectAgentClient, artifactId: String) {
+    init(client: AgentClient, artifactId: String) {
         self.client = client
         self.artifactId = artifactId
     }
@@ -203,7 +203,7 @@ final class ArtifactFiles: NSObject, WKURLSchemeHandler, @unchecked Sendable {
             task.didFailWithError(URLError(.badURL))
             return
         }
-        let range = request.value(forHTTPHeaderField: "Range").map(DirectAgentClient.bounded(range:))
+        let range = request.value(forHTTPHeaderField: "Range").map(AgentClient.bounded(range:))
         let client = client
         let artifactId = artifactId
         let box = TaskBox(task)
@@ -212,7 +212,7 @@ final class ArtifactFiles: NSObject, WKURLSchemeHandler, @unchecked Sendable {
             // WebKit may stop the task inside any call to it, after which
             // another call raises; each one checks first.
             func going() -> Bool { !Task.isCancelled && self?.running[id] != nil }
-            func head(_ response: DirectHTTPResponse, status: Int, length: Int?) -> HTTPURLResponse {
+            func head(_ response: HTTP1Response, status: Int, length: Int?) -> HTTPURLResponse {
                 var headers: [String: String] = [:]
                 for (key, value) in response.headers where ["content-type", "content-range", "content-length", "accept-ranges", "content-security-policy"].contains(key) {
                     headers[key] = value
@@ -229,7 +229,7 @@ final class ArtifactFiles: NSObject, WKURLSchemeHandler, @unchecked Sendable {
                     box.task.didReceive(response.body)
                 } else {
                     // The whole file, a range at a time, as one answer.
-                    try await DirectAgentClient.read({ range in
+                    try await AgentClient.read({ range in
                         try await client.artifactFile(artifactId, version: version, path: path, range: range.map { "bytes=\($0.lowerBound)-\($0.upperBound)" })
                     }, each: { piece, first, total in
                         guard going() else { throw CancellationError() }

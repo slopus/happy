@@ -15,7 +15,7 @@ public enum ScanIntent: Equatable, Sendable {
 /// wrong one included: a scan never ends in silence.
 public enum ScanRoute: Equatable, Sendable {
     /// Pair with the computer directly; it joins the accounts and opens.
-    case pairComputer(DirectPairingLink)
+    case connectAgent(PairingLink)
     /// Hand the computer the Happy account in use.
     case connectComputer(publicKey: Data)
     /// Make a Happy account, add it beside the others, and hand it to the
@@ -29,8 +29,8 @@ public enum ScanRoute: Equatable, Sendable {
     /// directly paired computer.
     public static func route(_ code: HappyCode, intent: ScanIntent, hasAccount: Bool) -> ScanRoute {
         switch code {
-        case .direct(let link):
-            return .pairComputer(link)
+        case .agentConnection(let link):
+            return .connectAgent(link)
         case .terminal(let key):
             return hasAccount && intent == .connect ? .connectComputer(publicKey: key) : .newAccountForComputer(publicKey: key)
         case .account(let key):
@@ -39,8 +39,8 @@ public enum ScanRoute: Equatable, Sendable {
             return .problem(.invalidTerminal)
         case .invalid(.account):
             return .problem(.invalidAccount)
-        case .invalid(.direct(let error)):
-            return .problem(.direct(error))
+        case .invalid(.agentConnection(let error)):
+            return .problem(.agentConnection(error))
         case .notHappy:
             return .problem(.notHappy)
         }
@@ -51,7 +51,7 @@ public enum ScanProblem: Equatable, Sendable {
     case notHappy
     case invalidTerminal
     case invalidAccount
-    case direct(DirectPairingError)
+    case agentConnection(PairingError)
     /// Another device's account link, with no Happy account here to give.
     case deviceNeedsAccount
 }

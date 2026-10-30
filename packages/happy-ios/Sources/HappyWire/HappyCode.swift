@@ -19,7 +19,7 @@ public enum HappyCode: Equatable, Sendable {
     /// Another phone or browser asking for this phone's account.
     case account(publicKey: Data)
     /// A computer to pair with directly.
-    case direct(DirectPairingLink)
+    case agentConnection(PairingLink)
     /// A Happy link whose content is broken, expired or from a newer app.
     case invalid(Problem)
     /// Not a Happy code at all.
@@ -28,29 +28,29 @@ public enum HappyCode: Equatable, Sendable {
     public enum Problem: Equatable, Sendable {
         case terminal
         case account
-        case direct(DirectPairingError)
+        case agentConnection(PairingError)
     }
 
     public init(_ text: String, now: Date = Date()) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if DirectPairingLink.isDirect(text) {
+        if PairingLink.isAgentConnection(text) {
             do {
-                self = .direct(try DirectPairingLink(text, now: now))
+                self = .agentConnection(try PairingLink(text, now: now))
             } catch {
-                self = .invalid(.direct(error as? DirectPairingError ?? .invalidCode))
+                self = .invalid(.agentConnection(error as? PairingError ?? .invalidCode))
             }
             return
         }
-        if let link = PairingLink(text) {
+        if let link = LegacyPairingLink(text) {
             switch link {
             case .terminal(let key): self = .terminal(publicKey: key)
             case .account(let key): self = .account(publicKey: key)
             }
             return
         }
-        if text.hasPrefix(PairingLink.terminalPrefix) {
+        if text.hasPrefix(LegacyPairingLink.terminalPrefix) {
             self = .invalid(.terminal)
-        } else if text.hasPrefix(PairingLink.accountPrefix) {
+        } else if text.hasPrefix(LegacyPairingLink.accountPrefix) {
             self = .invalid(.account)
         } else if let key = Self.webTerminalKey(text) {
             self = key.map { .terminal(publicKey: $0) } ?? .invalid(.terminal)
@@ -64,7 +64,7 @@ public enum HappyCode: Equatable, Sendable {
     private static func webTerminalKey(_ text: String) -> Data?? {
         guard let url = URLComponents(string: text), url.scheme == "https" || url.scheme == "http",
               url.path.hasSuffix("/terminal/connect"), let fragment = url.fragment, fragment.hasPrefix("key=") else { return nil }
-        guard case .terminal(let key)? = PairingLink(PairingLink.terminalPrefix + fragment.dropFirst(4)) else { return .some(nil) }
+        guard case .terminal(let key)? = LegacyPairingLink(LegacyPairingLink.terminalPrefix + fragment.dropFirst(4)) else { return .some(nil) }
         return .some(key)
     }
 }

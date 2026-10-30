@@ -1,355 +1,266 @@
 import Foundation
 import XCTest
 @testable import HappyCore
-import HappyCrypto
-import HappyStore
 import HappyWire
 
-/// A fake account on a fake server: produces rows encrypted exactly as the
-/// CLI and server would.
-struct ServerFixture {
-    let keys = try! AccountKeys(secret: SystemRandom().bytes(32))
-    let dataKey = SystemRandom().bytes(32)
+private actor SyncFixture: AgentTransport {
+    static let fixture = #"""
+    {"cursor":"cursor-1","profile":{"userId":null},"userSettings":[],
+     "projects":[{"id":"p","name":"App","status":"active","orderKey":"a","agents":[{"id":"root","workspaceId":"p","title":"Root chat","status":"idle"}]}],
+     "workspaces":[
+       {"id":"work","projectId":"p","parentId":"p","name":"Feature","kind":"worktree","status":"active","orderKey":"b","agents":[]},
+       {"id":"delegated","projectId":"p","parentId":"p","name":"Duplicated worktree","kind":"worktree","status":"active","orderKey":"a","agents":[]}],
+     "bots":[{"id":"happy","name":"Happy","systemKey":"chief_of_staff","status":"active","agent":{"id":"bot-agent","workspaceId":"bot-work","status":"idle","subtasks":[{"id":"child","workspaceId":"delegated","parentAgentId":"bot-agent","title":"Delegated task","status":"running"}]}}],
+     "tasks":[{"id":"unjoined","name":"Not joined","agent":{"id":"unjoined-agent","workspaceId":"x","status":"idle"}},
+       {"id":"first","name":"First created","agent":{"id":"first-agent","workspaceId":"one","status":"idle"}},
+       {"id":"last","name":"Last created","agent":{"id":"last-agent","workspaceId":"two","status":"idle"}}],
+     "taskMemberships":[{"taskId":"last"},{"taskId":"first"}],
+     "surfaces":[{"id":"other","name":"Other person's document","type":"document","members":[{"userId":"other-user","orderKey":"a"}]},
+       {"id":"todo","name":"Groceries","type":"todo","members":[{"userId":null,"orderKey":"b"}]},
+       {"id":"doc","name":"Notes","type":"document","members":[{"userId":null,"orderKey":"a"}]}]}
+    """#
+    var value = try! JSONDecoder().decode(JSONValue.self, from: Data(fixture.utf8))
+    var online = true
+    var writes: [JSONValue] = []
+    var streamHeaders: [[String: String]] = []
+    var continuations: [AsyncThrowingStream<Data, Error>.Continuation] = []
+    var version = 0
+    var bootstrapFailures = 0
+    var sends: [JSONValue] = []
+    var loseSendAck = false
 
-    var wrappedKey: String { Base64.encode(try! keys.wrapDataKey(dataKey)) }
-
-    func seal(_ value: JSONValue) -> String {
-        try! RecordCipher(key: dataKey).encrypt(value)
+    func configure(online: Bool) { self.online = online }
+    func writeCount() -> Int { writes.count }
+    func savedWrites() -> [JSONValue] { writes }
+    func savedSends() -> [JSONValue] { sends }
+    func loseNextSendAcknowledgement() { loseSendAck = true }
+    func renameProjectAfterOneFailedRead() {
+        bootstrapFailures = 1
+        var object = value.objectValue!
+        var project = object["projects"]!.arrayValue!.first!.objectValue!
+        project["name"] = .string("Renamed remotely")
+        object["projects"] = .array([.object(project)])
+        value = .object(object)
+        emit(.object(["type": .string("project.updated"), "payload": .object(["projectId": .string("p")])]))
     }
-
-    func session(_ id: String, seq: Int = 0, updatedAt: Int64, metadataVersion: Int = 1, title: String = "t", withKey: Bool = true) -> APISession {
-        APISession(
-            id: id, seq: seq, createdAt: 1, updatedAt: updatedAt, active: true, activeAt: updatedAt,
-            metadata: seal(.object(["title": .string(title)])), metadataVersion: metadataVersion,
-            agentState: nil, agentStateVersion: 0,
-            dataEncryptionKey: withKey ? wrappedKey : nil, projectId: nil
-        )
+    func setProjectsHidden(_ hidden: Bool, stamp: Double = Date().timeIntervalSince1970 * 1000) {
+        version += 1
+        let setting: JSONValue = .object(["key": .string(DesktopSettingKeys.projectsVisibility), "value": .object(["projectsHidden": .bool(hidden)]), "version": .string(String(format: "%08d", version)), "updatedAt": .number(stamp)])
+        var object = value.objectValue!
+        object["userSettings"] = .array([setting])
+        value = .object(object)
+        emit(.object(["type": .string("user_settings.updated"), "payload": .object(["setting": setting])]))
     }
-
-    func message(seq: Int, text: String, localId: String? = nil) -> SessionMessage {
-        let payload: JSONValue = .object([
-            "role": .string("session"),
-            "content": .object(["id": .string("e\(seq)"), "time": .number(1), "role": .string("agent"), "ev": .object(["t": .string("text"), "text": .string(text)])]),
-        ])
-        return SessionMessage(id: "m\(seq)", seq: seq, localId: localId, content: SessionMessageContent(c: seal(payload)), createdAt: Int64(seq), updatedAt: Int64(seq))
+    var requested: [String] = []
+    func requestedPaths() -> [String] { requested }
+    /// V2 turned on from the computer while the phone watches.
+    func turnOnV2() {
+        version += 1
+        let setting: JSONValue = .object(["key": .string(DesktopSettingKeys.v2), "value": .bool(true), "version": .string(String(format: "%08d", version)), "updatedAt": .number(Date().timeIntervalSince1970 * 1000)])
+        var object = value.objectValue!
+        object["userSettings"] = .array([setting])
+        value = .object(object)
+        emit(.object(["type": .string("user_settings.updated"), "payload": .object(["setting": setting])]))
     }
+    func emit(_ event: JSONValue) {
+        let json = String(data: try! JSONEncoder().encode(event), encoding: .utf8)!
+        continuations.forEach { $0.yield(Data("event: message\ndata: \(json)\n\n".utf8)) }
+    }
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        guard online else { throw URLError(.notConnectedToInternet) }
+        requested.append(path)
+        if path == "/v0/bootstrap/desktop" {
+            if bootstrapFailures > 0 { bootstrapFailures -= 1; throw URLError(.timedOut) }
+            return .init(status: 200, body: try JSONEncoder().encode(value))
+        }
+        if method == "PUT", path.hasPrefix("/v0/user-settings/") {
+            let request = try JSONDecoder().decode(JSONValue.self, from: body!)
+            writes.append(request)
+            let held = value["userSettings"]?.arrayValue?.first
+            if (held?["updatedAt"]?.numberValue ?? 0) <= (request["updatedAt"]?.numberValue ?? 0) {
+                setProjectsHidden(request["value"]?["projectsHidden"] == .bool(true), stamp: request["updatedAt"]!.numberValue!)
+            }
+            return .init(status: 200, body: try JSONEncoder().encode(JSONValue.object(["setting": value["userSettings"]!.arrayValue!.first!])))
+        }
+        if method == "POST", path.hasSuffix("/send") {
+            sends.append(try JSONDecoder().decode(JSONValue.self, from: body!))
+            if loseSendAck { loseSendAck = false; throw URLError(.networkConnectionLost) }
+            return .init(status: 200, body: Data("{}".utf8))
+        }
+        return .init(status: 404, body: Data("{}".utf8))
+    }
+    func stream(path: String, credential: String, headers: [String: String]) throws -> HTTP1Stream {
+        guard online else { throw URLError(.notConnectedToInternet) }
+        streamHeaders.append(headers)
+        let (body, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
+        continuations.append(continuation)
+        continuation.yield(Data("event: hello\ndata: {\"cursor\":\"cursor-1\",\"resumed\":true}\n\n".utf8))
+        return .init(status: 200, body: body)
+    }
+    func close() { continuations.forEach { $0.finish() }; continuations.removeAll() }
 }
 
 final class SyncEngineTests: XCTestCase {
-    var fixture: ServerFixture!
-    var http: FakeHTTP!
-    var store: LocalStore!
-    var clock: Clock!
-    var engine: SyncEngine!
-
-    final class Clock: @unchecked Sendable {
-        var now: Int64 = 1_000_000
+    private struct Timeout: Error {}
+    private func wait(_ engine: SyncEngine, _ predicate: @escaping @Sendable (HomeSnapshot) -> Bool) async throws -> HomeSnapshot {
+        try await withThrowingTaskGroup(of: HomeSnapshot.self) { group in
+            group.addTask {
+                for await snapshot in await engine.snapshots() where predicate(snapshot) { return snapshot }
+                throw Timeout()
+            }
+            group.addTask { try await Task.sleep(for: .seconds(4)); throw Timeout() }
+            defer { group.cancelAll() }
+            return try await group.next()!
+        }
     }
+    private func folder() -> URL { FileManager.default.temporaryDirectory.appendingPathComponent("direct-sync-\(UUID().uuidString)") }
 
-    override func setUpWithError() throws {
-        fixture = ServerFixture()
-        http = FakeHTTP()
-        store = try LocalStore.inMemory()
-        clock = Clock()
-        let clock = self.clock!
-        var options = SyncEngine.Options()
-        options.backoff = Backoff(initial: .milliseconds(1), maximum: .milliseconds(2))
-        engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys, options: options, now: { clock.now })
-        http.onRaw("GET /v1/machines", "[]")
-        http.onRaw("GET /v1/account/settings", #"{"settings":null,"settingsVersion":0}"#)
-    }
-
-    override func tearDown() async throws {
+    func testTransientReconcileFailureRetriesWithoutAnotherEvent() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live }
+        await transport.renameProjectAfterOneFailedRead()
+        let changed = try await wait(engine) { $0.rows.contains { $0.label == "Renamed remotely" } }
+        XCTAssertTrue(changed.live)
         await engine.stop()
     }
 
-    private func titles() throws -> [String: String] {
-        Dictionary(uniqueKeysWithValues: try store.sessions().map { ($0.id, $0.metadata?["title"]?.stringValue ?? "<nil>") })
-    }
-
-    func testFirstSyncIsFullThenOnlyDeltas() async throws {
-        let fixture = self.fixture!
-        let pages = PageCounter()
-        let t0: Int64 = 1_760_000_000_000
-        http.on("GET /v2/sessions") { request in
-            pages.count += 1
-            if request.query("changedSince") == nil {
-                // Full listing, two pages.
-                if request.query("cursor") == nil {
-                    return (200, try JSONEncoder().encode(SessionsPage(sessions: [fixture.session("b", updatedAt: t0 + 200)], nextCursor: "cursor_v1_b", hasNext: true)))
-                }
-                return (200, try JSONEncoder().encode(SessionsPage(sessions: [fixture.session("a", updatedAt: t0 + 100)], nextCursor: nil, hasNext: false)))
-            }
-            return (200, try JSONEncoder().encode(SessionsPage(sessions: [fixture.session("a", updatedAt: t0 + 300, metadataVersion: 2, title: "renamed")], nextCursor: nil, hasNext: false)))
-        }
-
-        await engine.run(.sessions)
-        XCTAssertEqual(try titles(), ["a": "t", "b": "t"])
-        XCTAssertEqual(try store.cursor(.sessionsChangedSince), t0 + 200)
-        XCTAssertEqual(try store.cursor(.sessionsLastFullSync), 1_000_000)
-
-        clock.now += 60_000
-        await engine.run(.sessions)
-        let delta = try XCTUnwrap(http.requests("GET /v2/sessions").last)
-        XCTAssertEqual(delta.query("changedSince"), "\(t0 + 200 - 5_000)", "re-reads a small overlap before the cursor")
-        XCTAssertEqual(try titles(), ["a": "renamed", "b": "t"])
-        XCTAssertEqual(try store.cursor(.sessionsChangedSince), t0 + 300)
-        XCTAssertEqual(pages.count, 3)
-    }
-
-    func testDailyFullSyncDropsSessionsDeletedWhileOffline() async throws {
-        let fixture = self.fixture!
-        let remaining = ServerSessions([fixture.session("a", updatedAt: 100), fixture.session("b", updatedAt: 100)])
-        http.on("GET /v2/sessions") { _ in (200, try JSONEncoder().encode(SessionsPage(sessions: remaining.value, nextCursor: nil, hasNext: false))) }
-        await engine.run(.sessions)
-        XCTAssertEqual(Set(try store.sessions().map(\.id)), ["a", "b"])
-
-        remaining.value = [fixture.session("a", updatedAt: 100)]
-        clock.now += 60_000
-        await engine.run(.sessions)
-        XCTAssertEqual(Set(try store.sessions().map(\.id)), ["a", "b"], "a delta pull cannot see deletions")
-
-        clock.now += 24 * 60 * 60 * 1000
-        await engine.run(.sessions)
-        XCTAssertEqual(try store.sessions().map(\.id), ["a"])
-    }
-
-    func testSessionsWithoutADataKeyAreStoredButNotOpened() async throws {
-        let fixture = self.fixture!
-        http.on("GET /v2/sessions") { _ in
-            (200, try JSONEncoder().encode(SessionsPage(sessions: [fixture.session("legacy", seq: 3, updatedAt: 1, withKey: false)], nextCursor: nil, hasNext: false)))
-        }
-        await engine.run(.sessions)
-        let session = try XCTUnwrap(try store.session(id: "legacy"))
-        XCTAssertFalse(session.decryptable)
-        XCTAssertNil(session.metadata)
-        await engine.waitForIdle()
-        XCTAssertTrue(http.requests("GET /v3/sessions/legacy/messages").isEmpty)
-    }
-
-    func testMessagesAreFetchedOnlyAfterTheLocalCursor() async throws {
-        let fixture = self.fixture!
-        http.on("GET /v2/sessions") { _ in
-            (200, try JSONEncoder().encode(SessionsPage(sessions: [fixture.session("s", seq: 3, updatedAt: 1)], nextCursor: nil, hasNext: false)))
-        }
-        http.on("GET /v3/sessions/s/messages") { request in
-            let after = Int(request.query("after_seq") ?? "") ?? -1
-            let all = (1...3).map { fixture.message(seq: $0, text: "m\($0)") }.filter { $0.seq > after }
-            let page = Array(all.prefix(2))
-            return (200, try JSONEncoder().encode(MessagesPage(messages: page, hasMore: all.count > 2)))
-        }
-
-        await engine.run(.sessions)
-        await engine.waitForIdle()
-        XCTAssertEqual(http.requests("GET /v3/sessions/s/messages").map { $0.query("after_seq") }, ["0", "2"])
-        let messages = try store.messages(sessionId: "s")
-        XCTAssertEqual(messages.map(\.seq), [1, 2, 3])
-        guard case .session(let envelope, _)? = messages.last?.content.map(MessageContent.init(decrypted:)) else { return XCTFail() }
-        XCTAssertEqual(envelope.ev, .text(text: "m3", thinking: false))
-        XCTAssertEqual(try store.session(id: "s")?.syncedMessageSeq, 3)
-
-        // Nothing new: no message request at all.
-        await engine.run(.pendingMessages)
-        XCTAssertEqual(http.requests("GET /v3/sessions/s/messages").count, 2)
-    }
-
-    func testLiveMessagesFastPathAndGapRecovery() async throws {
-        let fixture = self.fixture!
-        try store.upsertSessions([RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", seq: 1, updatedAt: 1))])
-        try store.applyMessagePage(sessionId: "s", messages: [], syncedThrough: 1)
-        http.on("GET /v3/sessions/s/messages") { _ in
-            (200, try JSONEncoder().encode(MessagesPage(messages: [fixture.message(seq: 3, text: "three"), fixture.message(seq: 4, text: "four")], hasMore: false)))
-        }
-
-        await engine.handle(update(.newMessage(sessionId: "s", message: fixture.message(seq: 2, text: "two"))))
-        XCTAssertEqual(try store.session(id: "s")?.syncedMessageSeq, 2)
-        XCTAssertTrue(http.requests.isEmpty, "a contiguous message needs no fetch")
-
-        await engine.handle(update(.newMessage(sessionId: "s", message: fixture.message(seq: 4, text: "four"))))
-        await engine.waitForIdle()
-        XCTAssertEqual(http.requests("GET /v3/sessions/s/messages").first?.query("after_seq"), "2")
-        XCTAssertEqual(try store.messages(sessionId: "s").map(\.seq), [2, 3, 4])
-        XCTAssertEqual(try store.session(id: "s")?.syncedMessageSeq, 4)
-    }
-
-    func testLiveUpdatesForUnknownSessionsTriggerASessionPull() async throws {
-        let fixture = self.fixture!
-        http.on("GET /v2/sessions") { _ in
-            (200, try JSONEncoder().encode(SessionsPage(sessions: [fixture.session("new", updatedAt: 5)], nextCursor: nil, hasNext: false)))
-        }
-        http.onRaw("GET /v3/sessions/new/messages", #"{"messages":[],"hasMore":false}"#)
-        await engine.handle(update(.newMessage(sessionId: "new", message: fixture.message(seq: 1, text: "x"))))
-        await engine.waitForIdle()
-        XCTAssertEqual(http.requests("GET /v2/sessions").count, 1)
-        XCTAssertNotNil(try store.session(id: "new"))
-    }
-
-    func testSessionUpdatesDecryptWithTheSessionKeyAndIgnoreStaleVersions() async throws {
-        let fixture = self.fixture!
-        try store.upsertSessions([RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1, metadataVersion: 5))])
-
-        await engine.handle(update(.updateSession(UpdateSessionUpdate(
-            id: "s", metadata: VersionedValue(version: 4, value: fixture.seal(.object(["title": .string("stale")])))
-        ))))
-        XCTAssertEqual(try titles()["s"], "t")
-
-        await engine.handle(update(.updateSession(UpdateSessionUpdate(
-            id: "s", metadata: VersionedValue(version: 6, value: fixture.seal(.object(["title": .string("fresh")])))
-        ))))
-        XCTAssertEqual(try titles()["s"], "fresh")
-
-        await engine.handle(update(.deleteSession(sessionId: "s")))
-        XCTAssertNil(try store.session(id: "s"))
-    }
-
-    func testMachinesAndSettings() async throws {
-        let fixture = self.fixture!
-        let machine = APIMachine(
-            id: "m1", metadata: fixture.seal(.object(["host": .string("mac")])), metadataVersion: 1,
-            daemonState: nil, daemonStateVersion: 0, dataEncryptionKey: fixture.wrappedKey,
-            seq: 0, active: true, activeAt: 10, createdAt: 1, updatedAt: 1
-        )
-        http.on("GET /v1/machines", json: [machine])
-        let settings = try AccountCipher(secret: fixture.keys.secret).encrypt(.object(["theme": .string("dark")]))
-        http.onRaw("GET /v1/account/settings", #"{"settings":"\#(settings)","settingsVersion":3}"#)
-
-        await engine.run(.machines)
-        await engine.run(.settings)
-        XCTAssertEqual(try store.machines().first?.metadata?["host"], .string("mac"))
-        XCTAssertEqual(try store.accountSettings()?.settings?["theme"], .string("dark"))
-
-        await engine.handle(update(.updateMachine(UpdateMachineUpdate(
-            machineId: "m1", metadata: nil, daemonState: VersionedValue(version: 1, value: fixture.seal(.object(["pid": .number(42)]))), active: false, activeAt: 20
-        ))))
-        let stored = try XCTUnwrap(try store.machines().first)
-        XCTAssertEqual(stored.daemonState?["pid"], .number(42))
-        XCTAssertFalse(stored.active)
-
-        await engine.handle(.machineActivity(machineId: "m1", active: true, activeAt: 30))
-        XCTAssertEqual(try store.machines().first?.active, true)
-    }
-
-    func testOutboxSendsEncryptedIdempotentMessages() async throws {
-        let fixture = self.fixture!
-        try store.upsertSessions([RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))])
-        let failFirst = PageCounter()
-        http.on("POST /v3/sessions/s/messages") { request in
-            failFirst.count += 1
-            if failFirst.count == 1 { return (503, Data()) }
-            let body = try request.jsonBody(SendMessagesRequest.self)
-            let sent = try XCTUnwrap(body.messages.first)
-            return (200, Data(#"{"messages":[{"id":"srv1","seq":1,"localId":"\#(sent.localId)","createdAt":5,"updatedAt":5}]}"#.utf8))
-        }
-
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    func testAccountDrainsPersistedSendWithoutOpeningConversation() async throws {
+        let directory = folder()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let localId = try await engine.accept(
-            OutgoingMessage(text: "hi"), sessionId: "s", filesDirectory: directory
-        )
-        let payload = try XCTUnwrap(store.outbox(localId: localId)?.payload)
-        XCTAssertEqual(try store.pendingOutbox().count, 1, "stored before any network call")
-        await engine.waitForIdle()
-
-        XCTAssertEqual(try store.outbox(localId: localId)?.nextAttemptAt, clock.now + 1_000)
-        clock.now += 1_000
-        await engine.run(.outbox)
-
-        let attempts = http.requests("POST /v3/sessions/s/messages")
-        XCTAssertEqual(attempts.count, 2, "retried after the 503")
-        let sent = try attempts[1].jsonBody(SendMessagesRequest.self).messages[0]
-        XCTAssertEqual(sent.localId, localId)
-        XCTAssertEqual(RecordCipher(key: fixture.dataKey).decrypt(base64: sent.content), payload)
-        XCTAssertTrue(try store.pendingOutbox().isEmpty)
-        XCTAssertEqual(try store.messages(sessionId: "s").map(\.id), ["srv1"])
-    }
-
-    private func update(_ body: UpdateBody) -> UpdateContainer {
-        UpdateContainer(id: "u", seq: 1, body: body, createdAt: 0)
-    }
-}
-
-final class InvalidateSyncTests: XCTestCase {
-    func testCoalescesInvalidationsWhileRunning() async throws {
-        let gate = Gate()
-        let runs = PageCounter()
-        let sync = InvalidateSync {
-            runs.count += 1
-            await gate.wait()
+        let transport = SyncFixture()
+        let mode = AgentWire.Mode(providerId: "test", modelId: "test-model", effort: "low", serviceTier: nil, permissionMode: "auto")
+        let first = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        try await first.enqueueMessage(.init(id: "stable-message", agentID: "never-opened", text: "Offline text", pictures: [], mode: mode))
+        await first.stop()
+        let reopened = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        await reopened.start()
+        _ = try await wait(reopened) { $0.live }
+        for _ in 0..<100 {
+            if !(await transport.savedSends()).isEmpty { break }
+            try await Task.sleep(for: .milliseconds(10))
         }
-        await sync.invalidate()
-        await eventually { runs.count == 1 }
-        for _ in 0..<5 { await sync.invalidate() }
-        await gate.open()
-        await eventually { await !sync.isRunning }
-        XCTAssertEqual(runs.count, 2, "five invalidations during a run collapse into one follow-up")
+        let sends = await transport.savedSends()
+        XCTAssertEqual(sends.count, 1)
+        XCTAssertEqual(sends.first?["id"], .string("stable-message"))
+        XCTAssertEqual(sends.first?["text"], .string("Offline text"))
+        XCTAssertEqual(sends.first?["mode"]?["modelId"], .string("test-model"))
+        let pending = try await reopened.queuedMessages(for: "never-opened")
+        XCTAssertTrue(pending.isEmpty)
+        await reopened.stop()
     }
 
-    func testRetriesWithBackoffUntilSuccess() async throws {
-        let attempts = PageCounter()
-        let delays = DelayLog()
-        let sync = InvalidateSync(backoff: Backoff(initial: .seconds(1), maximum: .seconds(3)), sleep: { delays.append($0) }) {
-            attempts.count += 1
-            if attempts.count < 4 { throw URLError(.notConnectedToInternet) }
+    func testAmbiguousSendAcknowledgementRetainsExactPayloadAndPausesRetries() async throws {
+        let transport = SyncFixture()
+        await transport.loseNextSendAcknowledgement()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live }
+        let mode = AgentWire.Mode(providerId: "test", modelId: "chosen-model", effort: "high", serviceTier: nil, permissionMode: "auto")
+        try await engine.enqueueMessage(.init(id: "same-message", agentID: "chat", text: "Keep this exact text", pictures: [.init(mimeType: "image/png", data: Data([1, 2, 3]))], mode: mode))
+        for _ in 0..<100 {
+            if !(await transport.savedSends()).isEmpty { break }
+            try await Task.sleep(for: .milliseconds(10))
         }
-        await sync.invalidateAndAwait()
-        XCTAssertEqual(attempts.count, 4)
-        XCTAssertEqual(delays.values, [.seconds(1), .seconds(2), .seconds(3)])
-    }
-
-    func testStopWaitsForTheRunInFlight() async throws {
-        let finished = PageCounter()
-        let sync = InvalidateSync {
-            // Stands in for a request: it ends when cancelled.
-            try? await Task.sleep(for: .seconds(30))
-            finished.count += 1
+        await engine.pause()
+        try await Task.sleep(for: .milliseconds(1100))
+        let pausedSends = await transport.savedSends()
+        XCTAssertEqual(pausedSends.count, 1)
+        await engine.start()
+        _ = try await wait(engine) { $0.live }
+        for _ in 0..<100 {
+            if (await transport.savedSends()).count == 2 { break }
+            try await Task.sleep(for: .milliseconds(10))
         }
-        await sync.invalidate()
-        await eventually { await sync.isRunning }
-        await sync.stop()
-        XCTAssertEqual(finished.count, 1, "stop() returns only after the run has ended")
-        let running = await sync.isRunning
-        XCTAssertFalse(running)
+        let retried = await transport.savedSends()
+        XCTAssertEqual(retried.count, 2)
+        XCTAssertEqual(retried.first, retried.last)
+        await engine.stop()
     }
 
-    func testBackoffDelays() {
-        let backoff = Backoff(initial: .seconds(1), maximum: .seconds(30))
-        XCTAssertEqual((1...7).map(backoff.delay(attempt:)), [1, 2, 4, 8, 16, 30, 30].map { Duration.seconds($0) })
-    }
-}
-
-final class PageCounter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _count = 0
-    var count: Int {
-        get { lock.lock(); defer { lock.unlock() }; return _count }
-        set { lock.lock(); _count = newValue; lock.unlock() }
-    }
-}
-
-final class ServerSessions: @unchecked Sendable {
-    var value: [APISession]
-    init(_ value: [APISession]) { self.value = value }
-}
-
-final class DelayLog: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _values: [Duration] = []
-    var values: [Duration] { lock.lock(); defer { lock.unlock() }; return _values }
-    func append(_ value: Duration) { lock.lock(); _values.append(value); lock.unlock() }
-}
-
-actor Gate {
-    private var isOpen = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    func wait() async {
-        if isOpen { return }
-        await withCheckedContinuation { waiters.append($0) }
+    func testCanonicalDesktopOrderMembershipHierarchyAndVisibility() throws {
+        let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: Data(SyncFixture.fixture.utf8))
+        let all = SidebarRows.make(desktop, settings: [:])
+        XCTAssertEqual(all.map(\.label), ["Artifacts", "Notes", "Groceries", "Bots", "Happy", "Delegated task", "Tasks", "Last created", "First created", "Projects", "App", "Root chat", "Feature"])
+        XCTAssertEqual(all.map(\.id).count, Set(all.map(\.id)).count)
+        XCTAssertEqual(all.first { $0.label == "Delegated task" }?.depth, 1)
+        let settings: [String: JSONValue] = [DesktopSettingKeys.projectsVisibility: .object(["projectsHidden": .bool(true)]), "happy-desktop.bot.happy": .object(["hidden": .bool(true)])]
+        let hidden = SidebarRows.make(desktop, settings: settings)
+        XCTAssertEqual(hidden.map(\.label), ["Artifacts", "Notes", "Groceries", "Bots", "Tasks", "Last created", "First created"])
+        let folded = Rows.visible(SidebarRows.make(desktop, settings: [:], collapsed: ["project:p"]))
+        XCTAssertFalse(folded.contains { $0.label == "Root chat" || $0.label == "Feature" })
+        XCTAssertTrue(folded.contains { $0.label == "App" })
     }
 
-    func open() {
-        isOpen = true
-        waiters.forEach { $0.resume() }
-        waiters = []
+    func testOfflineCacheAndSettingsSurviveAccountRelaunchThenReplay() async throws {
+        let directory = folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && $0.loaded }
+        await engine.pause()
+        await transport.configure(online: false)
+        try await engine.setProjectsHidden(true)
+        let optimistic = try await wait(engine) { DesktopSettingKeys.projectsHidden($0.settings) }
+        XCTAssertFalse(optimistic.rows.contains { $0.label == "Projects" })
+        await engine.stop()
+
+        let reopened = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        await reopened.start()
+        let offline = try await wait(reopened) { $0.loaded }
+        XCTAssertFalse(offline.live)
+        XCTAssertTrue(DesktopSettingKeys.projectsHidden(offline.settings))
+        XCTAssertTrue(offline.rows.contains { $0.label == "Last created" })
+        await reopened.pause()
+        await transport.configure(online: true)
+        await reopened.start()
+        _ = try await wait(reopened) { $0.live }
+        for _ in 0..<100 where await transport.writeCount() == 0 { try await Task.sleep(for: .milliseconds(10)) }
+        let writes = await transport.savedWrites()
+        XCTAssertEqual(writes.count, 1)
+        XCTAssertNotNil(writes.first?["mutationId"]?.stringValue)
+        XCTAssertNotNil(writes.first?["updatedAt"]?.numberValue)
+        let headers = await transport.streamHeaders
+        XCTAssertTrue(headers.allSatisfy { $0["Last-Event-ID"] == "cursor-1" })
+        await reopened.stop()
+    }
+
+    func testRemoteSettingChangesHomeAndAStaleOfflineEditAdoptsServerWinner() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live }
+        await transport.setProjectsHidden(true)
+        let remote = try await wait(engine) { DesktopSettingKeys.projectsHidden($0.settings) }
+        XCTAssertFalse(remote.rows.contains { $0.label == "App" })
+        await engine.pause()
+        try await engine.setProjectsHidden(false)
+        await transport.setProjectsHidden(true, stamp: Date().timeIntervalSince1970 * 1000 + 1000)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && DesktopSettingKeys.projectsHidden($0.settings) }
+        await engine.stop()
+    }
+
+    /// V2 switched on from the computer while home is open: the
+    /// sidebar it now draws is read at once, not after a relaunch.
+    func testV2TurnedOnRemotelyReadsTheSidebar() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && $0.loaded && !$0.usesSpaces }
+        let sidebar = "/v0/spaces/sidebar?widgets=true"
+        let before = await transport.requestedPaths()
+        XCTAssertFalse(before.contains(sidebar))
+        await transport.turnOnV2()
+        _ = try await wait(engine) { $0.usesSpaces }
+        for _ in 0..<200 {
+            if (await transport.requestedPaths()).contains(sidebar) { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let after = await transport.requestedPaths()
+        XCTAssertTrue(after.contains(sidebar))
+        await engine.stop()
     }
 }

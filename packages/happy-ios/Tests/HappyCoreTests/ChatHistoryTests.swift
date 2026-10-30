@@ -576,7 +576,7 @@ final class ChatHistoryTests: XCTestCase {
         await history.ensureNewest(sessionId: "s")
         XCTAssertEqual(try fixture.store.session(id: "s")?.syncedMessageSeq, 0)
         let api = HappyAPI(serverURL: testServer, clientID: "test", transport: fixture.http, token: "test")
-        let engine = SyncEngine(api: api, store: fixture.store, keys: fixture.keys)
+        let engine = LegacySyncEngine(api: api, store: fixture.store, keys: fixture.keys)
         let start = ContinuousClock.now
         try await engine.pullMessages(sessionId: "s")
         let elapsed = start.duration(to: .now)

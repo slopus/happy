@@ -31,7 +31,7 @@ private final class MachineDetailSQL: @unchecked Sendable {
 }
 
 final class SyncPerfMachineDetailTests: XCTestCase {
-    private func fixture() throws -> (LocalStore, SyncEngine, RecordCipher, MachineDetailSQL) {
+    private func fixture() throws -> (LocalStore, LegacySyncEngine, RecordCipher, MachineDetailSQL) {
         let sql = MachineDetailSQL()
         var configuration = Configuration()
         configuration.prepareDatabase { db in db.trace { sql.trace($0) } }
@@ -44,7 +44,7 @@ final class SyncPerfMachineDetailTests: XCTestCase {
         let rows = try (0..<1000).map { (index: Int) -> SessionRecord in
             let summary: [String: JSONValue] = ["text": .string("Session \(index)")]
             let metadata: [String: JSONValue] = [
-                "machineId": .string(index < 7 ? "computer" : "other"),
+                "machineId": .string(index < 7 ? "agent" : "other"),
                 "path": .string("/home/test/project\(index)"), "homeDir": .string("/home/test"),
                 "summary": .object(summary),
                 "unrendered": .string(String(repeating: "x", count: 1024)),
@@ -61,10 +61,10 @@ final class SyncPerfMachineDetailTests: XCTestCase {
         try store.upsertSessions(rows)
         var side = ApplyPerfFixtures.session(1000)
         side.id = "side"; side.updatedAt = 99_000
-        side.metadata = .object(["machineId": .string("computer"), "isSideChat": .bool(true)])
+        side.metadata = .object(["machineId": .string("agent"), "isSideChat": .bool(true)])
         try store.upsertSessions([side])
         try store.replaceMachines([ApplyPerfFixtures.machine])
-        return (store, SyncEngine(api: testAPI(FakeHTTP()), store: store, keys: keys,
+        return (store, LegacySyncEngine(api: testAPI(FakeHTTP()), store: store, keys: keys,
                                   now: { ApplyPerfFixtures.now }), cipher, sql)
     }
 
@@ -74,7 +74,7 @@ final class SyncPerfMachineDetailTests: XCTestCase {
         let initialHome = try await syncPerfNext(home)
         let expected = MachineDetailsModel(machine: ApplyPerfFixtures.machine, sessions: initialHome?.sessions ?? [])
         let feed = MachineDetailFeed(store: store)
-        let machine = feed.snapshots(machineId: "computer")
+        let machine = feed.snapshots(machineId: "agent")
         let initial = try await syncPerfNext(machine)
         XCTAssertEqual(initial?.model, expected, "including the stable tie inherited from old Home SQL ordering")
         XCTAssertEqual(initial?.model?.recentSessions.map(\.id), ["s6", "s5", "s4", "s3", "s2"])
@@ -108,7 +108,7 @@ final class SyncPerfMachineDetailTests: XCTestCase {
 
     func testSQLProjectionLimitsToFiveAndExcludesUnrenderedSessionFields() async throws {
         let (store, engine, _, _) = try fixture()
-        let value = try await syncPerfNext(store.machineDetailSnapshots(machineId: "computer"))
+        let value = try await syncPerfNext(store.machineDetailSnapshots(machineId: "agent"))
         XCTAssertEqual(value?.sessions.count, 5)
         XCTAssertEqual(value?.sessions.map(\.id), ["s6", "s5", "s4", "s3", "s2"])
         for record in value?.sessions ?? [] {
@@ -116,7 +116,7 @@ final class SyncPerfMachineDetailTests: XCTestCase {
             XCTAssertEqual(record.metadataCipher, "")
             XCTAssertNil(record.dataKeyCipher)
             XCTAssertEqual(record.seq, 0)
-            XCTAssertEqual(record.metadata?["machineId"], .string("computer"))
+            XCTAssertEqual(record.metadata?["machineId"], .string("agent"))
         }
         let unknown = try await syncPerfNext(store.machineDetailSnapshots(machineId: "missing"))
         XCTAssertNil(unknown?.machine)
@@ -128,7 +128,7 @@ final class SyncPerfMachineDetailTests: XCTestCase {
     func testEqualProjectionDoesNotPublishAndMachineDeletionIsVisible() async throws {
         let (store, engine, _, _) = try fixture()
         let feed = MachineDetailFeed(store: store)
-        let stream = feed.snapshots(machineId: "computer")
+        let stream = feed.snapshots(machineId: "agent")
         _ = try await syncPerfNext(stream)
         let unexpected = expectation(description: "unrendered metadata publishes no content")
         unexpected.isInverted = true
@@ -141,7 +141,7 @@ final class SyncPerfMachineDetailTests: XCTestCase {
         await fulfillment(of: [unexpected], timeout: 0.05)
         watching.cancel()
         // A fresh stream avoids a second iterator consuming the same value.
-        let current = feed.snapshots(machineId: "computer")
+        let current = feed.snapshots(machineId: "agent")
         _ = try await syncPerfNext(current)
         try store.replaceMachines([])
         let deleted = try await syncPerfNext(current)
@@ -156,7 +156,7 @@ final class SyncPerfMachineDetailTests: XCTestCase {
         let account = try AccountSession(credentials: Credentials(token: "test", secret: Data(repeating: 3, count: 32)),
                                          store: store, dependencies: .init(serverURL: testServer, clientID: "test",
                                                                          transport: FakeHTTP(), connector: FakeConnector()))
-        let stream = account.machineDetails.snapshots(machineId: "computer")
+        let stream = account.machineDetails.snapshots(machineId: "agent")
         _ = try await syncPerfNext(stream)
         await account.stop()
         let ended = try await syncPerfNext(stream)
@@ -165,7 +165,7 @@ final class SyncPerfMachineDetailTests: XCTestCase {
         machine.metadata = .object(["host": .string("Renamed")]); machine.metadataVersion += 1
         try store.replaceMachines([machine])
         let fresh = MachineDetailFeed(store: store)
-        let replay = try await syncPerfNext(fresh.snapshots(machineId: "computer"))
+        let replay = try await syncPerfNext(fresh.snapshots(machineId: "agent"))
         XCTAssertEqual(replay?.model?.name, "Renamed")
         fresh.stop()
         await engine.stop()

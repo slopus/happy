@@ -31,10 +31,10 @@ final class DaemonTests: XCTestCase {
     }
 
     /// Pairs through the real handshake once, then reuses the device.
-    private func credentials() async throws -> DirectDeviceCredentials {
+    private func credentials() async throws -> AgentConnectionCredentials {
         let (api, directory) = try daemon()
         let saved = directory.appendingPathComponent("credentials.json")
-        if let data = try? Data(contentsOf: saved), let credentials = try? JSONDecoder().decode(DirectDeviceCredentials.self, from: data) {
+        if let data = try? Data(contentsOf: saved), let credentials = try? JSONDecoder().decode(AgentConnectionCredentials.self, from: data) {
             let transport = TailcatHTTPTransport(address: credentials.address, port: credentials.port)
             let health = try? await transport.request("/v0/spaces/sidebar", credential: credentials.deviceToken)
             await transport.close()
@@ -43,7 +43,7 @@ final class DaemonTests: XCTestCase {
         let started = try call(api, ["POST", "/v0/mobile-connector/pairing", "{}"])
         guard let qr = started["mobileConnector"]?["pairing"]?["qr"]?.stringValue,
               let pairingId = started["mobileConnector"]?["pairing"]?["id"]?.stringValue else { throw XCTSkip("No pairing code") }
-        let service = DirectPairingService(link: try DirectPairingLink(qr))
+        let service = PairingService(link: try PairingLink(qr))
         let emoji = try await service.start(deviceName: "V2 e2e")
         let state = try call(api, ["GET", "/v0/mobile-connector"])
         XCTAssertEqual(state["mobileConnector"]?["pairing"]?["emoji"]?.arrayValue?.compactMap(\.stringValue), emoji)
@@ -54,8 +54,8 @@ final class DaemonTests: XCTestCase {
         return credentials
     }
 
-    private func client(_ credentials: DirectDeviceCredentials) -> DirectAgentClient {
-        DirectAgentClient(transport: TailcatHTTPTransport(address: credentials.address, port: credentials.port), token: credentials.deviceToken)
+    private func client(_ credentials: AgentConnectionCredentials) -> AgentClient {
+        AgentClient(transport: TailcatHTTPTransport(address: credentials.address, port: credentials.port), token: credentials.deviceToken)
     }
 
     func testSidebarReadsAndStreamsOverTailcat() async throws {

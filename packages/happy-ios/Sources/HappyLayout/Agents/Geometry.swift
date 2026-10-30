@@ -2,7 +2,7 @@ import Foundation
 
 /// The seedling: a seeded identity for work that has not become something
 /// yet, the same shape for the same ID on every client. A port of
-/// happy-desktop-ui `stemCellGeometry.ts`; `LegacyGeometryTests` pins it
+/// happy-desktop-ui `stemCellGeometry.ts`; `GeometryTests` pins it
 /// against the TypeScript output.
 public enum Geometry {
     public typealias Point = (x: Double, y: Double)

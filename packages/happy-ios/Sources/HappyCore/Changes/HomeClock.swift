@@ -11,7 +11,7 @@ public enum HomeClockBoundary {
     /// The next midnight, or the first session stamp to turn from a time
     /// into a weekday or from a weekday into a date, whichever comes first.
     /// A new year is a midnight.
-    public static func next(after clock: SessionList.Clock, snapshot: HomeSnapshot) -> Date {
+    public static func next(after clock: SessionList.Clock, snapshot: LegacyHomeSnapshot) -> Date {
         let now = Int64(clock.now.timeIntervalSince1970 * 1000)
         let today = clock.calendar.startOfDay(for: clock.now)
         var next = clock.calendar.date(byAdding: .day, value: 1, to: today) ?? clock.now.addingTimeInterval(24 * 60 * 60)

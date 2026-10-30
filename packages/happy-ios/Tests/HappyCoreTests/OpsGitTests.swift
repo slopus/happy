@@ -65,7 +65,7 @@ final class OpsGitTests: XCTestCase {
             try store.upsertSessions([session])
         }
         let http = FakeHTTP()
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
         let rpc = GitRPC(key: fixture.dataKey, outputs: ["true", "# branch.head main\n\(ordinary)", "2\t1\tsrc/file with spaces.swift", "7\t3\tsrc/file with spaces.swift"])
         let actions = SessionActions(api: testAPI(http), store: store, sync: engine, rpc: rpc)
         let git = GitStatusSync(actions: actions, store: store)

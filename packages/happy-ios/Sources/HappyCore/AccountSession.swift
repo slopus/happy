@@ -13,7 +13,7 @@ public final class AccountSession: Sendable {
     /// The account's own `files/` directory (copied attachments). Accounts
     /// without a store directory (in-memory, tests) get a temporary one.
     public let filesDirectory: URL
-    public let sync: SyncEngine
+    public let sync: LegacySyncEngine
     public let archiveVisibilityWriter: ArchiveVisibilityWriter
     /// The New Session draft's last height, for reopening it in this account.
     public let newSessionDraftHeight = MeasuredDraftMemo()
@@ -34,7 +34,7 @@ public final class AccountSession: Sendable {
     public let machinesFeed: MachinesFeed
     public let troubleshootingFeed: TroubleshootingFeed
     public let realtime: SocketIOClient
-    public let pairing: PairingService
+    public let pairing: LegacyPairingService
     /// Archive, delete and mark read, for the session list.
     public let actions: SessionActions
     /// The account's machine-scoped operations, sealed with each machine key.
@@ -112,9 +112,9 @@ public final class AccountSession: Sendable {
         self.avatarPictures = AvatarPictures(owner: keys.anonID,
             directory: filesDirectory.map { $0.deletingLastPathComponent().appendingPathComponent("avatars", isDirectory: true) },
             api: api, keys: keys)
-        var syncOptions = SyncEngine.Options()
+        var syncOptions = LegacySyncEngine.Options()
         syncOptions.deliveryActivity = dependencies.deliveryActivity
-        self.sync = SyncEngine(api: api, store: store, keys: keys, options: syncOptions)
+        self.sync = LegacySyncEngine(api: api, store: store, keys: keys, options: syncOptions)
         let settingsSync = self.sync
         self.archiveVisibilityWriter = ArchiveVisibilityWriter { hidden in
             let baseline = try store.accountSettings()?.version ?? 0
@@ -130,7 +130,7 @@ public final class AccountSession: Sendable {
         self.sessionDetails = LegacySessionDetailFeed(store: store)
         self.machineDetails = MachineDetailFeed(store: store)
         self.troubleshootingFeed = TroubleshootingFeed(store: store)
-        self.pairing = PairingService(api: api, keys: keys)
+        self.pairing = LegacyPairingService(api: api, keys: keys)
 
         guard let socketURL = SocketIOURL.make(serverURL: dependencies.serverURL) else {
             throw ServerURLError.invalid
@@ -267,7 +267,7 @@ public final class AccountSession: Sendable {
         try? await realtime.emit("app-state", .object(["state": .string(state)]))
     }
 
-    static func route(_ event: RealtimeEvent, sync: SyncEngine, status: AsyncStream<RealtimeStatus>.Continuation,
+    static func route(_ event: RealtimeEvent, sync: LegacySyncEngine, status: AsyncStream<RealtimeStatus>.Continuation,
                       gitStatus: GitStatusSync? = nil, rigComposer: RigComposerSync? = nil,
                       fileCache: SessionFileCache? = nil) async {
         switch event {

@@ -14,7 +14,7 @@ private final class ConditionalFeedProbe: @unchecked Sendable {
 
 private final class HeldHomeInputs: @unchecked Sendable {
     private let lock = NSLock()
-    private var home: HomeSnapshot?
+    private var home: LegacyHomeSnapshot?
     private var drafts: Set<String> = []
     private var revision = 0
     private var empty = 0
@@ -170,7 +170,7 @@ final class ApplyPipelineFeedTests: XCTestCase {
 
     func testHeldInitialEmptySetBeforeAndAfterHomeCreatesNoExtraDerivation() async {
         for homeFirst in [false, true] {
-            let home = AsyncStream<HomeSnapshot>.makeStream()
+            let home = AsyncStream<LegacyHomeSnapshot>.makeStream()
             let drafts = AsyncStream<Set<String>>.makeStream()
             let seen = ConditionalFeedProbe(), inputs = HeldHomeInputs()
             let recorder = ApplyPerfRecorder<HeldHomeUpdate>()
@@ -202,7 +202,7 @@ final class ApplyPipelineFeedTests: XCTestCase {
 
     func testHeldNonemptySetBeforeHomeIsConsumedOnceAndFirstApplyAlreadyHasDraft() async throws {
         let committed = try await committedDrafts()
-        let home = AsyncStream<HomeSnapshot>.makeStream()
+        let home = AsyncStream<LegacyHomeSnapshot>.makeStream()
         let drafts = AsyncStream<Set<String>>.makeStream()
         let seen = ConditionalFeedProbe(), inputs = HeldHomeInputs()
         let recorder = ApplyPerfRecorder<HeldHomeUpdate>()
@@ -225,7 +225,7 @@ final class ApplyPipelineFeedTests: XCTestCase {
 
     func testHeldNonemptySetAfterHomeInitialApplyFlipsExactlyOnce() async throws {
         let committed = try await committedDrafts()
-        let home = AsyncStream<HomeSnapshot>.makeStream()
+        let home = AsyncStream<LegacyHomeSnapshot>.makeStream()
         let drafts = AsyncStream<Set<String>>.makeStream()
         let seen = ConditionalFeedProbe(), inputs = HeldHomeInputs()
         let recorder = ApplyPerfRecorder<HeldHomeUpdate>()
@@ -249,7 +249,7 @@ final class ApplyPipelineFeedTests: XCTestCase {
 
     func testChangedSetDuringHeldDerivationUsesExistingSupersessionAndOneRederive() async throws {
         let committed = try await committedDrafts()
-        let home = AsyncStream<HomeSnapshot>.makeStream()
+        let home = AsyncStream<LegacyHomeSnapshot>.makeStream()
         let drafts = AsyncStream<Set<String>>.makeStream()
         let seen = ConditionalFeedProbe(), inputs = HeldHomeInputs()
         let started = expectation(description: "first Home derivation held")

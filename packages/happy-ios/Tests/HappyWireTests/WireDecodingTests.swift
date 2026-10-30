@@ -128,25 +128,25 @@ final class WireDecodingTests: XCTestCase {
     }
 }
 
-final class PairingLinkTests: XCTestCase {
+final class LegacyPairingLinkTests: XCTestCase {
     let key = Data((0..<32).map { UInt8($0 * 7 % 256) })
 
     func testParsesTerminalAndAccountLinks() throws {
-        let terminal = PairingLink.terminal(publicKey: key)
+        let terminal = LegacyPairingLink.terminal(publicKey: key)
         XCTAssertTrue(terminal.urlString.hasPrefix("happy://terminal?"))
         XCTAssertFalse(terminal.urlString.contains("="))
-        XCTAssertEqual(PairingLink(terminal.urlString), terminal)
+        XCTAssertEqual(LegacyPairingLink(terminal.urlString), terminal)
 
-        let account = PairingLink.account(publicKey: key)
+        let account = LegacyPairingLink.account(publicKey: key)
         XCTAssertTrue(account.urlString.hasPrefix("happy:///account?"))
-        XCTAssertEqual(PairingLink("  \(account.urlString)\n"), account)
+        XCTAssertEqual(LegacyPairingLink("  \(account.urlString)\n"), account)
     }
 
     func testRejectsOtherSchemesAndBadKeys() {
-        XCTAssertNil(PairingLink("https://happy.engineering"))
-        XCTAssertNil(PairingLink("happy://account?abc"))
-        XCTAssertNil(PairingLink("happy://terminal?"))
-        XCTAssertNil(PairingLink("happy://terminal?AAAA"), "not 32 bytes")
-        XCTAssertNil(PairingLink("happy://terminal?!!!"))
+        XCTAssertNil(LegacyPairingLink("https://happy.engineering"))
+        XCTAssertNil(LegacyPairingLink("happy://account?abc"))
+        XCTAssertNil(LegacyPairingLink("happy://terminal?"))
+        XCTAssertNil(LegacyPairingLink("happy://terminal?AAAA"), "not 32 bytes")
+        XCTAssertNil(LegacyPairingLink("happy://terminal?!!!"))
     }
 }

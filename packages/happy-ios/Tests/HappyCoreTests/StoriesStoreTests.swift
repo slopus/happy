@@ -4,7 +4,7 @@ import XCTest
 import HappyWire
 
 /// A daemon with Stories, answered from memory.
-actor StoriesTransport: DirectTransport {
+actor StoriesTransport: AgentTransport {
     var capabilities = #"{"stories":true,"stickers":true,"sidebarOperations":true}"#
     var setting: String? = "true"
     var feed: String = ""
@@ -21,21 +21,21 @@ actor StoriesTransport: DirectTransport {
     func setStory(_ id: String, _ json: String?) { stories[id] = json }
     func delayReactions(_ delays: [Duration]) { reactionDelays = delays }
 
-    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         requests.append((method, path, body))
-        func ok(_ text: String) -> DirectHTTPResponse { DirectHTTPResponse(status: 200, body: Data(text.utf8)) }
+        func ok(_ text: String) -> HTTP1Response { HTTP1Response(status: 200, body: Data(text.utf8)) }
         let route = path.split(separator: "?").first.map(String.init) ?? path
         switch (method, route) {
         case ("GET", "/v0/health"): return ok(#"{"ready":true,"capabilities":\#(capabilities)}"#)
-        case ("GET", "/v0/user-settings/" + DirectAgentClient.escape(DirectAgentClient.storiesSettingKey)):
-            guard let setting else { return DirectHTTPResponse(status: 404, body: Data(#"{"error":"none","code":"not_found"}"#.utf8)) }
-            return ok(#"{"setting":{"key":"\#(DirectAgentClient.storiesSettingKey)","value":\#(setting)}}"#)
-        case ("PUT", "/v0/user-settings/" + DirectAgentClient.escape(DirectAgentClient.storiesSettingKey)):
+        case ("GET", "/v0/user-settings/" + AgentClient.escape(AgentClient.storiesSettingKey)):
+            guard let setting else { return HTTP1Response(status: 404, body: Data(#"{"error":"none","code":"not_found"}"#.utf8)) }
+            return ok(#"{"setting":{"key":"\#(AgentClient.storiesSettingKey)","value":\#(setting)}}"#)
+        case ("PUT", "/v0/user-settings/" + AgentClient.escape(AgentClient.storiesSettingKey)):
             let value = (try? JSONDecoder().decode(JSONValue.self, from: body ?? Data()))?["value"]
             setting = value == .bool(true) ? "true" : "false"
             return ok("{}")
         case ("GET", "/v0/stories/feed"):
-            guard setting == "true" else { return DirectHTTPResponse(status: 404) }
+            guard setting == "true" else { return HTTP1Response(status: 404) }
             return ok(feed)
         case ("GET", "/v0/stickers/recents"): return ok(#"{"recents":[{"packId":"p","stickerId":"s"}],"cursor":"c"}"#)
         default:
@@ -50,12 +50,12 @@ actor StoriesTransport: DirectTransport {
                 if parts.count == 4, parts[3] == "reaction" || parts[3] == "seen" || parts[3] == "post" { return ok(#"{"story":\#(story)}"#) }
                 if parts.count == 3 { return ok(#"{"story":\#(story)}"#) }
             }
-            return DirectHTTPResponse(status: 404, body: Data(#"{"error":"not found","code":"not_found"}"#.utf8))
+            return HTTP1Response(status: 404, body: Data(#"{"error":"not found","code":"not_found"}"#.utf8))
         }
     }
 
-    func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream {
-        DirectHTTPStream(status: 503, headers: [:], body: AsyncThrowingStream { $0.finish() })
+    func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
+        HTTP1Stream(status: 503, headers: [:], body: AsyncThrowingStream { $0.finish() })
     }
 
     func close() async {}
@@ -93,7 +93,7 @@ final class StoriesStoreTests: XCTestCase {
     private func make(_ transport: StoriesTransport, offline: OfflineFile? = nil, now: Int64 = 2_000) -> StoriesStore {
         let (stream, continuation) = AsyncStream.makeStream(of: Store.ConversationEvent.self)
         self.continuation = continuation
-        let client = DirectAgentClient(transport: transport, token: "t")
+        let client = AgentClient(transport: transport, token: "t")
         return StoriesStore(client: client, events: { stream }, offline: offline, now: { now }, firstReadDelay: firstReadDelay)
     }
 
@@ -148,7 +148,7 @@ final class StoriesStoreTests: XCTestCase {
         XCTAssertEqual(on.availability, .on)
         XCTAssertEqual(on.feed?.authors.count, 2)
         let paths = await transport.paths()
-        XCTAssertTrue(paths.contains("PUT /v0/user-settings/\(DirectAgentClient.escape(DirectAgentClient.storiesSettingKey))"))
+        XCTAssertTrue(paths.contains("PUT /v0/user-settings/\(AgentClient.escape(AgentClient.storiesSettingKey))"))
     }
 
     func testTheRowIsTheFeedsOrder() async throws {
@@ -364,7 +364,7 @@ final class StoriesStoreTests: XCTestCase {
 
         let offlineFile = OfflineFile(directory: directory)
         XCTAssertNotNil(offlineFile.readExtra("stories.json"))
-        let second = StoriesStore(client: DirectAgentClient(transport: FailingTransport(), token: "t"), events: { AsyncStream { _ in } }, offline: offlineFile, now: { 2_000 })
+        let second = StoriesStore(client: AgentClient(transport: FailingTransport(), token: "t"), events: { AsyncStream { _ in } }, offline: offlineFile, now: { 2_000 })
         await second.start()
         let kept = try await next(second) { $0.feed != nil }
         XCTAssertEqual(kept.availability, .on)
@@ -393,10 +393,10 @@ final class StoriesStoreTests: XCTestCase {
 }
 
 /// A computer out of reach.
-struct FailingTransport: DirectTransport {
-    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
-        throw DirectPairingError.unavailable
+struct FailingTransport: AgentTransport {
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        throw PairingError.unavailable
     }
-    func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream { throw DirectPairingError.unavailable }
+    func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream { throw PairingError.unavailable }
     func close() async {}
 }

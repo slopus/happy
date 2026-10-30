@@ -44,7 +44,7 @@ final class LoopInTests: XCTestCase {
     /// `GET /v0/tasks?scope=joined` sends memberships beside the tasks; each lands on its task.
     func testJoinedTasksCarryTheirMembership() async throws {
         let answer = #"{"tasks":[{"id":"t1"},{"id":"t2"}],"memberships":[{"taskId":"t2","unread":{"reason":"looped_in","since":5}}]}"#
-        let client = DirectAgentClient(transport: Answering(body: Data(answer.utf8)), token: "x")
+        let client = AgentClient(transport: Answering(body: Data(answer.utf8)), token: "x")
         let tasks = try await client.tasks()
         XCTAssertNil(tasks[0]["membership"])
         XCTAssertEqual(tasks[1]["membership"]?["unread"]?["reason"]?.stringValue, "looped_in")
@@ -78,12 +78,12 @@ final class InlinePageDecisionTests: XCTestCase {
 }
 
 /// Answers every request with one body.
-private struct Answering: DirectTransport {
+private struct Answering: AgentTransport {
     let body: Data
-    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
-        DirectHTTPResponse(status: 200, body: self.body)
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        HTTP1Response(status: 200, body: self.body)
     }
-    func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream { throw DirectAgentError.invalidResponse }
+    func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream { throw AgentClientError.invalidResponse }
     func reset() async {}
     func close() async {}
 }

@@ -37,7 +37,7 @@ final class HomeDockController: NSObject {
     /// "Picture not set" offers waiting for the composer to go.
     private var faceOffers: [(message: String, answer: CheckedContinuation<Bool, Never>)] = []
 
-    init(restingView: HomeDockView, host: UIViewController, context: AppContext, session: AccountSession, snapshot: HomeSnapshot) {
+    init(restingView: HomeDockView, host: UIViewController, context: AppContext, session: AccountSession, snapshot: LegacyHomeSnapshot) {
         self.restingView = restingView
         self.host = host
         self.context = context
@@ -80,7 +80,7 @@ final class HomeDockController: NSObject {
         text.prepare(Self.textKey(width: width, text: environment))
     }
 
-    func update(_ snapshot: HomeSnapshot) {
+    func update(_ snapshot: LegacyHomeSnapshot) {
         composer.update(snapshot: snapshot)
     }
 

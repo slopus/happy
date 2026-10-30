@@ -701,10 +701,10 @@ final class ComposerDraftStoreTests: XCTestCase {
         ])
     }
 
-    private func fixture(rig: Bool, writer: DatabaseQueue? = nil) async throws -> (LocalStore, SyncEngine, OutboxSender, URL) {
+    private func fixture(rig: Bool, writer: DatabaseQueue? = nil) async throws -> (LocalStore, LegacySyncEngine, OutboxSender, URL) {
         let fixture = ServerFixture()
         let store = try writer.map { try LocalStore(writer: $0) } ?? LocalStore.inMemory()
-        let sync = SyncEngine(api: testAPI(FakeHTTP()), store: store, keys: fixture.keys, now: { 100 })
+        let sync = LegacySyncEngine(api: testAPI(FakeHTTP()), store: store, keys: fixture.keys, now: { 100 })
         await sync.setBackgrounded(true)
         var session = RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))
         if rig { session.metadata = rigMetadata() }

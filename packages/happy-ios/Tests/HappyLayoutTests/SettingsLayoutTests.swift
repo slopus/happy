@@ -123,7 +123,7 @@ final class SettingsLayoutTests: XCTestCase {
         XCTAssertEqual(layout.tag, CGRect(x: 256, y: 391, width: 41, height: 18))
     }
 
-    func testTheBetaTagSitsAstrideTheSwitchAtDirectsEnd() {
+    func testTheBetaTagSitsAstrideTheSwitchAtItsEnd() {
         let layout = LinkSwitchLayout(control: CGRect(x: 24, y: 400, width: 354, height: 36), tag: CGSize(width: 40.2, height: 17.5))
         XCTAssertEqual(layout.tag, CGRect(x: 327, y: 391, width: 41, height: 18))
     }

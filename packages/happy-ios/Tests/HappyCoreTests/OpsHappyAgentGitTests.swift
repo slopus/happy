@@ -37,7 +37,7 @@ final class OpsHappyAgentGitTests: XCTestCase {
     var store: LocalStore!
     var fixture: ServerFixture!
     var rpc: FakeRPC!
-    var sync: SyncEngine!
+    var sync: LegacySyncEngine!
     var actions: SessionActions!
 
     var native: JSONValue {
@@ -54,7 +54,7 @@ final class OpsHappyAgentGitTests: XCTestCase {
         fixture = ServerFixture()
         store = try LocalStore.inMemory()
         let api = testAPI(FakeHTTP())
-        sync = SyncEngine(api: api, store: store, keys: fixture.keys)
+        sync = LegacySyncEngine(api: api, store: store, keys: fixture.keys)
         rpc = FakeRPC()
         actions = SessionActions(api: api, store: store, sync: sync, rpc: rpc)
         var session = RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))

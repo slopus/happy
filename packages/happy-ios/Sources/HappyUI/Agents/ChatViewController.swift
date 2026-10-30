@@ -203,7 +203,7 @@ final class ChatViewController: UIViewController {
         proposals = SidebarProposals(client: session.client, store: session.store)
         media = MediaLoader(client: session.client, agentId: agentId)
         let files = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Agents", isDirectory: true)
-        pictures = ComposerImagePicker(staging: ComposerAttachmentStaging(filesDirectory: files), maxFileBytes: DirectAttachmentRules.maxFileBytes)
+        pictures = ComposerImagePicker(staging: ComposerAttachmentStaging(filesDirectory: files), maxFileBytes: AttachmentRules.maxFileBytes)
         super.init(nibName: nil, bundle: nil)
         self.title = title
         titleView.text = title
@@ -1732,7 +1732,7 @@ extension ChatViewController: ChatMediaProviding {
 }
 
 extension ChatViewController: PageHosting {
-    var pageClient: DirectAgentClient { session.client }
+    var pageClient: AgentClient { session.client }
 
     func page(_ artifactId: String, measured height: CGFloat) {
         let height = min(max(1, height.rounded(.up)), 4000)

@@ -27,12 +27,12 @@ public struct AttachmentSendPlan: Equatable, Sendable {
 /// The composer facade. Acceptance is local and atomic; SyncEngine owns delivery.
 public struct OutboxSender: ChatSending {
     public let store: LocalStore
-    public let sync: SyncEngine
+    public let sync: LegacySyncEngine
     public let filesDirectory: URL
     public let spawnRequests: SpawnRequests
 
     /// Uses this account's store, active sync engine and private files directory.
-    public init(store: LocalStore, sync: SyncEngine, filesDirectory: URL, spawnRequests: SpawnRequests = SpawnRequests()) {
+    public init(store: LocalStore, sync: LegacySyncEngine, filesDirectory: URL, spawnRequests: SpawnRequests = SpawnRequests()) {
         self.store = store
         self.sync = sync
         self.filesDirectory = filesDirectory

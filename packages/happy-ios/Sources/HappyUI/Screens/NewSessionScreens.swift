@@ -102,7 +102,7 @@ final class NewSessionViewController: UIViewController {
         if let prompt { drafts.setInput(prompt) }
         // Nothing read on the main thread: the computers arrive from the
         // home feed (`viewDidLoad`), and until then the draft stays as saved.
-        let snapshot = HomeSnapshot(machines: MachinesSnapshot(synced: false, machines: []), sessions: [])
+        let snapshot = LegacyHomeSnapshot(machines: MachinesSnapshot(synced: false, machines: []), sessions: [])
         composer = NewSessionComposer(drafts: drafts, snapshot: snapshot, ops: session.homeOps)
         starter = SessionStarter.make(for: session)
         model = NewSessionScreenModel(
@@ -201,7 +201,7 @@ final class NewSessionViewController: UIViewController {
         composer.onChange = { [weak self] in self?.render() }
         // The pickers' snapshot from the account's shared feed, off the main
         // thread; a heartbeat or a cursor never reaches the composer.
-        let pipeline = ApplyPipeline<HomeSnapshot?, HomeSnapshot?, HomeSnapshot>(
+        let pipeline = ApplyPipeline<LegacyHomeSnapshot?, LegacyHomeSnapshot?, LegacyHomeSnapshot>(
             input: nil,
             state: nil,
             derive: { snapshot, applied in NewSessionSnapshot.derive(snapshot, applied: applied) },

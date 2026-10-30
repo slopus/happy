@@ -29,10 +29,10 @@ final class HomeAccountControl: NSObject {
         let multiple = accounts.count > 1 || settings
         let active = accounts.first(where: \.isActive)
         imageJob?.cancel()
-        let fallback = multiple ? UIImage(systemName: active?.isDirect == true ? "desktopcomputer" : "person.crop.circle.fill") : UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
+        let fallback = multiple ? UIImage(systemName: active?.isAgentConnection == true ? "desktopcomputer" : "person.crop.circle.fill") : UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
         apply(fallback, multiple: multiple)
         guard multiple, let active else { return }
-        let bytes = context.account.direct.accounts.first { $0.id == active.id }?.avatar
+        let bytes = context.account.agentConnections.accounts.first { $0.id == active.id }?.avatar
         let pictures = context.account.pictures(for: active.id)
         imageJob = Task { [weak self] in
             var image: UIImage?
@@ -91,20 +91,20 @@ final class CombinedAccountsViewController: UIViewController {
         var rows: [UIView] = []
         for account in context.account.accounts {
             loadImage(account)
-            let icon = images[account.id].map { ItemIcon(.image($0), round: true) } ?? ItemIcon(.ionicons(account.isDirect ? "desktop-outline" : "person-circle-outline"), tint: Palette.iconBlue)
+            let icon = images[account.id].map { ItemIcon(.image($0), round: true) } ?? ItemIcon(.ionicons(account.isAgentConnection ? "desktop-outline" : "person-circle-outline"), tint: Palette.iconBlue)
             let status = account.connectionStatus ?? (account.isActive ? "Active" : "Signed in")
-            let row = ItemRowView(title: account.name ?? account.username ?? "Happy account", subtitle: "\(account.isDirect ? "Direct computer" : account.serverURL.host ?? "Happy") · \(status)", icon: icon) { [weak self] in
+            let row = ItemRowView(title: account.name ?? account.username ?? "Happy account", subtitle: "\(account.isAgentConnection ? "Agent" : account.serverURL.host ?? "Happy") · \(status)", icon: icon) { [weak self] in
                 self?.select(account)
             }
             row.showsChevron = false
             if account.isActive { row.trailingView = SettingsCheckmark.view(tint: Palette.iconBlue) }
             rows.append(row)
-            let remove = ItemRowView(title: account.isDirect ? "Disconnect \(account.name ?? "computer")" : "Sign out \(account.name ?? "account")", icon: ItemIcon(.ionicons("log-out-outline"), tint: Palette.textSecondary)) { [weak self] in self?.remove(account) }
+            let remove = ItemRowView(title: account.isAgentConnection ? "Disconnect \(account.name ?? "agent")" : "Sign out \(account.name ?? "account")", icon: ItemIcon(.ionicons("log-out-outline"), tint: Palette.textSecondary)) { [weak self] in self?.remove(account) }
             remove.showsChevron = false
             rows.append(remove)
         }
-        let scan = ItemRowView(title: "Pair a computer", subtitle: "Scan a Happy or direct pairing code", icon: ItemIcon(.ionicons("qr-code-outline"), tint: Palette.iconBlue)) { [weak self] in
-            guard let self else { return }; DirectPairingFlow.scan(context: context, on: self)
+        let scan = ItemRowView(title: "Connect Agent", subtitle: "Scan an agent’s or a terminal’s code", icon: ItemIcon(.ionicons("qr-code-outline"), tint: Palette.iconBlue)) { [weak self] in
+            guard let self else { return }; PairingFlow.scan(context: context, on: self)
         }
         let add = ItemRowView(title: "Add Happy account", icon: ItemIcon(.ionicons("add-circle-outline"), tint: Palette.iconBlue)) { [weak self] in
             guard let self else { return }
@@ -127,13 +127,13 @@ final class CombinedAccountsViewController: UIViewController {
         Task { [weak self] in
             guard let self else { return }
             defer { busy = false }
-            guard await Alerts.confirm(account.isDirect ? "Disconnect computer?" : "Sign out?", "Remove this account and its credentials from this phone?", confirmTitle: account.isDirect ? "Disconnect" : "Sign out", destructive: true, on: self) else { return }
+            guard await Alerts.confirm(account.isAgentConnection ? "Disconnect agent?" : "Sign out?", "Remove this account and its credentials from this phone?", confirmTitle: account.isAgentConnection ? "Disconnect" : "Sign out", destructive: true, on: self) else { return }
             do { try await context.account.signOut(accountID: account.id) }
             catch { Alerts.show("Could not remove account", error.localizedDescription, on: self) }
         }
     }
     private func loadImage(_ account: AccountSummary) {
-        let direct = context.account.direct.accounts.first { $0.id == account.id }
+        let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
         let key = direct.map { "\($0.avatarETag ?? ""):\($0.avatar?.count ?? 0)" } ?? account.avatarURL?.absoluteString ?? account.avatarThumbhash ?? ""
         guard imageKeys[account.id] != key else { return }
         imageKeys[account.id] = key; jobs[account.id]?.cancel()

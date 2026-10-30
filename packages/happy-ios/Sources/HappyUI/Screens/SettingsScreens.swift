@@ -364,10 +364,10 @@ public final class OnboardingSettingsViewController: UIViewController {
         if preference.isAvailable {
             let context = context
             let direct = ItemRowView.toggle(
-                title: Strings.directConnection,
+                title: Strings.agentConnectionsEnabled,
                 subtitle: Strings.beta,
                 icon: ItemIcon(.ionicons("flask-outline"), tint: Palette.textSecondary, size: 28),
-                isOn: preference.directConnection
+                isOn: preference.agentConnectionsEnabled
             ) { on in
                 Experiments.turn(on, context: context, surface: .settings)
             }

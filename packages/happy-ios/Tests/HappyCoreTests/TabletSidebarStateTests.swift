@@ -32,7 +32,7 @@ final class TabletSidebarStateTests: XCTestCase {
         _ sessions: [SessionRecord] = [],
         settings: [String: JSONValue] = [:]
     ) -> TabletSidebarState {
-        TabletSidebarState(HomeSnapshot(
+        TabletSidebarState(LegacyHomeSnapshot(
             machines: MachinesSnapshot(synced: synced, machines: machines),
             sessions: sessions,
             settings: SettingsSnapshot(pending: settings)

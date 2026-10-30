@@ -26,7 +26,7 @@ public final class AppContext {
 /// Scanning and answering pairing codes: connecting a terminal
 /// (useConnectTerminal.ts) and linking another device (useConnectAccount.ts).
 @MainActor
-enum PairingFlow {
+enum LegacyPairingFlow {
     enum Kind {
         case terminal
         case account
@@ -45,7 +45,7 @@ enum PairingFlow {
 
     /// Approves a scanned or pasted link of the expected kind.
     static func approve(_ text: String, expecting kind: Kind, session: AccountSession) async -> Outcome {
-        guard let link = PairingLink(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        guard let link = LegacyPairingLink(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             return .invalidLink
         }
         switch (link, kind) {
@@ -57,10 +57,10 @@ enum PairingFlow {
         return await approve(link, session: session)
     }
 
-    static func approve(_ link: PairingLink, session: AccountSession) async -> Outcome {
+    static func approve(_ link: LegacyPairingLink, session: AccountSession) async -> Outcome {
         do {
             return try await session.pairing.approve(link) == .alreadyHandled ? .alreadyHandled : .approved
-        } catch PairingError.terminalNeedsUpdate {
+        } catch LegacyPairingError.terminalNeedsUpdate {
             return .terminalNeedsUpdate
         } catch {
             return .failed

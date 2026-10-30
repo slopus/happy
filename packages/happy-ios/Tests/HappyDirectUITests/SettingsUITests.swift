@@ -35,7 +35,7 @@ final class SettingsUITests: XCTestCase {
         print("SettingsUITests skips quiescence: \(Self.skipsQuiescence)")
         // Direct connection is an experiment, off on a fresh install; only
         // the test of that leaves it off.
-        app.launchEnvironment["HAPPY_DIRECT"] = name.contains("Experiment") ? "0" : "1"
+        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = name.contains("Experiment") ? "0" : "1"
         app.launch()
     }
 
@@ -71,7 +71,7 @@ final class SettingsUITests: XCTestCase {
 
     /// Pairs if this simulator has no computer yet (from the first screen,
     /// which is the link screen), then waits for V2.
-    private func computerHome() {
+    private func agentHome() {
         if anyRow.waitForExistence(timeout: 8) { return }
         XCTAssertTrue(element("link").waitForExistence(timeout: 5), "the first screen isn't the link screen")
         XCTAssertFalse(element("glass-close").exists, "the first screen has a close button")
@@ -160,11 +160,11 @@ final class SettingsUITests: XCTestCase {
     /// outside says it is an experiment and offers to turn it on, which
     /// pairs it and opens its home; turning it off in Settings hides the
     /// computer again: the first screen, on Relay.
-    func testDirectConnectionIsAnExperiment() {
+    func testAgentConnectionsAreAnExperiment() {
         XCTAssertTrue(element("link").waitForExistence(timeout: 15), "a fresh install doesn't open on the link screen")
         XCTAssertTrue(method("Relay").isSelected, "the switch isn't on Relay at first")
         XCTAssertTrue(app.buttons["Create account"].exists, "Relay doesn't show Welcome")
-        XCTAssertFalse(app.buttons["Pair computer"].exists, "Welcome offers direct pairing with the experiment off")
+        XCTAssertFalse(app.buttons["Connect Agent"].exists, "Welcome offers direct pairing with the experiment off")
         XCTAssertFalse(element("link-paste").exists, "Direct's way shows on Relay")
         pause(1)
         capture("experiment-off-welcome")
@@ -218,13 +218,13 @@ final class SettingsUITests: XCTestCase {
         toggle.tap()
         XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 10), "turning it off didn't hide the computer")
         XCTAssertTrue(method("Relay").isSelected, "the switch isn't back on Relay")
-        XCTAssertFalse(app.buttons["Pair computer"].exists)
+        XCTAssertFalse(app.buttons["Connect Agent"].exists)
         pause(1)
         capture("experiment-off-again")
     }
 
     func testSettings() {
-        computerHome()
+        agentHome()
         pause(1)
         capture("settings-home")
 
@@ -290,7 +290,7 @@ final class SettingsUITests: XCTestCase {
 
         row("add-account").tap()
         XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 5), "Add Happy account didn't open Welcome")
-        XCTAssertFalse(app.buttons["Pair computer"].exists, "Welcome offers pairing over settings")
+        XCTAssertFalse(app.buttons["Connect Agent"].exists, "Welcome offers pairing over settings")
         capture("settings-row-add-account")
         goBack("Welcome")
 
@@ -334,7 +334,7 @@ final class SettingsUITests: XCTestCase {
         method("Relay").tap()
         XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 5), "Relay didn't show Welcome")
         XCTAssertFalse(app.buttons["link-settings"].exists, "a settings gear in the link sheet")
-        XCTAssertFalse(app.buttons["Pair computer"].exists, "the relay offers pairing again")
+        XCTAssertFalse(app.buttons["Connect Agent"].exists, "the relay offers pairing again")
         pause(0.8)
         capture("settings-link-relay")
         method("Direct").tap()

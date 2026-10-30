@@ -2,10 +2,10 @@ import Foundation
 import GRDB
 
 extension LocalStore {
-    public func homeSnapshots() -> AsyncStream<HomeSnapshot> { homeHub.snapshots() }
+    public func homeSnapshots() -> AsyncStream<LegacyHomeSnapshot> { homeHub.snapshots() }
     /// The home snapshot last handed to its subscribers, read at once; nil
     /// while nothing subscribes.
-    public var latestHomeSnapshot: HomeSnapshot? { homeHub.latest }
+    public var latestHomeSnapshot: LegacyHomeSnapshot? { homeHub.latest }
     public func settingsSnapshots() -> AsyncStream<SettingsSnapshot> { Self.stream(settingsObservation) }
     public func machineSnapshots() -> AsyncStream<MachinesSnapshot> { machinesHub.snapshots() }
 

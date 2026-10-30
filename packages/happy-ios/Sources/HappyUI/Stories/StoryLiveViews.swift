@@ -21,7 +21,7 @@ final class StoryArtifactPageView: UIView, WKNavigationDelegate {
         didSet { web?.isUserInteractionEnabled = interactive }
     }
 
-    private let client: DirectAgentClient
+    private let client: AgentClient
     let artifactId: String
     let version: Int?
     private var web: WKWebView?
@@ -29,7 +29,7 @@ final class StoryArtifactPageView: UIView, WKNavigationDelegate {
     /// The CSS viewport the page lays out in.
     var viewport = CGSize(width: 360, height: 640) { didSet { if viewport != oldValue { setNeedsLayout() } } }
 
-    init(client: DirectAgentClient, artifactId: String, version: Int?) {
+    init(client: AgentClient, artifactId: String, version: Int?) {
         self.client = client
         self.artifactId = artifactId
         self.version = version
@@ -141,7 +141,7 @@ final class StoryArtifactTouches: NSObject, UIGestureRecognizerDelegate {
 final class StoryArtifactOverlayView: StoryOverlayView {
     let page: StoryArtifactPageView
 
-    init(_ overlay: StoryOverlay, client: DirectAgentClient) {
+    init(_ overlay: StoryOverlay, client: AgentClient) {
         guard case .artifact(_, let artifactId, let version, _, _) = overlay else { fatalError("not an artifact overlay") }
         page = StoryArtifactPageView(client: client, artifactId: artifactId, version: version)
         super.init(overlay)

@@ -22,7 +22,7 @@ public enum NativeAccountFactory {
             storeDirectory: directory,
             localSettings: UserDefaultsStore(suiteName: suite(LocalSettings.storageSuite)),
             accountCredentialStore: KeychainAccountCredentialStore(backend: backend),
-            directCredentialStore: KeychainDirectCredentialStore(backend: backend),
+            agentConnectionCredentialStore: KeychainAgentConnectionCredentialStore(backend: backend),
             rnServerImport: importLegacyServer,
             localSettingsFactory: { UserDefaultsStore(suiteName: suite(LocalSettings.storageSuite(accountID: $0))) },
             appState: appState,

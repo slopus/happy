@@ -24,7 +24,7 @@ final class OpsRPCTests: XCTestCase {
     var fixture: ServerFixture!
     var http: FakeHTTP!
     var store: LocalStore!
-    var sync: SyncEngine!
+    var sync: LegacySyncEngine!
     var rpc: FakeRPC!
     var sessions: SessionActions!
     var machines: MachineActions!
@@ -33,7 +33,7 @@ final class OpsRPCTests: XCTestCase {
         fixture = ServerFixture()
         http = FakeHTTP()
         store = try LocalStore.inMemory()
-        sync = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys, now: { 500 })
+        sync = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys, now: { 500 })
         rpc = FakeRPC()
         sessions = SessionActions(api: testAPI(http), store: store, sync: sync, rpc: rpc, now: { 500 })
         machines = MachineActions(api: testAPI(http), store: store, sync: sync, rpc: rpc, metadataTransport: FakeMetadataTransport([.null]))

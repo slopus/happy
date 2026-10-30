@@ -20,7 +20,7 @@ import UIKit
 final class HomeViewController: UIViewController {
     private let context: AppContext
     /// The computer this screen always shows; nil to follow the choice.
-    private let fixedComputer: String?
+    private let fixedAgentConnection: String?
     private let sidebar = SidebarView()
     private let banner = BannerView()
     private let empty = EmptyView()
@@ -34,9 +34,9 @@ final class HomeViewController: UIViewController {
     private var accountsObservation: AccountsObservation?
     private var carryWork: Task<Void, Never>?
     private var snapshot = Snapshot()
-    private var directHome = DirectHomeSnapshot()
-    private var directWatch: Task<Void, Never>?
-    private var usesSpaces: Bool { directHome.usesSpaces && session?.snapshot.availability != .unsupported }
+    private var agentHome = HomeSnapshot()
+    private var connectionWatch: Task<Void, Never>?
+    private var usesSpaces: Bool { agentHome.usesSpaces && session?.snapshot.availability != .unsupported }
     /// New work on its way to the screen, by the store's ask: a second tap
     /// meanwhile gets the same and opens nothing more.
     private var opening: Set<UUID> = []
@@ -89,7 +89,7 @@ final class HomeViewController: UIViewController {
 
     init(context: AppContext, computer: String? = nil) {
         self.context = context
-        fixedComputer = computer
+        fixedAgentConnection = computer
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -155,7 +155,7 @@ final class HomeViewController: UIViewController {
         stories.list = sidebar
         empty.onPair = { [weak self] in
             guard let self else { return }
-            DirectPairingFlow.scan(context: context, on: self)
+            PairingFlow.scan(context: context, on: self)
         }
         accountsObservation = context.account.observeAccounts { [weak self] _ in self?.attach() }
         attach()
@@ -186,35 +186,35 @@ final class HomeViewController: UIViewController {
     }
 
     /// The computer shown: the fixed one, the last chosen, or the first paired.
-    private func computerID() -> String? {
-        let direct = context.account.direct
-        if let fixedComputer { return direct.accounts.contains { $0.id == fixedComputer } ? fixedComputer : nil }
+    private func agentConnectionID() -> String? {
+        let direct = context.account.agentConnections
+        if let fixedAgentConnection { return direct.accounts.contains { $0.id == fixedAgentConnection } ? fixedAgentConnection : nil }
         let preference = Preference(variant: context.variant)
         let live = direct.accounts.filter { !$0.revoked }
-        if let chosen = preference.computerID, live.contains(where: { $0.id == chosen }) { return chosen }
+        if let chosen = preference.agentConnectionID, live.contains(where: { $0.id == chosen }) { return chosen }
         return live.first?.id
     }
 
     private func attach() {
-        let id = computerID()
+        let id = agentConnectionID()
         guard id != session?.accountID else { return }
         // Another computer's sidebar: what was searched was the last one's.
         endSearch(animated: false)
         watch?.invalidate(); watch = nil
-        directWatch?.cancel(); directWatch = nil
+        connectionWatch?.cancel(); connectionWatch = nil
         modelsWatch?.invalidate(); modelsWatch = nil
         session = id.flatMap { Session.session(for: $0, context: context) }
         stories.attach(session)
         sidebar.images = session?.images
         sidebar.apply([])
         snapshot = Snapshot()
-        directHome = DirectHomeSnapshot()
+        agentHome = HomeSnapshot()
         if let session {
             watch = session.watch { [weak self] snapshot in self?.apply(snapshot) }
-            directWatch = Task { [weak self, engine = session.engine] in
+            connectionWatch = Task { [weak self, engine = session.engine] in
                 for await snapshot in await engine.snapshots() {
                     guard !Task.isCancelled, let self else { return }
-                    self.directHome = snapshot
+                    self.agentHome = snapshot
                     if self.usesSpaces { self.apply(session.snapshot) }
                     else { self.applyClassic() }
                 }
@@ -241,11 +241,11 @@ final class HomeViewController: UIViewController {
     private func applyClassic() {
         let previous = snapshot.rows
         snapshot = Snapshot()
-        snapshot.availability = directHome.loaded ? .available : .loading
-        snapshot.live = directHome.live
-        snapshot.rows = directHome.rows
-        snapshot.allRows = directHome.allRows
-        snapshot.error = directHome.error
+        snapshot.availability = agentHome.loaded ? .available : .loading
+        snapshot.live = agentHome.live
+        snapshot.rows = agentHome.rows
+        snapshot.allRows = agentHome.allRows
+        snapshot.error = agentHome.error
         onSnapshot?(snapshot)
         if previous != snapshot.rows || search?.narrowed == true { showRows() }
         warmUp()
@@ -253,10 +253,10 @@ final class HomeViewController: UIViewController {
     }
 
     private func applyChrome() {
-        let hasComputer = session != nil
-        empty.isHidden = hasComputer && snapshot.availability != .unsupported
-        empty.message = !hasComputer ? Strings.noComputer : Strings.unsupported
-        empty.showsPair = !hasComputer
+        let hasAgentConnection = session != nil
+        empty.isHidden = hasAgentConnection && snapshot.availability != .unsupported
+        empty.message = !hasAgentConnection ? Strings.noAgentConnection : Strings.unsupported
+        empty.showsPair = !hasAgentConnection
         sidebar.isHidden = !empty.isHidden
         // Searching, the bar is the field: the stories wait.
         stories.isSuppressed = sidebar.isHidden || search != nil
@@ -264,7 +264,7 @@ final class HomeViewController: UIViewController {
         let notice = snapshot.creationError.map { Strings.newWorkFailed(reason($0)) } ?? snapshot.error.map(reason)
         // Prioritizing being off is Settings' business: home says nothing of it.
         banner.configure(notice: notice)
-        dock.isHidden = !hasComputer || snapshot.availability == .unsupported
+        dock.isHidden = !hasAgentConnection || snapshot.availability == .unsupported
         dockScrim.isHidden = dock.isHidden
         view.setNeedsLayout()
     }
@@ -422,7 +422,7 @@ final class HomeViewController: UIViewController {
                 self?.endSearch(animated: false)
                 self?.makeNewWork(library: true)
             },
-            QuickAction(id: "add-computer", title: Strings.addComputer, glyph: "laptop-outline") { [weak self] in
+            QuickAction(id: "connect-agent", title: Strings.connectAgent, glyph: "laptop-outline") { [weak self] in
                 guard let self else { return }
                 LinkNavigationController.present(context: context, from: self)
             },
@@ -531,7 +531,7 @@ final class HomeViewController: UIViewController {
         case .space where row.targetKind == "project" || row.targetKind == "workspace":
             fold(row)
         case .space where row.targetKind == "artifacts":
-            navigationController?.pushViewController(DirectArtifactsViewController(session: session), animated: animated)
+            navigationController?.pushViewController(ArtifactsViewController(session: session), animated: animated)
         case .search:
             beginSearch()
         case .create:
@@ -847,7 +847,7 @@ final class EmptyView: UIView {
         configuration.cornerStyle = .capsule
         configuration.baseBackgroundColor = UIColor(Palette.rowTextActive)
         configuration.baseForegroundColor = UIColor(Palette.groupedBackground)
-        configuration.attributedTitle = AttributedString(Strings.pairComputer, attributes: AttributeContainer([.font: Fonts.ui(.semiBold, size: 16)]))
+        configuration.attributedTitle = AttributedString(Strings.connectAgent, attributes: AttributeContainer([.font: Fonts.ui(.semiBold, size: 16)]))
         configuration.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 22, bottom: 12, trailing: 22)
         button.configuration = configuration
         button.addAction(UIAction { [weak self] _ in self?.onPair?() }, for: .touchUpInside)

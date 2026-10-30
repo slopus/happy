@@ -86,7 +86,7 @@ final class SyncPerfNewSessionTests: XCTestCase {
         drafts.setWorktreeKey("saved-worktree")
         drafts.setCreatesBot(true)
         let saved = drafts.draft
-        let empty = HomeSnapshot(machines: .init(synced: false, machines: []), sessions: [])
+        let empty = LegacyHomeSnapshot(machines: .init(synced: false, machines: []), sessions: [])
         let composer = NewSessionComposer(drafts: drafts, snapshot: empty, ops: PickerNoOps())
         await composer.waitForIdle()
         XCTAssertEqual(drafts.draft, saved)
@@ -96,7 +96,7 @@ final class SyncPerfNewSessionTests: XCTestCase {
         XCTAssertEqual(drafts.draft, saved)
         XCTAssertTrue(drafts.createsBot)
 
-        composer.update(snapshot: HomeSnapshot(machines: .init(synced: true, machines: []), sessions: []))
+        composer.update(snapshot: LegacyHomeSnapshot(machines: .init(synced: true, machines: []), sessions: []))
         await composer.waitForIdle()
         XCTAssertEqual(drafts.draft.selectedMachineId, "saved-machine", "an empty listing keeps the existing machine-id fallback")
         XCTAssertFalse(drafts.createsBot)
@@ -115,7 +115,7 @@ final class SyncPerfNewSessionTests: XCTestCase {
         XCTAssertEqual(drafts.draft.selectedMachineId, "m", "available disk rows remain usable while offline")
     }
 
-    private func snapshot(count: Int = 1000) -> HomeSnapshot {
+    private func snapshot(count: Int = 1000) -> LegacyHomeSnapshot {
         let machine = MachineRecord(id: "m", seq: 0, createdAt: 1, updatedAt: 1, active: false, activeAt: 1,
             metadataVersion: 1, metadataCipher: "", metadata: .object(["host": .string("fixed"), "homeDir": .string("/home"),
                 "cliAvailability": .object(["claude": .bool(true), "codex": .bool(true)])]),
@@ -125,7 +125,7 @@ final class SyncPerfNewSessionTests: XCTestCase {
             row.metadata = .object(["machineId": .string("m"), "path": .string("/work/\(index)"), "title": .string("ignored")])
             return row
         }
-        return HomeSnapshot(machines: .init(synced: true, machines: [machine]), sessions: rows)
+        return LegacyHomeSnapshot(machines: .init(synced: true, machines: [machine]), sessions: rows)
     }
 
     @MainActor

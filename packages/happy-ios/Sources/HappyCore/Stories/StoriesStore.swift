@@ -49,7 +49,7 @@ public actor StoriesStore {
         var recents: [StickerRef]
     }
 
-    private let client: DirectAgentClient
+    private let client: AgentClient
     public typealias Events = @Sendable () async -> AsyncStream<Store.ConversationEvent>
     private let events: Events
     private let offline: OfflineFile?
@@ -79,7 +79,7 @@ public actor StoriesStore {
     /// Whether `stories.json` exists for this computer.
     private var keptOnDisk = false
 
-    public init(client: DirectAgentClient, events: @escaping Events, offline: OfflineFile?, now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }, firstReadDelay: Duration = .seconds(1)) {
+    public init(client: AgentClient, events: @escaping Events, offline: OfflineFile?, now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }, firstReadDelay: Duration = .seconds(1)) {
         self.client = client
         self.events = events
         self.offline = offline
@@ -89,7 +89,7 @@ public actor StoriesStore {
     }
 
     /// Events off the V2 store's one stream.
-    public init(client: DirectAgentClient, v2: Store, offline: OfflineFile?) {
+    public init(client: AgentClient, v2: Store, offline: OfflineFile?) {
         self.init(client: client, events: { await v2.events(matching: Self.eventPrefixes) }, offline: offline)
     }
 
@@ -174,7 +174,7 @@ public actor StoriesStore {
         guard health.capabilities?.stories == true else { return turnedOff(.unsupported) }
         snapshot.agentStories = health.capabilities?.agentStories == true
         let setting: JSONValue?
-        do { setting = try await client.userSetting(DirectAgentClient.storiesSettingKey) }
+        do { setting = try await client.userSetting(AgentClient.storiesSettingKey) }
         catch { return }
         guard setting == .bool(true) else { return turnedOff(.off) }
         do {
@@ -191,7 +191,7 @@ public actor StoriesStore {
             }
             if let recents = try? await recents { snapshot.recents = recents.recents }
             snapshot.live = true
-        } catch DirectAgentError.status(404, _, _) {
+        } catch AgentClientError.status(404, _, _) {
             turnedOff(.off)
         } catch {}
     }
@@ -291,7 +291,7 @@ public actor StoriesStore {
         let payload = event["payload"] ?? .null
         switch type {
         case "user_settings.updated":
-            guard payload["setting"]?["key"]?.stringValue == DirectAgentClient.storiesSettingKey else { return }
+            guard payload["setting"]?["key"]?.stringValue == AgentClient.storiesSettingKey else { return }
             let on = payload["setting"]?["value"] == .bool(true)
             guard on != snapshot.isOn else { return }
             Task { await load() }
@@ -523,7 +523,7 @@ public actor StoriesStore {
         let previous = settingWrite
         settingWrite = Task {
             await previous?.value
-            try? await client.setUserSetting(DirectAgentClient.storiesSettingKey, .bool(on))
+            try? await client.setUserSetting(AgentClient.storiesSettingKey, .bool(on))
             // Only the last of quick toggles reads back what the daemon has.
             guard write == self.settingWrites else { return }
             await self.load()
@@ -537,7 +537,7 @@ public actor StoriesStore {
         reading[storyId] = Task {
             let story: Story?
             do { story = try await client.story(storyId) }
-            catch DirectAgentError.status(404, _, _) { notFound(storyId); return }
+            catch AgentClientError.status(404, _, _) { notFound(storyId); return }
             catch { story = nil }
             read(storyId, story)
         }
@@ -547,7 +547,7 @@ public actor StoriesStore {
     public func refresh(_ storyId: String) {
         Task {
             do { read(storyId, try await client.story(storyId)) }
-            catch DirectAgentError.status(404, _, _) { gone(storyId) }
+            catch AgentClientError.status(404, _, _) { gone(storyId) }
             catch {}
         }
     }
@@ -684,7 +684,7 @@ public actor StoriesStore {
     /// An edit of `version` (the editor's), or of the version held; `caption`
     /// nil leaves it as it is.
     public func update(_ storyId: String, version: String? = nil, caption: String??, frames: [StoryFrameInput]?) async throws -> Story {
-        guard let base = version ?? snapshot.stories[storyId]?.version else { throw DirectAgentError.invalidResponse }
+        guard let base = version ?? snapshot.stories[storyId]?.version else { throw AgentClientError.invalidResponse }
         do {
             let story = try await client.updateStory(storyId, version: base, caption: caption, frames: frames)
             adopt(story)

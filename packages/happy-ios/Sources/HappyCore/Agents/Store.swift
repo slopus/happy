@@ -63,7 +63,7 @@ public actor Store {
     static let attentionRenew: Duration = .seconds(60)
     static let attentionCalm: Duration = .seconds(300)
 
-    private let client: DirectAgentClient
+    private let client: AgentClient
     private let offline: OfflineFile?
     private var keeping: Task<Void, Never>?
     private let labels: Rows.Labels
@@ -145,7 +145,7 @@ public actor Store {
     private var attentionIdle: Task<Void, Never>?
     private var attentionVisible = true
 
-    public init(client: DirectAgentClient, offline: OfflineFile? = nil, labels: Rows.Labels = Rows.Labels()) {
+    public init(client: AgentClient, offline: OfflineFile? = nil, labels: Rows.Labels = Rows.Labels()) {
         self.client = client
         self.offline = offline
         self.labels = labels
@@ -154,7 +154,7 @@ public actor Store {
 
     // MARK: Life
 
-    /// DirectSyncEngine owns the stream for account-backed sessions. The
+    /// SyncEngine owns the stream for account-backed sessions. The
     /// standalone start() remains available for existing fixtures/consumers.
     public func startExternal() async { await restoreOffline() }
 
@@ -244,7 +244,7 @@ public actor Store {
                     }
                     receive(envelope)
                 }
-            } catch DirectAgentError.revoked {
+            } catch AgentClientError.revoked {
                 snapshot.live = false; publish()
                 return
             } catch {}
@@ -356,7 +356,7 @@ public actor Store {
             saveOffline()
         } catch {
             heldEvents = nil
-            if snapshot.availability == .loading, case DirectAgentError.status(404, _, _) = error { snapshot.availability = .unsupported }
+            if snapshot.availability == .loading, case AgentClientError.status(404, _, _) = error { snapshot.availability = .unsupported }
             publish()
         }
     }
@@ -427,7 +427,7 @@ public actor Store {
                     let object = try await client.artifact(id)
                     read = References.artifact(object)
                     page = References.page(object)
-                } catch DirectAgentError.status(404, _, _) {
+                } catch AgentClientError.status(404, _, _) {
                     read = .missing
                 } catch {
                     read = nil
@@ -778,7 +778,7 @@ public actor Store {
                 // daemon last said; it rebases anything in between.
                 answer = try await client.applySidebarOperations(mutationId: batch.mutationId, baseVersion: held?.version ?? 0, operations: batch.operations)
                 break
-            } catch let error as DirectAgentError where (error.status ?? 500) < 500 {
+            } catch let error as AgentClientError where (error.status ?? 500) < 500 {
                 batches.removeAll { $0.mutationId == batch.mutationId }
                 snapshot.error = Self.describe(error)
                 stale = true
@@ -811,7 +811,7 @@ public actor Store {
     /// The daemon's own words for a refusal, or empty where it gave none
     /// (the screens say it in theirs).
     public static func describe(_ error: Error) -> String {
-        if case DirectAgentError.status(_, _, let message?) = error { return message }
+        if case AgentClientError.status(_, _, let message?) = error { return message }
         return ""
     }
 
@@ -883,14 +883,14 @@ public actor Store {
                     do {
                         response = try await client.createV2(id: spaceId, mutationId: mutationId, sectionId: sectionId, identity: named ? identity : nil)
                         break
-                    } catch let error as DirectAgentError where (error.status ?? 500) < 500 {
+                    } catch let error as AgentClientError where (error.status ?? 500) < 500 {
                         throw error
                     } catch {
                         if attempt == 3 { throw error }
                         try await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
                     }
                 }
-                guard let response else { throw DirectAgentError.invalidResponse }
+                guard let response else { throw AgentClientError.invalidResponse }
                 await self.created(spaceId, response)
                 return response.agent.id
             } catch {
@@ -948,10 +948,10 @@ public actor Store {
                     try await client.removeSpace(spaceId, mutationId: mutationId)
                     await self.closed(spaceId)
                     return true
-                } catch DirectAgentError.status(404, _, _) {
+                } catch AgentClientError.status(404, _, _) {
                     await self.closed(spaceId)
                     return true
-                } catch let error as DirectAgentError where (error.status ?? 500) < 500 {
+                } catch let error as AgentClientError where (error.status ?? 500) < 500 {
                     await self.discardRefused(spaceId)
                     return false
                 } catch {
@@ -1108,7 +1108,7 @@ public actor Store {
     private func removeAtOnce(_ nodeId: String, subtask: Bool = false, asking work: @escaping @Sendable () async throws -> Void) async -> Bool {
         await removeAtOnce(nodeId, subtask: subtask) {
             do { try await work() }
-            catch DirectAgentError.status(404, _, _) {}
+            catch AgentClientError.status(404, _, _) {}
             catch {
                 await self.removalRefused(nodeId, error)
                 return false

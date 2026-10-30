@@ -115,7 +115,7 @@ public struct NewSessionScreenModel: Equatable, Sendable {
         "rig": "happy",
     ]
 
-    public init(choices: NewSessionChoices, draft: NewSessionDraft, snapshot: HomeSnapshot, gitWorktrees: [Worktrees.Entry], isStarting: Bool, now: Int64) {
+    public init(choices: NewSessionChoices, draft: NewSessionDraft, snapshot: LegacyHomeSnapshot, gitWorktrees: [Worktrees.Entry], isStarting: Bool, now: Int64) {
         let machines = snapshot.machines.machines.sorted { $0.createdAt > $1.createdAt }
         let machineChoices = MachineChoice.collect(machines)
         let choice = MachineChoice.find(in: machineChoices, machineId: draft.selectedMachineId)

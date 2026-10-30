@@ -56,7 +56,7 @@ public enum QRLoginError: Error, Equatable, Sendable {
 /// The key pair lives only as long as this object, and is derived the way
 /// happy-app's `generateAuthKeyPair` does (crypto_box_seed_keypair).
 public struct QRLogin: Sendable {
-    public let link: PairingLink
+    public let link: LegacyPairingLink
     private let api: HappyAPI
     private let keyPair: BoxKeyPair
 

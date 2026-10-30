@@ -187,7 +187,7 @@ public struct HomeUpdate: Sendable {
     /// The content's kind differs from the one on screen.
     public var kindChanged: Bool
     /// What the new-session pickers read, when it changed.
-    public var dock: HomeSnapshot?
+    public var dock: LegacyHomeSnapshot?
     /// The home filter's choice, for its menu.
     public var grouping: SessionListGrouping
     public var archiveModels: HomeArchiveModels?
@@ -199,7 +199,7 @@ public enum HomeDerivation {
     /// Everything home is derived from. The snapshot comes from the feed;
     /// the rest is read on the main thread and handed over.
     public struct Input: Sendable {
-        public var snapshot: HomeSnapshot?
+        public var snapshot: LegacyHomeSnapshot?
         public var expandedProjects: Set<String>
         public var draftSessionIds: Set<String>
         /// Home's dock also wants the new-session pickers' snapshot.
@@ -217,7 +217,7 @@ public enum HomeDerivation {
         public var preparesArchives = false
 
         public init(
-            snapshot: HomeSnapshot? = nil,
+            snapshot: LegacyHomeSnapshot? = nil,
             expandedProjects: Set<String> = [],
             includesDock: Bool = false,
             clock: SessionList.Clock? = nil,
@@ -236,12 +236,12 @@ public enum HomeDerivation {
     /// What home shows now; empty before the first apply.
     public struct Applied: Equatable, Sendable {
         public var content: HomeContent?
-        public var dock: HomeSnapshot?
+        public var dock: LegacyHomeSnapshot?
         public var grouping: SessionListGrouping?
         public var archiveModels: HomeArchiveModels?
         public var archiveSettings: HomeArchiveSettings?
 
-        public init(content: HomeContent? = nil, dock: HomeSnapshot? = nil, grouping: SessionListGrouping? = nil) {
+        public init(content: HomeContent? = nil, dock: LegacyHomeSnapshot? = nil, grouping: SessionListGrouping? = nil) {
             self.content = content
             self.dock = dock
             self.grouping = grouping
@@ -289,7 +289,7 @@ public enum HomeDerivation {
 /// and stay; its heartbeat, thinking and agent state never show and are
 /// cleared.
 public enum NewSessionSnapshot {
-    public static func rendered(_ snapshot: HomeSnapshot) -> HomeSnapshot {
+    public static func rendered(_ snapshot: LegacyHomeSnapshot) -> LegacyHomeSnapshot {
         var snapshot = snapshot
         // The pickers show no last seen: a presence tick changes nothing.
         snapshot.presenceNow = nil
@@ -314,7 +314,7 @@ public enum NewSessionSnapshot {
     /// The new-session screen's derivation: the pickers' snapshot once the
     /// computers are known (synced, or on disk from before), nil until then
     /// and whenever it is what the screen has.
-    public static func derive(_ snapshot: HomeSnapshot?, applied: HomeSnapshot?) -> (output: HomeSnapshot, state: HomeSnapshot?)? {
+    public static func derive(_ snapshot: LegacyHomeSnapshot?, applied: LegacyHomeSnapshot?) -> (output: LegacyHomeSnapshot, state: LegacyHomeSnapshot?)? {
         guard let snapshot, snapshot.machines.synced || !snapshot.machines.machines.isEmpty else { return nil }
         let rendered = rendered(snapshot)
         guard rendered != applied else { return nil }

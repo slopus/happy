@@ -12,7 +12,7 @@ final class TaskActionsTests: XCTestCase {
     var fixture: ServerFixture!
     var http: FakeHTTP!
     var store: LocalStore!
-    var engine: SyncEngine!
+    var engine: LegacySyncEngine!
     var rpc: FakeRPC!
     var actions: SessionActions!
     var details: SessionDetailActions!
@@ -21,7 +21,7 @@ final class TaskActionsTests: XCTestCase {
         fixture = ServerFixture()
         http = FakeHTTP()
         store = try LocalStore.inMemory()
-        engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
+        engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
         rpc = FakeRPC()
         actions = SessionActions(api: testAPI(http), store: store, sync: engine, rpc: rpc, now: { 500 })
         let machines = MachineActions(api: testAPI(http), store: store, sync: engine, rpc: rpc, metadataTransport: SessionDetailActionsTests.NoMetadata())

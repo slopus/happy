@@ -18,9 +18,9 @@ enum SettingsIndex {
     static var status: Entry { Entry(id: "status", title: Strings.status, glyph: "desktop-outline", tile: .green) }
     static var hideProjects: Entry { Entry(id: "hide-projects", title: "Hide projects", glyph: "folder-outline", tile: .orange) }
     static var stories: Entry { Entry(id: "stories", title: Strings.Stories.setting, glyph: "sparkles-outline", tile: .blue) }
-    static var directConnection: Entry { Entry(id: "direct-connection", title: Strings.directConnection, glyph: "flask-outline", tile: .purple) }
+    static var agentConnectionsEnabled: Entry { Entry(id: "direct-connection", title: Strings.agentConnectionsEnabled, glyph: "flask-outline", tile: .purple) }
     static var theme: Entry { Entry(id: "theme", title: Strings.SettingsAppearance.theme, glyph: "contrast-outline", tile: .indigo) }
-    static var addComputer: Entry { Entry(id: "add-computer", title: Strings.addComputer, glyph: "laptop-outline", tile: .blue) }
+    static var connectAgent: Entry { Entry(id: "connect-agent", title: Strings.connectAgent, glyph: "laptop-outline", tile: .blue) }
     static var addAccount: Entry { Entry(id: "add-account", title: Strings.addHappyAccount, glyph: "person-add-outline", tile: .gray) }
     static var whatsNew: Entry { Entry(id: "whats-new", title: Strings.Settings.whatsNew, glyph: "sparkles-outline", tile: .orange) }
     static var githubRepo: Entry { Entry(id: "github-repo", title: Strings.Settings.github, glyph: "logo-github", tile: .gray) }
@@ -34,7 +34,7 @@ enum SettingsIndex {
     /// out: a search doesn't offer to take the computer away. Stories
     /// only where the computer offers them, as the page shows them.
     static func computer(stories: Bool) -> [Entry] {
-        [editName, status, hideProjects] + (stories ? [Self.stories] : []) + [directConnection, theme, addComputer, addAccount] + about
+        [editName, status, hideProjects] + (stories ? [Self.stories] : []) + [agentConnectionsEnabled, theme, connectAgent, addAccount] + about
     }
 
     /// About, on every page.

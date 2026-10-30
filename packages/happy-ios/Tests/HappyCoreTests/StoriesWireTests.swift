@@ -87,7 +87,7 @@ final class StoriesWireTests: XCTestCase {
         XCTAssertEqual(constants["lifetimeMs"]?.numberValue, Double(StoryCanvas.lifetimeMs))
         XCTAssertEqual(constants["imageDurationMs"]?.numberValue, Double(StoryCanvas.imageDurationMs))
         XCTAssertEqual(constants["maxVideoDurationMs"]?.numberValue, Double(StoryCanvas.maxVideoDurationMs))
-        XCTAssertEqual(constants["settingKey"]?.stringValue, DirectAgentClient.storiesSettingKey)
+        XCTAssertEqual(constants["settingKey"]?.stringValue, AgentClient.storiesSettingKey)
         XCTAssertEqual(constants["fonts"]?.arrayValue?.compactMap(\.stringValue), StoryTextFont.allCases.map(\.rawValue))
         XCTAssertEqual(constants["fills"]?.arrayValue?.compactMap(\.stringValue), StoryTextFill.allCases.map(\.rawValue))
         XCTAssertEqual(constants["linkStyles"]?.arrayValue?.compactMap(\.stringValue), StoryLinkStyle.allCases.map(\.rawValue))

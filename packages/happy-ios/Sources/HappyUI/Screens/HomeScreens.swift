@@ -505,7 +505,7 @@ final class LinkComputerViewController: UIViewController {
         }
         linking = true
         update()
-        let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)
+        let outcome = await LegacyPairingFlow.approve(text, expecting: .terminal, session: session)
         linking = false
         if case .approved = outcome {
             PairingAnalytics.shared.log(.completed(method: .relay, start: start))
@@ -514,7 +514,7 @@ final class LinkComputerViewController: UIViewController {
         }
         switch outcome {
         case .approved:
-            PairingFlow.report(outcome, kind: .terminal, on: self)
+            LegacyPairingFlow.report(outcome, kind: .terminal, on: self)
             if let onLinked { return onLinked() }
             approved = true
             approvalTimeout?.cancel()
@@ -529,7 +529,7 @@ final class LinkComputerViewController: UIViewController {
             UIAccessibility.post(notification: .announcement, argument: Strings.Onboarding.linkFailed)
         case .invalidLink, .terminalNeedsUpdate, .alreadyHandled:
             // These need more than one line, and scanning again won't help.
-            PairingFlow.report(outcome, kind: .terminal, on: self)
+            LegacyPairingFlow.report(outcome, kind: .terminal, on: self)
         }
         update()
     }
@@ -613,10 +613,10 @@ final class OfflineChecklistViewController: UIViewController {
             }
             linking = true
             update()
-            let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)
+            let outcome = await LegacyPairingFlow.approve(text, expecting: .terminal, session: session)
             linking = false
             // No inline error line here: failures are alerts, as in happy-app.
-            PairingFlow.report(outcome, kind: .terminal, on: self)
+            LegacyPairingFlow.report(outcome, kind: .terminal, on: self)
             if outcome == .approved { startWaitingForComputer() }
             update()
         }

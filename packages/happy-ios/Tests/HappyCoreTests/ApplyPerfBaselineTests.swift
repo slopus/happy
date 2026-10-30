@@ -26,7 +26,7 @@ private struct LegacyHomeApply {
     private var rows: [SessionRow] = []
     var counts = Counts()
 
-    mutating func receive(_ snapshot: HomeSnapshot) {
+    mutating func receive(_ snapshot: LegacyHomeSnapshot) {
         counts.mainDerivations += 1
         let next = HomeState(snapshot, clock: ApplyPerfFixtures.clock)
         guard next != state else { return }

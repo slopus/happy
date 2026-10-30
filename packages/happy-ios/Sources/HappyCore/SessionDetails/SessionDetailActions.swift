@@ -10,10 +10,10 @@ public struct SessionDetailActions: Sendable {
     let sessions: SessionActions
     let machines: MachineActions
     let store: LocalStore
-    let sync: SyncEngine
+    let sync: LegacySyncEngine
     let metadataTransport: any MetadataUpdateTransport
 
-    public init(sessions: SessionActions, machines: MachineActions, store: LocalStore, sync: SyncEngine, metadataTransport: any MetadataUpdateTransport) {
+    public init(sessions: SessionActions, machines: MachineActions, store: LocalStore, sync: LegacySyncEngine, metadataTransport: any MetadataUpdateTransport) {
         self.sessions = sessions
         self.machines = machines
         self.store = store

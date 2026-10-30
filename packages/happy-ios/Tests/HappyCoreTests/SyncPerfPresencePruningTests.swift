@@ -20,7 +20,7 @@ final class SyncPerfPresencePruningTests: XCTestCase {
         let http = FakeHTTP()
         http.onRaw("DELETE /v1/sessions/s", #"{"success":true}"#)
         http.onRaw("DELETE /v1/machines/m", #"{"success":true}"#)
-        let clock = SyncEngineTests.Clock()
+        let clock = LegacySyncEngineTests.Clock()
         let sync = try engine(store, http, clock)
         await sync.presence.tick()
         let actions = SessionActions(api: testAPI(http), store: store, sync: sync, rpc: FakeRPC())
@@ -63,7 +63,7 @@ final class SyncPerfPresencePruningTests: XCTestCase {
         row.activeAt = 1_000_000
         try store.upsertSessions([row])
         try store.replaceMachines([machine("m")])
-        let clock = SyncEngineTests.Clock()
+        let clock = LegacySyncEngineTests.Clock()
         let sync = try engine(store, FakeHTTP(), clock)
         await sync.presence.tick()
         try store.deleteSession(id: "s")
@@ -87,8 +87,8 @@ final class SyncPerfPresencePruningTests: XCTestCase {
             daemonStateCipher: nil, daemonState: nil, dataKeyCipher: nil, decryptable: false)
     }
 
-    private func engine(_ store: LocalStore, _ http: FakeHTTP, _ clock: SyncEngineTests.Clock) throws -> SyncEngine {
-        SyncEngine(api: testAPI(http), store: store, keys: try AccountKeys(secret: Data(repeating: 3, count: 32)), now: { clock.now })
+    private func engine(_ store: LocalStore, _ http: FakeHTTP, _ clock: LegacySyncEngineTests.Clock) throws -> LegacySyncEngine {
+        LegacySyncEngine(api: testAPI(http), store: store, keys: try AccountKeys(secret: Data(repeating: 3, count: 32)), now: { clock.now })
     }
 
     func testWireDeletesRemoveDirtyCachesAndDoNotPublishPhantomLastSeenTicks() async throws {
@@ -98,7 +98,7 @@ final class SyncPerfPresencePruningTests: XCTestCase {
         row.activeAt = 1_000_000
         try store.upsertSessions([row])
         try store.replaceMachines([machine("m")])
-        let clock = SyncEngineTests.Clock()
+        let clock = LegacySyncEngineTests.Clock()
         let sync = try engine(store, FakeHTTP(), clock)
         await sync.presence.tick()
         await sync.handle(.init(id: "delete-session", seq: 1, body: .deleteSession(sessionId: "s"), createdAt: clock.now))
@@ -150,7 +150,7 @@ final class SyncPerfPresencePruningTests: XCTestCase {
         try store.setCursor(.sessionsChangedSince, 100)
         let http = FakeHTTP()
         http.on("GET /v2/sessions", json: SessionsPage(sessions: [], nextCursor: nil, hasNext: false))
-        let clock = SyncEngineTests.Clock()
+        let clock = LegacySyncEngineTests.Clock()
         let sync = try engine(store, http, clock)
         await sync.presence.tick()
         try await sync.pullSessions()
@@ -168,7 +168,7 @@ final class SyncPerfPresencePruningTests: XCTestCase {
         try store.replaceMachines([machine("m")])
         let http = FakeHTTP()
         http.on("GET /v1/machines", json: [APIMachine]())
-        let clock = SyncEngineTests.Clock()
+        let clock = LegacySyncEngineTests.Clock()
         let sync = try engine(store, http, clock)
         await sync.presence.tick()
         try await sync.pullMachines()

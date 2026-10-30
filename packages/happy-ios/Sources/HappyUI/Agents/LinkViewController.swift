@@ -48,20 +48,20 @@ final class LinkViewController: UIViewController {
     private var scrollWatch: NSKeyValueObservation?
     private var method: PairingMethod
     private var shown: UIViewController?
-    private lazy var directScreen = DirectLinkViewController(context: context)
+    private lazy var agentScreen = ConnectAgentViewController(context: context)
     private var relayScreen: UIViewController?
     /// Relay screens already holding the room of Direct's steps.
     private var reservesSteps: Set<ObjectIdentifier> = []
     private var loggedShown = false
 
-    private var surface: PairingSurface { inSheet ? .addComputer : .onboarding }
+    private var surface: PairingSurface { inSheet ? .connectAgent : .onboarding }
 
     /// `inSheet`: over settings, with a close button; otherwise the
     /// window's root.
     init(context: AppContext, inSheet: Bool) {
         self.context = context
         self.inSheet = inSheet
-        method = Preference(variant: context.variant).directConnection ? .direct : .relay
+        method = Preference(variant: context.variant).agentConnectionsEnabled ? .agentConnection : .relay
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -94,7 +94,7 @@ final class LinkViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // Back from settings, where the experiment may have changed.
-        let now: PairingMethod = Preference(variant: context.variant).directConnection ? .direct : .relay
+        let now: PairingMethod = Preference(variant: context.variant).agentConnectionsEnabled ? .agentConnection : .relay
         if now != method {
             method = now
             show(now, animated: false)
@@ -106,7 +106,7 @@ final class LinkViewController: UIViewController {
         super.viewDidAppear(animated)
         guard !loggedShown else { return }
         loggedShown = true
-        PairingAnalytics.shared.log(.optionsShown(options: [.relay, .direct], selected: method, surface: surface))
+        PairingAnalytics.shared.log(.optionsShown(options: [.relay, .agentConnection], selected: method, surface: surface))
     }
 
     override func viewDidLayoutSubviews() {
@@ -125,15 +125,15 @@ final class LinkViewController: UIViewController {
     }
 
     private func chosen() {
-        let to: PairingMethod = control.selectedSegmentIndex == 1 ? .direct : .relay
+        let to: PairingMethod = control.selectedSegmentIndex == 1 ? .agentConnection : .relay
         guard to != method else { return }
         PairingAnalytics.shared.log(.optionSelected(from: method, to: to, surface: surface))
         method = to
         let preference = Preference(variant: context.variant)
         // One preference with Settings' switch; Relay leaves paired
         // computers where they are.
-        if (to == .direct) != preference.directConnection, to == .direct || context.account.direct.accounts.isEmpty {
-            Experiments.turn(to == .direct, context: context, surface: surface)
+        if (to == .agentConnection) != preference.agentConnectionsEnabled, to == .agentConnection || context.account.agentConnections.accounts.isEmpty {
+            Experiments.turn(to == .agentConnection, context: context, surface: surface)
         }
         show(to, animated: true)
         syncAddingAccount()
@@ -141,10 +141,10 @@ final class LinkViewController: UIViewController {
 
     /// The chosen way's screen, in place under the switch.
     private func show(_ method: PairingMethod, animated: Bool) {
-        control.selectedSegmentIndex = method == .direct ? 1 : 0
+        control.selectedSegmentIndex = method == .agentConnection ? 1 : 0
         let next: UIViewController
-        if method == .direct {
-            next = directScreen
+        if method == .agentConnection {
+            next = agentScreen
         } else {
             if relayScreen == nil { relayScreen = Self.relayScreen(context: context, inSheet: inSheet) }
             next = relayScreen!
@@ -228,7 +228,7 @@ final class LinkViewController: UIViewController {
 }
 
 /// Direct's way: the computer's code scanned, or its link pasted.
-final class DirectLinkViewController: UIViewController {
+final class ConnectAgentViewController: UIViewController {
     private let context: AppContext
     private let content = LinkContentView()
     private lazy var screen = OnboardingScreenView(
@@ -263,7 +263,7 @@ final class DirectLinkViewController: UIViewController {
     private func scan() {
         Task { @MainActor in
             guard let text = await HappyScan.read(from: self) else {
-                return PairingAnalytics.shared.log(.cancelled(method: .direct, start: .scan))
+                return PairingAnalytics.shared.log(.cancelled(method: .agentConnection, start: .scan))
             }
             Scan.open(text, context: context, on: self, start: .scan)
         }
@@ -279,7 +279,7 @@ final class DirectLinkViewController: UIViewController {
                 on: self
             )
             guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-                return PairingAnalytics.shared.log(.cancelled(method: .direct, start: .pasteLink))
+                return PairingAnalytics.shared.log(.cancelled(method: .agentConnection, start: .pasteLink))
             }
             Scan.open(text, context: context, on: self, start: .pasteLink)
         }

@@ -38,7 +38,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         var id: String
         var name: String
         var subtitle: String
-        var isDirect: Bool
+        var isAgentConnection: Bool
         var isActive: Bool
     }
 
@@ -62,7 +62,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     private var observation: AccountsObservation?
     private var prioritizingWatch: Watch?
     private var prioritizing: Bool?
-    private var directSettingsWatch: Task<Void, Never>?
+    private var connectionSettingsWatch: Task<Void, Never>?
     private var projectsHidden = false
     private var storiesWatch: Watch?
     /// Whether the computer offers Stories and the person has them on.
@@ -101,7 +101,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         view.addSubview(scroll)
         carousel.onSelect = { [weak self] index in self?.choose(index) }
         carousel.onTap = { [weak self] index in self?.choose(index, closing: true) }
-        carousel.onAdd = { [weak self] _ in self?.addComputer() }
+        carousel.onAdd = { [weak self] _ in self?.connectAgent() }
         scroll.addSubview(carousel)
         name.font = Fonts.ui(.medium, size: 28)
         name.textColor = UIColor(Palette.settingsText)
@@ -196,14 +196,14 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     /// Computers first, then Happy accounts, each in the order added.
     private func reload() {
         let accounts = context.account.accounts
-        let direct = context.account.direct.accounts
-        profiles = (accounts.filter(\.isDirect) + accounts.filter { !$0.isDirect }).map { account in
-            if account.isDirect, let computer = direct.first(where: { $0.id == account.id }) {
+        let direct = context.account.agentConnections.accounts
+        profiles = (accounts.filter(\.isAgentConnection) + accounts.filter { !$0.isAgentConnection }).map { account in
+            if account.isAgentConnection, let computer = direct.first(where: { $0.id == account.id }) {
                 let name = heldName?.id == account.id ? heldName!.name : computer.name
-                return Profile(id: account.id, name: name, subtitle: computer.status.title, isDirect: true, isActive: account.isActive)
+                return Profile(id: account.id, name: name, subtitle: computer.status.title, isAgentConnection: true, isActive: account.isActive)
             }
             let name = account.name ?? account.username ?? Strings.happyAccount
-            return Profile(id: account.id, name: name, subtitle: account.username.map { "@\($0)" } ?? Strings.happyAccount, isDirect: false, isActive: account.isActive)
+            return Profile(id: account.id, name: name, subtitle: account.username.map { "@\($0)" } ?? Strings.happyAccount, isAgentConnection: false, isActive: account.isActive)
         }
         if let held = heldName, direct.first(where: { $0.id == held.id })?.name == held.name { heldName = nil }
         // With none left, the window's root is the link screen and this
@@ -217,7 +217,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     }
 
     private func showCarousel() {
-        let items = profiles.map { ProfileCarouselView.Item(id: $0.id, label: $0.name, image: images[$0.id], isDirect: $0.isDirect) }
+        let items = profiles.map { ProfileCarouselView.Item(id: $0.id, label: $0.name, image: images[$0.id], isAgentConnection: $0.isAgentConnection) }
         let selected = profiles.firstIndex { $0.id == shownID } ?? 0
         if carousel.items != items || carousel.selected != selected { carousel.set(items, selected: selected) }
     }
@@ -282,7 +282,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     }
 
     /// Telegram's "Add Account", for a computer: the link sheet.
-    private func addComputer() {
+    private func connectAgent() {
         endEditingName(keep: true)
         LinkNavigationController.present(context: context, from: self)
     }
@@ -295,7 +295,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     }
 
     private func watchShown() {
-        directSettingsWatch?.cancel(); directSettingsWatch = nil
+        connectionSettingsWatch?.cancel(); connectionSettingsWatch = nil
         projectsHidden = false
         prioritizingWatch?.invalidate()
         prioritizingWatch = nil
@@ -306,7 +306,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         settingsObservation = nil
         snapshot = SettingsSnapshot()
         guard let profile = shown else { return }
-        if !profile.isDirect {
+        if !profile.isAgentConnection {
             // Only the active account has a session to read.
             guard let session = context.account.session, session.keys.anonID == profile.id else { return }
             settingsObservation = session.store.observeSettings { [weak self] snapshot in
@@ -317,10 +317,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
             return
         }
         guard let session = Session.session(for: profile.id, context: context) else { return }
-        directSettingsWatch = Task { [weak self, engine = session.engine] in
+        connectionSettingsWatch = Task { [weak self, engine = session.engine] in
             for await snapshot in await engine.snapshots() {
                 guard !Task.isCancelled, let self else { return }
-                let hidden = DirectSettings.projectsHidden(snapshot.settings)
+                let hidden = DesktopSettingKeys.projectsHidden(snapshot.settings)
                 guard hidden != projectsHidden else { continue }
                 projectsHidden = hidden
                 rebuild(animated: false)
@@ -344,22 +344,22 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         typealias Row = SettingsRow
         let id = profile.id
         let adding = [
-            Row(SettingsIndex.addComputer, action: { [weak self] in self?.addComputer() }),
+            Row(SettingsIndex.connectAgent, action: { [weak self] in self?.connectAgent() }),
             Row(SettingsIndex.addAccount, action: { [weak self] in self?.addHappyAccount() }),
         ]
-        if profile.isDirect {
+        if profile.isAgentConnection {
             typealias Index = SettingsIndex
             // Home follows desktop's authoritative account setting. There is
             // deliberately no independent renderer or layout selector here.
             var experiments = [Row(Index.hideProjects, accessory: .toggle, isOn: projectsHidden, toggled: { [weak self] on in
-                guard let engine = self?.context.account.direct.syncEngine(for: id) else { return }
+                guard let engine = self?.context.account.agentConnections.syncEngine(for: id) else { return }
                 Task { try? await engine.setProjectsHidden(on) }
             })]
             // Stories: only where the computer offers them.
             if stories == .on || stories == .off {
                 experiments.append(Row(Index.stories, accessory: .toggle, isOn: stories == .on, toggled: { [weak self] on in self?.setStories(on) }))
             }
-            experiments.append(directConnectionRow())
+            experiments.append(agentConnectionsRow())
             return [
                 [
                     Row(Index.editName, action: { [weak self] in self?.beginRename() }),
@@ -389,7 +389,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
                 Row(id: "scan-terminal", title: Strings.connectTerminal, icon: ("qr-code-outline", .indigo), accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: true) }),
                 Row(id: "enter-terminal", title: Strings.enterTerminalURL, icon: ("link-outline", .indigo), accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: false) }),
             ],
-            [directConnectionRow()],
+            [agentConnectionsRow()],
             [Row(id: "support-us", title: Strings.SupportUs.title, icon: ("heart-outline", .red), action: { [weak self] in self?.show(SupportUsViewController()) })],
             adding,
             aboutRows(),
@@ -398,9 +398,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     }
 
     /// The Direct connection experiment, on this phone.
-    private func directConnectionRow() -> SettingsRow {
+    private func agentConnectionsRow() -> SettingsRow {
         let context = context
-        return SettingsRow(SettingsIndex.directConnection, accessory: .toggle, isOn: Preference(variant: context.variant).directConnection, toggled: { on in
+        return SettingsRow(SettingsIndex.agentConnectionsEnabled, accessory: .toggle, isOn: Preference(variant: context.variant).agentConnectionsEnabled, toggled: { on in
             Experiments.turn(on, context: context, surface: .settings)
         })
     }
@@ -428,7 +428,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     private func searchRows(_ query: String) -> [SettingsRow] {
         var found: [SettingsRow] = []
         for (index, profile) in profiles.enumerated() where profile.name.localizedCaseInsensitiveContains(query) {
-            found.append(SettingsRow(id: "profile:\(profile.id)", title: profile.name, icon: (profile.isDirect ? "desktop-outline" : "person-outline", .blue), value: profile.isDirect ? Strings.directComputer : Strings.happyAccount, action: { [weak self] in
+            found.append(SettingsRow(id: "profile:\(profile.id)", title: profile.name, icon: (profile.isAgentConnection ? "desktop-outline" : "person-outline", .blue), value: profile.isAgentConnection ? Strings.agentConnection : Strings.happyAccount, action: { [weak self] in
                 self?.endSearch()
                 self?.carousel.set(self?.carousel.items ?? [], selected: index)
                 self?.choose(index)
@@ -476,7 +476,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
                 label.text = value
             }
         }
-        name.accessibilityTraits = profile.isDirect ? .button : .staticText
+        name.accessibilityTraits = profile.isAgentConnection ? .button : .staticText
         while cards.count < rows.count { let card = SettingsCardView(); scroll.addSubview(card); cards.append(card) }
         while cards.count > rows.count { cards.removeLast().removeFromSuperview() }
         view.setNeedsLayout()
@@ -546,7 +546,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
 
     /// The name, in place, as a field; Return or a tap away keeps it.
     private func beginRename() {
-        guard nameField == nil, query == nil, let profile = shown, profile.isDirect else { return }
+        guard nameField == nil, query == nil, let profile = shown, profile.isAgentConnection else { return }
         let field = RenameField()
         field.font = name.font
         field.textColor = name.textColor
@@ -602,7 +602,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await context.account.direct.rename(id, to: kept)
+                try await context.account.agentConnections.rename(id, to: kept)
             } catch {
                 heldName = nil
                 reload()
@@ -710,7 +710,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     private func showQR() {
         guard let profile = shown else { return }
         endEditingName(keep: true)
-        let sheet = QRSheetViewController(name: profile.name, image: images[profile.id], isDirect: profile.isDirect)
+        let sheet = QRSheetViewController(name: profile.name, image: images[profile.id], isAgentConnection: profile.isAgentConnection)
         sheet.onScan = { [weak self] in
             guard let self else { return }
             Scan.scan(context: context, on: self)
@@ -746,22 +746,22 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
 /// gives way to the Happy account, or Welcome.
 @MainActor
 enum Experiments {
-    static func setDirectConnection(_ on: Bool, context: AppContext, surface: PairingSurface) async {
+    static func setAgentConnectionsEnabled(_ on: Bool, context: AppContext, surface: PairingSurface) async {
         guard record(on, context: context, surface: surface) else { return }
-        await context.account.setShowsComputers(Preference(variant: context.variant).showsComputers)
+        await context.account.setShowsAgentConnections(Preference(variant: context.variant).showsAgentConnections)
     }
 
     /// From a switch: the choice is kept at once, so the page drawn again
     /// meanwhile shows it; the computers follow.
     static func turn(_ on: Bool, context: AppContext, surface: PairingSurface) {
         guard record(on, context: context, surface: surface) else { return }
-        Task { await context.account.setShowsComputers(Preference(variant: context.variant).showsComputers) }
+        Task { await context.account.setShowsAgentConnections(Preference(variant: context.variant).showsAgentConnections) }
     }
 
     private static func record(_ on: Bool, context: AppContext, surface: PairingSurface) -> Bool {
         let preference = Preference(variant: context.variant)
-        guard preference.isAvailable, preference.directConnection != on else { return false }
-        preference.directConnection = on
+        guard preference.isAvailable, preference.agentConnectionsEnabled != on else { return false }
+        preference.agentConnectionsEnabled = on
         PairingAnalytics.shared.log(.experimentToggled(on: on, surface: surface))
         return true
     }

@@ -40,7 +40,7 @@ final class SyncPerfThreadRulesTests: XCTestCase {
             _ = reducer.apply(page)
             ThreadRules.assertOffMain()
         }.value
-        let engine = SyncEngine(api: testAPI(FakeHTTP()), store: store, keys: try AccountKeys(secret: Data(repeating: 3, count: 32)))
+        let engine = LegacySyncEngine(api: testAPI(FakeHTTP()), store: store, keys: try AccountKeys(secret: Data(repeating: 3, count: 32)))
         await engine.handle(.activity(sessionId: "s", active: true, activeAt: 1, thinking: false))
         await engine.stop()
         XCTAssertEqual(violations.values, [.offMain, .offMain, .offMain])

@@ -51,7 +51,7 @@ final class SendingAttachmentPlanTests: XCTestCase, @unchecked Sendable {
         )
         session.metadata = .object(["flavor": .string("gemini")])
         try store.upsertSessions([session])
-        let engine = SyncEngine(api: testAPI(FakeHTTP()), store: store, keys: fixture.keys)
+        let engine = LegacySyncEngine(api: testAPI(FakeHTTP()), store: store, keys: fixture.keys)
         await engine.setBackgrounded(true)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -95,7 +95,7 @@ final class SendingAttachmentPlanTests: XCTestCase, @unchecked Sendable {
             ]),
         ])
         try store.upsertSessions([session])
-        let engine = SyncEngine(api: testAPI(FakeHTTP()), store: store, keys: fixture.keys)
+        let engine = LegacySyncEngine(api: testAPI(FakeHTTP()), store: store, keys: fixture.keys)
         await engine.setBackgrounded(true)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

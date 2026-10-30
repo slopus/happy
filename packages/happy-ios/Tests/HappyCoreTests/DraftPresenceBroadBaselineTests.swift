@@ -30,7 +30,7 @@ final class DraftPresenceBroadBaselineTests: XCTestCase {
         let counts = DraftBroadCounts()
         let metadata: [String: JSONValue] = [
             "client": .object(["id": .string("rig")]), "rigMetadataVersion": .number(1),
-            "machineId": .string("computer"), "path": .string("/work/project"),
+            "machineId": .string("agent"), "path": .string("/work/project"),
             "summary": .object(["text": .string("Session 0")]),
             "lastMeaningfulMessageAt": .number(Double(ApplyPerfFixtures.now)),
             "draftUpdatedAt": .number(0), "draft": .null,

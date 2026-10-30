@@ -9,8 +9,8 @@ import UIKit
 @MainActor
 final class Session {
     let accountID: String
-    let engine: DirectSyncEngine
-    let client: DirectAgentClient
+    let engine: SyncEngine
+    let client: AgentClient
     let store: Store
     let images: Images
     /// The models the composer's pickers offer, and the dock's pick.
@@ -32,7 +32,7 @@ final class Session {
 
     /// The session for a paired computer, made once and kept while the app runs.
     static func session(for accountID: String, context: AppContext) -> Session? {
-        guard let engine = context.account.direct.syncEngine(for: accountID) else { return nil }
+        guard let engine = context.account.agentConnections.syncEngine(for: accountID) else { return nil }
         if let existing = sessions[accountID], existing.engine === engine { return existing }
         let session = Session(accountID: accountID, engine: engine)
         sessions[accountID] = session
@@ -51,7 +51,7 @@ final class Session {
         Task { await store.stop() }
     }
 
-    private init(accountID: String, engine: DirectSyncEngine) {
+    private init(accountID: String, engine: SyncEngine) {
         self.accountID = accountID
         self.engine = engine
         let client = engine.client
@@ -85,7 +85,7 @@ final class Session {
                 for watcher in self.watchers.values { watcher(snapshot) }
             }
         }
-        // DirectAccounts owns foreground/background and account switching.
+        // AgentConnections owns foreground/background and account switching.
         // Opening an offscreen account's settings never starts another stream.
     }
 

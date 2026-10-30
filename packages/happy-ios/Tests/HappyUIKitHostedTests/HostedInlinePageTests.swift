@@ -22,31 +22,31 @@ final class HostedInlinePageTests: XCTestCase {
     """
 
     private final class Host: UIViewController, PageHosting {
-        let pageClient: DirectAgentClient
+        let pageClient: AgentClient
         var heights: [CGFloat] = []
-        init(_ client: DirectAgentClient) { pageClient = client; super.init(nibName: nil, bundle: nil) }
+        init(_ client: AgentClient) { pageClient = client; super.init(nibName: nil, bundle: nil) }
         required init?(coder: NSCoder) { fatalError() }
         func page(_ artifactId: String, measured height: CGFloat) { heights.append(height) }
     }
 
-    private actor Files: DirectTransport {
+    private actor Files: AgentTransport {
         var paths: [String] = []
-        func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+        func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
             paths.append(path)
-            if path.hasSuffix("/api/v1/style.css") { return DirectHTTPResponse(status: 200, headers: ["content-type": "text/css"], body: Data(":root{}".utf8)) }
+            if path.hasSuffix("/api/v1/style.css") { return HTTP1Response(status: 200, headers: ["content-type": "text/css"], body: Data(":root{}".utf8)) }
             if path.contains("/versions/2/files/index.html") {
-                return DirectHTTPResponse(status: 206, headers: ["content-type": "text/html; charset=utf-8", "content-range": "bytes 0-\(HostedInlinePageTests.html.utf8.count - 1)/\(HostedInlinePageTests.html.utf8.count)"], body: Data(HostedInlinePageTests.html.utf8))
+                return HTTP1Response(status: 206, headers: ["content-type": "text/html; charset=utf-8", "content-range": "bytes 0-\(HostedInlinePageTests.html.utf8.count - 1)/\(HostedInlinePageTests.html.utf8.count)"], body: Data(HostedInlinePageTests.html.utf8))
             }
-            return DirectHTTPResponse(status: 404)
+            return HTTP1Response(status: 404)
         }
-        nonisolated func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream { throw DirectAgentError.invalidResponse }
+        nonisolated func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream { throw AgentClientError.invalidResponse }
         nonisolated func reset() async {}
         nonisolated func close() async {}
     }
 
     func testAnInlinePageLoadsFromTheComputerAndMeasuresItself() async throws {
         let files = Files()
-        let host = Host(DirectAgentClient(transport: files, token: "test"))
+        let host = Host(AgentClient(transport: files, token: "test"))
         let window = hostedKeyWindow(in: try await hostedActiveScene(), root: host)
         window.overrideUserInterfaceStyle = .dark
         defer { window.isHidden = true }

@@ -48,7 +48,7 @@ final class HostedHomeDockFadeTests: XCTestCase {
 
     /// A computer in the account's store, written off the main thread as
     /// sync writes it: home leaves its loading state for one with a dock.
-    private func addComputer(to store: LocalStore) async throws {
+    private func connectAgent(to store: LocalStore) async throws {
         try await Task.detached {
             try store.upsertMachine(MachineRecord(
                 id: "m", seq: 1, createdAt: 1, updatedAt: 1, active: true, activeAt: 1,
@@ -143,7 +143,7 @@ final class HostedHomeDockFadeTests: XCTestCase {
         assertFades(arriving.surface, from: 0, duration: HomeDockFade.appearDuration, dock, "arriving, the surface")
         assertFades(arriving.content, from: 0, duration: HomeDockFade.appearDuration, dock, "arriving, the prompt")
         // A computer, so the composer has one to start on; the dock stays.
-        try await addComputer(to: account.store)
+        try await connectAgent(to: account.store)
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertFalse(dock.isHidden)
         XCTAssertEqual(dock.presence, 1)

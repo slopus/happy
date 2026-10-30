@@ -156,7 +156,7 @@ public struct SessionList: Equatable, Sendable {
 
     /// `unknownMachine` names the project list's section of chats that name
     /// no computer (`ProjectHomeData`).
-    public init(_ snapshot: HomeSnapshot, clock: Clock = Clock(), unknownMachine: String = ProjectHomeData.unknownMachineText) {
+    public init(_ snapshot: LegacyHomeSnapshot, clock: Clock = Clock(), unknownMachine: String = ProjectHomeData.unknownMachineText) {
         let settings = AccountSettings(snapshot.settings)
         let machines = Dictionary(snapshot.machines.machines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let projects = Dictionary(snapshot.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })

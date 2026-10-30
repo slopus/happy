@@ -67,7 +67,7 @@ public struct NewSessionChoices: Equatable, Sendable {
             self.gitWorktrees = gitWorktrees
         }
 
-        public init(draft: NewSessionDraft, createsBot: Bool, snapshot: HomeSnapshot, gitWorktrees: [Worktrees.Entry] = []) {
+        public init(draft: NewSessionDraft, createsBot: Bool, snapshot: LegacyHomeSnapshot, gitWorktrees: [Worktrees.Entry] = []) {
             self.init(
                 draft: draft,
                 createsBot: createsBot,

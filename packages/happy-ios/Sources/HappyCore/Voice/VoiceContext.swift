@@ -114,7 +114,7 @@ public actor VoiceContext {
         chatTasks.removeAll(); reducers.removeAll(); records.removeAll(); sink = nil
     }
 
-    private func home(_ snapshot: HomeSnapshot) async {
+    private func home(_ snapshot: LegacyHomeSnapshot) async {
         let next = Self.directory(snapshot.sessions)
         if next != directory {
             directory = next

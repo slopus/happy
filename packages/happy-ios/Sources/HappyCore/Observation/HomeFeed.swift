@@ -10,11 +10,11 @@ public final class HomeFeed: Sendable {
 
     /// The current disk snapshot first, then each distinct snapshot. The
     /// producer runs off main; callers must also derive UI models off main.
-    public func snapshots() -> AsyncStream<HomeSnapshot> { scope.snapshots { [store] in store.homeSnapshots() } }
+    public func snapshots() -> AsyncStream<LegacyHomeSnapshot> { scope.snapshots { [store] in store.homeSnapshots() } }
     /// The snapshot the account's subscribers were last handed, at once and
     /// without a read; nil while none listen. A screen draws its first
     /// frame from it, and its own subscription then confirms it.
-    public var latest: HomeSnapshot? { store.latestHomeSnapshot }
+    public var latest: LegacyHomeSnapshot? { store.latestHomeSnapshot }
     /// Nonempty drafts, independently observed from home's session rows.
     public func draftSessions() -> AsyncStream<Set<String>> { scope.snapshots { [store] in store.draftSessionIdsSnapshots() } }
     func stop() { scope.stop() }

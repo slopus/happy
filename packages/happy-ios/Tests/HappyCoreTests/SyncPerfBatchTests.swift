@@ -44,8 +44,8 @@ private final class MessageCommitBytes: TransactionObserver, @unchecked Sendable
 }
 
 final class SyncPerfBatchTests: XCTestCase {
-    private func setup(sessionCount: Int = 10, recordsPerSession: Int = 50, options supplied: SyncEngine.Options = .init(),
-                       transportFactory: (@Sendable (FakeHTTP) -> any HTTPTransport)? = nil) throws -> (LocalStore, FakeHTTP, SyncEngine) {
+    private func setup(sessionCount: Int = 10, recordsPerSession: Int = 50, options supplied: LegacySyncEngine.Options = .init(),
+                       transportFactory: (@Sendable (FakeHTTP) -> any HTTPTransport)? = nil) throws -> (LocalStore, FakeHTTP, LegacySyncEngine) {
         let store = try LocalStore.inMemory()
         let http = FakeHTTP()
         let keys = try AccountKeys(secret: Data(repeating: 3, count: 32))
@@ -73,14 +73,14 @@ final class SyncPerfBatchTests: XCTestCase {
         options.messagesPageSize = 25
         let transport: any HTTPTransport = transportFactory?(http) ?? http
         let api = HappyAPI(serverURL: testServer, clientID: "test", transport: transport, token: "token")
-        return (store, http, SyncEngine(api: api, store: store, keys: keys, options: options))
+        return (store, http, LegacySyncEngine(api: api, store: store, keys: keys, options: options))
     }
 
     func test500RecordCatchupAcrossTenSessionsCommitsOneBatch() async throws {
         var times: [Double] = []
         for _ in 0..<5 {
             let deadline = Gate()
-            var options = SyncEngine.Options()
+            var options = LegacySyncEngine.Options()
             options.writeBatchSleep = { _ in await deadline.wait() }
             let (store, http, engine) = try setup(options: options)
             let initialHome = expectation(description: "initial home")
@@ -179,7 +179,7 @@ final class SyncPerfBatchTests: XCTestCase {
     }
 
     func testByteLimitSplitsOneServerPageWithoutOveradvancingCursor() async throws {
-        var options = SyncEngine.Options()
+        var options = LegacySyncEngine.Options()
         // Every ciphertext is longer than 128 and shorter than 256 bytes:
         // this admits one record per transaction regardless of page size.
         options.writeBatchMaximumBytes = 256
@@ -196,7 +196,7 @@ final class SyncPerfBatchTests: XCTestCase {
     }
 
     func testTinyCountLimitThenMidSessionFailureKeepsExactlyTheCompletedPage() async throws {
-        var options = SyncEngine.Options()
+        var options = LegacySyncEngine.Options()
         options.messageWriteBatchSize = 10
         let (store, http, engine) = try setup(sessionCount: 1, options: options)
         let firstPage = try await testAPI(http).messages(sessionId: "s0", afterSeq: 0, limit: 25)

@@ -15,7 +15,7 @@ final class ScanRouteTests: XCTestCase {
 
     private func direct() throws -> String {
         let bundle: [String: Any] = ["v": 1, "a": "tcAddress", "p": 24781, "t": CanonicalBase64URL.encode(Data(repeating: 3, count: 32)), "n": "Mac", "e": 2_000_000_000_000.0]
-        return DirectPairingLink.prefix + CanonicalBase64URL.encode(try JSONSerialization.data(withJSONObject: bundle))
+        return PairingLink.prefix + CanonicalBase64URL.encode(try JSONSerialization.data(withJSONObject: bundle))
     }
 
     /// Link New Device used to ignore a computer's code, and Pair computer
@@ -38,11 +38,11 @@ final class ScanRouteTests: XCTestCase {
         XCTAssertEqual(route("happy:///account?" + keyText, .connect, account: false), .problem(.deviceNeedsAccount))
     }
 
-    func testADirectCodePairsFromAnywhere() throws {
+    func testAnAgentPairingCodePairsFromAnywhere() throws {
         let text = try direct()
         for intent in [ScanIntent.connect, .addAccount] {
             for account in [true, false] {
-                guard case .pairComputer = route(text, intent, account: account) else { return XCTFail("\(intent) \(account)") }
+                guard case .connectAgent = route(text, intent, account: account) else { return XCTFail("\(intent) \(account)") }
             }
         }
     }
@@ -53,7 +53,7 @@ final class ScanRouteTests: XCTestCase {
                 XCTAssertEqual(route("garbage", intent, account: account), .problem(.notHappy))
                 XCTAssertEqual(route("happy://terminal?xx", intent, account: account), .problem(.invalidTerminal))
                 XCTAssertEqual(route("happy:///account?xx", intent, account: account), .problem(.invalidAccount))
-                XCTAssertEqual(route("happy://direct?bad", intent, account: account), .problem(.direct(.invalidCode)))
+                XCTAssertEqual(route("happy://direct?bad", intent, account: account), .problem(.agentConnection(.invalidCode)))
             }
         }
     }

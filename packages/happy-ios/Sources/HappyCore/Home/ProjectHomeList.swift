@@ -79,7 +79,7 @@ public struct ProjectHomeData: Equatable, Sendable {
     /// `unknownMachine` is `status.unknown` in the screens' language, read
     /// on the main thread: the section of chats that name no computer is
     /// `<unknown>` (ProjectHomeList.tsx 128).
-    public init(_ snapshot: HomeSnapshot, clock: SessionList.Clock = SessionList.Clock(), unknownMachine: String = ProjectHomeData.unknownMachineText) {
+    public init(_ snapshot: LegacyHomeSnapshot, clock: SessionList.Clock = SessionList.Clock(), unknownMachine: String = ProjectHomeData.unknownMachineText) {
         let settings = AccountSettings(snapshot.settings)
         let machines = Dictionary(snapshot.machines.machines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let projects = Dictionary(snapshot.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })

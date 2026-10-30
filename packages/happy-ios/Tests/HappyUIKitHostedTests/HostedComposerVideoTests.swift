@@ -6,11 +6,11 @@ import Photos
 import UIKit
 import XCTest
 
-private struct VideoTestComputer: DirectTransport {
-    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+private struct VideoTestComputer: AgentTransport {
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         throw URLError(.notConnectedToInternet)
     }
-    func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream {
+    func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
         throw URLError(.notConnectedToInternet)
     }
     func reset() async {}
@@ -37,13 +37,13 @@ final class HostedComposerVideoTests: XCTestCase {
         let asset = try XCTUnwrap(PHAsset.fetchAssets(with: options).firstObject)
 
         let account = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "video-test",
-            credentialStore: InMemoryCredentialStore(), storeDirectory: nil, directTransport: { _ in VideoTestComputer() })
-        await account.direct.setForeground(false)
-        let computer = try await account.direct.add(JSONDecoder().decode(DirectDeviceCredentials.self,
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil, agentTransport: { _ in VideoTestComputer() })
+        await account.agentConnections.setForeground(false)
+        let computer = try await account.agentConnections.add(JSONDecoder().decode(AgentConnectionCredentials.self,
             from: Data(#"{"address":"video-test","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"test"}"#.utf8)), name: "Video test")
         addTeardownBlock { @MainActor in
             Session.forget(computer.id)
-            try await account.direct.remove(computer.id)
+            try await account.agentConnections.remove(computer.id)
         }
         let context = AppContext(account: account, variant: .preview, version: "test")
         let session = try XCTUnwrap(Session.session(for: computer.id, context: context))

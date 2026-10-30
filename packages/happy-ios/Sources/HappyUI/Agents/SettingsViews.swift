@@ -37,7 +37,7 @@ final class ProfileCarouselView: UIView, UIScrollViewDelegate {
         var label: String
         var image: UIImage?
         /// Shown when there is no picture: Happy's mark for a computer, a person for an account.
-        var isDirect: Bool
+        var isAgentConnection: Bool
     }
 
     /// A profile came to rest in the middle.
@@ -66,7 +66,7 @@ final class ProfileCarouselView: UIView, UIScrollViewDelegate {
         scroll.clipsToBounds = false
         addSubview(scroll)
         add.accessibilityIdentifier = "profile-add"
-        add.accessibilityLabel = Strings.addProfile
+        add.accessibilityLabel = Strings.connectAgentTile
         add.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(addTapped)))
         scroll.addSubview(add)
     }
@@ -229,7 +229,7 @@ final class ProfileCarouselView: UIView, UIScrollViewDelegate {
                 picture.contentMode = .scaleAspectFill
                 picture.backgroundColor = nil
             } else {
-                picture.image = item.isDirect
+                picture.image = item.isAgentConnection
                     ? UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
                     : Glyphs.image("person-outline", size: 28)
                 picture.contentMode = .center
@@ -427,17 +427,17 @@ final class SettingsCardView: UIView {
 @MainActor
 enum ProfilePictures {
     static func key(_ account: AccountSummary, context: AppContext) -> String {
-        let direct = context.account.direct.accounts.first { $0.id == account.id }
+        let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
         return direct.map { "\($0.avatarETag ?? ""):\($0.avatar?.count ?? 0):\($0.thumbhash ?? "")" } ?? account.avatarURL?.absoluteString ?? account.avatarThumbhash ?? ""
     }
 
     static func load(_ account: AccountSummary, context: AppContext) async -> UIImage? {
-        let direct = context.account.direct.accounts.first { $0.id == account.id }
+        let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
         let bytes = direct?.avatar
-        let directHash = direct?.thumbhash
+        let connectionHash = direct?.thumbhash
         var image = await Task.detached { () -> UIImage? in
             if let bytes, let image = AccountPictureImages.decode(bytes)?.picture as? UIImage { return image }
-            return directHash.flatMap { AccountPictureImages.placeholder($0)?.picture as? UIImage }
+            return connectionHash.flatMap { AccountPictureImages.placeholder($0)?.picture as? UIImage }
         }.value
         guard image == nil, direct == nil else { return image }
         let pictures = context.account.pictures(for: account.id)

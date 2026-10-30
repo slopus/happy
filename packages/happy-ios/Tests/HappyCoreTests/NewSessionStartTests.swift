@@ -1510,7 +1510,7 @@ final class NewSessionChoicesTests: XCTestCase {
         drafts.setWorktreeKey(draft.worktreeKey)
         let composer = NewSessionComposer(
             drafts: drafts,
-            snapshot: HomeSnapshot(machines: MachinesSnapshot(synced: true, machines: machines), sessions: sessions),
+            snapshot: LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: machines), sessions: sessions),
             ops: ops
         )
         await composer.waitForIdle()
@@ -1693,7 +1693,7 @@ extension NewSessionChoicesTests {
         isStarting: Bool = false,
         now: Int64 = 1
     ) -> NewSessionScreenModel {
-        let snapshot = HomeSnapshot(machines: MachinesSnapshot(synced: true, machines: machines), sessions: sessions)
+        let snapshot = LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: machines), sessions: sessions)
         let choices = NewSessionChoices(.init(draft: draft, createsBot: false, snapshot: snapshot))
         return NewSessionScreenModel(choices: choices, draft: draft, snapshot: snapshot, gitWorktrees: [], isStarting: isStarting, now: now)
     }

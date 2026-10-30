@@ -32,7 +32,7 @@ final class SendingCompatibilityTests: XCTestCase {
                 mimeType: "", size: Int(test["size"]!.numberValue!), width: Int(test["width"]!.numberValue!),
                 height: Int(test["height"]!.numberValue!), thumbhash: test["thumbhash"]?.stringValue, createdAt: 123
             )
-            let result = SyncEngine.filePayload(id: "event-id", time: 123, attachment: attachment, ref: "blob-ref")
+            let result = LegacySyncEngine.filePayload(id: "event-id", time: 123, attachment: attachment, ref: "blob-ref")
             XCTAssertEqual(try result.encoded(), Data(test["canonical"]!.stringValue!.utf8))
             XCTAssertEqual(try UserMessageEncoder.wireBytes(result), Data(test["wire"]!.stringValue!.utf8))
         }

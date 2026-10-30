@@ -9,12 +9,12 @@ import UIKit
 /// its path and hash, and drawn from there before (or without) the tunnel.
 @MainActor
 final class Images {
-    private let client: DirectAgentClient
+    private let client: AgentClient
     private let offline: OfflineFile?
     private let cache = NSCache<NSString, UIImage>()
     private var loading: [String: Task<UIImage?, Never>] = [:]
 
-    init(client: DirectAgentClient, offline: OfflineFile? = nil) {
+    init(client: AgentClient, offline: OfflineFile? = nil) {
         self.client = client
         self.offline = offline
     }

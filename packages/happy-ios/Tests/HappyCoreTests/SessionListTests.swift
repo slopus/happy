@@ -54,7 +54,7 @@ final class SessionListTests: XCTestCase {
         settings: [String: JSONValue] = [:]
     ) -> SessionList {
         SessionList(
-            HomeSnapshot(
+            LegacyHomeSnapshot(
                 machines: MachinesSnapshot(synced: true, machines: machines),
                 sessions: sessions,
                 projects: projects,

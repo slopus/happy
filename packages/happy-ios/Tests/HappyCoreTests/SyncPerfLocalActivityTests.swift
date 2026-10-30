@@ -65,10 +65,10 @@ final class SyncPerfLocalActivityTests: XCTestCase {
         let fixture = ServerFixture()
         let store = try LocalStore.inMemory()
         try store.upsertSessions([RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))])
-        let clock = SyncEngineTests.Clock()
+        let clock = LegacySyncEngineTests.Clock()
         clock.now = 1000
         let http = FakeHTTP()
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys, now: { clock.now })
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys, now: { clock.now })
         await engine.setBackgrounded(true)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

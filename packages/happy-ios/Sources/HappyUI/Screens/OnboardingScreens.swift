@@ -45,15 +45,15 @@ public final class WelcomeViewController: UIViewController {
         if offersServer {
             navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openServer), label: Strings.Server.title)
         }
-        let pairComputer = UIBarButtonItem(title: "Pair computer", primaryAction: UIAction { [weak self] _ in
-            guard let self else { return }; DirectPairingFlow.scan(context: context, on: self)
+        let connectAgent = UIBarButtonItem(title: "Connect Agent", primaryAction: UIAction { [weak self] _ in
+            guard let self else { return }; PairingFlow.scan(context: context, on: self)
         })
         if !offersPairing {
             // The screen behind offers it.
         } else if navigationItem.leftBarButtonItem == nil {
-            navigationItem.leftBarButtonItem = pairComputer
+            navigationItem.leftBarButtonItem = connectAgent
         } else if let settings = navigationItem.rightBarButtonItem {
-            navigationItem.rightBarButtonItems = [settings, pairComputer]
+            navigationItem.rightBarButtonItems = [settings, connectAgent]
         }
         screen.primary.action = { [weak self] in await self?.createAccount() }
         screen.secondary.onTap = { [weak self] in self?.openRestore() }

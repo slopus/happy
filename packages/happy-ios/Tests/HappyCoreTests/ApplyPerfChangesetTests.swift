@@ -101,7 +101,7 @@ final class ApplyPerfHomeTests: XCTestCase {
 
     /// Home's list alone, without the new-session pickers' snapshot (which
     /// keeps the metadata whole).
-    static func listOnly(_ snapshot: HomeSnapshot, after applied: HomeDerivation.Applied?) -> (output: HomeUpdate, state: HomeDerivation.Applied)? {
+    static func listOnly(_ snapshot: LegacyHomeSnapshot, after applied: HomeDerivation.Applied?) -> (output: HomeUpdate, state: HomeDerivation.Applied)? {
         HomeDerivation.derive(HomeDerivation.Input(snapshot: snapshot, clock: ApplyPerfFixtures.clock), applied: applied ?? .init())
     }
 
@@ -298,7 +298,7 @@ final class ApplyPerfPipelineTests: XCTestCase {
         homePipeline.follow(feed.snapshots()) { $0.snapshot = $1 }
 
         let chat = ApplyPerfRecorder<ChatSessionState>()
-        let chatPipeline = ApplyPipeline<HomeSnapshot?, ChatSessionState?, ChatSessionState>(
+        let chatPipeline = ApplyPipeline<LegacyHomeSnapshot?, ChatSessionState?, ChatSessionState>(
             input: nil,
             state: nil,
             derive: { snapshot, applied in
@@ -373,7 +373,7 @@ final class ApplyPerfMetricsTests: XCTestCase {
 }
 
 final class ApplyPerfHomeLayoutTests: XCTestCase {
-    private func grouped(_ snapshot: HomeSnapshot, _ grouping: String) -> HomeSnapshot {
+    private func grouped(_ snapshot: LegacyHomeSnapshot, _ grouping: String) -> LegacyHomeSnapshot {
         var snapshot = snapshot
         snapshot.settings = SettingsSnapshot(pending: ["sessionListGrouping": .string(grouping)])
         return snapshot
@@ -473,7 +473,7 @@ final class ApplyPerfChatSessionTests: XCTestCase {
         offline.sessions[1].active = false
         let stopped = ChatSessionState(offline, sessionId: "session-0001")
         XCTAssertNotEqual(stopped, before)
-        XCTAssertEqual(stopped.machine?.id, "computer", "a stopped session keeps its machine for resuming")
+        XCTAssertEqual(stopped.machine?.id, "agent", "a stopped session keeps its machine for resuming")
         offline.sessions[1].activeAt -= 3_600_000
         XCTAssertNotEqual(ChatSessionState(offline, sessionId: "session-0001"), stopped, "a stopped session shows when it was last seen")
     }
@@ -601,7 +601,7 @@ extension ApplyPerfDockTests {
             metadataVersion: 1, metadataCipher: "", metadata: .object(["host": .string("host")]), daemonStateVersion: 0,
             daemonStateCipher: nil, daemonState: nil, dataKeyCipher: nil, decryptable: true))
         let draft = NewSessionDraft(selectedMachineId: "m")
-        func project(_ snapshot: HomeSnapshot, revision: UInt64) async -> String? {
+        func project(_ snapshot: LegacyHomeSnapshot, revision: UInt64) async -> String? {
             let choices = await NewSessionChoiceDeriver().choices(snapshot: snapshot, revision: revision, generation: revision,
                                                                   draft: draft, createsBot: false, worktrees: [])
             return choices?.value.sessionPlaces.first { $0.path == "/work" }?.projectId
@@ -650,7 +650,7 @@ final class ApplyPerfMachineScreenTests: XCTestCase {
 }
 
 final class ApplyPerfPresenceClockTests: XCTestCase {
-    private func stopped(_ snapshot: HomeSnapshot, index: Int, lastSeen: Int64) -> HomeSnapshot {
+    private func stopped(_ snapshot: LegacyHomeSnapshot, index: Int, lastSeen: Int64) -> LegacyHomeSnapshot {
         var snapshot = snapshot
         snapshot.sessions[index].active = false
         snapshot.sessions[index].activeAt = lastSeen
@@ -711,7 +711,7 @@ final class ApplyPerfPresenceClockTests: XCTestCase {
     func testPresenceTicksAloneChangeNothingOnHome() throws {
         var snapshot = stopped(ApplyPerfFixtures.snapshot(5), index: 1, lastSeen: ApplyPerfFixtures.now - 5 * 60_000)
         snapshot.presenceNow = ApplyPerfFixtures.now
-        let input = { (snapshot: HomeSnapshot) in
+        let input = { (snapshot: LegacyHomeSnapshot) in
             HomeDerivation.Input(snapshot: snapshot, includesDock: true, clock: ApplyPerfFixtures.clock)
         }
         let home = try XCTUnwrap(HomeDerivation.derive(input(snapshot), applied: .init())).state

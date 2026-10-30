@@ -8,7 +8,7 @@ import WebKit
 /// the computer its files come through, and where it says how tall it is.
 @MainActor
 protocol PageHosting: AnyObject {
-    var pageClient: DirectAgentClient { get }
+    var pageClient: AgentClient { get }
     func page(_ artifactId: String, measured height: CGFloat)
 }
 
@@ -70,7 +70,7 @@ final class InlinePageView: UIView, WKNavigationDelegate {
         if let url = URL(string: "\(ArtifactFiles.scheme)://artifact/\(page.page.version)/\(path)") { web?.load(URLRequest(url: url)) }
     }
 
-    private func makeWeb(_ artifactId: String, client: DirectAgentClient) {
+    private func makeWeb(_ artifactId: String, client: AgentClient) {
         web?.removeFromSuperview()
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()

@@ -165,7 +165,7 @@ public struct SessionInfoSeed: Equatable, Sendable {
 
     /// From home's snapshot; nil when home doesn't hold the session, and
     /// the screen waits for its own snapshot as before.
-    public init?(_ snapshot: HomeSnapshot?, sessionId: String) {
+    public init?(_ snapshot: LegacyHomeSnapshot?, sessionId: String) {
         guard let record = snapshot?.sessions.first(where: { $0.id == sessionId }) else { return nil }
         title = record.title
     }

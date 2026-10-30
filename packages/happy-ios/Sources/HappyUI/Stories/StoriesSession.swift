@@ -10,7 +10,7 @@ final class StoriesSession {
     /// The computer's V2; nil in the harness, which has none.
     private(set) weak var v2: Session?
     let accountID: String
-    let client: DirectAgentClient
+    let client: AgentClient
     let images: Images
     let store: StoriesStore
     let media: StoriesMedia
@@ -47,7 +47,7 @@ final class StoriesSession {
 
     /// Stories from parts: the harness draws the viewer and editor over a
     /// computer of its own this way.
-    init(accountID: String, client: DirectAgentClient, images: Images, offline: OfflineFile?, events: @escaping StoriesStore.Events) {
+    init(accountID: String, client: AgentClient, images: Images, offline: OfflineFile?, events: @escaping StoriesStore.Events) {
         self.accountID = accountID
         self.client = client
         self.images = images

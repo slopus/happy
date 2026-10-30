@@ -86,7 +86,7 @@ final class ChatPendingStarts: NSObject {
     /// resolved against the computers as they are now, then started.
     private func start(_ chat: PendingChat, store: LocalStore) async -> String? {
         let anchorId = chat.anchorSessionId
-        let read = await Task.detached(priority: .userInitiated) { () -> (HomeSnapshot, SessionRecord, ComposerPicks)? in
+        let read = await Task.detached(priority: .userInitiated) { () -> (LegacyHomeSnapshot, SessionRecord, ComposerPicks)? in
             guard let snapshot = try? store.homeSnapshot(),
                   let anchor = snapshot.sessions.first(where: { $0.id == anchorId })
             else { return nil }

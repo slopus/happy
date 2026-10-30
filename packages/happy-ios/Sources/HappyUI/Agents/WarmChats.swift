@@ -51,9 +51,9 @@ final class WarmChats {
     /// Off for a measured "before": every open reads cold, as it used to.
     static let enabled = ProcessInfo.processInfo.environment["HAPPY_WARM"] != "0"
 
-    private let client: DirectAgentClient
+    private let client: AgentClient
     private let store: Store
-    private let persistence: DirectSyncEngine?
+    private let persistence: SyncEngine?
     private let syntax: CodeSyntaxService
     private var chats: [String: Chat] = [:]
     private var candidates: [Warmth.Candidate] = []
@@ -78,7 +78,7 @@ final class WarmChats {
     /// When a row was tapped, for its screen to time how soon it showed.
     private var tapped: (agentId: String, at: CFTimeInterval)?
 
-    init(client: DirectAgentClient, store: Store, syntax: CodeSyntaxService, persistence: DirectSyncEngine? = nil) {
+    init(client: AgentClient, store: Store, syntax: CodeSyntaxService, persistence: SyncEngine? = nil) {
         self.client = client
         self.store = store
         self.persistence = persistence

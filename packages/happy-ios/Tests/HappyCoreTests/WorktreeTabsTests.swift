@@ -127,8 +127,8 @@ final class WorktreeTabsTests: XCTestCase {
         )
     }
 
-    private func snapshot(_ sessions: [SessionRecord]) -> HomeSnapshot {
-        HomeSnapshot(machines: MachinesSnapshot(synced: true, machines: []), sessions: sessions)
+    private func snapshot(_ sessions: [SessionRecord]) -> LegacyHomeSnapshot {
+        LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: []), sessions: sessions)
     }
 
     func testAPathCheckoutHoldsItsChatsOldestFirst() {

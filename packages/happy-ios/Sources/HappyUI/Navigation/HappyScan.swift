@@ -60,8 +60,8 @@ enum HappyScan {
         let route = ScanRoute.route(HappyCode(text), intent: intent, hasAccount: context.account.session != nil)
         log.debug("code \(describe(text), privacy: .public) → \(String(describing: route).prefix(40), privacy: .public)")
         switch route {
-        case .pairComputer:
-            DirectPairingFlow.openIfDirect(text, context: context, on: controller, start: start)
+        case .connectAgent:
+            PairingFlow.openIfAgentPairing(text, context: context, on: controller, start: start)
             return .pairing
         case .connectComputer(let key):
             guard let session = context.account.session else { return .ended }
@@ -72,26 +72,26 @@ enum HappyScan {
         case .newAccountForComputer(let key):
             return await newAccount(for: key, context: context, start: start, on: controller, busy: busy)
         case .problem(let problem):
-            PairingAnalytics.shared.log(.failed(method: problem.isDirect ? .direct : .relay, start: start))
+            PairingAnalytics.shared.log(.failed(method: problem.isAgentConnection ? .agentConnection : .relay, start: start))
             report(problem, on: controller)
             return .ended
         }
     }
 
     private static func approve(
-        _ link: PairingLink,
+        _ link: LegacyPairingLink,
         session: AccountSession,
         start: PairingStart,
         on controller: UIViewController,
         busy: (Bool) -> Void
     ) async -> Result {
-        let kind: PairingFlow.Kind = if case .account = link { .account } else { .terminal }
+        let kind: LegacyPairingFlow.Kind = if case .account = link { .account } else { .terminal }
         busy(true)
-        let outcome = await PairingFlow.approve(link, session: session)
+        let outcome = await LegacyPairingFlow.approve(link, session: session)
         busy(false)
         log.debug("approval \(String(describing: outcome), privacy: .public)")
         PairingAnalytics.shared.log(outcome == .approved ? .completed(method: .relay, start: start) : .failed(method: .relay, start: start))
-        PairingFlow.report(outcome, kind: kind, on: controller)
+        LegacyPairingFlow.report(outcome, kind: kind, on: controller)
         guard outcome == .approved else { return .ended }
         // happy-app lets the computer turning up say it; from a settings
         // page nothing turns up, and a scan that seems to do nothing reads
@@ -141,7 +141,7 @@ enum HappyScan {
             Alerts.show(Strings.Scan.notHappyTitle, Strings.Scan.notHappy, on: controller)
         case .invalidTerminal, .invalidAccount:
             Alerts.show(Strings.Common.error, Strings.Modals.invalidAuthUrl, on: controller)
-        case .direct(let error):
+        case .agentConnection(let error):
             Alerts.show("Could not pair", error.localizedDescription, on: controller)
         case .deviceNeedsAccount:
             Alerts.show(Strings.Scan.deviceNeedsAccountTitle, Strings.Scan.deviceNeedsAccount, on: controller)
@@ -165,8 +165,8 @@ enum HappyScan {
 }
 
 private extension ScanProblem {
-    var isDirect: Bool {
-        if case .direct = self { return true }
+    var isAgentConnection: Bool {
+        if case .agentConnection = self { return true }
         return false
     }
 }

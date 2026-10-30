@@ -48,8 +48,8 @@ private final class SessionCommitBytes: TransactionObserver, @unchecked Sendable
 }
 
 final class SyncPerfSessionBatchTests: XCTestCase {
-    private func fixture(count: Int, options: SyncEngine.Options = .init(),
-                         transportFactory: (@Sendable (FakeHTTP) -> any HTTPTransport)? = nil) throws -> (LocalStore, FakeHTTP, SyncEngine, Int) {
+    private func fixture(count: Int, options: LegacySyncEngine.Options = .init(),
+                         transportFactory: (@Sendable (FakeHTTP) -> any HTTPTransport)? = nil) throws -> (LocalStore, FakeHTTP, LegacySyncEngine, Int) {
         let store = try LocalStore.inMemory()
         let http = FakeHTTP()
         let keys = try AccountKeys(secret: Data(repeating: 3, count: 32))
@@ -68,13 +68,13 @@ final class SyncPerfSessionBatchTests: XCTestCase {
         }
         let transport: any HTTPTransport = transportFactory?(http) ?? http
         let api = HappyAPI(serverURL: testServer, clientID: "test", transport: transport, token: "token")
-        let engine = SyncEngine(api: api, store: store, keys: keys, options: options, now: { 1_000_000 })
+        let engine = LegacySyncEngine(api: api, store: store, keys: keys, options: options, now: { 1_000_000 })
         return (store, http, engine, encrypted.utf8.count + wrapped.utf8.count)
     }
 
     func test500SessionRowsAndReadinessPublishOneValueInOneCommit() async throws {
         let deadline = Gate()
-        var options = SyncEngine.Options()
+        var options = LegacySyncEngine.Options()
         options.writeBatchSleep = { _ in await deadline.wait() }
         let (store, http, engine, _) = try fixture(count: 500, options: options)
         let initial = expectation(description: "initial home")
@@ -123,7 +123,7 @@ final class SyncPerfSessionBatchTests: XCTestCase {
     }
 
     func testSessionByteLimitAndFailureKeepRowsWithoutAdvancingCursorOrDeleting() async throws {
-        var options = SyncEngine.Options()
+        var options = LegacySyncEngine.Options()
         options.writeBatchMaximumBytes = 512
         let (store, http, engine, rowBytes) = try fixture(count: 200, options: options)
         try store.upsertSessions([ChatRecords.storeSession("not-in-partial-list")])

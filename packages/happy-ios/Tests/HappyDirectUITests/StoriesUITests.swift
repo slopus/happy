@@ -30,7 +30,7 @@ final class StoriesUITests: XCTestCase {
         continueAfterFailure = false
         print("StoriesUITests skips quiescence: \(Self.skipsQuiescence)")
         // Direct connection is an experiment, off on a fresh install.
-        app.launchEnvironment["HAPPY_DIRECT"] = "1"
+        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = "1"
         app.launch()
     }
 

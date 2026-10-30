@@ -159,7 +159,7 @@ final class MacWindowController: NSWindowController, NSMenuItemValidation {
     }
 
     func openPairingURL(_ text: String) {
-        guard let link = PairingLink(text) else { return showError("This is not a valid Happy pairing link.") }
+        guard let link = LegacyPairingLink(text) else { return showError("This is not a valid Happy pairing link.") }
         guard let session = account.session else { return showError("Sign in before connecting another device.") }
         guard let window else { return }
         let alert = NSAlert(); alert.messageText = "Connect this device to your account?"

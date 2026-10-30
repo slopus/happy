@@ -37,7 +37,7 @@ final class UITests: XCTestCase {
         continueAfterFailure = false
         print("V2UITests skips quiescence: \(skipsQuiescence)")
         // Direct connection is an experiment, off on a fresh install.
-        app.launchEnvironment["HAPPY_DIRECT"] = "1"
+        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = "1"
         app.launch()
     }
 
@@ -1620,17 +1620,17 @@ final class UITests: XCTestCase {
         assertCloses(close, in: link, "the link sheet")
         XCTAssertEqual(control.frame.width, scan.frame.width * 0.6, accuracy: 1, "the switch isn't 60% of the scan's width")
         XCTAssertEqual(control.frame.midX, scan.frame.midX, accuracy: 1, "the switch isn't centred over the scan")
-        XCTAssertTrue(app.staticTexts["Link your computer"].exists, "the title isn't Link your computer")
+        XCTAssertTrue(app.staticTexts["Connect Agent"].exists, "the title isn't Link your computer")
         XCTAssertGreaterThan(control.frame.minY, link.frame.midY, "the switch isn't down over the scan")
         XCTAssertLessThan(control.frame.maxY, scan.frame.minY, "the switch isn't above the scan")
         XCTAssertTrue(app.descendants(matching: .any)["link-beta"].exists, "no Beta tag")
         XCTAssertFalse(app.staticTexts["EXPERIMENTAL"].exists, "the tag still says Experimental")
-        let switchOnDirect = control.frame
+        let switchOnAgentConnections = control.frame
         control.buttons["Relay"].tap()
         XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 5), "Relay didn't show Welcome")
         pause(1)
         capture("sheet-link-relay")
-        XCTAssertEqual(control.frame.minY, switchOnDirect.minY, accuracy: 0.5, "the switch moved between Direct and Relay")
+        XCTAssertEqual(control.frame.minY, switchOnAgentConnections.minY, accuracy: 0.5, "the switch moved between Direct and Relay")
         XCTAssertLessThan(control.frame.maxY, app.buttons["Create account"].frame.minY, "the switch isn't above Relay's buttons")
         control.buttons["Direct"].tap()
         pause(0.8)

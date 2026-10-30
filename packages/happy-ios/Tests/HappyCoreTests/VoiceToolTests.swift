@@ -23,7 +23,7 @@ final class VoiceToolTests: XCTestCase {
                                          dependencies: .init(serverURL: URL(string: "https://example.test")!, clientID: "test", transport: FakeHTTP(), connector: FakeConnector()))
         let rpc = FakeRPC()
         rpc.answer = { _ in RPCCallResult(ok: true, result: server.seal(.null)) }
-        let sync = SyncEngine(api: testAPI(FakeHTTP()), store: store, keys: server.keys)
+        let sync = LegacySyncEngine(api: testAPI(FakeHTTP()), store: store, keys: server.keys)
         let actions = SessionActions(api: testAPI(FakeHTTP()), store: store, sync: sync, rpc: rpc)
         let sender = VoiceSendProbe()
         return (VoiceContext(account: account, sessionId: "s", sending: sender, actions: actions), account, sender, rpc, server)
@@ -83,7 +83,7 @@ final class VoiceToolTests: XCTestCase {
             "draft": .object(["text": .string("unsent keyboard draft"), "providerId": .string("p"), "modelId": .string("m"), "permissionMode": .string("ask")]),
         ])
         try store.upsertSessions([record], reconcileComposer: SessionModePushCounters().reconciliation)
-        let sync = SyncEngine(api: testAPI(FakeHTTP()), store: store, keys: server.keys)
+        let sync = LegacySyncEngine(api: testAPI(FakeHTTP()), store: store, keys: server.keys)
         let sender = OutboxSender(store: store, sync: sync, filesDirectory: FileManager.default.temporaryDirectory)
         _ = try await sender.send(OutgoingMessage(text: "spoken instruction", source: .voice), sessionId: "s")
         XCTAssertEqual(try store.draft(sessionId: "s")?.text, "unsent keyboard draft")

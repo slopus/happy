@@ -19,11 +19,11 @@ private struct NoSockets: WebSocketConnector {
 }
 
 /// A paired computer that never answers: home shows what it is given.
-private struct Unreachable: DirectTransport {
-    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+private struct Unreachable: AgentTransport {
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         throw URLError(.cannotConnectToHost)
     }
-    func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream {
+    func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
         throw URLError(.cannotConnectToHost)
     }
     func reset() async {}
@@ -97,23 +97,23 @@ final class HostedV2SelectionTests: XCTestCase {
             clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(),
             storeDirectory: nil,
-            directTransport: { _ in Unreachable() },
+            agentTransport: { _ in Unreachable() },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
             transport: NoNetwork(),
             connector: NoSockets()
         )
         // Paused: nothing reaches for the computer, and no snapshot replaces the rows.
-        await controller.direct.setForeground(false)
-        let computer = try await controller.direct.add(
-            JSONDecoder().decode(DirectDeviceCredentials.self, from: Data(#"{"address":"selection-test","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"token"}"#.utf8)),
+        await controller.agentConnections.setForeground(false)
+        let computer = try await controller.agentConnections.add(
+            JSONDecoder().decode(AgentConnectionCredentials.self, from: Data(#"{"address":"selection-test","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"token"}"#.utf8)),
             name: "Mac"
         )
         addTeardownBlock { @MainActor in
             Session.forget(computer.id)
-            try? await controller.direct.remove(computer.id)
+            try? await controller.agentConnections.remove(computer.id)
         }
         let context = AppContext(account: controller, variant: .preview, version: "test")
-        let home = DirectHomeViewController(context: context, id: computer.id)
+        let home = AgentHomeViewController(context: context, id: computer.id)
         let navigation = UINavigationController(rootViewController: home)
         let swipe = SwipeBack()
         navigation.delegate = swipe

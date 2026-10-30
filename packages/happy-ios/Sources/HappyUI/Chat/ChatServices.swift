@@ -141,14 +141,14 @@ struct ChatServices {
     }
 
     /// What the observations below would first hand over for `snapshot`.
-    nonisolated static func seed(_ snapshot: HomeSnapshot, sessionId: String, record: SessionRecord? = nil) -> Seed {
+    nonisolated static func seed(_ snapshot: LegacyHomeSnapshot, sessionId: String, record: SessionRecord? = nil) -> Seed {
         Seed(
             session: ChatSessionState(snapshot, sessionId: sessionId, record: record),
             checkout: checkout(sessionId, in: snapshot)
         )
     }
 
-    nonisolated private static func checkout(_ id: String, in snapshot: HomeSnapshot) -> WorktreeCheckout? {
+    nonisolated private static func checkout(_ id: String, in snapshot: LegacyHomeSnapshot) -> WorktreeCheckout? {
         AccountSettings(snapshot.settings).sessionListGrouping == .project
             ? WorktreeCheckout.locate(id, in: snapshot)
             : nil
@@ -164,7 +164,7 @@ struct ChatServices {
     ) -> (_ id: String, _ applied: WorktreeCheckout??, _ onChange: @escaping @MainActor (WorktreeCheckout?) -> Void) -> ApplyObservation {
         { id, applied, onChange in
             // The state is what was applied: nil before the first apply.
-            let pipeline = ApplyPipeline<HomeSnapshot?, WorktreeCheckout??, WorktreeCheckout?>(
+            let pipeline = ApplyPipeline<LegacyHomeSnapshot?, WorktreeCheckout??, WorktreeCheckout?>(
                 input: nil,
                 state: applied,
                 derive: { snapshot, applied in
@@ -195,7 +195,7 @@ struct ChatServices {
         isCurrent: @escaping @MainActor () -> Bool
     ) -> (_ applied: ChatSessionState?, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation {
         { applied, onChange in
-            let pipeline = ApplyPipeline<HomeSnapshot?, ChatSessionState?, ChatSessionState>(
+            let pipeline = ApplyPipeline<LegacyHomeSnapshot?, ChatSessionState?, ChatSessionState>(
                 input: nil,
                 state: applied,
                 derive: { snapshot, applied in

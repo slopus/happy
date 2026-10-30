@@ -18,8 +18,8 @@ public final class AppCoordinator {
     /// before the first state arrives.
     private var shownSession: ObjectIdentifier??
     private var shownServerConfirmationID: AccountSummary.ID?
-    private var shownDirectID: String?
-    private var pendingDirectLink: String?
+    private var shownAgentConnectionID: String?
+    private var pendingAgentPairingLink: String?
     /// The session a tapped notification named, until a signed-in home can
     /// open it.
     private var notificationSessionID: String?
@@ -57,20 +57,20 @@ public final class AppCoordinator {
         let v2 = Preference(variant: context.variant)
         #if DEBUG || HAPPY_FIXTURES
         // UI tests choose the Direct connection experiment's state.
-        if let direct = ProcessInfo.processInfo.environment["HAPPY_DIRECT"] { v2.directConnection = direct == "1" }
+        if let direct = ProcessInfo.processInfo.environment["HAPPY_AGENT_CONNECTIONS"] { v2.agentConnectionsEnabled = direct == "1" }
         #endif
-        context.account.fallsBackToComputer = v2.isAvailable
+        context.account.fallsBackToAgentConnection = v2.isAvailable
         // Paired computers stay hidden while the experiment is off.
-        context.account.showsComputers = v2.showsComputers
+        context.account.showsAgentConnections = v2.showsAgentConnections
         PairingAnalytics.shared.variant = context.variant
         Task { @MainActor [weak self] in
             guard let account = self?.context.account else { return }
             // The Happy account's filter showed a computer's V2: that
             // computer is home now, from the first screen.
-            await account.restore(openingComputer: v2.takeFilterChoice(), preferred: v2.computerID)
+            await account.restore(openingAgentConnection: v2.takeFilterChoice(), preferred: v2.agentConnectionID)
             self?.show(account.state)
             self?.accountRestored = true
-            self?.openPendingDirectLink()
+            self?.openPendingAgentPairingLink()
             self?.openNotificationSession()
         }
     }
@@ -160,7 +160,7 @@ public final class AppCoordinator {
 
     /// Foreground/background, for the server's push suppression.
     public func appStateChanged(active: Bool) {
-        Task { await context.account.direct.setForeground(active) }
+        Task { await context.account.agentConnections.setForeground(active) }
         guard let session = context.account.session else { return }
         Task { await session.sendAppState(active ? "active" : "background") }
     }
@@ -170,20 +170,20 @@ public final class AppCoordinator {
     @discardableResult
     public func open(_ url: URL) -> Bool {
         let text = url.absoluteString
-        if DirectPairingLink.isDirect(text) {
+        if PairingLink.isAgentConnection(text) {
             if accountRestored, let top = linkHost {
-                return DirectPairingFlow.openIfDirect(text, context: context, on: top)
+                return PairingFlow.openIfAgentPairing(text, context: context, on: top)
             }
-            pendingDirectLink = text
+            pendingAgentPairingLink = text
             return true
         }
-        guard let link = PairingLink(text) else { return false }
+        guard let link = LegacyPairingLink(text) else { return false }
         let top = presenter
         guard context.account.session != nil else {
             Alerts.show(Strings.Common.error, Strings.Modals.failedToConnectTerminal, on: top)
             return true
         }
-        let kind: PairingFlow.Kind
+        let kind: LegacyPairingFlow.Kind
         if case .terminal = link { kind = .terminal } else { kind = .account }
         Task { @MainActor in
             let confirmed = await Alerts.confirm(
@@ -193,8 +193,8 @@ public final class AppCoordinator {
                 on: top
             )
             guard confirmed, let session = context.account.session else { return }
-            let outcome = await PairingFlow.approve(text, expecting: kind, session: session)
-            PairingFlow.report(outcome, kind: kind, on: top)
+            let outcome = await LegacyPairingFlow.approve(text, expecting: kind, session: session)
+            LegacyPairingFlow.report(outcome, kind: kind, on: top)
         }
         return true
     }
@@ -210,12 +210,12 @@ public final class AppCoordinator {
         VoiceCoordinator.shared.accountDidChange(to: session)
         let identity = session.map(ObjectIdentifier.init)
         let pending = context.account.pendingServerConfirmation
-        let directID = context.account.direct.activeID
-        if let shownSession, shownSession == identity, shownServerConfirmationID == pending?.id, shownDirectID == directID { return }
+        let agentConnectionID = context.account.agentConnections.activeID
+        if let shownSession, shownSession == identity, shownServerConfirmationID == pending?.id, shownAgentConnectionID == agentConnectionID { return }
         let animated = shownSession != nil
         shownSession = .some(identity)
         shownServerConfirmationID = pending?.id
-        shownDirectID = directID
+        shownAgentConnectionID = agentConnectionID
         requestRoot(session: session, pending: pending, animated: animated)
     }
 
@@ -276,8 +276,8 @@ public final class AppCoordinator {
             return
         }
         let root: UIViewController
-        if let direct = context.account.direct.active {
-            root = DirectHomeViewController(context: context, id: direct.id)
+        if let direct = context.account.agentConnections.active {
+            root = AgentHomeViewController(context: context, id: direct.id)
         } else if let pending {
             root = AccountServerConfirmationViewController(context: context, account: pending)
         } else if let session {
@@ -298,12 +298,12 @@ public final class AppCoordinator {
         // A confirmation already going counts as gone.
         let presented = navigation.presentedViewController.flatMap { $0.isBeingDismissed ? nil : $0 }
         let kept = settings.flatMap { settings in
-            presented == nil && (context.account.direct.active != nil || session != nil) ? settings : nil
+            presented == nil && (context.account.agentConnections.active != nil || session != nil) ? settings : nil
         }
         navigation.presentedViewController?.dismiss(animated: false)
         navigation.setViewControllers([root] + [kept].compactMap { $0 }, animated: animated && kept == nil)
         shell.rootDidChange() // Tablet: the sidebar follows the account.
-        openPendingDirectLink()
+        openPendingAgentPairingLink()
         openNotificationSession()
     }
 
@@ -328,10 +328,10 @@ public final class AppCoordinator {
         return top
     }
 
-    private func openPendingDirectLink() {
-        guard accountRestored, let text = pendingDirectLink, let top = linkHost else { return }
-        pendingDirectLink = nil
-        _ = DirectPairingFlow.openIfDirect(text, context: context, on: top)
+    private func openPendingAgentPairingLink() {
+        guard accountRestored, let text = pendingAgentPairingLink, let top = linkHost else { return }
+        pendingAgentPairingLink = nil
+        _ = PairingFlow.openIfAgentPairing(text, context: context, on: top)
     }
 
     /// The title of happy-app's UIKit headers (react-native-screens 4.22.0

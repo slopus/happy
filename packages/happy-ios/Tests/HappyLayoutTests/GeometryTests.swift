@@ -3,7 +3,7 @@ import XCTest
 @testable import HappyLayout
 
 /// Pins the seedling against desktop's `stemCellGeometry.ts`, as written by
-/// `scripts/generate-v2-fixtures.ts`: the same ID is the same cell.
+/// `scripts/generate-geometry-fixtures.ts`: the same ID is the same cell.
 final class GeometryTests: XCTestCase {
     private struct Case: Decodable {
         let id: String

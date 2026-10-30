@@ -50,11 +50,11 @@ final class TabletGroupedListTests: XCTestCase {
 
     /// Two computers (one offline), a bot, two projects with a worktree,
     /// a chat that names no computer, and two archived chats.
-    static func snapshot(hidesArchive: Bool = false, grouping: String = "project", presenceNow: Int64? = nil) -> HomeSnapshot {
+    static func snapshot(hidesArchive: Bool = false, grouping: String = "project", presenceNow: Int64? = nil) -> LegacyHomeSnapshot {
         let bot: [String: JSONValue] = ["bot": .object([
             "id": .string("bot1"), "name": .string("Helper"), "username": .string("helper"), "orderKey": .string("a"),
         ])]
-        var snapshot = HomeSnapshot(
+        var snapshot = LegacyHomeSnapshot(
             machines: MachinesSnapshot(synced: true, machines: [
                 machine("m1", active: true, name: "Studio"),
                 machine("m2", active: false, name: "Laptop"),
@@ -80,7 +80,7 @@ final class TabletGroupedListTests: XCTestCase {
         return snapshot
     }
 
-    static func list(_ snapshot: HomeSnapshot) -> TabletGroupedList {
+    static func list(_ snapshot: LegacyHomeSnapshot) -> TabletGroupedList {
         TabletGroupedList(snapshot, offline: nil, clock: ApplyPerfFixtures.clock)
     }
 
@@ -350,7 +350,7 @@ final class TabletGroupedListTests: XCTestCase {
 final class TabletSidebarChangesetTests: XCTestCase {
     typealias Fixture = TabletGroupedListTests
 
-    private func derive(_ snapshot: HomeSnapshot, after state: TabletSidebarDerivation.Applied = .init()) -> (output: TabletSidebarUpdate, state: TabletSidebarDerivation.Applied)? {
+    private func derive(_ snapshot: LegacyHomeSnapshot, after state: TabletSidebarDerivation.Applied = .init()) -> (output: TabletSidebarUpdate, state: TabletSidebarDerivation.Applied)? {
         TabletSidebarDerivation.derive(snapshot, applied: state, clock: ApplyPerfFixtures.clock)
     }
 

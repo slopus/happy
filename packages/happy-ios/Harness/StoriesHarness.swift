@@ -67,7 +67,7 @@ final class StoriesHarness {
         if let index = arguments.firstIndex(of: "-storiesShowScale"), arguments.indices.contains(index + 1), let scale = Double(arguments[index + 1]) {
             StoryViewerViewController.showScale = scale
         }
-        let client = DirectAgentClient(transport: transport, token: "harness")
+        let client = AgentClient(transport: transport, token: "harness")
         let (events, arrive) = AsyncStream.makeStream(of: Store.ConversationEvent.self)
         session = StoriesSession(accountID: "stories-harness", client: client, images: Images(client: client), offline: nil) {
             events
@@ -293,7 +293,7 @@ final class StoriesHarnessHaptics {
 
 /// The harness's computer: Stories on, three authors, reactions and seen
 /// marks kept as the daemon keeps them.
-actor StoriesHarnessTransport: DirectTransport {
+actor StoriesHarnessTransport: AgentTransport {
     private var stories: [String: [String: Any]] = [:]
     private var frames: [String: Data] = [:]
     private var order = ["self": ["m1"], "u2": ["s1", "s2"], "u3": ["a1"]]
@@ -461,11 +461,11 @@ actor StoriesHarnessTransport: DirectTransport {
                 "isSelf": key == "self", "storyIds": ids, "unseenCount": unseen, "draftCount": key == "self" ? 0 : NSNull(), "latestPostedAt": (latest as Any?) ?? NSNull()]
     }
 
-    private func ok(_ object: Any) -> DirectHTTPResponse {
-        DirectHTTPResponse(status: 200, headers: ["content-type": "application/json"], body: (try? JSONSerialization.data(withJSONObject: object)) ?? Data())
+    private func ok(_ object: Any) -> HTTP1Response {
+        HTTP1Response(status: 200, headers: ["content-type": "application/json"], body: (try? JSONSerialization.data(withJSONObject: object)) ?? Data())
     }
 
-    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         try await Task.sleep(for: .milliseconds(60))
         let route = String(path.split(separator: "?").first ?? "")
         // "-storiesSlowFrames": pictures take a while, as over a slow link.
@@ -477,7 +477,7 @@ actor StoriesHarnessTransport: DirectTransport {
         case ("GET", "/v0/health"):
             return ok(["ready": true, "capabilities": ["stories": true, "stickers": true]])
         case ("GET", _) where route.hasPrefix("/v0/user-settings/"):
-            return ok(["setting": ["key": DirectAgentClient.storiesSettingKey, "value": true]])
+            return ok(["setting": ["key": AgentClient.storiesSettingKey, "value": true]])
         case ("GET", "/v0/stories/feed"):
             let keys = ["self", "u2", "u3"]
             return ok(["authors": keys.map(author), "stories": stories, "cursor": "c1"])
@@ -512,11 +512,11 @@ actor StoriesHarnessTransport: DirectTransport {
             revision += 1
             let id = "u\(revision)"
             uploads[id] = body ?? Data()
-            return DirectHTTPResponse(status: 201, headers: ["content-type": "application/json"], body: (try? JSONSerialization.data(withJSONObject: ["upload": ["id": id, "size": body?.count ?? 0, "sha256": "", "createdAt": 0, "expiresAt": 0]])) ?? Data())
+            return HTTP1Response(status: 201, headers: ["content-type": "application/json"], body: (try? JSONSerialization.data(withJSONObject: ["upload": ["id": id, "size": body?.count ?? 0, "sha256": "", "createdAt": 0, "expiresAt": 0]])) ?? Data())
         case ("POST", "/v0/stories"):
             let body = json(body)
             let id = body["id"] as? String ?? "made\(revision)"
-            if let story = stories[id] { return DirectHTTPResponse(status: 201, headers: [:], body: (try? JSONSerialization.data(withJSONObject: ["story": story])) ?? Data()) }
+            if let story = stories[id] { return HTTP1Response(status: 201, headers: [:], body: (try? JSONSerialization.data(withJSONObject: ["story": story])) ?? Data()) }
             revision += 1
             let frames = (body["frames"] as? [[String: Any]] ?? []).compactMap { made($0, storyId: id, kept: nil) }
             let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -524,7 +524,7 @@ actor StoriesHarnessTransport: DirectTransport {
                                         "caption": body["caption"] ?? NSNull(), "frames": frames, "audience": "self", "artifactVersion": 1, "createdAt": now, "updatedAt": now,
                                         "postedAt": NSNull(), "expiresAt": NSNull(), "seen": false, "viewCount": NSNull(), "myReaction": NSNull(), "reactions": [] as [Any], "version": "v\(revision)"]
             stories[id] = story
-            return DirectHTTPResponse(status: 201, headers: ["content-type": "application/json"], body: (try? JSONSerialization.data(withJSONObject: ["story": story])) ?? Data())
+            return HTTP1Response(status: 201, headers: ["content-type": "application/json"], body: (try? JSONSerialization.data(withJSONObject: ["story": story])) ?? Data())
         case ("GET", "/v0/stories"):
             let drafts = stories.values.filter { ($0["status"] as? String) == "draft" }
             return ok(["stories": drafts, "nextCursor": NSNull(), "cursor": "c1"])
@@ -536,27 +536,27 @@ actor StoriesHarnessTransport: DirectTransport {
             if parts.count == 7, let sticker = pack.stickers.first(where: { $0.id == parts[5] }), let data = stickerFiles["\(pack.id)/\(sticker.id)"] {
                 // A tgs is only ever served here as its Lottie, which the app must ask for.
                 if sticker.shape == "lottie" {
-                    guard path.contains("as=lottie") else { return DirectHTTPResponse(status: 406) }
-                    return DirectHTTPResponse(status: 200, headers: ["content-type": "application/json"], body: data)
+                    guard path.contains("as=lottie") else { return HTTP1Response(status: 406) }
+                    return HTTP1Response(status: 200, headers: ["content-type": "application/json"], body: data)
                 }
-                return DirectHTTPResponse(status: 200, headers: ["content-type": "image/webp"], body: data)
+                return HTTP1Response(status: 200, headers: ["content-type": "image/webp"], body: data)
             }
-            return DirectHTTPResponse(status: 404)
+            return HTTP1Response(status: 404)
         }
-        guard parts.count >= 3, parts[1] == "stories", var story = stories[parts[2]] else { return DirectHTTPResponse(status: 404) }
+        guard parts.count >= 3, parts[1] == "stories", var story = stories[parts[2]] else { return HTTP1Response(status: 404) }
         let id = parts[2]
         switch (method, parts.count > 3 ? parts[3] : "") {
         case ("GET", ""):
             return ok(["story": story])
         case ("GET", "frames"):
-            guard parts.count > 4 else { return DirectHTTPResponse(status: 404) }
+            guard parts.count > 4 else { return HTTP1Response(status: 404) }
             if videos, parts[4].hasPrefix("f-a1-") {
                 if frames[parts[4]] == nil { frames[parts[4]] = await StoriesHarnessVideo.make(sound: parts[4] == "f-a1-sound") }
-                guard let data = frames[parts[4]] else { return DirectHTTPResponse(status: 404) }
-                return DirectHTTPResponse(status: 200, headers: ["content-type": "video/mp4"], body: data)
+                guard let data = frames[parts[4]] else { return HTTP1Response(status: 404) }
+                return HTTP1Response(status: 200, headers: ["content-type": "video/mp4"], body: data)
             }
-            guard let data = frames[parts[4]] else { return DirectHTTPResponse(status: 404) }
-            return DirectHTTPResponse(status: 200, headers: ["content-type": "image/png"], body: data)
+            guard let data = frames[parts[4]] else { return HTTP1Response(status: 404) }
+            return HTTP1Response(status: 200, headers: ["content-type": "image/png"], body: data)
         case ("GET", "viewers"):
             // As the API orders them: reactors by latest reaction, then the rest by name.
             let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -598,7 +598,7 @@ actor StoriesHarnessTransport: DirectTransport {
             stories[id] = nil
             return ok(["story": story])
         case ("PATCH", ""):
-            guard headers["If-Match"] == story["version"] as? String else { return DirectHTTPResponse(status: 409) }
+            guard headers["If-Match"] == story["version"] as? String else { return HTTP1Response(status: 409) }
             let body = json(body)
             revision += 1
             if let caption = body["caption"] { story["caption"] = caption }
@@ -611,7 +611,7 @@ actor StoriesHarnessTransport: DirectTransport {
             stories[id] = story
             return ok(["story": story])
         case ("POST", "post"):
-            guard (story["status"] as? String) == "draft", (json(body)["artifactVersion"] as? Int) == story["artifactVersion"] as? Int else { return DirectHTTPResponse(status: 409) }
+            guard (story["status"] as? String) == "draft", (json(body)["artifactVersion"] as? Int) == story["artifactVersion"] as? Int else { return HTTP1Response(status: 409) }
             let now = Int64(Date().timeIntervalSince1970 * 1000)
             revision += 1
             story["status"] = "posted"
@@ -624,12 +624,12 @@ actor StoriesHarnessTransport: DirectTransport {
             order["self", default: []].append(id)
             return ok(["story": story])
         default:
-            return DirectHTTPResponse(status: 404)
+            return HTTP1Response(status: 404)
         }
     }
 
-    func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream {
-        DirectHTTPStream(status: 503, body: AsyncThrowingStream { $0.finish() })
+    func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
+        HTTP1Stream(status: 503, body: AsyncThrowingStream { $0.finish() })
     }
 
     func reset() async {}

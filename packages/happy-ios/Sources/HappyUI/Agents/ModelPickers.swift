@@ -7,7 +7,7 @@ import UIKit
 /// composer's pickers, and the pick the home dock holds for new work.
 @MainActor
 final class ModelState {
-    private let client: DirectAgentClient
+    private let client: AgentClient
     private(set) var catalog: ModelCatalog?
     private(set) var usage: [String: AccountUsage] = [:]
     /// What new work is sent with: picked on the dock before the work exists.
@@ -24,7 +24,7 @@ final class ModelState {
     private var loading: Task<Void, Never>?
     private var refreshing: Task<Void, Never>?
 
-    init(client: DirectAgentClient, offline: OfflineFile? = nil) {
+    init(client: AgentClient, offline: OfflineFile? = nil) {
         self.client = client
         self.offline = offline
     }

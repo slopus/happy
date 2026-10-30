@@ -226,9 +226,9 @@ public struct ChatSnapshot: Equatable, Sendable {
 /// `agent.updated`), all off the main thread. Sends are drawn at once and
 /// confirmed by their own `message.created` echo, by ID.
 public actor Conversation {
-    private let client: DirectAgentClient
+    private let client: AgentClient
     private let store: Store
-    private let persistence: DirectSyncEngine?
+    private let persistence: SyncEngine?
     private var keeping: Task<Void, Never>?
     private var delivering: [String: Task<Void, Never>] = [:]
     private var conversationDirty = false
@@ -236,7 +236,7 @@ public actor Conversation {
     private var outgoingModes: [String: AgentWire.Mode] = [:]
     private var lastKept: KeptConversation?
     private var conversationWrite: Task<Bool, Error>?
-    private let checkpointOwner = DirectSyncStorage.ConversationOwner()
+    private let checkpointOwner = SyncStorage.ConversationOwner()
     private var checkpointClaims: [String: Task<Void, Error>] = [:]
     private var attachmentCleanup: Set<String> = []
     private struct KeptConversation: Codable, Equatable, Sendable {
@@ -244,7 +244,7 @@ public actor Conversation {
         struct Picture: Codable, Equatable, Sendable { var mimeType: String; var data: Data }
         struct Send: Codable, Equatable, Sendable {
             var id: String; var text: String; var pictures: [Picture]; var accepted: Bool; var failure: String?; var mode: AgentWire.Mode?
-            var files: [DirectQueuedFile]?
+            var files: [QueuedFile]?
         }
         var runs: [Run]
         var messages: [String: AgentWire.Message]
@@ -277,7 +277,7 @@ public actor Conversation {
     /// stays here until history or an event carries it, so no read that
     /// began before the send can take it off the screen.
     private var outgoing: [(id: String, text: String, pictures: [(mimeType: String, data: Data)], accepted: Bool, failure: String?)] = []
-    private var outgoingFiles: [String: [DirectQueuedFile]] = [:]
+    private var outgoingFiles: [String: [QueuedFile]] = [:]
     private var admitting: Set<String> = []
     /// Standalone consumers and fixtures never persist a conversation. Every
     /// production Session supplies its account's durable engine.
@@ -319,7 +319,7 @@ public actor Conversation {
     private var lastDraftEdit: Double = 0
     static let draftDebounce: Duration = .milliseconds(300)
 
-    public init(client: DirectAgentClient, store: Store, agentId: String, creation: Task<String, Error>? = nil, mode: AgentWire.Mode? = nil, persistence: DirectSyncEngine? = nil) {
+    public init(client: AgentClient, store: Store, agentId: String, creation: Task<String, Error>? = nil, mode: AgentWire.Mode? = nil, persistence: SyncEngine? = nil) {
         self.client = client
         self.store = store
         self.persistence = persistence
@@ -726,17 +726,17 @@ public actor Conversation {
         admitting.insert(id)
         defer { admitting.remove(id) }
         var inline = pictures
-        var files: [DirectQueuedFile] = []
+        var files: [QueuedFile] = []
         do {
-            let staged = try DirectAttachmentRules.stage(attachments, messageID: id,
+            let staged = try AttachmentRules.stage(attachments, messageID: id,
                 directory: persistence?.attachmentDirectory ?? temporaryAttachments)
             var inlineBytes = inline.reduce(0) { $0 + $1.data.count }
             for file in staged {
                 let supportedImage = ["image/jpeg", "image/png", "image/gif", "image/webp"].contains(file.mimeType)
-                if supportedImage, file.size <= DirectAttachmentRules.maxInlineImageBytes,
-                   inlineBytes + file.size <= DirectAttachmentRules.maxInlineImageTotalBytes {
+                if supportedImage, file.size <= AttachmentRules.maxInlineImageBytes,
+                   inlineBytes + file.size <= AttachmentRules.maxInlineImageTotalBytes {
                     let bytes = try Data(contentsOf: file.fileURL)
-                    guard bytes.count == file.size else { throw DirectAttachmentRules.invalid("The attachment changed while being read.") }
+                    guard bytes.count == file.size else { throw AttachmentRules.invalid("The attachment changed while being read.") }
                     inline.append((file.mimeType, bytes)); inlineBytes += bytes.count
                 } else { files.append(file) }
             }
@@ -821,7 +821,7 @@ public actor Conversation {
                         payload.mode = mode
                         try await client.deliverMessage(payload) { _ in }
                         break
-                    } catch let error as DirectAgentError where (error.status ?? 500) < 500 {
+                    } catch let error as AgentClientError where (error.status ?? 500) < 500 {
                         throw error
                     } catch {
                         attempt += 1
@@ -831,7 +831,7 @@ public actor Conversation {
                 }
                 sent(id)
             } catch {
-                if persistence != nil, !(error is DirectAgentError) || (error as? DirectAgentError)?.status.map({ $0 >= 500 }) == true {
+                if persistence != nil, !(error is AgentClientError) || (error as? AgentClientError)?.status.map({ $0 >= 500 }) == true {
                     // Offline sends stay queued and resume on the account's
                     // next resync, with the same daemon message ID.
                     publish()
@@ -840,8 +840,8 @@ public actor Conversation {
         }
     }
 
-    private func queuedMessage(id: String, text: String, pictures: [(mimeType: String, data: Data)]) -> DirectQueuedMessage {
-        DirectQueuedMessage(id: id, agentID: agentId, text: text, pictures: pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, mode: outgoingModes[id], files: outgoingFiles[id])
+    private func queuedMessage(id: String, text: String, pictures: [(mimeType: String, data: Data)]) -> QueuedMessage {
+        QueuedMessage(id: id, agentID: agentId, text: text, pictures: pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, mode: outgoingModes[id], files: outgoingFiles[id])
     }
 
     private func restoreConversation() async {
@@ -1198,7 +1198,7 @@ public actor Conversation {
                 pieces.append(.picture(id: "\(send.id):\(offset + 1)", mimeType: picture.mimeType, data: picture.data))
             }
             if let files = outgoingFiles[send.id], !files.isEmpty {
-                pieces.append(.text(files.map { "📎 \(DirectAttachmentRules.safeName($0.name))" }.joined(separator: "\n")))
+                pieces.append(.text(files.map { "📎 \(AttachmentRules.safeName($0.name))" }.joined(separator: "\n")))
             }
             items.append(ChatItem(id: send.id, role: .user, pieces: pieces, delivery: send.failure.map { .failed($0) } ?? (send.accepted ? .pending : .sending)))
         }

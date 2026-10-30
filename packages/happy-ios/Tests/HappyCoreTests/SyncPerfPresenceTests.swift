@@ -27,9 +27,9 @@ private final class PresenceHomeReads: @unchecked Sendable {
 }
 
 final class SyncPerfPresenceTests: XCTestCase {
-    private func fixture() throws -> (LocalStore, SyncEngineTests.Clock, SessionPresence) {
+    private func fixture() throws -> (LocalStore, LegacySyncEngineTests.Clock, SessionPresence) {
         let store = try LocalStore.inMemory()
-        let clock = SyncEngineTests.Clock()
+        let clock = LegacySyncEngineTests.Clock()
         var session = ChatRecords.storeSession()
         session.active = true
         session.activeAt = clock.now
@@ -106,7 +106,7 @@ final class SyncPerfPresenceTests: XCTestCase {
 
     func testTenMachineHeartbeatsPublishNothingAndSixtySecondCheckpointIsOneBatch() async throws {
         let store = try LocalStore.inMemory()
-        let clock = SyncEngineTests.Clock()
+        let clock = LegacySyncEngineTests.Clock()
         try store.replaceMachines((0..<10).map { index in
             MachineRecord(id: "m\(index)", seq: 0, createdAt: Int64(index), updatedAt: 1,
                           active: true, activeAt: clock.now, metadataVersion: 0, metadataCipher: "",
@@ -157,11 +157,11 @@ final class SyncPerfPresenceTests: XCTestCase {
 
     func testBackgroundFlushAndRestartKeepLatestStamp() async throws {
         let store = try LocalStore.inMemory()
-        let clock = SyncEngineTests.Clock()
+        let clock = LegacySyncEngineTests.Clock()
         var row = ChatRecords.storeSession()
         row.activeAt = clock.now
         try store.upsertSessions([row])
-        let engine = SyncEngine(api: testAPI(FakeHTTP()), store: store,
+        let engine = LegacySyncEngine(api: testAPI(FakeHTTP()), store: store,
                                 keys: try AccountKeys(secret: Data(repeating: 3, count: 32)), now: { clock.now })
         clock.now += 2000
         await engine.handle(.activity(sessionId: "s", active: true, activeAt: clock.now, thinking: false))
@@ -186,7 +186,7 @@ final class SyncPerfPresenceTests: XCTestCase {
 
     func testMachineOfflinePacketsAreImmediateAndMonotonicDespiteClockSkew() async throws {
         let store = try LocalStore.inMemory()
-        let clock = SyncEngineTests.Clock()
+        let clock = LegacySyncEngineTests.Clock()
         let machine = MachineRecord(id: "m", seq: 0, createdAt: 1, updatedAt: 1, active: true,
                                     activeAt: clock.now, metadataVersion: 0, metadataCipher: "", metadata: nil,
                                     daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil,

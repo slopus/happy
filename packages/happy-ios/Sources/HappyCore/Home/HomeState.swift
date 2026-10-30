@@ -26,7 +26,7 @@ public enum HomeState: Equatable, Sendable {
     /// for the plaque above the list.
     case list(SessionList, offline: [MachineChoice]?)
 
-    public init(_ snapshot: HomeSnapshot, clock: SessionList.Clock = SessionList.Clock(), unknownMachine: String = ProjectHomeData.unknownMachineText) {
+    public init(_ snapshot: LegacyHomeSnapshot, clock: SessionList.Clock = SessionList.Clock(), unknownMachine: String = ProjectHomeData.unknownMachineText) {
         let machines = snapshot.machines
         // Stored machines are worth showing even before the first full
         // fetch (a live `new-machine` can land first); none are not.
@@ -52,7 +52,7 @@ public enum HomeState: Equatable, Sendable {
 
     /// Home with only machines known, as the first-run screens decide it.
     public init(_ machines: MachinesSnapshot) {
-        self.init(HomeSnapshot(machines: machines, sessions: []))
+        self.init(LegacyHomeSnapshot(machines: machines, sessions: []))
     }
 }
 

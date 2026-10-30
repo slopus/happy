@@ -38,7 +38,7 @@ final class PresenceOverlay: @unchecked Sendable {
         }
     }
 
-    func home(_ raw: HomeSnapshot) -> HomeSnapshot {
+    func home(_ raw: LegacyHomeSnapshot) -> LegacyHomeSnapshot {
         lock.withLock {
             var value = raw
             value.presenceNow = displayedNow

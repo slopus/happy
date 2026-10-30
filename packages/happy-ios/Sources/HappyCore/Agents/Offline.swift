@@ -10,7 +10,7 @@ import HappyWire
 ///
 /// One folder per computer, `V2/<account>/` under Application
 /// Support: `snapshot.json` and `pictures/`. Removing the computer removes
-/// the folder (`DirectAccounts.remove`).
+/// the folder (`AgentConnections.remove`).
 public struct OfflineSnapshot: Codable, Equatable, Sendable {
     public struct Sidebar: Codable, Equatable, Sendable {
         public var artifactId: String

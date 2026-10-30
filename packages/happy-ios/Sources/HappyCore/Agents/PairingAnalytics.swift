@@ -1,16 +1,16 @@
 import Foundation
 
-/// How a computer is linked: through the Happy relay, or straight to this
-/// phone (the Direct connection experiment).
+/// How a pairing is made: through the Happy relay, or an agent connection
+/// straight to this phone (Happy Protocol V2).
 public enum PairingMethod: String, Sendable {
     case relay
-    case direct
+    case agentConnection = "agent_connection"
 }
 
 /// Where linking options were offered.
 public enum PairingSurface: String, Sendable {
     case onboarding
-    case addComputer = "add_computer"
+    case connectAgent = "connect_agent"
     case settings
 }
 

@@ -33,7 +33,7 @@ final class InstanceSwitchUITests: XCTestCase {
         continueAfterFailure = false
         print("InstanceSwitchUITests skips quiescence: \(Self.skipsQuiescence)")
         // Direct connection is an experiment, off on a fresh install.
-        app.launchEnvironment["HAPPY_DIRECT"] = "1"
+        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = "1"
         app.launch()
     }
 
@@ -52,7 +52,7 @@ final class InstanceSwitchUITests: XCTestCase {
     }
 
     /// Pairs if this simulator has no computer yet, then waits for V2.
-    private func computerHome() {
+    private func agentHome() {
         if anyRow.waitForExistence(timeout: 8) { return }
         print("HAPPY_PAIR_READY")
         let match = app.buttons["Emoji match"]
@@ -71,7 +71,7 @@ final class InstanceSwitchUITests: XCTestCase {
     }
 
     /// A computer's home: its V2, search alone in the pill.
-    private func assertComputerHome(_ message: String) {
+    private func assertAgentHome(_ message: String) {
         XCTAssertTrue(anyRow.waitForExistence(timeout: 15), message)
         XCTAssertTrue(element("search").exists, "no search on the computer's home")
         XCTAssertFalse(app.buttons["Filter"].exists, "the computer's home still has a filter")
@@ -115,8 +115,8 @@ final class InstanceSwitchUITests: XCTestCase {
     }
 
     func testSwitchingDecidesHome() {
-        computerHome()
-        assertComputerHome("not the computer's home at first")
+        agentHome()
+        assertAgentHome("not the computer's home at first")
         pause(1)
         capture("switch-computer-home")
 
@@ -200,12 +200,12 @@ final class InstanceSwitchUITests: XCTestCase {
         XCTAssertEqual(profiles().count, circles.count, "the computers didn't come back")
         circles[0].tap()
         XCTAssertTrue(element("settings").waitForNonExistence(timeout: 5), "tapping a circle left settings up")
-        assertComputerHome("tapping the computer's circle didn't show its home")
+        assertAgentHome("tapping the computer's circle didn't show its home")
         pause(1)
         capture("switch-to-computer")
 
         relaunch()
-        assertComputerHome("a launch didn't keep the computer")
+        assertAgentHome("a launch didn't keep the computer")
         capture("switch-relaunch-computer")
 
         openSettings()
@@ -236,7 +236,7 @@ final class InstanceSwitchUITests: XCTestCase {
         pause(2)
         // Settings stays, on the computer now; back goes to its home.
         if element("settings").exists { app.tapBack() }
-        assertComputerHome("signing out didn't go back to the computer")
+        assertAgentHome("signing out didn't go back to the computer")
         capture("switch-signed-out")
     }
 }

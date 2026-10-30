@@ -17,7 +17,7 @@ final class ApplyPerfClockTests: XCTestCase {
     }
 
     /// Three chats last worked on at 10:00, two of them archived, shown.
-    static func snapshot() -> HomeSnapshot {
+    static func snapshot() -> LegacyHomeSnapshot {
         var snapshot = ApplyPerfFixtures.snapshot(3)
         let at = Int64(midnight.timeIntervalSince1970 * 1000) - 14 * hour
         snapshot.sessions = snapshot.sessions.map { ApplyPerfFixtures.active($0, at: at) }
@@ -27,7 +27,7 @@ final class ApplyPerfClockTests: XCTestCase {
         return snapshot
     }
 
-    static func derive(_ snapshot: HomeSnapshot, at date: Date, after applied: HomeDerivation.Applied) -> (output: HomeUpdate, state: HomeDerivation.Applied)? {
+    static func derive(_ snapshot: LegacyHomeSnapshot, at date: Date, after applied: HomeDerivation.Applied) -> (output: HomeUpdate, state: HomeDerivation.Applied)? {
         HomeDerivation.derive(HomeDerivation.Input(snapshot: snapshot, clock: clock(date)), applied: applied)
     }
 

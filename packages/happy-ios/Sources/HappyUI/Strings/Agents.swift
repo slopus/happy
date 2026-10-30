@@ -80,8 +80,8 @@ extension Strings {
 
 
     // States.
-    public static let noComputer = "Pair a computer to see its work."
-    public static let pairComputer = "Pair a computer"
+    public static let noAgentConnection = "Connect an agent to see its work."
+    public static let connectAgent = "Connect Agent"
     public static let unsupported = "This computer's Happy Agent is too old for this app. Update it, then come back."
     public static let connecting = "Connecting…"
     public static let offline = "Offline — showing what this phone last saw."
@@ -217,7 +217,7 @@ extension Strings {
     public static let done = "Done"
     public static let searchSettings = "Search settings"
     public static let showQR = "QR code"
-    public static let addProfile = "Add computer"
+    public static let connectAgentTile = "Connect Agent"
     public static let more = "More"
     public static let status = "Status"
     public static let account = "Account"
@@ -226,9 +226,9 @@ extension Strings {
     public static let disconnect = "Disconnect"
     public static let signOut = "Sign out"
     public static let addHappyAccount = "Add Happy account"
-    public static let directComputer = "Direct computer"
+    public static let agentConnection = "Agent"
     public static let happyAccount = "Happy account"
-    public static let disconnectTitle = "Disconnect computer?"
+    public static let disconnectTitle = "Disconnect agent?"
     public static let signOutTitle = "Sign out?"
     public static let removeDetail = "This removes the connection and its credentials from this phone."
     public static let couldNotRename = "Could not rename"
@@ -237,7 +237,7 @@ extension Strings {
     public static let nothingFound = "Nothing found"
     // The QR sheet: nothing is shared, so Scan comes first.
     public static let qrCode = "QR Code"
-    public static let qrText = "Scan a computer’s pairing code, or a code from the terminal or another device."
+    public static let qrText = "Scan an agent’s pairing code, or a code from the terminal or another device."
     public static let scanQRCode = "Scan QR Code"
     public static let enterLink = "Enter link manually"
     public static let signInFirst = "Sign in to Happy"

@@ -53,7 +53,7 @@ public struct WorktreeCheckout: Equatable, Sendable {
 
     /// The checkout `sessionId` is a tab of, or nil when it is in none (or
     /// isn't in the snapshot).
-    public static func locate(_ sessionId: String, in snapshot: HomeSnapshot) -> WorktreeCheckout? {
+    public static func locate(_ sessionId: String, in snapshot: LegacyHomeSnapshot) -> WorktreeCheckout? {
         guard let session = snapshot.sessions.first(where: { $0.id == sessionId }),
               let key = Place.Key(session),
               let place = Place(session)

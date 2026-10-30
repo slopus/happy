@@ -212,13 +212,13 @@ public actor SharedFeed {
     public static let pageSize = 10
     public static let pagesPerAsk = 6
 
-    private let client: DirectAgentClient
+    private let client: AgentClient
     private let agentId: String
     private var before: String?
     private(set) public var state = State()
     private var reading = false
 
-    public init(client: DirectAgentClient, agentId: String) {
+    public init(client: AgentClient, agentId: String) {
         self.client = client
         self.agentId = agentId
     }

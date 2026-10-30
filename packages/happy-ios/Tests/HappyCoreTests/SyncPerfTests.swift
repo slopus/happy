@@ -142,8 +142,8 @@ final class SyncPerfTests: XCTestCase {
         })
         let commits = SyncPerfCommits()
         store.writer.add(transactionObserver: commits)
-        let clock = SyncEngineTests.Clock()
-        let engine = SyncEngine(api: testAPI(FakeHTTP()), store: store,
+        let clock = LegacySyncEngineTests.Clock()
+        let engine = LegacySyncEngine(api: testAPI(FakeHTTP()), store: store,
                                 keys: try AccountKeys(secret: Data(repeating: 3, count: 32)), now: { clock.now })
         let before = try store.chatPage(sessionId: "s0").change
         var deliveries = 0

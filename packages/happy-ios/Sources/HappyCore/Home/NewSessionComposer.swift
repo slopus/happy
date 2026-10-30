@@ -10,7 +10,7 @@ import HappyWire
 @MainActor
 public final class NewSessionComposer {
     public let drafts: NewSessionDraftStore
-    public private(set) var snapshot: HomeSnapshot
+    public private(set) var snapshot: LegacyHomeSnapshot
     public private(set) var choices: NewSessionChoices
     /// `git worktree list` for the directory, while it is asked for.
     public private(set) var gitWorktrees: [Worktrees.Entry] = []
@@ -39,11 +39,11 @@ public final class NewSessionComposer {
         var path: String
     }
 
-    public convenience init(drafts: NewSessionDraftStore, snapshot: HomeSnapshot, ops: any HomeOps) {
+    public convenience init(drafts: NewSessionDraftStore, snapshot: LegacyHomeSnapshot, ops: any HomeOps) {
         self.init(drafts: drafts, snapshot: snapshot, ops: ops, deriver: NewSessionChoiceDeriver())
     }
 
-    init(drafts: NewSessionDraftStore, snapshot: HomeSnapshot, ops: any HomeOps, deriver: NewSessionChoiceDeriver) {
+    init(drafts: NewSessionDraftStore, snapshot: LegacyHomeSnapshot, ops: any HomeOps, deriver: NewSessionChoiceDeriver) {
         self.drafts = drafts
         self.snapshot = snapshot
         self.ops = ops
@@ -73,7 +73,7 @@ public final class NewSessionComposer {
         worktreeTask?.cancel()
     }
 
-    public func update(snapshot: HomeSnapshot) {
+    public func update(snapshot: LegacyHomeSnapshot) {
         self.snapshot = snapshot
         snapshotRevision &+= 1
         refresh()

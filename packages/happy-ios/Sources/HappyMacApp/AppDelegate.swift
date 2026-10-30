@@ -32,7 +32,7 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
             appState: { await MainActor.run { NSApp.isActive ? "active" : "background" } }
         )
         // Direct/V2 is a separate UI port; don't offer half a flow.
-        account.showsComputers = false
+        account.showsAgentConnections = false
         controller = MacWindowController(account: account)
         installMenus()
         controller?.showWindow(nil)

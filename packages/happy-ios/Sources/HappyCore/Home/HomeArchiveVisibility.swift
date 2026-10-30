@@ -10,7 +10,7 @@ public struct HomeArchiveModels: Equatable, Sendable {
 
     public func model(hidden: Bool) -> HomeListModel { hidden ? self.hidden : shown }
 
-    public static func make(snapshot: HomeSnapshot, expandedProjects: Set<String>, draftSessionIds: Set<String>, clock: SessionList.Clock, unknownMachine: String, offline: [MachineChoice]? = nil) -> HomeArchiveModels? {
+    public static func make(snapshot: LegacyHomeSnapshot, expandedProjects: Set<String>, draftSessionIds: Set<String>, clock: SessionList.Clock, unknownMachine: String, offline: [MachineChoice]? = nil) -> HomeArchiveModels? {
         var snapshot = snapshot
         snapshot.settings.pending["hideInactiveSessions"] = .bool(false)
         let choices = MachineChoice.collect(snapshot.machines.machines)

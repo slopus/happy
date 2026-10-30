@@ -10,7 +10,7 @@ import HappyWire
 final class GitHeadingStatusTests: XCTestCase {
     let repo = GitCheckoutKey(machineId: "m", path: "/repo")
 
-    private func make(_ paths: [String: String]) throws -> (GitStatusSync, HeadingRPC, SyncEngine) {
+    private func make(_ paths: [String: String]) throws -> (GitStatusSync, HeadingRPC, LegacySyncEngine) {
         let fixture = ServerFixture()
         let store = try LocalStore.inMemory()
         for (id, path) in paths {
@@ -19,7 +19,7 @@ final class GitHeadingStatusTests: XCTestCase {
             try store.upsertSessions([session])
         }
         let http = FakeHTTP()
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
         let rpc = HeadingRPC(key: fixture.dataKey)
         let actions = SessionActions(api: testAPI(http), store: store, sync: engine, rpc: rpc)
         return (GitStatusSync(actions: actions, store: store), rpc, engine)

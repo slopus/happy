@@ -352,7 +352,7 @@ final class SessionDetailActionsTests: XCTestCase {
     var fixture: ServerFixture!
     var http: FakeHTTP!
     var store: LocalStore!
-    var engine: SyncEngine!
+    var engine: LegacySyncEngine!
     var rpc: FakeRPC!
     var actions: SessionDetailActions!
     var machines: MachineActions!
@@ -365,7 +365,7 @@ final class SessionDetailActionsTests: XCTestCase {
         fixture = ServerFixture()
         http = FakeHTTP()
         store = try LocalStore.inMemory()
-        engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
+        engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
         rpc = FakeRPC()
         let sessions = SessionActions(api: testAPI(http), store: store, sync: engine, rpc: rpc, now: { 500 })
         machines = MachineActions(api: testAPI(http), store: store, sync: engine, rpc: rpc, metadataTransport: NoMetadata())

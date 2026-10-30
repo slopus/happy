@@ -27,10 +27,10 @@ final class SendingRecoveryTests: XCTestCase, @unchecked Sendable {
         let store = try LocalStore.inMemory()
         let decoder = RecordDecoder(keyRing: KeyRing(keys: fixture.keys))
         try store.upsertSessions([decoder.session(fixture.session("s", updatedAt: 1)), decoder.session(fixture.session("other", updatedAt: 1))])
-        var options = SyncEngine.Options()
+        var options = LegacySyncEngine.Options()
         options.sendAttempts = 2
         options.sendRetryInitialMs = 60_000
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys, options: options, now: { 1_000 })
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys, options: options, now: { 1_000 })
         http.onRaw("POST /v3/sessions/s/messages", "offline", status: 503)
         http.onRaw("POST /v3/sessions/other/messages", #"{"messages":[{"id":"m","seq":1,"localId":"b","createdAt":1,"updatedAt":1}]}"#)
         try store.enqueue(OutboxRecord(localId: "a", kind: .message, sessionId: "s", payload: .null, createdAt: 1, attempts: 1))
@@ -48,9 +48,9 @@ final class SendingRecoveryTests: XCTestCase, @unchecked Sendable {
         let activity = ActivityLog()
         let store = try LocalStore.inMemory()
         try store.upsertSessions([RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))])
-        var options = SyncEngine.Options()
+        var options = LegacySyncEngine.Options()
         options.deliveryActivity = { await activity.append($0) }
-        let engine = SyncEngine(api: HappyAPI(serverURL: testServer, clientID: "ios/test", transport: http, token: "t"), store: store, keys: fixture.keys, options: options)
+        let engine = LegacySyncEngine(api: HappyAPI(serverURL: testServer, clientID: "ios/test", transport: http, token: "t"), store: store, keys: fixture.keys, options: options)
         for id in ["a", "b"] { try store.enqueue(OutboxRecord(localId: id, kind: .message, sessionId: "s", payload: .null, createdAt: 1)) }
         let flush = Task { try await engine.flushOutbox() }
         await eventually { await http.waiting }
@@ -72,7 +72,7 @@ final class SendingRecoveryTests: XCTestCase, @unchecked Sendable {
         let http = FakeHTTP()
         let store = try LocalStore.inMemory()
         try store.upsertSessions([RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))])
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
         http.onRaw("POST /v3/sessions/s/messages", #"{"messages":[]}"#)
         try store.enqueue(OutboxRecord(localId: "a", kind: .message, sessionId: "s", payload: .null, createdAt: 1))
         try await engine.flushOutbox()

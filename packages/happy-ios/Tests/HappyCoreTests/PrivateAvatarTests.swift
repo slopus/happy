@@ -31,7 +31,7 @@ final class PrivateAvatarTests: XCTestCase {
         XCTAssertEqual(AvatarImageSource.resolve(session(avatar: art), project: project(projectArt))?.scope, .session)
         XCTAssertEqual(AvatarImageSource.resolve(session(), project: project(projectArt))?.descriptor, projectArt)
         XCTAssertNil(AvatarImageSource.resolve(session(rig: false), project: project(projectArt)))
-        let snapshot = HomeSnapshot(machines: .init(synced: true, machines: []), sessions: [session(avatar: art)], projects: [project(projectArt)])
+        let snapshot = LegacyHomeSnapshot(machines: .init(synced: true, machines: []), sessions: [session(avatar: art)], projects: [project(projectArt)])
         let state = ChatSessionState(snapshot, sessionId: "session")
         XCTAssertEqual(state.avatarImage?.dataKeyCipher, "wrapped", "derive artwork before stripping render-only records")
         XCTAssertNil(state.record?.dataKeyCipher)
@@ -48,7 +48,7 @@ final class PrivateAvatarTests: XCTestCase {
         var chat = session(avatar: sessionArt)
         chat.metadata = .object(["client": .object(["id": .string("rig")]),
             "project": .object(["id": .string("project"), "name": .string("Project")])])
-        let snapshot = HomeSnapshot(machines: .init(synced: true, machines: []), sessions: [chat], projects: [project(projectArt)])
+        let snapshot = LegacyHomeSnapshot(machines: .init(synced: true, machines: []), sessions: [chat], projects: [project(projectArt)])
         let cards = ProjectHomeData(snapshot).rows(expanded: []).compactMap { item -> ProjectHomeEntry? in
             if case .project(let entry) = item { return entry }
             return nil
@@ -168,7 +168,7 @@ final class PrivateAvatarTests: XCTestCase {
                 avatar: .some(nil), avatarUpdateSeq: 60)
             return (200, try JSONEncoder().encode(SessionsPage(sessions: [staleListing], nextCursor: nil, hasNext: false)))
         }
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
         try await engine.pullSessions()
         XCTAssertNil(try store.session(id: "session")?.avatar)
         XCTAssertEqual(try store.session(id: "session")?.avatarVersion, 5)
@@ -209,7 +209,7 @@ final class PrivateAvatarTests: XCTestCase {
             XCTAssertEqual(request.query("ids"), "legacy-project,top-project")
             return (200, Data(#"{"projects":[]}"#.utf8))
         }
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: try AccountKeys(secret: Data(repeating: 1, count: 32)))
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: try AccountKeys(secret: Data(repeating: 1, count: 32)))
         try await engine.pullProjects()
         XCTAssertEqual(http.requests("GET /v1/projects").count, 1)
         await engine.stop()

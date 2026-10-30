@@ -40,14 +40,14 @@ public enum SessionActionError: Error, Equatable, Sendable {
 public struct SessionActions: Sendable {
     let api: HappyAPI
     let store: LocalStore
-    let sync: SyncEngine
+    let sync: LegacySyncEngine
     let rpc: RPCTransport
     let now: @Sendable () -> Int64
 
     public init(
         api: HappyAPI,
         store: LocalStore,
-        sync: SyncEngine,
+        sync: LegacySyncEngine,
         rpc: RPCTransport,
         now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
     ) {

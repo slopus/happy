@@ -21,7 +21,7 @@ public struct AccountSummary: Equatable, Sendable, Identifiable {
     /// False when RN's server could not be imported safely. Such an account
     /// cannot open a session until the user has confirmed its server.
     public var serverConfirmed: Bool
-    public var isDirect: Bool = false
+    public var isAgentConnection: Bool = false
     public var connectionStatus: String? = nil
 
     public init(id: String, serverURL: URL, name: String? = nil, username: String? = nil, avatarURL: URL? = nil, avatarThumbhash: String? = nil, isActive: Bool, usesSharedItem: Bool, serverConfirmed: Bool = true) {

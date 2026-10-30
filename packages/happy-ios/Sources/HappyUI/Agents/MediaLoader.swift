@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 /// A recording streams through `MediaStream`, a range at a time.
 @MainActor
 final class MediaLoader: NSObject, ChatMediaSource {
-    private let client: DirectAgentClient
+    private let client: AgentClient
     /// New work's is the daemon's ID once it has made it.
     var agentId: String
     private var tools: [String: Media] = [:]
@@ -29,7 +29,7 @@ final class MediaLoader: NSObject, ChatMediaSource {
     private var failsUntilRetry = ProcessInfo.processInfo.environment["HAPPY_MEDIA_FAIL_UNTIL_RETRY"] == "1"
     #endif
 
-    init(client: DirectAgentClient, agentId: String) {
+    init(client: AgentClient, agentId: String) {
         self.client = client
         self.agentId = agentId
         images.totalCostLimit = 48 * 1024 * 1024
@@ -153,7 +153,7 @@ final class MediaLoader: NSObject, ChatMediaSource {
                 guard manager.createFile(atPath: url.path, contents: nil) else { return false }
                 let handle = try FileHandle(forWritingTo: url)
                 defer { try? handle.close() }
-                try await DirectAgentClient.read({ range in
+                try await AgentClient.read({ range in
                     try await client.media(agentId, toolCallId: media.toolCallId, index: media.index, range: range)
                 }, each: { piece, _, _ in try handle.write(contentsOf: piece) })
                 return true
@@ -192,7 +192,7 @@ final class MediaStream: NSObject, AVAssetResourceLoaderDelegate, @unchecked Sen
     private static let log = Logger(subsystem: "engineering.happy", category: "media")
     #endif
 
-    private let client: DirectAgentClient
+    private let client: AgentClient
     private let agentId: String
     private let media: Media
     private let queue = DispatchQueue(label: "engineering.happy.v2-media")
@@ -200,7 +200,7 @@ final class MediaStream: NSObject, AVAssetResourceLoaderDelegate, @unchecked Sen
     private var serving: [ObjectIdentifier: Task<Void, Never>] = [:]
     private var total: Int?
 
-    init(client: DirectAgentClient, agentId: String, media: Media) {
+    init(client: AgentClient, agentId: String, media: Media) {
         self.client = client
         self.agentId = agentId
         self.media = media

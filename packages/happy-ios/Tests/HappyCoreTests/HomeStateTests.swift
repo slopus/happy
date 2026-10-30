@@ -194,7 +194,7 @@ final class MachineChoicePairingIndexTests: XCTestCase {
 
 final class HomeStateTests: XCTestCase {
     private func home(_ machines: [MachineRecord], synced: Bool = true, _ sessions: [SessionRecord] = []) -> HomeState {
-        HomeState(HomeSnapshot(machines: MachinesSnapshot(synced: synced, machines: machines), sessions: sessions))
+        HomeState(LegacyHomeSnapshot(machines: MachinesSnapshot(synced: synced, machines: machines), sessions: sessions))
     }
 
     private func live(_ id: String, rig: Bool = false) -> SessionRecord {

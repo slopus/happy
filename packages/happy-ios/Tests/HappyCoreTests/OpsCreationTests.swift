@@ -37,11 +37,11 @@ private actor UploadLease {
 
 private actor StopAfterUploadTransport: HTTPTransport {
     let http: FakeHTTP
-    var sync: SyncEngine?
+    var sync: LegacySyncEngine?
 
     init(http: FakeHTTP) { self.http = http }
 
-    func configure(_ sync: SyncEngine) { self.sync = sync }
+    func configure(_ sync: LegacySyncEngine) { self.sync = sync }
 
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         let response = try await http.send(request)
@@ -107,7 +107,7 @@ final class OpsCreationTests: XCTestCase {
             let rows = counter.next() == 1 ? [] : [row]
             return (200, try JSONEncoder().encode(SessionsPage(sessions: rows, nextCursor: nil, hasNext: false)))
         }
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys, sleep: { duration in
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys, sleep: { duration in
             if duration == .seconds(4) { try await Task.sleep(for: duration) }
         })
         let actions = SessionActions(api: testAPI(http), store: store, sync: engine, rpc: FakeRPC())
@@ -127,9 +127,9 @@ final class OpsCreationTests: XCTestCase {
         http.onRaw("POST /v1/sessions/s/attachments/request-upload", #"{"ref":"face","uploadUrl":"https://blob.example/upload","method":"PUT"}"#)
         http.onRaw("PUT /upload", "")
         let lease = UploadLease()
-        var options = SyncEngine.Options()
+        var options = LegacySyncEngine.Options()
         options.deliveryActivity = { await lease.record($0) }
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys, options: options)
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys, options: options)
         let actions = SessionActions(api: testAPI(http), store: store, sync: engine, rpc: FakeRPC())
         let bytes = Data([0, 10, 255, 13])
         let result = try await actions.uploadSessionBlob(sessionId: "s", name: "face.png", bytes: bytes)
@@ -153,9 +153,9 @@ final class OpsCreationTests: XCTestCase {
         let http = FakeHTTP()
         http.onRaw("POST /v1/sessions/s/attachments/request-upload", "offline", status: 503)
         let lease = UploadLease()
-        var options = SyncEngine.Options()
+        var options = LegacySyncEngine.Options()
         options.deliveryActivity = { await lease.record($0) }
-        let engine = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys, options: options)
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys, options: options)
         do {
             _ = try await engine.uploadSessionBlob(sessionId: "s", name: "face.png", bytes: Data([1]))
             XCTFail("must report upload failure")
@@ -179,9 +179,9 @@ final class OpsCreationTests: XCTestCase {
         http.onRaw("PUT /upload", "")
         let transport = StopAfterUploadTransport(http: http)
         let lease = UploadLease()
-        var options = SyncEngine.Options()
+        var options = LegacySyncEngine.Options()
         options.deliveryActivity = { await lease.record($0) }
-        let engine = SyncEngine(
+        let engine = LegacySyncEngine(
             api: HappyAPI(serverURL: URL(string: "https://example.test")!, clientID: "test", transport: transport)
                 .authenticated(token: "token"), store: store, keys: fixture.keys, options: options
         )

@@ -47,7 +47,7 @@ final class StoryStickerLottieTests: XCTestCase {
     /// once the file arrives; asked to stop before then, it never starts.
     func testItKeepsWhatItWasAskedWhileItsFileIsRead() async throws {
         let transport = Files(lottie: spin)
-        let media = StoriesMedia(client: DirectAgentClient(transport: transport, token: "test"))
+        let media = StoriesMedia(client: AgentClient(transport: transport, token: "test"))
         let sticker = Sticker(packId: "motion", id: "spin", emoji: ["🌀"], format: .tgs, width: 512, height: 512, size: spin.count, sha256: UUID().uuidString)
         let player = StoryStickerLottiePlayer(sticker: sticker, media: media)
         let window = hosted(player)
@@ -72,16 +72,16 @@ final class StoryStickerLottieTests: XCTestCase {
     }
 
     /// A computer that serves only the sticker's Lottie.
-    private actor Files: DirectTransport {
+    private actor Files: AgentTransport {
         let lottie: Data
         private(set) var asked: [String] = []
         init(lottie: Data) { self.lottie = lottie }
-        func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> DirectHTTPResponse {
+        func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
             asked.append(path)
-            return DirectHTTPResponse(status: 200, headers: ["content-type": "application/json"], body: lottie)
+            return HTTP1Response(status: 200, headers: ["content-type": "application/json"], body: lottie)
         }
-        func stream(path: String, credential: String, headers: [String: String]) async throws -> DirectHTTPStream {
-            DirectHTTPStream(status: 503, body: AsyncThrowingStream { $0.finish() })
+        func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
+            HTTP1Stream(status: 503, body: AsyncThrowingStream { $0.finish() })
         }
         func reset() async {}
         func close() async {}

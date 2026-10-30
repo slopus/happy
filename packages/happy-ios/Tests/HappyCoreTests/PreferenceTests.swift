@@ -15,11 +15,11 @@ final class PreferenceTests: XCTestCase {
         let defaults = storage()
         // Even a stored choice from a preview install on the same phone.
         defaults.set(true, forKey: Preference.enabledKey)
-        defaults.set("direct-1", forKey: Preference.computerKey)
+        defaults.set("direct-1", forKey: Preference.agentConnectionKey)
         let production = Preference(variant: .production, storage: defaults)
         XCTAssertFalse(production.isAvailable)
         XCTAssertFalse(production.takeFilterChoice())
-        XCTAssertNil(production.computerID)
+        XCTAssertNil(production.agentConnectionID)
     }
 
     /// The filter's old choice is carried over once.
@@ -32,27 +32,27 @@ final class PreferenceTests: XCTestCase {
             defaults.set(true, forKey: Preference.enabledKey)
             XCTAssertTrue(preference.takeFilterChoice())
             XCTAssertFalse(preference.takeFilterChoice(), "carried over twice")
-            preference.computerID = "direct-2"
-            XCTAssertEqual(preference.computerID, "direct-2")
+            preference.agentConnectionID = "direct-2"
+            XCTAssertEqual(preference.agentConnectionID, "direct-2")
         }
     }
 
     /// Direct connection is an experiment, off until turned on; production
     /// keeps its computer page and can never turn it on.
-    func testDirectConnectionIsOffUntilTurnedOn() {
+    func testAgentConnectionsAreOffUntilTurnedOn() {
         for variant in [AppVariant.preview, .development] {
             let preference = Preference(variant: variant, storage: storage())
-            XCTAssertFalse(preference.directConnection)
-            XCTAssertFalse(preference.showsComputers)
-            preference.directConnection = true
-            XCTAssertTrue(preference.directConnection)
-            XCTAssertTrue(preference.showsComputers)
+            XCTAssertFalse(preference.agentConnectionsEnabled)
+            XCTAssertFalse(preference.showsAgentConnections)
+            preference.agentConnectionsEnabled = true
+            XCTAssertTrue(preference.agentConnectionsEnabled)
+            XCTAssertTrue(preference.showsAgentConnections)
         }
         let defaults = storage()
-        defaults.set(true, forKey: Preference.directKey)
+        defaults.set(true, forKey: Preference.agentConnectionsKey)
         let production = Preference(variant: .production, storage: defaults)
-        XCTAssertFalse(production.directConnection)
-        XCTAssertTrue(production.showsComputers)
+        XCTAssertFalse(production.agentConnectionsEnabled)
+        XCTAssertTrue(production.showsAgentConnections)
     }
 
     func testTheShippedBundleIdentifierIsProduction() {

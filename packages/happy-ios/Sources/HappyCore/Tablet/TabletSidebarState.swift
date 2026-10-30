@@ -25,7 +25,7 @@ public struct TabletSidebarState: Equatable, Sendable {
     /// the sidebar disappears exactly when home shows Link Your Computer.
     public var showsInstallStep: Bool
 
-    public init(_ snapshot: HomeSnapshot, clock: SessionList.Clock = SessionList.Clock()) {
+    public init(_ snapshot: LegacyHomeSnapshot, clock: SessionList.Clock = SessionList.Clock()) {
         let state = HomeState(snapshot, clock: clock)
         let list = SessionList(snapshot, clock: clock)
         hasArchived = list.hasArchived

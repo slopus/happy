@@ -31,7 +31,7 @@ public struct TabletSidebarFrame: Equatable, Sendable {
 
     public init(
         _ state: TabletSidebarState,
-        snapshot: HomeSnapshot,
+        snapshot: LegacyHomeSnapshot,
         clock: SessionList.Clock = SessionList.Clock(),
         git: [GitCheckoutKey: GitHeadingStatus] = [:],
         draftSessionIds: Set<String> = [],
@@ -71,7 +71,7 @@ public struct TabletSidebarFrame: Equatable, Sendable {
 /// What the sidebar is worked out from: home's snapshot and each
 /// checkout's status as far as it is known.
 public struct TabletSidebarInput: Sendable {
-    public var snapshot: HomeSnapshot?
+    public var snapshot: LegacyHomeSnapshot?
     public var git: [GitCheckoutKey: GitHeadingStatus]
     public var draftSessionIds: Set<String>
     /// `status.unknown` in the screens' language, read on the main thread
@@ -79,7 +79,7 @@ public struct TabletSidebarInput: Sendable {
     public var unknownMachine: String
 
     public init(
-        snapshot: HomeSnapshot? = nil,
+        snapshot: LegacyHomeSnapshot? = nil,
         git: [GitCheckoutKey: GitHeadingStatus] = [:],
         draftSessionIds: Set<String> = [],
         unknownMachine: String = ProjectHomeData.unknownMachineText
@@ -149,7 +149,7 @@ public enum TabletSidebarDerivation {
     }
 
     public static func derive(
-        _ snapshot: HomeSnapshot?,
+        _ snapshot: LegacyHomeSnapshot?,
         git: [GitCheckoutKey: GitHeadingStatus] = [:],
         applied: Applied,
         clock: SessionList.Clock? = nil,
