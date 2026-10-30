@@ -1403,7 +1403,9 @@ final class UITests: XCTestCase {
                           "the composer does not ride the full keyboard (XCUI gap \(gap))", file: file, line: line)
         }
         assertKeyboardDock()
-        let first = say("stream 1 20 wait 2500 first")
+        // Leave enough time for XCUI's screenshot and repeated accessibility
+        // reads before the first reply word; those reads take seconds.
+        let first = say("stream 1 20 wait 10000 first")
         XCTAssertTrue(first.waitForExistence(timeout: 5))
         pause(0.2)
         let top = app.navigationBars.firstMatch.frame.maxY
@@ -1421,7 +1423,7 @@ final class UITests: XCTestCase {
         XCTAssertEqual((first.value as? String)?.components(separatedBy: ",").first, firstID)
         XCTAssertEqual(first.frame.minY, firstY, accuracy: 1, "accepting the send moved its row before the reply")
         print("HAPPY_SEND accepted \(first.value ?? "") frame=\(first.frame)")
-        pause(7)
+        pause(16)
         capture("send-2-reply")
         let end = messages.allElementsBoundByIndex.map(\.frame).filter { $0.minY < input.frame.minY && $0.maxY > top }.map(\.maxY).max() ?? 0
         XCTAssertEqual(end, input.frame.minY - 8, accuracy: 6, "the reply's end isn't followed")
