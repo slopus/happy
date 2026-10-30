@@ -26,7 +26,7 @@ class LocalSettings(private val prefs: SharedPreferences) {
     @Synchronized
     fun change(transform: (LocalSettingsValues) -> LocalSettingsValues) {
         val next = transform(state.value)
-        prefs.edit().putString(KEY_DOCUMENT, next.toJson().toString()).remove(KEY_THEME).apply()
+        prefs.edit().putString(KEY_DOCUMENT, next.toJson().toString()).apply()
         state.value = next
         theme.value = next.themePreference
     }
@@ -50,15 +50,11 @@ class LocalSettings(private val prefs: SharedPreferences) {
                 null
             }
         }
-        val values = LocalSettingsValues.parse(document)
-        // Builds before the document stored the theme alone.
-        val legacyTheme = prefs.getString(KEY_THEME, null)?.let { w -> ThemePreference.entries.firstOrNull { it.wire == w } }
-        return if (document == null && legacyTheme != null) values.copy(themePreference = legacyTheme) else values
+        return LocalSettingsValues.parse(document)
     }
 
     companion object {
         const val PREFS_NAME = "local-settings"
         private const val KEY_DOCUMENT = "local-settings"
-        private const val KEY_THEME = "themePreference"
     }
 }

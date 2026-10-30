@@ -147,93 +147,26 @@ class HappyStoreSyncTest {
     }
 
     @Test
-    fun version1DatabasesMigrateAndKeepTheirMessages() {
+    fun aDatabaseFromAnotherSchemaVersionStartsOver() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val file = File(context.cacheDir, "v1-${System.nanoTime()}.db")
+        val file = File(context.cacheDir, "old-${System.nanoTime()}.db")
         SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
-            db.execSQL("CREATE TABLE sync_state (key TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL)")
-            db.execSQL(
-                "CREATE TABLE sessions (id TEXT PRIMARY KEY NOT NULL, seq INTEGER NOT NULL, created_at INTEGER NOT NULL, " +
-                    "updated_at INTEGER NOT NULL, active INTEGER NOT NULL, active_at INTEGER NOT NULL, metadata TEXT, " +
-                    "metadata_version INTEGER NOT NULL, agent_state TEXT, agent_state_version INTEGER NOT NULL, data_key TEXT NOT NULL, " +
-                    "project_id TEXT, messages_seq INTEGER NOT NULL DEFAULT 0)",
-            )
-            db.execSQL(
-                "CREATE TABLE messages (session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE, seq INTEGER NOT NULL, " +
-                    "id TEXT NOT NULL, local_id TEXT, content TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, " +
-                    "PRIMARY KEY (session_id, seq)) WITHOUT ROWID",
-            )
-            db.execSQL("CREATE TABLE machines (id TEXT PRIMARY KEY NOT NULL, seq INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, active INTEGER NOT NULL, active_at INTEGER NOT NULL, metadata TEXT, metadata_version INTEGER NOT NULL, daemon_state TEXT, daemon_state_version INTEGER NOT NULL, data_key TEXT NOT NULL)")
-            db.execSQL("CREATE TABLE account (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL, version INTEGER)")
-            db.execSQL("INSERT INTO sessions VALUES ('s', 2, 1, 1, 1, 1, '{}', 1, NULL, 0, 'key', NULL, 2)")
-            db.execSQL("INSERT INTO sessions VALUES ('empty', 0, 1, 1, 1, 1, '{}', 1, NULL, 0, 'key', NULL, 0)")
-            db.execSQL("INSERT INTO messages VALUES ('s', 1, 'm1', NULL, '{}', 1, 1), ('s', 2, 'm2', NULL, '{}', 2, 2)")
-            db.version = 1
+            db.execSQL("CREATE TABLE sessions (id TEXT PRIMARY KEY NOT NULL, seq INTEGER NOT NULL)")
+            db.execSQL("INSERT INTO sessions VALUES ('s', 2)")
+            db.execSQL("CREATE TABLE leftover (x INTEGER)")
+            db.version = HappyDatabase.VERSION - 1
         }
-        val migrated = HappyDatabase(context, file.absolutePath)
+        val reset = HappyDatabase(context, file.absolutePath)
         try {
-            val store = HappyStore(migrated)
-            assertEquals(MessageHistory(true, 1, 2, false), store.messageHistory("s"))
-            assertEquals(false, store.messageHistory("empty")!!.isLoaded)
-            assertEquals(2, store.messages("s").size)
-            assertEquals(emptyList<OutboxRecord>(), store.outbox())
-            // Through version 3 as well: the composer table is there and bound to sessions.
-            store.saveComposer("s", "{}")
-            store.saveComposer("missing", "{}")
-            assertEquals(mapOf("s" to "{}"), store.composers())
+            val store = HappyStore(reset)
+            assertEquals(null, store.session("s"))
+            store.upsertSessions(listOf(session()))
+            assertEquals("s", store.session("s")!!.id)
+            val tables = reset.readableDatabase.rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'", null)
+                .use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+            assertFalse("leftover" in tables)
         } finally {
-            migrated.close()
-            file.delete()
-        }
-    }
-
-    @Test
-    fun version3DatabasesGainTheAvatarColumnsAndKeepEverything() {
-        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val file = File(context.cacheDir, "v3-${System.nanoTime()}.db")
-        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
-            db.execSQL("CREATE TABLE sync_state (key TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL)")
-            db.execSQL(
-                "CREATE TABLE sessions (id TEXT PRIMARY KEY NOT NULL, seq INTEGER NOT NULL, created_at INTEGER NOT NULL, " +
-                    "updated_at INTEGER NOT NULL, active INTEGER NOT NULL, active_at INTEGER NOT NULL, metadata TEXT, " +
-                    "metadata_version INTEGER NOT NULL, agent_state TEXT, agent_state_version INTEGER NOT NULL, data_key TEXT NOT NULL, " +
-                    "project_id TEXT, messages_seq INTEGER NOT NULL DEFAULT 0, messages_oldest_seq INTEGER, " +
-                    "messages_has_older INTEGER NOT NULL DEFAULT 0, last_message_sent_at INTEGER)",
-            )
-            db.execSQL(
-                "CREATE TABLE messages (session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE, seq INTEGER NOT NULL, " +
-                    "id TEXT NOT NULL, local_id TEXT, content TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, " +
-                    "PRIMARY KEY (session_id, seq)) WITHOUT ROWID",
-            )
-            db.execSQL("CREATE TABLE machines (id TEXT PRIMARY KEY NOT NULL, seq INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, active INTEGER NOT NULL, active_at INTEGER NOT NULL, metadata TEXT, metadata_version INTEGER NOT NULL, daemon_state TEXT, daemon_state_version INTEGER NOT NULL, data_key TEXT NOT NULL)")
-            db.execSQL(
-                "CREATE TABLE outbox (local_id TEXT PRIMARY KEY NOT NULL, session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE, " +
-                    "position INTEGER NOT NULL, kind TEXT NOT NULL, record TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL, " +
-                    "state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, error TEXT, server_id TEXT, server_seq INTEGER)",
-            )
-            db.execSQL("CREATE INDEX outbox_by_session ON outbox (session_id, position)")
-            db.execSQL("CREATE TABLE composer (session_id TEXT PRIMARY KEY NOT NULL REFERENCES sessions (id) ON DELETE CASCADE, value TEXT NOT NULL)")
-            db.execSQL("CREATE TABLE account (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL, version INTEGER)")
-            db.execSQL("INSERT INTO sessions VALUES ('s', 2, 1, 1, 1, 1, '{}', 1, NULL, 0, 'key', 'p1', 2, 1, 0, 77)")
-            db.execSQL("INSERT INTO messages VALUES ('s', 1, 'm1', NULL, '{}', 1, 1), ('s', 2, 'm2', NULL, '{}', 2, 2)")
-            db.execSQL("INSERT INTO outbox VALUES ('l1', 's', 0, 'user', '{}', 'c', 1, 'QUEUED', 0, NULL, NULL, NULL)")
-            db.execSQL("INSERT INTO composer VALUES ('s', '{\"draft\":\"hi\"}')")
-            db.version = 3
-        }
-        val migrated = HappyDatabase(context, file.absolutePath)
-        try {
-            val store = HappyStore(migrated)
-            val row = store.session("s")!!
-            assertEquals("p1", row.projectId)
-            assertEquals(77L, row.lastMessageSentAt)
-            assertEquals(null, row.avatarJson)
-            assertEquals(2, store.messages("s").size)
-            assertEquals(listOf("l1"), store.outbox("s").map { it.localId })
-            assertEquals(mapOf("s" to "{\"draft\":\"hi\"}"), store.composers())
-            store.upsertSessions(listOf(row.copy(avatarJson = "{}", avatarRevision = 3, updatedAt = 2)))
-            assertEquals(3L, store.session("s")!!.avatarRevision)
-        } finally {
-            migrated.close()
+            reset.close()
             file.delete()
         }
     }

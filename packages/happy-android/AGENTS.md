@@ -23,6 +23,16 @@ architectures comparable (local store, delta sync, crypto layer).
   push, tablet layouts, purchases and voice. Experimental and social surfaces
   remain excluded. Store validation needs the existing signing identity,
   EAS build number and RevenueCat Google SDK key.
+- **Happy Protocol V2**: a computer paired straight to the phone over
+  Tailcat, with no relay account. It is an account of its own beside relay
+  Happy accounts (see "Happy Protocol V2" below). Call it Happy Protocol V2
+  (`ProtocolV2…` in code) everywhere: code, strings, docs. Never "direct"
+  or "direct mode", except where the wire itself says it (`happy://direct?`).
+- **Excluded:** Stories, Stem Cells (and its spaces, sidebars,
+  Prioritizing, Artifacts and Surfaces rows), and every experimental or social
+  surface.
+- `packages/happy-ios` is the reference for Steve's design decisions below;
+  happy-app stays the reference for everything else.
 
 ## Rules
 
@@ -71,6 +81,42 @@ architectures comparable (local store, delta sync, crypto layer).
    generated code and a migration framework for no query we need; SQLDelight
    adds a build plugin. The framework API costs no dependency and no startup
    time, and `HappyStore` keeps it typed.
+
+5. **Every screen has the standard top app bar** (`Header`, through
+   `Screen`/`StackHeader` where it can), and its back button does what the
+   system back does. Never hide it, or replace it with a custom or floating
+   bar, without Steve's explicit OK.
+6. **System back works on every screen, predictive back included**
+   (`enableOnBackInvokedCallback`). A `BackHandler` may close something open
+   on the screen (a sheet, the focused dock) and then let back through; it
+   never swallows back for good.
+
+### Design decisions that override happy-app
+
+Steve made these for the native apps. Where happy-app does otherwise, they
+win:
+
+- **Top app bar, back:** rules 5 and 6. happy-app's first-run Link Your
+  Computer page swallows back; here back leaves the app as on any root.
+- **Home's top bar:** the current account's avatar on the left opens a
+  drop-down of the relay accounts and Protocol V2 computers (avatar and
+  name each), plus "Add account"; picking one switches. Settings and then
+  compose (far right) on the right. No logo, filter menu or centred
+  "Sessions" title.
+- **Compose:** from home it opens an empty new chat; from a chat it
+  replaces that chat with an empty one, animated, with Back going to home.
+  The empty chat becomes the real session in place on the first send, with
+  no route change (not happy-app's draft route then navigate).
+- **Fonts:** the system font for all text, the platform monospace
+  (`FontFamily.Monospace`) for code. Not IBM Plex.
+- **Home rows** have strict, precomputed heights, per row kind and font
+  scale. Idle updates (time ago, presence, working) never change a height,
+  and neither home nor chat scrolls by itself while nothing changed.
+- **Settings cards** look the same everywhere and come from one component
+  (`ItemGroup`).
+- **QR codes:** every scan is classified (terminal, account, Protocol V2
+  pairing, or not ours) and routed. A code the screen can't use shows an
+  error; nothing is silently ignored. Scanning works while signed in.
 
 ## Layout
 
@@ -224,8 +270,11 @@ session is deleted (`ON DELETE CASCADE`), and only chats that were opened
 are stored, each from its newest page back as far as the reader scrolled
 plus the five-page background budget. That is the bound, recorded rather
 than enforced; a chat's rows are one contiguous run of seqs, so trimming
-the middle would break paging. Migrations keep everything from schema 1 on
-(`DatabaseMigrationTest`, one test per hop). Logout (`AppGraph.logout`):
+the middle would break paging. **No migrations:** the native app hasn't
+shipped, so a database from any other schema version is dropped and created
+again, and storage keys and preferences are renamed outright, without
+fallbacks. The one exception is reading the React Native app's credentials
+(below). Logout (`AppGraph.logout`):
 the `beforeLogout` hooks first, while signed in (the push unregister); then
 the database, local settings, the What's New marker, the new-session draft
 (stored and in memory, `afterLogoutWipe`), picked-image copies and the

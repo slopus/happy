@@ -1,6 +1,5 @@
 package com.slopus.happy.ui.onboarding
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -65,8 +64,8 @@ val MACHINE_ARRIVAL_TIMEOUT = 10.seconds
  * onboarding settings), the checklist, "Scan QR code" (enabled once both
  * boxes are ticked) and "paste link instead". A link in flight keeps the
  * button busy ("Linking…") until the machine arrives; a failed one says so
- * on the line above the button. Back does nothing here: the account
- * exists, and the only way on is a linked computer.
+ * on the line above the button. Back leaves the app, as on any root
+ * screen; happy-app swallows it here (AGENTS.md, design decisions).
  */
 @Composable
 fun OnboardingLinkComputerScreen(
@@ -82,7 +81,6 @@ fun OnboardingLinkComputerScreen(
     modifier: Modifier = Modifier,
 ) {
     val ready = LinkChecklistStep.Install in ticked && LinkChecklistStep.Open in ticked
-    BackHandler {}
     OnboardingScreen(
         modifier = modifier,
         header = {

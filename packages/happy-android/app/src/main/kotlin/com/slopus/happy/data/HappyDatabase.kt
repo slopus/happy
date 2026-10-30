@@ -24,9 +24,9 @@ import android.database.sqlite.SQLiteOpenHelper
  * grows backwards on demand, forwards with every new message. A null
  * `messages_oldest_seq` means no page has been loaded yet.
  *
- * The outbox and the composer mirror are the only data here the server does
- * not have, so schema upgrades from version 2 on migrate instead of starting
- * over.
+ * There are no migrations: the native app has not shipped, so a database
+ * from any other schema version is dropped and created again, and sync
+ * fetches everything back.
  */
 class HappyDatabase(context: Context, name: String? = NAME) :
     SQLiteOpenHelper(context, name, null, VERSION) {
@@ -43,20 +43,23 @@ class HappyDatabase(context: Context, name: String? = NAME) :
         SCHEMA.forEach(db::execSQL)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion !in 1..3) return startOver(db)
-        // Version 1 synced every message from seq 0, so what it stored is
-        // complete history: the oldest stored seq is the floor.
-        if (oldVersion == 1) MIGRATE_1_TO_2.forEach(db::execSQL)
-        if (oldVersion <= 2) MIGRATE_2_TO_3.forEach(db::execSQL)
-        MIGRATE_3_TO_4.forEach(db::execSQL)
-    }
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = startOver(db)
 
-    // Nothing newer can be read safely; everything but the outbox can be fetched again.
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = startOver(db)
 
+    /**
+     * Drops every table, whatever version made it, then creates the current
+     * schema. Tables that reference others go first, so no drop trips a
+     * foreign key (enforcement can't be switched off inside the upgrade's
+     * transaction).
+     */
     private fun startOver(db: SQLiteDatabase) {
-        DROP.forEach(db::execSQL)
+        val tables = db.rawQuery(
+            "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata'",
+            null,
+        ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0) to (c.getString(1) ?: "")) } }
+        tables.sortedByDescending { (_, sql) -> sql.contains("REFERENCES", ignoreCase = true) }
+            .forEach { (name, _) -> db.execSQL("DROP TABLE IF EXISTS \"${name.replace("\"", "\"\"")}\"") }
         onCreate(db)
     }
 
@@ -166,37 +169,5 @@ class HappyDatabase(context: Context, name: String? = NAME) :
             )
             """,
         ).map(String::trimIndent)
-
-        private val MIGRATE_1_TO_2
-            get() = listOf(
-                "ALTER TABLE sessions ADD COLUMN messages_oldest_seq INTEGER",
-                "ALTER TABLE sessions ADD COLUMN messages_has_older INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE sessions ADD COLUMN last_message_sent_at INTEGER",
-                "UPDATE sessions SET messages_oldest_seq = (SELECT MIN(seq) FROM messages WHERE session_id = sessions.id) " +
-                    "WHERE messages_seq > 0",
-                OUTBOX,
-                OUTBOX_INDEX,
-            ).map(String::trimIndent)
-
-        private val MIGRATE_2_TO_3
-            get() = listOf(COMPOSER).map(String::trimIndent)
-
-        // Session avatars (sessionAvatarTypes.ts): the sealed descriptor and how new it is.
-        private val MIGRATE_3_TO_4
-            get() = listOf(
-                "ALTER TABLE sessions ADD COLUMN avatar TEXT",
-                "ALTER TABLE sessions ADD COLUMN avatar_revision INTEGER",
-                "ALTER TABLE sessions ADD COLUMN avatar_update_seq INTEGER",
-            )
-
-        private val DROP = listOf(
-            "DROP TABLE IF EXISTS composer",
-            "DROP TABLE IF EXISTS outbox",
-            "DROP TABLE IF EXISTS messages",
-            "DROP TABLE IF EXISTS sessions",
-            "DROP TABLE IF EXISTS machines",
-            "DROP TABLE IF EXISTS account",
-            "DROP TABLE IF EXISTS sync_state",
-        )
     }
 }
