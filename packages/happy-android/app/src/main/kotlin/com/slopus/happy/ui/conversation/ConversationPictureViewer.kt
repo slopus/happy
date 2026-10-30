@@ -41,7 +41,7 @@ object PictureViewerTags {
 /**
  * One picture of the conversation, filling the window over black: the whole
  * picture at once, pinched to 1–5 times and dragged while it is larger than
- * the window, a double tap back to whole. Back or the close button leaves.
+ * the window. Pinching back to whole resets the position. Back or the close button leaves.
  */
 @Composable
 fun PictureViewer(bytes: ByteArray, cacheKey: String, name: String?, onClose: () -> Unit) {

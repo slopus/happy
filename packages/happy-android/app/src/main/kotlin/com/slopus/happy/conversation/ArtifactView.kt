@@ -39,7 +39,7 @@ data class Artifact(
     val live: Boolean,
     val deleted: Boolean,
 ) {
-    val entryFile: ArtifactFile? get() = files.firstOrNull { it.path == entry } ?: files.firstOrNull()
+    val entryFile: ArtifactFile? get() = files.firstOrNull { it.path == entry }
 
     /** What the screen draws, before any bytes are read. */
     fun view(): ArtifactView {
@@ -55,8 +55,12 @@ data class Artifact(
     }
 
     companion object {
+        fun isDeleted(artifact: JsonObject): Boolean =
+            artifact["status"].str == "deleted" || artifact["deletedAt"].num != null
+
         fun parse(artifact: JsonObject, version: JsonObject): Artifact? {
             val id = artifact["id"].str ?: artifact["artifactId"].str ?: return null
+            val deleted = isDeleted(artifact)
             val files = version["files"].arr.orEmpty().mapNotNull { value ->
                 val file = value.obj ?: return@mapNotNull null
                 ArtifactFile(
@@ -65,15 +69,20 @@ data class Artifact(
                     size = file["size"].num?.toLong() ?: 0,
                 )
             }
+            val live = version["live"].obj != null
+            val entry = version["entry"].obj?.get("path").str
+            // API.md: entry is a file object in the manifest, never its
+            // first file by implication. Bad metadata must not open another file.
+            if (!deleted && !live && (entry == null || files.none { it.path == entry })) return null
             return Artifact(
                 id = id,
                 type = artifact["type"].str ?: "",
                 title = version["title"].str ?: artifact["title"].str.orEmpty(),
                 version = version["number"].num?.toInt() ?: 0,
-                entry = version["entry"].str,
+                entry = entry,
                 files = files,
-                live = version["live"].obj != null,
-                deleted = artifact["deletedAt"] != null && artifact["deletedAt"].str != null,
+                live = live,
+                deleted = deleted,
             )
         }
     }

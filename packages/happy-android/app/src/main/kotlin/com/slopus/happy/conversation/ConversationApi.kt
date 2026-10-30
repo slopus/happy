@@ -145,6 +145,13 @@ open class ConversationApi(private val request: AgentRequest) {
     open suspend fun artifactVersion(artifactId: String, number: String = "latest"): JsonObject =
         call("GET", "/v0/artifacts/${escape(artifactId)}/versions/${escape(number)}")["version"].obj ?: throw invalid()
 
+    /** Tombstones stay readable, but their versions and files no longer do (API.md). */
+    open suspend fun readArtifact(artifactId: String): Artifact? {
+        val metadata = artifact(artifactId)
+        val version = if (Artifact.isDeleted(metadata)) JsonObject(emptyMap()) else artifactVersion(artifactId)
+        return Artifact.parse(metadata, version)
+    }
+
     /** The bytes of one file of one version, asked for by its exact manifest path. */
     open suspend fun artifactFile(artifactId: String, number: String, path: String): ByteArray {
         val route = path.split('/').joinToString("/") { escape(it) }

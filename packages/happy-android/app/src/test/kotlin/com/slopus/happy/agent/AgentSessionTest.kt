@@ -7,6 +7,9 @@ import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.connection.AgentConnectionCredentials
 import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.Transport
+import com.slopus.happy.connection.TransportResponse
+import com.slopus.happy.conversation.ConversationApi
+import com.slopus.happy.ui.conversation.conversationRequest
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +69,27 @@ class AgentSessionTest {
 
     private suspend fun <T> eventually(read: () -> T, check: (T) -> Boolean) {
         withTimeout(10_000) { while (!check(read())) kotlinx.coroutines.delay(20) }
+    }
+
+    @Test
+    fun artifactFilesUseOnlyTheSelectedConnectionsCredential() = runBlocking {
+        foreground.value = false
+        open.value = null
+        val other = connections.add(AgentConnectionCredentials("other-addr", 24781, "dv2", "other-token"), "Other").id
+        val seen = mutableListOf<Triple<String, String, String>>()
+        val sessions = sessions { credentials ->
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                    seen += Triple(credentials.address, credential, path)
+                    return TransportResponse(200, body = byteArrayOf(1, 2, 3))
+                }
+            }
+        }
+        ConversationApi(sessions.session(other)!!.conversationRequest()).artifactFile("r1", "2", "images/plot #1.png")
+        assertEquals(listOf(Triple("other-addr", "other-token", "/v0/artifacts/r1/versions/2/files/images/plot%20%231.png")), seen)
+        seen.clear()
+        ConversationApi(sessions.session(id)!!.conversationRequest()).artifactFile("r1", "2", "report.md")
+        assertEquals(listOf(Triple("addr", "token", "/v0/artifacts/r1/versions/2/files/report.md")), seen)
     }
 
     @Test

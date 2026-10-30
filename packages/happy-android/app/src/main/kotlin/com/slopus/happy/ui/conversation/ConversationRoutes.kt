@@ -29,7 +29,6 @@ import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.chat.obj
 import com.slopus.happy.conversation.AgentInfo
-import com.slopus.happy.conversation.Artifact
 import com.slopus.happy.conversation.ArtifactView
 import com.slopus.happy.conversation.AgentRequest
 import com.slopus.happy.conversation.Conversation
@@ -332,7 +331,7 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
             return@produceState
         }
         value = try {
-            val artifact = Artifact.parse(api.artifact(route.artifactId), api.artifactVersion(route.artifactId))
+            val artifact = api.readArtifact(route.artifactId)
             when {
                 artifact == null -> ArtifactContent.Failed(unavailable)
                 artifact.deleted -> ArtifactContent.Failed(deleted)
