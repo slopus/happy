@@ -447,11 +447,11 @@ final class ScrollPerfGymTests: XCTestCase {
 
     private var meter: XCUIElement { app.buttons["gym-meter"] }
 
-    /// One integer of the meter's reading.
+    /// Counts or whole points of the meter's reading.
     private func reading(_ key: String) -> Int {
         let value = (meter.value as? String) ?? ""
         let pair = value.split(separator: " ").first { $0.hasPrefix("\(key)=") }
-        return pair.flatMap { Int($0.dropFirst(key.count + 1)) } ?? -1
+        return pair.flatMap { Double($0.dropFirst(key.count + 1)) }.map { Int($0) } ?? -1
     }
 
     private func resetMeter() {
