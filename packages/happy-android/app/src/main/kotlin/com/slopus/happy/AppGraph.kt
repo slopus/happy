@@ -31,6 +31,7 @@ import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatPurchases
 import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.PairingFlow
+import com.slopus.happy.connection.TailcatTransport
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
 import com.slopus.happy.ui.home.NewSessionDraftStore
@@ -89,6 +90,7 @@ class AppGraph(
     init {
         // Before accounts had databases of their own. Local data resets rather than migrates.
         if (databaseName != null) appContext.deleteDatabase(HappyDatabase.NAME)
+        TailcatTransport.persistDerpMap(File(appContext.noBackupFilesDir, "tailcat/derpmap.json"))
     }
 
     val serverConfig = ServerConfig(

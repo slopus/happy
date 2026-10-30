@@ -741,9 +741,10 @@ is `packages/happy-ios`. The wire keeps its own names
   connection's credentials Keystore-encrypted, apart from relay credentials.
 - **Transport** (`TailcatTransport`): tailcat-kotlin, one client
   per agent connection and a fresh TCP stream to `server.tailcat:<port>` per
-  HTTP/1.1 request, framed by `HttpResponseParser`. It uses upstream
-  Tailcat's DERP map (`https://tailcat.dev/derpmap.json`); tailcat-kotlin's
-  default (Tailscale's map) has none of Happy Agent's relay regions.
+  HTTP/1.1 request, framed by `HttpResponseParser`. It uses
+  tailcat-kotlin's default DERP map (`https://tailcat.dev/derpmap.json`),
+  cached in `noBackupFilesDir/tailcat/derpmap.json` (`FileDerpMapCache`):
+  with no network and no cached map, connecting fails.
 - **tailcat-kotlin** has no published artifact. `tools/tailcat/build.sh`
   builds its pinned commit's JVM jar (the same sources as its Android
   variant) into `vendor/maven`, which `settings.gradle.kts` reads for the

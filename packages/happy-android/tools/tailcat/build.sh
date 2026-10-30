@@ -6,7 +6,7 @@
 # tailcat-kotlin publishes no artifact yet; when it does, point the version
 # catalog at it and delete vendor/maven and this script.
 set -euo pipefail
-COMMIT=a08de5ceb3cbe564cd3243a7d4ba2634aa25bba6
+COMMIT=4f041f4754f9cf4e52b26cc41173ef9903f86c76
 VERSION=0.1.0-${COMMIT:0:7}
 here="$(cd "$(dirname "$0")" && pwd)"
 android="$(cd "$here/../.." && pwd)"

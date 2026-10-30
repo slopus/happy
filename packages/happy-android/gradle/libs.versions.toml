@@ -22,7 +22,7 @@ play-services-code-scanner = "16.1.0"
 play-review = "2.0.2"
 zxing = "3.5.4"
 # slopus/tailcat-kotlin at a pinned commit, built into vendor/maven by tools/tailcat/build.sh.
-tailcat = "0.1.0-a08de5c"
+tailcat = "0.1.0-4f041f4"
 firebase-messaging = "25.0.1"
 coil = "3.6.3"
 revenuecat = "10.28.1"

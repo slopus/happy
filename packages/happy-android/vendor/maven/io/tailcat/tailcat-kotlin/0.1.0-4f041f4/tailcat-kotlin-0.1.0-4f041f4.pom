@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.tailcat</groupId>
   <artifactId>tailcat-kotlin</artifactId>
-  <version>0.1.0-a08de5c</version>
-  <description>slopus/tailcat-kotlin a08de5ceb3cbe564cd3243a7d4ba2634aa25bba6, JVM variant</description>
+  <version>0.1.0-4f041f4</version>
+  <description>slopus/tailcat-kotlin 4f041f4754f9cf4e52b26cc41173ef9903f86c76, JVM variant</description>
   <licenses><license><name>BSD-3-Clause</name></license></licenses>
 </project>

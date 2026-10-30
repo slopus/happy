@@ -1,7 +1,12 @@
 package com.slopus.happy.connection
 
 import io.tailcat.ClientConfiguration
+import io.tailcat.DERPMapCache
+import io.tailcat.DERPMapCacheEntry
 import io.tailcat.DERPMapProvider
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import java.io.File
 import io.tailcat.TailcatClient
 import io.tailcat.TailcatConnection
 import kotlinx.coroutines.Dispatchers
@@ -119,14 +124,43 @@ class TailcatTransport(
 
     companion object {
         /**
-         * Upstream Tailcat's `DefaultDERPMapURL`, whose relays (regions 301
-         * and up) Happy Agent's addresses name. tailcat-kotlin a08de5c
-         * defaults to Tailscale's own map instead, which has none of them
-         * ("No relay region"). One provider for the app, so its hour-long
-         * cache is shared by every agent.
+         * One provider for the app (tailcat-kotlin's default map,
+         * tailcat.dev), so its hour-long cache is shared by every agent.
+         * [persistDerpMap] keeps it on disk, so connecting works offline
+         * after the first fetch.
          */
-        const val DERP_MAP_URL = "https://tailcat.dev/derpmap.json"
-        private val derpMap = DERPMapProvider(DERP_MAP_URL)
+        @Volatile private var derpMap = DERPMapProvider()
+
+        fun persistDerpMap(file: File) {
+            derpMap = DERPMapProvider(cache = FileDerpMapCache(file))
+        }
+    }
+}
+
+/**
+ * The DERP map as last fetched, kept in [file]. Not a secret: the public
+ * relay list. A file that can't be read counts as none.
+ */
+class FileDerpMapCache(private val file: File) : DERPMapCache {
+    @Serializable private class Entry(val json: String, val etag: String, val fetchedAtMillis: Long)
+
+    @Synchronized
+    override fun load(): DERPMapCacheEntry? = try {
+        Json.decodeFromString(Entry.serializer(), file.readText()).let { DERPMapCacheEntry(it.json, it.etag, it.fetchedAtMillis) }
+    } catch (_: Exception) {
+        null
+    }
+
+    @Synchronized
+    override fun store(entry: DERPMapCacheEntry) {
+        try {
+            file.parentFile?.mkdirs()
+            val temp = File(file.path + ".tmp")
+            temp.writeText(Json.encodeToString(Entry.serializer(), Entry(entry.json, entry.etag, entry.fetchedAtMillis)))
+            if (!temp.renameTo(file)) temp.delete()
+        } catch (_: Exception) {
+            // The memory of this fetch is lost; the next connect fetches again.
+        }
     }
 }
 
