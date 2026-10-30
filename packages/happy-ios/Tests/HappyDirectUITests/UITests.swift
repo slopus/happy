@@ -1462,9 +1462,9 @@ final class UITests: XCTestCase {
     /// sliver of transcript: the card goes to one row, the chips behind its
     /// options button, and the navigation bar goes (Steve's OK, 2026-10-30).
     /// The bar is back as the keyboard goes down and upright, and the draft
-    /// and the keyboard carry across the turns. Whether the swipe back may
-    /// begin with the bar hidden is `PopGestureBarTests`': a swipe XCUI
-    /// makes sideways pops nothing here even with the bar showing. The transcript's room sideways is read off the
+    /// and the keyboard carry across the turns. Actual native swipe-back
+    /// cancellation and completion are covered by `testNativeSwipeBackCancelsAndCompletesWithTheKeyboard`.
+    /// The transcript's room sideways is read off the
     /// screen (`HAPPY_COMPACT`), empty and with three lines.
     func testCompactComposerSideways() {
         // Upright to start, whatever a run before left; back upright however it ends.
@@ -1606,6 +1606,76 @@ final class UITests: XCTestCase {
             let chatPopped = atHome()
             mark("chat \(label) popped \(chatPopped)")
             XCTAssertTrue(chatPopped, "Chat must pop with the native \(label) swipe")
+        }
+    }
+
+    /// A short native swipe cancels without losing focus; a full one pops,
+    /// including the sideways chat whose standard bar is hidden by the keyboard.
+    func testNativeSwipeBackCancelsAndCompletesWithTheKeyboard() {
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        home()
+        let bot = row("space", ProcessInfo.processInfo.environment["HAPPY_STREAM_ROW"] ?? "Stream Lab")
+        let composer = app.textViews["composer"]
+        for (orientationName, orientation) in [("portrait", UIDeviceOrientation.portrait), ("landscape", .landscapeLeft)] {
+            XCUIDevice.shared.orientation = orientation
+            pause(1.5)
+            for keyboardUp in [false, true] {
+                for (kind, from) in [("edge", CGFloat(0.005)), ("content", CGFloat(0.3))] {
+                    let label = "\(orientationName)-keyboard-\(keyboardUp)-\(kind)"
+                    if let focus = ProcessInfo.processInfo.environment["HAPPY_POP_FOCUS"], focus != label { continue }
+                    bot.tap()
+                    XCTAssertTrue(composer.waitForExistence(timeout: 5))
+                    pause(1)
+                    if keyboardUp {
+                        composer.tap()
+                        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+                        pause(1)
+                    } else {
+                        XCTAssertFalse(app.keyboards.firstMatch.exists)
+                    }
+                    let bar = app.navigationBars.firstMatch
+                    let showsBar = bar.exists && bar.isHittable && bar.frame.maxY > 0
+                    XCTAssertEqual(showsBar, orientationName != "landscape" || !keyboardUp)
+                    let top = showsBar ? bar.frame.maxY : 0
+                    let bottom = composer.frame.minY - 24
+                    let y = (top + bottom) / 2 / app.frame.height
+                    print("HAPPY_NATIVE_POP geometry \(label) y \(y) bar \(bar.frame) composer \(composer.frame) keyboard \(app.keyboards.firstMatch.frame)")
+                    capture("pop-\(label)-before")
+                    func drag(to x: CGFloat, hold: TimeInterval) {
+                        app.coordinate(withNormalizedOffset: CGVector(dx: from, dy: y)).press(
+                            forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)),
+                            withVelocity: .slow, thenHoldForDuration: hold
+                        )
+                        pause(1.5)
+                    }
+                    drag(to: from + 0.08, hold: 0.4)
+                    XCTAssertTrue(composer.exists, "\(label): cancelled swipe left chat")
+                    XCTAssertEqual(app.keyboards.firstMatch.exists, keyboardUp, "\(label): cancelled swipe changed keyboard")
+                    print("HAPPY_NATIVE_POP \(label) cancelled")
+                    capture("pop-\(label)-cancelled")
+                    if !keyboardUp, kind == "content" {
+                        let visible = CGRect(x: 0, y: top, width: app.frame.width, height: bottom - top)
+                        let messages = app.descendants(matching: .any).matching(identifier: "message")
+                        let row = messages.allElementsBoundByIndex.first { !$0.label.isEmpty && $0.frame.intersects(visible) }
+                        XCTAssertNotNil(row, "no message to check vertical scrolling")
+                        if let row {
+                            let anchor = messages.matching(NSPredicate(format: "label == %@", row.label)).firstMatch
+                            let before = anchor.frame.minY
+                            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y))
+                            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 90)), withVelocity: .slow, thenHoldForDuration: 0.2)
+                            pause(1)
+                            XCTAssertTrue(composer.exists, "vertical scroll popped chat")
+                            XCTAssertTrue(!anchor.exists || abs(anchor.frame.minY - before) > 10, "native pop priority blocked vertical scrolling")
+                            print("HAPPY_NATIVE_POP \(label) vertical scroll moved \(anchor.exists ? anchor.frame.minY - before : .infinity)")
+                        }
+                    }
+                    drag(to: 0.95, hold: 0.1)
+                    XCTAssertTrue(app.buttons["search"].firstMatch.waitForExistence(timeout: 4), "\(label): full swipe did not return home")
+                    XCTAssertFalse(composer.exists, "\(label): full swipe left chat mounted")
+                    print("HAPPY_NATIVE_POP \(label) completed")
+                }
+            }
         }
     }
 
