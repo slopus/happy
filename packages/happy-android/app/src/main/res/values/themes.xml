@@ -6,4 +6,9 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
+
+    <!-- The QR scanner is dark whatever the app's theme, so it opens black, not white. -->
+    <style name="Theme.Happy.Scanner">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
 </resources>

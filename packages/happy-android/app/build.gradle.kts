@@ -276,7 +276,7 @@ abstract class VerifyReleaseKeeps : DefaultTask() {
             return if (end < 0) null else xml.substring(open.range.first, end)
         }
         if (!Regex("""<queries>[\s\S]*?<package android:name="com\.android\.vending"""").containsMatchIn(xml)) {
-            problems += "<queries> lost com.android.vending (QrScanner, ReviewPrompt look for the Play Store)"
+            problems += "<queries> lost com.android.vending (ReviewPrompt looks for the Play Store)"
         }
         val activity = component("activity", "com.slopus.happy.MainActivity")
         if (activity == null || "android:exported=\"true\"" !in activity) problems += "MainActivity is not exported"
@@ -341,9 +341,11 @@ dependencies {
     implementation(libs.okhttp)
     implementation(project(":elevenlabs"))
 
-    // QR codes (AGENTS.md "QR codes"): Google Code Scanner reads them, as
-    // expo-camera's launchScanner does on Android; ZXing's encoder draws them.
-    implementation(libs.play.services.code.scanner)
+    // QR codes (AGENTS.md "QR codes"): our own CameraX scanner reads them with
+    // ZXing's decoder, so no Play services; ZXing's encoder draws them.
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.compose)
     implementation(libs.zxing.core)
     implementation(libs.tailcat)
 

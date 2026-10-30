@@ -7,10 +7,12 @@
     <!-- app.config.js android.permissions; asked for at runtime (push/PushPermission.kt) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- The QR scanner's camera (ui/connect/QrScannerActivity.kt), asked for when a scan starts.
+         A phone without one still installs; the scan then asks for the link. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Removal markers are absent from the merged manifest; lint still inspects them. -->
-    <!-- ElevenLabs uses audio only; remove LiveKit's unused video capture surface. -->
-    <uses-permission android:name="android.permission.CAMERA" tools:node="remove"
-        tools:ignore="PermissionImpliesUnsupportedChromeOsHardware" />
+    <!-- ElevenLabs uses audio only; remove LiveKit's unused screen capture. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" tools:node="remove" />
 
     <!-- expo-store-review's isAvailableAsync looks for the Play Store (ui/home/ReviewPrompt.kt). -->
@@ -46,6 +48,12 @@
                 <data android:scheme="happy" />
             </intent-filter>
         </activity>
+        <!-- Our QR scanner (ui/connect/QrScanner.kt): a full-screen camera, started for a result. -->
+        <activity
+            android:name=".ui.connect.QrScannerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:exported="false"
+            android:theme="@style/Theme.Happy.Scanner" />
         <!-- Pushes relayed by Expo arrive as FCM data messages (push/PushServices.kt). -->
         <service
             android:name=".push.HappyMessagingService"

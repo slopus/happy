@@ -70,6 +70,7 @@ enum class Ionicon(val codepoint: Int) {
     EyeOutline(0xf2ea), // eye-outline
     Filter(0xf301), // filter
     FingerPrintOutline(0xf308), // finger-print-outline
+    Flash(0xf316), // flash
     FlashOutline(0xf31a), // flash-outline
     FlaskOutline(0xf320), // flask-outline
     Folder(0xf325), // folder

@@ -94,9 +94,10 @@ architectures comparable (local store, delta sync, crypto layer).
 5. **Every screen has the standard top app bar** (`Header`, through
    `Screen`/`StackHeader` where it can), and its back button does what the
    system back does. Never hide it, or replace it with a custom or floating
-   bar, without Steve's explicit OK. The one exception Steve made is the
+   bar, without Steve's explicit OK. Steve made two exceptions: the
    first screen (`ui/start`): no bar, only a floating ⋮ over the
-   full-window gradient.
+   full-window gradient; and the QR scanner: no bar, the camera full
+   window with a floating close (✕) top right.
 6. **System back works on every screen, predictive back included**
    (`enableOnBackInvokedCallback`). A `BackHandler` may close something open
    on the screen (a sheet, the focused dock) and then let back through; it
@@ -561,18 +562,31 @@ Entry points other screens call (all in `ui/onboarding` and `ui/connect`):
 
 ### QR codes
 
-happy-app scans with expo-camera's `CameraView.launchScanner`, which on
-Android is **Google Code Scanner** (`play-services-code-scanner`): Play
-services draws its own full-screen camera, so the app holds no CAMERA
-permission and shows no preview, and `useCheckCameraPermissions.ts` returns
-true on Android. `GmsQrScanner` does the same, behind the `QrScanner`
-interface (one call, decoded text out) so the flows are tested with a fake.
-Without the Play Store, or when the module fails, the scan returns
-`Failed` and nothing is shown, as in happy-app, whose scan listeners never
-see a rejected `launchScanner`; the paste-link and secret-key paths still
-work. The module is downloaded by Play services on first use, so devices
-without Play services (some Huawei, de-Googled ROMs) can't scan in either
-app. The merged manifest has no CAMERA permission.
+Deliberately not happy-app's (expo-camera's `launchScanner`, which is
+Google Code Scanner on Android): we scan in our own screen, so it works
+without Play services. Everything goes through the `QrScanner` interface
+(one call, decoded text out; `LocalQrScanner`, `rememberQrScanner()`), so
+the flows are tested with a fake.
+
+- `CameraQrScanner` starts `QrScannerActivity` for a result
+  (`QrScannerActivity.Contract`). A phone without a camera returns
+  `Failed` at once, and the flows ask for the link instead.
+- The activity asks for CAMERA when it opens (the manifest declares it,
+  and `android.hardware.camera` as not required). Refused, the screen says
+  so (`modals_camera_permissions_required_to_scan_qr`) with Open Settings;
+  returning with it granted starts the camera.
+- CameraX (`camera-camera2`, `camera-lifecycle`, `camera-compose`'s
+  `CameraXViewfinder`): a preview plus an `ImageAnalysis` (~720p, latest
+  frame only) whose `QrAnalyzer` feeds the Y plane to ZXing (`QrDecoder`,
+  QR only, inverted codes too). The first decoded text finishes the
+  activity, with a confirm haptic.
+- `QrScannerScreen`, always dark: Steve's exception to rule 5, no header;
+  the camera fills the window under transparent system bars, a floating ✕
+  top right (= back), a scrim with a centred square viewfinder, a hint
+  under it, and a torch toggle when the camera has a flash. Close and
+  system back return `Cancelled`.
+- `QrDecoderTest` decodes ZXing-encoded luminance frames; `QrScannerTest`
+  covers the result contract, the refused permission and the layout.
 
 The restore screen draws its code with ZXing's encoder (`zxing-core`, no
 Android or camera parts), in QRCode.tsx's rounded style; `QrCodeTest`
