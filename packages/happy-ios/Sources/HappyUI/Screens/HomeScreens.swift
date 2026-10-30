@@ -2,6 +2,7 @@
 import HappyCore
 import HappyLayout
 import HappyStore
+import HappyWire
 import UIKit
 
 /// Signed in: app/(app)/index.tsx and SessionsListWrapper.tsx. Home stays
@@ -471,7 +472,7 @@ final class LinkComputerViewController: UIViewController {
     private func scan() {
         content.error = nil
         Task { @MainActor in
-            guard let text = await PairingFlow.scan(.terminal, from: self) else {
+            guard let text = await HappyScan.read(from: self) else {
                 return PairingAnalytics.shared.log(.cancelled(method: .relay, start: .scan))
             }
             await link(text, start: .scan)
@@ -497,7 +498,11 @@ final class LinkComputerViewController: UIViewController {
 
     private func link(_ text: String, start: PairingStart) async {
         guard !busy else { return }
-        if DirectPairingFlow.openIfDirect(text, context: context, on: self, start: start) { return }
+        // Any code but a computer's goes where HappyScan sends it, and says so.
+        guard case .terminal = HappyCode(text) else {
+            await HappyScan.open(text, intent: .connect, context: context, on: self, start: start)
+            return
+        }
         linking = true
         update()
         let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)
@@ -522,7 +527,7 @@ final class LinkComputerViewController: UIViewController {
         case .failed:
             content.error = Strings.Onboarding.linkFailed
             UIAccessibility.post(notification: .announcement, argument: Strings.Onboarding.linkFailed)
-        case .invalidLink, .terminalNeedsUpdate:
+        case .invalidLink, .terminalNeedsUpdate, .alreadyHandled:
             // These need more than one line, and scanning again won't help.
             PairingFlow.report(outcome, kind: .terminal, on: self)
         }
@@ -601,8 +606,11 @@ final class OfflineChecklistViewController: UIViewController {
 
     private func scan() {
         Task { @MainActor in
-            guard let text = await PairingFlow.scan(.terminal, from: self), !linking, !approved else { return }
-            if DirectPairingFlow.openIfDirect(text, context: context, on: self) { return }
+            guard let text = await HappyScan.read(from: self), !linking, !approved else { return }
+            guard case .terminal = HappyCode(text) else {
+                await HappyScan.open(text, intent: .connect, context: context, on: self, start: .scan)
+                return
+            }
             linking = true
             update()
             let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)

@@ -1,17 +1,17 @@
 #if canImport(UIKit)
 import AVFoundation
 import HappyLayout
+import OSLog
 import UIKit
 
-/// Full-screen camera QR scanner. Reports the first code it reads that
-/// `accepts` lets through, or nil when closed, then dismisses itself. Without camera access it explains
+/// Full-screen camera QR scanner. Reports the first QR code it reads, or nil
+/// when closed, then dismisses itself. It never judges a code: the caller
+/// says what a wrong one is, so none is ignored. Without camera access it explains
 /// why and offers the Settings app; in the simulator there is no camera, so
 /// it says so.
 public final class QRScannerViewController: UIViewController {
     /// Called exactly once.
     public var onFinish: ((String?) -> Void)?
-    /// Codes this rejects are ignored and scanning goes on.
-    public var accepts: (String) -> Bool = { _ in true }
 
     private enum Mode {
         case scanning
@@ -31,6 +31,11 @@ public final class QRScannerViewController: UIViewController {
     private let settingsButton = RoundButton(title: Strings.Scanner.openSettings)
     private let closeButton = UIButton(type: .system)
     private var finished = false
+    /// The session is running: only then does the preview layer convert
+    /// the viewfinder into the output's space correctly.
+    private var running = false
+    private var viewfinder: CGRect?
+    private static let log = Logger(subsystem: "engineering.happy", category: "scan")
 
     public init() {
         previewLayer = AVCaptureVideoPreviewLayer(session: capture.session)
@@ -124,7 +129,11 @@ public final class QRScannerViewController: UIViewController {
             let started = await self?.capture.start { [weak self] value in
                 self?.found(value)
             }
-            if started == false { self?.mode = .unavailable }
+            Self.log.debug("capture started: \(String(describing: started), privacy: .public)")
+            guard let self else { return }
+            if started == false { return mode = .unavailable }
+            running = true
+            updateScanArea(viewfinder)
         }
     }
 
@@ -137,13 +146,20 @@ public final class QRScannerViewController: UIViewController {
     }
 
     /// Reads only inside the viewfinder, so a second code nearby is ignored.
+    /// Converted before the session runs, the rect comes out empty and the
+    /// camera reads nothing at all; so only once it runs, and the whole
+    /// frame whenever the conversion is unusable.
     private func updateScanArea(_ viewfinder: CGRect?) {
-        guard let viewfinder, previewLayer.frame.width > 0 else { return }
-        capture.setRectOfInterest(previewLayer.metadataOutputRectConverted(fromLayerRect: viewfinder))
+        self.viewfinder = viewfinder
+        guard running, let viewfinder, previewLayer.frame.width > 0 else { return }
+        let area = QRScannerLayout.scanArea(previewLayer.metadataOutputRectConverted(fromLayerRect: viewfinder))
+        Self.log.debug("scan area \(String(describing: area), privacy: .public)")
+        capture.setRectOfInterest(area)
     }
 
     private func found(_ value: String) {
-        guard !finished, accepts(value) else { return }
+        Self.log.debug("read a code of \(value.utf8.count) bytes")
+        guard !finished else { return }
         finish(value)
     }
 

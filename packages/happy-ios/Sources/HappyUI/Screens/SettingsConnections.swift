@@ -10,7 +10,7 @@ import UIKit
 enum SettingsConnections {
     /// A terminal's code from the camera; nil when the scan was left.
     static func scanTerminal(on controller: UIViewController) async -> String? {
-        await PairingFlow.scan(.terminal, from: controller)
+        await HappyScan.read(from: controller)
     }
 
     /// A terminal's URL, pasted; nil when nothing was.
@@ -26,9 +26,9 @@ enum SettingsConnections {
         return url
     }
 
-    static func approveTerminal(_ text: String, session: AccountSession, on controller: UIViewController) async {
-        let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)
-        PairingFlow.report(outcome, kind: .terminal, on: controller)
+    /// Whatever the code is, where `HappyScan` sends it.
+    static func approveTerminal(_ text: String, context: AppContext, on controller: UIViewController) async {
+        await HappyScan.open(text, intent: .connect, context: context, on: controller, start: .scan)
     }
 
     static func disconnectClaude(session: AccountSession, on controller: UIViewController) async {

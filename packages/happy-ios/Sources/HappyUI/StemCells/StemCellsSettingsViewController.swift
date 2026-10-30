@@ -697,13 +697,13 @@ final class StemCellsSettingsViewController: UIViewController, UIScrollViewDeleg
     }
 
     private func connectTerminal(scanning: Bool) {
-        guard !connecting, let session = activeSession else { return }
+        guard !connecting, activeSession != nil else { return }
         connecting = true
         Task { @MainActor in
             defer { connecting = false }
             let text = scanning ? await SettingsConnections.scanTerminal(on: self) : await SettingsConnections.promptTerminalURL(on: self)
             guard let text else { return }
-            await SettingsConnections.approveTerminal(text, session: session, on: self)
+            await SettingsConnections.approveTerminal(text, context: context, on: self)
         }
     }
 

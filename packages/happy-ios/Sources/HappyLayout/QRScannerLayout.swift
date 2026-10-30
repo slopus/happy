@@ -53,6 +53,18 @@ public struct QRScannerLayout: Equatable, Sendable {
         max(0, size.width - safeArea.horizontal - Metrics.textPaddingHorizontal * 2)
     }
 
+    /// The camera output's rect of interest, in its unit space, from the
+    /// viewfinder's conversion: the whole frame when the conversion is
+    /// empty, not finite or entirely outside it, which would read nothing.
+    public static func scanArea(_ converted: CGRect) -> CGRect {
+        let whole = CGRect(x: 0, y: 0, width: 1, height: 1)
+        let values = [converted.origin.x, converted.origin.y, converted.width, converted.height]
+        guard values.allSatisfy(\.isFinite) else { return whole }
+        let area = converted.standardized.intersection(whole)
+        guard !area.isNull, area.width > 0.05, area.height > 0.05 else { return whole }
+        return area
+    }
+
     public static func buttonWidth(size: CGSize, safeArea: LayoutInsets) -> CGFloat {
         min(Metrics.messageButtonMaxWidth, textWidth(size: size, safeArea: safeArea))
     }

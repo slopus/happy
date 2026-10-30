@@ -30,37 +30,17 @@ enum PairingFlow {
     enum Kind {
         case terminal
         case account
-
-        var prefix: String {
-            switch self {
-            case .terminal: PairingLink.terminalPrefix
-            case .account: PairingLink.accountPrefix
-            }
-        }
     }
 
     enum Outcome: Equatable {
         case approved
+        /// The code was answered already, or has expired: nothing was sent.
+        case alreadyHandled
         /// Not a pairing link of the expected kind.
         case invalidLink
         /// A terminal that only speaks auth v1.
         case terminalNeedsUpdate
         case failed
-    }
-
-    /// Presents the camera and returns the first code of `kind` it reads;
-    /// nil when closed. Other codes are ignored, as happy-app's scanner
-    /// ignores them.
-    static func scan(_ kind: Kind, from controller: UIViewController) async -> String? {
-        await withCheckedContinuation { continuation in
-            let scanner = QRScannerViewController()
-            scanner.accepts = {
-                $0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(kind.prefix) ||
-                DirectPairingLink.isDirect($0)
-            }
-            scanner.onFinish = { continuation.resume(returning: $0) }
-            controller.present(scanner, animated: true)
-        }
     }
 
     /// Approves a scanned or pasted link of the expected kind.
@@ -74,9 +54,12 @@ enum PairingFlow {
         default:
             return .invalidLink
         }
+        return await approve(link, session: session)
+    }
+
+    static func approve(_ link: PairingLink, session: AccountSession) async -> Outcome {
         do {
-            _ = try await session.pairing.approve(link)
-            return .approved
+            return try await session.pairing.approve(link) == .alreadyHandled ? .alreadyHandled : .approved
         } catch PairingError.terminalNeedsUpdate {
             return .terminalNeedsUpdate
         } catch {
@@ -93,6 +76,8 @@ enum PairingFlow {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         case (.approved, .account):
             Alerts.show(Strings.Common.success, Strings.Modals.deviceLinkedSuccessfully, on: controller)
+        case (.alreadyHandled, _):
+            Alerts.show(Strings.Scan.alreadyUsedTitle, Strings.Scan.alreadyUsed, on: controller)
         case (.invalidLink, _):
             Alerts.show(Strings.Common.error, Strings.Modals.invalidAuthUrl, on: controller)
         case (.terminalNeedsUpdate, _):

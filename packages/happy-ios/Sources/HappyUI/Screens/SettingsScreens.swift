@@ -226,10 +226,10 @@ public final class SettingsViewController: UIViewController {
     }
 
     private func approve(_ text: String) async {
-        guard let session = context.account.session, !connectingTerminal else { return }
+        guard !connectingTerminal else { return }
         connectingTerminal = true
         rebuild()
-        await SettingsConnections.approveTerminal(text, session: session, on: self)
+        await SettingsConnections.approveTerminal(text, context: context, on: self)
         connectingTerminal = false
         rebuild()
     }

@@ -74,16 +74,11 @@ enum DirectPairingFlow {
         return true
     }
 
+    /// Pair computer: any Happy code, where `HappyScan` sends it. While an
+    /// account is being added, a computer's code gets a new account.
     static func scan(context: AppContext, on controller: UIViewController) {
         Task { @MainActor in
-            guard let text = await PairingFlow.scan(.terminal, from: controller) else { return }
-            if openIfDirect(text, context: context, on: controller, start: .scan) { return }
-            guard let session = context.account.session else {
-                Alerts.show("Sign in to Happy", "Sign in to a Happy account before connecting this kind of computer code.", on: controller)
-                return
-            }
-            let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)
-            PairingFlow.report(outcome, kind: .terminal, on: controller)
+            await HappyScan.scan(intent: context.account.isAddingAccount ? .addAccount : .connect, context: context, on: controller)
         }
     }
 }

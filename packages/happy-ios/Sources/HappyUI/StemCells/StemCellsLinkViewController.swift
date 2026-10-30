@@ -262,7 +262,7 @@ final class StemCellsDirectLinkViewController: UIViewController {
 
     private func scan() {
         Task { @MainActor in
-            guard let text = await PairingFlow.scan(.terminal, from: self) else {
+            guard let text = await HappyScan.read(from: self) else {
                 return PairingAnalytics.shared.log(.cancelled(method: .direct, start: .scan))
             }
             StemCellsScan.open(text, context: context, on: self, start: .scan)

@@ -11,14 +11,7 @@ import UIKit
 enum StemCellsScan {
     static func scan(context: AppContext, on controller: UIViewController) {
         Task { @MainActor in
-            let text: String? = await withCheckedContinuation { continuation in
-                let scanner = QRScannerViewController()
-                scanner.accepts = { accepts($0) }
-                scanner.onFinish = { continuation.resume(returning: $0) }
-                controller.present(scanner, animated: true)
-            }
-            guard let text else { return }
-            open(text, context: context, on: controller, start: .scan)
+            await HappyScan.scan(intent: .connect, context: context, on: controller)
         }
     }
 
@@ -30,24 +23,9 @@ enum StemCellsScan {
         }
     }
 
-    static func accepts(_ text: String) -> Bool {
-        DirectPairingLink.isDirect(text) || PairingLink(text) != nil
-    }
-
     static func open(_ text: String, context: AppContext, on controller: UIViewController, start: PairingStart) {
-        if DirectPairingFlow.openIfDirect(text, context: context, on: controller, start: start) { return }
-        guard let link = PairingLink(text) else {
-            Alerts.show(Strings.Common.error, Strings.Modals.invalidAuthUrl, on: controller)
-            return
-        }
-        guard let session = context.account.session else {
-            Alerts.show(Strings.StemCells.signInFirst, Strings.StemCells.signInFirstDetail, on: controller)
-            return
-        }
-        let kind: PairingFlow.Kind = if case .account = link { .account } else { .terminal }
         Task { @MainActor in
-            let outcome = await PairingFlow.approve(text, expecting: kind, session: session)
-            PairingFlow.report(outcome, kind: kind, on: controller)
+            await HappyScan.open(text, intent: .connect, context: context, on: controller, start: start)
         }
     }
 }

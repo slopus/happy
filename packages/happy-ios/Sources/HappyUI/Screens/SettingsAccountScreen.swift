@@ -422,14 +422,12 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
     private func linkDevice() {
         guard !linkingDevice else { return }
         Task { @MainActor in
-            guard let text = await PairingFlow.scan(.account, from: self) else { return }
-            if DirectPairingFlow.openIfDirect(text, context: context, on: self) { return }
-            linkingDevice = true
-            rebuild()
-            let outcome = await PairingFlow.approve(text, expecting: .account, session: session)
-            linkingDevice = false
-            rebuild()
-            PairingFlow.report(outcome, kind: .account, on: self)
+            // Any Happy code: a computer's connects it, another device's
+            // links it, and anything else says what it is.
+            await HappyScan.scan(intent: .connect, context: context, on: self) { [weak self] busy in
+                self?.linkingDevice = busy
+                self?.rebuild()
+            }
         }
     }
 

@@ -373,6 +373,7 @@ public enum Strings {
         public static var pasteUrlFromTerminal: String { localized("modals.pasteUrlFromTerminal", "Paste the authentication URL from your terminal") }
         public static var invalidAuthUrl: String { localized("modals.invalidAuthUrl", "Invalid authentication URL") }
         public static var failedToConnectTerminal: String { localized("modals.failedToConnectTerminal", "Failed to connect terminal") }
+        public static var terminalConnectedSuccessfully: String { localized("modals.terminalConnectedSuccessfully", "Terminal connected successfully") }
         public static var deviceLinkedSuccessfully: String { localized("modals.deviceLinkedSuccessfully", "Device linked successfully") }
         public static var failedToLinkDevice: String { localized("modals.failedToLinkDevice", "Failed to link device") }
         public static var cameraPermissionsRequiredToScanQr: String { localized("modals.cameraPermissionsRequiredToScanQr", "Camera permissions are required to scan QR codes") }
