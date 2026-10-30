@@ -325,20 +325,35 @@ private fun ChiefOfStaffEntry(graph: AppGraph, nav: NavHostController, route: Ch
 @Composable
 private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: ArtifactRoute) {
     val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+    ArtifactRouteContent(session, route.artifactId, onBack = { nav.popBackStack() }) {
+        session?.let { ConversationApi(it.conversationRequest()) }
+    }
+}
+
+/**
+ * [ArtifactEntry]'s body, moved out unchanged. [connection] is only a key:
+ * when it changes, the artifact is read again (the session there); the loader
+ * uses nothing of it. [api] makes a client each time one is needed, null for
+ * a connection this device doesn't have. Internal, not private, only so the
+ * instrumented harness (src/androidTest) drives this loader rather than a
+ * copy of it.
+ */
+@Composable
+internal fun ArtifactRouteContent(connection: Any?, artifactId: String, onBack: () -> Unit, api: () -> ConversationApi?) {
     val unavailable = stringResource(R.string.conversation_unavailable)
     val deleted = stringResource(R.string.conversation_artifact_deleted)
     var attempt by rememberSaveable { mutableIntStateOf(0) }
     val pictures = rememberPictureViewer()
     val media = rememberMediaOpener()
-    val content by produceState<ArtifactContent>(ArtifactContent.Reading, session, route.artifactId, attempt) {
+    val content by produceState<ArtifactContent>(ArtifactContent.Reading, connection, artifactId, attempt) {
         value = ArtifactContent.Reading
-        val api = session?.let { ConversationApi(it.conversationRequest()) }
+        val api = api()
         if (api == null) {
             value = ArtifactContent.Failed(unavailable)
             return@produceState
         }
         value = try {
-            val artifact = api.readArtifact(route.artifactId)
+            val artifact = api.readArtifact(artifactId)
             when {
                 artifact == null -> ArtifactContent.Failed(unavailable)
                 artifact.deleted -> ArtifactContent.Failed(deleted)
@@ -365,14 +380,14 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
     val openable = (ready?.view as? ArtifactView.Openable)?.file
     ArtifactScreen(
         content = content,
-        onBack = { nav.popBackStack() },
+        onBack = onBack,
         onRetry = { attempt++ },
         onOpenPicture = pictures::show,
         onOpenFile = { file ->
             val artifact = ready?.artifact ?: return@ArtifactScreen
             val key = "artifact-${artifact.id}-${artifact.version}"
             media.open(key, MediaItem("file", file.path, file.mimeType)) {
-                ConversationApi(session!!.conversationRequest()).artifactFile(artifact.id, artifact.version.toString(), file.path)
+                api()!!.artifactFile(artifact.id, artifact.version.toString(), file.path)
             }
         },
         opening = openable?.let { media.state("artifact-${ready.artifact.id}-${ready.artifact.version}") },
