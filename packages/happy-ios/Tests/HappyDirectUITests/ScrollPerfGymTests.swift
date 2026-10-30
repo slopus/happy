@@ -41,7 +41,6 @@ final class ScrollPerfGymTests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         print("ScrollPerfGymTests skips quiescence: \(skipsQuiescence)")
-        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = "1"
         app.launchEnvironment["HAPPY_GYM_METER"] = "1"
         app.launchArguments += ["-v2.direct", "YES"]
     }
@@ -250,7 +249,6 @@ final class ScrollPerfGymTests: XCTestCase {
     /// install, then Direct chosen and its button tapped. It stays on
     /// linking a computer, not that computer's home or a chat on it.
     func testLeftoverComputerLinks() {
-        app.launchEnvironment.removeValue(forKey: "HAPPY_AGENT_CONNECTIONS")
         app.launchArguments = []
         app.launch()
         let link = app.descendants(matching: .any)["link"]

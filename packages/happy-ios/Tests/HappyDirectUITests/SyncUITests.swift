@@ -7,7 +7,6 @@ final class SyncUITests: XCTestCase {
     func testCanonicalHomeSettingsAndConversation() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = "1"
         app.launch()
         print("DIRECT_SYNC_READY")
         let artifacts = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Artifacts")).firstMatch

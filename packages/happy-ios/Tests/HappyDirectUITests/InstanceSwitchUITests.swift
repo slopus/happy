@@ -33,7 +33,6 @@ final class InstanceSwitchUITests: XCTestCase {
         continueAfterFailure = false
         print("InstanceSwitchUITests skips quiescence: \(Self.skipsQuiescence)")
         // Direct connection is an experiment, off on a fresh install.
-        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = "1"
         app.launch()
     }
 
@@ -172,32 +171,6 @@ final class InstanceSwitchUITests: XCTestCase {
         XCTAssertTrue(element("settings").waitForExistence(timeout: 5), "back from Appearance didn't return to settings")
         pause(1)
 
-        // Direct connection off: the computers leave the strip, and "+"
-        // links through the relay alone; on again, they're back.
-        let direct = app.switches["settings-toggle:direct-connection"]
-        reveal(direct)
-        XCTAssertEqual(direct.value as? String, "1")
-        direct.tap()
-        pause(1.5)
-        for _ in 0..<4 { app.swipeDown(); pause(0.4) }
-        pause(1.2)
-        let shownWithout = profiles().count
-        XCTAssertLessThan(shownWithout, circles.count, "the computers stayed with Direct connection off")
-        capture("switch-direct-off")
-        element("profile-add").tap()
-        XCTAssertTrue(app.buttons["glass-close"].waitForExistence(timeout: 5), "+ opened no sheet")
-        XCTAssertTrue(app.segmentedControls["link-method"].buttons["Relay"].isSelected, "+ didn't open on Relay with the experiment off")
-        XCTAssertTrue(app.buttons["Scan QR code"].exists, "Relay didn't show Link Your Computer")
-        pause(1)
-        capture("switch-direct-off-add")
-        app.buttons["glass-close"].tap()
-        pause(1)
-        reveal(direct)
-        direct.tap()
-        pause(1.5)
-        for _ in 0..<4 { app.swipeDown(); pause(0.4) }
-        pause(1.2)
-        XCTAssertEqual(profiles().count, circles.count, "the computers didn't come back")
         circles[0].tap()
         XCTAssertTrue(element("settings").waitForNonExistence(timeout: 5), "tapping a circle left settings up")
         assertAgentHome("tapping the computer's circle didn't show its home")

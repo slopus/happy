@@ -33,7 +33,6 @@ final class AgentStoriesDemoUITests: XCTestCase {
         Self.skipIdleWaits()
         continueAfterFailure = false
         app.launchArguments = ["-screen", "agent", "-agentSocket", socket, "-agentToken", token, "-storiesShowScale", "4"]
-        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = "1"
         app.launch()
 
         // The ring around the agent's mark opens its story; the row would open the chat.

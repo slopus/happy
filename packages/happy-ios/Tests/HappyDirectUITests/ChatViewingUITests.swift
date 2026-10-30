@@ -32,7 +32,6 @@ final class ChatViewingUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         print("ChatViewingUITests skips quiescence: \(skipsQuiescence)")
-        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = "1"
         app.launch()
     }
 

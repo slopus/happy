@@ -50,19 +50,6 @@ enum PairingFlow {
     /// `start`: how the link came, for the pairing's events.
     static func openIfAgentPairing(_ text: String, context: AppContext, on controller: UIViewController, start: PairingStart = .openedLink) -> Bool {
         guard PairingLink.isAgentConnection(text) else { return false }
-        // The Direct connection experiment off: it says so, and offers to
-        // turn it on and go on.
-        let preference = Preference(variant: context.variant)
-        guard preference.showsAgentConnections else {
-            Task { @MainActor in
-                guard await Alerts.confirm(Strings.agentConnectionsExperimentTitle, Strings.agentConnectionsExperimentDetail, confirmTitle: Strings.turnOn, on: controller) else {
-                    return PairingAnalytics.shared.log(.cancelled(method: .agentConnection, start: start))
-                }
-                await Experiments.setAgentConnectionsEnabled(true, context: context, surface: .onboarding)
-                _ = openIfAgentPairing(text, context: context, on: controller, start: start)
-            }
-            return true
-        }
         do {
             let link = try PairingLink(text)
             let pairing = AgentPairingViewController(context: context, link: link, start: start)

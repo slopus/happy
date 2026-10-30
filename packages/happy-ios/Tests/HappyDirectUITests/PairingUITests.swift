@@ -6,7 +6,6 @@ import XCTest
 final class PairingUITests: XCTestCase {
     func testTwoAgentConnectionsAndSwitcher() {
         let app = XCUIApplication()
-        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = "1"
         app.launch()
         // This simulator contains only accounts created by this isolated
         // interop job. Exercise removal before repeating the two-account run.

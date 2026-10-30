@@ -17,9 +17,8 @@ enum SettingsIndex {
     static var editName: Entry { Entry(id: "edit-name", title: Strings.editName, glyph: "create-outline", tile: .blue) }
     static var status: Entry { Entry(id: "status", title: Strings.status, glyph: "desktop-outline", tile: .green) }
     static var hideProjects: Entry { Entry(id: "hide-projects", title: "Hide projects", glyph: "folder-outline", tile: .orange) }
-    static var stories: Entry { Entry(id: "stories", title: Strings.Stories.setting, glyph: "sparkles-outline", tile: .blue) }
-    static var agentConnectionsEnabled: Entry { Entry(id: "direct-connection", title: Strings.agentConnectionsEnabled, glyph: "flask-outline", tile: .purple) }
-    static var theme: Entry { Entry(id: "theme", title: Strings.SettingsAppearance.theme, glyph: "contrast-outline", tile: .indigo) }
+    static var appearance: Entry { Entry(id: "appearance", title: Strings.Settings.appearance, glyph: "color-palette-outline", tile: .purple) }
+    static var about: Entry { Entry(id: "about", title: Strings.Settings.about, glyph: "information-circle-outline", tile: .gray) }
     static var connectAgent: Entry { Entry(id: "connect-agent", title: Strings.connectAgent, glyph: "laptop-outline", tile: .blue) }
     static var addAccount: Entry { Entry(id: "add-account", title: Strings.addHappyAccount, glyph: "person-add-outline", tile: .gray) }
     static var whatsNew: Entry { Entry(id: "whats-new", title: Strings.Settings.whatsNew, glyph: "sparkles-outline", tile: .orange) }
@@ -30,15 +29,15 @@ enum SettingsIndex {
     static var eula: Entry { Entry(id: "eula", title: Strings.Settings.eula, glyph: "document-text-outline", tile: .gray) }
     static var version: Entry { Entry(id: "version", title: Strings.Common.version, glyph: "information-circle-outline", tile: .gray) }
 
-    /// What a computer's page may show, in its order. Disconnect is left
-    /// out: a search doesn't offer to take the computer away. Stories
-    /// only where the computer offers them, as the page shows them.
-    static func computer(stories: Bool) -> [Entry] {
-        [editName, status, hideProjects] + (stories ? [Self.stories] : []) + [agentConnectionsEnabled, theme, connectAgent, addAccount] + about
+    /// What a computer's settings show, its pages' rows included, in their
+    /// order. Disconnect is left out: a search doesn't offer to take the
+    /// computer away.
+    static var computer: [Entry] {
+        [editName, status, appearance, hideProjects, connectAgent, addAccount, about] + aboutRows
     }
 
-    /// About, on every page.
-    static var about: [Entry] { [whatsNew, githubRepo, reportIssue, privacy, terms, eula, version] }
+    /// The About page's rows.
+    static var aboutRows: [Entry] { [whatsNew, githubRepo, reportIssue, privacy, terms, eula, version] }
 }
 
 extension SettingsRow {

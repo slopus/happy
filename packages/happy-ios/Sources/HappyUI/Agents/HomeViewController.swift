@@ -398,8 +398,7 @@ final class HomeViewController: UIViewController {
         let actions = HappyCore.Search.ranked(quickActions(), query: query) { $0.title }
         section("actions", Strings.quickActions, actions.map { ($0.id, $0.title, $0.glyph, $0.run) })
         let computer = session?.accountID
-        let stories = session.map { StoriesSession.session(for: $0).snapshot.availability }
-        let entries = SettingsIndex.computer(stories: stories == .on || stories == .off)
+        let entries = SettingsIndex.computer
         let settings = HappyCore.Search.ranked(entries, query: query) { $0.title }
         section("settings", Strings.settingsResults, settings.map { entry in
             (entry.id, entry.title, entry.glyph, { [weak self] in

@@ -359,21 +359,6 @@ public final class OnboardingSettingsViewController: UIViewController {
         }
         logout.showsChevron = false
         var sections = [ItemGroupView(rows: [server])]
-        // Where a computer can be a home: the Direct connection experiment.
-        let preference = Preference(variant: context.variant)
-        if preference.isAvailable {
-            let context = context
-            let direct = ItemRowView.toggle(
-                title: Strings.agentConnectionsEnabled,
-                subtitle: Strings.beta,
-                icon: ItemIcon(.ionicons("flask-outline"), tint: Palette.textSecondary, size: 28),
-                isOn: preference.agentConnectionsEnabled
-            ) { on in
-                Experiments.turn(on, context: context, surface: .settings)
-            }
-            direct.trailingView?.accessibilityIdentifier = "settings-toggle:direct-connection"
-            sections.append(ItemGroupView(title: Strings.experiments, rows: [direct]))
-        }
         // Signed out, there is nothing to log out of.
         if context.account.session != nil {
             sections.append(ItemGroupView(footer: Strings.Onboarding.logoutFooter, rows: [logout]))

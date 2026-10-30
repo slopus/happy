@@ -9,17 +9,16 @@ import UIKit
 /// the navigation bar with back at the left, search (the bar's own
 /// integrated search) and the QR button at the right; every computer and account as story circles, the chosen one
 /// centred and ringed, its name and line under it; then every setting the
-/// chosen profile has, in grouped cards, none of it behind a "More".
-/// Direct connection to computers is an experiment, off until turned on
-/// here; off, the computers are hidden and "+" links through the relay.
+/// chosen profile has, in grouped cards, with Appearance and About each a
+/// page of their own, as Happy's settings have them.
 /// Swiping a profile to the middle makes it the active one and turns the
 /// page to it, while home changes underneath (`AppCoordinator.install`
 /// keeps this page on top); tapping its circle makes it the active one and
 /// goes back to its home. "+" adds a computer in the link sheet.
 ///
-/// A computer's page: its name and status; Prioritizing and Stories; the
-/// theme, which each profile keeps on this phone; adding a computer or a
-/// Happy account; About; Disconnect. A Happy account's: its own pages
+/// A computer's page: its name and status; Appearance (the theme, which
+/// each profile keeps on this phone, and Hide projects); adding a computer
+/// or a Happy account; About; Disconnect. A Happy account's: its own pages
 /// (Account, Appearance, Language, Voice, Agents), its connected services,
 /// connecting a terminal, Support us, adding; About; Sign out. Those pages
 /// write to that account's synced settings, so they are on its page alone.
@@ -64,9 +63,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     private var prioritizing: Bool?
     private var connectionSettingsWatch: Task<Void, Never>?
     private var projectsHidden = false
-    private var storiesWatch: Watch?
-    /// Whether the computer offers Stories and the person has them on.
-    private var stories: StoriesSnapshot.Availability?
+    /// The nested page open over this one, drawn again with it.
+    private weak var page: SettingsPageViewController?
     /// The Happy account's own settings, while its page shows.
     private var settingsObservation: StoreObservation?
     private var snapshot = SettingsSnapshot()
@@ -149,8 +147,12 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     /// person to change or open; nothing runs on its own (a link would
     /// leave the app, a rename would raise the keyboard).
     private func showRevealed() {
-        guard let id = reveal, query == nil, view.window != nil,
-              let card = rows.firstIndex(where: { $0.contains { $0.id == id } }),
+        guard let id = reveal, query == nil, view.window != nil else { return }
+        if !rows.joined().contains(where: { $0.id == id }), let page = page(holding: id) {
+            reveal = nil
+            return open(page, reveal: id)
+        }
+        guard let card = rows.firstIndex(where: { $0.contains { $0.id == id } }),
               let index = rows[card].firstIndex(where: { $0.id == id }), cards.indices.contains(card) else { return }
         reveal = nil
         view.layoutIfNeeded()
@@ -186,8 +188,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         navigationItem.searchController = searchController
         navigationItem.hidesSearchBarWhenScrolling = false
         navigationItem.preferredSearchBarPlacement = .integratedButton
-        // In the bar at the top, not iOS 26's toolbar at the bottom.
+        // In the bar at the top, not iOS 26's toolbar at the bottom; at
+        // the left, after back.
         if #available(iOS 26.0, *) { navigationItem.searchBarPlacementAllowsToolbarIntegration = false }
+        navigationItem.leftItemsSupplementBackButton = true
+        navigationItem.leftBarButtonItems = [navigationItem.searchBarPlacementBarButtonItem]
         definesPresentationContext = true
     }
 
@@ -302,9 +307,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         prioritizingWatch?.invalidate()
         prioritizingWatch = nil
         prioritizing = nil
-        storiesWatch?.invalidate()
-        storiesWatch = nil
-        stories = nil
         settingsObservation = nil
         snapshot = SettingsSnapshot()
         guard let profile = shown else { return }
@@ -333,11 +335,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
             prioritizing = snapshot.prioritizing
             rebuild(animated: false)
         }
-        storiesWatch = StoriesSession.session(for: session).watch { [weak self] snapshot in
-            guard let self, stories != snapshot.availability else { return }
-            stories = snapshot.availability
-            rebuild(animated: false)
-        }
     }
 
     // MARK: Rows
@@ -351,26 +348,14 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         ]
         if profile.isAgentConnection {
             typealias Index = SettingsIndex
-            // Home follows desktop's authoritative account setting. There is
-            // deliberately no independent renderer or layout selector here.
-            var experiments = [Row(Index.hideProjects, accessory: .toggle, isOn: projectsHidden, toggled: { [weak self] on in
-                guard let engine = self?.context.account.agentConnections.syncEngine(for: id) else { return }
-                Task { try? await engine.setProjectsHidden(on) }
-            })]
-            // Stories: only where the computer offers them.
-            if stories == .on || stories == .off {
-                experiments.append(Row(Index.stories, accessory: .toggle, isOn: stories == .on, toggled: { [weak self] on in self?.setStories(on) }))
-            }
-            experiments.append(agentConnectionsRow())
             return [
                 [
                     Row(Index.editName, action: { [weak self] in self?.beginRename() }),
                     Row(Index.status, value: profile.subtitle, accessory: .none),
                 ],
-                experiments,
-                [themeRow()],
+                [Row(Index.appearance, action: { [weak self] in self?.open(.appearance) })],
                 adding,
-                aboutRows(),
+                [Row(Index.about, action: { [weak self] in self?.open(.about) })],
                 [Row(id: "disconnect", title: Strings.disconnect, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) })],
             ]
         }
@@ -391,25 +376,66 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
                 Row(id: "scan-terminal", title: Strings.connectTerminal, icon: ("qr-code-outline", .indigo), accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: true) }),
                 Row(id: "enter-terminal", title: Strings.enterTerminalURL, icon: ("link-outline", .indigo), accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: false) }),
             ],
-            [agentConnectionsRow()],
             [Row(id: "support-us", title: Strings.SupportUs.title, icon: ("heart-outline", .red), action: { [weak self] in self?.show(SupportUsViewController()) })],
             adding,
-            aboutRows(),
+            [Row(SettingsIndex.about, action: { [weak self] in self?.open(.about) })],
             [Row(id: "sign-out", title: Strings.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: false) })],
         ]
     }
 
-    /// The Direct connection experiment, on this phone.
-    private func agentConnectionsRow() -> SettingsRow {
-        let context = context
-        return SettingsRow(SettingsIndex.agentConnectionsEnabled, accessory: .toggle, isOn: Preference(variant: context.variant).agentConnectionsEnabled, toggled: { on in
-            Experiments.turn(on, context: context, surface: .settings)
-        })
+    /// The pages a row opens.
+    enum Page: CaseIterable {
+        case appearance, about
     }
 
-    /// The profile's theme on this phone: a tap goes Adaptive, Light, Dark.
-    private func themeRow() -> SettingsRow {
-        SettingsRow(SettingsIndex.theme, value: Self.themeName(context.account.localSettings.themePreference), accessory: .none, action: { [weak self] in self?.cycleTheme() })
+    private func title(_ page: Page) -> String {
+        switch page {
+        case .appearance: SettingsIndex.appearance.title
+        case .about: SettingsIndex.about.title
+        }
+    }
+
+    private func rows(_ page: Page) -> [[SettingsRow]] {
+        switch page {
+        case .appearance: appearanceRows()
+        case .about: [aboutRows()]
+        }
+    }
+
+    /// The page that holds the row `id`, if a page does.
+    private func page(holding id: String) -> Page? {
+        guard let profile = shown else { return nil }
+        return Page.allCases.first { page in
+            (page != .appearance || profile.isAgentConnection) && rows(page).joined().contains { $0.id == id }
+        }
+    }
+
+    private func open(_ page: Page, reveal: String? = nil) {
+        guard isTop else { return }
+        let controller = SettingsPageViewController(title: title(page)) { [weak self] in self?.rows(page) ?? [] }
+        controller.reveal = reveal
+        self.page = controller
+        navigationController?.pushViewController(controller, animated: true)
+    }
+
+    /// A computer's look on this phone: the theme, and whether home shows
+    /// projects (desktop's account setting, which home follows; there is
+    /// deliberately no renderer or layout choice here).
+    private func appearanceRows() -> [[SettingsRow]] {
+        typealias Row = SettingsRow
+        guard let id = shown?.id else { return [] }
+        let current = context.account.localSettings.themePreference
+        let themes: [ThemePreference] = [.adaptive, .light, .dark]
+        return [
+            themes.map { theme in
+                Row(id: "theme-\(theme)", title: Self.themeName(theme), value: theme == current ? "✓" : nil, accessory: .none, action: { [weak self] in self?.setTheme(theme) })
+            },
+            [Row(SettingsIndex.hideProjects, accessory: .toggle, isOn: projectsHidden, toggled: { [weak self] on in
+                guard let self, let engine = context.account.agentConnections.syncEngine(for: id) else { return }
+                projectsHidden = on
+                Task { try? await engine.setProjectsHidden(on) }
+            })],
+        ]
     }
 
     private func aboutRows() -> [SettingsRow] {
@@ -437,7 +463,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
             }))
         }
         if let profile = shown {
-            found += rowsFor(profile).flatMap { $0 }.filter { $0.title.localizedCaseInsensitiveContains(query) && !$0.destructive }
+            let pages = Page.allCases.filter { $0 != .appearance || profile.isAgentConnection }.flatMap { rows($0).joined() }
+            found += (rowsFor(profile).joined() + pages).filter { $0.title.localizedCaseInsensitiveContains(query) && !$0.destructive }
         }
         return found
     }
@@ -465,6 +492,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
                 return row
             }
         }
+        page?.reload()
         let searching = query != nil
         carousel.isHidden = searching
         name.isHidden = searching || nameField != nil
@@ -623,18 +651,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         Task { await store.setPrioritizing(on) }
     }
 
-    private func setStories(_ on: Bool) {
-        guard let profile = shown, let session = Session.session(for: profile.id, context: context) else { return }
-        stories = on ? .on : .off
-        let store = StoriesSession.session(for: session).store
-        Task { await store.setEnabled(on) }
-    }
-
-    /// Adaptive, Light, Dark, and round again, as Happy's Appearance page
-    /// does. A sheet of the three would be dismissing as the whole window
-    /// changes style under it, which UIKit leaves drawn.
-    private func cycleTheme() {
-        ThemeController.set(context.account.localSettings.themePreference.next, in: context)
+    private func setTheme(_ theme: ThemePreference) {
+        ThemeController.set(theme, in: context)
         rebuild(animated: false)
     }
 
@@ -741,31 +759,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
                 Alerts.show(Strings.couldNotRemove, error.localizedDescription, on: self)
             }
         }
-    }
-}
-/// The Direct connection experiment: computers paired straight to this
-/// phone. Turned off, they stay paired but hidden, and a computer open
-/// gives way to the Happy account, or Welcome.
-@MainActor
-enum Experiments {
-    static func setAgentConnectionsEnabled(_ on: Bool, context: AppContext, surface: PairingSurface) async {
-        guard record(on, context: context, surface: surface) else { return }
-        await context.account.setShowsAgentConnections(Preference(variant: context.variant).showsAgentConnections)
-    }
-
-    /// From a switch: the choice is kept at once, so the page drawn again
-    /// meanwhile shows it; the computers follow.
-    static func turn(_ on: Bool, context: AppContext, surface: PairingSurface) {
-        guard record(on, context: context, surface: surface) else { return }
-        Task { await context.account.setShowsAgentConnections(Preference(variant: context.variant).showsAgentConnections) }
-    }
-
-    private static func record(_ on: Bool, context: AppContext, surface: PairingSurface) -> Bool {
-        let preference = Preference(variant: context.variant)
-        guard preference.isAvailable, preference.agentConnectionsEnabled != on else { return false }
-        preference.agentConnectionsEnabled = on
-        PairingAnalytics.shared.log(.experimentToggled(on: on, surface: surface))
-        return true
     }
 }
 #endif

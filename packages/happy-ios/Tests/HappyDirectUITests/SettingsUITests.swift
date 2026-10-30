@@ -35,7 +35,6 @@ final class SettingsUITests: XCTestCase {
         print("SettingsUITests skips quiescence: \(Self.skipsQuiescence)")
         // Direct connection is an experiment, off on a fresh install; only
         // the test of that leaves it off.
-        app.launchEnvironment["HAPPY_AGENT_CONNECTIONS"] = name.contains("Experiment") ? "0" : "1"
         app.launch()
     }
 
@@ -152,77 +151,6 @@ final class SettingsUITests: XCTestCase {
         app.segmentedControls["link-method"].buttons[name]
     }
 
-    /// Direct connection is an experiment, off on a fresh install (the
-    /// driver installs afresh, `FRESH=1`): the first screen's switch is on
-    /// Relay, showing Welcome with no way to pair a computer directly; its
-    /// gear holds the experiment's switch, off. Direct shows the computer's
-    /// code and link, and Relay Welcome again. A computer's link from
-    /// outside says it is an experiment and offers to turn it on, which
-    /// pairs it and opens its home; turning it off in Settings hides the
-    /// computer again: the first screen, on Relay.
-    func testAgentConnectionsAreAnExperiment() {
-        XCTAssertTrue(element("link").waitForExistence(timeout: 15), "a fresh install doesn't open on the link screen")
-        XCTAssertTrue(method("Relay").isSelected, "the switch isn't on Relay at first")
-        XCTAssertTrue(app.buttons["Create account"].exists, "Relay doesn't show Welcome")
-        XCTAssertFalse(app.buttons["Connect Agent"].exists, "Welcome offers direct pairing with the experiment off")
-        XCTAssertFalse(element("link-paste").exists, "Direct's way shows on Relay")
-        pause(1)
-        capture("experiment-off-welcome")
-
-        // The gear: the server, and the experiment's switch, off.
-        app.buttons["link-settings"].tap()
-        let gearToggle = app.switches["settings-toggle:direct-connection"]
-        XCTAssertTrue(gearToggle.waitForExistence(timeout: 5), "the gear has no Direct connection switch")
-        XCTAssertEqual(gearToggle.value as? String, "0")
-        pause(1)
-        capture("experiment-gear")
-        goBack("the gear's settings")
-
-        // Direct: the code and the link, in place; Relay: Welcome again.
-        method("Direct").tap()
-        XCTAssertTrue(element("link-paste").waitForExistence(timeout: 3), "Direct shows no paste link")
-        XCTAssertTrue(app.buttons["Scan QR code"].exists, "Direct shows no scan")
-        pause(1)
-        capture("experiment-direct")
-        method("Relay").tap()
-        XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 3), "back on Relay, no Welcome")
-        pause(1)
-
-        // A computer's link, from outside: it says it is an experiment.
-        print("HAPPY_STEP direct-link")
-        let turnOn = app.alerts.buttons["Turn on"]
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let deadline = Date().addingTimeInterval(60)
-        while Date() < deadline, !turnOn.exists {
-            for alert in [app.alerts.firstMatch, springboard.alerts.firstMatch] where alert.buttons["Open"].exists {
-                alert.buttons["Open"].tap()
-            }
-            _ = turnOn.waitForExistence(timeout: 1)
-        }
-        XCTAssertTrue(turnOn.exists, "a direct link didn't offer to turn the experiment on")
-        pause(1)
-        capture("experiment-off-link")
-        turnOn.tap()
-        matchEmoji()
-        XCTAssertTrue(anyRow.waitForExistence(timeout: 90), "turning it on and pairing didn't open the computer")
-        pause(2)
-        capture("experiment-on-home")
-
-        // On, in the computer's settings; off hides it, and Welcome opens.
-        element("settings-mark").tap()
-        let toggle = app.switches["settings-toggle:direct-connection"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "no Direct connection switch")
-        if !toggle.isHittable { app.swipeUp(); pause(1.2) }
-        XCTAssertEqual(toggle.value as? String, "1")
-        capture("experiment-on-settings")
-        toggle.tap()
-        XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 10), "turning it off didn't hide the computer")
-        XCTAssertTrue(method("Relay").isSelected, "the switch isn't back on Relay")
-        XCTAssertFalse(app.buttons["Connect Agent"].exists)
-        pause(1)
-        capture("experiment-off-again")
-    }
-
     func testSettings() {
         agentHome()
         pause(1)
@@ -275,18 +203,19 @@ final class SettingsUITests: XCTestCase {
         prioritizing.tap()
         pause(1)
 
-        // Theme goes round (the keyboard has shown: its window must not
-        // cover the screen once the style changes): Adaptive, Light, Dark.
-        let theme = row("theme")
-        for _ in 0..<3 where !theme.label.contains("Dark") {
-            theme.tap()
-            pause(0.8)
-        }
-        XCTAssertTrue(theme.label.contains("Dark"), "the theme never reached Dark")
-        capture("settings-dark")
-        theme.tap()
+        // Appearance is a page: the theme is chosen there (the keyboard
+        // has shown: its window must not cover the screen once the style
+        // changes).
+        row("appearance").tap()
+        XCTAssertTrue(row("theme-dark").waitForExistence(timeout: 3), "Appearance has no Dark")
+        row("theme-dark").tap()
         pause(0.8)
-        XCTAssertTrue(theme.label.contains("Adaptive"), "the theme didn't go round to Adaptive")
+        XCTAssertTrue(row("theme-dark").label.contains("✓"), "Dark wasn't chosen")
+        capture("settings-dark")
+        row("theme-adaptive").tap()
+        pause(0.8)
+        XCTAssertTrue(row("hide-projects").exists, "Appearance has no Hide projects")
+        goBack("Appearance")
 
         row("add-account").tap()
         XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 5), "Add Happy account didn't open Welcome")
@@ -294,17 +223,20 @@ final class SettingsUITests: XCTestCase {
         capture("settings-row-add-account")
         goBack("Welcome")
 
+        // About is a page.
+        row("about").tap()
+        XCTAssertTrue(row("version").waitForExistence(timeout: 3), "About has no version row")
         assertPushes("whats-new", "What's new")
         for link in ["github-repo", "report-issue", "privacy", "terms", "eula"] { assertOpensLink(link) }
-        XCTAssertTrue(row("version").exists, "no version row")
+        goBack("About")
         XCTAssertTrue(row("disconnect").exists, "no Disconnect")
         scrollToTop()
 
         // Search finds a row.
         app.buttons["settings-search"].tap()
         XCTAssertTrue(element("settings-search-field").waitForExistence(timeout: 3), "search opened no field")
-        app.typeText("Theme")
-        XCTAssertTrue(element("settings:theme").waitForExistence(timeout: 3), "search didn't find Theme")
+        app.typeText("Dark")
+        XCTAssertTrue(element("settings:theme-dark").waitForExistence(timeout: 3), "search didn't find Dark")
         capture("settings-search")
         app.buttons["Cancel"].tap()
         pause(0.8)

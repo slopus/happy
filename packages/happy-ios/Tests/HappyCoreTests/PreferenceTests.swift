@@ -37,24 +37,6 @@ final class PreferenceTests: XCTestCase {
         }
     }
 
-    /// Direct connection is an experiment, off until turned on; production
-    /// keeps its computer page and can never turn it on.
-    func testAgentConnectionsAreOffUntilTurnedOn() {
-        for variant in [AppVariant.preview, .development] {
-            let preference = Preference(variant: variant, storage: storage())
-            XCTAssertFalse(preference.agentConnectionsEnabled)
-            XCTAssertFalse(preference.showsAgentConnections)
-            preference.agentConnectionsEnabled = true
-            XCTAssertTrue(preference.agentConnectionsEnabled)
-            XCTAssertTrue(preference.showsAgentConnections)
-        }
-        let defaults = storage()
-        defaults.set(true, forKey: Preference.agentConnectionsKey)
-        let production = Preference(variant: .production, storage: defaults)
-        XCTAssertFalse(production.agentConnectionsEnabled)
-        XCTAssertTrue(production.showsAgentConnections)
-    }
-
     func testTheShippedBundleIdentifierIsProduction() {
         XCTAssertEqual(AppVariant.production.bundleIdentifier, "com.ex3ndr.happy")
         XCTAssertFalse(Preference(variant: .production).isAvailable)

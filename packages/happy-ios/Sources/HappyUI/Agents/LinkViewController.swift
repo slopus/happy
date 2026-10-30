@@ -61,7 +61,7 @@ final class LinkViewController: UIViewController {
     init(context: AppContext, inSheet: Bool) {
         self.context = context
         self.inSheet = inSheet
-        method = Preference(variant: context.variant).agentConnectionsEnabled ? .agentConnection : .relay
+        method = Preference(variant: context.variant).isAvailable ? .agentConnection : .relay
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -93,12 +93,6 @@ final class LinkViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Back from settings, where the experiment may have changed.
-        let now: PairingMethod = Preference(variant: context.variant).agentConnectionsEnabled ? .agentConnection : .relay
-        if now != method {
-            method = now
-            show(now, animated: false)
-        }
         syncAddingAccount()
     }
 
@@ -129,12 +123,6 @@ final class LinkViewController: UIViewController {
         guard to != method else { return }
         PairingAnalytics.shared.log(.optionSelected(from: method, to: to, surface: surface))
         method = to
-        let preference = Preference(variant: context.variant)
-        // One preference with Settings' switch; Relay leaves paired
-        // computers where they are.
-        if (to == .agentConnection) != preference.agentConnectionsEnabled, to == .agentConnection || context.account.agentConnections.accounts.isEmpty {
-            Experiments.turn(to == .agentConnection, context: context, surface: surface)
-        }
         show(to, animated: true)
         syncAddingAccount()
     }

@@ -31,7 +31,6 @@ public enum PairingEvent: Equatable, Sendable {
     case completed(method: PairingMethod, start: PairingStart)
     case failed(method: PairingMethod, start: PairingStart)
     case cancelled(method: PairingMethod, start: PairingStart)
-    case experimentToggled(on: Bool, surface: PairingSurface)
 
     public var name: String {
         switch self {
@@ -40,7 +39,6 @@ public enum PairingEvent: Equatable, Sendable {
         case .completed: "pairing_completed"
         case .failed: "pairing_failed"
         case .cancelled: "pairing_cancelled"
-        case .experimentToggled: "direct_connection_experiment_toggled"
         }
     }
 
@@ -52,8 +50,6 @@ public enum PairingEvent: Equatable, Sendable {
             ["from": .string(from.rawValue), "to": .string(to.rawValue), "surface": .string(surface.rawValue)]
         case .completed(let method, let start), .failed(let method, let start), .cancelled(let method, let start):
             ["method": .string(method.rawValue), "start": .string(start.rawValue)]
-        case .experimentToggled(let on, let surface):
-            ["enabled": .bool(on), "surface": .string(surface.rawValue)]
         }
     }
 }

@@ -20,18 +20,16 @@ final class PairingAnalyticsTests: XCTestCase {
         analytics.log(.completed(method: .agentConnection, start: .scan))
         analytics.log(.failed(method: .relay, start: .pasteLink))
         analytics.log(.cancelled(method: .agentConnection, start: .openedLink))
-        analytics.log(.experimentToggled(on: true, surface: .settings))
         let events = sent()
         XCTAssertEqual(events.map(\.0), [
             "pairing_options_shown", "pairing_option_selected", "pairing_completed",
-            "pairing_failed", "pairing_cancelled", "direct_connection_experiment_toggled",
+            "pairing_failed", "pairing_cancelled",
         ])
         XCTAssertEqual(events[0].1, ["options": .strings(["relay", "agent_connection"]), "default_selected": .string("relay"), "surface": .string("onboarding"), "app_variant": .string("preview")])
         XCTAssertEqual(events[1].1, ["from": .string("relay"), "to": .string("agent_connection"), "surface": .string("connect_agent"), "app_variant": .string("preview")])
         XCTAssertEqual(events[2].1, ["method": .string("agent_connection"), "start": .string("scan"), "app_variant": .string("preview")])
         XCTAssertEqual(events[3].1["start"], .string("paste_link"))
         XCTAssertEqual(events[4].1["start"], .string("opened_link"))
-        XCTAssertEqual(events[5].1, ["enabled": .bool(true), "surface": .string("settings"), "app_variant": .string("preview")])
     }
 
     func testOptedOutOrWithNoClientNothingIsSent() {
@@ -51,7 +49,6 @@ final class PairingAnalyticsTests: XCTestCase {
             .optionsShown(options: [.relay], selected: .relay, surface: .settings),
             .optionSelected(from: .agentConnection, to: .relay, surface: .onboarding),
             .completed(method: .relay, start: .openedLink),
-            .experimentToggled(on: false, surface: .connectAgent),
         ]
         for event in events {
             for value in event.properties.values {
