@@ -116,7 +116,7 @@ class ConnectFlowTest {
         assertScanSays(ScanResult.Scanned(accountUrl), "This code links a new device. Scan it from Settings › Account › Link New Device.")
         assertScanSays(ScanResult.Scanned("https://example.com"), "This QR code isn't a Happy code.")
         assertScanSays(ScanResult.Scanned("happy://something?else"), "This QR code isn't a Happy code.")
-        assertScanSays(ScanResult.Scanned("happy://direct?abc"), "This code pairs a computer with Happy Protocol V2. Pair it from the account menu on Home.")
+        assertScanSays(ScanResult.Scanned("happy://direct?abc"), "This code connects an agent. Use Connect Agent in the account menu on Home.")
         assertScanSays(
             ScanResult.Failed("Google Play services are not available"),
             "The QR scanner isn't available on this device. Paste the link instead.",
@@ -125,10 +125,10 @@ class ConnectFlowTest {
     }
 
     @Test
-    fun aPairingCodeGoesToComputerPairingFromAnyScanner() {
+    fun aPairingCodeGoesToAgentPairingFromAnyScanner() {
         val paired = CopyOnWriteArrayList<String>()
         rule.setHappyContent {
-            CompositionLocalProvider(LocalQrScanner provides scanner, LocalComputerPairing provides { paired += it }) {
+            CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { paired += it }) {
                 flow = rememberAccountLink(approve = { url -> approved += url })
             }
         }
@@ -234,10 +234,10 @@ class ConnectFlowTest {
     fun codesAreClassifiedByKind() {
         assertEquals(HappyCode.Terminal(terminalUrl), HappyCode.classify(" $terminalUrl "))
         assertEquals(HappyCode.Account(accountUrl), HappyCode.classify(accountUrl))
-        assertEquals(HappyCode.ComputerPairing("happy://direct?abc"), HappyCode.classify("happy://direct?abc"))
+        assertEquals(HappyCode.AgentPairing("happy://direct?abc"), HappyCode.classify("happy://direct?abc"))
         // Malformed pairing codes stay pairing codes; they never fall back to relay approval.
-        assertEquals(HappyCode.ComputerPairing("happy://direct"), HappyCode.classify("happy://direct"))
-        assertEquals(HappyCode.ComputerPairing("Happy://Direct?%%"), HappyCode.classify("Happy://Direct?%%"))
+        assertEquals(HappyCode.AgentPairing("happy://direct"), HappyCode.classify("happy://direct"))
+        assertEquals(HappyCode.AgentPairing("Happy://Direct?%%"), HappyCode.classify("Happy://Direct?%%"))
         assertEquals(HappyCode.UnknownHappy("happy://directory?x"), HappyCode.classify("happy://directory?x"))
         assertEquals(HappyCode.UnknownHappy("happy://session/1"), HappyCode.classify("happy://session/1"))
         assertEquals(HappyCode.NotHappy("hello"), HappyCode.classify("hello"))

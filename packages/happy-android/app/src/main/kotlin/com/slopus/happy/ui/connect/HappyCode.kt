@@ -16,13 +16,13 @@ sealed interface HappyCode {
     data class Account(val url: String) : HappyCode
 
     /**
-     * `happy://direct?…`: a computer offering to pair over Happy Protocol V2.
+     * `happy://direct?…`: an agent offering to connect over Happy Protocol V2.
      * Classified by scheme and host alone, so a malformed pairing code is
      * still this kind and is refused by the pairing, never read as another.
      * The code is a secret, so it never prints.
      */
-    data class ComputerPairing(val text: String) : HappyCode {
-        override fun toString() = "ComputerPairing(…)"
+    data class AgentPairing(val text: String) : HappyCode {
+        override fun toString() = "AgentPairing(…)"
     }
 
     /** A `happy:` link of no kind this app knows. */
@@ -37,7 +37,7 @@ sealed interface HappyCode {
             val lower = text.lowercase()
             return when {
                 // Before the others: a pairing code must never reach relay approval.
-                isComputerPairing(text) -> ComputerPairing(text)
+                isAgentPairing(text) -> AgentPairing(text)
                 text.startsWith(TERMINAL_URL_PREFIX) -> Terminal(text)
                 text.startsWith(AccountLink.URL_PREFIX) -> Account(text)
                 lower.startsWith("happy:") -> UnknownHappy(text)
@@ -46,7 +46,7 @@ sealed interface HappyCode {
         }
 
         /** happy-agent API.md "The QR code": scheme `happy`, host `direct`. */
-        fun isComputerPairing(text: String): Boolean {
+        fun isAgentPairing(text: String): Boolean {
             val lower = text.trim().lowercase()
             if (!lower.startsWith("happy://direct")) return false
             val rest = lower.removePrefix("happy://direct")

@@ -1,4 +1,4 @@
-package com.slopus.happy.computer
+package com.slopus.happy.connection
 
 import io.tailcat.ClientConfiguration
 import io.tailcat.DERPMapProvider
@@ -10,13 +10,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 
-/** One HTTP answer from a paired computer. Header names are lower case. */
+/** One HTTP answer from a paired agent. Header names are lower case. */
 class TransportResponse(val status: Int, val headers: Map<String, String> = emptyMap(), val body: ByteArray = ByteArray(0)) {
     val text: String get() = body.toString(Charsets.UTF_8)
 }
 
 /**
- * The Happy Agent API over one computer's private Tailcat socket
+ * The Happy Agent API over one agent's private Tailcat socket
  * (happy-agent API.md, "The connector's socket"). Each request is
  * authenticated by its bearer credential: the pairing token, a handshake
  * id, or the device token.
@@ -38,7 +38,7 @@ interface Transport {
 
 /**
  * [Transport] over tailcat-kotlin: one Tailcat client per
- * computer, and a fresh TCP stream to `server.tailcat:<port>` for every
+ * agent, and a fresh TCP stream to `server.tailcat:<port>` for every
  * HTTP/1.1 request (`Connection: close`), as tailcat-swift is used on iOS.
  * The address is a secret; nothing here logs it.
  */
@@ -53,12 +53,12 @@ class TailcatTransport(
     private var closed = false
 
     private suspend fun connection(): TailcatClient = lock.withLock {
-        if (closed) throw ComputerException(ComputerException.Reason.Unavailable)
+        if (closed) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
         client ?: runInterruptible(Dispatchers.IO) {
             try {
                 TailcatClient.connect(address, ClientConfiguration(mapProvider = derpMap, connectTimeoutMillis = connectTimeoutMillis))
             } catch (e: Exception) {
-                throw ComputerException(ComputerException.Reason.Unavailable).initCause(e)
+                throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
             }
         }.also { client = it }
     }
@@ -90,17 +90,17 @@ class TailcatTransport(
                     }
                 }
             }
-        } catch (e: ComputerException) {
+        } catch (e: AgentConnectionException) {
             throw e
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
             resetIfCurrent(tunnel)
-            throw ComputerException(ComputerException.Reason.Unavailable).initCause(e)
+            throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            // Nothing came back on the tunnel: the computer may have restarted and forgotten it.
+            // Nothing came back on the tunnel: the agent may have restarted and forgotten it.
             resetIfCurrent(tunnel)
-            throw ComputerException(ComputerException.Reason.Unavailable).initCause(e)
+            throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         }
     }
 
@@ -123,7 +123,7 @@ class TailcatTransport(
          * and up) Happy Agent's addresses name. tailcat-kotlin a08de5c
          * defaults to Tailscale's own map instead, which has none of them
          * ("No relay region"). One provider for the app, so its hour-long
-         * cache is shared by every computer.
+         * cache is shared by every agent.
          */
         const val DERP_MAP_URL = "https://tailcat.dev/derpmap.json"
         private val derpMap = DERPMapProvider(DERP_MAP_URL)
@@ -139,7 +139,7 @@ object TailcatHttp {
         fun unsafe(text: String) = text.contains('\r') || text.contains('\n')
         if (method !in methods || !path.startsWith("/") || path.contains(' ') || unsafe(path) || unsafe(credential) ||
             headers.any { (name, value) -> unsafe(name) || name.contains(':') || unsafe(value) }
-        ) throw ComputerException(ComputerException.Reason.InvalidResponse)
+        ) throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         val head = StringBuilder()
             .append("$method $path HTTP/1.1\r\n")
             .append("Host: server.tailcat:$port\r\n")
@@ -160,7 +160,7 @@ object TailcatHttp {
 class HttpResponseParser(private val limit: Int = 8 * 1024 * 1024) {
     private var data = ByteArray(0)
 
-    private fun invalid(): Nothing = throw ComputerException(ComputerException.Reason.InvalidResponse)
+    private fun invalid(): Nothing = throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
 
     /** The response once complete, else null; [eof] says the stream ended. */
     fun append(bytes: ByteArray, eof: Boolean): TransportResponse? {

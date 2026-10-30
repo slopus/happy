@@ -23,11 +23,15 @@ architectures comparable (local store, delta sync, crypto layer).
   push, tablet layouts, purchases and voice. Experimental and social surfaces
   remain excluded. Store validation needs the existing signing identity,
   EAS build number and RevenueCat Google SDK key.
-- **Happy Protocol V2**: a computer paired straight to the phone over
-  Tailcat, with no relay account. It is an account of its own beside relay
-  Happy accounts (see "Happy Protocol V2" below). Call it Happy Protocol V2
-  in strings, docs and prose; never "direct" or "direct mode", except where
-  the wire itself says it (`happy://direct?`, endpoints, JSON keys).
+- **Happy Protocol V2**: a Happy Agent connected straight to the phone
+  over Tailcat, with no relay account. Each pairing is an **agent
+  connection**, an account of its own beside relay Happy accounts, shown by
+  the agent's own name and avatar (see "Happy Protocol V2" below). The
+  user-facing action, screen and menu entry are **"Connect Agent"**. Never
+  call these "computer" (relay "machine" wording is a separate, legacy
+  concept and stays). Call the protocol Happy Protocol V2 in strings, docs
+  and prose; never "direct" or "direct mode", except where the wire itself
+  says it (`happy://direct?`, endpoints, JSON keys).
 - **Naming in code:** current code has no prefix; old relay code that
   clashes is `Legacy*`; never `V2`, `New`, `Direct` or feature prefixes.
   `Legacy*` = used only by the legacy relay protocol or its UI. Shared
@@ -103,7 +107,7 @@ win:
 - **Top app bar, back:** rules 5 and 6. happy-app's first-run Link Your
   Computer page swallows back; here back leaves the app as on any root.
 - **Home's top bar:** the current account's avatar on the left opens a
-  drop-down of the relay accounts and Protocol V2 computers (avatar and
+  drop-down of the relay accounts and agent connections (avatar and
   name each), plus "Add account"; picking one switches. Settings and then
   compose (far right) on the right. No logo, filter menu or centred
   "Sessions" title.
@@ -118,8 +122,8 @@ win:
   and neither home nor chat scrolls by itself while nothing changed.
 - **Settings cards** look the same everywhere and come from one component
   (`ItemGroup`).
-- **QR codes:** every scan is classified (terminal, account, Protocol V2
-  pairing, or not ours) and routed. A code the screen can't use shows an
+- **QR codes:** every scan is classified (terminal, account, agent
+  connection, or not ours) and routed. A code the screen can't use shows an
   error; nothing is silently ignored. Scanning works while signed in.
 
 ## Layout
@@ -702,7 +706,8 @@ unless they provide `true`.
 
 ## Happy Protocol V2
 
-A computer paired straight to the phone. The source of truth is happy-agent's
+A Happy Agent connected straight to the phone (an agent connection;
+"Connect Agent" in the UI, never "computer"). The source of truth is happy-agent's
 `API.md`, "Mobile connector" (pairing, credentials, the QR code); iOS's port
 is `packages/happy-ios`. The wire keeps its own names
 (`happy://direct?`, `/v0/mobile-connector/…`).
@@ -711,14 +716,15 @@ is `packages/happy-ios`. The wire keeps its own names
   length-prefixed transcript, HKDF-SHA-256 keys, HMAC confirmations and the
   333-emoji table (`resources/pairing/emoji.txt`, copied from API.md).
   `PairingCryptoTest` pins API.md's vectors and the table's SHA-256.
-- **Link, handshake, identity** (`app/…/computer/`):
+- **Link, handshake, identity** (`app/…/connection/`):
   `PairingLink` validates the code (a malformed `happy://direct?`
   never falls back to relay approval); `PairingService` commits,
-  reveals, returns the emoji and on confirm waits for the computer and
-  checks its MAC before anything is kept; `ComputerIdentity` reads health
-  (protocol 27 or later) and `config.node`.
+  reveals, returns the emoji and on confirm waits for the agent and
+  checks its MAC before anything is kept; `AgentIdentity` reads health
+  (protocol 27 or later) and `config.node`; `AgentConnections` keeps each
+  connection's credentials Keystore-encrypted, apart from relay credentials.
 - **Transport** (`TailcatTransport`): tailcat-kotlin, one client
-  per computer and a fresh TCP stream to `server.tailcat:<port>` per
+  per agent connection and a fresh TCP stream to `server.tailcat:<port>` per
   HTTP/1.1 request, framed by `HttpResponseParser`. It uses upstream
   Tailcat's DERP map (`https://tailcat.dev/derpmap.json`); tailcat-kotlin's
   default (Tailscale's map) has none of Happy Agent's relay regions.
@@ -729,9 +735,9 @@ is `packages/happy-ios`. The wire keeps its own names
   published, switch the catalog and delete both.
 - **Live check:** `LivePairingTest` pairs with a real Happy Agent
   when `HAPPY_PAIRING_LINK` holds a fresh code, writes the emoji for the
-  person confirming on the computer, then reads health and config with the
-  new device token over a new tunnel. Remove the test device on the
-  computer afterwards.
+  person confirming in Happy Agent, then reads health and config with the
+  new device token over a new tunnel. Remove the test device in Happy Agent
+  afterwards.
 
 ## Autocomplete
 

@@ -1,4 +1,4 @@
-package com.slopus.happy.computer
+package com.slopus.happy.connection
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -10,33 +10,33 @@ import kotlinx.coroutines.launch
 
 /** Where one pairing stands, as the pairing screen draws it. */
 sealed interface PairingState {
-    /** The code's name for the computer; unverified until paired. */
-    val computerName: String?
+    /** The code's name for the agent; unverified until paired. */
+    val agentName: String?
 
-    data class Connecting(override val computerName: String) : PairingState
+    data class Connecting(override val agentName: String) : PairingState
 
     /** Both screens show these four; the person compares them. */
-    data class Compare(override val computerName: String, val emoji: List<String>) : PairingState
+    data class Compare(override val agentName: String, val emoji: List<String>) : PairingState
 
-    /** The phone said they match; waiting for the computer to say so too. */
-    data class Confirming(override val computerName: String, val emoji: List<String>) : PairingState
+    /** The phone said they match; waiting for the agent to say so too. */
+    data class Confirming(override val agentName: String, val emoji: List<String>) : PairingState
 
-    data class Paired(val account: ComputerAccount) : PairingState {
-        override val computerName get() = account.name
+    data class Paired(val account: AgentConnection) : PairingState {
+        override val agentName get() = account.name
     }
 
-    data class Failed(override val computerName: String?, val message: String) : PairingState
+    data class Failed(override val agentName: String?, val message: String) : PairingState
 }
 
 /**
  * One pairing from a scanned or pasted `happy://direct?` code to a kept
- * computer: connect and exchange keys, show the emoji, and on the person's
- * word wait for the computer's confirmation before keeping anything.
+ * agent: connect and exchange keys, show the emoji, and on the person's
+ * word wait for the agent's confirmation before keeping anything.
  * Closing at any point before that rejects the pairing.
  */
 class PairingFlow(
     private val scope: CoroutineScope,
-    private val accounts: ComputerAccounts,
+    private val accounts: AgentConnections,
     private val deviceName: String,
     private val makeTransport: (PairingLink) -> Transport = { TailcatTransport(it.address, it.port) },
     private val now: () -> Long = System::currentTimeMillis,
@@ -53,7 +53,7 @@ class PairingFlow(
         if (mutableState.value != null) return
         val parsed = try {
             PairingLink.parse(code, now())
-        } catch (e: ComputerException) {
+        } catch (e: AgentConnectionException) {
             mutableState.value = PairingState.Failed(null, e.message ?: "")
             return
         }
@@ -72,19 +72,19 @@ class PairingFlow(
         val compare = mutableState.value as? PairingState.Compare ?: return
         val service = service ?: return
         val link = link ?: return
-        mutableState.value = PairingState.Confirming(compare.computerName, compare.emoji)
-        run(compare.computerName) {
+        mutableState.value = PairingState.Confirming(compare.agentName, compare.emoji)
+        run(compare.agentName) {
             val credentials = service.confirm()
             transport?.close()
             mutableState.value = PairingState.Paired(accounts.add(credentials, link.name))
         }
     }
 
-    /** The emoji don't match: the computer is told, and nothing is kept. */
+    /** The emoji don't match: the agent is told, and nothing is kept. */
     fun reject() {
-        val name = mutableState.value?.computerName
+        val name = mutableState.value?.agentName
         stop()
-        mutableState.value = PairingState.Failed(name, ComputerException.Reason.Rejected.message)
+        mutableState.value = PairingState.Failed(name, AgentConnectionException.Reason.Rejected.message)
     }
 
     /** The screen went away. An unfinished pairing is rejected. */
@@ -110,10 +110,10 @@ class PairingFlow(
                 block()
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: ComputerException) {
+            } catch (e: AgentConnectionException) {
                 fail(name, e.message ?: "")
             } catch (e: Exception) {
-                fail(name, ComputerException.Reason.Unavailable.message)
+                fail(name, AgentConnectionException.Reason.Unavailable.message)
             }
         }
     }

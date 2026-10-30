@@ -1,4 +1,4 @@
-package com.slopus.happy.ui.computer
+package com.slopus.happy.ui.connection
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -9,8 +9,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.computer.ComputerAccount
-import com.slopus.happy.computer.PairingState
+import com.slopus.happy.connection.AgentConnection
+import com.slopus.happy.connection.PairingState
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.node
@@ -42,7 +42,7 @@ class PairingScreenTest {
             PairingScreen(state, onConfirm = { confirmed++ }, onReject = { rejected++ }, onBack = { back++ }, onDone = { done++ })
         }
         rule.onNode(isHeading(), useUnmergedTree = true).assertExists()
-        rule.onNodeWithText("Pair computer").assertExists()
+        rule.onNodeWithText("Connect Agent").assertExists()
         rule.node(PairingTags.SPINNER).assertExists()
         rule.onNodeWithText("Steve's Mac", substring = true).assertExists()
 
@@ -59,7 +59,7 @@ class PairingScreenTest {
         rule.node(PairingTags.SPINNER).assertExists()
         rule.node(PairingTags.MATCH).assertDoesNotExist()
 
-        state = PairingState.Paired(ComputerAccount(id = "c1", name = "Studio", addedAt = 0))
+        state = PairingState.Paired(AgentConnection(id = "c1", name = "Studio", addedAt = 0))
         rule.onNodeWithText("Studio", substring = true).assertExists()
         rule.node(PairingTags.DONE).performClick()
 

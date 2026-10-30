@@ -28,7 +28,7 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.connect.DeepLinkEffect
-import com.slopus.happy.ui.connect.LocalComputerPairing
+import com.slopus.happy.ui.connect.LocalAgentPairing
 import com.slopus.happy.ui.tablet.TabletShell
 import com.slopus.happy.ui.connect.connectRoutes
 import com.slopus.happy.ui.files.filesRoutes
@@ -37,8 +37,8 @@ import com.slopus.happy.ui.onboarding.RestoreManualScreen
 import com.slopus.happy.ui.onboarding.TroubleshootRoute
 import com.slopus.happy.ui.machine.MachineRoute
 import com.slopus.happy.ui.onboarding.onboardingRoutes
-import com.slopus.happy.ui.computer.pairComputer
-import com.slopus.happy.ui.computer.computerRoutes
+import com.slopus.happy.ui.connection.connectAgent
+import com.slopus.happy.ui.connection.agentConnectionRoutes
 import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
@@ -80,9 +80,9 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
             val nav = rememberNavController()
             val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
             val troubleshoot = { nav.navigate(TroubleshootRoute) }
-            val pairComputer = remember(nav) { { code: String -> nav.pairComputer(graph, code) } }
+            val connectAgent = remember(nav) { { code: String -> nav.connectAgent(graph, code) } }
             // Every scanner, signed in or out, sends happy://direct? codes here.
-            CompositionLocalProvider(LocalComputerPairing provides pairComputer) {
+            CompositionLocalProvider(LocalAgentPairing provides connectAgent) {
                 // The tablet shell (sidebar beside the stack) or, on a phone, just the stack.
                 TabletShell(graph, nav, signedIn = signedIn != null, onOpenSession = openSession, onTroubleshoot = troubleshoot) {
                     NavHost(navController = nav, startDestination = if (signedIn != null) HomeRoute else WelcomeRoute) {
@@ -100,7 +100,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                         connectRoutes(graph, nav)
                         chatRoutes(graph, nav, onInfo = { id -> nav.navigate(SessionInfoRoute(id)) })
                         filesRoutes(graph, nav)
-                        computerRoutes(graph, nav)
+                        agentConnectionRoutes(graph, nav)
                     }
                 }
                 DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })

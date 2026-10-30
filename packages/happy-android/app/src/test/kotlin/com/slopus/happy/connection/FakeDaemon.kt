@@ -1,4 +1,4 @@
-package com.slopus.happy.computer
+package com.slopus.happy.connection
 
 import com.slopus.happy.crypto.CanonicalBase64Url
 import com.slopus.happy.crypto.Sodium
@@ -36,12 +36,12 @@ fun pairingCode(
  * The daemon's half of pairing (happy-agent API.md, "Mobile connector"):
  * consumes the token, checks the commitment and the phone's MAC, and proves
  * itself in turn. Once paired it answers health and config for the derived
- * device token, as [computerName], or 401 when [revoked].
+ * device token, as [agentName], or 401 when [revoked].
  */
 class FakeDaemon(
     private val desktopConfirmsAfterPolls: Int = 1,
     private val badDaemonMac: Boolean = false,
-    var computerName: String? = "Studio",
+    var agentName: String? = "Studio",
     var revoked: Boolean = false,
     val deviceId: String = "dv3n8k1m5q9r2t6w0y4z7a1c",
 ) : Transport {
@@ -118,7 +118,7 @@ class FakeDaemon(
             "/v0/config" -> paired {
                 ok(buildJsonObject {
                     putJsonObject("config") {
-                        computerName?.let { name ->
+                        agentName?.let { name ->
                             putJsonObject("node") { put("name", name); putJsonObject("avatar") { put("thumbhash", "abc") } }
                         }
                     }

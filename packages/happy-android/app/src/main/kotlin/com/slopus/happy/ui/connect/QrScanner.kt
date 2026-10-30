@@ -94,4 +94,4 @@ fun rememberQrScanner(): QrScanner {
  * for `happy://direct?` codes, provided at the app's root. Null where
  * nothing can pair (tests, signed-out screens); such a code is then an error.
  */
-val LocalComputerPairing: ProvidableCompositionLocal<((String) -> Unit)?> = compositionLocalOf { null }
+val LocalAgentPairing: ProvidableCompositionLocal<((String) -> Unit)?> = compositionLocalOf { null }

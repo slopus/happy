@@ -1,4 +1,4 @@
-package com.slopus.happy.computer
+package com.slopus.happy.connection
 
 import com.slopus.happy.crypto.CanonicalBase64Url
 import com.slopus.happy.crypto.PairingCrypto
@@ -12,15 +12,15 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
-/** What a paired phone keeps to reach its computer. Every field is a secret but [deviceId]. */
+/** What a paired phone keeps to reach its agent. Every field is a secret but [deviceId]. */
 @Serializable
-data class ComputerCredentials(
+data class AgentConnectionCredentials(
     val address: String,
     val port: Int,
     val deviceId: String,
     val deviceToken: String,
 ) {
-    override fun toString() = "ComputerCredentials(deviceId=$deviceId, port=$port)"
+    override fun toString() = "AgentConnectionCredentials(deviceId=$deviceId, port=$port)"
 }
 
 /**
@@ -47,13 +47,13 @@ class PairingService(
     private class Status(val status: String, val deviceId: String? = null, val mac: String? = null) {
         fun check() = when (status) {
             "verifying", "completed" -> Unit
-            "expired" -> throw ComputerException(ComputerException.Reason.Expired)
-            "rejected" -> throw ComputerException(ComputerException.Reason.Rejected)
-            else -> throw ComputerException(ComputerException.Reason.InvalidResponse)
+            "expired" -> throw AgentConnectionException(AgentConnectionException.Reason.Expired)
+            "rejected" -> throw AgentConnectionException(AgentConnectionException.Reason.Rejected)
+            else -> throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         }
     }
 
-    /** Starts the handshake and returns the four emoji to compare with the computer's. */
+    /** Starts the handshake and returns the four emoji to compare with the agent's. */
     suspend fun start(deviceName: String): List<String> {
         checkActive()
         val name = deviceName.filterNot(Char::isISOControl).take(128).ifEmpty { "Android" }
@@ -65,14 +65,14 @@ class PairingService(
         val key = CanonicalBase64Url.decode(started.publicKey)?.takeIf { it.size == 32 }
         val nonce = CanonicalBase64Url.decode(started.nonce)?.takeIf { it.size == 32 }
         if (CanonicalBase64Url.decode(started.handshakeId)?.size != 32 || key == null || nonce == null || !started.expiresAt.isFinite()) {
-            throw ComputerException(ComputerException.Reason.InvalidResponse)
+            throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         }
         // Kept even if cancelled meanwhile, so cancel can reject a handshake whose token was used.
         handshakeId = started.handshakeId
         expiresAt = minOf(link.expiresAtMillis, started.expiresAt.toLong())
         checkActive()
         val derived = crypto.derive(key, nonce, link.token, link.address, link.port)
-            ?: throw ComputerException(ComputerException.Reason.InvalidResponse)
+            ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         val reveal = buildJsonObject {
             put("publicKey", CanonicalBase64Url.encode(crypto.publicKey))
             put("nonce", CanonicalBase64Url.encode(crypto.nonce))
@@ -80,16 +80,16 @@ class PairingService(
         val status: Status = decode(transport.request("POST", "$ROUTE/reveal", started.handshakeId, reveal.bytes()))
         checkActive()
         status.check()
-        if (status.status != "verifying") throw ComputerException(ComputerException.Reason.InvalidResponse)
+        if (status.status != "verifying") throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         secrets = derived
         return derived.emoji
     }
 
-    /** The person says the emoji match. Returns once the computer has confirmed too. */
-    suspend fun confirm(): ComputerCredentials {
+    /** The person says the emoji match. Returns once the agent has confirmed too. */
+    suspend fun confirm(): AgentConnectionCredentials {
         checkActive()
-        val id = handshakeId ?: throw ComputerException(ComputerException.Reason.InvalidResponse)
-        val derived = secrets ?: throw ComputerException(ComputerException.Reason.InvalidResponse)
+        val id = handshakeId ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
+        val derived = secrets ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         val body = buildJsonObject { put("mac", CanonicalBase64Url.encode(derived.mac("mobile"))) }
         var status: Status = decode(transport.request("POST", "$ROUTE/confirm", id, body.bytes()))
         while (true) {
@@ -99,10 +99,10 @@ class PairingService(
                 val deviceId = status.deviceId?.takeIf { it.isNotEmpty() && it.length <= 128 }
                 val mac = status.mac?.let(CanonicalBase64Url::decode)
                 if (deviceId == null || mac == null || !derived.verifyDaemon(mac)) {
-                    throw ComputerException(ComputerException.Reason.InvalidProof)
+                    throw AgentConnectionException(AgentConnectionException.Reason.InvalidProof)
                 }
                 secrets = null
-                return ComputerCredentials(link.address, link.port, deviceId, CanonicalBase64Url.encode(derived.deviceToken))
+                return AgentConnectionCredentials(link.address, link.port, deviceId, CanonicalBase64Url.encode(derived.deviceToken))
             }
             status = decode(transport.request("GET", "$ROUTE?wait=25", id))
         }
@@ -128,17 +128,17 @@ class PairingService(
 
     private fun checkActive() {
         if (cancelled) throw CancellationException("Pairing cancelled")
-        if (expiresAt <= now()) throw ComputerException(ComputerException.Reason.Expired)
+        if (expiresAt <= now()) throw AgentConnectionException(AgentConnectionException.Reason.Expired)
     }
 
     private inline fun <reified T> decode(response: TransportResponse): T {
         // A handshake the daemon no longer knows answers 401: treated as expired.
-        if (response.status == 401) throw ComputerException(ComputerException.Reason.Expired)
-        if (response.status != 200) throw ComputerException(ComputerException.Reason.InvalidResponse)
+        if (response.status == 401) throw AgentConnectionException(AgentConnectionException.Reason.Expired)
+        if (response.status != 200) throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         return try {
             json.decodeFromString<T>(response.text)
         } catch (_: Exception) {
-            throw ComputerException(ComputerException.Reason.InvalidResponse)
+            throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         }
     }
 

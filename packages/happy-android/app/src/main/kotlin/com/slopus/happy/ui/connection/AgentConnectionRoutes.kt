@@ -1,4 +1,4 @@
-package com.slopus.happy.ui.computer
+package com.slopus.happy.ui.connection
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -11,24 +11,24 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import com.slopus.happy.AppGraph
-import com.slopus.happy.computer.PairingFlow
+import com.slopus.happy.connection.PairingFlow
 import kotlinx.serialization.Serializable
 
 /**
- * Pairing a computer over Happy Protocol V2. Carries no code: the code is a
+ * Pairing an agent over Happy Protocol V2. Carries no code: the code is a
  * secret and a route is saved with the back stack, so the pairing itself
- * waits in [AppGraph.computerPairing].
+ * waits in [AppGraph.agentPairing].
  */
 @Serializable data object PairingRoute
 
 /** The Protocol V2 screens, signed in or out. HappyApp's NavHost calls this once. */
-fun NavGraphBuilder.computerRoutes(graph: AppGraph, nav: NavHostController) {
+fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostController) {
     composable<PairingRoute> { Pairing(graph, nav) }
 }
 
 /** Starts pairing [code] and shows it, over whatever screen is up. */
-fun NavHostController.pairComputer(graph: AppGraph, code: String) {
-    graph.startComputerPairing(code)
+fun NavHostController.connectAgent(graph: AppGraph, code: String) {
+    graph.startAgentPairing(code)
     navigate(PairingRoute) { launchSingleTop = true }
 }
 
@@ -36,7 +36,7 @@ fun NavHostController.pairComputer(graph: AppGraph, code: String) {
 private fun Pairing(graph: AppGraph, nav: NavHostController) {
     val holder = viewModel { PairingHolder(graph) }
     // A second code opened while this screen is up replaces the pairing in place.
-    val flow by graph.computerPairing.collectAsStateWithLifecycle()
+    val flow by graph.agentPairing.collectAsStateWithLifecycle()
     LaunchedEffect(flow) { flow?.let { holder.flow = it } }
     val state = key(flow) { flow?.state?.collectAsStateWithLifecycle()?.value }
     PairingScreen(
@@ -54,9 +54,9 @@ private fun Pairing(graph: AppGraph, nav: NavHostController) {
  * finished. Recomposition and configuration changes don't.
  */
 private class PairingHolder(private val graph: AppGraph) : ViewModel() {
-    var flow: PairingFlow? = graph.computerPairing.value
+    var flow: PairingFlow? = graph.agentPairing.value
 
     override fun onCleared() {
-        flow?.let(graph::endComputerPairing)
+        flow?.let(graph::endAgentPairing)
     }
 }

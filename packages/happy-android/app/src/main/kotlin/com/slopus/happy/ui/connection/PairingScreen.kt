@@ -1,4 +1,4 @@
-package com.slopus.happy.ui.computer
+package com.slopus.happy.ui.connection
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
-import com.slopus.happy.computer.PairingState
+import com.slopus.happy.connection.PairingState
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.Screen
@@ -34,19 +34,19 @@ import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
 object PairingTags {
-    const val SPINNER = "computerPairing.spinner"
-    const val EMOJI = "computerPairing.emoji"
-    const val MATCH = "computerPairing.match"
-    const val MISMATCH = "computerPairing.mismatch"
-    const val DONE = "computerPairing.done"
+    const val SPINNER = "agentPairing.spinner"
+    const val EMOJI = "agentPairing.emoji"
+    const val MATCH = "agentPairing.match"
+    const val MISMATCH = "agentPairing.mismatch"
+    const val DONE = "agentPairing.done"
 }
 
 /**
- * Pairing a computer over Happy Protocol V2: the standard header (back
+ * Pairing an agent over Happy Protocol V2: the standard header (back
  * rejects an unfinished pairing), then by [state] a spinner while the keys
  * are exchanged, the four emoji at 40 with "They match" and "They don't
- * match", a spinner under the emoji while the computer confirms, the paired
- * computer with Done, or why it failed with Done. Centred column, 24 in
+ * match", a spinner under the emoji while the agent confirms, the paired
+ * agent with Done, or why it failed with Done. Centred column, 24 in
  * from the sides, 16 between parts.
  */
 @Composable
@@ -102,12 +102,12 @@ fun PairingScreen(
                 null -> Spinner()
                 is PairingState.Connecting -> {
                     Spinner()
-                    Line(stringResource(R.string.pairing_connecting, state.computerName), body)
+                    Line(stringResource(R.string.pairing_connecting, state.agentName), body)
                     Line(stringResource(R.string.pairing_unverified), note, secondary = true)
                 }
                 is PairingState.Compare -> {
                     Emoji(state.emoji)
-                    Line(stringResource(R.string.pairing_compare, state.computerName), body)
+                    Line(stringResource(R.string.pairing_compare, state.agentName), body)
                     Spacer(Modifier.height(8.dp))
                     RoundButton(
                         stringResource(R.string.pairing_match),
@@ -124,7 +124,7 @@ fun PairingScreen(
                 is PairingState.Confirming -> {
                     Emoji(state.emoji)
                     Spinner()
-                    Line(stringResource(R.string.pairing_confirming, state.computerName), body)
+                    Line(stringResource(R.string.pairing_confirming, state.agentName), body)
                 }
                 is PairingState.Paired -> {
                     Line(stringResource(R.string.pairing_paired, state.account.name), title)

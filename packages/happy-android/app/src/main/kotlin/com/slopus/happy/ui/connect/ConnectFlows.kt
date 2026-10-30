@@ -47,7 +47,7 @@ class ConnectFlow internal constructor(
     internal var okTitle = ""
     internal var messages = ScanMessages()
     internal var scanner: QrScanner = QrScanner { ScanResult.Cancelled }
-    internal var pairComputer: ((String) -> Unit)? = null
+    internal var connectAgent: ((String) -> Unit)? = null
     internal var process: suspend (String) -> Boolean = { false }
     private var scanning = false
 
@@ -79,7 +79,7 @@ class ConnectFlow internal constructor(
      */
     internal suspend fun route(text: String) {
         when (val code = HappyCode.classify(text)) {
-            is HappyCode.ComputerPairing -> pairComputer?.invoke(code.text)
+            is HappyCode.AgentPairing -> connectAgent?.invoke(code.text)
                 ?: run { alert = errorAlert(messages.pairingUnavailable) }
             is HappyCode.Terminal ->
                 if (kind == ConnectKind.Terminal) process(code.url) else alert = errorAlert(messages.terminalElsewhere)
@@ -95,8 +95,8 @@ class ConnectFlow internal constructor(
      */
     fun connectWithUrl(url: String) {
         scope.launch {
-            val pairing = HappyCode.classify(url) as? HappyCode.ComputerPairing
-            val pair = pairComputer
+            val pairing = HappyCode.classify(url) as? HappyCode.AgentPairing
+            val pair = connectAgent
             if (pairing != null && pair != null) pair(pairing.text) else process(url.trim())
         }
     }
@@ -229,7 +229,7 @@ private fun rememberConnectFlow(
         pairingUnavailable = stringResource(R.string.scan_pairing_unavailable),
     )
     flow.scanner = rememberQrScanner()
-    flow.pairComputer = LocalComputerPairing.current
+    flow.connectAgent = LocalAgentPairing.current
     val prefix = kind.prefix
     flow.process = process@{ url ->
         if (!url.startsWith(prefix)) {

@@ -21,8 +21,8 @@ import com.slopus.happy.payments.PreferencesPurchasesCache
 import com.slopus.happy.payments.PurchaseAccount
 import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatPurchases
-import com.slopus.happy.computer.ComputerAccounts
-import com.slopus.happy.computer.PairingFlow
+import com.slopus.happy.connection.AgentConnections
+import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
 import com.slopus.happy.ui.home.NewSessionDraftStore
@@ -174,36 +174,36 @@ class AppGraph(
     )
 
     /**
-     * Computers paired over Happy Protocol V2: accounts of their own beside
+     * Agent connections over Happy Protocol V2: accounts of their own beside
      * the relay account, kept through a relay sign-out.
      */
-    val computerAccounts = ComputerAccounts(
+    val agentConnections = AgentConnections(
         secrets = ExpoSecureStore(
-            prefs = context.getSharedPreferences(ComputerAccounts.SECRETS_PREFS, Context.MODE_PRIVATE),
+            prefs = context.getSharedPreferences(AgentConnections.SECRETS_PREFS, Context.MODE_PRIVATE),
             keys = secureStoreKeys,
-            keychainService = ComputerAccounts.KEYCHAIN_SERVICE,
+            keychainService = AgentConnections.KEYCHAIN_SERVICE,
         ),
-        registry = context.getSharedPreferences(ComputerAccounts.REGISTRY_PREFS, Context.MODE_PRIVATE),
+        registry = context.getSharedPreferences(AgentConnections.REGISTRY_PREFS, Context.MODE_PRIVATE),
     )
 
-    private val computerPairingState = MutableStateFlow<PairingFlow?>(null)
+    private val agentPairingState = MutableStateFlow<PairingFlow?>(null)
 
     /** The pairing on screen, if any. In memory only: its code is a secret. */
-    val computerPairing: StateFlow<PairingFlow?> = computerPairingState.asStateFlow()
+    val agentPairing: StateFlow<PairingFlow?> = agentPairingState.asStateFlow()
 
-    /** Starts pairing the computer behind a `happy://direct?` code, replacing any unfinished pairing. */
-    fun startComputerPairing(code: String) {
-        computerPairingState.value?.close()
-        computerPairingState.value = PairingFlow(scope, computerAccounts, deviceName).also { it.start(code) }
+    /** Starts connecting the agent behind a `happy://direct?` code, replacing any unfinished pairing. */
+    fun startAgentPairing(code: String) {
+        agentPairingState.value?.close()
+        agentPairingState.value = PairingFlow(scope, agentConnections, deviceName).also { it.start(code) }
     }
 
     /** The pairing screen left. */
-    fun endComputerPairing(flow: PairingFlow) {
+    fun endAgentPairing(flow: PairingFlow) {
         flow.close()
-        computerPairingState.compareAndSet(flow, null)
+        agentPairingState.compareAndSet(flow, null)
     }
 
-    /** What the computer lists this phone as: the name the person gave it, else the model. */
+    /** What the agent lists this phone as: the name the person gave it, else the model. */
     private val deviceName: String =
         android.provider.Settings.Global.getString(appContext.contentResolver, "device_name")?.takeIf { it.isNotBlank() }
             ?: android.os.Build.MODEL.orEmpty()

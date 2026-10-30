@@ -1,4 +1,4 @@
-package com.slopus.happy.computer
+package com.slopus.happy.connection
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
@@ -10,12 +10,12 @@ import java.io.File
  * `HAPPY_PAIRING_LINK` holds a fresh `happy://direct?…` code (run with
  * `--tests '*LivePairing*' --rerun`). The phone's emoji go to
  * `HAPPY_PAIRING_OUT` as they are known, so whoever confirms on the
- * computer can compare them; the result follows once paired. Never logs
+ * agent can compare them; the result follows once paired. Never logs
  * the address or the tokens.
  */
 class LivePairingTest {
     @Test
-    fun pairsAndReadsTheComputer() = runBlocking {
+    fun pairsAndReadsTheAgent() = runBlocking {
         val text = System.getenv("HAPPY_PAIRING_LINK")
         assumeTrue("no live pairing link", !text.isNullOrBlank())
         val out = File(System.getenv("HAPPY_PAIRING_OUT") ?: "build/pairing-live.txt")
@@ -31,8 +31,8 @@ class LivePairingTest {
             transport.close()
             val again = TailcatTransport(credentials.address, credentials.port)
             try {
-                val computer = ComputerIdentity.refresh(again, credentials.deviceToken, fallbackName = link.name)
-                out.appendText("connected name=${computer.name} protocol=${computer.protocol} daemon=${computer.daemonVersion}\n")
+                val agent = AgentIdentity.refresh(again, credentials.deviceToken, fallbackName = link.name)
+                out.appendText("connected name=${agent.name} protocol=${agent.protocol} daemon=${agent.daemonVersion}\n")
             } finally {
                 again.close()
             }

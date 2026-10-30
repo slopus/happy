@@ -1,4 +1,4 @@
-package com.slopus.happy.computer
+package com.slopus.happy.connection
 
 import com.slopus.happy.crypto.CanonicalBase64Url
 import com.slopus.happy.crypto.PairingCrypto
@@ -18,9 +18,9 @@ class PairingTest {
     private fun link(v: Any = 1, p: Any = 24781, t: String = CanonicalBase64Url.encode(token), a: String = "tcFixedVectorAddress", n: String = "Steve's Mac", e: Long = now + 300_000) =
         pairingCode(v = v, a = a, p = p, t = t, n = n, e = e)
 
-    private fun reason(block: () -> Unit): ComputerException.Reason? = try {
+    private fun reason(block: () -> Unit): AgentConnectionException.Reason? = try {
         block(); null
-    } catch (e: ComputerException) {
+    } catch (e: AgentConnectionException) {
         e.reason
     }
 
@@ -36,9 +36,9 @@ class PairingTest {
 
     @Test
     fun badLinksSayWhy() {
-        val invalid = ComputerException.Reason.InvalidCode
-        assertEquals(ComputerException.Reason.UpdateRequired, reason { PairingLink.parse(link(v = 2), now) })
-        assertEquals(ComputerException.Reason.Expired, reason { PairingLink.parse(link(e = now), now) })
+        val invalid = AgentConnectionException.Reason.InvalidCode
+        assertEquals(AgentConnectionException.Reason.UpdateRequired, reason { PairingLink.parse(link(v = 2), now) })
+        assertEquals(AgentConnectionException.Reason.Expired, reason { PairingLink.parse(link(e = now), now) })
         assertEquals(invalid, reason { PairingLink.parse(link(v = "1"), now) })
         assertEquals(invalid, reason { PairingLink.parse(link(p = 0), now) })
         assertEquals(invalid, reason { PairingLink.parse(link(p = 70000), now) })
@@ -62,8 +62,8 @@ class PairingTest {
         val sized = HttpResponseParser().append("HTTP/1.1 401 Unauthorized\r\nContent-Length: 2\r\n\r\n{}extra".toByteArray(), eof = false)!!
         assertEquals(401, sized.status)
         assertEquals("{}", sized.text)
-        assertEquals(ComputerException.Reason.InvalidResponse, reason { HttpResponseParser().append("HTTP/1.1 200 OK\r\nX: 1\r\nx: 2\r\n\r\n".toByteArray(), eof = true) })
-        assertEquals(ComputerException.Reason.InvalidResponse, reason { HttpResponseParser().append("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nab".toByteArray(), eof = true) })
+        assertEquals(AgentConnectionException.Reason.InvalidResponse, reason { HttpResponseParser().append("HTTP/1.1 200 OK\r\nX: 1\r\nx: 2\r\n\r\n".toByteArray(), eof = true) })
+        assertEquals(AgentConnectionException.Reason.InvalidResponse, reason { HttpResponseParser().append("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nab".toByteArray(), eof = true) })
         assertEquals("ab", HttpResponseParser().append("HTTP/1.1 200 OK\r\n\r\nab".toByteArray(), eof = true)!!.text)
     }
 
@@ -75,8 +75,8 @@ class PairingTest {
                 "Accept: application/json\r\nContent-Length: 2\r\nContent-Type: application/json\r\n\r\n",
             head,
         )
-        assertEquals(ComputerException.Reason.InvalidResponse, reason { TailcatHttp.requestHead("GET", "/a b", 1, "t", null, emptyMap()) })
-        assertEquals(ComputerException.Reason.InvalidResponse, reason { TailcatHttp.requestHead("GET", "/a", 1, "t\r\nX: y", null, emptyMap()) })
+        assertEquals(AgentConnectionException.Reason.InvalidResponse, reason { TailcatHttp.requestHead("GET", "/a b", 1, "t", null, emptyMap()) })
+        assertEquals(AgentConnectionException.Reason.InvalidResponse, reason { TailcatHttp.requestHead("GET", "/a", 1, "t\r\nX: y", null, emptyMap()) })
     }
 
     private fun service(daemon: FakeDaemon) = PairingService(
@@ -105,7 +105,7 @@ class PairingTest {
     fun aDaemonThatCantProveItselfYieldsNothing() = runBlocking {
         val pairing = service(FakeDaemon(badDaemonMac = true))
         pairing.start("Pixel")
-        assertEquals(ComputerException.Reason.InvalidProof, try { pairing.confirm(); null } catch (e: ComputerException) { e.reason })
+        assertEquals(AgentConnectionException.Reason.InvalidProof, try { pairing.confirm(); null } catch (e: AgentConnectionException) { e.reason })
     }
 
     @Test
