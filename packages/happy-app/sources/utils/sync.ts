@@ -1,4 +1,11 @@
-import { backoff } from "@/utils/time";
+import { backoff, createBackoff } from "@/utils/time";
+
+// Sync commands retry until they succeed. The shared backoff caps its delay at
+// 1 s, so during a server outage every live InvalidateSync — one per resident
+// chat, plus the lists — kept hitting the server about once a second for as
+// long as the tab lived. Same fast first retries, but the ceiling climbs to
+// 30 s while the failure persists.
+const syncBackoff = createBackoff({ onError: (e) => { console.warn(e); }, maxDelay: 30_000 });
 
 export class InvalidateSync {
     private _invalidated = false;
@@ -62,7 +69,7 @@ export class InvalidateSync {
 
 
     private _doSync = async () => {
-        await backoff(async () => {
+        await syncBackoff(async () => {
             if (this._stopped) {
                 return;
             }
