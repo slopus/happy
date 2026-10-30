@@ -41,6 +41,7 @@ import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.PrimaryAction
 import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.node
+import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.setHappyContent
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
@@ -91,6 +92,17 @@ class ConversationLayoutTest {
 
     private fun show(state: ConversationState, connection: String? = null, dark: Boolean = false, actions: ConversationScreenActions = ConversationScreenActions()) {
         rule.setHappyContent(dark) { ConversationScreen(state, connection, actions) }
+    }
+
+    @Test
+    @Config(qualifiers = "w900dp-h731dp-xhdpi")
+    fun `at 900 the composer is held to the messages' 800 column and the bar is not`() {
+        val state = ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode)
+        rule.setHappyContent { ProvideWindowLayout { ConversationScreen(state, null, ConversationScreenActions()) } }
+        val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
+        assertDp("composer width", 800, composer.width)
+        assertDp("composer centred", 50, composer.left)
+        assertDp("bar full width", 900, rule.node(ConversationScreenTags.BAR).bounds.width)
     }
 
     @Test fun `an opened chat has home's name from its first frame, and is never called New chat`() {

@@ -62,6 +62,8 @@ import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
+import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import java.io.File
 
@@ -273,7 +275,7 @@ fun ConversationScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp).testTag(ConversationScreenTags.READ_ONLY),
+                    modifier = Modifier.contentMaxWidth(LocalWindowLayout.current).padding(16.dp).testTag(ConversationScreenTags.READ_ONLY),
                 )
             } else {
                 ConversationComposer(
@@ -287,6 +289,8 @@ fun ConversationScreen(
                     onSent = { text = "" },
                     onStop = actions.onStop,
                     onModeChange = actions.onModeChange,
+                    // The same centred column as the messages; the bar above stays full width.
+                    modifier = Modifier.contentMaxWidth(LocalWindowLayout.current),
                 )
             }
         }
