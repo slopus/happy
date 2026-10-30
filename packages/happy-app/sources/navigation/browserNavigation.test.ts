@@ -65,6 +65,43 @@ describe('browser navigation shortcuts', () => {
         expect(getMouseNavigationDirection({ button: 1 })).toBeNull();
     });
 
+    test.each([
+        { tagName: 'INPUT', isContentEditable: false },
+        { tagName: 'TEXTAREA', isContentEditable: false },
+        { tagName: 'DIV', isContentEditable: true },
+        // isContentEditable is also true for descendants of an editable element,
+        // including contenteditable="" and contenteditable="plaintext-only".
+        { tagName: 'SPAN', isContentEditable: true },
+    ])('Escape does not navigate from text entry: %o', (target) => {
+        expect(getKeyboardNavigationDirection({
+            key: 'Escape',
+            defaultPrevented: false,
+            altKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            shiftKey: false,
+            target: target as unknown as EventTarget,
+        })).toBeNull();
+    });
+
+    test.each([
+        { tagName: 'BODY', isContentEditable: false },
+        { tagName: 'BUTTON', isContentEditable: false },
+        { tagName: 'DIV', isContentEditable: false },
+        {}, // A non-element event target, such as window.
+        null,
+    ])('Escape still navigates outside text entry: %o', (target) => {
+        expect(getKeyboardNavigationDirection({
+            key: 'Escape',
+            defaultPrevented: false,
+            altKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            shiftKey: false,
+            target: target as EventTarget | null,
+        })).toBe('back');
+    });
+
     test('Escape maps to back only when it is unmodified and unhandled', () => {
         expect(getKeyboardNavigationDirection({
             key: 'Escape',
