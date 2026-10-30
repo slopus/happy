@@ -134,47 +134,40 @@ final class ComposerRestoreTests: XCTestCase {
         let keys = try XCTUnwrap(card.configuration.permission?.menu).sections.flatMap(\.options).map(\.key)
         XCTAssertEqual(Set(keys), ["auto", "acceptEdits", "plan", "bypassPermissions", "default"])
 
-        func descendants<T: UIView>(_ type: T.Type, in view: UIView) -> [T] {
-            (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(type, in: $0) }
-        }
-        func tap(_ id: String) throws {
-            let control = try XCTUnwrap(descendants(UIControl.self, in: host).first { $0.accessibilityIdentifier == id })
-            control.sendActions(for: .touchUpInside)
-        }
         var details = 0
-        func open() {
-            composer.presentChatMenu(in: host, anchor: { CGRect(x: 340, y: 62, width: 44, height: 44) }, onInfo: { details += 1 })
+        func elements() -> [UIMenuElement] {
+            composer.chatMenuElements(onInfo: { details += 1 })
+        }
+        func permissions() throws -> [UIAction] {
+            let menu = try XCTUnwrap(elements().compactMap { $0 as? UIMenu }.first { $0.identifier.rawValue == "chat-permissions" })
+            return menu.children.compactMap { $0 as? UIAction }
+        }
+        // Dispatch the actual native menu UIAction through a public control
+        // event. Native toolbar presentation is verified by the UI tests.
+        func activate(_ action: UIAction) {
+            let button = UIButton(type: .system)
+            button.addAction(action, for: .touchUpInside)
+            button.sendActions(for: .touchUpInside)
         }
         for key in keys {
-            open()
-            try tap("picker-row:chip:0")
-            let panel = try XCTUnwrap(descendants(PickerPanelView.self, in: host).first { $0.accessibilityIdentifier == "chat-permissions" })
-            let offered = panel.content?.lines.compactMap { line -> String? in
-                if case .option(let key, _, _, let disabled, _) = line, !disabled { return key }
-                return nil
-            }
-            XCTAssertEqual(offered, keys)
-            try tap("picker-row:\(key)")
-            XCTAssertFalse(descendants(PickerPanelView.self, in: host).contains { $0.accessibilityIdentifier == "chat-permissions" })
+            let actions = try permissions()
+            XCTAssertEqual(actions.compactMap(\.accessibilityIdentifier), keys)
+            let action = try XCTUnwrap(actions.first { $0.accessibilityIdentifier == key })
+            XCTAssertFalse(action.attributes.contains(.disabled))
+            activate(action)
             var stored: String?
             for _ in 0..<1000 where stored != key {
                 stored = try await Task.detached { try account.store.composerState(sessionId: "s").values["permissionMode"]?.stringValue }.value
                 if stored != key { try await Task.sleep(for: .milliseconds(10)) }
             }
             XCTAssertEqual(stored, key, "header selection uses the existing session mode writer")
-            open()
-            try tap("picker-row:chip:0")
-            let reopened = try XCTUnwrap(descendants(PickerPanelView.self, in: host).first { $0.accessibilityIdentifier == "chat-permissions" })
-            XCTAssertTrue(reopened.content?.lines.contains { line in
-                if case .option(let selected, _, true, false, _) = line { return selected == key }
-                return false
-            } == true)
-            composer.closeChatMenu()
+            let selected = try permissions().filter { $0.state == .on }.compactMap(\.accessibilityIdentifier)
+            XCTAssertEqual(selected, [key], "the deferred native menu gets fresh selection state")
             XCTAssertEqual(card.text, "kept draft")
             XCTAssertEqual(card.selectedRange, NSRange(location: 2, length: 4))
         }
-        open()
-        try tap("picker-row:chat-info")
+        let info = try XCTUnwrap(elements().compactMap { $0 as? UIAction }.first { $0.accessibilityIdentifier == "chat-info" })
+        activate(info)
         XCTAssertEqual(details, 1, "the former avatar's Details action remains reachable")
     }
 
