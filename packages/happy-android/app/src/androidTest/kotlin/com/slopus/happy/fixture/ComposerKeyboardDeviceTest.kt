@@ -75,6 +75,8 @@ class ComposerKeyboardDeviceTest {
         val bar = screenBounds(ConversationScreenTags.BAR)
         assertTrue("$step composer below header: $card / $bar", card.top >= bar.bottom - 1)
         assertTrue("$step composer above IME: $card / $imeTop", card.bottom <= imeTop + 1)
+        val minimumTouch = 48 * rule.activity.resources.displayMetrics.density
+        if (imeTop - bar.bottom >= minimumTouch) assertTrue("$step 48dp touch surface", card.height >= minimumTouch)
         assertTrue("$step field within composer: $field / $card", field.top >= card.top && field.bottom <= card.bottom)
         val menu = listOf(ConversationModeTags.PICKER, ConversationComposerTags.MENU, ConversationScreenTags.MENU).flatMap {
             rule.onAllNodesWithTag(it, useUnmergedTree = true).fetchSemanticsNodes()

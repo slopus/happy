@@ -388,9 +388,14 @@ private fun ComposerLayout(open: Boolean, compact: Boolean, minimumRowHeight: Dp
 /** Keep the full card when it fits; otherwise use one row and spend spare height on margins. */
 @Composable
 private fun ComposerViewport(minimumOpen: Dp, minimumCompact: Dp, modifier: Modifier, content: @Composable (Boolean) -> Unit) {
+    val density = LocalDensity.current
     BoxWithConstraints(modifier.fillMaxWidth().testTag(ConversationComposerTags.COMPOSER)) {
         val compact = maxHeight < minimumOpen + 16.dp
-        val verticalMargin = if (compact) ((maxHeight - minimumCompact).coerceAtLeast(0.dp) / 2).coerceAtMost(8.dp) else 8.dp
+        // Split whole spare pixels so rounding each margin cannot steal
+        // one pixel from the minimum touch surface at fractional densities.
+        val verticalMargin = with(density) {
+            if (compact) ((constraints.maxHeight - minimumCompact.roundToPx()).coerceAtLeast(0) / 2).coerceAtMost(8.dp.roundToPx()).toDp() else 8.dp
+        }
         Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = verticalMargin)) { content(compact) }
     }
 }

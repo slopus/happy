@@ -196,8 +196,12 @@ class MessageSync(
     /** Catch-ups for the open chats: after a reconnect or a return to the foreground they missed what was said meanwhile. */
     fun invalidateViewing() = viewing.keys.forEach(::invalidate)
 
-    /** The chats open right now (sync.ts currentViewingSessionId). */
-    fun viewingSessionIds(): Set<String> = viewing.keys.toSet()
+    /**
+     * The chats open right now (sync.ts currentViewingSessionId). Iterate:
+     * toSet's singleton fast path can race with the last collector closing
+     * between reading the map size and asking its iterator for that key.
+     */
+    fun viewingSessionIds(): Set<String> = viewing.keys.toCollection(LinkedHashSet())
 
     /** The session is gone: drop its in-memory state. */
     fun forget(sessionId: String) {
