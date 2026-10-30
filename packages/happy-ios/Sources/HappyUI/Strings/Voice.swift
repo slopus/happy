@@ -35,7 +35,7 @@ extension Strings {
         static var conversations: String { localized("settingsVoice.conversationsLabel", "Conversations") }
         static var retry: String { "Retry" }
         static var byo: String { localized("settingsVoice.byoTitle", "Bring Your Own Agent") }
-        static var byoDescription: String { localized("settingsVoice.byoDescription", "Connect directly to your own public ElevenLabs agent. Define sendMessageToSession and processPermissionRequest client tools and the initialConversationContext dynamic variable.") }
+        static var byoDescription: String { localized("settingsVoice.byoDescription", "Use your own ElevenLabs agent instead of the Happy default. No subscription required — connect directly with your own ElevenLabs account. Your agent must define two client tools: sendMessageToSession (sends text to the coding agent) and processPermissionRequest (allows or denies tool use). It receives session context via the {{initialConversationContext}} dynamic variable.") }
         static var agentID: String { localized("settingsVoice.customAgentId", "ElevenLabs Agent ID") }
         static var agentDescription: String { localized("settingsVoice.customAgentIdDescription", "Enter your ElevenLabs agent ID. Leave empty to use the Happy default.") }
         static var notConfigured: String { localized("settingsVoice.customAgentIdNotSet", "Not configured") }
