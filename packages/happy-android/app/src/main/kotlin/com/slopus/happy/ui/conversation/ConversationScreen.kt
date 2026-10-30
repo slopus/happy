@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +69,7 @@ object ConversationScreenTags {
     const val LOADING = "conversation.loading"
     const val EMPTY = "conversation.empty"
     const val ERROR = "conversation.error"
+    const val RETRY = "conversation.error.retry"
     const val READ_ONLY = "conversation.readOnly"
     const val OLDER = "conversation.older"
     const val OLDER_FAILED = "conversation.older.failed"
@@ -94,6 +96,8 @@ class ConversationScreenActions(
     val onAnswer: suspend (questionId: String, answers: Map<String, List<String>>) -> Unit = { _, _ -> },
     /** Older history; `retry` after a failed page (Retry), which nothing else asks again. */
     val onLoadOlder: (retry: Boolean) -> Unit = {},
+    /** History could not be read: ask again. */
+    val onRetryLoad: () -> Unit = {},
     val loadMedia: suspend (MediaRef) -> ByteArray = { throw IllegalStateException() },
     val onOpenArtifact: ((String) -> Unit)? = null,
     /** The newest message is on screen while the app is up: unread clears. */
@@ -204,6 +208,7 @@ fun ConversationScreen(
                     text = state.error?.let { stringResource(R.string.conversation_load_failed) + "\n" + it }
                         ?: stringResource(if (state.created) R.string.conversation_empty else R.string.conversation_empty_new),
                     tag = if (state.error != null) ConversationScreenTags.ERROR else ConversationScreenTags.EMPTY,
+                    onRetry = actions.onRetryLoad.takeIf { state.error != null },
                 )
                 else -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder)
             }
@@ -239,8 +244,8 @@ fun ConversationScreen(
 }
 
 @Composable
-private fun Placeholder(text: String, tag: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+internal fun Placeholder(text: String, tag: String, onRetry: (() -> Unit)? = null) {
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text,
             style = MaterialTheme.typography.bodyLarge,
@@ -248,6 +253,11 @@ private fun Placeholder(text: String, tag: String) {
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(32.dp).contentMaxWidth(LocalWindowLayout.current).testTag(tag),
         )
+        if (onRetry != null) {
+            FilledTonalButton(onClick = onRetry, modifier = Modifier.testTag(ConversationScreenTags.RETRY)) {
+                Text(stringResource(R.string.common_retry))
+            }
+        }
     }
 }
 

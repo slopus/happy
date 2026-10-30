@@ -1,5 +1,6 @@
 package com.slopus.happy.conversation
 
+import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.connection.AgentConnectionException
@@ -49,6 +50,17 @@ open class ConversationApi(private val request: AgentRequest) {
             put("mutationId", task.mutationId)
         },
     ).takeIf { it["task"].obj != null } ?: throw invalid()
+
+    /**
+     * The agent of this computer's Chief of Staff: the active bot whose
+     * `systemKey` is `chief_of_staff` (API.md "Bots"), never one guessed by
+     * name. Null when there is none.
+     */
+    open suspend fun chiefOfStaffAgentId(): String? =
+        call("GET", "/v0/bots")["bots"].arr.orEmpty()
+            .mapNotNull { it.obj }
+            .firstOrNull { it["systemKey"].str == "chief_of_staff" && it["status"].str == "active" }
+            ?.get("agent").obj?.get("id").str
 
     open suspend fun bootstrap(agentId: String): Bootstrap =
         Bootstrap.parse(call("GET", "/v0/agents/${escape(agentId)}/bootstrap")) ?: throw invalid()

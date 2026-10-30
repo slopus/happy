@@ -2,7 +2,12 @@ package com.slopus.happy.ui.conversation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
@@ -42,8 +47,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.serialization.Serializable
 
-/** One conversation of the agent connection [connectionId]; [agentId] null is a new, empty chat. */
-@Serializable data class ConversationRoute(val connectionId: String, val agentId: String? = null)
+/**
+ * One conversation of the agent connection [connectionId]; [agentId] null
+ * is a new, empty chat. [prefill] goes in the composer once, unsent
+ * ([Conversation.prefill]).
+ */
+@Serializable data class ConversationRoute(val connectionId: String, val agentId: String? = null, val prefill: String? = null)
+
+/** The connection's Chief of Staff chat, found when opened, with [prefix] waiting in its composer. */
+@Serializable data class ChiefOfStaffRoute(val connectionId: String, val prefix: String)
 
 /** A conversation's details. */
 @Serializable data class ConversationDetailsRoute(val connectionId: String, val agentId: String)
@@ -54,15 +66,28 @@ fun NavGraphBuilder.conversationRoutes(graph: AppGraph, nav: NavHostController) 
         val route = entry.toRoute<ConversationRoute>()
         ConversationEntry(graph, nav, route)
     }
+    composable<ChiefOfStaffRoute> { entry ->
+        val route = entry.toRoute<ChiefOfStaffRoute>()
+        ChiefOfStaffEntry(graph, nav, route)
+    }
     composable<ConversationDetailsRoute> { entry ->
         val route = entry.toRoute<ConversationDetailsRoute>()
         ConversationDetails(graph, nav, route)
     }
 }
 
-/** Opens a conversation over whatever is up. */
-fun NavHostController.openConversation(connectionId: String, agentId: String) {
-    navigate(ConversationRoute(connectionId, agentId))
+/** Opens a conversation over whatever is up, with [prefill] waiting unsent in its composer. */
+fun NavHostController.openConversation(connectionId: String, agentId: String, prefill: String? = null) {
+    navigate(ConversationRoute(connectionId, agentId, prefill))
+}
+
+/**
+ * Opens the connection's Chief of Staff chat with [prefix] in its
+ * composer. The chief is looked up when the screen opens; once found the
+ * chat takes this screen's place, so Back returns to where this was opened.
+ */
+fun NavHostController.openChiefOfStaff(connectionId: String, prefix: String) {
+    navigate(ChiefOfStaffRoute(connectionId, prefix))
 }
 
 /**
@@ -130,6 +155,11 @@ private class ConversationHolder(session: AgentSession, route: ConversationRoute
             },
         )
         conversation.start()
+        // Once per back stack entry: not again after rotation or process death.
+        if (route.prefill != null && saved.get<Boolean>(PREFILLED) != true) {
+            saved[PREFILLED] = true
+            conversation.prefill(route.prefill)
+        }
     }
 
     override fun onCleared() {
@@ -142,6 +172,7 @@ private class ConversationHolder(session: AgentSession, route: ConversationRoute
         const val AGENT = "agentId"
         const val MUTATION = "mutationId"
         const val CREATED = "created"
+        const val PREFILLED = "prefilled"
     }
 }
 
@@ -185,6 +216,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                 onRetryFailure = conversation::retryFailure,
                 onAnswer = conversation::answer,
                 onLoadOlder = { retry -> conversation.loadOlder(retry) },
+                onRetryLoad = conversation::retryLoad,
                 loadMedia = conversation::media,
                 onVisible = conversation::setVisible,
             )
@@ -218,3 +250,41 @@ private fun ConversationDetails(graph: AppGraph, nav: NavHostController, route: 
     ConversationDetailsScreen(read.first, read.second, read.third) { nav.popBackStack() }
 }
 
+
+/**
+ * Finds the connection's Chief of Staff ([ConversationApi.chiefOfStaffAgentId])
+ * and opens its chat in this screen's place. Until then the bar says
+ * "Chief of Staff" over a spinner; offline, or with no chief on the
+ * computer, it says so with Retry, and never opens another chat.
+ */
+@Composable
+private fun ChiefOfStaffEntry(graph: AppGraph, nav: NavHostController, route: ChiefOfStaffRoute) {
+    val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+    val missing = stringResource(R.string.conversation_chief_missing)
+    val unavailable = stringResource(R.string.conversation_unavailable)
+    var attempt by rememberSaveable { mutableIntStateOf(0) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(session, attempt) {
+        problem = null
+        if (session == null) {
+            problem = unavailable
+            return@LaunchedEffect
+        }
+        val agentId = try {
+            ConversationApi(session.conversationRequest()).chiefOfStaffAgentId()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            problem = Conversation.describe(e)
+            return@LaunchedEffect
+        }
+        if (agentId == null) {
+            problem = missing
+            return@LaunchedEffect
+        }
+        nav.navigate(ConversationRoute(route.connectionId, agentId, route.prefix)) {
+            popUpTo<ChiefOfStaffRoute> { inclusive = true }
+        }
+    }
+    ChiefOfStaffScreen(problem, onRetry = { attempt++ }, onBack = { nav.popBackStack() })
+}

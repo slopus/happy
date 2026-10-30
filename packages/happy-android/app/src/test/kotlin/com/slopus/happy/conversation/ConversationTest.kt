@@ -4,6 +4,7 @@ import com.slopus.happy.connection.TransportResponse
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -76,7 +77,7 @@ class ConversationTest {
         api = ConversationApi(agent.request),
         signals = signals,
         // Not backgroundScope: advanceUntilIdle leaves its work alone. Cancelled after each test.
-        scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job().also { jobs += it }),
+        scope = CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }),
         agentId = newTask?.agentId ?: "a1",
         newTask = newTask,
         onTaskCreated = created,
@@ -243,6 +244,61 @@ class ConversationTest {
         assertTrue(chat.state.value.created)
         assertEquals("t1", made!!["task"]!!.jsonObject["id"].toString().trim('"'))
         assertEquals(listOf("Second", "First"), chat.state.value.rows.map { (it as ConversationRow.User).text })
+    }
+
+    @Test fun `a prefix goes above the agent's draft once, unsaved, with the cursor after it`() = runTest {
+        val agent = FakeAgent()
+        agent.bootstrap = agent.bootstrap.replace(
+            """"draft":{"value":null,"updatedAt":null}""",
+            """"draft":{"value":{"text":"keep me","providerId":"claude","modelId":"anthropic/opus-5","effort":"high","serviceTier":null,"permissionMode":"auto"},"updatedAt":900}""",
+        )
+        val prefix = "Change this agent connection's name to "
+        val chat = conversation(agent)
+        chat.prefill(prefix)
+        advanceUntilIdle()
+        assertEquals(prefix + "\n\nkeep me", chat.state.value.draft)
+        assertEquals(prefix.length, chat.state.value.composerFocus?.cursor)
+        // Opening saves nothing over the agent's draft.
+        assertTrue(agent.requests.none { it.second.endsWith("/draft") })
+        // Asked again (the draft already starts with it): not doubled, focus asked again.
+        val serial = chat.state.value.composerFocus!!.serial
+        chat.prefill(prefix)
+        advanceUntilIdle()
+        assertEquals(prefix + "\n\nkeep me", chat.state.value.draft)
+        assertEquals(serial + 1, chat.state.value.composerFocus?.serial)
+    }
+
+    @Test fun `a prefix alone fills a blank draft`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        chat.prefill("Change this agent connection's avatar: ")
+        advanceUntilIdle()
+        assertEquals("Change this agent connection's avatar: ", chat.state.value.draft)
+        assertEquals(1, chat.state.value.draftArrivals)
+    }
+
+    @Test fun `the chief of staff is the active bot with its system key`() = runTest {
+        val bots = """{"bots":[
+            {"id":"b0","name":"Chief of Staff","systemKey":null,"status":"active","agent":{"id":"wrong"}},
+            {"id":"b1","name":"Old","systemKey":"chief_of_staff","status":"archived","agent":{"id":"archived"}},
+            {"id":"b2","name":"Renamed","systemKey":"chief_of_staff","status":"active","agent":{"id":"chief"}}
+        ]}"""
+        assertEquals("chief", ConversationApi { _, _, _ -> FakeAgent.ok(bots) }.chiefOfStaffAgentId())
+        assertNull(ConversationApi { _, _, _ -> FakeAgent.ok("""{"bots":[]}""") }.chiefOfStaffAgentId())
+    }
+
+    @Test fun `a chat that could not be read reads again on retry`() = runTest {
+        val agent = FakeAgent()
+        val good = agent.bootstrap
+        agent.bootstrap = "{}"
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        assertTrue(chat.state.value.error != null)
+        agent.bootstrap = good
+        chat.retryLoad()
+        advanceUntilIdle()
+        assertNull(chat.state.value.error)
+        assertEquals("Fix it", chat.state.value.title)
     }
 
     @Test fun `draft from another device replaces this one only when newer`() = runTest {

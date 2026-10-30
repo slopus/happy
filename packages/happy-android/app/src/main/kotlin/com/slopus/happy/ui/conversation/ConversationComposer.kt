@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,9 +32,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
@@ -90,6 +96,17 @@ internal fun ConversationComposer(
     val attached = pictures?.images.orEmpty()
     val hasContent = text.isNotBlank() || attached.isNotEmpty()
     val primary = primaryActionOf(hasContent, state)
+    // The field's own selection; text set from outside puts the cursor at its end, or where focus asks.
+    var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
+    if (field.text != text) field = TextFieldValue(text, TextRange(text.length))
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(state.composerFocus?.serial) {
+        val ask = state.composerFocus ?: return@LaunchedEffect
+        field = field.copy(selection = TextRange(ask.cursor.coerceIn(0, field.text.length)))
+        focus.requestFocus()
+        keyboard?.show()
+    }
 
     Surface(color = colors.surface, modifier = modifier.fillMaxWidth().testTag(ConversationComposerTags.COMPOSER)) {
         Column(Modifier.padding(bottom = 8.dp)) {
@@ -129,8 +146,11 @@ internal fun ConversationComposer(
                     Icon(MaterialSymbols.Image, stringResource(R.string.conversation_attach_picture), tint = colors.textSecondary)
                 }
                 TextField(
-                    value = text,
-                    onValueChange = onTextChange,
+                    value = field,
+                    onValueChange = {
+                        field = it
+                        if (it.text != text) onTextChange(it.text)
+                    },
                     placeholder = { Text(stringResource(R.string.conversation_message_placeholder)) },
                     shape = MaterialTheme.shapes.extraLarge,
                     maxLines = 6,
@@ -145,7 +165,7 @@ internal fun ConversationComposer(
                         unfocusedPlaceholderColor = colors.textSecondary,
                         cursorColor = colors.text,
                     ),
-                    modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag(ConversationComposerTags.INPUT),
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp).focusRequester(focus).testTag(ConversationComposerTags.INPUT),
                 )
                 val sendLabel = stringResource(if (primary == PrimaryAction.Stop) R.string.conversation_stop else R.string.conversation_send)
                 FilledIconButton(

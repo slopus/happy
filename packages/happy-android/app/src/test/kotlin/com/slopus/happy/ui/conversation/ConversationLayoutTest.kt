@@ -16,6 +16,7 @@ import com.slopus.happy.conversation.AgentInfo
 import com.slopus.happy.conversation.Block
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationRowBuilder
+import com.slopus.happy.conversation.ComposerFocus
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Delivery
 import com.slopus.happy.conversation.MediaItem
@@ -249,6 +250,28 @@ class ConversationLayoutTest {
         rule.onNodeWithText("Read only").performClick()
         rule.waitForIdle()
         assertEquals(listOf(mode.copy(permissionMode = "read_only")), picks)
+    }
+
+    @Test fun `a chief of staff that can't be found says so with Retry`() {
+        var retries = 0
+        rule.setHappyContent { ChiefOfStaffScreen("There's no Chief of Staff on this computer.", onRetry = { retries++ }, onBack = {}) }
+        rule.onNodeWithText("Chief of Staff").assertIsDisplayed()
+        rule.node(ConversationScreenTags.RETRY).performClick()
+        assertEquals(1, retries)
+        shot("chief-missing")
+    }
+
+    @Test fun `a prefilled composer shows the kept draft below the prefix`() {
+        val prefix = "Change this agent connection's name to "
+        show(
+            ConversationState(
+                created = true, loaded = true, rows = history, agent = agent, mode = mode,
+                draft = prefix + "\n\nkeep me", draftArrivals = 1,
+                composerFocus = ComposerFocus(1, prefix.length),
+            ),
+        )
+        rule.onNodeWithText(prefix + "\n\nkeep me").assertIsDisplayed()
+        shot("prefilled")
     }
 
     @Test fun `details list the agent and its mode`() {

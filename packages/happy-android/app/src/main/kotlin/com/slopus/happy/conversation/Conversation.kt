@@ -14,11 +14,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
@@ -33,6 +35,10 @@ sealed interface ConversationSignal {
     /** The stream (re)connected: events may have been missed, so read again. */
     data object Resync : ConversationSignal
 }
+
+/** A request for the composer's focus, its cursor at [cursor]; [serial] tells requests apart. */
+@Immutable
+data class ComposerFocus(val serial: Int, val cursor: Int)
 
 /** Everything a conversation screen draws. [rows] are newest first. */
 @Immutable
@@ -55,6 +61,8 @@ data class ConversationState(
     /** The composer's text as this conversation keeps it, and a count that moves only when it came from elsewhere. */
     val draft: String = "",
     val draftArrivals: Int = 0,
+    /** The composer should take focus with its cursor here; a new value each time it's asked. */
+    val composerFocus: ComposerFocus? = null,
     val question: Question? = null,
     val answering: Boolean = false,
     val stopping: Boolean = false,
@@ -164,14 +172,27 @@ class Conversation(
 
     // Reads
 
+    /** History that could not be read, asked for again. */
+    fun retryLoad() {
+        scope.launch(lane) {
+            if (!created) return@launch
+            publish { it.copy(loaded = it.rows.isNotEmpty(), error = null) }
+            reload()
+        }
+    }
+
     private fun reload() {
         reading?.cancel()
         if (held == null) held = ArrayList()
         reading = scope.launch(lane) {
             try {
-                val bootstrap = async { api.bootstrap(agentId) }
-                val page = async { api.messages(agentId) }
-                adopt(bootstrap.await(), page.await())
+                // Their own scope: a failed read is this read's failure, not the conversation's.
+                val (start, page) = coroutineScope {
+                    val bootstrap = async { api.bootstrap(agentId) }
+                    val messages = async { api.messages(agentId) }
+                    bootstrap.await() to messages.await()
+                }
+                adopt(start, page)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -394,6 +415,34 @@ class Conversation(
             pump()
         }
         return true
+    }
+
+    /**
+     * Puts [prefix] in the composer, ready for the person to finish: alone
+     * when the draft is blank, above the draft (two newlines between)
+     * otherwise, and not again when the draft already starts with it. The
+     * cursor goes to the prefix's end and the composer takes focus. Only
+     * this screen sees it: nothing is saved or sent until the person types.
+     * Waits for history, so the agent's own draft is the one kept.
+     */
+    fun prefill(prefix: String) {
+        scope.launch(lane) {
+            if (prefix.isEmpty()) return@launch
+            state.first { it.loaded }
+            val next = when {
+                draft.isBlank() -> prefix
+                draft.startsWith(prefix) -> draft
+                else -> prefix + "\n\n" + draft
+            }
+            val arrived = next != draft
+            draft = next
+            publish {
+                it.copy(
+                    draftArrivals = it.draftArrivals + if (arrived) 1 else 0,
+                    composerFocus = ComposerFocus((it.composerFocus?.serial ?: 0) + 1, prefix.length),
+                )
+            }
+        }
     }
 
     /** A failed send, queued again under the same id. */
