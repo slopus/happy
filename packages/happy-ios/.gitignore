@@ -10,3 +10,4 @@ xtool/
 DerivedData/
 .build-mac/
 .build-ios/
+.build-sim/

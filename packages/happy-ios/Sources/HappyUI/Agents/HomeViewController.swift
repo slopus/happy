@@ -4,12 +4,10 @@ import HappyLayout
 import UIKit
 
 /// Home in V2 mode: one paired computer's sidebar, as desktop's
-/// `HappyAgentSpacesSidebar` draws it, under the navigation bar and over the
-/// dock. The dock is the new-work screen's own composer, drawn the same and
-/// in the same place: a tap in it makes new work, sent with the model its
-/// chips hold, and its "+" makes new work with the library open over it.
-/// Desktop's Search and Create rows aren't drawn: search is the bar's
-/// and create is the dock.
+/// `HappyAgentSpacesSidebar` draws it, under the navigation bar. Nothing is
+/// typed here: compose in the bar (`compose()`) opens new work, an empty
+/// conversation whose first message makes it. Desktop's Search and Create
+/// rows aren't drawn: search and compose are the bar's.
 ///
 /// Search is the bar's field (the host drives `beginSearch`, `search(_:)`
 /// and `endSearch`); what answers shows in its own component over home
@@ -24,11 +22,6 @@ final class HomeViewController: UIViewController {
     private let sidebar = SidebarView()
     private let banner = BannerView()
     private let empty = EmptyView()
-    private let dock = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.composerPlaceholder))
-    private let dockScrim = HeaderScrimView(edge: .bottom)
-    private var modelsWatch: Watch?
-    /// The dock's model or effort list while it is open.
-    private var picker: PickerPresenter?
     private var session: Session?
     private var watch: Watch?
     private var accountsObservation: AccountsObservation?
@@ -75,16 +68,13 @@ final class HomeViewController: UIViewController {
     /// Every snapshot shown, for the screen around this one.
     var onSnapshot: ((Snapshot) -> Void)?
 
-    /// The dock, which new work's own composer stands in for as it opens.
-    var newWorkDock: UIView { dock }
-
     /// Home's list, under the bar: the scroll edge the bar shades.
     var list: UIScrollView { sidebar }
 
     /// Search's results over home, while something answers.
     var resultsList: UIScrollView? { resultsView.showsResults ? resultsView.list : nil }
 
-    /// The bar and dock home lays its content between.
+    /// The bar home lays its content under.
     var contentInsets = HomeContentInsets(safeArea: .zero, dock: 0) {
         didSet { if contentInsets != oldValue { view.setNeedsLayout() } }
     }
@@ -106,25 +96,7 @@ final class HomeViewController: UIViewController {
         stories.install(in: storiesBand)
         view.addSubview(empty)
         view.addSubview(banner)
-        view.addSubview(dockScrim)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
-        dock.configuration.showsAdd = true
-        dock.configuration.addAccessibilityLabel = Strings.addPicture
-        dock.configuration.primaryAction = AgentInputPrimaryAction.resolve(
-            hasComposerContent: false, isSendBlocked: false, isSendDisabled: false, showAbortButton: false, canAbort: false
-        )
-        dock.delegate = self
-        // Nothing is typed here: the field is where new work begins.
-        dock.textView.isUserInteractionEnabled = false
-        let entry = UITapGestureRecognizer(target: self, action: #selector(dockTapped(_:)))
-        entry.delegate = self
-        dock.addGestureRecognizer(entry)
-        dock.isAccessibilityElement = false
-        dock.textView.isAccessibilityElement = true
-        dock.textView.accessibilityTraits = .button
-        dock.textView.accessibilityLabel = Strings.composerPlaceholder
-        dock.textView.accessibilityIdentifier = "new-work"
-        view.addSubview(dock)
         resultsView.isHidden = true
         resultsView.list.onSelect = { [weak self] row in self?.open(row) }
         resultsView.list.onIntent = { [weak self] row in
@@ -172,7 +144,6 @@ final class HomeViewController: UIViewController {
         super.viewWillDisappear(animated)
         // A row lifted from its menu goes back before another screen covers it.
         sidebar.disarm(animated: false)
-        picker?.close(animated: false)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -203,7 +174,6 @@ final class HomeViewController: UIViewController {
         endSearch(animated: false)
         watch?.invalidate(); watch = nil
         connectionWatch?.cancel(); connectionWatch = nil
-        modelsWatch?.invalidate(); modelsWatch = nil
         session = id.flatMap { Session.session(for: $0, context: context) }
         stories.attach(session)
         sidebar.images = session?.images
@@ -221,10 +191,9 @@ final class HomeViewController: UIViewController {
                     else { self.applyClassic() }
                 }
             }
-            modelsWatch = session.models.watch { [weak self] in self?.updateModelBar() }
+            // New work opens on the computer's models: read ahead of compose.
             session.models.load()
         }
-        updateModelBar()
         applyChrome()
     }
 
@@ -267,8 +236,6 @@ final class HomeViewController: UIViewController {
         let notice = snapshot.creationError.map { Strings.newWorkFailed(reason($0)) } ?? snapshot.error.map(reason)
         // Prioritizing being off is Settings' business: home says nothing of it.
         banner.configure(notice: notice)
-        dock.isHidden = !hasAgentConnection || snapshot.availability == .unsupported
-        dockScrim.isHidden = dock.isHidden
         view.setNeedsLayout()
     }
 
@@ -276,22 +243,6 @@ final class HomeViewController: UIViewController {
     /// document for desktop.
     static func drawn(_ rows: [Row]) -> [Row] {
         rows.filter { $0.kind != .search && $0.kind != .create }
-    }
-
-    private func updateModelBar() {
-        let models = session?.models
-        let menus = models?.catalog.flatMap { catalog in models?.newWorkMode.map { ModelMenus(catalog: catalog, selection: $0) } }
-        ModelPickers.configure(dock, menus: menus)
-        picker?.update(menus: menus, usage: models?.usage ?? [:])
-        view.setNeedsLayout()
-    }
-
-    /// A pick here is what the next new work is sent with.
-    private func choose(_ key: String) {
-        guard let models = session?.models else { return }
-        ModelPickers.choose(key, state: models, mode: models.newWorkMode) { next in
-            models.dockMode = next
-        }
     }
 
     // MARK: Search
@@ -308,7 +259,6 @@ final class HomeViewController: UIViewController {
     func beginSearch() {
         guard session != nil, search == nil, !sidebar.isHidden else { return }
         sidebar.disarm()
-        picker?.close(animated: true)
         search = Search()
         resultsView.clear()
         resultsView.isHidden = false
@@ -377,7 +327,7 @@ final class HomeViewController: UIViewController {
     /// What desktop's palette offers to do from anywhere, as a phone does it.
     private func quickActions() -> [QuickAction] {
         [
-            // New work grows from the dock, so the search gives it back first.
+            // New work takes the screen, so the search gives it back first.
             QuickAction(id: "new-work", title: Strings.newWork, glyph: "compose") { [weak self] in
                 self?.endSearch(animated: false)
                 self?.makeNewWork()
@@ -423,16 +373,11 @@ final class HomeViewController: UIViewController {
         super.viewDidLayoutSubviews()
         let bounds = view.bounds
         let bannerHeight = banner.isEmpty ? 0 : banner.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height
-        let docked = DockLayout(size: bounds.size, safeArea: LayoutInsets(view.safeAreaInsets)) { [dock] width in dock.height(fitting: width) }
-        dock.setLayoutFrame(docked.card)
-        picker?.follow()
-        dockScrim.frame = docked.scrim
         // Search's results keep clear of the keyboard; home's list never
         // changes for them.
         resultsView.frame = bounds
         resultsView.insets = UIEdgeInsets(top: contentInsets.contentTop, left: 0, bottom: view.safeAreaInsets.bottom, right: 0)
-        let listBottom = dock.isHidden ? contentInsets.listBottom : docked.listBottom
-        let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset)
+        let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset)
         banner.frame = layout.banner
         storiesBand.frame = CGRect(x: 0, y: contentInsets.chromeTop, width: bounds.width, height: max(0, bounds.height - contentInsets.chromeTop))
         sidebar.frame = bounds
@@ -553,14 +498,18 @@ final class HomeViewController: UIViewController {
         Task { await store.attentionInput(); await store.fold(row.nodeId) }
     }
 
+    /// The bar's compose: new work.
+    func compose() {
+        sidebar.disarm()
+        makeNewWork()
+    }
+
     /// New work, right below Happy: the row and its empty conversation exist
-    /// at once, and the conversation opens over home without going anywhere
-    /// (`NewWorkTransition`): the composer rides the keyboard up from
-    /// the dock as the intro fades in, or, from the dock's "+", stays and the
-    /// "+" sheet comes up over it. Leaving new work never closes it, so
-    /// new work already standing empty is opened instead, where it is
-    /// (desktop's rule): from the dock any, newest first; from a heading's
-    /// "+" only one under that heading.
+    /// at once, and the conversation is pushed with the keyboard coming up,
+    /// or, for a picture, the "+" sheet over it. Leaving new work never
+    /// closes it, so new work already standing empty is opened instead,
+    /// where it is (desktop's rule): from the bar any, newest first; from a
+    /// heading's "+" only one under that heading.
     func makeNewWork(in sectionId: String? = nil, library: Bool = false) {
         guard let session, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         let store = session.store
@@ -572,23 +521,13 @@ final class HomeViewController: UIViewController {
             opening.remove(going.id)
             // Another ask got to the screen first.
             guard navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
-            let rowId = "space:\(creation.spaceId)"
-            sidebar.selectedRowId = rowId
-            let chat = ChatViewController(session: session, agentId: creation.agentId, title: Strings.untitled, spaceId: creation.spaceId, seedling: .seedling(seed: creation.spaceId), creation: creation)
-            chat.focusesOnOpen = !library
-            chat.focusesAfterPick = library
-            chat.opensOverHome = true
+            sidebar.selectedRowId = "space:\(creation.spaceId)"
+            let chat = NewWork.chat(session, creation: creation, library: library)
             guard let navigation = navigationController else { return }
             navigation.pushViewController(chat, animated: true)
             // Over the screen it goes to, as that screen comes in.
             if library { chat.presentAttach(from: navigation) }
         }
-    }
-
-    @objc private func dockTapped(_ gesture: UITapGestureRecognizer) {
-        guard gesture.state == .ended else { return }
-        sidebar.disarm()
-        makeNewWork()
     }
 
     // MARK: Menus
@@ -824,55 +763,6 @@ final class EmptyView: UIView {
         mark.frame = layout.mark
         label.frame = layout.label
         button.frame = layout.button ?? .zero
-    }
-}
-extension HomeViewController: AgentInputCardDelegate, UIGestureRecognizerDelegate {
-    func agentInputCardDidPressPrimary(_ card: AgentInputCardView) { makeNewWork() }
-    func agentInputCardDidPressSend(_ card: AgentInputCardView) { makeNewWork() }
-
-    func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
-        sidebar.disarm()
-        makeNewWork(library: true)
-    }
-
-    func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) { view.setNeedsLayout() }
-
-    func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {
-        choose(key)
-    }
-
-    /// A chip opens its list; with no models yet, they are asked for again.
-    func agentInputCard(_ card: AgentInputCardView, didPress chip: AgentInputChip) {
-        sidebar.disarm()
-        guard let models = session?.models else { return }
-        guard let catalog = models.catalog, let mode = models.newWorkMode else { return models.load() }
-        picker?.close(animated: false)
-        let picker = PickerPresenter(list: chip == .effort ? .effort : .model, card: card, menus: ModelMenus(catalog: catalog, selection: mode), usage: models.usage) { [weak self] key in
-            self?.choose(key)
-        }
-        picker.onClose = { [weak self, weak picker] in
-            if let self, self.picker === picker { self.picker = nil }
-        }
-        self.picker = picker
-        picker.show(in: view)
-        ModelPickers.opened(models, mode: mode)
-    }
-
-    func agentInputCard(_ card: AgentInputCardView, didOpenMenuIn chip: AgentInputChip) {
-        sidebar.disarm()
-        guard let models = session?.models else { return }
-        ModelPickers.opened(models, mode: models.newWorkMode)
-    }
-
-    /// The dock's own taps are its field's: its buttons and chips keep theirs.
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        var view = touch.view
-        while let current = view, current !== dock {
-            // A disabled control (the empty send) takes no tap: the field's.
-            if let control = current as? UIControl, control.isEnabled { return false }
-            view = current.superview
-        }
-        return true
     }
 }
 #endif

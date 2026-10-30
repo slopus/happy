@@ -10,7 +10,7 @@ import UIKit
 /// live. At the right, `HeaderBar.Trailing`'s order: search, compose,
 /// settings. Search is the bar's own field (`BarSearch`); what it finds
 /// shows over home, which stays where it was.
-final class AgentHomeViewController: UIViewController, DockHosting {
+final class AgentHomeViewController: UIViewController, ComposeHosting {
     private let context: AppContext
     private let id: String
     private let v2: HomeViewController
@@ -89,10 +89,14 @@ final class AgentHomeViewController: UIViewController, DockHosting {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        v2.contentInsets = HomeContentInsets(underBar: LayoutInsets(view.safeAreaInsets), dock: HomeDockLayout.Metrics.contentInset)
+        v2.contentInsets = HomeContentInsets(underBar: LayoutInsets(view.safeAreaInsets), dock: 0)
     }
 
-    var newWorkDock: UIView { v2.newWorkDock }
+    /// The bar's compose: new work, over home.
+    func compose() {
+        if search.isActive { search.end() }
+        v2.compose()
+    }
 
     /// Search is open: compose and the like close it first.
     var isSearching: Bool { search.isActive }

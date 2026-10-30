@@ -30,7 +30,7 @@ import UltraView
 /// `ApplyPipeline`). The main thread hands over what it decides (the width,
 /// what the reader opened) and applies only what changed. While a pass
 /// runs, newer snapshots merge into the next one.
-final class LegacyChatViewController: UIViewController, ChatListViewDelegate, ChatComposerDelegate {
+final class LegacyChatViewController: UIViewController, ChatListViewDelegate, ChatComposerDelegate, ComposeHosting {
     private let context: AppContext
     private let account: AccountSession
     /// Read by `AppCoordinator` to skip reopening the chat a tapped
@@ -117,6 +117,14 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// beside.
     private var pendingChat: PendingChat?
     private let pendingTask = TaskHolder()
+    /// A `compose-chat:` screen's start (`LegacyComposeStart`), until its
+    /// first send has made the session; nil on any other chat.
+    private var composing: LegacyComposeStart?
+    /// Where a compose chat's first send goes, over its empty list: a
+    /// machine and a folder, picked from a menu.
+    private lazy var composeTarget = UIButton(configuration: .gray())
+    /// A compose chat brings the keyboard up once its composer shows.
+    private var composeFocusOwed = false
     private var anchorMetadata: JSONValue?
     private var anchorRecord: SessionRecord?
     private var gitSessionId: String?
@@ -221,11 +229,31 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // projection, checkout grouping, SQL, or composer is made on a tap.
         navigationItem.title = account.homeFeed.latest?.sessions.first { $0.id == sessionId }?.title
             ?? Strings.Session.newChat
+        if ComposeChat.isComposeId(sessionId) {
+            let compose = LegacyComposeStart(context: context, account: account)
+            compose.host = self
+            compose.onChange = { [weak self] in self?.composeChanged() }
+            composing = compose
+            composeFocusOwed = true
+        }
     }
 
     private func makeComposer() -> any ChatComposerView {
         // A chat still being started keeps what is typed, and what is sent,
         // on the record standing in for it until the machine answers.
+        if let compose = composing {
+            // The first send starts the session; until then what is typed
+            // is the account's new-session draft.
+            return ChatComposerFactory.make(ChatComposerEnvironment(
+                sessionId: sessionId, account: account,
+                sender: ComposeChatSender { [weak compose] message in
+                    guard let compose else { throw LegacyComposeStart.Refused(message: SessionStarter.Message.startFailed) }
+                    return try await compose.start(message)
+                },
+                controls: services.controls,
+                draftStorage: ComposeDraftStorage(drafts: compose.drafts)
+            ))
+        }
         let pending = PendingChats.isPendingChatId(sessionId)
         return ChatComposerFactory.make(ChatComposerEnvironment(
             sessionId: sessionId, account: account,
@@ -273,6 +301,17 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         placeholder.isHidden = true
         placeholder.onAction = { [weak self] in self?.placeholderAction() }
         view.addSubview(placeholder)
+        if let compose = composing {
+            composeTarget.configuration?.cornerStyle = .capsule
+            composeTarget.configuration?.image = .icon(.ionicons("desktop-outline"), size: 16)
+            composeTarget.configuration?.imagePadding = 6
+            composeTarget.configuration?.titleLineBreakMode = .byTruncatingMiddle
+            composeTarget.menu = compose.targetMenu()
+            composeTarget.showsMenuAsPrimaryAction = true
+            composeTarget.accessibilityIdentifier = "compose-target"
+            view.addSubview(composeTarget)
+            updateComposeTarget()
+        }
     }
 
     private func installHeader() {
@@ -418,10 +457,12 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // A store write: never on the main thread.
         let actions = account.actions
         let chatId = self.chatId
-        Task.detached(priority: .userInitiated) { actions.markRead(sessionId: chatId) }
-        // sync.ts `onSessionVisible`: a session someone has opened is no
-        // longer an abandoned start, in this account.
-        account.spawnRequests.release(sessionId: chatId)
+        if !isComposing {
+            Task.detached(priority: .userInitiated) { actions.markRead(sessionId: chatId) }
+            // sync.ts `onSessionVisible`: a session someone has opened is no
+            // longer an abandoned start, in this account.
+            account.spawnRequests.release(sessionId: chatId)
+        }
         if contentInstalled {
             list.setRenderer(context.account.localSettings.chatListRenderer)
             updateUltraKeyboard()
@@ -441,6 +482,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // In its window now, which a later layout may not follow.
         ultraKeyboard?.refresh()
         VoiceCoordinator.shared.focus(account: account, sessionId: chatId)
+        takeComposeFocus()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -473,6 +515,9 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             connectionTask?.cancel()
             gitTask.task?.cancel()
             anchorObservation?.cancel()
+            // Gone before the machine answered: the start stops, and what
+            // was typed stays in the draft for the next compose.
+            composing?.cancel()
         }
         guard parent == nil, let chat = pendingChat, chat.sessionId != nil || chat.status == .failed else { return }
         let chats = services.pendingChats
@@ -591,7 +636,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// reader nears the oldest row, EmptyMessages' own paging, and Retry
     /// and Load more. A stand-in has no history until it is its session.
     private func pageHistory() {
-        guard !PendingChats.isPendingChatId(chatId), !isFixture else { return }
+        guard !PendingChats.isPendingChatId(chatId), !ComposeChat.isComposeId(chatId), !isFixture else { return }
         let generation = chatGeneration
         let pager = ChatHistoryPager(sessionId: chatId, history: account.chatHistory)
         pager.list = { [weak self] in self?.historyList }
@@ -743,6 +788,13 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // Loading the session and the deleted state take the whole screen;
         // an empty chat sits between the bar and the dock.
         placeholder.setLayoutFrame(dock.isHidden ? view.bounds : screen.placeholder)
+        if composing != nil {
+            let area = screen.placeholder
+            let room = max(0, area.width - 48)
+            let fits = composeTarget.sizeThatFits(CGSize(width: room, height: 44))
+            let width = min(fits.width, room)
+            composeTarget.frame = CGRect(x: area.midX - width / 2, y: area.midY - fits.height / 2, width: width, height: fits.height).integral
+        }
         titleView.maxWidth = ChatHeaderTitleLayout.maxWidth(headerWidth: size.width)
         plainTitleView.maxWidth = ContentWidth.headerMaxWidth
         dock.setLayoutFrame(screen.dock)
@@ -979,6 +1031,11 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             title = checkout.workspaceName ?? model.subtitle ?? checkout.projectName
             subtitle = Strings.Chat.worktreeTabs(stripTabs(checkout).count)
         }
+        if let compose = composing, isComposing {
+            // Nothing is there yet: what the start is doing is its status.
+            title = Strings.Session.newChat
+            subtitle = compose.progress
+        }
         navigationItem.title = title
         titleView.update(title: title, subtitle: subtitle, changes: model.changes)
         titleView.isEnabled = session.record != nil
@@ -1203,6 +1260,61 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         PendingChats.isPendingChatId(sessionId) && session.record == nil
     }
 
+    // MARK: Compose
+
+    /// An empty chat compose opened, with no session yet.
+    var isComposing: Bool {
+        composing != nil && ComposeChat.isComposeId(chatId)
+    }
+
+    /// The bar's compose: an empty chat in this one's place, Back still
+    /// leading home. An empty chat already here just takes the keyboard.
+    func compose() {
+        guard !isComposing else {
+            composer.focus()
+            return
+        }
+        let chat = LegacyChatViewController(context: context, session: account, sessionId: ComposeChat.makeId())
+        ComposeNavigation.replace(self, with: chat)
+    }
+
+    private func composeChanged() {
+        guard isComposing else { return }
+        updateHeader()
+        updateComposeTarget()
+    }
+
+    /// The machine and folder the first send goes to; while it starts the
+    /// target is fixed, and once the chat is real it goes.
+    private func updateComposeTarget() {
+        guard let compose = composing else { return }
+        composeTarget.isHidden = !isComposing
+        composeTarget.isEnabled = !compose.isStarting
+        composeTarget.configuration?.title = compose.target
+        composeTarget.accessibilityLabel = compose.target
+        view.setNeedsLayout()
+    }
+
+    /// The keyboard a compose chat opens with, once its composer shows.
+    private func takeComposeFocus() {
+        guard composeFocusOwed, isComposing, contentInstalled, composer.isRestored, view.window != nil else { return }
+        composeFocusOwed = false
+        composer.focus()
+    }
+
+    /// The session the first send started: the screen becomes its chat in
+    /// place, keeping the composer, its keyboard and whatever was typed
+    /// since (`becomeChat`).
+    private func composeStarted(_ real: String) {
+        becomeChat(real)
+        composing?.cancel()
+        composing = nil
+        composeTarget.isHidden = true
+        updateHeader()
+        updatePlaceholder()
+        list.scrollToNewest(animated: true)
+    }
+
     private func pendingChatChanged(_ chat: PendingChat?) {
         guard chat != pendingChat else { return }
         if chat?.anchorSessionId != pendingChat?.anchorSessionId {
@@ -1294,6 +1406,9 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             } else {
                 content = historyPager?.firstLoadFailed == true ? .loadFailed : .loading
             }
+        } else if isComposing {
+            // The empty chat: the composer, and where it goes.
+            content = nil
         } else if isPendingChat {
             // The composer stays: it is the one thing on this screen that
             // survives the chat's arrival.
@@ -1771,9 +1886,15 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         view.layoutIfNeeded()
         composerReveal.restored(generation: generation)
         opening?.check()
+        takeComposeFocus()
     }
 
     func composer(_ composer: any ChatComposerView, didSend localId: String) {
+        // The first send made the session: this screen is its chat now.
+        if let compose = composing, isComposing, let real = compose.sessionId {
+            composeStarted(real)
+            return
+        }
         list.scrollToNewest(animated: true)
         // A message sent while the agent waits on questions answers them:
         // once it is delivered, the forms are dismissed (SessionView's

@@ -19,7 +19,7 @@ import UniformTypeIdentifiers
 /// Previewing, it is what a hold on the row shows over the sidebar, as
 /// Telegram previews a chat: the newest messages under the name in a
 /// capsule, nothing to type in or tap, and nothing marked read.
-final class ChatViewController: UIViewController {
+final class ChatViewController: UIViewController, ComposeHosting {
     typealias Intro = IntroView.Mark
 
     private let session: Session
@@ -40,13 +40,10 @@ final class ChatViewController: UIViewController {
     /// The keyboard was up as the "+" sheet opened: it comes back once the
     /// sheet, and whatever was chosen on it, is done.
     private var keyboardOwed = false
-    /// New work from home's dock: it fades in and out over home with the
-    /// composer where the dock is (`NewWorkTransition`); the system's
-    /// swipe back slides it away as it does any screen.
-    var opensOverHome = false
     /// The keyboard new work opens with, not yet asked for.
     private var focusPending = false
-    private var focusedBeforeSwipe = false
+    /// New work on its way to the screen from this one's compose.
+    private var composing: UUID?
     private let previewing: Bool
     private let previewPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
     /// The card's ground over the messages above the list, fading out under the capsule.
@@ -77,10 +74,9 @@ final class ChatViewController: UIViewController {
     /// The rows last mounted for: nothing to do while they stay the same.
     private var mountedFor: ChatMountedRows?
     private let working = WorkingView()
-    /// Home's dock scrim, in its frame and always there, as home's is: one
-    /// that came and went with the content under it flashed as a short
-    /// transcript bounced off its top. Over home it lies on home's own, so
-    /// new work's fade leaves it.
+    /// The composer's scrim, in its frame and always there: one that came
+    /// and went with the content under it flashed as a short transcript
+    /// bounced off its top.
     private let composerScrim = HeaderScrimView(edge: .bottom)
     /// Where the transcript's drawn content starts in it: what the header's
     /// scrim measures how far it has gone under it by.
@@ -412,7 +408,7 @@ final class ChatViewController: UIViewController {
         }
     }
 
-    // MARK: Over home
+    // MARK: New work
 
     /// The keyboard new work opens with: asked for once, as the screen comes in.
     func takeOpeningFocus() {
@@ -422,23 +418,32 @@ final class ChatViewController: UIViewController {
         card.focus()
     }
 
-    /// New work over home, from 0 (only the composer, where the dock is) to
-    /// 1 (all of it). A composer holding something the dock doesn't fades too.
-    func newWorkFade(_ alpha: CGFloat) {
-        view.backgroundColor = UIColor(Palette.surface).withAlphaComponent(alpha)
-        scrollView.alpha = alpha
-        jump.alpha = jumpShown ? alpha : 0
-        header.alpha = alpha
-        card.alpha = composerIsEmpty ? 1 : alpha
-    }
-
-    /// Nothing typed or picked: the composer is the dock's very picture.
+    /// Nothing typed or picked.
     var composerIsEmpty: Bool { card.text.isEmpty && pictures.images.isEmpty }
 
-    /// A swipe home let go of: the keyboard comes back if it was up.
-    func newWorkPopCancelled() {
-        if focusedBeforeSwipe { card.focus() }
-        focusedBeforeSwipe = false
+    /// The bar's compose: new work in this conversation's place, so Back
+    /// still leads home and the stack grows no deeper. New work standing
+    /// empty is opened instead, as from home; when that is this one, it
+    /// only takes the keyboard. What is typed here stays in its draft.
+    func compose() {
+        guard !previewing, composing == nil, let navigationController, navigationController.topViewController === self else { return }
+        let store = session.store
+        let session = session
+        Task { @MainActor in
+            let going = await store.goToNewWork(under: nil)
+            guard composing == nil else { return }
+            composing = going.id
+            defer { composing = nil }
+            Haptics.play(.newWork)
+            let creation = await going.work.value
+            guard self.navigationController?.topViewController === self else { return }
+            if creation.spaceId == spaceId {
+                card.focus()
+                return
+            }
+            card.blur()
+            ComposeNavigation.replace(self, with: NewWork.chat(session, creation: creation))
+        }
     }
 
     // MARK: State
@@ -532,7 +537,6 @@ final class ChatViewController: UIViewController {
             if snapshot.draftUpdatedAt >= lastDraftEdit { showDraft(snapshot.draft) }
         }
         proposals.want(snapshot.items.flatMap(\.proposalIds))
-        working.show(snapshot.activity)
         header.status = Self.status(snapshot.activity)
         if wasSettled != settled(snapshot), let intro { introView.configure(intro, settled: settled(snapshot)) }
         showIntro()
@@ -581,7 +585,7 @@ final class ChatViewController: UIViewController {
         }
     }
 
-    /// The "+" sheet over `host`: home's dock opens it over this screen as
+    /// The "+" sheet over `host`: new work for a picture opens it over this screen as
     /// the screen comes in. What it adds waits in the composer, which then
     /// takes the keyboard.
     func presentAttach(from host: UIViewController) {
@@ -1145,9 +1149,10 @@ final class ChatViewController: UIViewController {
         let settled = plans.filter { !queuedIds.contains($0.id) }
         let waiting = plans.filter { queuedIds.contains($0.id) }
         heights += settled.map(\.size.height)
-        heights.append(chat.activity == nil ? 0 : WorkingLayout.Metrics.height)
+        // What the agent is at is the header's (`header.status`): the
+        // transcript keeps no working line of its own.
+        heights.append(0)
         heights += waiting.map(\.size.height)
-        if !waiting.isEmpty { heights.append(WorkingLayout.Metrics.height) }
         // The intro stays under the bar, as desktop's leading header.
         let pins = introLayout != nil && !previewing
         let first = introLayout == nil ? 0 : 1
@@ -1723,13 +1728,6 @@ extension ChatViewController: UIImagePickerControllerDelegate, UINavigationContr
             guard let self else { return LibraryPicker.discard(picks) }
             take(picks)
         }
-    }
-}
-
-extension ChatViewController: NavigationTransitionProviding {
-    func navigationTransition(_ operation: UINavigationController.Operation, other: UIViewController) -> UIViewControllerAnimatedTransitioning? {
-        guard opensOverHome, let home = other as? DockHosting else { return nil }
-        return NewWorkTransition(operation, chat: self, home: home)
     }
 }
 

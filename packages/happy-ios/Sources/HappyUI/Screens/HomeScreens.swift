@@ -18,20 +18,19 @@ import UIKit
 /// "Sessions" with the connection under it, and the filter menu and
 /// settings at the right.
 ///
-/// The dock sits at the foot of every state but Link Your Computer, which
-/// is not MainView in happy-app; content leaves it 108pt. Where a computer
-/// is a home of its own (`Preference`), it leaves the offline
-/// checklist too: with no computer to reach there is nothing to start work
-/// on. There, the account's picture leads to the profiles' settings, where
-/// a computer is chosen instead.
+/// Nothing is typed here: compose in the bar (`compose()`) opens an empty
+/// chat, whose first send starts the session (`LegacyComposeStart`). It is
+/// offered in every state but Link Your Computer and, where a computer is
+/// a home of its own (`Preference`), the offline checklist: with no
+/// computer to reach there is nothing to start work on. There, the
+/// account's picture leads to the profiles' settings, where a computer is
+/// chosen instead.
 ///
 /// Screens pushed over it (settings, server, troubleshoot) stay where they
 /// are when a computer arrives, as they do in happy-app.
-public final class LegacyHomeViewController: UIViewController {
+public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     private let context: AppContext
     private let session: AccountSession
-    private let dockView = HomeDockView()
-    private var dock: HomeDockController?
     /// Home's content worked out off the main thread from the account's
     /// home feed (`HomeDerivation`); only what changed is applied here.
     private var pipeline: ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>?
@@ -60,15 +59,11 @@ public final class LegacyHomeViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.groupedBackground)
-        dockView.scrim.ground = UIColor(Palette.groupedBackground)
         showsBackTitle()
-        dockView.isHidden = true
-        view.addSubview(dockView)
         switcher = AccountSwitcher(context: context, controller: self)
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
             input: HomeDerivation.Input(
                 expandedProjects: context.account.localSettings.expandedProjects,
-                includesDock: true,
                 // In the screens' language; a new one builds home again.
                 unknownMachine: Strings.Home.unknownMachine
             ),
@@ -90,10 +85,6 @@ public final class LegacyHomeViewController: UIViewController {
         observation = pipeline.observation
         // Tablet (HappyUI/Tablet): the shell flips this with the window's width.
         registerForTraitChanges([TabletLayoutTrait.self]) { (self: Self, _) in self.updateNavigation(animated: false) }
-        // A new text size: the dock's text heights are made again.
-        registerForTraitChanges([UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]) { (self: Self, _) in
-            self.view.setNeedsLayout()
-        }
         // The stream ends when the session stops.
         let statusUpdates = session.statusUpdates
         Task { @MainActor [weak self] in
@@ -111,10 +102,12 @@ public final class LegacyHomeViewController: UIViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(rendererChanged), name: HomeRendererPreference.didChange, object: nil)
     }
 
-    /// Something can be started from the dock: a computer is linked and,
-    /// where a computer is a home of its own, one is reachable.
-    private var showsDock: Bool {
-        switch state {
+    /// Something can be started from compose: a computer is linked and,
+    /// where a computer is a home of its own, one is reachable. The bar
+    /// shows compose only then.
+    var canCompose: Bool {
+        guard !traitCollection.isTabletLayout else { return false }
+        return switch state {
         case nil, .link?: false
         case .offline?: !Preference(variant: context.variant).isAvailable
         default: true
@@ -149,11 +142,7 @@ public final class LegacyHomeViewController: UIViewController {
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        // The dock's text heights for this width and text size, made off
-        // the main thread before the composer opens.
-        dock?.prepareText(width: view.bounds.width, text: TextEnvironment(traitCollection))
-        dockView.frame = view.bounds
-        applyInsets(HomeContentInsets(underBar: LayoutInsets(view.safeAreaInsets), dock: showsDock ? HomeDockLayout.Metrics.contentInset : 0))
+        applyInsets(HomeContentInsets(underBar: LayoutInsets(view.safeAreaInsets), dock: 0))
     }
 
     private var isCurrentAccount: Bool {
@@ -163,14 +152,6 @@ public final class LegacyHomeViewController: UIViewController {
     /// Returns how many rows it touched.
     private func apply(_ update: HomeUpdate) -> Int {
         grouping = update.grouping
-        if let snapshot = update.dock {
-            if let dock {
-                dock.update(snapshot)
-            } else {
-                dock = HomeDockController(restingView: dockView, host: self, context: context, session: session, snapshot: snapshot)
-                view.setNeedsLayout()
-            }
-        }
         let touched = update.contentChanged ? show(update) : 0
         (content as? SessionListViewController)?.setArchiveModels(update.archiveModels, settings: update.archiveSettings)
         prepareArchivesIfNeeded()
@@ -212,8 +193,6 @@ public final class LegacyHomeViewController: UIViewController {
         let state = update.content
         let previous = self.state
         self.state = state
-        // The scrim is for a list that scrolls under the dock.
-        dockView.showsScrim = state.kind == .list
         var rows = 0
         switch (previous, state) {
         case (.loading?, .loading), (.link?, .link), (.offline?, .offline), (.loading?, .link), (.link?, .loading),
@@ -252,8 +231,14 @@ public final class LegacyHomeViewController: UIViewController {
 
     private func makeList(_ model: HomeListModel, changeset: RowChangeset) -> SessionListViewController {
         let controller = SessionListViewController(context: context, session: session)
+        // ProjectRow's `+` (ProjectHomeList.tsx `createWorkspace`): the
+        // draft moves to the project, asking for a new workspace, and an
+        // empty chat opens on it.
         controller.onCreateWorkspace = { [weak self] origin in
-            self?.dock?.createWorkspace(origin) ?? false
+            guard let self, canCompose else { return false }
+            NewSessionDraftStore.shared(for: context.account.localSettings).prepareWorkspace(origin)
+            compose()
+            return true
         }
         controller.onExpandedProjectsChange = { [weak self] in self?.expandedProjectsChanged() }
         controller.apply(model, changeset: changeset, animated: false)
@@ -278,7 +263,7 @@ public final class LegacyHomeViewController: UIViewController {
         next.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         let swap = {
             previous?.view.removeFromSuperview()
-            self.view.insertSubview(next.view, belowSubview: self.dockView)
+            self.view.insertSubview(next.view, at: 0)
         }
         if animated {
             UIView.transition(with: view, duration: 0.25, options: .transitionCrossDissolve, animations: swap)
@@ -298,13 +283,12 @@ public final class LegacyHomeViewController: UIViewController {
         // nothing, nor its header and dock (MainView.tsx `isTablet`).
         let blank = floating && traitCollection.isTabletLayout
         content?.view.isHidden = blank
-        dock?.isAvailable = showsDock && !blank
         if floating {
             // The account's name is the bar's title; the connection hangs under it.
             switcher?.subtitle = blank || !HomeConnectionStatus.shows(status) ? nil : Strings.Home.connectionStatus(status)
             navigationItem.leftBarButtonItem = blank ? nil : switcher?.barItem
             var items: [HeaderBar.Trailing: UIBarButtonItem] = [.filter: filterItem, .settings: settingsItem]
-            if let host = self as UIViewController as? ComposeHosting {
+            if canCompose, let host = self as UIViewController as? ComposeHosting {
                 items[.compose] = composeItem(host)
             }
             navigationItem.rightBarButtonItems = blank ? nil : HeaderBar.trailing(items)
@@ -367,6 +351,15 @@ public final class LegacyHomeViewController: UIViewController {
 
     private func openSettings() {
         push(.settings, context: context)
+    }
+
+    /// The bar's compose: an empty chat, whose first send starts the
+    /// session on the machine and folder picked last.
+    func compose() {
+        guard canCompose, let navigation = navigationController, navigation.topViewController === self,
+              navigation.transitionCoordinator == nil else { return }
+        let chat = LegacyChatViewController(context: context, session: session, sessionId: ComposeChat.makeId())
+        navigation.pushViewController(chat, animated: true)
     }
 }
 
