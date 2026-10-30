@@ -280,8 +280,13 @@ final class HomeViewController: UIViewController {
 
     /// Home's own rows: the document's, with the stories' rings.
     private func showRows() {
-        let drawn = usesSpaces ? Self.drawn(snapshot.rows) : snapshot.rows
-        sidebar.apply(Rows.withStories(drawn, rings: stories.rings))
+        sidebar.apply(shownRows)
+    }
+
+    /// The rows the list draws: the document's with the stories' rings, or
+    /// with Stem Cells off the classic list, its tree kept.
+    private var shownRows: [Row] {
+        usesSpaces ? Rows.withStories(Self.drawn(snapshot.rows), rings: stories.rings) : ClassicDrag.withStories(snapshot.rows, rings: stories.rings)
     }
 
     /// What answers the query, in the results over home: the rows that
@@ -545,7 +550,12 @@ final class HomeViewController: UIViewController {
     /// once the preview has gone (a rename needs the keyboard).
     private func menu(for row: Row) -> [[MenuItem]]? {
         // Searching, a hold has nothing to rename or move among what was found.
-        guard usesSpaces, search == nil else { return nil }
+        guard search == nil else { return nil }
+        // The classic list moves a row within its own section, and nothing more.
+        guard usesSpaces else {
+            guard beginDrag(row) != nil else { return nil }
+            return [[MenuItem(title: Strings.reorder, icon: "reorder") { [weak self] in self?.sidebar.armReorder(row.id) }]]
+        }
         guard let session, [.space, .session, .section].contains(row.kind) else { return nil }
         let store = session.store
         var first: [MenuItem] = []
@@ -626,11 +636,18 @@ final class HomeViewController: UIViewController {
     // MARK: Carry
 
     private func beginDrag(_ row: Row) -> Drag? {
+        // Classic: among its own section's rows, or its siblings (`ClassicDrag`).
+        if !usesSpaces { return search == nil ? ClassicDrag.drag(holding: row.id, rows: shownRows) : nil }
         guard search == nil, let document = snapshot.document else { return nil }
         return Drag(holding: row.id, drawn: Self.drawn(snapshot.rows), all: snapshot.allRows, document: document)
     }
 
     private func drop(_ drag: Drag, to: Int) {
+        if !usesSpaces {
+            guard let engine = session?.engine, let move = ClassicDrag.move(drag, to: to) else { return }
+            inOrder { await engine.reorder(move) }
+            return
+        }
         guard let store = session?.store else { return }
         guard case .some(let after) = drag.after(to: to) else { return }
         inOrder { await store.move(drag.moving, after: after) }

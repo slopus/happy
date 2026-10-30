@@ -43,6 +43,11 @@ public actor SyncEngine {
     private var dirty = false
     private var revision = 0
     private var sidebarSyncing = false
+    /// Classic rows set down here, by family, drawn where they were put
+    /// until the computer has answered (`ClassicDrag.held`).
+    private var holds: [String: [String]] = [:]
+    /// What the last refused move said, cleared by the next that goes through.
+    private var reorderError: String?
 
     public init(client: AgentClient, directory: URL?) {
         self.client = client
@@ -340,6 +345,29 @@ public actor SyncEngine {
         }
     }
 
+    /// A row set down in the classic sidebar: drawn where it was put at
+    /// once, asked of the computer by desktop's reorder routes, then drawn
+    /// in the computer's own order once it has answered. A refusal puts it
+    /// back and says why over the list.
+    public func reorder(_ move: ClassicMove) async {
+        guard !stopped else { return }
+        holds[move.family] = move.order
+        derive()
+        let generation = generation
+        do {
+            try await client.reorder(move)
+            if let reorderError, snapshot.error == reorderError { snapshot.error = nil }
+            reorderError = nil
+            // The computer's order now, not after the next event's pause.
+            if current(generation) { try? await reconcile(generation) }
+        } catch {
+            reorderError = Store.describe(error)
+            snapshot.error = reorderError
+        }
+        if holds[move.family] == move.order { holds[move.family] = nil }
+        derive()
+    }
+
     public func fold(_ id: String) async throws {
         if !collapsed.insert(id).inserted { collapsed.remove(id) }
         if collapsed.count > 512 { collapsed.remove(collapsed.sorted().first!) }
@@ -351,7 +379,7 @@ public actor SyncEngine {
         snapshot.loaded = desktop != nil
         snapshot.usesSpaces = snapshot.settings[DesktopSettingKeys.v2] == .bool(true)
         if let desktop {
-            snapshot.allRows = SidebarRows.make(desktop, settings: snapshot.settings, collapsed: collapsed)
+            snapshot.allRows = ClassicDrag.held(SidebarRows.make(desktop, settings: snapshot.settings, collapsed: collapsed), orders: holds)
             snapshot.rows = Rows.visible(snapshot.allRows)
         }
         publish()

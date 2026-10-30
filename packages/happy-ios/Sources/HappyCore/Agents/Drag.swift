@@ -181,4 +181,10 @@ public struct Drag: Equatable, Sendable {
         // Above every drawn row: after whatever hidden node stands before it.
         return Drop.after(moving, droppedBefore: drawn[first[0]].nodeId, rows: all)
     }
+
+    /// Every part given: for drags whose peers another rule chooses (`ClassicDrag`).
+    init(moving: String, units: [[Int]], from: Int, blocked: [Bool], parent: String?, drawn: [Row], all: [Row], before: [Int], afterFamily: [Int]) {
+        self.moving = moving; self.units = units; self.from = from; self.blocked = blocked; self.parent = parent
+        self.drawn = drawn; self.all = all; self.before = before; self.afterFamily = afterFamily
+    }
 }

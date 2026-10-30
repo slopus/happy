@@ -34,6 +34,11 @@ public enum SidebarRows {
                 isHappy: owner?.systemKey == "chief_of_staff", agentId: agent.id, workspaceId: agent.workspaceId, targetKind: kind)
             row.targetId = owner?.id
             row.canArchive = owner?.canArchive ?? false
+            // What a story row says under its title, as the spaces sidebar's do.
+            row.hasAgent = true
+            row.statusLine = agent.statusLine?.text
+            row.statusTime = agent.statusLine?.updatedAt
+            row.activityTime = agent.activityAt.map(Rows.minute)
             if kind == "bot", let owner, let avatar = owner.avatar {
                 row.mark = .image(path: "/v0/bots/\(AgentClient.escape(owner.id))/avatar", thumbhash: avatar.thumbhash)
             }
@@ -47,7 +52,7 @@ public enum SidebarRows {
         }.sorted { ($0.1, $0.0.id) < ($1.1, $1.0.id) }
         for (surface, _) in joined {
             var row = Row(id: "surface:\(surface.id)", nodeId: "surface:\(surface.id)", kind: .space,
-                label: surface.name, mark: .glyph(surface.type == "calendar" ? "calendar" : "doc"), agentId: surface.chatAgentId, targetKind: "surface")
+                label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type)), agentId: surface.chatAgentId, targetKind: "surface")
             row.targetId = surface.id
             row.surfaceType = surface.type
             rows.append(row)
