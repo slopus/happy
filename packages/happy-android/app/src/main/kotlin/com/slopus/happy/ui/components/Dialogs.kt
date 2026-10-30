@@ -5,13 +5,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -56,41 +55,41 @@ suspend fun confirm(
 }
 
 /**
- * happy-app's Modal on Android is the platform alert. This is its Compose
- * equivalent: buttons right-aligned in the given order (Android's neutral,
+ * happy-app's Modal on Android is the platform alert; this is the Material 3
+ * dialog with its own type and colours: title, message, then the actions
+ * as text buttons bottom right in the given order (Android's neutral,
  * negative, positive), each closing the dialog before running its action.
- * An alert with more than three buttons stacks them, one per line.
+ * A destructive action is in the error colour. More than three actions
+ * stack, one per line.
  */
 @Composable
 fun HappyAlert(alert: Alert, onDismiss: () -> Unit) {
-    val colors = HappyTheme.colors
     AlertDialog(
         onDismissRequest = { if (alert.cancelable) onDismiss() },
-        containerColor = colors.surface,
-        title = { Text(alert.title, style = happyTextStyle(fontSize = 20, lineHeight = 26, weight = FontWeight.SemiBold), color = colors.text) },
-        text = alert.message?.let { message ->
-            { Text(message, style = happyTextStyle(fontSize = 16, lineHeight = 22), color = colors.textSecondary) }
-        },
+        title = { Text(alert.title) },
+        text = alert.message?.let { message -> { Text(message) } },
         confirmButton = {
             val buttons: @Composable () -> Unit = {
                 alert.buttons.forEach { button ->
-                    TextButton(onClick = {
-                        onDismiss()
-                        button.onClick()
-                    }) {
-                        Text(
-                            text = button.text,
-                            style = happyTextStyle(fontSize = 15, lineHeight = 20, weight = FontWeight.SemiBold),
-                            color = if (button.destructive) colors.textDestructive else colors.text,
-                        )
+                    TextButton(
+                        onClick = {
+                            onDismiss()
+                            button.onClick()
+                        },
+                        colors = if (button.destructive) {
+                            ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        } else {
+                            ButtonDefaults.textButtonColors()
+                        },
+                    ) {
+                        Text(button.text)
                     }
                 }
             }
-            // More than Android's three dialog slots: one action per line, in order.
             if (alert.buttons.size > 3) {
                 Column(horizontalAlignment = Alignment.End) { buttons() }
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { buttons() }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { buttons() }
             }
         },
     )

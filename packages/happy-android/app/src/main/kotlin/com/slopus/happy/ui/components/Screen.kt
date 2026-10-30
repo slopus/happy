@@ -28,13 +28,15 @@ import com.slopus.happy.ui.theme.HappyTheme
 
 /**
  * A stack screen: the header, then the content on the grouped background,
- * kept clear of the navigation bar and the keyboard (RN's
- * KeyboardAvoidingView with `behavior="height"`).
+ * kept clear of the navigation bar. Only a screen with a text field of its
+ * own sets [avoidKeyboard] and shrinks above the keyboard; the others stay
+ * put when a keyboard opens over them (a dialog's, say).
  */
 @Composable
 fun Screen(
     header: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    avoidKeyboard: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Column(modifier = modifier.fillMaxSize().background(HappyTheme.colors.grouped.background)) {
@@ -43,7 +45,7 @@ fun Screen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
+                .windowInsetsPadding(if (avoidKeyboard) WindowInsets.navigationBars.union(WindowInsets.ime) else WindowInsets.navigationBars),
             content = content,
         )
     }

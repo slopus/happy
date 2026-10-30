@@ -66,7 +66,6 @@ class StartLayoutTest {
                     onConnect = { taps += "connect" },
                     onEnterLink = { taps += "link" },
                     onRestore = { taps += "restore" },
-                    onCreateAccount = { taps += "create" },
                     onServer = { taps += "server" },
                 )
             }
@@ -116,9 +115,8 @@ class StartLayoutTest {
         rule.onNodeWithText("Start").performClick()
         for ((label, tap) in listOf(
             "Enter link manually" to "link",
-            "Restore existing account" to "restore",
-            "Create account" to "create",
-            "Server" to "server",
+            "Restore Legacy Account" to "restore",
+            "Legacy Server" to "server",
         )) {
             rule.onNodeWithContentDescription("More").performClick()
             rule.node(StartTags.MENU).assertExists()
@@ -126,10 +124,11 @@ class StartLayoutTest {
             rule.node(StartTags.MENU).assertDoesNotExist()
             assertEquals(tap, taps.last())
         }
-        assertEquals(listOf("connect", "link", "restore", "create", "server"), taps)
+        assertEquals(listOf("connect", "link", "restore", "server"), taps)
 
         rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("happy.example.com").assertExists()
+        rule.onNodeWithText("Create account").assertDoesNotExist()
         rule.onNodeWithText("Get help").performClick()
         rule.onNodeWithText("Stuck? Come ask us.").assertExists()
     }
@@ -151,6 +150,24 @@ class StartLayoutTest {
         assertBox("content", rule.node(StartTags.CONTENT).bounds, 0.dp, 24.dp, PHONE_WIDTH.dp, (PHONE_HEIGHT - 24 - 48).dp)
         assertDp("more under the status bar", 24 + 4, rule.node(StartTags.MORE).bounds.top)
         assertMiddle(rule.node(StartTags.LOGO).bounds, rule.node(StartTags.CONNECT).bounds, (PHONE_HEIGHT - 48).dp, top = 24.dp)
+    }
+
+    /** Nothing here takes text: a keyboard (a dialog's) leaves the screen where it is. */
+    @Test
+    fun theKeyboardDoesNotMoveIt() {
+        show()
+        val before = rule.node(StartTags.CONNECT).bounds
+        rule.runOnIdle {
+            val px = view.resources.displayMetrics.density
+            val insets = WindowInsetsCompat.Builder()
+                .setInsets(WindowInsetsCompat.Type.ime(), Insets.of(0, 0, 0, (300 * px).toInt()))
+                .setVisible(WindowInsetsCompat.Type.ime(), true)
+                .build()
+            ViewCompat.dispatchApplyWindowInsets(view, insets)
+        }
+        rule.waitForIdle()
+        assertBox("content", rule.node(StartTags.CONTENT).bounds, 0.dp, 0.dp, PHONE_WIDTH.dp, PHONE_HEIGHT.dp)
+        assertEquals(before, rule.node(StartTags.CONNECT).bounds)
     }
 
     /** At font scale 2.0 Connect's label grows along the sp curve and the button with it; icons and the logo don't. */

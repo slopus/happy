@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -59,7 +61,6 @@ object StartTags {
     const val MENU = "start.menu"
     const val ENTER_LINK = "start.enterLink"
     const val RESTORE = "start.restore"
-    const val CREATE_ACCOUNT = "start.createAccount"
     const val SERVER = "start.server"
     const val HELP = "start.help"
 }
@@ -101,10 +102,11 @@ object StartSpec {
  * The first screen, shown only while there is no Happy account and no
  * agent connection (once added, the account menu's Add takes over). No header (Steve's exception, AGENTS.md): the Grain
  * Gradient fills the window behind the system bars; everything else keeps
- * out of every inset (bars, cutout, keyboard).
+ * out of the bars and the cutout. It ignores the keyboard.
  *
- *   ⋮ (top right)  a drop-down: enter a link, restore, create an account,
- *                  server, get help
+ *   ⋮ (top right)  a drop-down: enter a link, restore a legacy account,
+ *                  the legacy server, get help. A new Happy account is
+ *                  only ever made by Start (a terminal code)
  *   logo           centred in the space above Start
  *   Start          centred across, as wide as its label (at least 200),
  *                  48 above the bottom inset: scan a code, routed by kind
@@ -118,7 +120,6 @@ fun StartScreen(
     onConnect: () -> Unit,
     onEnterLink: () -> Unit,
     onRestore: () -> Unit,
-    onCreateAccount: () -> Unit,
     onServer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -133,7 +134,8 @@ fun StartScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                // Bars and cutout, never the keyboard: nothing here takes text, so a dialog's keyboard leaves it still.
+                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
                 .testTag(StartTags.CONTENT),
         ) {
             val viewport = maxHeight
@@ -175,7 +177,6 @@ fun StartScreen(
                         onDismiss = { open = false },
                         onEnterLink = onEnterLink,
                         onRestore = onRestore,
-                        onCreateAccount = onCreateAccount,
                         onServer = onServer,
                         onHelp = { help = true },
                     )
@@ -213,7 +214,6 @@ private fun StartMenu(
     onDismiss: () -> Unit,
     onEnterLink: () -> Unit,
     onRestore: () -> Unit,
-    onCreateAccount: () -> Unit,
     onServer: () -> Unit,
     onHelp: () -> Unit,
 ) {
@@ -245,10 +245,9 @@ private fun StartMenu(
         }
         item(stringResource(R.string.start_enter_link), Ionicon.LinkOutline, StartTags.ENTER_LINK, onClick = onEnterLink)
         HorizontalDivider(color = colors.divider)
-        item(stringResource(R.string.onboarding_restore_existing), Ionicon.KeyOutline, StartTags.RESTORE, onClick = onRestore)
-        item(stringResource(R.string.onboarding_create_account), Ionicon.PersonAddOutline, StartTags.CREATE_ACCOUNT, onClick = onCreateAccount)
+        item(stringResource(R.string.start_restore_legacy), Ionicon.KeyOutline, StartTags.RESTORE, onClick = onRestore)
         item(
-            stringResource(R.string.onboarding_settings_server),
+            stringResource(R.string.start_legacy_server),
             Ionicon.ServerOutline,
             StartTags.SERVER,
             detail = customServerLabel ?: stringResource(R.string.onboarding_settings_server_default),

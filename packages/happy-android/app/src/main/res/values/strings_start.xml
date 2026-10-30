@@ -9,6 +9,8 @@
     <string name="start_connect">Connect</string>
     <string name="start_more">More</string>
     <string name="start_enter_link">Enter link manually</string>
+    <string name="start_restore_legacy">Restore Legacy Account</string>
+    <string name="start_legacy_server">Legacy Server</string>
     <string name="start_enter_link_title">Enter Link</string>
     <string name="start_enter_link_message">Paste the link from Happy on your computer or from Happy Agent.</string>
     <string name="start_account_code">This code adds a phone to an account. Scan it with a phone that\'s signed in.</string>

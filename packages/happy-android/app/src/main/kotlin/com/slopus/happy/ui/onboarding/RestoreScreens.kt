@@ -184,7 +184,7 @@ fun RestoreManualScreen(
     val focusRequester = remember { FocusRequester() }
     if (autoFocus) LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-    Screen(header = { StackHeader(stringResource(R.string.onboarding_secret_key_title), onBack, TitleAlignment.Center) }) {
+    Screen(header = { StackHeader(stringResource(R.string.onboarding_secret_key_title), onBack, TitleAlignment.Center) }, avoidKeyboard = true) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

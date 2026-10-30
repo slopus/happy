@@ -27,6 +27,7 @@ import com.slopus.happy.ui.home.AccountMenuTags
 import com.slopus.happy.ui.onboarding.RestoreTags
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -69,8 +70,8 @@ class AppFlowTest {
     // A new account has no computer, so the link page takes the home over (index.tsx); its gear logs out.
     @Test
     fun createAccountThenLogout() {
-        rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Create account").performClick()
+        // The first screen makes no empty account; make one directly, as a terminal code would.
+        runBlocking { graph.auth.createAccount() }
         rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 5_000)
         assertTrue(graph.auth.state.value is AuthState.SignedIn)
 
@@ -91,7 +92,7 @@ class AppFlowTest {
         server.setSettings(buildJsonObject { put("analyticsOptOut", true) }, version = 2)
 
         rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Restore existing account").performClick()
+        rule.onNodeWithText("Restore Legacy Account").performClick()
         rule.onNodeWithText("Use a secret key instead").performClick()
         rule.onNodeWithTag(RestoreTags.KEY_INPUT)
             .performTextReplacement(SecretKeyBackup.format(encodeBase64(server.secret, Base64Variant.Url)))
@@ -105,7 +106,7 @@ class AppFlowTest {
     @Test
     fun aWrongSecretKeyShowsTheError() {
         rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Restore existing account").performClick()
+        rule.onNodeWithText("Restore Legacy Account").performClick()
         rule.onNodeWithText("Use a secret key instead").performClick()
         rule.onNodeWithTag(RestoreTags.KEY_INPUT).performTextReplacement("AAAAA-BBBBB")
         rule.onNodeWithText("Restore").performClick()

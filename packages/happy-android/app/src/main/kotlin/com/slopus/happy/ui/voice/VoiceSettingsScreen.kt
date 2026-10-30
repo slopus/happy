@@ -142,7 +142,7 @@ fun VoiceLanguageScreen(preferred: String?, onSelect: (String?) -> Unit, onBack:
     val colors = HappyTheme.colors
     var query by rememberSaveable { mutableStateOf("") }
     val languages = remember(query) { VoiceLanguages.all.filter { it.matches(query) } }
-    Screen(header = { StackHeader(stringResource(R.string.settings_voice__language__title), onBack) }) {
+    Screen(header = { StackHeader(stringResource(R.string.settings_voice__language__title), onBack) }, avoidKeyboard = true) {
         ItemList {
             Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Row(Modifier.testTag("voice.searchField").fillMaxWidth().background(colors.glass.backgroundStrong, RoundedCornerShape(16.dp))

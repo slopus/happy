@@ -28,6 +28,7 @@ import com.slopus.happy.ui.connect.DeepLink
 import com.slopus.happy.ui.connect.DeepLinks
 import com.slopus.happy.ui.home.HomeTags
 import com.slopus.happy.ui.onboarding.RestoreTags
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -74,7 +75,7 @@ class OnboardingFlowTest {
     @Test
     fun restoreByScanningTheCodeFromTheOtherPhone() {
         rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Restore existing account").performClick()
+        rule.onNodeWithText("Restore Legacy Account").performClick()
         rule.waitUntilAtLeastOneExists(hasTestTag(RestoreTags.QR_CODE), 5_000)
 
         // The code carries the key the request was registered with.
@@ -102,7 +103,7 @@ class OnboardingFlowTest {
     @Test
     fun anApprovalWhileTheSecretKeyScreenIsOpenStillSignsIn() {
         rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Restore existing account").performClick()
+        rule.onNodeWithText("Restore Legacy Account").performClick()
         rule.waitUntilAtLeastOneExists(hasTestTag(RestoreTags.QR_CODE), 5_000)
         val publicKey = synchronized(server) { server.accountRequests.keys.single() }
 
@@ -149,8 +150,8 @@ class OnboardingFlowTest {
 
     @Test
     fun aTerminalLinkOpensTheConfirmScreenAndAcceptConnectsIt() {
-        rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Create account").performClick()
+        // The first screen makes no empty account; make one directly, as a terminal code would.
+        runBlocking { graph.auth.createAccount() }
         rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 5_000)
         val account = graph.auth.state.value as AuthState.SignedIn
 

@@ -139,7 +139,7 @@ class HomeComponentsLayoutTest {
         rule.waitForIdle()
     }
 
-    // WebPromptModal.tsx: 270 wide; 20 top padding; 36 input 16 under the text; buttons split by a divider.
+    // A Material 3 dialog: title, message, the field, then Cancel and the confirm action bottom right.
     @Test
     fun promptReturnsTheTextOrNull() {
         var result: String? = "unset"
@@ -153,20 +153,16 @@ class HomeComponentsLayoutTest {
             }
         }
         val container = rule.node(PromptTags.CONTAINER).bounds
-        assertDp("width", 270, container.right - container.left)
         val title = rule.node(PromptTags.TITLE).bounds
-        assertDp("title 20 below the top", container.top + 20.dp, title.top)
         val message = rule.node(PromptTags.MESSAGE).bounds
-        assertDp("message 4 + 4 under the title", title.bottom + 8.dp, message.top)
         val input = rule.node(PromptTags.INPUT).bounds
-        assertDp("input 16 under the message", message.bottom + 16.dp, input.top)
-        assertDp("input height", 36, input.bottom - input.top)
-        assertDp("input inset 16", container.left + 16.dp + (1f / 3f).dp, input.left)
         val cancel = rule.node(PromptTags.CANCEL).bounds
         val confirm = rule.node(PromptTags.CONFIRM).bounds
-        assertDp("buttons 16 + 1 under the input", input.bottom + 17.dp, cancel.top)
-        assertDp("buttons split evenly", cancel.right - cancel.left, confirm.right - confirm.left)
+        assertTrue("Material dialog width", container.right - container.left in 280.dp..560.dp)
+        assertTrue("title, message, field, actions top to bottom", title.bottom <= message.top && message.bottom <= input.top && input.bottom <= cancel.top)
+        assertTrue("field at least 56 high", input.bottom - input.top >= 56.dp)
         assertTrue("confirm right of cancel", confirm.left >= cancel.right)
+        assertTrue("actions bottom right", container.right - confirm.right < 32.dp)
 
         rule.node(PromptTags.INPUT).performTextReplacement("new name")
         rule.onNodeWithText("Save").performClick()

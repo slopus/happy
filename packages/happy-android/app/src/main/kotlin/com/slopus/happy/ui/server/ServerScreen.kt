@@ -165,7 +165,7 @@ fun ServerScreen(
         )
     }
 
-    Screen(header = { StackHeader(stringResource(R.string.server_title), onBack, TitleAlignment.Center) }) {
+    Screen(header = { StackHeader(stringResource(R.string.server_title), onBack, TitleAlignment.Center) }, avoidKeyboard = true) {
         ItemList {
             ItemGroup(footer = stringResource(R.string.server_self_host_footer)) {
                 Column(
