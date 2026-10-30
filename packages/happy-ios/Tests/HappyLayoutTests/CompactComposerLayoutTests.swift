@@ -64,9 +64,19 @@ final class CompactComposerLayoutTests: XCTestCase {
         XCTAssertEqual(two.primary.midY, two.inputContainer.maxY - 22)
         XCTAssertEqual(two.options?.midY, two.primary.midY)
 
+        XCTAssertEqual(two.textPaddingTop, 4)
+        XCTAssertEqual(two.textPaddingBottom, 4)
+
         let three = card(text: 3 * 22 + 8, hasText: true)
         XCTAssertTrue(three.textScrolls)
-        XCTAssertEqual(three.text.height, AgentInputCardLayout.compactTextCap(lineHeight: 22))
+        // The row is as tall as the cap makes it; the text view inside is
+        // its two lines and no padding, centred where the padded one was.
+        XCTAssertEqual(three.inputContainer.height, AgentInputCardLayout.compactTextCap(lineHeight: 22) + 8)
+        XCTAssertEqual(three.text.height, 44)
+        XCTAssertEqual(three.text.minY, three.inputContainer.minY + 4 + 4 + 1)
+        XCTAssertEqual(three.textPaddingTop, 0)
+        XCTAssertEqual(three.textPaddingBottom, 0)
+        XCTAssertEqual(card(text: 8 * 22 + 8, hasText: true, compact: false).textPaddingTop, 4, "the full card keeps its padding")
         let expand = try XCTUnwrap(three.expand)
         XCTAssertEqual(expand.maxX, three.inputContainer.maxX)
         XCTAssertLessThan(expand.maxX, try XCTUnwrap(three.options).minX)
@@ -82,7 +92,9 @@ final class CompactComposerLayoutTests: XCTestCase {
         let two = card(text: 2 * line + 8, hasText: true, lineHeight: line)
         XCTAssertFalse(two.textScrolls)
         XCTAssertEqual(two.text.height, 2 * line + 8)
-        XCTAssertTrue(card(text: 3 * line + 8, hasText: true, lineHeight: line).textScrolls)
+        let three = card(text: 3 * line + 8, hasText: true, lineHeight: line)
+        XCTAssertTrue(three.textScrolls)
+        XCTAssertEqual(three.text.height, 2 * line)
     }
 
     // MARK: When
@@ -106,6 +118,27 @@ final class CompactComposerLayoutTests: XCTestCase {
         XCTAssertFalse(ChatScreenLayout.compacts(size: landscape, safeArea: landscapeSafe, keyboardTop: .greatestFiniteMagnitude) { _ in 103 })
         XCTAssertFalse(ChatScreenLayout.compacts(size: portrait, safeArea: portraitSafe, keyboardTop: 874 - 336) { _ in 103 })
         XCTAssertFalse(ChatScreenLayout.compacts(size: portrait, safeArea: portraitSafe, keyboardTop: .greatestFiniteMagnitude) { _ in 103 })
+    }
+
+    /// As measured on an iPhone 17 Pro sideways (874 × 402): the bar's foot
+    /// at 78, the keyboard's top at 194 (its suggestions included).
+    func testHidingTheBarSidewaysGivesTheTranscriptItsRoom() {
+        let keyboardTop: CGFloat = 194
+        let underBar = LayoutInsets(top: 78, left: 62, bottom: 21, right: 62)
+        let noBar = LayoutInsets(top: 0, left: 62, bottom: 21, right: 62)
+        XCTAssertEqual(ChatScreenLayout(size: landscape, safeArea: underBar, keyboardTop: keyboardTop) { _ in 60 }.viewport, 40)
+        XCTAssertEqual(ChatScreenLayout(size: landscape, safeArea: noBar, keyboardTop: keyboardTop) { _ in 60 }.viewport, 118)
+        // Hidden, the bar can't undo the shape that hid it: decided under
+        // the bar it stays compact, and so it would without it.
+        XCTAssertTrue(ChatScreenLayout.compacts(size: landscape, safeArea: underBar, keyboardTop: keyboardTop) { _ in 102 })
+        XCTAssertTrue(ChatScreenLayout.compacts(size: landscape, safeArea: noBar, keyboardTop: keyboardTop) { _ in 102 })
+    }
+
+    func testTheBarHidesOnlySidewaysWithTheKeyboardUpAndTheCardCompact() {
+        XCTAssertTrue(ChatScreenLayout.hidesBar(compact: true, sideways: true, keyboardUp: true))
+        XCTAssertFalse(ChatScreenLayout.hidesBar(compact: true, sideways: true, keyboardUp: false))
+        XCTAssertFalse(ChatScreenLayout.hidesBar(compact: true, sideways: false, keyboardUp: true))
+        XCTAssertFalse(ChatScreenLayout.hidesBar(compact: false, sideways: true, keyboardUp: true))
     }
 
     func testTheThresholdIsTheFullCardsTranscript() {

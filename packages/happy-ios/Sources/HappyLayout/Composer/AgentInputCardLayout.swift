@@ -191,9 +191,15 @@ public struct AgentInputCardLayout: Equatable, Sendable {
     public var attachments: CGRect?
     public var attachmentInsets: AttachmentInsets
     public var inputContainer: CGRect
-    /// The text view, its 4 + 4 padding included.
+    /// The text view, its padding (`textPaddingTop`, `textPaddingBottom`)
+    /// included.
     public var text: CGRect
     public var textScrolls: Bool
+    /// The text view's own padding above and below its text: 4 + 4, but
+    /// none on the compact card once its text scrolls, where `text` is
+    /// just its two lines.
+    public var textPaddingTop: CGFloat
+    public var textPaddingBottom: CGFloat
     /// The full-screen editor's button, over the text's top right corner;
     /// nil until the text is taller than the card shows.
     public var expand: CGRect?
@@ -250,13 +256,27 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             let minimum = input.inputMinHeight ?? metrics.inputMinHeight
             let containerHeight = max(minimum, text.height + metrics.inputPaddingTop + metrics.inputPaddingBottom)
             inputContainer = CGRect(x: columns.containerX, y: y, width: columns.containerWidth, height: containerHeight)
-            self.text = CGRect(
+            var textFrame = CGRect(
                 x: columns.containerX + insets.inputContainerPaddingLeft,
                 y: y + metrics.inputPaddingTop + (containerHeight - metrics.inputPaddingTop - metrics.inputPaddingBottom - text.height) / 2,
                 width: max(0, columns.containerWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight),
                 height: text.height
             )
             textScrolls = text.scrollEnabled
+            if textScrolls {
+                // Scrolled, the text shows its two lines and nothing else:
+                // no padding inside to scroll away and bare part of a line
+                // at the top. Following the caret then rests on whole lines.
+                let lines = 2 * lineHeight
+                textFrame.origin.y += metrics.inputPaddingTop + (textFrame.height - metrics.inputPaddingTop - metrics.inputPaddingBottom - lines) / 2
+                textFrame.size.height = lines
+                textPaddingTop = 0
+                textPaddingBottom = 0
+            } else {
+                textPaddingTop = metrics.inputPaddingTop
+                textPaddingBottom = metrics.inputPaddingBottom
+            }
+            self.text = textFrame
             if input.offersExpand, textScrolls {
                 let size = metrics.primaryActionSize
                 let expand = CGRect(x: inputContainer.maxX - size, y: inputContainer.minY, width: size, height: size)
@@ -283,6 +303,8 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             return
         }
         options = nil
+        textPaddingTop = metrics.inputPaddingTop
+        textPaddingBottom = metrics.inputPaddingBottom
 
         // The input container centres the text view in its padding box.
         let text = MultiTextInputLayout(

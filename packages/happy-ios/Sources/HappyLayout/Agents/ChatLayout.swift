@@ -73,6 +73,14 @@ public struct ChatScreenLayout: Equatable, Sendable {
     public static func compacts(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, restingCardHeight: (CGFloat) -> CGFloat) -> Bool {
         ChatScreenLayout(size: size, safeArea: safeArea, keyboardTop: keyboardTop, cardHeight: restingCardHeight).viewport < compactBelow
     }
+
+    /// Whether the chat hides its navigation bar: only a phone held
+    /// sideways (`sideways`: a compact height on a phone), with the
+    /// keyboard up and the card compact. Steve's OK for this one case,
+    /// 2026-10-30 (AGENTS.md rule 9); everywhere else the bar shows.
+    public static func hidesBar(compact: Bool, sideways: Bool, keyboardUp: Bool) -> Bool {
+        compact && sideways && keyboardUp
+    }
 }
 
 /// The conversation's rows stacked in a scroll view: newest last, resting

@@ -90,6 +90,34 @@ final class AgentInputCompactCardTests: XCTestCase {
         XCTAssertEqual(card.height(fitting: width), full)
     }
 
+    /// Scrolled to its caret at the end, the third line shows whole under
+    /// the second and no part of the first.
+    func testAScrolledTextShowsWholeLines() async throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 874, height: 402))
+        let card = card()
+        window.addSubview(card)
+        setCompact(card, true)
+        card.text = "first line\nsecond line\nthird line"
+        await card.textMeasured()
+        card.frame.size.height = card.height(fitting: width)
+        card.layoutIfNeeded()
+        let layout = card.layout(width: width)
+        XCTAssertTrue(layout.textScrolls)
+        XCTAssertEqual(card.textView.textContainerInset.top, 0)
+        XCTAssertEqual(card.textView.textContainerInset.bottom, 0)
+        // Two lines tall and nothing around them, so the text scrolled to
+        // its end shows the last two lines. TextKit 2 lays three 22-point
+        // lines out in 64 or 66 here from run to run, so the content's
+        // height isn't judged; the UI test's still is what shows it.
+        let line = layout.text.height / 2
+        XCTAssertEqual(line, 22)
+        XCTAssertEqual(card.textView.bounds.height, 2 * line, accuracy: 0.01, "the view is two lines")
+
+        setCompact(card, false)
+        XCTAssertEqual(card.textView.textContainerInset.top, MobileComposerMetrics.mobile.inputPaddingTop)
+        XCTAssertEqual(card.textView.textContainerInset.bottom, MobileComposerMetrics.mobile.inputPaddingBottom)
+    }
+
     func testTheRestingHeightIgnoresTheText() async {
         let card = card()
         let resting = card.restingHeight(fitting: width)

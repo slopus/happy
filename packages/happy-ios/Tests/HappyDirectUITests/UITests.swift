@@ -1460,9 +1460,12 @@ final class UITests: XCTestCase {
 
     /// A phone held sideways with the keyboard up leaves the full card a
     /// sliver of transcript: the card goes to one row, the chips behind its
-    /// options button, and back to the full card upright. The draft and the
-    /// keyboard carry across both turns. The transcript's room sideways is
-    /// read off the screen (`HAPPY_COMPACT`), empty and with three lines.
+    /// options button, and the navigation bar goes (Steve's OK, 2026-10-30).
+    /// The bar is back as the keyboard goes down and upright, and the draft
+    /// and the keyboard carry across the turns. Whether the swipe back may
+    /// begin with the bar hidden is `PopGestureBarTests`': a swipe XCUI
+    /// makes sideways pops nothing here even with the bar showing. The transcript's room sideways is read off the
+    /// screen (`HAPPY_COMPACT`), empty and with three lines.
     func testCompactComposerSideways() {
         // Upright to start, whatever a run before left; back upright however it ends.
         XCUIDevice.shared.orientation = .portrait
@@ -1470,27 +1473,33 @@ final class UITests: XCTestCase {
         let composer = openStreamLab(probe: "watch")
         let options = app.buttons["composer-options"]
         let model = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
+        let bar = app.navigationBars.firstMatch
+        func barShows() -> Bool { bar.exists && bar.isHittable && bar.frame.maxY > 0 }
         composer.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        // A run before leaves its draft: the caret to its end, then all of it deleted.
         if let draft = composer.value as? String, !draft.isEmpty, draft != composer.placeholderValue {
-            composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: draft.count))
+            composer.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.95)).tap()
+            composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: draft.count + 2))
         }
         pause(1)
+        XCTAssertEqual(composer.value as? String ?? "", composer.placeholderValue ?? "", "the draft wasn't cleared")
         XCTAssertFalse(options.exists && options.isHittable, "the options button upright")
         XCTAssertTrue(model.isHittable, "no model chip upright")
+        XCTAssertTrue(barShows(), "no bar upright with the keyboard up")
         capture("compact-0-portrait-empty")
 
-        /// The transcript's room: from under the bar to 8 above the card.
-        /// The card's top is 8 over the text's container, which is 44 or
-        /// the text and its 4 + 4, the text centred in it (a hairline left
-        /// out).
-        func room(_ name: String) -> CGFloat {
-            let bar = app.navigationBars.firstMatch.frame
+        /// The transcript's room: from under the bar (or the top, with it
+        /// hidden) to 8 above the card. The card's top is 8 over the text's
+        /// container: one line stands 7 into its 44, a scrolled text 9
+        /// into its 62 (a hairline left out).
+        func room(_ name: String, scrolled: Bool = false) -> CGFloat {
+            let shows = barShows()
+            let top = shows ? bar.frame.maxY : 0
             let text = composer.frame
-            let container = max(44, text.height + 8)
-            let cardTop = text.minY - 4 - (container - 8 - text.height) / 2 - 8
-            let room = cardTop - 8 - bar.maxY
-            print("HAPPY_COMPACT \(name) window \(app.windows.firstMatch.frame) bar \(bar) keyboard \(app.keyboards.firstMatch.frame) "
+            let cardTop = text.minY - (scrolled ? 9 : 7) - 8
+            let room = cardTop - 8 - top
+            print("HAPPY_COMPACT \(name) window \(app.windows.firstMatch.frame) bar \(shows ? bar.frame : .zero) keyboard \(app.keyboards.firstMatch.frame) "
                 + "composer \(text) options \(options.frame) send \(app.buttons["Send"].frame) cardTop \(cardTop) room \(room)")
             return room
         }
@@ -1501,15 +1510,27 @@ final class UITests: XCTestCase {
         XCTAssertTrue(options.waitForExistence(timeout: 3) && options.isHittable, "no options button sideways")
         XCTAssertFalse(model.exists && model.isHittable, "the chips still in the row sideways")
         XCTAssertTrue(app.buttons["Send"].isHittable)
-        XCTAssertGreaterThan(room("landscape empty"), 0, "no transcript sideways")
+        XCTAssertFalse(barShows(), "the bar sideways with the keyboard up")
+        // Under the bar the compact card left 39.67.
+        XCTAssertGreaterThan(room("landscape empty"), 60, "the transcript's room sideways without the bar")
         capture("compact-1-landscape-empty")
 
+        // Who has the keys, and where the composer stands, with the menu up.
+        func focus(_ name: String) {
+            let keyboard = app.keyboards.firstMatch
+            print("HAPPY_COMPACT_FOCUS \(name) composerFocus \(String(describing: composer.value(forKey: "hasKeyboardFocus"))) "
+                + "keyboard exists \(keyboard.exists) hittable \(keyboard.exists && keyboard.isHittable) frame \(keyboard.exists ? keyboard.frame : .zero) composer \(composer.frame)")
+        }
+        focus("before menu")
         options.tap()
-        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 3), "the options menu has no model")
+        let modelRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
+        XCTAssertTrue(modelRow.waitForExistence(timeout: 3), "the options menu has no model")
+        pause(0.5)
+        focus("menu up")
         capture("compact-2-options")
-        row.tap()
+        modelRow.tap()
         XCTAssertTrue(app.descendants(matching: .any)["picker-models"].waitForExistence(timeout: 5), "the model list didn't open")
+        focus("picker up")
         capture("compact-3-picker")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
         pause(1)
@@ -1520,15 +1541,32 @@ final class UITests: XCTestCase {
         pause(1.5)
         XCTAssertTrue(options.isHittable, "no options button with three lines")
         XCTAssertTrue(app.buttons["Send"].isHittable)
-        XCTAssertGreaterThan(room("landscape three lines"), 0, "no transcript sideways with three lines")
+        XCTAssertGreaterThan(room("landscape three lines", scrolled: true), 40, "the transcript's room sideways with three lines")
         capture("compact-4-landscape-three-lines")
+
+        // The keyboard down, still sideways: the bar is back.
+        // Dragged down from the transcript, the only room above the card
+        // sideways.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).press(
+            forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)), withVelocity: .slow, thenHoldForDuration: 0.2
+        )
+        pause(1.5)
+        XCTAssertFalse(app.keyboards.firstMatch.exists && app.keyboards.firstMatch.isHittable, "the keyboard stayed up")
+        XCTAssertTrue(barShows(), "no bar sideways with the keyboard down")
+        capture("compact-5-landscape-keyboard-down")
+        composer.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        pause(1)
+        XCTAssertFalse(barShows(), "the bar again with the keyboard up again")
 
         XCUIDevice.shared.orientation = .portrait
         pause(2.5)
+        XCTAssertTrue(barShows(), "no bar upright again")
         XCTAssertFalse(options.exists && options.isHittable, "the options button upright again")
         XCTAssertTrue(model.isHittable, "no model chip upright again")
         XCTAssertEqual(composer.value as? String, "first line\nsecond line\nthird line")
-        capture("compact-5-portrait-again")
+        capture("compact-6-portrait-again")
+
     }
 
     /// Stream Lab's conversation, with the transcript's probe on.

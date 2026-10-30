@@ -1130,10 +1130,18 @@ public final class AgentInputCardView: UIView {
         } else {
             attachmentStrip.isHidden = true
         }
+        let padded = textView.textContainerInset.top != layout.textPaddingTop || textView.textContainerInset.bottom != layout.textPaddingBottom
+        if padded {
+            textView.textContainerInset.top = layout.textPaddingTop
+            textView.textContainerInset.bottom = layout.textPaddingBottom
+        }
         textView.setLayoutFrame(layout.text)
         if textView.isScrollEnabled != layout.textScrolls {
             textView.isScrollEnabled = layout.textScrolls
         }
+        // The padding went or came back under a scrolled text: back to the
+        // caret, which rests on a whole line.
+        if padded, layout.textScrolls { textView.scrollRangeToVisible(textView.selectedRange) }
         setTextTrailingInset(layout.textTrailingInset)
         showExpand(at: layout.expand)
         placeholderLabel.setLayoutFrame(CGRect(

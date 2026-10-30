@@ -323,6 +323,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
         // went unheard: down, unless it is still this composer's.
         fingerOnKeyboard = false
         if !card.textView.isFirstResponder { keyboardTop = .greatestFiniteMagnitude }
+        // Back from a screen over this one, or a swipe back let go of.
+        updateBar(animated: animated)
         let conversation = conversation
         Task { await conversation.setVisible(true) }
         toldReadsNewest = nil
@@ -342,6 +344,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         // Leaving keeps a name being typed, as a tap away does.
         titleView.finishEditing()
         picker?.close(animated: false)
+        giveBarBack(animated: animated)
         // Left holding something, new work isn't offered again as empty.
         if isMovingFromParent, !previewing, let spaceId {
             let holding = !composerIsEmpty
@@ -401,10 +404,69 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let top = local.minY >= view.bounds.maxY || local.isEmpty ? CGFloat.greatestFiniteMagnitude : local.minY
         keyboardTop = top
         fingerOnKeyboard = false
-        guard duration > 0 else { return view.setNeedsLayout() }
+        guard duration > 0 else {
+            updateBar(animated: false)
+            return view.setNeedsLayout()
+        }
         UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction]) {
+            // The bar goes or comes back in the keyboard's time, so the
+            // transcript moves once.
+            self.updateBar(animated: false)
             self.view.setNeedsLayout()
             self.view.layoutIfNeeded()
+        }
+    }
+
+    // MARK: The bar sideways
+
+    /// The safe area's top as it is with the bar showing, kept while this
+    /// screen hides it: what the card's shape is decided against, so
+    /// hiding the bar can't change the shape that hid it.
+    private var barSafeTop: CGFloat?
+
+    /// The card's shape for where the keyboard rests (never the finger
+    /// dragging it), from the full card with one line.
+    private var compacts: Bool {
+        var safeArea = LayoutInsets(view.safeAreaInsets)
+        if let barSafeTop { safeArea.top = barSafeTop }
+        return ChatScreenLayout.compacts(size: view.bounds.size, safeArea: safeArea, keyboardTop: keyboardTop) { [card] width in
+            card.restingHeight(fitting: width)
+        }
+    }
+
+    /// Steve's OK, in the conversation of 2026-10-30 (AGENTS.md rule 9):
+    /// a phone held sideways with the keyboard up and the card compact
+    /// hides the navigation bar, which gives the transcript its room back.
+    /// It comes back as the keyboard goes down, the phone turns upright,
+    /// or another screen comes over this one or back from it. The bar is
+    /// the standard one, only hidden; the swipe back stays
+    /// (`PopGestureDelegate`), and the status bar is the system's.
+    private func updateBar(animated: Bool) {
+        guard !previewing, let navigationController, navigationController.topViewController === self else { return }
+        let hides = ChatScreenLayout.hidesBar(
+            compact: compacts,
+            sideways: traitCollection.verticalSizeClass == .compact && traitCollection.userInterfaceIdiom == .phone,
+            keyboardUp: keyboardTop < view.bounds.maxY
+        )
+        guard hides != navigationController.isNavigationBarHidden else { return }
+        if hides { barSafeTop = view.safeAreaInsets.top }
+        navigationController.setNavigationBarHidden(hides, animated: animated)
+        if !hides { barSafeTop = nil }
+    }
+
+    /// The screen under (or over) this one keeps its bar.
+    private func giveBarBack(animated: Bool) {
+        guard barSafeTop != nil else { return }
+        barSafeTop = nil
+        guard let navigationController, navigationController.isNavigationBarHidden else { return }
+        navigationController.setNavigationBarHidden(false, animated: animated)
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: any UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        // Turning upright with the keyboard up: the bar is back with the turn.
+        coordinator.animate(alongsideTransition: { [weak self] _ in self?.updateBar(animated: false) }) { [weak self] _ in
+            self?.updateBar(animated: false)
         }
     }
 
@@ -1060,9 +1122,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         header.maxWidth = ChatTitleLayout.maxWidth(barWidth: view.bounds.width)
         // From where the keyboard rests, not the finger dragging it: the
         // card keeps its shape through a drag and changes once it settles.
-        card.configuration.compact = ChatScreenLayout.compacts(
-            size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), keyboardTop: keyboardTop
-        ) { [card] width in card.restingHeight(fitting: width) }
+        card.configuration.compact = compacts
         let screen = ChatScreenLayout(
             size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets),
             keyboardTop: fingerOnKeyboard ? keyboardTracker.frame.minY : keyboardTop
