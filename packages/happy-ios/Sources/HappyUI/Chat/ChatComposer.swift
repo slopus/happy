@@ -129,9 +129,6 @@ public protocol ChatComposerView: UIView {
     func blur()
     var hasPermissionMenu: Bool { get }
     func chatMenuElements(onInfo: @escaping () -> Void) -> [UIMenuElement]
-    func presentChatMenu(in host: UIView, anchor: @escaping () -> CGRect, onInfo: @escaping () -> Void)
-    func closeChatMenu()
-    func followChatMenu()
 }
 
 extension ChatComposerView {
@@ -141,9 +138,6 @@ extension ChatComposerView {
         details.accessibilityIdentifier = "chat-info"
         return [details]
     }
-    public func presentChatMenu(in host: UIView, anchor: @escaping () -> CGRect, onInfo: @escaping () -> Void) {}
-    public func closeChatMenu() {}
-    public func followChatMenu() {}
 }
 
 @MainActor

@@ -45,12 +45,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     private var environment: ChatComposerEnvironment
     private let card: AgentInputCardView
-    private var chatMenu: ComposerMenuPresenter?
 
     var hasPermissionMenu: Bool { card.configuration.permission?.menu != nil }
 
     func chatMenuElements(onInfo: @escaping () -> Void) -> [UIMenuElement] {
-        closeChatMenu()
         card.closeMenus()
         var elements: [UIMenuElement] = []
         if let configuration = permissionChips.first?.1, let menu = configuration.menu {
@@ -65,32 +63,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         elements.append(details)
         return elements
     }
-
-    func presentChatMenu(in host: UIView, anchor: @escaping () -> CGRect, onInfo: @escaping () -> Void) {
-        closeChatMenu()
-        card.closeMenus()
-        let presenter = ComposerMenuPresenter(card: card, chips: permissionChips)
-        presenter.title = Strings.ChatActions.more
-        presenter.rootID = "chat-menu"
-        presenter.pageID = "chat-permissions"
-        presenter.anchor = anchor
-        presenter.opensBelowAnchor = true
-        presenter.bottom = { [weak card, weak host] in
-            guard let card, let host else { return 0 }
-            return card.convert(card.bounds, to: host).minY
-        }
-        presenter.rootActions = [.option(key: "chat-info", label: Strings.Home.details, checked: false, disabled: false, gauge: nil)]
-        presenter.onRootAction = { _ in onInfo() }
-        presenter.onSelect = { [weak self] key, chip in
-            guard let self else { return }
-            self.agentInputCard(self.card, didSelect: key, in: chip)
-        }
-        chatMenu = presenter
-        presenter.show(in: host)
-    }
-
-    func closeChatMenu() { chatMenu?.close(); chatMenu = nil }
-    func followChatMenu() { chatMenu?.follow() }
 
     private var permissionChips: [(AgentInputChip, AgentInputChipConfiguration)] {
         guard var configuration = card.configuration.permission else { return [] }
@@ -417,7 +389,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     func blur() {
-        closeChatMenu()
         card.blur()
     }
 
@@ -462,7 +433,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window == nil { closeChatMenu() }
         followWindowLater()
     }
 
@@ -642,7 +612,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             )
         ) : nil
         card.configuration = configuration
-        chatMenu?.update(chips: permissionChips)
     }
 
     private static func settingsSection(_ section: ComposerChipSet.SettingsSection) -> AgentInputSettingsMenu.Section {

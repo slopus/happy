@@ -731,7 +731,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        composer.closeChatMenu()
         if contentInstalled { keepStripOffset() }
         if ultraKeyboard?.isDriving == true { ultraKeyboard?.dismissImmediately() }
         // Screens pushed from here, and the one under it, have their bar.
@@ -749,7 +748,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         updateUltraKeyboard()
         ultraKeyboard?.prepareLayout(guideTop: keyboardTracker.frame.minY)
         layoutScreen()
-        composer.followChatMenu()
         ultraKeyboard?.refresh()
         updatePermissionListMaxHeight()
         if list.bounds.width != sentRowsView.width || list.traitCollection.textEnvironment != sentRowsView.text.environment {
