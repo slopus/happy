@@ -73,7 +73,8 @@ enum HeaderBar {
     }
 
     static func chatMenuItem(_ action: @escaping () -> Void) -> UIBarButtonItem {
-        let item = UIBarButtonItem(image: .icon(.ionicons("ellipsis-horizontal"), size: 22), primaryAction: UIAction { _ in action() })
+        let image = UIImage(systemName: "ellipsis", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22))
+        let item = UIBarButtonItem(image: image, primaryAction: UIAction { _ in action() })
         item.accessibilityLabel = Strings.ChatActions.more
         item.accessibilityIdentifier = "chat-more"
         return item

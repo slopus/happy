@@ -188,6 +188,18 @@ final class HostedHeaderBarTests: XCTestCase {
             try await settle(navigation)
             let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
             XCTAssertEqual(chat.navigationItem.rightBarButtonItems?.map(\.accessibilityIdentifier), ["chat-more", "compose"])
+            let more = try XCTUnwrap(chat.navigationItem.rightBarButtonItems?.first?.image)
+            var pixels = [UInt8](repeating: 0, count: 32 * 32 * 4)
+            let drawn = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32)).image { _ in
+                more.withTintColor(.black, renderingMode: .alwaysOriginal).draw(in: CGRect(x: 0, y: 0, width: 32, height: 32))
+            }
+            let visible = try pixels.withUnsafeMutableBytes { bytes in
+                let context = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: 32, height: 32, bitsPerComponent: 8, bytesPerRow: 32 * 4,
+                                                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+                context.draw(try XCTUnwrap(drawn.cgImage), in: CGRect(x: 0, y: 0, width: 32, height: 32))
+                return stride(from: 3, to: bytes.count, by: 4).contains { bytes[$0] > 0 }
+            }
+            XCTAssertTrue(visible, "the More glyph must draw visible pixels")
             XCTAssertNil(chat.navigationItem.standardAppearance, "the bar's own, shared look")
             Self.assertClear(navigation.navigationBar)
             keep(window, "chat-\(name)")
