@@ -53,11 +53,18 @@ final class Session {
         return session
     }
 
-    /// Forgets a computer that was unpaired, and what was kept of it.
+    /// Forgets a computer that was unpaired, and what was kept of it — that
+    /// computer's and nobody else's, since another may still be paired.
+    ///
+    /// A document previewed from it is not among them: preview files are
+    /// not filed by computer, so there is no telling them apart. An open
+    /// preview removes its own file when it closes, and what a crash left
+    /// behind goes before the first preview of the next launch
+    /// (`FilePreview`), so until then such leftovers stay in this app's
+    /// caches.
     static func forget(_ accountID: String) {
         OfflineFile.remove(accountID)
         StoriesSession.forget(accountID)
-        FilePreview.removeAll()
         guard let session = sessions.removeValue(forKey: accountID) else { return }
         session.stop()
         // The store belongs to the engine, not to the session, so only an

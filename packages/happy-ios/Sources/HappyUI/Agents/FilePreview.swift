@@ -17,8 +17,10 @@ final class FilePreview: NSObject, QLPreviewControllerDataSource, QLPreviewContr
     private static var cleared = false
 
     /// Where previews are read to; what a preview left (the app ended while
-    /// one showed) goes at the next launch's first preview, or when a
-    /// computer is forgotten.
+    /// one showed) goes at the next launch's first preview. Not when a
+    /// computer is forgotten: the folders aren't filed by computer, and
+    /// clearing them all would pull the file from under another computer's
+    /// open preview.
     static let root = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Agents/files", isDirectory: true)
 
@@ -55,11 +57,6 @@ final class FilePreview: NSObject, QLPreviewControllerDataSource, QLPreviewContr
             let folder = folder
             Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: folder) }
         }
-    }
-
-    static func removeAll() {
-        let root = root
-        Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: root) }
     }
 }
 #endif
