@@ -33,7 +33,14 @@ final class Session {
     /// The session for a paired computer, made once and kept while the app runs.
     static func session(for accountID: String, context: AppContext) -> Session? {
         guard let engine = context.account.agentConnections.syncEngine(for: accountID) else { return nil }
-        if let existing = sessions[accountID], existing.engine === engine { return existing }
+        if let existing = sessions[accountID] {
+            if existing.engine === engine { return existing }
+            // The same computer on a new engine. The old session's engine
+            // is gone, so nothing it watches can say anything again: it is
+            // stopped here rather than left to whenever the last screen
+            // holding it is freed.
+            existing.stop()
+        }
         let session = Session(accountID: accountID, engine: engine)
         sessions[accountID] = session
         return session
@@ -45,10 +52,23 @@ final class Session {
         StoriesSession.forget(accountID)
         FilePreview.removeAll()
         guard let session = sessions.removeValue(forKey: accountID) else { return }
-        session.following?.cancel()
-        session.warm.stopAll()
+        session.stop()
+        // The store belongs to the engine, not to the session, so only an
+        // unpairing stops it.
         let store = session.store
         Task { await store.stop() }
+    }
+
+    /// What this session set going, stopped: the snapshots followed and
+    /// the conversations read ahead, with the path monitor and the
+    /// notifications `WarmChats` watches. Twice does nothing the second
+    /// time, and a screen still holding the session simply stops hearing.
+    func stop() {
+        following?.cancel()
+        following = nil
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+        observers.removeAll()
+        warm.stop()
     }
 
     private init(accountID: String, engine: SyncEngine) {

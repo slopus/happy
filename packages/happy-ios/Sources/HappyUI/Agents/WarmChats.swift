@@ -67,6 +67,8 @@ final class WarmChats {
     private var references = References()
     private var pump: Task<Void, Never>?
     private var started = false
+    /// Set by `stop`, so a second call has nothing to do.
+    private(set) var stopped = false
     private var background = false
     /// A memory warning came: only the top few from then on.
     private var pressed = false
@@ -109,20 +111,25 @@ final class WarmChats {
         path.start(queue: DispatchQueue(label: "V2WarmChats.path", qos: .utility))
     }
 
-    /// KNOWN HAZARD, not fixed here: an `isolated deinit` let go of on the
-    /// main thread aborts on the iOS 26.3 runtime, as `Watch`'s did, and
-    /// `Session.forget` lets this go there when an agent is disconnected.
-    /// A nonisolated deinit can't stand in: Swift 6 won't read `observers`
-    /// or `chats` from one. The way out is to take this apart by hand
-    /// (`stopAll` already does half of it, from `Session.forget`) and leave
-    /// no deinit at all; that is a change to who owns a session's
-    /// teardown, so it is its own piece of work.
-    isolated deinit {
-        pump?.cancel()
-        easing?.cancel()
+    /// Everything held outside this object, let go of by hand: the chats
+    /// read ahead, the path monitor, and the notifications watched for.
+    /// `Session` calls it when a computer is forgotten and when a session
+    /// is replaced; twice does nothing the second time.
+    ///
+    /// There is deliberately no deinit. An `isolated deinit` aborts on the
+    /// iOS 26.3 runtime when it is let go of on the main thread, the same
+    /// way `Watch`'s did, and a nonisolated one can't stand in, since
+    /// Swift 6 won't read `observers` or `chats` from one. Neither is the
+    /// real reason, though: a deinit here only runs when the last screen
+    /// happens to let the session go, which is not when a computer stops
+    /// being watched. Saying it explicitly is what makes it certain.
+    func stop() {
+        guard !stopped else { return }
+        stopped = true
+        stopAll()
         path.cancel()
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
-        for chat in chats.values { stop(chat) }
+        observers.removeAll()
     }
 
     /// Low Data Mode, Low Power Mode, a hot phone or a memory warning.
@@ -368,8 +375,8 @@ final class WarmChats {
         }
     }
 
-    /// The computer was unpaired: nothing more is read from it.
-    func stopAll() {
+    /// Nothing more is read ahead. `stop` is the way in from outside.
+    private func stopAll() {
         pump?.cancel(); pump = nil
         easing?.cancel(); easing = nil
         started = false
