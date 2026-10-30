@@ -15,6 +15,9 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.conversation.Activity
 import com.slopus.happy.conversation.AgentInfo
+import com.slopus.happy.conversation.Artifact
+import com.slopus.happy.conversation.ArtifactFile
+import com.slopus.happy.conversation.ArtifactView
 import com.slopus.happy.conversation.Block
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationRowBuilder
@@ -372,6 +375,33 @@ class ConversationLayoutTest {
         rule.node(PictureViewerTags.CLOSE).performClick()
         rule.waitForIdle()
         rule.node(PictureViewerTags.VIEWER).assertDoesNotExist()
+    }
+
+    @Test fun `an artifact's words are read here`() {
+        val words = Artifact("r7", "markdown", "Release notes", 2, "index.md", listOf(ArtifactFile("index.md", "text/markdown", 12)), false, false)
+        rule.setHappyContent {
+            ArtifactScreen(ArtifactContent.Ready(words, ArtifactView.Words("# Ready\n\nIt all passed."), emptyMap()), {}, {}, { _, _, _ -> }, {})
+        }
+        rule.onNodeWithText("Release notes").assertIsDisplayed()
+        rule.onNodeWithText("It all passed.").assertIsDisplayed()
+        shot("artifact-words")
+    }
+
+    @Test fun `an artifact kind this build doesn't draw says where it opens`() {
+        val page = Artifact("r8", "html", "Dashboard", 1, "index.html", listOf(ArtifactFile("index.html", "text/html", 40)), false, false)
+        rule.setHappyContent { ArtifactScreen(ArtifactContent.Ready(page, ArtifactView.NotHere("html"), emptyMap()), {}, {}, { _, _, _ -> }, {}) }
+        rule.node(ArtifactTags.NOT_HERE).assertIsDisplayed()
+        rule.onNodeWithText("Happy Agent on your computer", substring = true).assertIsDisplayed()
+        shot("artifact-not-here")
+    }
+
+    @Test fun `an artifact that couldn't be read says why, with Retry`() {
+        var retries = 0
+        rule.setHappyContent { ArtifactScreen(ArtifactContent.Failed("Could not reach the agent."), {}, { retries++ }, { _, _, _ -> }, {}) }
+        rule.onNodeWithText("Could not reach the agent.").assertIsDisplayed()
+        rule.onNodeWithText("Retry").performClick()
+        assertEquals(1, retries)
+        shot("artifact-failed")
     }
 
     @Test fun `details list the agent and its mode`() {

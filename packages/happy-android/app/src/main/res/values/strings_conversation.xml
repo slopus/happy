@@ -34,6 +34,10 @@
     <string name="conversation_compacted">Conversation compacted</string>
     <string name="conversation_compaction_failed">Compaction failed</string>
     <string name="conversation_artifact">Artifact</string>
+    <string name="conversation_artifact_failed">Couldn\'t read this artifact</string>
+    <string name="conversation_artifact_open">Open it</string>
+    <string name="conversation_artifact_kind_unavailable">This build doesn\'t show a %1$s artifact yet. It opens in Happy Agent on your computer.</string>
+    <string name="conversation_artifact_deleted">This artifact was deleted.</string>
     <string name="conversation_artifact_unavailable">Open it in Happy Agent on your computer.</string>
     <string name="conversation_file_unavailable">Files open in Happy Agent on your computer.</string>
     <string name="conversation_video_unavailable">Videos play in Happy Agent on your computer.</string>

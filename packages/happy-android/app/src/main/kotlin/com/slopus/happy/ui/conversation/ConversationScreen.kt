@@ -151,7 +151,7 @@ fun ConversationScreen(
         )
     }
     val pictures = rememberPictureViewer()
-    val media = rememberMediaOpener(actions.loadMedia)
+    val media = rememberMediaOpener()
     val rowActions = remember(actions, legacy, pictures, media) {
         ConversationRowActions(
             legacy = legacy,
@@ -159,8 +159,8 @@ fun ConversationScreen(
             loadMedia = actions.loadMedia,
             onOpenArtifact = actions.onOpenArtifact,
             onOpenPicture = pictures::show,
-            onOpenMedia = media::open,
-            mediaOpening = media::state,
+            onOpenMedia = { ref -> media.open(ref.key, ref.item) { actions.loadMedia(ref) } },
+            mediaOpening = { ref -> media.state(ref.key) },
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }

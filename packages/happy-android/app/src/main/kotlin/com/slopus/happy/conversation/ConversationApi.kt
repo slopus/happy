@@ -137,6 +137,22 @@ open class ConversationApi(private val request: AgentRequest) {
         return response.body
     }
 
+    /** One artifact as the catalog has it (API.md "Artifacts"). */
+    open suspend fun artifact(artifactId: String): JsonObject =
+        call("GET", "/v0/artifacts/${escape(artifactId)}")["artifact"].obj ?: throw invalid()
+
+    /** A version's manifest: its title, its entry's path and every file it holds. [number] or `latest`. */
+    open suspend fun artifactVersion(artifactId: String, number: String = "latest"): JsonObject =
+        call("GET", "/v0/artifacts/${escape(artifactId)}/versions/${escape(number)}")["version"].obj ?: throw invalid()
+
+    /** The bytes of one file of one version, asked for by its exact manifest path. */
+    open suspend fun artifactFile(artifactId: String, number: String, path: String): ByteArray {
+        val route = path.split('/').joinToString("/") { escape(it) }
+        val response = request("GET", "/v0/artifacts/${escape(artifactId)}/versions/${escape(number)}/files/$route", null)
+        if (response.status !in 200..299) decode(response)
+        return response.body
+    }
+
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
         private val random = SecureRandom()

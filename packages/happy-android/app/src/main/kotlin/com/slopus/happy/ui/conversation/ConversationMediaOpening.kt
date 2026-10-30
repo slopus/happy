@@ -16,7 +16,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.core.content.FileProvider
 import com.slopus.happy.R
 import com.slopus.happy.conversation.MediaFiles
-import com.slopus.happy.conversation.MediaRef
+import com.slopus.happy.conversation.MediaItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,44 +42,43 @@ sealed interface MediaOpening {
 class MediaOpener internal constructor(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val load: suspend (MediaRef) -> ByteArray,
     private val text: MediaOpenerText,
 ) {
     private val running = mutableStateMapOf<String, Job>()
     internal val states = mutableStateMapOf<String, MediaOpening>()
 
-    fun state(ref: MediaRef): MediaOpening? = states[ref.key]
+    fun state(key: String): MediaOpening? = states[key]
 
-    /** Reads [ref] and opens it; tapped again while reading, it stops. */
-    fun open(ref: MediaRef) {
-        running.remove(ref.key)?.let {
+    /** Reads [item] with [load] and opens it; tapped again while reading, it stops. */
+    fun open(key: String, item: MediaItem, load: suspend () -> ByteArray) {
+        running.remove(key)?.let {
             it.cancel()
-            states.remove(ref.key)
+            states.remove(key)
             return
         }
-        states[ref.key] = MediaOpening.Reading
-        running[ref.key] = scope.launch {
+        states[key] = MediaOpening.Reading
+        running[key] = scope.launch {
             try {
-                val bytes = load(ref)
-                val file = withContext(Dispatchers.IO) { MediaFiles.stage(context.cacheDir, ref.key, ref.item, bytes) }
+                val bytes = load()
+                val file = withContext(Dispatchers.IO) { MediaFiles.stage(context.cacheDir, key, item, bytes) }
                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.conversation.media", file)
                 val intent = Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, ref.item.mimeType)
+                    .setDataAndType(uri, item.mimeType)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                 try {
                     context.startActivity(intent)
-                    states.remove(ref.key)
+                    states.remove(key)
                 } catch (_: ActivityNotFoundException) {
-                    states[ref.key] = MediaOpening.Failed(text.noApp)
+                    states[key] = MediaOpening.Failed(text.noApp)
                 }
             } catch (e: CancellationException) {
-                states.remove(ref.key)
+                states.remove(key)
                 throw e
             } catch (_: Exception) {
                 // The reason never carries the file's own content.
-                states[ref.key] = MediaOpening.Failed(text.failed)
+                states[key] = MediaOpening.Failed(text.failed)
             } finally {
-                running.remove(ref.key)
+                running.remove(key)
             }
         }
     }
@@ -89,7 +88,7 @@ internal data class MediaOpenerText(val noApp: String, val failed: String)
 
 /** The opener this screen uses; its reads stop when the screen goes. */
 @Composable
-internal fun rememberMediaOpener(load: suspend (MediaRef) -> ByteArray): MediaOpener {
+internal fun rememberMediaOpener(): MediaOpener {
     val context = LocalContext.current
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
@@ -97,7 +96,6 @@ internal fun rememberMediaOpener(load: suspend (MediaRef) -> ByteArray): MediaOp
     return current ?: MediaOpener(
         context = context,
         scope = scope,
-        load = load,
         text = MediaOpenerText(
             noApp = resources.getString(R.string.conversation_media_no_app),
             failed = resources.getString(R.string.conversation_media_failed),
