@@ -228,6 +228,11 @@ final class HostedHeaderBarTests: XCTestCase {
         window.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(500))
         XCTAssertEqual(home.navigationItem.leftBarButtonItem?.customView?.accessibilityIdentifier, "account-switcher")
+        // Read on screen from the left: filter, compose (when this home
+        // composes), settings outermost. Named, so a test needs no label.
+        let trailing = (home.navigationItem.rightBarButtonItems ?? []).reversed().compactMap(\.accessibilityIdentifier)
+        XCTAssertEqual(trailing.first, "filter")
+        XCTAssertEqual(trailing.last, "settings")
         XCTAssertNil(home.navigationItem.standardAppearance)
         Self.assertClear(navigation.navigationBar)
         keep(window, "legacy-home-light")

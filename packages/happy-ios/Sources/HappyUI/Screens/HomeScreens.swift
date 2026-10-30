@@ -348,6 +348,9 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     private lazy var filterItem: UIBarButtonItem = {
         let item = UIBarButtonItem(image: .icon(.ionicons("filter"), size: 22), menu: filterMenu())
         item.accessibilityLabel = Strings.Home.filterTitle
+        // As `HeaderBar`'s own items are named, so a test finds it without
+        // depending on the label's language.
+        item.accessibilityIdentifier = "filter"
         item.preferredMenuElementOrder = .fixed
         return item
     }()
