@@ -4,6 +4,7 @@ import { WebView } from 'react-native-webview';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { jsonForScriptElement } from './scriptEncoding';
 
 // Tall diagrams scroll inside a capped container instead of taking over the chat
 const MAX_DIAGRAM_HEIGHT = 600;
@@ -107,9 +108,10 @@ export const MermaidRenderer = React.memo((props: {
         );
     }
 
-    // For iOS/Android, use WebView
-    // Pass mermaid content via JSON to prevent XSS from HTML interpolation
-    const mermaidContent = JSON.stringify(props.content);
+    // For iOS/Android, use WebView.
+    // The diagram body is interpolated into a <script> element below, so it
+    // needs an HTML script-data encoder, not only a JavaScript-string one.
+    const mermaidContent = jsonForScriptElement(props.content);
     const html = `
         <!DOCTYPE html>
         <html>
