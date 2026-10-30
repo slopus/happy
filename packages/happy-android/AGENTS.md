@@ -135,8 +135,12 @@ win:
   approves that terminal in one step (`AuthRepository.createAccount`'s
   `prepare`; a failed approval keeps no account), `happy:///account?`
   says it needs a signed-in phone, `happy://direct?` pairs an agent. The
-  ⋮ drop-down holds Enter link manually (same routing), Restore existing
-  account, Create account, Server and Get help. Palette: blue and violet
+  ⋮ drop-down holds Enter link manually (same routing), Restore Legacy
+  Account, Legacy Server and Get help. There is no "Create account": a
+  Happy account is only made by a terminal code. Dialogs are Material 3
+  (`HappyAlert`, `PromptModal`), not happy-app's iOS-style card, and only
+  screens with a text field of their own move for the keyboard
+  (`Screen(avoidKeyboard = true)`); the first screen never does. Palette: blue and violet
   over near-black (dark) or their tints over lavender white (light), no
   green or orange, text AA or better. The shader runs on Android 13+
   (`RuntimeShader`), about 30 frames a second while resumed, still with
