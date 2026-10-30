@@ -1458,7 +1458,9 @@ final class UITests: XCTestCase {
         let mid = say("stream 2 20 midturn")
         XCTAssertTrue(mid.waitForExistence(timeout: 5))
         pause(0.8)
-        let second = say("stream 1 5 alsomidturn")
+        // Keep the reply out of the screenshot/AX reads: once it arrives,
+        // following it correctly carries this older user row upwards.
+        let second = say("stream 1 5 wait 10000 alsomidturn")
         XCTAssertTrue(second.waitForExistence(timeout: 5))
         pause(0.8)
         capture("send-3-midturn")
