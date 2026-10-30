@@ -138,6 +138,12 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         rendererChanged()
         // The server may have changed on a screen pushed from here.
         updateNavigation(animated: animated)
+        HomeToolbar.show(for: self, animated: animated)
+    }
+
+    public override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        HomeToolbar.leave(self, animated: animated)
     }
 
     public override func viewDidLayoutSubviews() {
@@ -295,11 +301,14 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
             // the sidebar too: the switcher stays, or a tablet has no way
             // to the accounts at all.
             navigationItem.leftBarButtonItem = switcher?.barItem
-            var items: [HeaderBar.Trailing: UIBarButtonItem] = [.filter: filterItem, .settings: settingsItem]
+            let items: [HeaderBar.Trailing: UIBarButtonItem] = [.filter: filterItem, .settings: settingsItem]
             if canCompose, let host = self as UIViewController as? ComposeHosting {
-                items[.compose] = composeItem(host)
-            }
+                let compose = composeItem(host)
+                compose.sharesBackground = false
+                toolbarItems = [.flexibleSpace(), compose]
+            } else { toolbarItems = nil }
             navigationItem.rightBarButtonItems = blank ? nil : HeaderBar.trailing(items)
+            if navigationController?.topViewController === self { HomeToolbar.show(for: self, animated: animated) }
         }
         view.setNeedsLayout()
     }

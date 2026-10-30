@@ -143,6 +143,9 @@ final class HomeControllerScrollHarness: NSObject {
             window.rootViewController = navigation
             window.layoutIfNeeded()
             sidebar = Self.find(SidebarView.self, in: home.view)
+            // The same offline full Home fixture, without trace controls
+            // covering its native bottom actions.
+            if ProcessInfo.processInfo.arguments.contains("-homeActionsOnly") { return }
             probe.isAccessibilityElement = true
             probe.accessibilityIdentifier = "home-controller-probe"
             probe.accessibilityLabel = "Full home trace"

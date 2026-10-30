@@ -266,12 +266,32 @@ final class HostedComposeTests: XCTestCase {
         window.layoutIfNeeded()
         XCTAssertNil(Self.subview(AgentInputCardView.self, in: home.view), "home has no composer")
         XCTAssertNil(Self.subview(UITextView.self, in: home.view), "nothing is typed on home")
+        XCTAssertEqual(home.navigationItem.rightBarButtonItems?.compactMap(\.accessibilityIdentifier), ["settings"])
+        XCTAssertTrue(home.toolbarItems?.contains { $0.accessibilityIdentifier == "compose" } == true)
+        XCTAssertFalse(navigation.isToolbarHidden)
+        // iOS 26 moves the field into its floating toolbar; the owning
+        // UISearchBar and UIToolbar wrappers can have zero frames.
+        let field = home.search.bar.searchTextField
+        let toolbarFrame = field.convert(field.bounds, to: window)
+        XCTAssertGreaterThan(toolbarFrame.minY, window.bounds.midY)
+        XCTAssertGreaterThan(home.view.safeAreaInsets.bottom, 40, "the list reserves room for the bottom toolbar")
         keep(window, "main-home")
+
+        home.search.begin()
+        try await until { home.search.isActive && home.search.bar.searchTextField.isFirstResponder }
+        try await Task.sleep(for: .milliseconds(400))
+        let fieldFrame = field.convert(field.bounds, to: window)
+        XCTAssertGreaterThan(fieldFrame.minY, navigation.navigationBar.frame.maxY + 80, "active search remains below the header")
+        keep(window, "main-home-bottom-search")
+        home.search.end()
+        try await until { !home.search.isActive && !home.search.bar.searchTextField.isFirstResponder }
+        try await Task.sleep(for: .milliseconds(400))
 
         home.compose()
         try await until { navigation.topViewController is ChatViewController && navigation.transitionCoordinator == nil }
         let newWork = try XCTUnwrap(navigation.topViewController as? ChatViewController)
         XCTAssertEqual(navigation.viewControllers.count, 2)
+        XCTAssertTrue(navigation.isToolbarHidden, "home actions leave with home")
         try await until { Self.subview(AgentInputCardView.self, in: newWork.view)?.textView.isFirstResponder == true }
         try await Task.sleep(for: .milliseconds(400))
         keep(window, "main-new-work")
@@ -299,6 +319,7 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertTrue(navigation.viewControllers.first === home)
         navigation.popViewController(animated: true)
         try await until { navigation.topViewController === home && navigation.transitionCoordinator == nil }
+        XCTAssertFalse(navigation.isToolbarHidden, "Back restores home's native toolbar")
     }
 
     // MARK: Helpers

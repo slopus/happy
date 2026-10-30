@@ -7,8 +7,8 @@ import UIKit
 /// list running under it with iOS 26's soft scroll edge as the bar's shade.
 /// At the left, alone, the account switcher (`AccountSwitcher`): the active
 /// account's picture and name, with the connection under it while it isn't
-/// live. At the right, `HeaderBar.Trailing`'s order: search, compose,
-/// settings. Search is the bar's own field (`BarSearch`); what it finds
+/// live. Settings stays at the right. Search and compose are in UIKit's
+/// bottom toolbar; what search finds
 /// shows over home, which stays where it was.
 final class AgentHomeViewController: UIViewController, ComposeHosting {
     private let context: AppContext
@@ -41,6 +41,10 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         view.addSubview(v2.view)
         v2.didMove(toParent: self)
         navigationItem.largeTitleDisplayMode = .never
+        search.install()
+        let compose = HeaderBar.composeItem { [weak self] in self?.compose() }
+        compose.sharesBackground = false
+        toolbarItems = [navigationItem.searchBarPlacementBarButtonItem, .flexibleSpace(), compose]
         HeaderBar.edge(v2.list, in: self)
         search.onBegin = { [weak self] in self?.v2.beginSearch() }
         search.onChange = { [weak self] query in
@@ -65,19 +69,23 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         switcher?.subtitle = Strings.HeaderStatus.text(headerState)
     }
 
-    /// The switcher at the left and the actions at the right, or the search
-    /// field while it is open.
+    /// Account and settings stay in the header while search lives below.
     private func updateBar() {
-        guard !search.applies(to: navigationItem), let switcher else { return }
+        guard let switcher else { return }
         navigationItem.leftBarButtonItem = switcher.barItem
-        var items: [HeaderBar.Trailing: UIBarButtonItem] = [
-            .search: HeaderBar.searchItem { [weak self] in self?.search.begin() },
+        navigationItem.rightBarButtonItems = HeaderBar.trailing([
             .settings: HeaderBar.settingsItem { [weak self] in self?.openSettings() },
-        ]
-        if let host = self as UIViewController as? ComposeHosting {
-            items[.compose] = HeaderBar.composeItem { [weak host] in host?.compose() }
-        }
-        navigationItem.rightBarButtonItems = HeaderBar.trailing(items)
+        ])
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        HomeToolbar.show(for: self, animated: animated)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        HomeToolbar.leave(self, animated: animated)
     }
 
     /// The bar shades whichever list is under it: the results while they
