@@ -5,8 +5,8 @@ import UIKit
 
 /// The first screen, shown while the phone has no Happy account and no
 /// agent connection; Android's (ui/start). No bar: Grain Gradient fills
-/// the window behind the status bar, the logotype is about the middle,
-/// Start scans a code of any kind (`HappyScan` routes it), and ⋯ at the
+/// the window behind the status bar, the logotype centred above Start,
+/// Start (48 above the bottom, as wide as its label) scans a code of any kind (`HappyScan` routes it), and ⋯ at the
 /// top right has the other ways in: enter a link, restore, create an
 /// account, the server, and help. `StartLayout` places it all.
 ///
@@ -93,7 +93,7 @@ final class StartViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let bounds = view.bounds
-        let layout = StartLayout(size: bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), button: start.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)))
+        let layout = StartLayout(size: bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), button: start.layout(width: StartLayout.Metrics.buttonMinWidth).size)
         scroll.frame = bounds
         scroll.contentSize = CGSize(width: bounds.width, height: view.safeAreaInsets.top + layout.contentHeight + view.safeAreaInsets.bottom)
         logo.frame = layout.logo

@@ -4,27 +4,30 @@ import XCTest
 final class StartLayoutTests: XCTestCase {
     private let phone = CGSize(width: 393, height: 852)
     private let safe = LayoutInsets(top: 59, left: 0, bottom: 34, right: 0)
+    private let logoHeight = 220 / (1200.0 / 319.0)
 
-    /// 759 of safe height less the logo (≈58.5), Start (56) and 16 leaves
-    /// ≈628.5 free, split 3 : 2 : 1.
-    func testTheFreeHeightSplitsThreeTwoOne() {
+    func testStartSitsFortyEightAboveTheBottomInset() {
         let layout = StartLayout(size: phone, safeArea: safe, button: CGSize(width: 120, height: 56))
-        let logoHeight = 220 / (1200.0 / 319.0)
-        let free = 759 - logoHeight - 56 - 16
-        XCTAssertEqual(layout.logo.minY, 59 + free / 2, accuracy: 0.001)
-        XCTAssertEqual(layout.logo.width, 220)
-        XCTAssertEqual(layout.logo.midX, 196.5)
-        XCTAssertEqual(layout.button.minY - layout.logo.maxY, free / 3, accuracy: 0.001)
-        XCTAssertEqual(852 - 34 - 16 - layout.button.maxY, free / 6, accuracy: 0.001)
+        XCTAssertEqual(layout.button.maxY, 852 - 34 - 48)
         XCTAssertEqual(layout.contentHeight, 759)
     }
 
-    func testStartIsAtLeastTwoHundredWideAndCentred() {
+    func testTheLogoIsCentredInTheSpaceAboveStart() {
+        let layout = StartLayout(size: phone, safeArea: safe, button: CGSize(width: 120, height: 56))
+        XCTAssertEqual(layout.logo.minY - 59, layout.button.minY - layout.logo.maxY, accuracy: 0.001)
+        XCTAssertEqual(layout.logo.width, 220)
+        XCTAssertEqual(layout.logo.midX, 196.5)
+    }
+
+    func testStartIsAsWideAsItsLabelAtLeastTwoHundredAndCentred() {
         let layout = StartLayout(size: phone, safeArea: safe, button: CGSize(width: 120, height: 56))
         XCTAssertEqual(layout.button.width, 200)
         XCTAssertEqual(layout.button.midX, 196.5)
         let wide = StartLayout(size: phone, safeArea: safe, button: CGSize(width: 260, height: 56))
         XCTAssertEqual(wide.button.width, 260)
+        XCTAssertEqual(wide.button.midX, 196.5)
+        let shifted = StartLayout(size: phone, safeArea: LayoutInsets(top: 59, left: 40, bottom: 34, right: 0), button: CGSize(width: 120, height: 56))
+        XCTAssertEqual(shifted.button.midX, 40 + 353 / 2)
     }
 
     func testMoreSitsFourInFromTheTopRightOfTheSafeArea() {
@@ -34,8 +37,8 @@ final class StartLayoutTests: XCTestCase {
 
     func testTooTallItScrollsWithNothingFree() {
         let layout = StartLayout(size: CGSize(width: 393, height: 200), safeArea: safe, button: CGSize(width: 120, height: 180))
-        XCTAssertEqual(layout.logo.minY, 59)
-        XCTAssertEqual(layout.button.minY, layout.logo.maxY)
-        XCTAssertEqual(layout.contentHeight, layout.logo.height + 180 + 16, accuracy: 0.001)
+        XCTAssertEqual(layout.logo.minY, 59, accuracy: 0.001)
+        XCTAssertEqual(layout.button.minY, layout.logo.maxY, accuracy: 0.001)
+        XCTAssertEqual(layout.contentHeight, logoHeight + 180 + 48, accuracy: 0.001)
     }
 }
