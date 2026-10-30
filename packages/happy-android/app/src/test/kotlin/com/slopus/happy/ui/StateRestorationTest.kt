@@ -26,7 +26,6 @@ import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.ui.chat.ChatListTags
 import com.slopus.happy.ui.chat.ChatScreenTags
-import com.slopus.happy.ui.chat.ComposerPickerTags
 import com.slopus.happy.ui.chat.ComposerTags
 import com.slopus.happy.ui.chat.MessageTags
 import com.slopus.happy.ui.components.PickerSheetTags
@@ -121,14 +120,14 @@ class StateRestorationTest {
         val restoration = StateRestorationTester(rule)
         val graph = graph()
         openChat(restoration) { graph }
-        rule.node(ComposerPickerTags.PERMISSION).performClick()
-        waitFor(PickerSheetTags.PANEL)
+        rule.node(ChatScreenTags.MORE).performClick()
+        waitFor(ChatScreenTags.MENU)
         val before = topMessage()
 
         restoration.emulateSavedInstanceStateRestore()
 
         waitFor(ChatScreenTags.SCREEN)
-        waitFor(PickerSheetTags.PANEL)
+        waitFor(ChatScreenTags.MENU)
         waitFor(ComposerTags.INPUT)
         rule.node(ComposerTags.INPUT).assertTextEquals("half a thought")
         assertTrue("scrolled back", before != null && before != "message 59")

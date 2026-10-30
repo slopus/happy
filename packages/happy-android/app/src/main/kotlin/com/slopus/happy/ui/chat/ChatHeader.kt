@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -115,12 +116,11 @@ internal fun ChatHeaderActions(
     metadata: SessionMetadata?,
     actions: ChatScreenActions,
 ) {
-    var open by remember(session?.id) { mutableStateOf(false) }
     val more = stringResource(R.string.conversation_composer_more)
     val compose = stringResource(R.string.session_new_chat)
     val details = stringResource(R.string.profile_details)
     val permissionTitle = composerPermissionTitle(metadata)
-    val showPermission = modes.canChangePermission && modes.availableModes.isNotEmpty()
+    val showPermission = metadata != null && modes.canChangePermission && modes.availableModes.isNotEmpty()
     val colors = HappyTheme.colors
     val haptics = LocalHapticFeedback.current
     Row {
@@ -128,6 +128,9 @@ internal fun ChatHeaderActions(
             Icon(Ionicon.CreateOutline, 24.dp, colors.header.tint)
         }
         if (session != null || showPermission) {
+            // Wait for this session's menu before consuming restored state:
+            // the feed first emits an empty loading snapshot after recreation.
+            var open by rememberSaveable(session?.id) { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { haptics.light(); open = !open }, modifier = Modifier.testTag(ChatScreenTags.MORE).size(48.dp).semantics { contentDescription = more }) {
                     Icon(Ionicon.EllipsisVertical, 24.dp, colors.header.tint)

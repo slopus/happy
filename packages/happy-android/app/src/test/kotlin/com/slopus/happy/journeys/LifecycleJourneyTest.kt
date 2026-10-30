@@ -20,7 +20,6 @@ import com.slopus.happy.ui.HappyApp
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.chat.ChatScreenTags
-import com.slopus.happy.ui.chat.ComposerPickerTags
 import com.slopus.happy.ui.components.PickerSheetTags
 import com.slopus.happy.ui.home.HomeTags
 import com.slopus.happy.ui.node
@@ -45,7 +44,7 @@ import org.robolectric.annotation.GraphicsMode
  * only chat from the home row menu offers to delete the clean worktree;
  * archiving a chat from its Session Info hands its tab to the chat beside
  * it; a stopped session resumes from Session Info with the permission mode
- * picked in its composer; and a chat is duplicated from a rewind point into
+ * picked in its header menu; and a chat is duplicated from a rewind point into
  * a new session.
  */
 @OptIn(ExperimentalTestApi::class)
@@ -136,8 +135,8 @@ class LifecycleJourneyTest {
         // Plan mode picked in the chat; then its agent stops.
         rule.onNode(hasText("Stopped chat"), useUnmergedTree = true).performClick()
         rule.waitFor(ChatScreenTags.SCREEN)
-        rule.node(ComposerPickerTags.PERMISSION).performClick()
-        rule.waitFor(PickerSheetTags.PANEL)
+        rule.node(ChatScreenTags.MORE).performClick()
+        rule.waitFor(ChatScreenTags.MENU)
         rule.node(PickerSheetTags.option("plan")).performClick()
         rule.waitUntil(5_000) { graph.account.value?.composer?.mirrors?.value?.get("r1")?.permissionMode == "plan" }
         server.addSession("r1", updatedAt = 60_000, metadata = Journey.sessionMetadata("/h/old", "Stopped chat", "claude-r1"), active = false)
