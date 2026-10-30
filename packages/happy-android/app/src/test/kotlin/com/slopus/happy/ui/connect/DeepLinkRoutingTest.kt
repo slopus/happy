@@ -10,7 +10,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.ServerRoute
-import com.slopus.happy.ui.WelcomeRoute
+import com.slopus.happy.ui.StartRoute
 import com.slopus.happy.ui.files.SessionChangesRoute
 import com.slopus.happy.ui.session.SessionInfoRoute
 import org.junit.After
@@ -38,8 +38,8 @@ class DeepLinkRoutingTest {
     private fun setHost(signedIn: Boolean) {
         rule.setContent {
             nav = rememberNavController()
-            NavHost(nav, startDestination = if (signedIn) HomeRoute else WelcomeRoute) {
-                composable<WelcomeRoute> { Text("welcome") }
+            NavHost(nav, startDestination = if (signedIn) HomeRoute else StartRoute) {
+                composable<StartRoute> { Text("start") }
                 composable<HomeRoute> { Text("home") }
                 composable<ServerRoute> { Text("server") }
                 composable<SessionInfoRoute> { Text("info") }
@@ -76,9 +76,9 @@ class DeepLinkRoutingTest {
     fun signedOutOnlyAccountFreeScreensOpen() {
         setHost(signedIn = false)
         DeepLinks.offer(parseDeepLink("happy://session/s1/info")!!)
-        assertAt<WelcomeRoute>()
+        assertAt<StartRoute>()
         DeepLinks.offer(parseDeepLink("happy://session/s1")!!)
-        assertAt<WelcomeRoute>()
+        assertAt<StartRoute>()
         assertEquals(emptyList<String>(), opened)
         DeepLinks.offer(parseDeepLink("happy://server")!!)
         assertAt<ServerRoute>()

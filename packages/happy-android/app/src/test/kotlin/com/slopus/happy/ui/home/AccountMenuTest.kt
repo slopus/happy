@@ -17,7 +17,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** Home's account menu: every account and agent connection, then Add Account and Connect Agent. */
+/** Home's account menu: every account and agent connection, then one Add. */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -37,9 +37,8 @@ class AccountMenuTest {
     fun listsEveryAccountAndSwitches() {
         val switched = mutableListOf<String>()
         var added = 0
-        var connected = 0
         rule.setHappyContent {
-            AccountMenuButton(menu, onSwitch = { switched += it }, onAddAccount = { added++ }, onConnectAgent = { connected++ })
+            AccountMenuButton(menu, onSwitch = { switched += it }, onAdd = { added++ })
         }
         rule.node(AccountMenuTags.BUTTON).performClick()
         rule.onNodeWithText("Steve").assertExists()
@@ -57,10 +56,8 @@ class AccountMenuTest {
         assertEquals(listOf("agent-connection-1"), switched)
 
         rule.node(AccountMenuTags.BUTTON).performClick()
-        rule.node(AccountMenuTags.ADD_ACCOUNT).performClick()
-        rule.node(AccountMenuTags.BUTTON).performClick()
-        rule.node(AccountMenuTags.CONNECT_AGENT).performClick()
+        rule.onNodeWithText("Add").assertExists()
+        rule.node(AccountMenuTags.ADD).performClick()
         assertEquals(1, added)
-        assertEquals(1, connected)
     }
 }

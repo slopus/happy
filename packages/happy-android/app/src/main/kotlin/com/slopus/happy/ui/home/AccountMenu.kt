@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.ui.connect.LocalAddFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
@@ -94,8 +95,7 @@ fun rememberAccountMenu(graph: AppGraph): AccountMenu {
 object AccountMenuTags {
     const val BUTTON = "accountMenu.button"
     const val MENU = "accountMenu.menu"
-    const val ADD_ACCOUNT = "accountMenu.addAccount"
-    const val CONNECT_AGENT = "accountMenu.connectAgent"
+    const val ADD = "accountMenu.add"
     fun entry(id: String) = "accountMenu.entry.$id"
 }
 
@@ -112,14 +112,14 @@ object AccountMenuSpec {
  * Home's top-left control (AGENTS.md, design decisions: Home's top bar): the
  * open account's avatar; tapped, a drop-down of every Happy account and
  * agent connection on the phone (avatar and name, a check on the open
- * one), then "Add Account" and "Connect Agent". Picking one switches.
+ * one), then "Add", which scans a code and adds the Happy account or
+ * agent connection it is for ([LocalAddFlow]). Picking one switches.
  */
 @Composable
 fun AccountMenuButton(
     menu: AccountMenu,
     onSwitch: (String) -> Unit,
-    onAddAccount: () -> Unit,
-    onConnectAgent: () -> Unit,
+    onAdd: () -> Unit = LocalAddFlow.current?.let { it::scan } ?: {},
 ) {
     val colors = HappyTheme.colors
     var open by remember { mutableStateOf(false) }
@@ -164,16 +164,13 @@ fun AccountMenuButton(
             }
             if (menu.entries.isNotEmpty()) HorizontalDivider(color = colors.divider)
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.account_menu_add_account), style = AccountMenuSpec.name, color = colors.text) },
-                leadingIcon = { Icon(Ionicon.PersonAddOutline, 22.dp, colors.text) },
-                onClick = { open = false; onAddAccount() },
-                modifier = Modifier.testTag(AccountMenuTags.ADD_ACCOUNT),
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.account_menu_connect_agent), style = AccountMenuSpec.name, color = colors.text) },
+                text = { Text(stringResource(R.string.account_menu_add), style = AccountMenuSpec.name, color = colors.text) },
                 leadingIcon = { Icon(Ionicon.QrCodeOutline, 22.dp, colors.text) },
-                onClick = { open = false; onConnectAgent() },
-                modifier = Modifier.testTag(AccountMenuTags.CONNECT_AGENT),
+                onClick = {
+                    open = false
+                    onAdd()
+                },
+                modifier = Modifier.testTag(AccountMenuTags.ADD),
             )
         }
     }

@@ -101,10 +101,9 @@ data class SecondaryAction(val title: String, val onClick: () -> Unit, val enabl
  *   body     one block, centred in the space left: content, primary, secondary
  *   footer   Get help, bottom right, above the navigation bar
  *
- * The block's content slot reserves the height of both first-run contents
- * (welcome and link-your-computer) and its secondary slot the height of every
- * secondary label, so the actions sit at the same place whichever screen is
- * showing. Block: full width up to 480, 24 side padding; primary 12 below the
+ * The block's content slot reserves the height of the link checklist and
+ * its secondary slot the height of every secondary label, so the actions
+ * sit at the same place whichever screen is showing. Block: full width up to 480, 24 side padding; primary 12 below the
  * content; secondary 4 below the primary. If the block outgrows the screen
  * the body scrolls from the top and the spacers collapse.
  */
@@ -137,7 +136,7 @@ fun OnboardingScreen(
                         .padding(horizontal = OnboardingSpec.blockPaddingHorizontal),
                 ) {
                     Layers(
-                        reserve = listOf({ WelcomeContent() }, { LinkComputerContent() }),
+                        reserve = listOf { LinkComputerContent() },
                         modifier = Modifier.testTag(OnboardingTags.CONTENT),
                         content = content,
                     )
@@ -173,8 +172,6 @@ fun OnboardingScreen(
 /** Every secondary label the template can show. */
 @Composable
 private fun secondaryTitles(): List<String> = listOf(
-    stringResource(R.string.onboarding_restore_existing),
-    stringResource(R.string.welcome_create_account),
     stringResource(R.string.onboarding_paste_link),
 )
 
@@ -216,7 +213,6 @@ private fun SecondaryButton(title: String, onClick: () -> Unit, enabled: Boolean
 @Composable
 fun GetHelpButton() {
     val colors = HappyTheme.colors
-    val uriHandler = LocalUriHandler.current
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     var showHelp by remember { mutableStateOf(false) }
@@ -238,20 +234,25 @@ fun GetHelpButton() {
         Text(text = label, style = OnboardingSpec.getHelp, color = colors.textSecondary)
     }
 
-    if (showHelp) {
-        HappyAlert(
-            alert = Alert(
-                title = label,
-                message = stringResource(R.string.onboarding_help_message),
-                buttons = listOf(
-                    AlertButton(stringResource(R.string.onboarding_help_discord)) { uriHandler.openUri(OnboardingSpec.HELP_DISCORD_URL) },
-                    AlertButton(stringResource(R.string.common_cancel)),
-                    AlertButton(stringResource(R.string.onboarding_help_issues)) { uriHandler.openUri(OnboardingSpec.HELP_ISSUES_URL) },
-                ),
+    if (showHelp) GetHelpAlert(onDismiss = { showHelp = false })
+}
+
+/** "Get help": the two public places to ask, Android button order. */
+@Composable
+fun GetHelpAlert(onDismiss: () -> Unit) {
+    val uriHandler = LocalUriHandler.current
+    HappyAlert(
+        alert = Alert(
+            title = stringResource(R.string.onboarding_get_help),
+            message = stringResource(R.string.onboarding_help_message),
+            buttons = listOf(
+                AlertButton(stringResource(R.string.onboarding_help_discord)) { uriHandler.openUri(OnboardingSpec.HELP_DISCORD_URL) },
+                AlertButton(stringResource(R.string.common_cancel)),
+                AlertButton(stringResource(R.string.onboarding_help_issues)) { uriHandler.openUri(OnboardingSpec.HELP_ISSUES_URL) },
             ),
-            onDismiss = { showHelp = false },
-        )
-    }
+        ),
+        onDismiss = onDismiss,
+    )
 }
 
 /**

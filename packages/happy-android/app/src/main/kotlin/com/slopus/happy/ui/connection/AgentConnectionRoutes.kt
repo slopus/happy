@@ -9,9 +9,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.slopus.happy.R
-import com.slopus.happy.ui.components.Prompt
-import com.slopus.happy.ui.components.PromptModal
-import com.slopus.happy.ui.connect.rememberAgentConnect
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -30,42 +27,15 @@ import kotlinx.serialization.Serializable
  */
 @Serializable data object PairingRoute
 
-/** Connect Agent: scan or paste a pairing code. */
-@Serializable data object ConnectAgentRoute
-
 /** The Protocol V2 screens, signed in or out. HappyApp's NavHost calls this once. */
 fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostController) {
     composable<PairingRoute> { Pairing(graph, nav) }
-    composable<ConnectAgentRoute> { ConnectAgent(nav) }
-}
-
-@Composable
-private fun ConnectAgent(nav: NavHostController) {
-    val flow = rememberAgentConnect()
-    var pasting by remember { mutableStateOf(false) }
-    ConnectAgentScreen(onScan = flow::scan, onPaste = { pasting = true }, onBack = { nav.popBackStack() })
-    if (pasting) {
-        PromptModal(
-            prompt = Prompt(
-                title = stringResource(R.string.connect_agent_title),
-                message = stringResource(R.string.connect_agent_paste_message),
-                placeholder = "happy://direct?...",
-                confirmText = stringResource(R.string.connect_agent_connect),
-                onResult = { url -> url?.trim()?.takeIf { it.isNotEmpty() }?.let(flow::connectWithUrl) },
-            ),
-            onDismiss = { pasting = false },
-        )
-    }
 }
 
 /** Starts pairing [code] and shows it, over whatever screen is up. */
 fun NavHostController.connectAgent(graph: AppGraph, code: String) {
     graph.startAgentPairing(code)
-    navigate(PairingRoute) {
-        launchSingleTop = true
-        // From Connect Agent, pairing takes its place: Done goes back to where Connect Agent was opened.
-        popUpTo<ConnectAgentRoute> { inclusive = true }
-    }
+    navigate(PairingRoute) { launchSingleTop = true }
 }
 
 @Composable

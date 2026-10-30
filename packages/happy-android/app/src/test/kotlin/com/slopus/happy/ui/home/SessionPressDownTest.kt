@@ -53,7 +53,7 @@ class SessionPressDownTest {
         onPressDown = { events += "down $it" },
     )
 
-    private val actions = HomeScreenActions({}, {}, {}, {}, {}, {}, {})
+    private val actions = HomeScreenActions({}, {}, {}, {}, {}, {})
 
     private fun show(sessions: List<Session>, grouping: SessionListGrouping, machine: com.slopus.happy.model.Machine) {
         val state = deriveHomeList(

@@ -10,7 +10,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
-import com.slopus.happy.ui.WelcomeRoute
+import com.slopus.happy.ui.StartRoute
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.session.SessionInfoRoute
 import org.junit.Assert.assertEquals
@@ -36,8 +36,8 @@ class LeaveSessionInfoTest {
     private fun host(vararg stack: Any) {
         rule.setContent {
             nav = rememberNavController()
-            NavHost(nav, startDestination = WelcomeRoute) {
-                composable<WelcomeRoute> { Text("home") }
+            NavHost(nav, startDestination = StartRoute) {
+                composable<StartRoute> { Text("home") }
                 composable<SessionRoute> { Text("chat") }
                 composable<SessionInfoRoute> { Text("info") }
             }
@@ -47,7 +47,7 @@ class LeaveSessionInfoTest {
 
     private fun stack(): List<String> = nav.currentBackStack.value.mapNotNull { entry ->
         when {
-            entry.destination.hasRoute<WelcomeRoute>() -> "home"
+            entry.destination.hasRoute<StartRoute>() -> "home"
             entry.destination.hasRoute<SessionInfoRoute>() -> "info:" + entry.toRoute<SessionInfoRoute>().id
             entry.destination.hasRoute<SessionRoute>() -> "chat:" + entry.toRoute<SessionRoute>().id
             else -> null

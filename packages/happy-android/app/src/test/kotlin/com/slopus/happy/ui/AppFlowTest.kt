@@ -69,6 +69,7 @@ class AppFlowTest {
     // A new account has no computer, so the link page takes the home over (index.tsx); its gear logs out.
     @Test
     fun createAccountThenLogout() {
+        rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("Create account").performClick()
         rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 5_000)
         assertTrue(graph.auth.state.value is AuthState.SignedIn)
@@ -77,7 +78,7 @@ class AppFlowTest {
         rule.onNodeWithText("Log out and start over").performScrollTo().performClick()
         rule.onNode(hasText("Logout") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
 
-        rule.waitUntilAtLeastOneExists(hasText("Create account"), 5_000)
+        rule.waitUntilAtLeastOneExists(hasText("Connect"), 5_000)
         assertEquals(AuthState.SignedOut, graph.auth.state.value)
         assertNull(graph.store.profile())
     }
@@ -89,6 +90,7 @@ class AppFlowTest {
         server.addSession("s1", updatedAt = 100)
         server.setSettings(buildJsonObject { put("analyticsOptOut", true) }, version = 2)
 
+        rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("Restore existing account").performClick()
         rule.onNodeWithText("Use a secret key instead").performClick()
         rule.onNodeWithTag(RestoreTags.KEY_INPUT)
@@ -102,6 +104,7 @@ class AppFlowTest {
 
     @Test
     fun aWrongSecretKeyShowsTheError() {
+        rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("Restore existing account").performClick()
         rule.onNodeWithText("Use a secret key instead").performClick()
         rule.onNodeWithTag(RestoreTags.KEY_INPUT).performTextReplacement("AAAAA-BBBBB")

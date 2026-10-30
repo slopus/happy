@@ -2,6 +2,8 @@ package com.slopus.happy.ui.connect
 
 import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +50,12 @@ class ConnectFlow internal constructor(
     internal var messages = ScanMessages()
     internal var scanner: QrScanner = QrScanner { ScanResult.Cancelled }
     internal var connectAgent: ((String) -> Unit)? = null
+
+    /** No scanner on this device: instead of saying so, Add asks for the link. */
+    internal var onUnavailable: (() -> Unit)? = null
+
+    /** Add's "Enter link manually" prompt is open. */
+    var enteringLink by mutableStateOf(false)
     internal var process: suspend (String) -> Boolean = { false }
     private var scanning = false
 
@@ -63,7 +71,7 @@ class ConnectFlow internal constructor(
             try {
                 when (val result = scanner.scan()) {
                     ScanResult.Cancelled -> Unit
-                    is ScanResult.Failed -> alert = errorAlert(messages.unavailable)
+                    is ScanResult.Failed -> onUnavailable?.invoke() ?: run { alert = errorAlert(messages.unavailable) }
                     is ScanResult.Scanned -> route(result.value)
                 }
             } finally {
@@ -82,9 +90,12 @@ class ConnectFlow internal constructor(
             is HappyCode.AgentPairing -> connectAgent?.invoke(code.text)
                 ?: run { alert = errorAlert(messages.pairingUnavailable) }
             is HappyCode.Terminal ->
-                if (kind == ConnectKind.Terminal) process(code.url) else alert = errorAlert(messages.terminalElsewhere)
-            is HappyCode.Account ->
-                if (kind == ConnectKind.Account) process(code.url) else alert = errorAlert(messages.accountElsewhere)
+                if (kind == ConnectKind.Terminal || kind == ConnectKind.Add) process(code.url) else alert = errorAlert(messages.terminalElsewhere)
+            is HappyCode.Account -> when (kind) {
+                ConnectKind.Account -> process(code.url)
+                ConnectKind.Add -> alert = errorAlert(messages.accountSignedOut)
+                else -> alert = errorAlert(messages.accountElsewhere)
+            }
             is HappyCode.UnknownHappy, is HappyCode.NotHappy -> alert = errorAlert(messages.notHappy)
         }
     }
@@ -92,9 +103,18 @@ class ConnectFlow internal constructor(
     /**
      * connectWithUrl: a pasted link. A Protocol V2 pairing link pairs;
      * anything else without the flow's prefix is "Invalid authentication URL".
+     * The first screen routes a pasted link as it routes a scanned code.
      */
     fun connectWithUrl(url: String) {
         scope.launch {
+            if (kind == ConnectKind.Add) {
+                if (HappyCode.classify(url).let { it is HappyCode.UnknownHappy || it is HappyCode.NotHappy }) {
+                    alert = errorAlert(messages.invalidUrl)
+                } else {
+                    route(url)
+                }
+                return@launch
+            }
             val pairing = HappyCode.classify(url) as? HappyCode.AgentPairing
             val pair = connectAgent
             if (pairing != null && pair != null) pair(pairing.text) else process(url.trim())
@@ -112,8 +132,12 @@ enum class ConnectKind(val prefix: String) {
     Terminal(TERMINAL_URL_PREFIX),
     Account(AccountLink.URL_PREFIX),
 
-    /** Connect Agent: only pairing codes, which [ConnectFlow.route] hands to pairing. */
-    Agent("happy://direct"),
+    /**
+     * Add, from the first screen or the account menu: a terminal code
+     * creates an account that approves it, a pairing code pairs, an account
+     * code says it needs a signed-in phone.
+     */
+    Add(TERMINAL_URL_PREFIX),
 }
 
 /** What a scan that can't be approved here says. */
@@ -123,6 +147,8 @@ internal data class ScanMessages(
     val terminalElsewhere: String = "",
     val accountElsewhere: String = "",
     val pairingUnavailable: String = "",
+    val accountSignedOut: String = "",
+    val invalidUrl: String = "",
 )
 
 /**
@@ -230,6 +256,8 @@ private fun rememberConnectFlow(
         terminalElsewhere = stringResource(R.string.scan_terminal_code_elsewhere),
         accountElsewhere = stringResource(R.string.scan_account_code_elsewhere),
         pairingUnavailable = stringResource(R.string.scan_pairing_unavailable),
+        accountSignedOut = stringResource(R.string.start_account_code),
+        invalidUrl = invalid,
     )
     flow.scanner = rememberQrScanner()
     flow.connectAgent = LocalAgentPairing.current
@@ -258,13 +286,47 @@ private fun rememberConnectFlow(
     return flow
 }
 
-
 /**
- * Connect Agent: scans or takes a pasted `happy://direct?` code and opens
- * pairing ([LocalAgentPairing]); any other code says where it belongs.
+ * Add: the first screen's Connect and the account menu's Add
+ * ([ConnectKind.Add]). A terminal code creates a Happy account and
+ * approves the terminal with it in one step; the account is kept only if
+ * the approval went through, and it opens. A pairing code pairs an agent.
+ * Without a scanner, or from the first screen's menu, it asks for the link
+ * instead ([ConnectFlow.enteringLink]). A failure is an alert.
  */
 @Composable
-fun rememberAgentConnect(): ConnectFlow = rememberConnectFlow(ConnectKind.Agent, approve = {}) { _, _ -> }
+fun rememberAddFlow(graph: AppGraph): ConnectFlow = rememberAddConnect(
+    approve = { url ->
+        graph.auth.createAccount { account -> approveTerminal(graph.authApi, account.credentials, account.encryption, url) }
+    },
+)
+
+/** [rememberAddFlow] with the approval passed in, for tests. */
+@Composable
+fun rememberAddConnect(approve: suspend (url: String) -> Unit): ConnectFlow {
+    val haptics = LocalHapticFeedback.current
+    val failed = stringResource(R.string.modals_failed_to_connect_terminal)
+    val flow = rememberConnectFlow(ConnectKind.Add, approve) { flow, error ->
+        if (error == null) haptics.performHapticFeedback(HapticFeedbackType.Confirm) else flow.alert = flow.errorAlert(failed)
+    }
+    flow.onUnavailable = { flow.enteringLink = true }
+    if (flow.enteringLink) {
+        PromptModal(
+            prompt = Prompt(
+                title = stringResource(R.string.start_enter_link_title),
+                message = stringResource(R.string.start_enter_link_message),
+                placeholder = "happy://…",
+                confirmText = stringResource(R.string.start_connect),
+                onResult = { url -> url?.trim()?.takeIf { it.isNotEmpty() }?.let(flow::connectWithUrl) },
+            ),
+            onDismiss = { flow.enteringLink = false },
+        )
+    }
+    return flow
+}
+
+/** The app's one Add flow, provided by HappyApp; null where nothing provides it (tests). */
+val LocalAddFlow: ProvidableCompositionLocal<ConnectFlow?> = compositionLocalOf { null }
 
 /**
  * Settings' "Enter URL manually" (SettingsView.tsx): the prompt for a

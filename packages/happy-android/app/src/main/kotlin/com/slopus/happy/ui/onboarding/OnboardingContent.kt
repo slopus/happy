@@ -35,16 +35,12 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import com.slopus.happy.R
-import com.slopus.happy.ui.components.HappyEngineeringWordmark
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
 object OnboardingContentTags {
-    const val WORDMARK = "onboarding.wordmark"
-    const val HEADLINE = "onboarding.headline"
-    const val PROPS = "onboarding.props"
     const val LINK_TITLE = "onboarding.linkTitle"
     const val INSTALL_ROW = "onboarding.installRow"
     const val OPEN_ROW = "onboarding.openRow"
@@ -53,10 +49,6 @@ object OnboardingContentTags {
 
 /** OnboardingContent.tsx */
 object OnboardingContentSpec {
-    val wordmarkHeight = 84.dp
-    val headlineGap = 28.dp
-    val propsGap = 12.dp
-    val propsPaddingBottom = 12.dp
     val checklistGap = 24.dp
     val rowGap = 20.dp
     val rowHeadMinHeight = 32.dp
@@ -69,7 +61,6 @@ object OnboardingContentSpec {
     /** The titles grow at most 1.2x with the system font size (maxFontSizeMultiplier). */
     const val TITLE_MAX_SCALE = 1.2f
     val title = happyTextStyle(fontSize = 28, lineHeight = 34, weight = FontWeight.SemiBold)
-    val prop = happyTextStyle(fontSize = 17, lineHeight = 24)
     val rowTitle = happyTextStyle(fontSize = 17, lineHeight = 22, weight = FontWeight.SemiBold)
     val body = happyTextStyle(fontSize = 15, lineHeight = 21)
     val error = happyTextStyle(fontSize = 15, lineHeight = 20)
@@ -90,39 +81,6 @@ private fun cappedScale(style: TextStyle, maxScale: Float): TextStyle {
         fontSize = with(density) { limit.toSp() },
         lineHeight = (style.lineHeight.value / style.fontSize.value).em,
     )
-}
-
-/**
- * Wordmark, headline and the three promises. Spec: 84 high wordmark at the
- * start, headline 28/34 semibold 28 below it, props 17/24 secondary 12 below
- * that with 12 of padding under them.
- */
-@Composable
-fun WelcomeContent(modifier: Modifier = Modifier) {
-    val colors = HappyTheme.colors
-    Column(modifier = modifier.fillMaxWidth()) {
-        HappyEngineeringWordmark(
-            height = OnboardingContentSpec.wordmarkHeight,
-            modifier = Modifier.testTag(OnboardingContentTags.WORDMARK),
-        )
-        Text(
-            text = stringResource(R.string.onboarding_headline),
-            style = cappedScale(OnboardingContentSpec.title, OnboardingContentSpec.TITLE_MAX_SCALE),
-            color = colors.text,
-            modifier = Modifier
-                .padding(top = OnboardingContentSpec.headlineGap)
-                .testTag(OnboardingContentTags.HEADLINE)
-                .semantics { heading() },
-        )
-        Column(
-            modifier = Modifier
-                .padding(top = OnboardingContentSpec.propsGap, bottom = OnboardingContentSpec.propsPaddingBottom)
-                .testTag(OnboardingContentTags.PROPS),
-        ) {
-            listOf(R.string.onboarding_prop_encrypted, R.string.onboarding_prop_no_password, R.string.onboarding_prop_open_source)
-                .forEach { Text(text = stringResource(it), style = OnboardingContentSpec.prop, color = colors.textSecondary) }
-        }
-    }
 }
 
 /** The two boxes of the link checklist (localSettings `linkComputerChecklist`). */

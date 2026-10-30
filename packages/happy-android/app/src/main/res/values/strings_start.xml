@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The first screen (ui/start). Not in happy-app's catalogs; English only,
+  as iOS's are.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="start_logo">Happy</string>
+    <string name="start_connect">Connect</string>
+    <string name="start_more">More</string>
+    <string name="start_enter_link">Enter link manually</string>
+    <string name="start_enter_link_title">Enter Link</string>
+    <string name="start_enter_link_message">Paste the link from Happy on your computer or from Happy Agent.</string>
+    <string name="start_account_code">This code adds a phone to an account. Scan it with a phone that\'s signed in.</string>
+</resources>

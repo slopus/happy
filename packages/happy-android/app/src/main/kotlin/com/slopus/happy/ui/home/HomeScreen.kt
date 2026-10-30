@@ -113,8 +113,6 @@ class HomeScreenActions(
     val onOpenUrl: (String) -> Unit,
     val onWhatsNew: () -> Unit,
     val onSwitchAccount: (String) -> Unit = {},
-    val onAddAccount: () -> Unit = {},
-    val onConnectAgent: () -> Unit = {},
 )
 
 /**
@@ -214,7 +212,7 @@ private fun HomeHeader(connectionStatus: ConnectionStatus, accounts: AccountMenu
         alignment = TitleAlignment.Center,
         titleContent = { HomeConnectionStatus(connectionStatus) },
         left = {
-            AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAddAccount, actions.onConnectAgent)
+            AccountMenuButton(accounts, actions.onSwitchAccount)
         },
         right = {
             Row(verticalAlignment = Alignment.CenterVertically) {

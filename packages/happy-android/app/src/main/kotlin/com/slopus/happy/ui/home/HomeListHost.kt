@@ -142,8 +142,6 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
             onOpenUrl = uriHandler::openUri,
             onWhatsNew = navigation.onWhatsNew,
             onSwitchAccount = { id -> graph.open(id) },
-            onAddAccount = navigation.onAddAccount,
-            onConnectAgent = navigation.onConnectAgent,
         )
     }
 

@@ -60,8 +60,6 @@ fun AgentHomeScreen(
     reach: AgentReach,
     accounts: AccountMenu,
     onSwitchAccount: (String) -> Unit,
-    onAddAccount: () -> Unit,
-    onConnectAgent: () -> Unit,
 ) {
     val colors = HappyTheme.colors
     Screen(
@@ -69,7 +67,7 @@ fun AgentHomeScreen(
             Header(
                 title = name,
                 alignment = TitleAlignment.Center,
-                left = { AccountMenuButton(accounts, onSwitchAccount, onAddAccount, onConnectAgent) },
+                left = { AccountMenuButton(accounts, onSwitchAccount) },
             )
         },
     ) {
@@ -110,7 +108,7 @@ fun AgentHomeScreen(
 
 /** [AgentHomeScreen] for the agent connection [id]: reads its identity over Tailcat. */
 @Composable
-fun AgentHome(graph: AppGraph, id: String, onAddAccount: () -> Unit, onConnectAgent: () -> Unit) {
+fun AgentHome(graph: AppGraph, id: String) {
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val agent = agents.firstOrNull { it.id == id }
     val reach by produceState<AgentReach>(AgentReach.Connecting, id) {
@@ -140,7 +138,5 @@ fun AgentHome(graph: AppGraph, id: String, onAddAccount: () -> Unit, onConnectAg
         reach = reach,
         accounts = rememberAccountMenu(graph),
         onSwitchAccount = { graph.open(it) },
-        onAddAccount = onAddAccount,
-        onConnectAgent = onConnectAgent,
     )
 }

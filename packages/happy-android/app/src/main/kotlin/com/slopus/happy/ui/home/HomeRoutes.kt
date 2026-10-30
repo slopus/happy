@@ -47,7 +47,6 @@ import com.slopus.happy.ui.session.SessionInfoActions
 import com.slopus.happy.ui.session.SessionInfoLive
 import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.session.SessionInfoScreen
-import com.slopus.happy.ui.connection.ConnectAgentRoute
 import com.slopus.happy.ui.settings.ChangelogRoute
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.Dispatchers
@@ -65,8 +64,6 @@ class HomeNavigation(
     val onTroubleshoot: () -> Unit,
     val onNewSession: () -> Unit,
     val onDetails: (String) -> Unit,
-    val onAddAccount: () -> Unit = {},
-    val onConnectAgent: () -> Unit = {},
 ) {
     companion object {
         fun of(graph: AppGraph, nav: NavHostController, onOpenSession: (String) -> Unit, onTroubleshoot: () -> Unit) = HomeNavigation(
@@ -79,8 +76,6 @@ class HomeNavigation(
             // router.navigate('/new'): a second tap while it is on top stays one screen.
             onNewSession = { nav.navigate(NewSessionRoute) { launchSingleTop = true } },
             onDetails = { id -> nav.navigate(SessionInfoRoute(id)) },
-            onAddAccount = graph::beginAddingAccount,
-            onConnectAgent = { nav.navigate(ConnectAgentRoute) },
         )
     }
 }

@@ -26,8 +26,9 @@ architectures comparable (local store, delta sync, crypto layer).
 - **Happy Protocol V2**: a Happy Agent connected straight to the phone
   over Tailcat, with no relay account. Each pairing is an **agent
   connection**, an account of its own beside relay Happy accounts, shown by
-  the agent's own name and avatar (see "Happy Protocol V2" below). The
-  user-facing action, screen and menu entry are **"Connect Agent"**. Never
+  the agent's own name and avatar (see "Happy Protocol V2" below). It is
+  added with the same **"Add"** as a Happy account (scan, routed by the
+  code); the pairing screen is titled "Connect Agent". Never
   call these "computer" (relay "machine" wording is a separate, legacy
   concept and stays). Call the protocol Happy Protocol V2 in strings, docs
   and prose; never "direct" or "direct mode", except where the wire itself
@@ -93,7 +94,9 @@ architectures comparable (local store, delta sync, crypto layer).
 5. **Every screen has the standard top app bar** (`Header`, through
    `Screen`/`StackHeader` where it can), and its back button does what the
    system back does. Never hide it, or replace it with a custom or floating
-   bar, without Steve's explicit OK.
+   bar, without Steve's explicit OK. The one exception Steve made is the
+   first screen (`ui/start`): no bar, only a floating ⋮ over the
+   full-window gradient.
 6. **System back works on every screen, predictive back included**
    (`enableOnBackInvokedCallback`). A `BackHandler` may close something open
    on the screen (a sheet, the focused dock) and then let back through; it
@@ -108,14 +111,36 @@ win:
   Computer page swallows back; here back leaves the app as on any root.
 - **Home's top bar:** the current account's avatar on the left opens a
   drop-down of the relay accounts and agent connections (avatar and
-  name each, a check on the open one), then "Add Account" and "Connect
-  Agent" (`ui/home/AccountMenu.kt`); picking one switches
+  name each, a check on the open one), then one "Add"
+  (`ui/home/AccountMenu.kt`); picking one switches
   (`AppGraph.open`). Settings and then compose (far right) on the right.
   No logo, filter menu (grouping is in Appearance) or centred "Sessions"
   title; an unhealthy connection shows centred. One account is open at a
   time: a Happy account or an agent connection (`openAgentId`); each has
-  its own back stack. Add Account shows Welcome with a back arrow over
-  the open account, which stays signed in.
+  its own back stack. **Add** opens the scanner straight away (the
+  app's one `LocalAddFlow`, the same as the first screen's Connect;
+  without a scanner it asks for the link): a terminal code adds a Happy
+  account that approves it, a pairing code adds an agent connection. The
+  open account stays signed in. A Happy account added while one is open
+  goes to that account's server; with an agent connection open, to the
+  server chosen on the first screen.
+- **First screen** (`ui/start`), a splash shown only while the phone has
+  no Happy account and no agent connection; never again once one is
+  added. Deliberately not iOS's:
+  Paper's Grain Gradient (AGSL port, Apache-2.0, attribution in
+  `GrainGradient.kt`) behind everything, edge to edge; the logotype
+  centred; one centred "Connect" that scans. The code is routed
+  (`ConnectKind.Add`): `happy://terminal?` creates a Happy account and
+  approves that terminal in one step (`AuthRepository.createAccount`'s
+  `prepare`; a failed approval keeps no account), `happy:///account?`
+  says it needs a signed-in phone, `happy://direct?` pairs an agent. The
+  ⋮ drop-down holds Enter link manually (same routing), Restore existing
+  account, Create account, Server and Get help. Palette: blue and violet
+  over near-black (dark) or their tints over lavender white (light), no
+  green or orange, text AA or better. The shader runs on Android 13+
+  (`RuntimeShader`), about 30 frames a second while resumed, still with
+  animations removed; older Android draws a still gradient in the same
+  colours.
 - **Compose:** from home it opens an empty new chat; from a chat it
   replaces that chat with an empty one, animated, with Back going to home.
   The empty chat becomes the real session in place on the first send, with
@@ -148,7 +173,8 @@ app/
   net/      HappyHttp (OkHttp + kotlinx.serialization, X-Happy-Client header),
             SocketIoClient (the /v1/updates socket)
   ui/       theme, components (Item, ItemGroup, RoundButton, Header, ...), screens
-            onboarding/ welcome, restore, Link Your Computer, onboarding settings
+            start/      the first screen, its ⋮ menu, GrainGradient (AGSL)
+            onboarding/ restore, Link Your Computer, onboarding settings
             connect/    QR scanner and codes, connect flows, terminal screens, deep links
             troubleshoot/
   AppGraph  hand-wired object graph; owns the signed-in sync loop
@@ -728,7 +754,7 @@ unless they provide `true`.
 ## Happy Protocol V2
 
 A Happy Agent connected straight to the phone (an agent connection;
-"Connect Agent" in the UI, never "computer"). The source of truth is happy-agent's
+"Add" in the UI, never "computer"). The source of truth is happy-agent's
 `API.md`, "Mobile connector" (pairing, credentials, the QR code); iOS's port
 is `packages/happy-ios`. The wire keeps its own names
 (`happy://direct?`, `/v0/mobile-connector/…`).

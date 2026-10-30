@@ -106,11 +106,11 @@ class MultipleAccountsTest {
         runBlocking { graph.auth.restore(backup(first)) }
         syncedTo(graph, setOf("a1"))
 
-        // Add account: sign in to another server while the first stays signed in.
-        graph.beginAddingAccount()
+        // Add, from an open agent connection: a new account on the chosen server; the first stays signed in.
+        graph.accountStore.select("agent-connection-1")
+        runBlocking { graph.auth.reload() }
         graph.serverConfig.set(second.url)
         runBlocking { graph.auth.restore(backup(second)) }
-        assertFalse(graph.addingAccount.value)
         syncedTo(graph, setOf("b1", "b2"))
         val registry = graph.accountStore.registry.value
         assertEquals(listOf(first.url, second.url), registry.ordered.map { it.serverUrl })

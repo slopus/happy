@@ -27,12 +27,12 @@ import com.slopus.happy.ui.chat.chatRoutes
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
-import androidx.activity.compose.BackHandler
 import com.slopus.happy.accounts.accountId
 import com.slopus.happy.ui.connect.DeepLinkEffect
 import com.slopus.happy.ui.connection.AgentHome
-import com.slopus.happy.ui.connection.ConnectAgentRoute
+import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.connect.LocalAgentPairing
+import com.slopus.happy.ui.connect.rememberAddFlow
 import com.slopus.happy.ui.tablet.TabletShell
 import com.slopus.happy.ui.connect.connectRoutes
 import com.slopus.happy.ui.files.filesRoutes
@@ -44,7 +44,7 @@ import com.slopus.happy.ui.onboarding.onboardingRoutes
 import com.slopus.happy.ui.connection.connectAgent
 import com.slopus.happy.ui.connection.agentConnectionRoutes
 import com.slopus.happy.ui.session.SessionInfoRoute
-import com.slopus.happy.ui.onboarding.WelcomeScreen
+import com.slopus.happy.ui.start.Start
 import com.slopus.happy.ui.server.ServerScreen
 import com.slopus.happy.ui.settings.LocalizedContent
 import com.slopus.happy.ui.home.ProvideAvatarSettings
@@ -54,7 +54,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
-@Serializable data object WelcomeRoute
+@Serializable data object StartRoute
 @Serializable data object ServerRoute
 @Serializable data object RestoreRoute
 @Serializable data object RestoreManualRoute
@@ -79,32 +79,32 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
         val dark = HappyTheme.colors.dark
         LaunchedEffect(dark) { onDarkThemeChange(dark) }
 
-        val adding by graph.addingAccount.collectAsStateWithLifecycle()
-        val openAgent by graph.openAgentId.collectAsStateWithLifecycle()
-        // Adding an account shows the sign-in screens over the open one, which stays signed in.
-        val signedIn = (auth as? AuthState.SignedIn)?.takeUnless { adding }
-        val agent = openAgent.takeUnless { adding }
+        val agent by graph.openAgentId.collectAsStateWithLifecycle()
+        val signedIn = auth as? AuthState.SignedIn
         PaywallHost(graph.purchases)
         // Each account has its own back stack, replaced when another opens.
-        key(signedIn?.let { accountId(it.credentials) }, agent, adding) {
+        key(signedIn?.let { accountId(it.credentials) }, agent) {
             val nav = rememberNavController()
             val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
             val troubleshoot = { nav.navigate(TroubleshootRoute) }
             val connectAgent = remember(nav) { { code: String -> nav.connectAgent(graph, code) } }
             // Every scanner, signed in or out, sends happy://direct? codes here.
             CompositionLocalProvider(LocalAgentPairing provides connectAgent) {
+              // Add (the first screen's Connect, the account menu's Add): scan, then route the code.
+              val add = rememberAddFlow(graph)
+              CompositionLocalProvider(LocalAddFlow provides add) {
                 // The tablet shell (sidebar beside the stack) or, on a phone, just the stack.
                 TabletShell(graph, nav, signedIn = signedIn != null, onOpenSession = openSession, onTroubleshoot = troubleshoot) {
                     val start: Any = when {
                         agent != null -> AgentHomeRoute
                         signedIn != null -> HomeRoute
-                        else -> WelcomeRoute
+                        else -> StartRoute
                     }
                     NavHost(navController = nav, startDestination = start) {
-                        composable<WelcomeRoute> { Welcome(graph, nav, onCancel = if (adding) graph::cancelAddingAccount else null) }
+                        composable<StartRoute> { Start(graph, nav, add) }
                         composable<AgentHomeRoute> {
                             agent?.let { id ->
-                                AgentHome(graph, id, onAddAccount = graph::beginAddingAccount, onConnectAgent = { nav.navigate(ConnectAgentRoute) })
+                                AgentHome(graph, id)
                             }
                         }
                         composable<ServerRoute> { Server(graph, nav) }
@@ -124,54 +124,11 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                     }
                 }
                 DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
+              }
             }
             PushRegistrationEffect(graph)
         }
     } } } }
-}
-
-/**
- * The signed-out start (index.tsx NotAuthenticated). A failed "Create
- * account" shows "Error / Authentication failed"; happy-app only logs it and
- * the button stops spinning, which leaves the user with no word of why.
- */
-@Composable
-private fun Welcome(graph: AppGraph, nav: NavHostController, onCancel: (() -> Unit)?) {
-    val scope = rememberCoroutineScope()
-    val serverUrl by graph.serverConfig.url.collectAsStateWithLifecycle()
-    val customServerLabel = remember(serverUrl) { graph.serverConfig.customHostLabel }
-    var creating by remember { mutableStateOf(false) }
-    var alert by remember { mutableStateOf<Alert?>(null) }
-    val failed = Alert(
-        stringResource(R.string.common_error),
-        stringResource(R.string.errors_authentication_failed),
-        listOf(AlertButton(stringResource(R.string.common_ok))),
-    )
-
-    WelcomeScreen(
-        customServerLabel = customServerLabel,
-        creatingAccount = creating,
-        onCreateAccount = {
-            scope.launch {
-                creating = true
-                try {
-                    graph.auth.createAccount()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    alert = failed
-                } finally {
-                    creating = false
-                }
-            }
-        },
-        onRestore = { nav.navigate(RestoreRoute) },
-        onServer = { nav.navigate(ServerRoute) },
-        onBack = onCancel,
-    )
-    // Adding an account: back returns to the account that is open.
-    if (onCancel != null) BackHandler(onBack = onCancel)
-    alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
 }
 
 @Composable

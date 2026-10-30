@@ -68,30 +68,6 @@ class LinkComputerLayoutTest {
     private fun visible(tag: String) = rule.onAllNodesWithTag(tag, useUnmergedTree = true).onLast()
 
     @Test
-    fun linkScreenPutsItsActionsWhereWelcomeHasThem() {
-        // Both first-run screens stacked, each a full phone tall.
-        rule.setHappyContent {
-            Column(Modifier.wrapContentHeight(unbounded = true)) {
-                Box(Modifier.fillMaxWidth().height(PHONE_HEIGHT.dp)) {
-                    WelcomeScreen(customServerLabel = null, creatingAccount = false, onCreateAccount = {}, onRestore = {}, onServer = {})
-                }
-                Box(Modifier.fillMaxWidth().height(PHONE_HEIGHT.dp)) {
-                    OnboardingLinkComputerScreen(
-                        customServerLabel = null, ticked = emptySet(), onToggle = {}, busy = false, error = null,
-                        onScan = {}, onPasteLink = {}, onSettings = {}, onOpenDesktopSite = {},
-                    )
-                }
-            }
-        }
-        for (tag in listOf(OnboardingTags.CONTENT, OnboardingTags.PRIMARY, OnboardingTags.SECONDARY)) {
-            val nodes = rule.onAllNodesWithTag(tag, useUnmergedTree = true)
-            val welcome = nodes[0].bounds
-            val link = nodes[1].bounds
-            assertBox(tag, link, welcome.left, welcome.top + PHONE_HEIGHT.dp, welcome.right - welcome.left, welcome.bottom - welcome.top)
-        }
-    }
-
-    @Test
     fun checklistSpecAndTicking() {
         var ticked by mutableStateOf(emptySet<LinkChecklistStep>())
         var scans = 0
@@ -252,35 +228,24 @@ class LinkComputerLayoutTest {
     }
 
     /**
-     * TalkBack over the first-run screens, as happy-app labels them: the
-     * titles are headers (OnboardingContent, LinkComputer), the wordmark an
-     * image named "Happy Engineering", the gear a button named after where it
-     * goes, the checklist rows checkboxes, Get help a named button, and the
-     * error line a polite live region. Nothing actionable goes unnamed.
+     * TalkBack over Link Your Computer, as happy-app labels it: the title is
+     * a header, the gear a button named after where it goes, the checklist
+     * rows checkboxes, Get help a named button, and the error line a polite
+     * live region. Nothing actionable goes unnamed.
      */
     @Test
-    fun firstRunScreensReadForTalkBack() {
+    fun linkScreenReadsForTalkBack() {
         var error by mutableStateOf<String?>(null)
         rule.setHappyContent {
-            Column(Modifier.wrapContentHeight(unbounded = true)) {
-                Box(Modifier.fillMaxWidth().height(PHONE_HEIGHT.dp)) {
-                    WelcomeScreen(customServerLabel = null, creatingAccount = false, onCreateAccount = {}, onRestore = {}, onServer = {})
-                }
-                Box(Modifier.fillMaxWidth().height(PHONE_HEIGHT.dp)) {
-                    OnboardingLinkComputerScreen(
-                        customServerLabel = null, ticked = emptySet(), onToggle = {}, busy = false, error = error,
-                        onScan = {}, onPasteLink = {}, onSettings = {}, onOpenDesktopSite = {},
-                    )
-                }
-            }
+            OnboardingLinkComputerScreen(
+                customServerLabel = null, ticked = emptySet(), onToggle = {}, busy = false, error = error,
+                onScan = {}, onPasteLink = {}, onSettings = {}, onOpenDesktopSite = {},
+            )
         }
-        rule.onNode(hasContentDescription("Happy Engineering")).assertExists()
-        rule.onNode(hasText("Claude, Codex, Grok\nin your pocket") and isHeading()).assertExists()
         rule.onNode(hasText("Link Your Computer") and isHeading()).assertExists()
-        rule.onNode(hasContentDescription("Server") and hasRole(Role.Button)).assertExists()
         rule.onNode(hasContentDescription("Settings") and hasRole(Role.Button)).assertExists()
         rule.onNode(hasText("Install Happy on your computer") and hasRole(Role.Checkbox)).assertIsOff()
-        rule.onAllNodes(hasContentDescription("Get help") and hasRole(Role.Button)).assertCountEquals(2)
+        rule.onAllNodes(hasContentDescription("Get help") and hasRole(Role.Button)).assertCountEquals(1)
         error = "Couldn’t link. Scan the code again."
         rule.onNode(hasText("Couldn’t link. Scan the code again.") and SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite), useUnmergedTree = true)
             .assertExists()

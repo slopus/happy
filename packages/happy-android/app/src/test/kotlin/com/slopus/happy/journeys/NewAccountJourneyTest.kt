@@ -3,6 +3,7 @@ package com.slopus.happy.journeys
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -34,7 +35,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Journey 1, a new account: Create account lands on Link Your Computer;
+ * Journey 1, a new account: ⋮ › Create account lands on Link Your Computer;
  * the computer the user links appears and home offers the dock; the dock
  * starts a Claude session on it with a prompt and a pasted image, and the
  * chat opens with that first message delivered to the server, image and all.
@@ -58,7 +59,8 @@ class NewAccountJourneyTest {
         graph = journey.graph()
         rule.setContent { HappyApp(graph) }
 
-        // Welcome → Create account → Link Your Computer.
+        // Start → ⋮ → Create account → Link Your Computer.
+        rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("Create account").performClick()
         rule.waitFor(HomeTags.LINK)
         rule.waitForText("Link Your Computer")

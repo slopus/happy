@@ -116,7 +116,7 @@ class ConnectFlowTest {
         assertScanSays(ScanResult.Scanned(accountUrl), "This code links a new device. Scan it from Settings › Account › Link New Device.")
         assertScanSays(ScanResult.Scanned("https://example.com"), "This QR code isn't a Happy code.")
         assertScanSays(ScanResult.Scanned("happy://something?else"), "This QR code isn't a Happy code.")
-        assertScanSays(ScanResult.Scanned("happy://direct?abc"), "This code connects an agent. Use Connect Agent in the account menu on Home.")
+        assertScanSays(ScanResult.Scanned("happy://direct?abc"), "This code connects an agent. Use Add in the account menu on Home.")
         assertScanSays(
             ScanResult.Failed("Google Play services are not available"),
             "The QR scanner isn't available on this device. Paste the link instead.",
@@ -228,6 +228,64 @@ class ConnectFlowTest {
         rule.waitUntil { approved.isNotEmpty() }
         assertEquals(listOf(terminalUrl), approved)
         assertFalse(showing)
+    }
+
+    private val paired = CopyOnWriteArrayList<String>()
+
+    private fun setStart() {
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { paired += it }) {
+                flow = rememberAddConnect(approve = { url -> failWith?.let { throw it }; approved += url })
+            }
+        }
+    }
+
+    /** The first screen: a terminal code is approved (by a new account), a pairing code pairs, the rest say what they are. */
+    @Test
+    fun theFirstScreenRoutesEveryCode() {
+        setStart()
+        scanner.results += ScanResult.Scanned(terminalUrl)
+        rule.runOnIdle { flow.scan() }
+        rule.waitUntil { approved.isNotEmpty() }
+        assertEquals(listOf(terminalUrl), approved)
+        rule.onNodeWithText("Error").assertDoesNotExist()
+
+        scanner.results += ScanResult.Scanned("happy://direct?abc")
+        rule.runOnIdle { flow.scan() }
+        rule.waitUntil { paired.isNotEmpty() }
+        assertEquals(listOf("happy://direct?abc"), paired)
+
+        approved.clear()
+        assertScanSays(ScanResult.Scanned(accountUrl), "This code adds a phone to an account. Scan it with a phone that's signed in.")
+        assertScanSays(ScanResult.Scanned("happy://something?else"), "This QR code isn't a Happy code.")
+        assertScanSays(ScanResult.Scanned("https://example.com"), "This QR code isn't a Happy code.")
+    }
+
+    /** "Enter link manually" routes a pasted link as Connect routes a scanned code. */
+    @Test
+    fun theFirstScreenRoutesPastedLinks() {
+        setStart()
+        rule.runOnIdle { flow.connectWithUrl(" $terminalUrl ") }
+        rule.waitUntil { approved.isNotEmpty() }
+        assertEquals(listOf(terminalUrl), approved)
+        rule.runOnIdle { flow.connectWithUrl("happy://direct?xyz") }
+        rule.waitUntil { paired.isNotEmpty() }
+        rule.runOnIdle { flow.connectWithUrl(accountUrl) }
+        rule.onNodeWithText("This code adds a phone to an account. Scan it with a phone that's signed in.").assertExists()
+        rule.onNodeWithText("OK").performClick()
+        rule.runOnIdle { flow.connectWithUrl("hello") }
+        rule.onNodeWithText("Invalid authentication URL").assertExists()
+        rule.onNodeWithText("OK").performClick()
+        assertEquals(listOf(terminalUrl), approved)
+    }
+
+    @Test
+    fun aFailedApprovalOnTheFirstScreenIsAnAlert() {
+        failWith = IOException("offline")
+        setStart()
+        rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
+        rule.onNodeWithText("Failed to connect terminal").assertExists()
+        assertFalse(flow.isLoading)
     }
 
     @Test

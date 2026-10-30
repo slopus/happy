@@ -48,8 +48,17 @@ class AuthRepository(
     private val mutableState = MutableStateFlow(signedIn(credentialStore.read()))
     val state: StateFlow<AuthState> = mutableState.asStateFlow()
 
-    /** index.tsx createAccount */
-    suspend fun createAccount() = login(random.nextBytes(32))
+    /**
+     * index.tsx createAccount. [prepare] runs with the new account before it
+     * is stored or opened: the first screen approves a terminal there, so a
+     * failed approval leaves nothing signed in.
+     */
+    suspend fun createAccount(prepare: suspend (AuthState.SignedIn) -> Unit = {}) {
+        val secret = random.nextBytes(32)
+        val token = api.getToken(AuthChallenge.create(secret, random))
+        prepare(signedIn(AuthCredentials(token = token, secret = encodeBase64(secret, Base64Variant.Url))) as AuthState.SignedIn)
+        signIn(token, secret)
+    }
 
     /** restore/manual.tsx: accepts the dashed backup format or the raw base64url secret. */
     suspend fun restore(secretKey: String) {

@@ -125,26 +125,14 @@ class AppGraph(
         importRnServer = { RnServerConfigImporter.read(File(appContext.filesDir, "mmkv"), defaultServerUrl) },
     ).also { it.reconcile() }
 
-    private val addingAccountState = MutableStateFlow(false)
-
-    /** "Add account" is under way: sign-in screens over the open account, which stays open. */
-    val addingAccount: StateFlow<Boolean> = addingAccountState.asStateFlow()
-
-    fun beginAddingAccount() {
-        addingAccountState.value = true
-    }
-
-    fun cancelAddingAccount() {
-        addingAccountState.value = false
-    }
-
     /**
-     * The server the open Happy account lives on; while adding an account or
-     * with none open, the server chosen for signing in.
+     * The server the open Happy account lives on; with none open, the
+     * server chosen for signing in. An account added while another is open
+     * joins that one's server.
      */
     val serverUrl: String
         get() = accountStore.registry.value.let { registry -> registry.entry(registry.activeId) }
-            ?.takeIf { !addingAccountState.value && it.serverConfirmed }?.serverUrl ?: serverConfig.url.value
+            ?.takeIf { it.serverConfirmed }?.serverUrl ?: serverConfig.url.value
 
     val http = HappyHttp(okHttp, serverUrl = { serverUrl }, clientId = clientId)
     val authApi = AuthApi(http)
@@ -159,7 +147,6 @@ class AppGraph(
 
         override fun write(credentials: AuthCredentials) {
             accountStore.signIn(credentials, serverUrl)
-            addingAccountState.value = false
         }
 
         override fun clear() {
@@ -282,7 +269,6 @@ class AppGraph(
      */
     fun open(id: String): Job = scope.launch {
         if (accountStore.registry.value.activeId == id && (openAgentId.value == id || openAccountId() == id)) return@launch
-        addingAccountState.value = false
         withContext(Dispatchers.IO) { accountStore.select(id) }
         auth.reload()
     }
