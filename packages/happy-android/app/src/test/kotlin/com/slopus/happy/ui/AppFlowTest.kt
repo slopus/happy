@@ -78,7 +78,7 @@ class AppFlowTest {
         rule.onNodeWithText("Log out and start over").performScrollTo().performClick()
         rule.onNode(hasText("Logout") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
 
-        rule.waitUntilAtLeastOneExists(hasText("Connect"), 5_000)
+        rule.waitUntilAtLeastOneExists(hasText("Start"), 5_000)
         assertEquals(AuthState.SignedOut, graph.auth.state.value)
         assertNull(graph.store.profile())
     }

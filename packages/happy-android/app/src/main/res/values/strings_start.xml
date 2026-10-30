@@ -5,6 +5,7 @@
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="start_logo">Happy</string>
+    <string name="start_button">Start</string>
     <string name="start_connect">Connect</string>
     <string name="start_more">More</string>
     <string name="start_enter_link">Enter link manually</string>

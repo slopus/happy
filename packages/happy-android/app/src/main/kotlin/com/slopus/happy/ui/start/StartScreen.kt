@@ -87,7 +87,7 @@ object StartSpec {
     val logoWidth = 220.dp
     const val LOGO_ASPECT = 1200f / 319f
     val connectMinWidth = 200.dp
-    val bottomPadding = 32.dp
+    val bottomPadding = 16.dp
     val controlsPadding = 4.dp
     val control = 48.dp
     val controlIcon = 24.dp
@@ -105,9 +105,10 @@ object StartSpec {
  *
  *   ⋮ (top right)  a drop-down: enter a link, restore, create an account,
  *                  server, get help
- *   logo           centred in the space above Connect
- *   Connect        centred, as wide as its label (at least 200), 32 above
- *                  the bottom inset: scan a code, routed by kind
+ *   logo           twice as far from the top as from Start
+ *   Start          centred across, as wide as its label (at least 200),
+ *                  halfway between the logo and 16 above the bottom
+ *                  inset: scan a code, routed by kind
  *
  * If it all outgrows the window (large text) it scrolls.
  */
@@ -145,7 +146,7 @@ fun StartScreen(
                     .padding(bottom = StartSpec.bottomPadding),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.weight(2f))
                 Image(
                     painter = painterResource(if (dark) R.drawable.logotype_light else R.drawable.logotype_dark),
                     contentDescription = stringResource(R.string.start_logo),
@@ -154,7 +155,7 @@ fun StartScreen(
                 )
                 Spacer(Modifier.weight(1f))
                 RoundButton(
-                    title = stringResource(R.string.start_connect),
+                    title = stringResource(R.string.start_button),
                     onClick = onConnect,
                     loading = connecting,
                     modifier = Modifier
@@ -162,6 +163,7 @@ fun StartScreen(
                         .width(IntrinsicSize.Max)
                         .testTag(StartTags.CONNECT),
                 )
+                Spacer(Modifier.weight(1f))
             }
             Row(modifier = Modifier.fillMaxWidth().padding(StartSpec.controlsPadding)) {
                 Spacer(Modifier.weight(1f))

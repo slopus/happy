@@ -15,6 +15,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.sp
@@ -75,6 +77,13 @@ class StartLayoutTest {
         }
     }
 
+    /** Connect halfway between the logo and 16 above [bottom]; the logo twice as far below [top] as above Connect. */
+    private fun assertMiddle(logo: DpRect, connect: DpRect, bottom: Dp, top: Dp = 0.dp) {
+        val gap = connect.top - logo.bottom
+        assertDp("connect halfway between the logo and the bottom", gap, bottom - 16.dp - connect.bottom)
+        assertDp("logo twice as far from the top", gap * 2, logo.top - top)
+    }
+
     @Test
     fun phoneLayout() {
         show()
@@ -86,19 +95,18 @@ class StartLayoutTest {
         // ⋮ top right, a 48 target 4 in.
         assertBox("more", rule.node(StartTags.MORE).bounds, (PHONE_WIDTH - 4 - 48).dp, 4.dp, 48.dp, 48.dp)
 
-        // Connect: centred, as wide as its label but at least 200, 32 above the bottom.
+        // Connect: centred across, as wide as its label but at least 200.
         val connect = rule.node(StartTags.CONNECT).bounds
         assertDp("connect width", 200, connect.width)
         assertDp("connect height", 50, connect.height)
         assertDp("connect centred", (PHONE_WIDTH / 2f).dp, (connect.left + connect.right) / 2)
-        assertDp("connect 32 above the bottom", PHONE_HEIGHT - 32, connect.bottom)
 
-        // The logo is centred in the space above Connect.
+        // Connect halfway between the logo and 16 above the bottom; the logo twice as far from the top.
         val logo = rule.node(StartTags.LOGO).bounds
         assertDp("logo width", 220, logo.width)
         assertDp("logo keeps the logotype's aspect", (220f * 319f / 1200f).dp, logo.height)
         assertDp("logo centred across", (PHONE_WIDTH / 2f).dp, (logo.left + logo.right) / 2)
-        assertDp("logo centred above connect", logo.top, connect.top - logo.bottom)
+        assertMiddle(logo, connect, PHONE_HEIGHT.dp)
         rule.assertActionsLabelled()
     }
 
@@ -106,7 +114,7 @@ class StartLayoutTest {
     @Test
     fun theMenuHoldsTheOtherWaysIn() {
         show()
-        rule.onNodeWithText("Connect").performClick()
+        rule.onNodeWithText("Start").performClick()
         for ((label, tap) in listOf(
             "Enter link manually" to "link",
             "Restore existing account" to "restore",
@@ -143,7 +151,7 @@ class StartLayoutTest {
         assertBox("background", rule.node(StartTags.BACKGROUND).bounds, 0.dp, 0.dp, PHONE_WIDTH.dp, PHONE_HEIGHT.dp)
         assertBox("content", rule.node(StartTags.CONTENT).bounds, 0.dp, 24.dp, PHONE_WIDTH.dp, (PHONE_HEIGHT - 24 - 48).dp)
         assertDp("more under the status bar", 24 + 4, rule.node(StartTags.MORE).bounds.top)
-        assertDp("connect 32 above the navigation bar", PHONE_HEIGHT - 48 - 32, rule.node(StartTags.CONNECT).bounds.bottom)
+        assertMiddle(rule.node(StartTags.LOGO).bounds, rule.node(StartTags.CONNECT).bounds, (PHONE_HEIGHT - 48).dp, top = 24.dp)
     }
 
     /** At font scale 2.0 Connect's label grows along the sp curve and the button with it; icons and the logo don't. */
@@ -154,8 +162,7 @@ class StartLayoutTest {
         val logo = rule.node(StartTags.LOGO).bounds
         assertTrue("connect holds its 2x line", connect.height >= with(LARGE_TEXT) { 22.sp.toDp() })
         assertDp("connect centred", (PHONE_WIDTH / 2f).dp, (connect.left + connect.right) / 2)
-        assertDp("connect 32 above the bottom", PHONE_HEIGHT - 32, connect.bottom)
-        assertTrue("logo above connect", logo.bottom <= connect.top)
+        assertMiddle(logo, connect, PHONE_HEIGHT.dp)
         assertDp("logo keeps its size", 220, logo.width)
         assertDp("more keeps its size", 48, rule.node(StartTags.MORE).bounds.width)
     }
@@ -173,7 +180,7 @@ class StartLayoutTest {
     @Test
     fun darkModeLaysOutTheSame() {
         show(dark = true)
-        assertDp("connect 32 above the bottom", PHONE_HEIGHT - 32, rule.node(StartTags.CONNECT).bounds.bottom)
+        assertMiddle(rule.node(StartTags.LOGO).bounds, rule.node(StartTags.CONNECT).bounds, PHONE_HEIGHT.dp)
         assertDp("logo width", 220, rule.node(StartTags.LOGO).bounds.width)
     }
 }

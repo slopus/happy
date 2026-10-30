@@ -141,7 +141,7 @@ class SettingsJourneyTest {
         clickable("Выйти").performScrollTo().performClick()
         dialogButton("Выйти").performClick()
         // The language was the account's setting: the first screen is back in the device's, as after happy-app's reload.
-        rule.waitForText("Connect")
+        rule.waitForText("Start")
         rule.onNodeWithContentDescription("More").performClick()
         rule.waitForText("Create account")
         rule.waitUntil(10_000) { server.requestsTo("/v1/push-tokens/ExponentPushToken%5Bphone%5D").any { it.method == "DELETE" } }

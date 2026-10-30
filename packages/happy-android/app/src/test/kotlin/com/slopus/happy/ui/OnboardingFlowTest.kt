@@ -144,7 +144,7 @@ class OnboardingFlowTest {
         rule.waitUntilAtLeastOneExists(hasText("Failed to connect terminal"), 5_000)
         assertEquals(AuthState.SignedOut, graph.auth.state.value)
         assertTrue(graph.accountStore.registry.value.entries.isEmpty())
-        rule.onNodeWithText("Connect").assertExists()
+        rule.onNodeWithText("Start").assertExists()
     }
 
     @Test
@@ -173,7 +173,7 @@ class OnboardingFlowTest {
         DeepLinks.offer(DeepLink.Terminal("abc"))
         rule.waitForIdle()
         assertNull(DeepLinks.pending.value)
-        rule.onNodeWithText("Connect").assertExists()
+        rule.onNodeWithText("Start").assertExists()
         rule.onNodeWithText("Accept Connection").assertDoesNotExist()
     }
 }
