@@ -173,7 +173,7 @@ private fun PickerHeading(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun ModePanel(title: String, onDismiss: () -> Unit, anchorCenterY: Int, content: LazyListScope.() -> Unit) {
-    ComposerPopup(
+    ConversationPopup(
         title = title,
         onDismiss = onDismiss,
         anchorCenterY = anchorCenterY,

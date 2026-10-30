@@ -289,7 +289,7 @@ internal fun ConversationComposer(
             }
         }
         if (menu) {
-            ComposerPopup(
+            ConversationPopup(
                 title = stringResource(R.string.conversation_composer_more),
                 onDismiss = { menu = false },
                 anchorCenterY = moreCenterY,

@@ -33,15 +33,17 @@ import com.slopus.happy.ui.theme.HappyTheme
  * keeps the editor as the IME target while this non-editing window receives
  * Back, Escape and keyboard navigation. The popup never requests or clears
  * editor focus, and outside taps dismiss without changing the draft.
+ * Header menus use [belowAnchor] to open below their button instead.
  */
 @Composable
-internal fun ComposerPopup(
+internal fun ConversationPopup(
     title: String,
     onDismiss: () -> Unit,
-    anchorCenterY: Int,
+    anchorCenterY: Int = 0,
     alignEnd: Boolean,
     width: Dp,
     modifier: Modifier = Modifier,
+    belowAnchor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -51,7 +53,7 @@ internal fun ComposerPopup(
     val bottom = WindowInsets.navigationBars.getBottom(density)
     val availableWidth = with(density) { window.width.toDp() - 16.dp }
     val maxHeight = with(density) { (window.height - top - bottom).toDp() - 16.dp }.coerceIn(1.dp, 480.dp)
-    val position = remember(margin, alignEnd, anchorCenterY, top, bottom) { ComposerPopupPosition(margin, alignEnd, anchorCenterY, top, bottom) }
+    val position = remember(margin, alignEnd, anchorCenterY, top, bottom, belowAnchor) { ConversationPopupPosition(margin, alignEnd, anchorCenterY, top, bottom, belowAnchor) }
     Popup(
         popupPositionProvider = position,
         onDismissRequest = onDismiss,
@@ -74,19 +76,20 @@ internal fun ComposerPopup(
     }
 }
 
-internal class ComposerPopupPosition(
+internal class ConversationPopupPosition(
     private val margin: Int,
     private val alignEnd: Boolean,
     private val anchorCenterY: Int,
     private val topInset: Int = 0,
     private val bottomInset: Int = 0,
+    private val belowAnchor: Boolean = false,
 ) : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
         val atRight = alignEnd == (layoutDirection == LayoutDirection.Ltr)
         val x = if (atRight) anchorBounds.right - popupContentSize.width else anchorBounds.left
         return IntOffset(
             x.coerceIn(margin, (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin)),
-            (anchorCenterY - popupContentSize.height / 2)
+            (if (belowAnchor) anchorBounds.bottom + margin else anchorCenterY - popupContentSize.height / 2)
                 .coerceIn(topInset + margin, (windowSize.height - bottomInset - popupContentSize.height - margin).coerceAtLeast(topInset + margin)),
         )
     }

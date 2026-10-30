@@ -79,14 +79,15 @@ class ComposerPopupTest {
     @Test fun `panels mirror with RTL and clamp to small window edges`() {
         val anchor = IntRect(12, 400, 399, 492)
         val size = IntSize(280, 180)
-        val start = ComposerPopupPosition(8, false, 448)
-        val end = ComposerPopupPosition(8, true, 448)
+        val start = ConversationPopupPosition(8, false, 448)
+        val end = ConversationPopupPosition(8, true, 448)
         assertEquals(IntOffset(12, 358), start.calculatePosition(anchor, IntSize(411, 800), LayoutDirection.Ltr, size))
         assertEquals(IntOffset(119, 358), end.calculatePosition(anchor, IntSize(411, 800), LayoutDirection.Ltr, size))
         assertEquals(IntOffset(119, 358), start.calculatePosition(anchor, IntSize(411, 800), LayoutDirection.Rtl, size))
         assertEquals(IntOffset(12, 358), end.calculatePosition(anchor, IntSize(411, 800), LayoutDirection.Rtl, size))
         assertEquals(IntOffset(8, 228), end.calculatePosition(IntRect(0, 80, 200, 172), IntSize(200, 300), LayoutDirection.Ltr, IntSize(184, 64)))
-        assertEquals(IntOffset(8, 32), ComposerPopupPosition(8, false, 20, 24, 24).calculatePosition(anchor, IntSize(200, 300), LayoutDirection.Ltr, IntSize(184, 200)))
+        assertEquals(IntOffset(8, 32), ConversationPopupPosition(8, false, 20, 24, 24).calculatePosition(anchor, IntSize(200, 300), LayoutDirection.Ltr, IntSize(184, 200)))
+        assertEquals(IntOffset(119, 88), ConversationPopupPosition(8, true, 0, belowAnchor = true).calculatePosition(IntRect(12, 32, 399, 80), IntSize(411, 800), LayoutDirection.Ltr, size))
     }
 
     @Test @Config(qualifiers = "w411dp-h360dp-xxhdpi")
