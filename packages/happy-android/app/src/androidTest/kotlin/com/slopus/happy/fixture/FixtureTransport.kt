@@ -39,7 +39,8 @@ class FixtureTransport {
     }
 
     private fun answer(method: String, route: String): TransportResponse = when {
-        route == "/v0/agents/$AGENT/bootstrap" -> json(BOOTSTRAP)
+        // The conversation only asks for a question the agent says is pending.
+        route == "/v0/agents/$AGENT/bootstrap" -> json(bootstrap(if (question != null) "fx-q" else null))
         route == "/v0/agents/$AGENT/messages" -> json(PAGE)
         route == "/v0/agents/$AGENT/question" -> json("""{"question":${question ?: "null"}}""")
         route == "/v0/agents/$AGENT/tool-calls/c1/media/0" -> bytes(png)
@@ -78,13 +79,13 @@ class FixtureTransport {
 
         private const val MODE = """{"providerId":"fx","modelId":"fx/model","effort":"medium","serviceTier":null,"permissionMode":"read_only"}"""
 
-        private const val BOOTSTRAP =
-            """{"agent":{"id":"$AGENT","workspaceId":"fx-workspace","status":"idle","title":"Fixture chat"},"mode":$MODE,"draft":{"value":null,"updatedAt":null},"pending":[]}"""
+        private fun bootstrap(pendingQuestionId: String?) =
+            """{"agent":{"id":"$AGENT","workspaceId":"fx-workspace","status":"idle","title":"Fixture chat","pendingQuestionId":${pendingQuestionId?.let { "\"$it\"" } ?: "null"}},"mode":$MODE,"draft":{"value":null,"updatedAt":null},"pending":[]}"""
 
         private const val CONFIG = """{"config":{
             "defaults":{"providerId":"fx","modelId":"fx/model","permissionMode":"read_only"},
             "models":{"fx/model":{"name":"Fixture model","efforts":["medium"],"defaultEffort":"medium","serviceTiers":[]}},
-            "providers":{"fx":{"name":"Fixture","type":"fixture","models":["fx/model"]}}
+            "providers":{"fx":{"name":"Fixture","type":"fixture","models":[{"id":"fx/model"}]}}
         }}"""
 
         private fun card(id: String, artifactId: String, type: String, title: String) =
