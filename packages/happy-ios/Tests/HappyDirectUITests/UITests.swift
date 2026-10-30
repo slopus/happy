@@ -31,6 +31,13 @@ private let skipsQuiescence: Bool = {
 /// (`xcrun simctl privacy <udid> grant photos <bundle>`).
 @MainActor
 final class UITests: XCTestCase {
+    /// The transcript, whichever renderer drew it: the agents' chat draws
+    /// on UltraList, which is not a scroll view, so it is found by its
+    /// identifier rather than by kind.
+    var transcriptElement: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "transcript").firstMatch
+    }
+
     private let app = XCUIApplication()
 
     override func setUp() {
@@ -1039,7 +1046,7 @@ final class UITests: XCTestCase {
             let target = row("space", label).firstMatch
             guard target.exists, target.isHittable else { continue }
             target.tap()
-            let transcript = app.scrollViews["transcript"]
+            let transcript = transcriptElement
             XCTAssertTrue(transcript.waitForExistence(timeout: 8), "\(label) didn't open")
             var value = ""
             let deadline = Date().addingTimeInterval(10)
@@ -1068,7 +1075,7 @@ final class UITests: XCTestCase {
         // One left a moment ago comes back drawn too.
         if warm, let first = opened.first {
             row("space", first).firstMatch.tap()
-            let transcript = app.scrollViews["transcript"]
+            let transcript = transcriptElement
             XCTAssertTrue(transcript.waitForExistence(timeout: 8))
             var value = ""
             for _ in 0..<100 where value.isEmpty {
@@ -1333,7 +1340,7 @@ final class UITests: XCTestCase {
         send(composer, "stream 40 30")
         let working = app.descendants(matching: .any)["working"]
         XCTAssertTrue(working.waitForExistence(timeout: 15), "the reply never started")
-        let transcript = app.scrollViews["transcript"]
+        let transcript = transcriptElement
         // Long enough to scroll before the pulls.
         pause(8)
         dismissKeyboard()
@@ -1374,7 +1381,7 @@ final class UITests: XCTestCase {
     /// (`SendFollow`). Needs `fakellm.py` as above.
     func testASendLandsAtTheFootAndLiftsNothing() {
         let composer = openStreamLab(probe: "watch")
-        let transcript = app.scrollViews["transcript"]
+        let transcript = transcriptElement
         let messages = app.descendants(matching: .any).matching(identifier: "message")
         let working = app.descendants(matching: .any)["working"]
         let input = app.descendants(matching: .any)["input"]
@@ -1398,8 +1405,7 @@ final class UITests: XCTestCase {
         let first = say("stream 4 120 wait 1500 first")
         XCTAssertTrue(first.waitForExistence(timeout: 5))
         pause(0.4)
-        let counts = probeCounts(transcript)
-        let top = CGFloat(counts["top"] ?? 0)
+        let top = app.navigationBars.firstMatch.frame.maxY
         let viewport = input.frame.minY - 8 - top
         capture("send-1-landed")
         XCTAssertLessThan(first.frame.maxY, input.frame.minY + 1, "the send went under the composer")
@@ -1583,7 +1589,7 @@ final class UITests: XCTestCase {
         bot.tap()
         let composer = app.textViews["composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.scrollViews["transcript"].waitForExistence(timeout: 5))
+        XCTAssertTrue(transcriptElement.waitForExistence(timeout: 5))
         pause(2)
         return composer
     }

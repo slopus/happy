@@ -33,6 +33,9 @@ protocol AgentChatTranscriptHost: AnyObject {
 final class AgentChatUltraList: UIView {
     let list = UltraListView(engineMode: .keyframe)
     weak var host: AgentChatTranscriptHost?
+    /// The reader reached the oldest row the conversation has read: there
+    /// may be more behind it.
+    var onReachedOldest: (() -> Void)?
     private(set) var isActive = true
     private var rows: [String: AgentChatRow] = [:]
     /// Where each row starts, measured up from the newest end, as the
@@ -55,6 +58,11 @@ final class AgentChatUltraList: UIView {
         list.accessibilityIdentifier = "transcript"
         list.onScroll = { [weak self] _ in self?.scrolled() }
         list.onVisibleWindowChanged = { [weak self] in self?.scrolled() }
+        // Upside down, the oldest row is at the list's far end.
+        list.onLoadedEdgeReached = { [weak self] edge in
+            guard let self, isActive, edge == .bottom else { return }
+            onReachedOldest?()
+        }
         addSubview(list)
     }
 
@@ -65,6 +73,9 @@ final class AgentChatUltraList: UIView {
         super.layoutSubviews()
         list.frame = bounds
     }
+
+    /// The room the rows have between the bar and the composer.
+    var viewportHeight: CGFloat { max(0, bounds.height - insets.top - insets.bottom) }
 
     /// How far the reader is from the newest row, which is at the foot:
     /// zero on it, growing as they read up into history, from the first
@@ -96,15 +107,20 @@ final class AgentChatUltraList: UIView {
                           transition: keyboard?.transition ?? .none)
     }
 
-    /// The conversation's rows, oldest first as the screen plans them. A
-    /// row whose plan has not changed keeps the view it had, drawn as it
-    /// was: only a new plan is shown again.
-    func apply(_ plans: [ChatRowPlan], animated: Bool = false) {
+    /// The conversation's rows, oldest first as the screen plans them,
+    /// and the intro that opens it, which the screen has laid out. A row
+    /// whose plan has not changed keeps the view it had, drawn as it was:
+    /// only a new plan is shown again.
+    ///
+    /// The intro goes in last, which is at the top: where the mounted
+    /// transcript puts it, scrolling away as the rows under it fill the
+    /// screen (`ChatStackLayout(pinsFirst:)`).
+    func apply(_ plans: [ChatRowPlan], intro: (view: UIView, height: CGFloat)? = nil, animated: Bool = false) {
         var items: [any ListRow] = []
         var next: [String: AgentChatRow] = [:]
         var places: [String: CGFloat] = [:]
         var start: CGFloat = 0
-        items.reserveCapacity(plans.count)
+        items.reserveCapacity(plans.count + 1)
         for plan in plans.reversed() {
             let identity = "chat:row:\(plan.id)"
             let row: AgentChatRow
@@ -122,6 +138,9 @@ final class AgentChatUltraList: UIView {
         }
         rows = next
         starts = places
+        if let intro {
+            items.append(AgentChatIntroRow(content: intro.view, height: intro.height))
+        }
         let follows = followsNewest && !list.isTracking && !list.isDragging && !list.isDecelerating
         list.applyChanges(items: items, newSize: viewportSize,
                           newInsets: .init(top: insets.top, bottom: insets.bottom),
@@ -134,6 +153,10 @@ final class AgentChatUltraList: UIView {
         followsNewest = true
         list.scrollTo(newestTarget(), transition: animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
     }
+
+    /// What arrives next is followed: a send by a reader at the end, or
+    /// near it (`SendFollow`), carries them to it.
+    func follow() { followsNewest = true }
 
     private func newestTarget() -> ListScrollTarget {
         .init(index: 0, identity: list.items.first?.identity)
@@ -180,6 +203,45 @@ final class AgentChatUltraList: UIView {
         guard isActive else { return }
         host?.placedChunks(of: plan, in: view)
     }
+}
+
+/// The conversation's intro, which the screen lays out and owns: the row
+/// only gives it the width and the height it asked for.
+@MainActor
+private struct AgentChatIntroRow: ListRow {
+    let identity = "chat:intro"
+    let content: UIView
+    let height: CGFloat
+    var revision: UInt64 { UInt64(height.rounded()) }
+    func makeView() -> ListRowView { AgentChatIntroView(content: content, height: height) }
+    func apply(to view: ListRowView, transition: ListTransition) {
+        (view as? AgentChatIntroView)?.height = height
+    }
+}
+
+@MainActor
+private final class AgentChatIntroView: ListRowView {
+    private let content: UIView
+    var height: CGFloat
+
+    init(content: UIView, height: CGFloat) {
+        self.content = content
+        self.height = height
+        super.init(frame: .zero)
+        transform = ChatCollectionLayout.flip
+        content.transform = .identity
+        addSubview(content)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        content.frame = bounds
+    }
+
+    override func update(width: Double, transition: ListTransition) -> Double { height }
 }
 
 /// One planned row. The plan is already measured, so the row has nothing

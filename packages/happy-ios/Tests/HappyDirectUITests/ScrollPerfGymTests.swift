@@ -33,6 +33,13 @@ private let skipsQuiescence: Bool = {
 /// metrics (default 3).
 @MainActor
 final class ScrollPerfGymTests: XCTestCase {
+    /// The transcript, whichever renderer drew it: the agents' chat draws
+    /// on UltraList, which is not a scroll view, so it is found by its
+    /// identifier rather than by kind.
+    var transcriptElement: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "transcript").firstMatch
+    }
+
     private let app = XCUIApplication()
     private var environment: [String: String] { ProcessInfo.processInfo.environment }
     private var chat: String { environment["GYM_CHAT"] ?? "Gym Long Chat" }
@@ -263,7 +270,7 @@ final class ScrollPerfGymTests: XCTestCase {
         scan.tap()
         pause(2)
         XCTAssertFalse(app.descendants(matching: .any)["new-work"].exists, "Scan opened the last install's computer")
-        XCTAssertFalse(app.scrollViews["transcript"].exists, "Scan opened a chat")
+        XCTAssertFalse(transcriptElement.exists, "Scan opened a chat")
     }
 
     /// The ring on `row` turns new, opens its viewer at a tap, and is seen once closed.
@@ -274,7 +281,7 @@ final class ScrollPerfGymTests: XCTestCase {
         row.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 7 + 29, dy: row.frame.height / 2)).tap()
         let viewer = app.descendants(matching: .any)["story-viewer-page"]
         XCTAssertTrue(viewer.waitForExistence(timeout: 10), "\(when): a tap on the ring opened no viewer")
-        XCTAssertFalse(app.scrollViews["transcript"].exists, "\(when): the ring opened the chat")
+        XCTAssertFalse(transcriptElement.exists, "\(when): the ring opened the chat")
         pause(2)
         app.descendants(matching: .any)["story-close"].firstMatch.tap()
         XCTAssertTrue(until(10) { !viewer.exists }, "\(when): the viewer never closed")
@@ -371,7 +378,7 @@ final class ScrollPerfGymTests: XCTestCase {
     /// The transcript's value once it is up: the open's timing.
     @discardableResult
     private func waitForTranscript() -> String {
-        let transcript = app.scrollViews["transcript"]
+        let transcript = transcriptElement
         XCTAssertTrue(transcript.waitForExistence(timeout: 30), "the transcript never showed")
         let deadline = Date().addingTimeInterval(30)
         while Date() < deadline, !((transcript.value as? String) ?? "").hasPrefix("first=") { pause(0.2) }
