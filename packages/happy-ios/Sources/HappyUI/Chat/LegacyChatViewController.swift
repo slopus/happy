@@ -315,6 +315,11 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     }
 
     private func installHeader() {
+        // The header is built a few turns after `viewDidLoad`, and the
+        // window's width settles in between: read the trait again, or a
+        // tablet is handed the phone's header and never hears otherwise,
+        // since the watch below is registered after the change.
+        isTabletLayout = traitCollection.isTabletLayout
         setUpHeader()
         headerScrim.presence = 0
         view.addSubview(headerScrim)
