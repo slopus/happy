@@ -1,0 +1,301 @@
+package com.slopus.happy.fixture
+
+import android.content.Intent
+import android.os.SystemClock
+import android.view.inputmethod.InputMethodManager
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ActivityScenario
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
+import com.slopus.happy.AppGraph
+import com.slopus.happy.HappyApplication
+import com.slopus.happy.MainActivity
+import com.slopus.happy.accounts.accountId
+import com.slopus.happy.auth.AuthState
+import com.slopus.happy.crypto.encodeBase64
+import com.slopus.happy.data.MessageRecord
+import com.slopus.happy.data.SessionRecord
+import com.slopus.happy.model.SessionListGrouping
+import com.slopus.happy.sync.SyncEngine
+import com.slopus.happy.ui.chat.ChatScreenTags
+import com.slopus.happy.ui.chat.ComposerTags
+import com.slopus.happy.ui.home.AccountMenuTags
+import com.slopus.happy.ui.home.FlatRowTags
+import com.slopus.happy.ui.home.HomeServices
+import com.slopus.happy.ui.home.HomeTags
+import com.slopus.happy.ui.session.SessionInfoTags
+import com.slopus.happy.ui.tablet.TabletShellTags
+import com.slopus.happy.ui.tablet.TabletSidebarTags
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+
+/**
+ * F4 on a disposable f4_* AVD: real MainActivity, AppGraph, account storage,
+ * SQLite cache and app navigation. Only the credentials and cached content
+ * are synthetic. No server creates an account, and nothing is sent.
+ *
+ * wm size exercises resized windows, not fold postures. Rotation uses the
+ * activity's real configChanges. This does not test live relay transport,
+ * process death or a hardware hinge. Run only through the isolated runner.
+ */
+@RunWith(AndroidJUnit4::class)
+class RelayWindowDeviceTest {
+    @get:Rule val rule = createEmptyComposeRule()
+
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val device = UiDevice.getInstance(instrumentation)
+    private val app get() = instrumentation.targetContext.applicationContext as HappyApplication
+    private val graph: AppGraph get() = app.graph
+    private val evidence get() = File(app.filesDir, "f4-evidence").apply { mkdirs() }
+    private lateinit var selectedAccount: String
+    private lateinit var initialActivity: MainActivity
+
+    @Test fun cached_relay_list_resize_rotation_draft_and_stationary_sidebar() {
+        // Fail before touching app storage or window settings on any existing account/AVD.
+        check(InstrumentationRegistry.getArguments().getString("f4Isolated") == "true")
+        val avd = device.executeShellCommand("getprop ro.boot.qemu.avd_name").trim()
+        check(avd.startsWith("f4_")) { "Requires a disposable f4_* AVD, got $avd" }
+        check(graph.accountStore.registry.value.entries.isEmpty()) { "Fixture requires empty app data" }
+        check(graph.agentConnections.accounts.value.isEmpty()) { "Fixture refuses paired agent data" }
+        check(InstrumentationRegistry.getArguments().getString("sourceSha")?.isNotBlank() == true)
+        check(InstrumentationRegistry.getArguments().getString("apkSha256")?.length == 64)
+
+        device.setOrientationNatural()
+        device.executeShellCommand("wm density 320")
+        resize(411)
+        seedAccount(1)
+        seedAccount(2)
+        selectedAccount = checkNotNull(graph.accountStore.registry.value.activeId)
+        val scenario = ActivityScenario.launch<MainActivity>(Intent(app, MainActivity::class.java))
+        scenario.onActivity { initialActivity = it }
+        try {
+            waitFor(HomeTags.LIST)
+            assertWindow(411, sidebar = false)
+            assertSelectedAccount()
+            rule.onNodeWithTag(HomeTags.LIST, true).performScrollToIndex(12)
+            rule.waitForIdle()
+            val anchor = offset()
+            assertTrue("fixture must actually scroll", anchor.first >= 10)
+            capture("01-phone-list-scrolled", "HomeRoute", "resized window 411dp")
+
+            resize(900)
+            waitFor(TabletSidebarTags.SIDEBAR)
+            assertWindow(900, sidebar = true)
+            assertEquals("list anchor phone to sidebar", anchor, offset())
+            assertSelectedAccount()
+            capture("02-tablet-sidebar", "HomeRoute", "resized window 900dp")
+
+            resize(411)
+            waitFor(HomeTags.LIST)
+            assertWindow(411, sidebar = false)
+            assertEquals("list anchor sidebar to phone", anchor, offset())
+            assertSelectedAccount()
+            capture("03-phone-list-restored", "HomeRoute", "resized window 411dp")
+
+            // Rotate the actual activity at phone dimensions; do not swap test content.
+            device.setOrientationLeft()
+            waitFor(TabletSidebarTags.SIDEBAR)
+            assertEquals("list anchor after rotation", anchor, offset())
+            assertSelectedAccount()
+            scenario.onActivity { assertTrue("config change retained MainActivity", it === initialActivity) }
+            capture("04-phone-rotated", "HomeRoute", "rotation landscape; no hinge change")
+            device.setOrientationNatural()
+            waitFor(HomeTags.LIST)
+            assertWindow(411, sidebar = false)
+            assertEquals("list anchor after rotating back", anchor, offset())
+
+            val title = visibleRowTitle()
+            row(title).performClick()
+            waitFor(ComposerTags.INPUT)
+            rule.onNodeWithTag(ComposerTags.INPUT, true).performTextInput(DRAFT)
+            instrumentation.runOnMainSync {
+                app.getSystemService(InputMethodManager::class.java)
+                    .hideSoftInputFromWindow(initialActivity.window.decorView.windowToken, 0)
+            }
+            rule.waitForIdle()
+            assertDraft()
+            capture("05-phone-chat-draft", "SessionRoute:$title", "resized window 411dp")
+
+            resize(900)
+            waitFor(TabletSidebarTags.SIDEBAR)
+            assertWindow(900, sidebar = true)
+            assertDraft()
+            assertSelectedAccount()
+            row(title).assertIsSelected()
+            capture("06-tablet-chat-draft", "SessionRoute:$title", "resized window 900dp")
+
+            // Sample real Compose transition frames; sidebar and its rows must stay fixed.
+            val sidebar = bounds(TabletSidebarTags.SIDEBAR)
+            val selectedRow = row(title).fetchSemanticsNode().boundsInWindow
+            rule.mainClock.autoAdvance = false
+            try {
+                rule.onNodeWithTag(ChatScreenTags.TITLE_BUTTON, true).performClick()
+                for (frame in 1..24) {
+                    rule.mainClock.advanceTimeByFrame()
+                    rule.waitForIdle()
+                    assertEquals("sidebar at frame $frame", sidebar, bounds(TabletSidebarTags.SIDEBAR))
+                    assertEquals("selected row at frame $frame", selectedRow, row(title).fetchSemanticsNode().boundsInWindow)
+                    row(title).assertIsSelected()
+                    if (frame in listOf(1, 6, 12, 24)) {
+                        capture("07-detail-frame-${frame.toString().padStart(2, '0')}", "SessionRoute → SessionInfoRoute:$title", "resized window 900dp; transition frame $frame")
+                    }
+                }
+            } finally {
+                rule.mainClock.autoAdvance = true
+            }
+            waitFor(SessionInfoTags.CHANGES)
+            capture("08-tablet-session-info", "SessionInfoRoute:$title", "resized window 900dp")
+            rule.onNodeWithTag(TabletShellTags.BACK, true).performClick()
+            waitFor(ComposerTags.INPUT)
+            assertDraft()
+
+            resize(411)
+            waitFor(ComposerTags.INPUT)
+            assertWindow(411, sidebar = false)
+            assertDraft()
+            assertSelectedAccount()
+            capture("09-phone-chat-draft-restored", "SessionRoute:$title", "resized window 411dp")
+            device.setOrientationLeft()
+            waitFor(TabletSidebarTags.SIDEBAR)
+            assertDraft()
+            row(title).assertIsSelected()
+            assertSelectedAccount()
+            capture("10-chat-rotated", "SessionRoute:$title", "rotation landscape; no hinge change")
+            device.setOrientationNatural()
+            waitFor(ComposerTags.INPUT)
+            assertDraft()
+            assertSelectedAccount()
+            scenario.onActivity { assertTrue("same activity after all changes", it === initialActivity) }
+            capture("11-phone-chat-after-rotation", "SessionRoute:$title", "rotation portrait; no hinge change")
+        } finally {
+            scenario.close()
+            device.setOrientationNatural()
+            device.unfreezeRotation()
+            device.executeShellCommand("wm size reset")
+            device.executeShellCommand("wm density reset")
+        }
+    }
+
+    private fun seedAccount(number: Int) = runBlocking {
+        graph.serverConfig.set("https://127.0.0.1:1")
+        val previous = graph.account.value
+        // Deliberately invalid token, synthetic master secret, local closed endpoint.
+        graph.auth.signIn("f4.synthetic-$number.token", ByteArray(32) { (number + it).toByte() })
+        val signedIn = graph.auth.state.value as AuthState.SignedIn
+        checkNotNull(accountId(signedIn.credentials))
+        withTimeout(10_000) { graph.account.first { it != null && it !== previous } }
+        val wrappedKey = encodeBase64(signedIn.encryption.encryptDataEncryptionKey(ByteArray(32) { 42 }))
+        val now = System.currentTimeMillis()
+        graph.store.upsertSessions((1..45).map { index ->
+            SessionRecord(
+                id = "f4-$number-$index", seq = 1, createdAt = now - 100_000,
+                updatedAt = now - index * 1_000, active = false, activeAt = now - 100_000,
+                metadataJson = buildJsonObject {
+                    put("path", "/fixture/relay-$number")
+                    put("host", "f4-fixture")
+                    put("flavor", "claude")
+                    put("summary", buildJsonObject { put("text", "F4 account $number chat ${index.toString().padStart(2, '0')}"); put("updatedAt", now) })
+                }.toString(),
+                metadataVersion = 1, agentStateJson = null, agentStateVersion = 0,
+                wrappedDataKey = wrappedKey, projectId = null,
+            )
+        })
+        for (session in graph.store.sessions()) {
+            graph.store.applyNewestPage(session.id, listOf(MessageRecord(
+                sessionId = session.id, seq = 1, id = "${session.id}-message", localId = null,
+                contentJson = """{"role":"user","content":{"type":"text","text":"Synthetic cached relay conversation."}}""",
+                createdAt = now - 1_000, updatedAt = now - 1_000,
+            )), hasOlder = false)
+        }
+        graph.store.saveProfile(buildJsonObject {
+            put("id", "f4-$number"); put("timestamp", now); put("firstName", "F4 fixture $number")
+            put("lastName", JsonNull); put("avatar", JsonNull); put("github", JsonNull)
+        })
+        graph.settings.change { it.copy(sessionListGrouping = SessionListGrouping.Flat) }
+        graph.store.setCursor(SyncEngine.CURSOR_SESSIONS_LISTED_AT, now)
+        graph.store.setCursor("f4-account", number.toLong())
+    }
+
+    private fun resize(widthDp: Int) {
+        device.executeShellCommand("wm size ${widthDp * 2}x1782")
+        SystemClock.sleep(400)
+    }
+
+    private fun waitFor(tag: String) = rule.waitUntil(15_000) {
+        rule.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+    }
+
+    private fun bounds(tag: String): Rect = rule.onNodeWithTag(tag, true).fetchSemanticsNode().boundsInWindow
+
+    private fun assertWindow(widthDp: Int, sidebar: Boolean) {
+        assertEquals("actual app window width in dp", widthDp.toFloat(), device.displayWidth / 2f, 1f)
+        assertEquals("sidebar presence", sidebar, rule.onAllNodes(hasTestTag(TabletSidebarTags.SIDEBAR), true).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    private fun offset(): Pair<Int, Int> = checkNotNull(HomeServices.of(graph).homeListOffsets[selectedAccount])
+
+    private fun row(title: String) = rule.onNode(hasTestTag(FlatRowTags.ROW) and hasAnyDescendant(hasText(title)), true)
+
+    private fun visibleRowTitle(): String {
+        fun texts(node: SemanticsNode): List<String> =
+            node.config.getOrElseNullable(SemanticsProperties.Text) { null }.orEmpty().map { it.text } + node.children.flatMap(::texts)
+        return rule.onAllNodes(hasTestTag(FlatRowTags.ROW), true).fetchSemanticsNodes()
+            .filter { it.boundsInWindow.height > 80 }
+            .flatMap(::texts).first { it.startsWith("F4 account 2 chat ") }
+    }
+
+    private fun assertDraft() = rule.onNodeWithTag(ComposerTags.INPUT, true).assertTextEquals(DRAFT)
+
+    private fun assertSelectedAccount() {
+        assertEquals(selectedAccount, graph.accountStore.registry.value.activeId)
+        // Also check the user's real account menu, not only the backing registry.
+        // A phone chat has no switcher; Home and the tablet sidebar do.
+        if (rule.onAllNodes(hasTestTag(AccountMenuTags.BUTTON), true).fetchSemanticsNodes().isEmpty()) return
+        rule.onNodeWithTag(AccountMenuTags.BUTTON, true).performClick()
+        waitFor(AccountMenuTags.MENU)
+        rule.onNodeWithTag(AccountMenuTags.entry(selectedAccount), true).assertIsSelected()
+        device.pressBack()
+        rule.waitForIdle()
+    }
+
+    private fun capture(name: String, route: String, kind: String) {
+        val args = InstrumentationRegistry.getArguments()
+        val note = buildJsonObject {
+            put("capture", name); put("sourceSha", args.getString("sourceSha")); put("apkSha256", args.getString("apkSha256"))
+            put("route", route); put("windowKind", kind); put("foregroundPackage", device.currentPackageName)
+            put("widthPx", device.displayWidth); put("heightPx", device.displayHeight)
+            put("selectedAccount", selectedAccount); put("listAnchor", offset().toString())
+        }.toString()
+        check(device.currentPackageName == app.packageName) { "App not in front: $note" }
+        check(device.takeScreenshot(File(evidence, "$name.png")))
+        File(evidence, "$name.json").writeText(note)
+        android.util.Log.i("F4Evidence", note)
+    }
+
+    private companion object {
+        const val DRAFT = "F4 synthetic draft retained across resize and rotation"
+    }
+}
