@@ -13,7 +13,7 @@ import XCTest
 final class AgentInputCardTextKitTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func host(_ category: UIContentSizeCategory) -> (UIWindow, UIView) {

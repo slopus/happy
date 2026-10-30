@@ -7,7 +7,7 @@ import XCTest
 @MainActor
 final class DirectIdentityViewTests: XCTestCase {
     func testMeasuredPairingContentAtPhoneAndTabletWidths() {
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
         for width: CGFloat in [272, 345, 432, 720] {
             let content = DirectIdentityView()
             content.heading.string = "A computer with a long name that wraps"

@@ -358,7 +358,7 @@ final class StoriesViewerCell: UITableViewCell {
         initials.isHidden = false
     }
 
-    func configure(_ viewer: StoryViewer, last: Bool, images: StemCellsImages) {
+    func configure(_ viewer: StoryViewer, last: Bool, images: Images) {
         name.text = viewer.name
         time.text = viewer.reactedAt.map { Strings.Stories.when($0, now: Int64(Date().timeIntervalSince1970 * 1000)) }
         reaction.text = viewer.reaction

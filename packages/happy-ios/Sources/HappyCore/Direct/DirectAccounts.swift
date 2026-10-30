@@ -30,7 +30,7 @@ public final class DirectAccounts {
     public func syncEngine(for id: String) -> DirectSyncEngine? {
         if let engine = engines[id] { return engine }
         guard let client = agentClient(for: id) else { return nil }
-        let engine = DirectSyncEngine(client: client, directory: StemCellsOfflineFile.directory(for: id))
+        let engine = DirectSyncEngine(client: client, directory: OfflineFile.directory(for: id))
         engines[id] = engine
         if foreground && activeID == id { Task { await engine.start() } }
         return engine
@@ -118,8 +118,8 @@ public final class DirectAccounts {
         do { try await storage.remove(id) }
         catch { startConnections(); throw error }
         credentials.removeValue(forKey: id); accounts.removeAll { $0.id == id }
-        // What Stem Cells kept to open on it offline goes with it.
-        StemCellsOfflineFile.remove(id)
+        // What V2 kept to open on it offline goes with it.
+        OfflineFile.remove(id)
         if activeID == id { activeID = nil }
         onChange?()
     }

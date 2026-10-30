@@ -46,13 +46,13 @@ enum Screens {
     static func make(_ route: Route, context: AppContext, session: AccountSession) -> UIViewController {
         switch route {
         case .settings:
-            return SettingsViewController(context: context)
+            return LegacySettingsViewController(context: context)
         case .server:
             return ServerConfigViewController(context: context)
         case .troubleshoot:
             return TroubleshootViewController(context: context, session: session)
         case .session(let id):
-            return ChatViewController(context: context, session: session, sessionId: id)
+            return LegacyChatViewController(context: context, session: session, sessionId: id)
         case .sessionInfo(let id):
             return SessionInfoViewController(context: context, session: session, sessionId: id)
         case .sessionChanges(let id):
@@ -114,7 +114,7 @@ extension UIViewController {
         #endif
         let controller = Screens.make(route, context: context, session: session)
         #if DEBUG || HAPPY_FIXTURES
-        (controller as? ChatViewController)?.constructionSeconds = CACurrentMediaTime() - constructionStarted
+        (controller as? LegacyChatViewController)?.constructionSeconds = CACurrentMediaTime() - constructionStarted
         #endif
         TabletRoutes.record(route, for: controller)
         stack.pushViewController(controller, animated: animated)

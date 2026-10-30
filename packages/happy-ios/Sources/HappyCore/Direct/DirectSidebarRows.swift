@@ -4,8 +4,8 @@ import HappyWire
 /// Desktop's happyAgentSidebarTree and happyAgentSections, projected once
 /// off-main for Home and search. A subtask-owned worktree is never listed twice.
 public enum DirectSidebarRows {
-    public static func make(_ desktop: DirectDesktopSnapshot, settings: [String: JSONValue], collapsed: Set<String> = []) -> [StemCellsRow] {
-        var rows: [StemCellsRow] = []
+    public static func make(_ desktop: DirectDesktopSnapshot, settings: [String: JSONValue], collapsed: Set<String> = []) -> [Row] {
+        var rows: [Row] = []
         var descendants = Set<String>()
         let tasksByID = Dictionary((desktop.tasks ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let tasks = (desktop.taskMemberships ?? []).compactMap { tasksByID[$0.taskId] }.filter { $0.status != "archived" }
@@ -17,18 +17,18 @@ public enum DirectSidebarRows {
             }
         }
         for owner in bots + tasks { if let agent = owner.agent { collect(agent) } }
-        func heading(_ id: String, _ title: String, depth: Int = 0, mark: StemCellsRow.Mark = .none) {
-            rows.append(StemCellsRow(id: id, nodeId: id, kind: .section, depth: depth, label: title, mark: mark, collapsed: collapsed.contains(id)))
+        func heading(_ id: String, _ title: String, depth: Int = 0, mark: Row.Mark = .none) {
+            rows.append(Row(id: id, nodeId: id, kind: .section, depth: depth, label: title, mark: mark, collapsed: collapsed.contains(id)))
         }
         func folder(_ id: String, _ title: String, depth: Int, kind: String) {
-            rows.append(StemCellsRow(id: id, nodeId: id, kind: .space, depth: depth, label: title, mark: .glyph("folder"), collapsed: collapsed.contains(id), targetKind: kind))
+            rows.append(Row(id: id, nodeId: id, kind: .space, depth: depth, label: title, mark: .glyph("folder"), collapsed: collapsed.contains(id), targetKind: kind))
         }
-        func status(_ agent: AgentWire.Agent) -> StemCellsRow.Status { StemCellsRows.activity(agent) }
+        func status(_ agent: AgentWire.Agent) -> Row.Status { Rows.activity(agent) }
         func agentRow(_ agent: AgentWire.Agent, depth: Int, label: String? = nil, owner: DirectDesktopSnapshot.Owner? = nil, kind: String? = nil, muted: Bool = false) {
             guard agent.archivedAt == nil else { return }
             let id = owner.map { "\(kind ?? "agent"):\($0.id)" } ?? "session:\(agent.id)"
             let children = (agent.subtasks ?? []).filter { $0.archivedAt == nil }
-            var row = StemCellsRow(id: id, nodeId: id, kind: owner == nil ? .session : .space, depth: depth,
+            var row = Row(id: id, nodeId: id, kind: owner == nil ? .session : .space, depth: depth,
                 label: label ?? agent.title ?? "Untitled", mark: owner?.systemKey == "chief_of_staff" ? .happy : .glyph(kind == "bot" ? "agents" : "tasks"),
                 status: muted ? .none : status(agent), unread: !muted && agent.unread != nil, collapsed: children.isEmpty ? nil : collapsed.contains(id),
                 isHappy: owner?.systemKey == "chief_of_staff", agentId: agent.id, workspaceId: agent.workspaceId, targetKind: kind)
@@ -40,13 +40,13 @@ public enum DirectSidebarRows {
             rows.append(row)
             for child in children { agentRow(child, depth: depth + 1, muted: muted) }
         }
-        rows.append(StemCellsRow(id: "direct:artifacts", nodeId: "direct:artifacts", kind: .space, label: "Artifacts", mark: .glyph("doc"), targetKind: "artifacts"))
+        rows.append(Row(id: "direct:artifacts", nodeId: "direct:artifacts", kind: .space, label: "Artifacts", mark: .glyph("doc"), targetKind: "artifacts"))
         let joined = (desktop.surfaces ?? []).compactMap { surface -> (DirectDesktopSnapshot.Surface, String)? in
             guard let member = surface.members.first(where: { $0.userId == desktop.profile?.userId }) else { return nil }
             return (surface, member.orderKey)
         }.sorted { ($0.1, $0.0.id) < ($1.1, $1.0.id) }
         for (surface, _) in joined {
-            var row = StemCellsRow(id: "surface:\(surface.id)", nodeId: "surface:\(surface.id)", kind: .space,
+            var row = Row(id: "surface:\(surface.id)", nodeId: "surface:\(surface.id)", kind: .space,
                 label: surface.name, mark: .glyph(surface.type == "calendar" ? "calendar" : "doc"), agentId: surface.chatAgentId, targetKind: "surface")
             row.targetId = surface.id
             row.surfaceType = surface.type

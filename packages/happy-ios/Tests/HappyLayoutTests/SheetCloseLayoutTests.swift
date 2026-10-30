@@ -14,8 +14,8 @@ final class SheetCloseLayoutTests: XCTestCase {
     func testEverySheetsCloseIsAsFarFromTheTopAsFromTheSide() {
         for width in [CGFloat(375), 402, 440] {
             assertSymmetric(SheetCloseLayout.frame(width: width), width: width, "the shared frame")
-            assertSymmetric(StemCellAttachSheetLayout(width: width, titleWidth: 120, photosWidth: 52, tiles: 4, values: [nil, nil, 30]).close, width: width, "the attach sheet")
-            assertSymmetric(StemCellsQRSheetLayout(size: CGSize(width: width, height: 844), safeTop: 47, safeBottom: 34, nameHeight: 28, text: .fixed(width: 300, height: 44)).close, width: width, "the QR sheet")
+            assertSymmetric(AttachSheetLayout(width: width, titleWidth: 120, photosWidth: 52, tiles: 4, values: [nil, nil, 30]).close, width: width, "the attach sheet")
+            assertSymmetric(QRSheetLayout(size: CGSize(width: width, height: 844), safeTop: 47, safeBottom: 34, nameHeight: 28, text: .fixed(width: 300, height: 44)).close, width: width, "the QR sheet")
         }
     }
 

@@ -74,7 +74,7 @@ enum TabletRoutes {
     /// (from a notification) is still known by its type.
     static func route(of controller: UIViewController) -> Route? {
         if let box = routes.object(forKey: controller) { return box.route }
-        if let chat = controller as? ChatViewController { return .session(id: chat.sessionId) }
+        if let chat = controller as? LegacyChatViewController { return .session(id: chat.sessionId) }
         return nil
     }
 

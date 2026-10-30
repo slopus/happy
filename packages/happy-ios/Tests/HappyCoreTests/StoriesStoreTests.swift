@@ -88,10 +88,10 @@ enum StoriesSamples {
 }
 
 final class StoriesStoreTests: XCTestCase {
-    private var continuation: AsyncStream<StemCellsStore.ConversationEvent>.Continuation?
+    private var continuation: AsyncStream<Store.ConversationEvent>.Continuation?
 
-    private func make(_ transport: StoriesTransport, offline: StemCellsOfflineFile? = nil, now: Int64 = 2_000) -> StoriesStore {
-        let (stream, continuation) = AsyncStream.makeStream(of: StemCellsStore.ConversationEvent.self)
+    private func make(_ transport: StoriesTransport, offline: OfflineFile? = nil, now: Int64 = 2_000) -> StoriesStore {
+        let (stream, continuation) = AsyncStream.makeStream(of: Store.ConversationEvent.self)
         self.continuation = continuation
         let client = DirectAgentClient(transport: transport, token: "t")
         return StoriesStore(client: client, events: { stream }, offline: offline, now: { now }, firstReadDelay: firstReadDelay)
@@ -356,13 +356,13 @@ final class StoriesStoreTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         let transport = StoriesTransport()
         await transport.configure(feed: twoAuthors())
-        let first = make(transport, offline: StemCellsOfflineFile(directory: directory))
+        let first = make(transport, offline: OfflineFile(directory: directory))
         await first.start()
         _ = try await next(first) { $0.feed != nil }
         await first.stop()
         try await Task.sleep(for: .milliseconds(200))
 
-        let offlineFile = StemCellsOfflineFile(directory: directory)
+        let offlineFile = OfflineFile(directory: directory)
         XCTAssertNotNil(offlineFile.readExtra("stories.json"))
         let second = StoriesStore(client: DirectAgentClient(transport: FailingTransport(), token: "t"), events: { AsyncStream { _ in } }, offline: offlineFile, now: { 2_000 })
         await second.start()

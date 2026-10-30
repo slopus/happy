@@ -11,7 +11,7 @@ import XCTest
 final class PlainHeaderTitleTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func titleView(_ controller: UIViewController) throws -> NavigationTitleView {

@@ -11,7 +11,7 @@ import XCTest
 final class ChatOlderEndViewTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func shown(_ status: ChatOlderPaging.Status) -> (UIWindow, ChatOlderEndView) {

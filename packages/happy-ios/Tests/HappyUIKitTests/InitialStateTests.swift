@@ -13,7 +13,7 @@ import XCTest
 final class InitialStateTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     func testItemGroupShowsItsRowsHeaderAndFooter() {

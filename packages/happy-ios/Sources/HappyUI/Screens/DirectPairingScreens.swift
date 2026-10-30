@@ -52,13 +52,13 @@ enum DirectPairingFlow {
         guard DirectPairingLink.isDirect(text) else { return false }
         // The Direct connection experiment off: it says so, and offers to
         // turn it on and go on.
-        let preference = StemCellsPreference(variant: context.variant)
+        let preference = Preference(variant: context.variant)
         guard preference.showsComputers else {
             Task { @MainActor in
-                guard await Alerts.confirm(Strings.StemCells.directExperimentTitle, Strings.StemCells.directExperimentDetail, confirmTitle: Strings.StemCells.turnOn, on: controller) else {
+                guard await Alerts.confirm(Strings.directExperimentTitle, Strings.directExperimentDetail, confirmTitle: Strings.turnOn, on: controller) else {
                     return PairingAnalytics.shared.log(.cancelled(method: .direct, start: start))
                 }
-                await StemCellsExperiments.setDirectConnection(true, context: context, surface: .onboarding)
+                await Experiments.setDirectConnection(true, context: context, surface: .onboarding)
                 _ = openIfDirect(text, context: context, on: controller, start: start)
             }
             return true
@@ -192,7 +192,7 @@ final class DirectPairingViewController: UIViewController {
     }
 }
 
-final class DirectHomeViewController: UIViewController {
+final class LegacyDirectHomeViewController: UIViewController {
     private let context: AppContext
     private let id: String
     private let identity = DirectIdentityView()

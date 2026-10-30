@@ -62,7 +62,7 @@ public enum MarkdownBlock: Equatable, Hashable, Sendable {
     case image(alt: String, url: String)
 }
 
-public enum Markdown {
+public enum LegacyMarkdown {
     /// parseMarkdown.ts.
     public static func parse(_ markdown: String) -> [MarkdownBlock] {
         parseBlocks(markdown)

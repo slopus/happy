@@ -8,7 +8,7 @@ import XCTest
 final class HostedSupportUsTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     func testOpeningWithoutPurchaseConfigurationShowsAnHonestUsablePage() async throws {

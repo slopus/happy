@@ -10,7 +10,7 @@ import UIKit
 /// Usage and the Developer row are not ported (see
 /// docs/FEATURES.md); logout and the push rows live on the Account page, as
 /// they do in happy-app.
-public final class SettingsViewController: UIViewController {
+public final class LegacySettingsViewController: UIViewController {
     private let context: AppContext
     private let list = GroupedListView()
     private var observation: StoreObservation?
@@ -360,19 +360,19 @@ public final class OnboardingSettingsViewController: UIViewController {
         logout.showsChevron = false
         var sections = [ItemGroupView(rows: [server])]
         // Where a computer can be a home: the Direct connection experiment.
-        let preference = StemCellsPreference(variant: context.variant)
+        let preference = Preference(variant: context.variant)
         if preference.isAvailable {
             let context = context
             let direct = ItemRowView.toggle(
-                title: Strings.StemCells.directConnection,
-                subtitle: Strings.StemCells.beta,
+                title: Strings.directConnection,
+                subtitle: Strings.beta,
                 icon: ItemIcon(.ionicons("flask-outline"), tint: Palette.textSecondary, size: 28),
                 isOn: preference.directConnection
             ) { on in
-                StemCellsExperiments.turn(on, context: context, surface: .settings)
+                Experiments.turn(on, context: context, surface: .settings)
             }
-            direct.trailingView?.accessibilityIdentifier = "stem-settings-toggle:direct-connection"
-            sections.append(ItemGroupView(title: Strings.StemCells.experiments, rows: [direct]))
+            direct.trailingView?.accessibilityIdentifier = "settings-toggle:direct-connection"
+            sections.append(ItemGroupView(title: Strings.experiments, rows: [direct]))
         }
         // Signed out, there is nothing to log out of.
         if context.account.session != nil {

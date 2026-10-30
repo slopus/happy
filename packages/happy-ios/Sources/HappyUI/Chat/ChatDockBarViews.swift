@@ -214,7 +214,7 @@ private final class ChatHintCard: UIControl {
 
     private func updateColors() {
         backgroundColor = UIColor(isHighlighted ? Palette.surfacePressed : fill)
-        layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
     }
 }
 
@@ -322,7 +322,7 @@ final class ChatGoalBarView: UIView {
     }
 
     private func updateBorder() {
-        card.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        card.layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
     }
 }
 

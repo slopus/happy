@@ -31,7 +31,7 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
             importLegacyServer: { .needsConfirmation },
             appState: { await MainActor.run { NSApp.isActive ? "active" : "background" } }
         )
-        // Direct/Stem Cells is a separate UI port; don't offer half a flow.
+        // Direct/V2 is a separate UI port; don't offer half a flow.
         account.showsComputers = false
         controller = MacWindowController(account: account)
         installMenus()

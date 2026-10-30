@@ -30,7 +30,7 @@ public final class AccountController {
     /// With no Happy account to open (none chosen at launch, or the last
     /// one signed out), a paired computer opens instead of Welcome, at once.
     /// Set by builds
-    /// where a computer is a home of its own (`StemCellsPreference.isAvailable`).
+    /// where a computer is a home of its own (`Preference.isAvailable`).
     public var fallsBackToComputer = false
     /// Paired computers are offered at all. Off (the Direct connection
     /// experiment, off), they stay paired and stored but are neither listed
@@ -297,7 +297,7 @@ public final class AccountController {
 
     /// `openingComputer`: a paired computer opens rather than the Happy
     /// account chosen last, `preferred` if it is one (carrying over the
-    /// filter that showed a computer's Stem Cells over the account's home).
+    /// filter that showed a computer's V2 over the account's home).
     public func restore(openingComputer: Bool = false, preferred: String? = nil) async {
         guard session == nil, !busy else { return }
         busy = true

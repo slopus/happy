@@ -10,7 +10,7 @@ final class ComposerSchemaMigrationTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("store.sqlite")
-        let before: [String: [Row]]
+        let before: [String: [GRDB.Row]]
         let originalColumns: [String: [String]]
         do {
             let writer = try DatabaseQueue(path: url.path)
@@ -116,11 +116,11 @@ final class ComposerSchemaMigrationTests: XCTestCase {
         "accountSettings", "pendingSettings", "accountProfile", "syncState", "chatHistory",
     ]
 
-    private static func contents(_ writer: any DatabaseWriter, columns: [String: [String]] = [:]) throws -> [String: [Row]] {
+    private static func contents(_ writer: any DatabaseWriter, columns: [String: [String]] = [:]) throws -> [String: [GRDB.Row]] {
         try writer.read { db in
             try Dictionary(uniqueKeysWithValues: preservedTables.map { table in
                 let projection = columns[table]?.map { "\"\($0)\"" }.joined(separator: ", ") ?? "*"
-                return (table, try Row.fetchAll(db, sql: "SELECT \(projection) FROM \(table) ORDER BY rowid"))
+                return (table, try GRDB.Row.fetchAll(db, sql: "SELECT \(projection) FROM \(table) ORDER BY rowid"))
             })
         }
     }

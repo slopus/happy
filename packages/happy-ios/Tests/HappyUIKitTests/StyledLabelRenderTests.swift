@@ -11,7 +11,7 @@ import XCTest
 final class StyledLabelRenderTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private let category = UIContentSizeCategory.accessibilityExtraExtraExtraLarge

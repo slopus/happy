@@ -67,7 +67,7 @@ final class HomeRendererHarness {
                     try store.addPendingSettings(["sessionListGrouping": .string(grouping), "hideInactiveSessions": .bool(archiveCount > 0)])
                 }.value
                 let context = AppContext(account: controller, variant: .development, version: "home-harness")
-                let home = HomeViewController(context: context, session: session)
+                let home = LegacyHomeViewController(context: context, session: session)
                 let navigation = UINavigationController(rootViewController: home)
                 AppCoordinator.applyAppearance(to: navigation.navigationBar)
                 let shell = TabletShellViewController(context: context, detail: navigation)

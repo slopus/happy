@@ -26,7 +26,7 @@ final class NewSessionDraftMemoTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func account(token: String = "t") throws -> AccountSession {

@@ -54,20 +54,20 @@ public final class AppCoordinator {
         // Welcome appears as soon as restore() finds nothing.
         // Where a computer is a home of its own, the profile chosen last
         // opens; with none, a paired computer rather than Welcome.
-        let stemCells = StemCellsPreference(variant: context.variant)
+        let v2 = Preference(variant: context.variant)
         #if DEBUG || HAPPY_FIXTURES
         // UI tests choose the Direct connection experiment's state.
-        if let direct = ProcessInfo.processInfo.environment["STEM_DIRECT"] { stemCells.directConnection = direct == "1" }
+        if let direct = ProcessInfo.processInfo.environment["HAPPY_DIRECT"] { v2.directConnection = direct == "1" }
         #endif
-        context.account.fallsBackToComputer = stemCells.isAvailable
+        context.account.fallsBackToComputer = v2.isAvailable
         // Paired computers stay hidden while the experiment is off.
-        context.account.showsComputers = stemCells.showsComputers
+        context.account.showsComputers = v2.showsComputers
         PairingAnalytics.shared.variant = context.variant
         Task { @MainActor [weak self] in
             guard let account = self?.context.account else { return }
-            // The Happy account's filter showed a computer's Stem Cells: that
+            // The Happy account's filter showed a computer's V2: that
             // computer is home now, from the first screen.
-            await account.restore(openingComputer: stemCells.takeFilterChoice(), preferred: stemCells.computerID)
+            await account.restore(openingComputer: v2.takeFilterChoice(), preferred: v2.computerID)
             self?.show(account.state)
             self?.accountRestored = true
             self?.openPendingDirectLink()
@@ -90,7 +90,7 @@ public final class AppCoordinator {
         let account = context.account
         // A root being decided opens it once it is in.
         guard !language.isDeciding else { return }
-        guard let active = account.session, navigation.viewControllers.first is HomeViewController else {
+        guard let active = account.session, navigation.viewControllers.first is LegacyHomeViewController else {
             // Signed out once restored: there is nothing to open it in.
             if accountRestored, account.session == nil { notificationSessionID = nil }
             return
@@ -106,7 +106,7 @@ public final class AppCoordinator {
             guard self.notificationSessionID == sessionId,
                   account.session === active,
                   !self.language.isDeciding,
-                  self.navigation.viewControllers.first is HomeViewController else {
+                  self.navigation.viewControllers.first is LegacyHomeViewController else {
                 self.openNotificationSession()
                 return
             }
@@ -144,8 +144,8 @@ public final class AppCoordinator {
                 return
             }
             guard let session = self.context.account.session,
-                  let home = self.navigation.viewControllers.first as? HomeViewController else { return }
-            if let chat = self.navigation.topViewController as? ChatViewController, chat.sessionId == sessionId { return }
+                  let home = self.navigation.viewControllers.first as? LegacyHomeViewController else { return }
+            if let chat = self.navigation.topViewController as? LegacyChatViewController, chat.sessionId == sessionId { return }
             self.navigation.presentedViewController?.dismiss(animated: false)
             let chat = Screens.make(.session(id: sessionId), context: self.context, session: session)
             self.navigation.setViewControllers([home, chat], animated: true)
@@ -277,24 +277,24 @@ public final class AppCoordinator {
         }
         let root: UIViewController
         if let direct = context.account.direct.active {
-            root = StemCellsDirectHomeViewController(context: context, id: direct.id)
+            root = DirectHomeViewController(context: context, id: direct.id)
         } else if let pending {
             root = AccountServerConfirmationViewController(context: context, account: pending)
         } else if let session {
-            root = HomeViewController(context: context, session: session)
+            root = LegacyHomeViewController(context: context, session: session)
         } else {
             // Nothing paired or signed in: where a computer can be a home,
             // the first screen links one, through the relay unless the
             // Direct connection experiment is on.
-            root = StemCellsPreference(variant: context.variant).isAvailable
-                ? StemCellsLinkViewController(context: context, inSheet: false)
+            root = Preference(variant: context.variant).isAvailable
+                ? LinkViewController(context: context, inSheet: false)
                 : WelcomeViewController(context: context)
         }
-        // Stem Cells' settings stays on top while the profile it chose
+        // V2' settings stays on top while the profile it chose
         // takes over underneath. Anything presented goes with the old root,
         // and so does settings once a flow pushed over it or presented from
         // it (pairing, signing in, signing out) caused the change.
-        let settings = navigation.viewControllers.count == 2 ? navigation.viewControllers.last as? StemCellsSettingsViewController : nil
+        let settings = navigation.viewControllers.count == 2 ? navigation.viewControllers.last as? SettingsViewController : nil
         // A confirmation already going counts as gone.
         let presented = navigation.presentedViewController.flatMap { $0.isBeingDismissed ? nil : $0 }
         let kept = settings.flatMap { settings in
@@ -312,7 +312,7 @@ public final class AppCoordinator {
     /// sheet, a scanner, an alert) put away so the pairing pushed there
     /// shows.
     private var linkHost: UIViewController? {
-        if let sheet = navigation.presentedViewController as? StemCellsLinkNavigationController, !sheet.isBeingDismissed {
+        if let sheet = navigation.presentedViewController as? LinkNavigationController, !sheet.isBeingDismissed {
             sheet.presentedViewController?.dismiss(animated: false)
             return sheet.topViewController
         }
@@ -342,7 +342,7 @@ public final class AppCoordinator {
     /// 16pt title view instead.
     static var nativeTitleAttributes: [NSAttributedString.Key: Any] {
         [
-            .font: Fonts.font(.semiBold, size: TextStyles.nativeHeaderTitle.size),
+            .font: LegacyFonts.font(.semiBold, size: TextStyles.nativeHeaderTitle.size),
             .foregroundColor: UIColor(Palette.headerTint),
         ]
     }

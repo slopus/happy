@@ -3,11 +3,11 @@ import Darwin
 import QuartzCore
 import UIKit
 
-/// The iOS performance gym's meter (`STEM_GYM_METER=1`, never in the shipped
+/// The iOS performance gym's meter (`V2_GYM_METER=1`, never in the shipped
 /// app): every display frame's interval and the main thread's busy time
 /// since the last reset, and the app's memory. It reads as the
 /// accessibility value of a near-invisible button in the window's corner,
-/// `stem-gym-meter`, which a tap resets; the gym's UI tests
+/// `v2-gym-meter`, which a tap resets; the gym's UI tests
 /// (`ScrollPerfGymTests`) tap it before a workload and read it after.
 ///
 /// A frame is late when it comes more than half an interval after it was
@@ -19,7 +19,7 @@ import UIKit
 @MainActor
 public final class GymFrameMeter: NSObject {
     public static func installIfAsked(in window: UIWindow) {
-        guard ProcessInfo.processInfo.environment["STEM_GYM_METER"] == "1", shared == nil else { return }
+        guard ProcessInfo.processInfo.environment["HAPPY_GYM_METER"] == "1", shared == nil else { return }
         let meter = GymFrameMeter(window: window)
         shared = meter
     }
@@ -53,14 +53,14 @@ public final class GymFrameMeter: NSObject {
     private init(window: UIWindow) {
         super.init()
         button.meter = self
-        button.accessibilityIdentifier = "stem-gym-meter"
+        button.accessibilityIdentifier = "gym-meter"
         button.alpha = 0.02
         button.backgroundColor = .black
         button.addTarget(self, action: #selector(reset), for: .touchUpInside)
         window.addSubview(button)
         button.frame = CGRect(x: 0, y: window.bounds.height - 8, width: 8, height: 8)
         button.autoresizingMask = [.flexibleTopMargin, .flexibleRightMargin]
-        run.accessibilityIdentifier = "stem-gym-run"
+        run.accessibilityIdentifier = "gym-run"
         run.alpha = 0.02
         run.backgroundColor = .black
         run.addTarget(self, action: #selector(runScript), for: .touchUpInside)
@@ -165,17 +165,17 @@ public final class GymFrameMeter: NSObject {
         shared?.lastScroll = CACurrentMediaTime()
     }
 
-    /// Resets, then scrolls the transcript as `STEM_GYM_SCRIPT` says
+    /// Resets, then scrolls the transcript as `V2_GYM_SCRIPT` says
     /// (`GymScroll`), frame by frame on the display link: the gestures
     /// without XCUITest reading the screen between them.
     @objc private func runScript() {
         reset()
-        guard let window = button.window, let scroll = Self.find("stem-transcript", in: window) as? UIScrollView else {
+        guard let window = button.window, let scroll = Self.find("transcript", in: window) as? UIScrollView else {
             NSLog("GYM_SCRIPT no transcript")
             return
         }
-        NSLog("GYM_SCRIPT start %@", ProcessInfo.processInfo.environment["STEM_GYM_SCRIPT"] ?? "default")
-        script = GymScroll(scroll, ProcessInfo.processInfo.environment["STEM_GYM_SCRIPT"] ?? "up*6 down*6") { [weak self] in self?.reset() }
+        NSLog("GYM_SCRIPT start %@", ProcessInfo.processInfo.environment["HAPPY_GYM_SCRIPT"] ?? "default")
+        script = GymScroll(scroll, ProcessInfo.processInfo.environment["HAPPY_GYM_SCRIPT"] ?? "up*6 down*6") { [weak self] in self?.reset() }
     }
 
     /// The frontmost view named `id` that shows.
@@ -260,7 +260,7 @@ public final class GymFrameMeter: NSObject {
             ("peakMB", String(format: "%.1f", peakFootprint)),
         ]
         var extra: [(String, String)] = [("scripting", script == nil ? "0" : "1")]
-        if let window = button.window, let transcript = Self.find("stem-transcript", in: window) {
+        if let window = button.window, let transcript = Self.find("transcript", in: window) {
             let counted = Self.count(transcript)
             extra += [("views", "\(counted.views)"), ("layers", "\(counted.layers)")]
         }

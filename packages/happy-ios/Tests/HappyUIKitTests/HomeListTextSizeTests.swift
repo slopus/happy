@@ -32,7 +32,7 @@ final class HomeListTextSizeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// A flat session at the largest text size on a 3x screen, summed in

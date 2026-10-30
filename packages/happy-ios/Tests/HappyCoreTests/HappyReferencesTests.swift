@@ -54,12 +54,12 @@ final class HappyReferencesTests: XCTestCase {
         .object(["name": .string("Birthday party for Maya"), "workspaceId": .string("wt"), "agent": .object(["id": .string("at"), "subtasks": .array([])])]),
     ]
 
-    private func markdown(_ text: String, _ references: StemCellReferences) -> String {
+    private func markdown(_ text: String, _ references: References) -> String {
         HappyReferences.markdown(text, view: references.view).replacingOccurrences(of: HappyReferences.linkPrefix, with: "ref:")
     }
 
     func testAnAgentReadsAsItsConversationsName() {
-        let references = StemCellReferences.entities(owners: Self.owners)
+        let references = References.entities(owners: Self.owners)
         // A bot's or task's own agent by the bot's or task's name; a subtask by its title.
         XCTAssertEqual(markdown("<happy-agent id=\"ab\"/>", references), "[Chef](ref:agent/ab)")
         XCTAssertEqual(markdown("<happy-agent id=\"at\"/>", references), "[Birthday party for Maya](ref:agent/at)")
@@ -71,7 +71,7 @@ final class HappyReferencesTests: XCTestCase {
     }
 
     func testAHiddenSubagentReadsAsItsTitleAndOpensNothing() {
-        var references = StemCellReferences.entities(owners: Self.owners)
+        var references = References.entities(owners: Self.owners)
         references.subagents = ["c1": "Find flights", "c2": " ", "as": "Not this"]
         XCTAssertEqual(markdown("Dispatched to <happy-agent id=\"c1\"/>.", references), "Dispatched to Find flights.")
         XCTAssertEqual(markdown("<happy-agent id=\"c2\"/>", references), "Subagent")
@@ -81,7 +81,7 @@ final class HappyReferencesTests: XCTestCase {
     }
 
     func testAWorkspaceReadsAsWhatItHolds() {
-        let references = StemCellReferences.entities(owners: Self.owners)
+        let references = References.entities(owners: Self.owners)
         XCTAssertEqual(markdown("<happy-workspace id=\"wb\"/>", references), "[Chef](ref:workspace/wb)")
         XCTAssertEqual(markdown("<happy-workspace id=\"wt\"/>", references), "[Birthday party for Maya](ref:workspace/wt)")
         // A subtask's own workspace by the first subtask in it.
@@ -91,27 +91,27 @@ final class HappyReferencesTests: XCTestCase {
     }
 
     func testAnArtifactReadsAsItsTitleOnceRead() {
-        var references = StemCellReferences()
+        var references = References()
         let text = "See <happy-artifact id=\"r1\" version=\"2\"/>."
         XCTAssertEqual(references.unread(in: text), ["r1"])
         XCTAssertEqual(markdown(text, references), "See [artifact](ref:artifact/r1/2).", "reading")
-        references.artifacts["r1"] = StemCellReferences.artifact(.object(["title": .string("Q3 revenue report"), "status": .string("active"), "type": .string("markdown"), "latestVersion": .number(2)]))
+        references.artifacts["r1"] = References.artifact(.object(["title": .string("Q3 revenue report"), "status": .string("active"), "type": .string("markdown"), "latestVersion": .number(2)]))
         XCTAssertEqual(references.unread(in: text), [])
         XCTAssertEqual(markdown(text, references), "See [Q3 revenue report](ref:artifact/r1/2).")
         references.artifacts["r1"] = .active(title: " ", type: "html", latestVersion: 1)
         XCTAssertEqual(markdown(text, references), "See [Untitled artifact](ref:artifact/r1/2).")
         // Deleted: named, not offered. Missing: words that say so.
-        references.artifacts["r1"] = StemCellReferences.artifact(.object(["title": .string("Old report"), "status": .string("deleted")]))
+        references.artifacts["r1"] = References.artifact(.object(["title": .string("Old report"), "status": .string("deleted")]))
         XCTAssertEqual(markdown(text, references), "See Old report.")
         references.artifacts["r1"] = .missing
         XCTAssertEqual(markdown(text, references), "See an unavailable artifact.")
         // Found by its bytes past any other script, and only whole.
-        XCTAssertEqual(StemCellReferences().unread(in: "Привет 👋🏽 " + text), ["r1"])
-        XCTAssertEqual(StemCellReferences().unread(in: "<happy-artifac"), [])
+        XCTAssertEqual(References().unread(in: "Привет 👋🏽 " + text), ["r1"])
+        XCTAssertEqual(References().unread(in: "<happy-artifac"), [])
     }
 
     func testAPersonReadsAsAMentionSetApartForTheReader() {
-        var references = StemCellReferences()
+        var references = References()
         references.users = ["u-steve": "Steve", "u-kirill": " Kirill "]
         references.me = "u-steve"
         let text = "<happy-user id=\"u-steve\"/>, can you look? <happy-user id=\"u-kirill\"/> signed off."
@@ -133,13 +133,13 @@ final class HappyReferencesTests: XCTestCase {
     }
 
     func testProjectsServicesAndUnknownKindsAreInert() {
-        let references = StemCellReferences.entities(owners: Self.owners)
+        let references = References.entities(owners: Self.owners)
         XCTAssertEqual(markdown("<happy-project id=\"p\"/> <happy-service id=\"s\" workspace=\"wb\"/> <happy-gizmo id=\"g\"/>", references),
                        "an unavailable project an unavailable service an unavailable reference")
     }
 
     func testNamesAreRunningWordsAndOnlyThisPhonesLinksOpen() {
-        let references = StemCellReferences(agents: ["a1": .init(label: "Guest *list* [draft]\nnow", agentId: "a1")])
+        let references = References(agents: ["a1": .init(label: "Guest *list* [draft]\nnow", agentId: "a1")])
         let text = "Started <happy-agent id=\"a1\"/> to draft the [guest] list, not `<happy-agent id=\"a1\"/>`."
         XCTAssertEqual(markdown(text, references), "Started [Guest list (draft) now](ref:agent/a1) to draft the [guest] list, not `<happy-agent id=\"a1\"/>`.")
         XCTAssertEqual(HappyReferences.plain(text, view: references.view), "Started Guest *list* [draft]\nnow to draft the [guest] list, not `<happy-agent id=\"a1\"/>`.")

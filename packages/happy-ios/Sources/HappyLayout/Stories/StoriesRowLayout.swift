@@ -1,6 +1,6 @@
 import Foundation
 
-/// The stories row above the Stem Cells sidebar, measured as Telegram's
+/// The stories row above the V2 sidebar, measured as Telegram's
 /// chat list draws its expanded stories row (`StoryPeerListComponent`,
 /// `StoryPeerListItemComponent`): 60 × 77 items 14 apart, a 52 avatar 4 in
 /// from the item's top, its ring on a 30.66 radius (2.33 wide unseen, 1.33

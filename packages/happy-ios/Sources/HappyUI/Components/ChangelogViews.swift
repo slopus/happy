@@ -128,7 +128,7 @@ struct ChangelogPlan: Sendable {
             case .link(let label, let url):
                 // RenderSpans underlines and opens only http(s) links; the
                 // rest read as plain text.
-                result.append(Markdown.isHTTPLink(url) ? link(label, url: url, style: body, in: text) : body.string(label, color: Palette.text, in: text))
+                result.append(LegacyMarkdown.isHTTPLink(url) ? link(label, url: url, style: body, in: text) : body.string(label, color: Palette.text, in: text))
             }
         }
         return result

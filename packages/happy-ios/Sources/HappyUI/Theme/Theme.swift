@@ -22,7 +22,7 @@ extension LayoutInsets {
     }
 }
 
-public enum Fonts {
+public enum LegacyFonts {
     /// Registers the bundled faces with the process once. UIFont(name:) only
     /// finds them afterwards; without it every style falls back to the
     /// system font.
@@ -55,7 +55,7 @@ public enum Fonts {
 
 extension TextStyle {
     public var font: UIFont {
-        Fonts.font(face, size: size)
+        LegacyFonts.font(face, size: size)
     }
 
     /// The height of one line in this style.

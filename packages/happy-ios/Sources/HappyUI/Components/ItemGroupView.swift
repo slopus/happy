@@ -52,7 +52,7 @@ final class GroupCardView: UIView {
 
     private func updateBorder() {
         // CGColor does not follow appearance changes by itself.
-        layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
         layer.borderWidth = 1 / max(traitCollection.displayScale, 1)
     }
 }

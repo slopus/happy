@@ -17,7 +17,7 @@ final class SecondaryTextSizeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func multiplier(_ category: UIContentSizeCategory) -> CGFloat {

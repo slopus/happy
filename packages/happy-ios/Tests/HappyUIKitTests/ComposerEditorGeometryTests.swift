@@ -16,7 +16,7 @@ import XCTest
 final class ComposerEditorGeometryTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private let categories: [UIContentSizeCategory] = [

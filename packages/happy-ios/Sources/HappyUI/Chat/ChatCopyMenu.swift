@@ -73,7 +73,7 @@ final class ChatCopyMenu: UIView {
 
     private func applyColors() {
         card.backgroundColor = UIColor(Palette.surface)
-        card.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        card.layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
     }
 
     private func animateIn() {

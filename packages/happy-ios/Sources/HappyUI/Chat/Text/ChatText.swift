@@ -13,7 +13,7 @@ extension ChatWeight {
         }
     }
 
-    var figtree: StemCellsFonts.Weight {
+    var figtree: Fonts.Weight {
         switch self {
         case .regular: .regular
         case .medium: .medium
@@ -26,16 +26,16 @@ extension ChatWeight {
 extension ChatTextStyle {
     var font: UIFont {
         switch face {
-        case .plex(let face): Fonts.font(face, size: size)
+        case .plex(let face): LegacyFonts.font(face, size: size)
         case .system(let weight): .systemFont(ofSize: size, weight: weight.uiWeight)
         case .systemItalic: .italicSystemFont(ofSize: size)
         case .menlo: UIFont(name: "Menlo-Regular", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
         case .menloBold: UIFont(name: "Menlo-Bold", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .semibold)
         case .menloItalic: UIFont(name: "Menlo-Italic", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
-        case .figtree(let weight): StemCellsFonts.ui(weight.figtree, size: size)
+        case .figtree(let weight): Fonts.ui(weight.figtree, size: size)
         case .figtreeOblique(let weight):
             // A browser's synthetic oblique: a quarter of the height across.
-            UIFont(descriptor: StemCellsFonts.ui(weight.figtree, size: size).fontDescriptor.withMatrix(CGAffineTransform(a: 1, b: 0, c: 0.25, d: 1, tx: 0, ty: 0)), size: size)
+            UIFont(descriptor: Fonts.ui(weight.figtree, size: size).fontDescriptor.withMatrix(CGAffineTransform(a: 1, b: 0, c: 0.25, d: 1, tx: 0, ty: 0)), size: size)
         }
     }
 
@@ -120,14 +120,14 @@ enum ChatSpans {
             // A person this phone named (never a link an agent typed): in
             // the strong face and the mention's ink, on a tint when it is the reader.
             if let url = span.url, let mention = HappyReferences.mention(link: url) {
-                var attributes = style.attributes(color: UIColor(Palette.stemCellsMention), font: style.with(style.strongFace).font(in: environment), in: environment)
-                if mention.me { attributes[.backgroundColor] = UIColor(Palette.stemCellsMentionMe) }
+                var attributes = style.attributes(color: UIColor(Palette.mention), font: style.with(style.strongFace).font(in: environment), in: environment)
+                if mention.me { attributes[.backgroundColor] = UIColor(Palette.mentionMe) }
                 result.append(NSAttributedString(string: span.text, attributes: attributes))
                 continue
             }
             var attributes = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
             // An http(s) link, or a reference this phone wrote (never one an agent typed).
-            if let url = span.url, Markdown.isHTTPLink(url) || HappyReferences.reference(link: url) != nil {
+            if let url = span.url, LegacyMarkdown.isHTTPLink(url) || HappyReferences.reference(link: url) != nil {
                 attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
                 attributes[.chatLink] = url
             }

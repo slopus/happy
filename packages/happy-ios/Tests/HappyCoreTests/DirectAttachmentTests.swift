@@ -255,7 +255,7 @@ final class DirectAttachmentTests: XCTestCase {
         let server = AttachmentServer()
         let client = DirectAgentClient(transport: server, token: "paired-device-token")
         let engine = DirectSyncEngine(client: client, directory: root.appendingPathComponent("account"))
-        let conversation = StemCellConversation(client: client, store: engine.spaces, agentId: "recipient", mode: mode, persistence: engine)
+        let conversation = Conversation(client: client, store: engine.spaces, agentId: "recipient", mode: mode, persistence: engine)
         let saved = await conversation.send(id: "crash-window", text: "Review", attachments: [
             .init(fileURL: source, name: "source.pdf", mimeType: "application/pdf", size: 4),
         ])
@@ -280,7 +280,7 @@ final class DirectAttachmentTests: XCTestCase {
 
         // Restoring the daemon's echo replaces that stale outgoing descriptor.
         // Flush also waits for any older debounced checkpoint before cleanup.
-        let restored = StemCellConversation(client: client, store: reopened.spaces, agentId: "recipient", persistence: reopened)
+        let restored = Conversation(client: client, store: reopened.spaces, agentId: "recipient", persistence: reopened)
         await restored.start()
         var echoed = false
         for _ in 0..<200 {
@@ -307,11 +307,11 @@ final class DirectAttachmentTests: XCTestCase {
         let server = AttachmentServer()
         let client = DirectAgentClient(transport: server, token: "paired-device-token")
         let engine = DirectSyncEngine(client: client, directory: root.appendingPathComponent("account"))
-        let old = StemCellConversation(client: client, store: engine.spaces, agentId: "recipient", mode: mode, persistence: engine)
+        let old = Conversation(client: client, store: engine.spaces, agentId: "recipient", mode: mode, persistence: engine)
         let first = await old.send(id: "old-screen-send", text: "First", attachments: [attachment])
         XCTAssertTrue(first)
 
-        let current = StemCellConversation(client: client, store: engine.spaces, agentId: "recipient", persistence: engine)
+        let current = Conversation(client: client, store: engine.spaces, agentId: "recipient", persistence: engine)
         await current.start()
         for _ in 0..<200 {
             if (await server.saved()).contains(where: { $0.1.hasSuffix("/bootstrap") }) { break }

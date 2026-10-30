@@ -254,9 +254,9 @@ final class ChatWorktreeTabStrip: UIView {
         clip.isHidden = !named
         solidView.backgroundColor = UIColor(Palette.surfaceHigh)
         solidView.layer.borderWidth = 1 / layoutScale
-        solidView.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        solidView.layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
         solidView.layer.shadowOpacity = traitCollection.userInterfaceStyle == .dark ? HeaderGlassShadow.darkOpacity : HeaderGlassShadow.lightOpacity
-        divider.backgroundColor = UIColor(Palette.divider)
+        divider.backgroundColor = UIColor(Palette.legacyDivider)
         setNeedsLayout()
     }
 
@@ -286,7 +286,7 @@ final class ChatWorktreeTabStrip: UIView {
     private final class TabControl: UIControl {
         private(set) var item: Item?
         private var isOpen = false
-        private var label = ShimmerLabel(style: TextStyles.worktreeTab)
+        private var label = LegacyShimmerLabel(style: TextStyles.worktreeTab)
         private let dot = StatusDotView()
 
         override init(frame: CGRect) {
@@ -314,7 +314,7 @@ final class ChatWorktreeTabStrip: UIView {
         func configure(_ item: Item, selected: Bool) {
             if selected != isOpen || self.item == nil {
                 // The open tab's name is semibold.
-                let next = ShimmerLabel(style: selected ? TextStyles.worktreeTabSelected : TextStyles.worktreeTab)
+                let next = LegacyShimmerLabel(style: selected ? TextStyles.worktreeTabSelected : TextStyles.worktreeTab)
                 next.isUserInteractionEnabled = false
                 insertSubview(next, aboveSubview: label)
                 label.removeFromSuperview()
@@ -438,7 +438,7 @@ final class WorktreeTabNames: @unchecked Sendable {
     static func size(_ name: WorktreeTabName) -> CGSize {
         guard !name.title.isEmpty else { return .zero }
         // Before the first font, so no name is measured in the fallback.
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
         let style = (name.selected ? TextStyles.worktreeTabSelected : TextStyles.worktreeTab).scaled(name.environment.scale)
         let storage = NSTextStorage(attributedString: style.attributedString(name.title, color: .black, lineBreakMode: .byTruncatingTail))
         let manager = NSLayoutManager()

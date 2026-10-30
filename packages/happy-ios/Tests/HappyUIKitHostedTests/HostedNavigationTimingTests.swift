@@ -74,7 +74,7 @@ final class HostedNavigationTimingTests: XCTestCase {
         let hostWindow = scene.keyWindow
         let homeStarted = CACurrentMediaTime()
         let homeWatch = NavigationBusyWatch()
-        let root: UIViewController = fromHome ? HomeViewController(context: context, session: account) : UIViewController()
+        let root: UIViewController = fromHome ? LegacyHomeViewController(context: context, session: account) : UIViewController()
         root.view.backgroundColor = .systemBackground
         let navigation = UINavigationController(rootViewController: root)
         AppCoordinator.applyAppearance(to: navigation.navigationBar)
@@ -129,16 +129,16 @@ final class HostedNavigationTimingTests: XCTestCase {
                 catch { frames.stop(); _ = watch.stop(); throw error }
                 frames.stop()
                 let turns = watch.stop().filter { $0.start + $0.length >= tapped }
-                let ready = (destination as? ChatViewController)?.openingReport
+                let ready = (destination as? LegacyChatViewController)?.openingReport
                 if fromHome {
-                    XCTAssertTrue(destination is ChatViewController)
+                    XCTAssertTrue(destination is LegacyChatViewController)
                     XCTAssertEqual(ready?.missing, [])
                 }
                 print(String(format: "NAVTIME %@ try %d first %.1f end %.1f longest %.1f ready %.1f missing %@",
                     name, attempt, ((first ?? tapped) - tapped) * 1000, ((end ?? tapped) - tapped) * 1000,
                     (turns.map(\.length).max() ?? 0) * 1000, (ready?.elapsed ?? 0) * 1000,
                     ready?.missing.description ?? "[]"))
-                if let chat = destination as? ChatViewController {
+                if let chat = destination as? LegacyChatViewController {
                     print(String(format: "NAVBUILD %@ try %d construction %.1f load %.1f layout %.1f",
                         name, attempt, chat.constructionSeconds * 1000, chat.loadingSeconds * 1000, chat.openingLayoutSeconds * 1000))
                 }

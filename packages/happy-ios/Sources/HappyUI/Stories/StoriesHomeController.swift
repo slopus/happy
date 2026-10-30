@@ -4,7 +4,7 @@ import HappyLayout
 import OSLog
 import UIKit
 
-/// Stories on Stem Cells home, in a band under the navigation bar
+/// Stories on V2 home, in a band under the navigation bar
 /// (`StoriesBandView`), after Telegram's chat list (`StoryPeerListComponent`):
 /// a row open above the list, or put away; opened by pulling the list
 /// down past 65, and put away by scrolling the list up past 61 or by
@@ -63,7 +63,7 @@ final class StoriesHomeController {
     private weak var host: UIViewController?
     private weak var header: StoriesBandView?
     private(set) var session: StoriesSession?
-    private var watch: StemCellsWatch?
+    private var watch: Watch?
     private var snapshot = StoriesSnapshot()
     private var items: [StoriesRowItem] = []
     private(set) var unlocked = false
@@ -141,12 +141,12 @@ final class StoriesHomeController {
         layout()
     }
 
-    func attach(_ stemCells: StemCellsSession?) {
-        guard stemCells?.accountID != session?.accountID else { return }
-        attach(stemCells.map(StoriesSession.session(for:)), images: stemCells?.images)
+    func attach(_ v2: Session?) {
+        guard v2?.accountID != session?.accountID else { return }
+        attach(v2.map(StoriesSession.session(for:)), images: v2?.images)
     }
 
-    func attach(_ stories: StoriesSession?, images: StemCellsImages?) {
+    func attach(_ stories: StoriesSession?, images: Images?) {
         watch?.invalidate(); watch = nil
         stopOpening()
         hideTooltip()
@@ -465,7 +465,7 @@ final class StoriesHomeController {
         if !stories.storyIds.contains(where: { feed.stories[$0] != nil }) {
             Self.log.error("ring \(agentId, privacy: .public): none of its \(stories.storyIds.count) stories are read yet")
         }
-        let image = (ring.superview as? StemCellsRowView)?.markImage
+        let image = (ring.superview as? RowView)?.markImage
         guard let viewer = StoriesViewerPresenter.present(session: session, feed: feed, authorIndex: 0, from: host, origin: ring, ringImage: image) else {
             return Self.log.error("ring \(agentId, privacy: .public): the viewer didn't present")
         }

@@ -71,7 +71,7 @@ final class ChatPlanView: UIView {
     /// (a diff's "Show N more lines").
     var onAction: ((ChatRowAction) -> Void)?
     private(set) var plan: ChatRowPlan?
-    /// A tall plan is cut into chunks (`StemCellChatChunks`), each drawn by
+    /// A tall plan is cut into chunks (`ChatChunks`), each drawn by
     /// a view of its own, and only the chunks near `band` have one: a long
     /// reply costs what shows of it. Off, every mark has its view.
     var cutsTallPlans = false {
@@ -111,7 +111,7 @@ final class ChatPlanView: UIView {
     private var mermaids: [ChatMermaidView] = []
     private var media: [ChatMediaView] = []
     private var stories: [StoryInlineView] = []
-    private var pages: [StemCellInlinePageView] = []
+    private var pages: [InlinePageView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -133,7 +133,7 @@ final class ChatPlanView: UIView {
         guard plan !== self.plan else { return }
         self.plan = plan
         alpha = plan.alpha
-        let cut = cutsTallPlans ? StemCellChatChunks(frames: plan.items.map(\.markFrame), size: plan.size) : nil
+        let cut = cutsTallPlans ? ChatChunks(frames: plan.items.map(\.markFrame), size: plan.size) : nil
         if let cut, cut.chunks.count > 1 {
             chunks = cut.chunks.map { chunk in
                 (ChatRowPlan(id: "\(plan.id)#\(chunk.items.lowerBound)", size: plan.size, items: Array(plan.items[chunk.items])), chunk.frame)
@@ -156,10 +156,10 @@ final class ChatPlanView: UIView {
     }
 
     /// Brings in the chunks of a tall plan near `band` and lets go of
-    /// those far from it, as the transcript's rows are (`StemCellChatMountedRows`).
+    /// those far from it, as the transcript's rows are (`ChatMountedRows`).
     private func placeChunks() {
         guard !chunks.isEmpty else { return }
-        let near = band.map { StemCellChatMountedRows(frames: chunks.map(\.frame), top: $0.minY, height: $0.height) }
+        let near = band.map { ChatMountedRows(frames: chunks.map(\.frame), top: $0.minY, height: $0.height) }
         var placed = (mount: near?.mount ?? chunks.indices, keep: near?.keep ?? chunks.indices)
         if band?.isNull == true { placed = (0..<0, 0..<0) }
         if let chunksPlaced, chunksPlaced == placed { return }
@@ -322,7 +322,7 @@ final class ChatPlanView: UIView {
                 view.apply(id)
                 order.append(view)
             case .embed(.page(let page), let frame):
-                let view = take(&pages, &pageIndex) { StemCellInlinePageView() }
+                let view = take(&pages, &pageIndex) { InlinePageView() }
                 view.setLayoutFrame(frame)
                 view.apply(page)
                 order.append(view)

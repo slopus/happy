@@ -66,9 +66,9 @@ final class MarkdownRenderCrashTests: XCTestCase {
     }
 
     static func plan(_ markdown: String) -> ChatRowPlan {
-        let item = StemCellChatItem(id: "m1", role: .agent, pieces: [.text(markdown)], delivery: .sent)
-        let key = StemCellChatPlanner.Key(width: 393, maxContentWidth: 10_000, environment: nil)
-        return StemCellChatPlanner.plan(item, key: key, copied: false, syntax: CodeSyntaxService())
+        let item = ChatItem(id: "m1", role: .agent, pieces: [.text(markdown)], delivery: .sent)
+        let key = ChatPlanner.Key(width: 393, maxContentWidth: 10_000, environment: nil)
+        return ChatPlanner.plan(item, key: key, copied: false, syntax: CodeSyntaxService())
     }
 }
 #endif

@@ -20,7 +20,7 @@ private final class ArchiveCaptureView: HomeUltraListView {
 
 @MainActor
 final class HomeArchiveVisibilityTests: XCTestCase {
-    override func setUp() { super.setUp(); Fonts.registerBundledFonts() }
+    override func setUp() { super.setUp(); LegacyFonts.registerBundledFonts() }
 
     func testArchiveAppearanceStartsVisibleAndRapidReinsertRestoresFullOpacity() async throws {
         let environment = await HomeTextEnvironment.make(.init(scale: .standard, displayScale: 2))

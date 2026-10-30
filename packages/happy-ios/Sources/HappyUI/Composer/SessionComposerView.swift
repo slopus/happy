@@ -1310,7 +1310,7 @@ final class ContextGaugeView: UIView {
     private func applyColors() {
         let dark = traitCollection.userInterfaceStyle == .dark
         let intensity = ContextGauge.intensity(percent: percent)
-        track.strokeColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        track.strokeColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
         progress.strokeColor = UIColor(white: dark ? 1 : 0, alpha: intensity).cgColor
     }
 }

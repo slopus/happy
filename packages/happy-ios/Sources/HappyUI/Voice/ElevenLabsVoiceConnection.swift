@@ -8,13 +8,13 @@ import UIKit
 /// its audio session. No API key or purchase SDK is present in this client.
 @MainActor
 final class ElevenLabsVoiceConnection: VoiceConnection {
-    let conversation: Conversation
+    let conversation: ElevenLabsConversation
     private var observations = Set<AnyCancellable>()
     private var toolTasks: [String: Task<Void, Never>] = [:]
     private var handledTools = Set<String>()
     private let teardown: Teardown
 
-    private init(_ conversation: Conversation, teardown: Teardown) {
+    private init(_ conversation: ElevenLabsConversation, teardown: Teardown) {
         self.conversation = conversation
         self.teardown = teardown
     }
@@ -45,7 +45,7 @@ final class ElevenLabsVoiceConnection: VoiceConnection {
                 disconnected()
             }
         }
-        let conversation: Conversation
+        let conversation: ElevenLabsConversation
         if let grant {
             conversation = try await ElevenLabs.startConversation(conversationToken: grant.conversationToken, config: config, onDisconnect: onDisconnect)
         } else if let agentId = request.customAgentId {

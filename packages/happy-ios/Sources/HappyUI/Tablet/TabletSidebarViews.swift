@@ -117,7 +117,7 @@ final class SidebarNewSessionButton: UIControl {
     private func applyColors() {
         backgroundColor = UIColor(isHighlighted ? Palette.surfacePressed : Palette.surface)
         layer.borderWidth = hairline
-        layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
     }
 }
 
@@ -163,7 +163,7 @@ final class SidebarArchiveButton: UIControl {
         let fill = isHighlighted ? Palette.surfacePressed : hidesArchived ? Palette.surface : Palette.surfaceSelected
         backgroundColor = UIColor(fill)
         layer.borderWidth = hairline
-        layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
     }
 }
 
@@ -178,7 +178,7 @@ final class SidebarSettingsRow: UIControl {
     override init(frame: CGRect) {
         super.init(frame: frame)
         traitOverrides.followsTextSize = true
-        divider.backgroundColor = UIColor(Palette.divider)
+        divider.backgroundColor = UIColor(Palette.legacyDivider)
         divider.isUserInteractionEnabled = false
         label.string = Strings.Settings.title
         label.isUserInteractionEnabled = false

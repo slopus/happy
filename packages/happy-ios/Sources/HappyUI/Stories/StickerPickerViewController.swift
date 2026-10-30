@@ -56,7 +56,7 @@ final class StickerPickerViewController: UIViewController, UICollectionViewDataS
     private var recents: [StickerRef] = []
     private var results: [Sticker]?
     private var sections: [Section] = []
-    private var watch: StemCellsWatch?
+    private var watch: Watch?
     private var loading: Task<Void, Never>?
     private var searching: Task<Void, Never>?
     /// The keyboard's top, in this view, while it is up.

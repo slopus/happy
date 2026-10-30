@@ -14,7 +14,7 @@ final class ChatHistoryViewsTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// Turns of a prompt and its answer. A window ends on the prompt that
@@ -33,7 +33,7 @@ final class ChatHistoryViewsTests: XCTestCase {
         view.width = width
         view.requests.grows = grows
         return ChatRowsInput(
-            snapshot: ChatSnapshot(sessionId: "s", messages: messages, isLoaded: true, hasMoreOlder: true, olderBoundary: 1, windowEpoch: epoch),
+            snapshot: LegacyChatSnapshot(sessionId: "s", messages: messages, isLoaded: true, hasMoreOlder: true, olderBoundary: 1, windowEpoch: epoch),
             session: ChatSessionState(record: nil, settings: AccountSettings()),
             view: view,
             render: .isolated()

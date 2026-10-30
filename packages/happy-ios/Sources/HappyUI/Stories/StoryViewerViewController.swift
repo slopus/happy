@@ -38,7 +38,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     private(set) var position = 0
     private var page = StoryViewerPageView()
     private var neighbor = StoryViewerPageView()
-    private var watch: StemCellsWatch?
+    private var watch: Watch?
     private var link: CADisplayLink?
     private var lastTick: CFTimeInterval = 0
     private var elapsedMs: Double = 0

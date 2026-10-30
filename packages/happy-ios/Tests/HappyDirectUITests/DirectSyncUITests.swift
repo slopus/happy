@@ -7,7 +7,7 @@ final class DirectSyncUITests: XCTestCase {
     func testCanonicalHomeSettingsAndConversation() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchEnvironment["STEM_DIRECT"] = "1"
+        app.launchEnvironment["HAPPY_DIRECT"] = "1"
         app.launch()
         print("DIRECT_SYNC_READY")
         let artifacts = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Artifacts")).firstMatch
@@ -26,22 +26,22 @@ final class DirectSyncUITests: XCTestCase {
         let labels = ["Artifacts", "Bots", "Chief of Staff", "Release helper", "Tasks", "Review sidebar parity", "Verify offline cache", "Projects", "Sample Project"]
         var lastY = -Double.infinity
         for label in labels {
-            let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "stem-row:", label)).firstMatch
+            let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "row:", label)).firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 10), label)
             XCTAssertGreaterThan(Double(row.frame.midY), lastY, label)
             lastY = Double(row.frame.midY)
         }
         capture("direct-canonical-home")
-        let settings = app.descendants(matching: .any)["stem-settings-mark"]
+        let settings = app.descendants(matching: .any)["settings-mark"]
         settings.tap()
-        let hidden = app.switches["stem-settings-toggle:hide-projects"]
+        let hidden = app.switches["settings-toggle:hide-projects"]
         XCTAssertTrue(hidden.waitForExistence(timeout: 10))
         capture("direct-synced-settings")
-        XCTAssertFalse(app.descendants(matching: .any)["stem-settings:prioritizing"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["settings:prioritizing"].exists)
         hidden.tap()
         print("DIRECT_SYNC_LOCAL_HIDE")
-        app.buttons["stem-glass-back"].tap()
-        let project = app.descendants(matching: .any)["stem-row:space:Sample Project"]
+        app.buttons["glass-back"].tap()
+        let project = app.descendants(matching: .any)["row:space:Sample Project"]
         XCTAssertTrue(waitForAbsence(project))
         capture("direct-projects-hidden")
         print("DIRECT_SYNC_REMOTE_SHOW")
@@ -55,7 +55,7 @@ final class DirectSyncUITests: XCTestCase {
         settings.tap()
         XCTAssertTrue(hidden.waitForExistence(timeout: 10))
         hidden.tap()
-        app.buttons["stem-glass-back"].tap()
+        app.buttons["glass-back"].tap()
         XCTAssertTrue(waitForAbsence(project))
         app.terminate(); app.launch()
         XCTAssertTrue(artifacts.waitForExistence(timeout: 15))
@@ -64,10 +64,10 @@ final class DirectSyncUITests: XCTestCase {
         print("DIRECT_SYNC_RECONNECT")
         XCTAssertTrue(project.waitForExistence(timeout: 120))
         capture("direct-reconnected-home")
-        let happy = app.descendants(matching: .any)["stem-row:space:Chief of Staff"]
+        let happy = app.descendants(matching: .any)["row:space:Chief of Staff"]
         XCTAssertTrue(happy.waitForExistence(timeout: 10))
         happy.tap()
-        XCTAssertTrue(app.textViews["stem-composer"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.textViews["composer"].waitForExistence(timeout: 15))
         capture("direct-conversation")
     }
 

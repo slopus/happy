@@ -528,7 +528,7 @@ final class NewSessionViewController: UIViewController {
         var list: [NewSessionPickerContentView.Row] = fixed.map { .option(optionRow($0, selected: selected, select: select)) }
         if !fixed.isEmpty && !filtered.isEmpty {
             let divider = UIView()
-            divider.backgroundColor = UIColor(Palette.divider)
+            divider.backgroundColor = UIColor(Palette.legacyDivider)
             list.append(.divider(divider))
         }
         var section: String?

@@ -29,7 +29,7 @@ private struct NoSockets: WebSocketConnector {
 final class HostedHomeDockFadeTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func signedIn() async throws -> AccountController {
@@ -124,7 +124,7 @@ final class HostedHomeDockFadeTests: XCTestCase {
         let context = AppContext(account: controller, variant: .development, version: "test")
         let scene = try await hostedActiveScene()
         let hostWindow = scene.keyWindow
-        let home = HomeViewController(context: context, session: account)
+        let home = LegacyHomeViewController(context: context, session: account)
         let navigation = UINavigationController(rootViewController: home)
         let window = hostedKeyWindow(in: scene, root: navigation)
         addTeardownBlock { @MainActor in

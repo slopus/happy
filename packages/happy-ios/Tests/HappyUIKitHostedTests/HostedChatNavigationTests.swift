@@ -33,7 +33,7 @@ final class HostedChatNavigationTests: XCTestCase {
         let context = AppContext(account: controller, variant: .preview, version: "test")
         let (_, navigation, root) = try await hosted()
         root.push(.session(id: "seeded-tab-4"), context: context)
-        let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController,
+        let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController,
                                  "navigation must start synchronously, before any readiness callback")
         XCTAssertFalse(chat.contentInstalled)
         XCTAssertEqual(chat.navigationItem.title, "Scroll indicator")
@@ -52,7 +52,7 @@ final class HostedChatNavigationTests: XCTestCase {
         let context = AppContext(account: controller, variant: .preview, version: "test")
         let (_, navigation, root) = try await hosted()
         root.push(.session(id: "seeded-tab-4"), context: context, animated: false)
-        let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
+        let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
         navigation.popViewController(animated: false)
         try await Task.sleep(for: .milliseconds(500))
         XCTAssertFalse(chat.contentInstalled)
@@ -66,7 +66,7 @@ final class HostedChatNavigationTests: XCTestCase {
         let context = AppContext(account: controller, variant: .preview, version: "test")
         let (_, navigation, root) = try await hosted()
         root.push(.session(id: "seeded-tab-4"), context: context, animated: false)
-        let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
+        let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
         await controller.signOut()
         let completedStages = chat.constructionStageSeconds.count
         try await Task.sleep(for: .milliseconds(300))
@@ -88,7 +88,7 @@ final class HostedChatNavigationTests: XCTestCase {
         let context = AppContext(account: controller, variant: .preview, version: "test")
         let (_, navigation, root) = try await hosted()
         root.push(.session(id: record.id), context: context)
-        let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
+        let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
         for (version, title) in [(2, "Changed while opening"), (3, "Changed after opening")] {
             var metadata = record.metadata?.objectValue ?? [:]
             metadata["summary"] = .object(["text": .string(title), "updatedAt": .number(Double(version))])
@@ -148,15 +148,15 @@ final class HostedChatNavigationTests: XCTestCase {
     }
 
     /// The chat on top once `action` put a new one there.
-    private func shown(after action: () -> Void, in navigation: UINavigationController) async throws -> ChatViewController {
+    private func shown(after action: () -> Void, in navigation: UINavigationController) async throws -> LegacyChatViewController {
         let before = navigation.topViewController
         action()
-        let arrived = try await until { navigation.topViewController !== before && navigation.topViewController is ChatViewController }
+        let arrived = try await until { navigation.topViewController !== before && navigation.topViewController is LegacyChatViewController }
         XCTAssertTrue(arrived, "no chat was shown")
-        return try XCTUnwrap(navigation.topViewController as? ChatViewController)
+        return try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
     }
 
-    private func settled(_ chat: ChatViewController, in navigation: UINavigationController) async throws {
+    private func settled(_ chat: LegacyChatViewController, in navigation: UINavigationController) async throws {
         let done = try await until { navigation.transitionCoordinator == nil && chat.view.window != nil }
         XCTAssertTrue(done)
         try await Task.sleep(for: .milliseconds(300))
@@ -165,7 +165,7 @@ final class HostedChatNavigationTests: XCTestCase {
     /// The header, the status line and the strip were drawn from the home
     /// snapshot (`ChatServices.seed`): never waited for, and the store's
     /// own answer, the same, changed nothing.
-    private static func assertSeeded(_ chat: ChatViewController, _ report: ChatOpening.Report, _ label: String, file: StaticString = #filePath, line: UInt = #line) {
+    private static func assertSeeded(_ chat: LegacyChatViewController, _ report: ChatOpening.Report, _ label: String, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertNil(report.arrivals["session"], "\(label): waited for the record", file: file, line: line)
         XCTAssertNil(report.arrivals["checkout"], "\(label): waited for the checkout", file: file, line: line)
         XCTAssertEqual(chat.sessionUpdates, 0, "\(label): the store's record changed the screen", file: file, line: line)
@@ -345,7 +345,7 @@ final class HostedChatNavigationTests: XCTestCase {
         try await settled(first, in: navigation)
         var times: [Double] = []
         for index in 0..<10 {
-            let current = try XCTUnwrap(navigation.topViewController as? ChatViewController)
+            let current = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
             let strip = try XCTUnwrap(Self.subview(ChatWorktreeTabStrip.self, in: current.view))
             let next = try await shown(after: { strip.onSelect?(index.isMultiple(of: 2) ? "seeded-tab-3" : "seeded-tab-4") }, in: navigation)
             try await settled(next, in: navigation)
@@ -421,7 +421,7 @@ final class HostedChatNavigationTests: XCTestCase {
 /// One display frame of the chat on top, every frame in the chat's own
 /// coordinates as laid out, so the push's slide doesn't count.
 struct ChatFrame {
-    weak var chat: ChatViewController?
+    weak var chat: LegacyChatViewController?
     var time: CFTimeInterval
     var inWindow: Bool
     var ready: Bool
@@ -462,7 +462,7 @@ final class ChatFrameSampler: NSObject {
     }
 
     @objc private func tick(_ link: CADisplayLink) {
-        guard let chat = navigation.topViewController as? ChatViewController, chat.isViewLoaded else { return }
+        guard let chat = navigation.topViewController as? LegacyChatViewController, chat.isViewLoaded else { return }
         let root: UIView = chat.view
         func frame(_ view: UIView?) -> CGRect? {
             guard let view, !view.isHidden, view.window != nil else { return nil }

@@ -17,7 +17,7 @@ final class NavigationTitleTextSizeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private struct Shown {

@@ -106,7 +106,7 @@ extension ChatRowRenderer {
             return (items, [])
         }
         let background = ChatBox(
-            frame: .zero, fill: selected ? Palette.surfaceHighest : Palette.surface, border: selected ? Palette.radioActive : Palette.divider,
+            frame: .zero, fill: selected ? Palette.surfaceHighest : Palette.surface, border: selected ? Palette.radioActive : Palette.legacyDivider,
             borderWidth: 1, radius: 8, alpha: alpha
         )
         return ChatStackEntry(
@@ -145,14 +145,14 @@ extension ChatRowRenderer {
             }
             return (items, ready ? [ChatHit(frame: box, action: .questionSubmit(toolId: toolId))] : [])
         }
-        let background = ChatBox(frame: .zero, fill: Palette.surfaceHighest, border: ready ? Palette.radioActive : Palette.divider, borderWidth: 1, radius: 8, alpha: alpha)
+        let background = ChatBox(frame: .zero, fill: Palette.surfaceHighest, border: ready ? Palette.radioActive : Palette.legacyDivider, borderWidth: 1, radius: 8, alpha: alpha)
         let row = ChatPiece(measurable: Measurable { width in
-            let layout = ChatStackLayout(width: width, items: [ChatStackEntry(piece: button, padding: LayoutInsets(top: 12, left: 20, bottom: 12, right: 20), placement: .leading).item])
+            let layout = LegacyChatStackLayout(width: width, items: [ChatStackEntry(piece: button, padding: LayoutInsets(top: 12, left: 20, bottom: 12, right: 20), placement: .leading).item])
             return layout.size
         }) { frame in
             // Right-aligned (justifyContent: 'flex-end').
             let entry = ChatStackEntry(piece: button, padding: LayoutInsets(top: 12, left: 20, bottom: 12, right: 20), placement: .leading, background: background)
-            let width = ChatStackLayout(width: frame.width, items: [entry.item]).boxes[0].width
+            let width = LegacyChatStackLayout(width: frame.width, items: [entry.item]).boxes[0].width
             return ChatPiece.stack([entry]).draw(CGRect(x: frame.maxX - width, y: frame.minY, width: width, height: frame.height))
         }
         return ChatStackEntry(piece: row, marginTop: 8)

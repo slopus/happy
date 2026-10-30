@@ -36,7 +36,7 @@ final class ChatRowsTextSizeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func environment(_ category: UIContentSizeCategory, scale: CGFloat = 3) -> TextEnvironment {
@@ -463,7 +463,7 @@ final class ChatRowsTextSizeTests: XCTestCase {
         let account = try await signedIn()
         let session = try XCTUnwrap(account.session)
         let context = AppContext(account: account, variant: .development, version: "test")
-        let chat = ChatViewController(context: context, session: session, sessionId: FixtureScenarios.prefix + FixtureScenario.markdown.rawValue)
+        let chat = LegacyChatViewController(context: context, session: session, sessionId: FixtureScenarios.prefix + FixtureScenario.markdown.rawValue)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
         window.traitOverrides.preferredContentSizeCategory = .large
         window.traitOverrides.displayScale = 3

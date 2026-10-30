@@ -31,7 +31,7 @@ final class StoriesStickerE2EUITests: XCTestCase {
         continueAfterFailure = false
         print("StoriesStickerE2EUITests skips quiescence: \(Self.skipsQuiescence)")
         // Direct connection is an experiment, off on a fresh install.
-        app.launchEnvironment["STEM_DIRECT"] = "1"
+        app.launchEnvironment["HAPPY_DIRECT"] = "1"
         app.launch()
     }
 
@@ -63,8 +63,8 @@ final class StoriesStickerE2EUITests: XCTestCase {
     }
 
     func testAnimatedSticker() {
-        let anyRow = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:")).firstMatch
-        XCTAssertTrue(anyRow.waitForExistence(timeout: 30), "not paired: run a StemCellsUITests test first")
+        let anyRow = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "row:")).firstMatch
+        XCTAssertTrue(anyRow.waitForExistence(timeout: 30), "not paired: run a V2UITests test first")
         let mine = element("story-circle:self")
         XCTAssertTrue(mine.waitForExistence(timeout: 10), "no stories row")
         pause(1)

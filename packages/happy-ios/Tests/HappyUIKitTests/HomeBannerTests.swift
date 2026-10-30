@@ -9,7 +9,7 @@ import XCTest
 final class HomeBannerTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func titles(_ header: HomeListHeaderView) -> [String] {

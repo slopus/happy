@@ -65,7 +65,7 @@ public final class NativeSessionModel {
         }
     }
 
-    private func applyChat(_ rows: [ConversationRow], changes: ConversationChanges, snapshot: ChatSnapshot, account: AccountSession) {
+    private func applyChat(_ rows: [ConversationRow], changes: ConversationChanges, snapshot: LegacyChatSnapshot, account: AccountSession) {
         guard self.account === account, selectedID == snapshot.sessionId else { return }
         self.rows = rows; hasMore = snapshot.hasMoreOlder; isLoaded = snapshot.isLoaded
         onChange?(.conversation(changes))

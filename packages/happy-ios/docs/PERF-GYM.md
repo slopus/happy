@@ -1,6 +1,6 @@
 # The iOS performance gym
 
-A runnable suite that scrolls long Stem Cells conversations in the simulator
+A runnable suite that scrolls long V2 conversations in the simulator
 and measures every frame, so a scrolling regression fails a run instead of
 reaching a phone. It is modelled on happy-desktop's gym
 (`packages/happy-desktop-gym`): the same throwaway Happy Agent, a fake model,
@@ -23,7 +23,7 @@ scripted workloads, and budgets per workload.
 - `Tests/HappyDirectUITests/ScrollPerfGymTests.swift`: the workloads, as UI tests.
 - `Sources/HappyUI/Perf/GymFrameMeter.swift`: the app's own frame meter and
   scripted scroll. It is compiled only into DEBUG and `HAPPY_FIXTURES` builds,
-  and runs only with `STEM_GYM_METER=1`.
+  and runs only with `HAPPY_GYM_METER=1`.
 
 Everything the runner makes goes into its work folder, `GYM_WORK`. The default
 is `<repo>/.context/gym`, which is gitignored. That covers the daemon's home and
@@ -236,12 +236,12 @@ after numbers per workload are in `baselines/` for the synthetic chats.
    thread, so opening it held the main thread 1.9 s on the simulator. The rows are
    now virtualised, as desktop's transcript is with `@tanstack/react-virtual`.
    Every row's frame is still planned, but only rows within a screen of what
-   shows have views (`StemCellChatMountedRows`), and they go only two screens
+   shows have views (`ChatMountedRows`), and they go only two screens
    away. A few rows that went off screen stay hidden, ready for the next.
 2. **A long reply was one row of hundreds of views.** A 30-section answer is
    about 14,000 pt tall, with 330 marks and 210 texts. It came in whole and cost
    a 250 ms frame. A tall row is now cut between its marks into chunks of at
-   least 1,024 pt (`StemCellChatChunks`), and only the chunks near the screen
+   least 1,024 pt (`ChatChunks`), and only the chunks near the screen
    have views.
 3. **Every layout pass read the whole conversation again.** `replan()` looked
    through every message's text for artifact and person references on the main

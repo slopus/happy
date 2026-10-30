@@ -568,7 +568,7 @@ final class ChatPlaceholderView: UIView {
     let pagingSpinner = UIActivityIndicatorView(style: .medium)
     private let icon = IconView(size: 72, tint: Palette.textSecondary)
     /// PendingChatPlaceholder's "Starting a new chat…".
-    private let shimmer = ShimmerLabel(style: TextStyles.pendingChatTitle)
+    private let shimmer = LegacyShimmerLabel(style: TextStyles.pendingChatTitle)
     /// The lines' views, reused from plan to plan.
     private var texts: [ChatTextView] = []
     private var model: ChatPlaceholderModel?

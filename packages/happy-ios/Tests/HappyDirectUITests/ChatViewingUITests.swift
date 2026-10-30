@@ -3,7 +3,7 @@ import UIKit
 import XCTest
 
 /// The transcript and the working line never idle for XCUITest's wait
-/// around every action; as StemCellsUITests does, the private wait goes.
+/// around every action; as UITests does, the private wait goes.
 private let skipsQuiescence: Bool = {
     guard let process = NSClassFromString("XCUIApplicationProcess") else { return false }
     var replaced = false
@@ -20,7 +20,7 @@ private let skipsQuiescence: Bool = {
     return replaced
 }()
 
-/// Reading a Stem Cell conversation against a real throwaway Happy Agent:
+/// Reading a V2 conversation against a real throwaway Happy Agent:
 /// nothing of the transcript under the composer, the way back to the
 /// newest message, and its pictures opened whole, one after another. The
 /// driver (`.context/drive.sh`) pairs and records; the agent makes the
@@ -32,7 +32,7 @@ final class ChatViewingUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         print("ChatViewingUITests skips quiescence: \(skipsQuiescence)")
-        app.launchEnvironment["STEM_DIRECT"] = "1"
+        app.launchEnvironment["HAPPY_DIRECT"] = "1"
         app.launch()
     }
 
@@ -41,17 +41,17 @@ final class ChatViewingUITests: XCTestCase {
     private func theme(_ name: String) {
         app.tapBack()
         pause(1)
-        let mark = element("stem-settings-mark")
+        let mark = element("settings-mark")
         XCTAssertTrue(mark.waitForExistence(timeout: 5))
         mark.tap()
-        let row = element("stem-settings:theme")
+        let row = element("settings:theme")
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         for _ in 0..<3 where !row.label.contains(name) {
             row.tap()
             pause(0.8)
         }
         XCTAssertTrue(row.label.contains(name), "the theme never reached \(name)")
-        app.buttons["stem-glass-back"].firstMatch.tap()
+        app.buttons["glass-back"].firstMatch.tap()
         pause(1)
         let happy = happyRow
         XCTAssertTrue(happy.waitForExistence(timeout: 5))
@@ -71,25 +71,25 @@ final class ChatViewingUITests: XCTestCase {
 
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any)[id] }
 
-    private var composer: XCUIElement { app.textViews["stem-composer"] }
+    private var composer: XCUIElement { app.textViews["composer"] }
     /// Happy's own conversation: its space, or, on the shared sidebar, its
     /// Chief of Staff under Bots.
     private var happyRow: XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR identifier ENDSWITH %@", "stem-row:space:Happy", ":Chief of Staff")).firstMatch
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR identifier ENDSWITH %@", "row:space:Happy", ":Chief of Staff")).firstMatch
     }
-    private var working: XCUIElement { element("stem-working") }
-    private var jump: XCUIElement { app.buttons["stem-jump-latest"] }
+    private var working: XCUIElement { element("working") }
+    private var jump: XCUIElement { app.buttons["jump-latest"] }
     private var pictures: XCUIElementQuery {
-        app.descendants(matching: .any).matching(identifier: "stem-media").matching(NSPredicate(format: "label ENDSWITH %@", ".png"))
+        app.descendants(matching: .any).matching(identifier: "media").matching(NSPredicate(format: "label ENDSWITH %@", ".png"))
     }
 
     /// Pairs if this simulator has no computer yet, then opens Happy's
     /// conversation, asking the agent for four pictures and a long answer
     /// the first time.
     private func openConversation() {
-        let any = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:")).firstMatch
+        let any = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "row:")).firstMatch
         if !any.waitForExistence(timeout: 8) {
-            print("STEM_PAIR_READY")
+            print("HAPPY_PAIR_READY")
             let match = app.buttons["Emoji match"]
             XCTAssertTrue(match.waitForExistence(timeout: 120), "pairing never showed its emoji")
             pause(1.5)
@@ -149,7 +149,7 @@ final class ChatViewingUITests: XCTestCase {
             jump.tap()
             pause(1.5)
         }
-        let card = element("stem-input").frame
+        let card = element("input").frame
         func check(_ name: String) {
             let shot = XCUIScreen.main.screenshot().image
             capture("band-\(name)")
@@ -162,7 +162,7 @@ final class ChatViewingUITests: XCTestCase {
             let ground = Self.ground(in: shot)
             for side in sides {
                 let above = Self.luma(in: shot, area: side)
-                print("STEM_BAND \(name) ground=\(ground) above=\(above)")
+                print("HAPPY_BAND \(name) ground=\(ground) above=\(above)")
                 XCTAssertEqual(above, Double(ground), accuracy: 1.5, "\(name): a band above the composer (\(Int(above)) on \(ground))")
             }
         }
@@ -213,8 +213,8 @@ final class ChatViewingUITests: XCTestCase {
         let shot = XCUIScreen.main.screenshot().image
         capture("edges-ground-\(name)")
         let ground = Self.ground(in: shot)
-        let capsule = element("stem-chat-capsule").frame
-        let card = element("stem-input").frame
+        let capsule = element("chat-capsule").frame
+        let card = element("input").frame
         var areas: [(String, CGRect)] = [
             ("foot-left", CGRect(x: 1, y: card.minY - 44, width: 9, height: 40)),
             ("foot-right", CGRect(x: app.frame.width - 10, y: card.minY - 44, width: 9, height: 40)),
@@ -235,7 +235,7 @@ final class ChatViewingUITests: XCTestCase {
         }
         for (place, area) in areas {
             let mean = Self.luma(in: shot, area: area)
-            print("STEM_GROUND \(name) \(place) ground=\(ground) mean=\(mean)")
+            print("HAPPY_GROUND \(name) \(place) ground=\(ground) mean=\(mean)")
             if name.hasPrefix("Light"), place.hasPrefix("head") {
                 // The glass controls' own shadow falls here on white (244 under
                 // the capsule, 252 at the sides), scrim or none: never lighter.
@@ -288,7 +288,7 @@ final class ChatViewingUITests: XCTestCase {
     /// card's sides, under its lower half, are sharp).
     func testEdgesFadeLikeTelegram() {
         openConversation()
-        let card = element("stem-input")
+        let card = element("input")
         XCTAssertTrue(card.exists)
         for name in ["Light", "Dark"] {
             theme(name)
@@ -307,7 +307,7 @@ final class ChatViewingUITests: XCTestCase {
             // In the 8 of gutter beside the card's top half, above the foot's fade.
             let beside = CGRect(x: 0, y: frame.minY, width: frame.minX, height: frame.height / 2)
             let besideEdges = Self.sharpEdges(in: shot.image, area: beside)
-            print("STEM_TELEGRAM \(name) top=\(topEdges) beside=\(besideEdges) transcript=\(sharp)")
+            print("HAPPY_TELEGRAM \(name) top=\(topEdges) beside=\(besideEdges) transcript=\(sharp)")
             XCTAssertLessThan(topEdges, 20, "\(name): \(topEdges) sharp strokes under the status bar")
         }
         theme("Adaptive")
@@ -343,12 +343,12 @@ final class ChatViewingUITests: XCTestCase {
     /// A seeded task, its conversation a prompt and an answer that end a
     /// little above the composer, asked for the first time.
     private func openShortConversation() {
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "stem-row:", "Try the new recipe")).firstMatch
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "row:", "Try the new recipe")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         pause(2)
-        let answer = app.descendants(matching: .any).matching(identifier: "stem-message").matching(NSPredicate(format: "label CONTAINS %@ AND NOT (label CONTAINS %@)", "21", "numbers")).firstMatch
+        let answer = app.descendants(matching: .any).matching(identifier: "message").matching(NSPredicate(format: "label CONTAINS %@ AND NOT (label CONTAINS %@)", "21", "numbers")).firstMatch
         if !answer.exists {
             composer.tap()
             composer.typeText("Write the numbers 1 to 22, one per line, and nothing else. Use no tools.")
@@ -367,7 +367,7 @@ final class ChatViewingUITests: XCTestCase {
     /// sides, where no line of the transcript reaches (blurred lines go by
     /// under the middle of it, as on home).
     private func flingToTop(_ name: String) {
-        let card = element("stem-input").frame
+        let card = element("input").frame
         let under = CGRect(x: 0, y: card.maxY + 2, width: 4, height: app.frame.height - card.maxY - 4)
         let beside = CGRect(x: 1, y: card.minY + 4, width: max(1, card.minX - 2), height: card.height - 8)
         var samples: [(under: Double, beside: Double)] = []
@@ -383,7 +383,7 @@ final class ChatViewingUITests: XCTestCase {
         }
         capture("top-\(name)")
         let unders = samples.map(\.under), besides = samples.map(\.beside)
-        print("STEM_FLASH \(name) under=\(unders.map { Int($0) }) beside=\(besides.map { Int($0) })")
+        print("HAPPY_FLASH \(name) under=\(unders.map { Int($0) }) beside=\(besides.map { Int($0) })")
         XCTAssertLessThan((unders.max() ?? 0) - (unders.min() ?? 0), 4, "\(name): the ground under the composer flashed")
         XCTAssertLessThan((besides.max() ?? 0) - (besides.min() ?? 0), 4, "\(name): the ground beside the composer flashed")
     }
@@ -420,7 +420,7 @@ final class ChatViewingUITests: XCTestCase {
             // At the newest, the transcript runs on under the header.
             let chatRest = XCUIScreen.main.screenshot().image
             capture("edges-chat-newest-\(name)")
-            let card = element("stem-input").frame
+            let card = element("input").frame
             app.tapBack()
             pause(1.5)
             for _ in 0..<3 { app.swipeUp(velocity: .fast) }
@@ -433,7 +433,7 @@ final class ChatViewingUITests: XCTestCase {
                 CGRect(x: 0, y: card.maxY + 1, width: app.frame.width, height: app.frame.height - card.maxY - 1),
             ]
             let diff = Self.difference(chatRest, homeRest, areas: around)
-            print("STEM_HOME_DIFF \(name) mean=\(diff.mean) max=\(diff.max)")
+            print("HAPPY_HOME_DIFF \(name) mean=\(diff.mean) max=\(diff.max)")
             XCTAssertLessThan(diff.mean, 1, "\(name): the chat's composer edge is not home's")
             for _ in 0..<3 { app.swipeDown(velocity: .fast) }
             pause(1.5)
@@ -533,7 +533,7 @@ final class ChatViewingUITests: XCTestCase {
         XCTAssertFalse(jump.exists, "the way back showed at the newest message")
         scrollUp(2)
         XCTAssertTrue(jump.waitForExistence(timeout: 3), "no way back after scrolling up")
-        let card = element("stem-input")
+        let card = element("input")
         XCTAssertLessThan(jump.frame.maxY, card.frame.minY, "the way back is not above the composer")
         XCTAssertEqual(jump.frame.midX, app.frame.midX, accuracy: 1, "the way back is not centred")
         XCTAssertEqual(jump.value as? String, "idle")
@@ -586,7 +586,7 @@ final class ChatViewingUITests: XCTestCase {
         expectation(for: loaded, evaluatedWith: picture)
         waitForExpectations(timeout: 60)
         picture.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        let viewer = app.images["stem-picture-viewer"]
+        let viewer = app.images["picture-viewer"]
         XCTAssertTrue(viewer.waitForExistence(timeout: 5))
         pause(1.5)
         let first = viewer.value as? String ?? ""
@@ -639,7 +639,7 @@ final class ChatViewingUITests: XCTestCase {
     /// Clears Happy's draft from the desktop's side, so the composer starts
     /// empty, as a clear made on another device arrives.
     private func clearDraft() {
-        print("STEM_STEP draft-clear")
+        print("HAPPY_STEP draft-clear")
         waitForComposer("", "a draft cleared on the computer stayed on the phone")
     }
 
@@ -657,7 +657,7 @@ final class ChatViewingUITests: XCTestCase {
         app.tapBack()
         pause(1.5)
         // The daemon's copy, for the log.
-        print("STEM_STEP draft-check")
+        print("HAPPY_STEP draft-check")
         let happy = happyRow
         XCTAssertTrue(happy.waitForExistence(timeout: 5))
         happy.tap()
@@ -674,7 +674,7 @@ final class ChatViewingUITests: XCTestCase {
         waitForComposer(typed, timeout: 5, "the draft didn't survive a cold launch")
         pause(1)
 
-        print("STEM_STEP draft-desktop")
+        print("HAPPY_STEP draft-desktop")
         waitForComposer("Written on the desktop", "the desktop's draft never showed on the phone")
         pause(1)
         capture("draft-from-desktop")
@@ -687,7 +687,7 @@ final class ChatViewingUITests: XCTestCase {
     /// The expand button is send's, in send's column: its size and centre,
     /// as far in from the card's top as send is from its foot.
     private func assertExpandOverSend() {
-        let card = element("stem-input").frame
+        let card = element("input").frame
         let expand = app.buttons["composer-expand"].frame
         let send = app.buttons["Send"].frame
         XCTAssertEqual(expand.midX, send.midX, accuracy: 1, "the expand button isn't over send")
@@ -786,7 +786,7 @@ final class ChatViewingUITests: XCTestCase {
         expand.tap()
         XCTAssertTrue(editor.waitForExistence(timeout: 3))
         pause(1.5)
-        print("STEM_STEP draft-desktop")
+        print("HAPPY_STEP draft-desktop")
         let deadline = Date().addingTimeInterval(10)
         while Date() < deadline, editor.value as? String != "Written on the desktop" { pause(0.3) }
         XCTAssertEqual(editor.value as? String, "Written on the desktop", "the desktop's draft didn't reach the full-screen editor")
@@ -811,12 +811,12 @@ final class ChatViewingUITests: XCTestCase {
         composer.typeText("Then say only: steering taken (STEER-\(Int(Date().timeIntervalSince1970) % 1000))")
         let token = composerText.components(separatedBy: "(").last?.dropLast() ?? ""
         app.buttons["Send"].tap()
-        let steer = app.descendants(matching: .any).matching(identifier: "stem-message").matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Then say only", String(token))).firstMatch
+        let steer = app.descendants(matching: .any).matching(identifier: "message").matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Then say only", String(token))).firstMatch
         XCTAssertTrue(steer.waitForExistence(timeout: 5), "the steering never showed")
         pause(1)
         XCTAssertTrue(working.exists, "the turn ended before the steering could wait")
         XCTAssertGreaterThanOrEqual(steer.frame.minY, working.frame.maxY - 1, "waiting steering isn't under the working line")
-        print("STEM_FRAMES queued working=\(working.frame) steer=\(steer.frame)")
+        print("HAPPY_FRAMES queued working=\(working.frame) steer=\(steer.frame)")
         capture("steering-queued")
 
         let deadline = Date().addingTimeInterval(180)
@@ -824,12 +824,12 @@ final class ChatViewingUITests: XCTestCase {
         pause(1.5)
         if working.exists {
             XCTAssertLessThanOrEqual(steer.frame.maxY, working.frame.minY + 1, "taken steering isn't above the working line")
-            print("STEM_FRAMES taken working=\(working.frame) steer=\(steer.frame)")
+            print("HAPPY_FRAMES taken working=\(working.frame) steer=\(steer.frame)")
         }
         capture("steering-taken")
         while Date() < deadline, working.exists { pause(1) }
         pause(1)
-        let reply = app.descendants(matching: .any).matching(identifier: "stem-message").matching(NSPredicate(format: "label CONTAINS[c] %@", "steering taken")).allElementsBoundByIndex
+        let reply = app.descendants(matching: .any).matching(identifier: "message").matching(NSPredicate(format: "label CONTAINS[c] %@", "steering taken")).allElementsBoundByIndex
         XCTAssertTrue(reply.contains { $0.frame.minY > steer.frame.maxY - 1 && !$0.label.contains("Then say only") }, "the agent's answer to the steering isn't under it")
         capture("steering-answered")
     }

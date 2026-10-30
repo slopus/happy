@@ -11,7 +11,7 @@ final class SessionRowCell: UITableViewCell {
     static let reuseIdentifier = "session"
 
     let avatar = AvatarView()
-    let titleLabel = ShimmerLabel(style: TextStyles.sessionTitle)
+    let titleLabel = LegacyShimmerLabel(style: TextStyles.sessionTitle)
     let timestampLabel = StyledLabel(style: TextStyles.sessionTimestamp, color: Palette.textSecondary, lines: 1, alignment: .right)
     let dot = UIView()
     let projectLabel = StyledLabel(style: TextStyles.sessionProject, color: Palette.textSecondary, lines: 1)
@@ -35,7 +35,7 @@ final class SessionRowCell: UITableViewCell {
         selectedBackgroundView = selected
         branchIcon.tintColor = UIColor(Palette.textSecondary)
         branchIcon.contentMode = .center
-        divider.backgroundColor = UIColor(Palette.divider)
+        divider.backgroundColor = UIColor(Palette.legacyDivider)
         for view in [avatar, titleLabel, timestampLabel, dot, projectLabel, workspaceLabel, branchIcon, draftIcon, changes, divider] {
             contentView.addSubview(view)
         }
@@ -139,7 +139,7 @@ final class SessionRowCell: UITableViewCell {
 /// A title that shimmers while the agent works (ShimmerText): the base text
 /// in the secondary colour with a band of the full text colour sweeping
 /// across it.
-final class ShimmerLabel: UIView {
+final class LegacyShimmerLabel: UIView {
     var string: String {
         get { base.string }
         set { base.string = newValue; highlight.string = newValue; setNeedsLayout() }
@@ -262,7 +262,7 @@ final class ArchiveToggleCell: UITableViewCell {
         backgroundColor = UIColor(Palette.flatListBackground)
         selectionStyle = .none
         for line in [leading, trailing] {
-            line.backgroundColor = UIColor(Palette.divider)
+            line.backgroundColor = UIColor(Palette.legacyDivider)
             contentView.addSubview(line)
         }
         contentView.addSubview(label)

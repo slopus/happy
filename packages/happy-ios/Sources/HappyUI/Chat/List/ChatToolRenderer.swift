@@ -20,12 +20,12 @@ struct ChatPiece {
         }
     }
 
-    /// Pieces one above the other (`ChatStackLayout`), each with its own
+    /// Pieces one above the other (`LegacyChatStackLayout`), each with its own
     /// margins, padding and background.
     static func stack(_ entries: [ChatStackEntry], gap: CGFloat = 0) -> ChatPiece {
         let items = entries.map(\.item)
-        return ChatPiece(measurable: ChatStackLayout.measurable(items: { _ in items }, gap: gap)) { frame in
-            let layout = ChatStackLayout(width: frame.width, items: items, gap: gap)
+        return ChatPiece(measurable: LegacyChatStackLayout.measurable(items: { _ in items }, gap: gap)) { frame in
+            let layout = LegacyChatStackLayout(width: frame.width, items: items, gap: gap)
             var drawn: [ChatDrawItem] = []
             var hits: [ChatHit] = []
             for (index, entry) in entries.enumerated() {
@@ -47,13 +47,13 @@ struct ChatStackEntry {
     var marginTop: CGFloat = 0
     var marginBottom: CGFloat = 0
     var padding: LayoutInsets = .zero
-    var placement: ChatStackLayout.Placement = .fill
+    var placement: LegacyChatStackLayout.Placement = .fill
     var maxHeight: CGFloat?
     /// Drawn behind the entry, its padding included; the frame is filled in.
     var background: ChatBox?
 
-    var item: ChatStackLayout.Item {
-        ChatStackLayout.Item(piece.measurable, marginTop: marginTop, marginBottom: marginBottom, padding: padding, placement: placement, maxHeight: maxHeight)
+    var item: LegacyChatStackLayout.Item {
+        LegacyChatStackLayout.Item(piece.measurable, marginTop: marginTop, marginBottom: marginBottom, padding: padding, placement: placement, maxHeight: maxHeight)
     }
 }
 
@@ -694,7 +694,7 @@ extension ChatRowRenderer {
                 let alpha = button.inactive ? M.inactiveOpacity : 1
                 items.append(.box(ChatBox(
                     frame: box, fill: button.selected ? Palette.surfaceHighest : Palette.surface,
-                    border: Palette.divider, borderWidth: M.buttonBorder, radius: M.buttonRadius, alpha: alpha
+                    border: Palette.legacyDivider, borderWidth: M.buttonBorder, radius: M.buttonRadius, alpha: alpha
                 )))
                 let text = labels[index].layout(for: layout.labels[index])
                 items.append(.text(alpha < 1 ? text.dimmed(alpha) : text, label))

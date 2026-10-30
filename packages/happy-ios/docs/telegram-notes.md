@@ -184,7 +184,7 @@ two precomputed layouts.
   the guide with the finger during an interactive dismiss. The dock reads the
   guide's layout frame in `viewDidLayoutSubviews` and in a
   `UIKeyboardLayoutGuide` animation. The dock and composer are placed by a
-  pure `ChatScreenLayout` from that one keyboard top, so the input bar
+  pure `LegacyChatScreenLayout` from that one keyboard top, so the input bar
   follows the finger frame by frame without our own pan recognizer.
 - Keyboard show/hide outside a drag uses the system's curve: frames are
   applied inside the `keyboardWillChangeFrame` animation (duration and

@@ -17,7 +17,7 @@ final class DiffTextSizeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func environment(_ category: UIContentSizeCategory, scale: CGFloat = 3) -> TextEnvironment {
@@ -57,7 +57,7 @@ final class DiffTextSizeTests: XCTestCase {
             let metrics = DiffStyle.metrics(text: text)
             let drawn = 12 * text.scale.multiplier
             let sample = String(repeating: "M", count: 50) as NSString
-            let advance = sample.size(withAttributes: [.font: Fonts.font(.mono, size: drawn)]).width / 50
+            let advance = sample.size(withAttributes: [.font: LegacyFonts.font(.mono, size: drawn)]).width / 50
             XCTAssertEqual(metrics.charWidth, advance, accuracy: 1e-9, category.rawValue)
             XCTAssertEqual(metrics.scale, text.scale, category.rawValue)
             XCTAssertEqual(metrics.lineHeight, pixel(18 * text.scale.multiplier, 3), accuracy: 1e-9, category.rawValue)

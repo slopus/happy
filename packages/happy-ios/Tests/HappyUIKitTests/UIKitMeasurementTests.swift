@@ -14,7 +14,7 @@ import XCTest
 final class UIKitMeasurementTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func height(_ view: UIView, width: CGFloat) -> CGFloat {

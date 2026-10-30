@@ -418,7 +418,7 @@ Following now:
     44, which its label (SF 15, a line of about 17.9) spills out of from
     AX-XL as RN's fixed `height` lets it, and the commands' 48 minimum, which they grow past. The
     dock's height feeds the list's newest-edge inset and the scroll
-    button's place (`ChatScreenLayout`), which follow it.
+    button's place (`LegacyChatScreenLayout`), which follow it.
   - A text box ends on the screen's next pixel, as RN's does
     (`ChatTextLayout`, `PixelGrid.ceil`): the screen's scale comes with
     the text size (`TextEnvironment.displayScale`) on every string made at
@@ -530,18 +530,18 @@ Following now:
     the plan's within 1e-6, as UIKit reads a frame back an ulp off. Not
     seen on a device.
 
-- The Stem Cells sidebar's story rows (desktop's three-line rows): the
+- The V2 sidebar's story rows (desktop's three-line rows): the
   title, the time, the status with its line counts, and the draft draw at
   their designed sizes times the multiplier, each row reading the trait
   itself. The card keeps its structure: the 50 disc, its ring, the 10 gap,
   the signal lane and the corner inset stay; the card grows by what its
-  three lines grow (`StemCellsSidebarLayout.storyHeight`), never shrinks
+  three lines grow (`SidebarLayout.storyHeight`), never shrinks
   below 64, and the status stays at two lines with an ellipsis. Where each
   line's baseline falls is measured from the faces once per size
-  (`StemCellsStoryRowText.text`), so the time's cap top stays on the
+  (`StoryRowText.text`), so the time's cap top stays on the
   title's and the signal on the last baseline. The empty mark grows with the
   status's "Ag" and is sampled to whole pixels again.
-  `StemCellsStoryRowTests` checks AX-L on the iOS 26.5 simulator.
+  `StoryRowTests` checks AX-L on the iOS 26.5 simulator.
 
 ## Header titles
 

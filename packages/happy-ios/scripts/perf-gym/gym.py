@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The iOS performance gym (docs/PERF-GYM.md): long Stem Cells conversations on a
+"""The iOS performance gym (docs/PERF-GYM.md): long V2 conversations on a
 throwaway Happy Agent, the app on a simulator against it, scripted scroll workloads
 measured by the app's own frame meter, and budgets that fail a regression.
 
@@ -519,7 +519,7 @@ def records(folder):
                         tool_result = {"type": "tool_result", "callId": block["id"], "display": f"Tool {block['name']} returned.",
                                        "output": output if isinstance(output, str) else json.dumps(output or ""), "toolName": block["name"], "isError": block.get("status") == "failed"}
                         presentation = block.get("presentation")
-                        # Only what Stem Cells draws keeps its presentation; the rest
+                        # Only what V2 draws keeps its presentation; the rest
                         # (exec_command, file_diff...) is derived by the API and never stored.
                         if presentation and presentation.get("type") in ("media", "artifact"):
                             presentation = json.loads(json.dumps(presentation))
@@ -746,7 +746,7 @@ def forget(udid, title):
         container = subprocess.check_output(["xcrun", "simctl", "get_app_container", udid, BUNDLE, "data"], text=True, stderr=subprocess.DEVNULL).strip()
     except subprocess.CalledProcessError:
         return
-    base = os.path.join(container, "Library", "Application Support", "StemCells")
+    base = os.path.join(container, "Library", "Application Support", "Agents")
     for folder in os.listdir(base) if os.path.isdir(base) else []:
         path = os.path.join(base, folder, "direct.sqlite")
         if os.path.exists(path):
@@ -769,7 +769,7 @@ def run_test(udid, dd, test, label, env, results_dir):
     results, xct, start = [], {}, None
     for line in process.stdout:
         log.write(line)
-        if "STEM_PAIR_READY" in line:
+        if "HAPPY_PAIR_READY" in line:
             threading.Thread(target=pair, args=(udid, log), daemon=True).start()
         elif line.startswith("GYM_POST_STORY "):
             threading.Thread(target=post_story, args=(line.split(" ", 1)[1].strip(), log), daemon=True).start()

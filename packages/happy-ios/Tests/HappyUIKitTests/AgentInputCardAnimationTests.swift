@@ -20,7 +20,7 @@ final class AgentInputCardAnimationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func laidOutCard(_ owner: Owner) async -> AgentInputCardView {

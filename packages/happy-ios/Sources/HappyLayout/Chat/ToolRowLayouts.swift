@@ -265,7 +265,7 @@ public struct CompactToolRowLayout: Equatable, Sendable {
 /// (ToolSectionView, CommandView, CodeView, ToolError, the todo list…).
 /// Each item has margins, padding and a horizontal placement; content is
 /// measured at the width the padding leaves.
-public struct ChatStackLayout: Equatable, Sendable {
+public struct LegacyChatStackLayout: Equatable, Sendable {
     public enum Placement: Equatable, Sendable {
         /// As wide as the stack.
         case fill
@@ -331,7 +331,7 @@ public struct ChatStackLayout: Equatable, Sendable {
 
     /// The stack as content for an enclosing layout.
     public static func measurable(items: @escaping (CGFloat) -> [Item], gap: CGFloat = 0) -> Measurable {
-        Measurable { width in ChatStackLayout(width: width, items: items(width), gap: gap).size }
+        Measurable { width in LegacyChatStackLayout(width: width, items: items(width), gap: gap).size }
     }
 }
 

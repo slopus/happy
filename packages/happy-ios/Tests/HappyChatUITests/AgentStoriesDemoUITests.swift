@@ -33,11 +33,11 @@ final class AgentStoriesDemoUITests: XCTestCase {
         Self.skipIdleWaits()
         continueAfterFailure = false
         app.launchArguments = ["-screen", "agent", "-agentSocket", socket, "-agentToken", token, "-storiesShowScale", "4"]
-        app.launchEnvironment["STEM_DIRECT"] = "1"
+        app.launchEnvironment["HAPPY_DIRECT"] = "1"
         app.launch()
 
         // The ring around the agent's mark opens its story; the row would open the chat.
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'stem-row:' AND identifier ENDSWITH %@", ":\(name)")).firstMatch
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'row:' AND identifier ENDSWITH %@", ":\(name)")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 20), "no row for \(name)")
         XCTAssertTrue((row.value as? String)?.contains("new") == true, "no unseen story on \(name): \(String(describing: row.value))")
         pause(2)

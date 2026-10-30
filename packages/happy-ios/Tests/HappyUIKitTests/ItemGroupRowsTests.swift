@@ -20,7 +20,7 @@ private final class Moves: UIView {
 final class ItemGroupRowsTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     func testKeptRowsStayInTheCard() {

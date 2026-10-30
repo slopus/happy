@@ -132,7 +132,7 @@ final class StoryViewerPageView: UIView {
     // MARK: Showing
 
     /// Draws `author` at frame `position` of `frames` (their stories' frames in order).
-    func show(author: StoryFeedAuthor, frames: [(story: Story, frame: StoryFrame)], position: Int, media: StoriesMedia?, images: StemCellsImages?, now: Int64) {
+    func show(author: StoryFeedAuthor, frames: [(story: Story, frame: StoryFrame)], position: Int, media: StoriesMedia?, images: Images?, now: Int64) {
         let changedAuthor = self.author?.key != author.key
         self.author = author
         nameLabel.text = author.isSelf ? Strings.Stories.myStory : author.name
@@ -222,7 +222,7 @@ final class StoryViewerPageView: UIView {
         }
     }
 
-    private func loadPhoto(_ author: StoryFeedAuthor, images: StemCellsImages?) {
+    private func loadPhoto(_ author: StoryFeedAuthor, images: Images?) {
         if author.ringAgentId != nil, let authorImage {
             // An agent wears its row's icon.
             photoKey = nil

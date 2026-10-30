@@ -13,7 +13,7 @@ import XCTest
 final class HostedChatOlderEndTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// Retry, after an older page failed, in a window of the host's scene:

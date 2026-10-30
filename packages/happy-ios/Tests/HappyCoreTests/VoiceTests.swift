@@ -191,7 +191,7 @@ private actor ConnectionGate {
 final class VoiceContextTests: XCTestCase {
     func testContextForwardsVisibleTextOnlyAndDoesNotRepeatPendingPermission() {
         let permission = ToolPermission(id: "permission", status: .pending)
-        let snapshot = ChatSnapshot(sessionId: "s", messages: [
+        let snapshot = LegacyChatSnapshot(sessionId: "s", messages: [
             .agentText(AgentTextMessage(id: "thinking", createdAt: 1, text: "private reasoning", isThinking: true)),
             .agentText(AgentTextMessage(id: "answer", createdAt: 2, text: "answer", isThinking: false)),
             .toolCall(ToolCallMessage(id: "tool", createdAt: 3, tool: ToolCall(name: "Bash", state: .running, input: .object([:]), createdAt: 3, permission: permission))),
@@ -208,7 +208,7 @@ final class VoiceContextTests: XCTestCase {
     func testLatestFiftyMessagesAndLanguageMapping() {
         let messages = (0..<75).map { ChatMessage.userText(UserTextMessage(id: "m\($0)", createdAt: Int64($0), text: "text-\($0)")) }
         var reducer = VoiceContextReducer()
-        let update = reducer.apply(ChatSnapshot(sessionId: "s", messages: messages))
+        let update = reducer.apply(LegacyChatSnapshot(sessionId: "s", messages: messages))
         XCTAssertFalse(update.context.contains("text-0\n"))
         XCTAssertTrue(update.context.contains("text-74"))
         XCTAssertEqual(VoiceLanguage.selection("fr-CA").providerCode, "fr")

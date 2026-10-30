@@ -56,7 +56,7 @@ final class HostedChatSeedTests: XCTestCase {
     func testAChatPushesItsShellThenBuildsTheHeaderAndTabs() async throws {
         let (controller, _) = try await signedIn()
         let context = AppContext(account: controller, variant: .development, version: "test")
-        let chat = ChatViewController(context: context, session: try XCTUnwrap(controller.session), sessionId: "seeded-tab-4")
+        let chat = LegacyChatViewController(context: context, session: try XCTUnwrap(controller.session), sessionId: "seeded-tab-4")
         chat.loadViewIfNeeded()
         XCTAssertEqual(chat.navigationItem.title, "Scroll indicator")
         XCTAssertNil(Self.subview(AgentInputCardView.self, in: chat.view))

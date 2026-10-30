@@ -23,7 +23,7 @@ public actor FixtureChatWorld {
     struct Chat {
         var messages: [ChatMessage]
         var delivery: [String: OutboxDelivery] = [:]
-        var subscribers: [UUID: AsyncStream<ChatSnapshot>.Continuation] = [:]
+        var subscribers: [UUID: AsyncStream<LegacyChatSnapshot>.Continuation] = [:]
         var outgoing: [String: OutgoingMessage] = [:]
     }
 
@@ -31,7 +31,7 @@ public actor FixtureChatWorld {
     private var clock: Int64 = FixtureScenarios.now
     private var streams: [String: Task<Void, Never>] = [:]
 
-    func subscribe(_ sessionId: String, id: UUID, continuation: AsyncStream<ChatSnapshot>.Continuation) {
+    func subscribe(_ sessionId: String, id: UUID, continuation: AsyncStream<LegacyChatSnapshot>.Continuation) {
         if chats[sessionId] == nil {
             let scenario = FixtureScenarios.scenario(for: sessionId)
             chats[sessionId] = Chat(messages: FixtureScenarios.messages(scenario, sessionId: sessionId))
@@ -45,9 +45,9 @@ public actor FixtureChatWorld {
         chats[sessionId]?.subscribers[id] = nil
     }
 
-    private func snapshot(_ sessionId: String) -> ChatSnapshot {
+    private func snapshot(_ sessionId: String) -> LegacyChatSnapshot {
         let chat = chats[sessionId]
-        return ChatSnapshot(sessionId: sessionId, messages: chat?.messages ?? [], delivery: chat?.delivery ?? [:], isLoaded: true)
+        return LegacyChatSnapshot(sessionId: sessionId, messages: chat?.messages ?? [], delivery: chat?.delivery ?? [:], isLoaded: true)
     }
 
     private func publish(_ sessionId: String) {
@@ -244,7 +244,7 @@ public struct FixtureChatFeed: ChatFeed {
         self.world = world
     }
 
-    public func snapshots(sessionId: String) -> AsyncStream<ChatSnapshot> {
+    public func snapshots(sessionId: String) -> AsyncStream<LegacyChatSnapshot> {
         let world = self.world
         let id = UUID()
         return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in

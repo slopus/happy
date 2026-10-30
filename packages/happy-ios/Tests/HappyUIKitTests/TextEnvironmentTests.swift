@@ -11,7 +11,7 @@ import XCTest
 final class TextEnvironmentTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func environment(_ category: TextSizeCategory) -> TextEnvironment {

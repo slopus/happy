@@ -11,7 +11,7 @@ import UIKit
 /// store; git status comes from `GitStatusSync`.
 ///
 /// What it shows is worked out off the main thread from this session's own
-/// snapshot (`SessionDetailFeed`), never home's: `apply` builds only the
+/// snapshot (`LegacySessionDetailFeed`), never home's: `apply` builds only the
 /// groups that changed, and a new message retexts "Last updated" and
 /// "Sequence" in place. A tap reads what it acts on off the main thread too.
 ///

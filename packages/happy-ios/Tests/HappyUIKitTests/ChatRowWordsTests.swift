@@ -16,7 +16,7 @@ final class ChatRowWordsTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
         // Decoded off the main thread, as the app decodes every catalog.
         russian = ChatWords(catalog: await TranslationCatalog.load("ru"))
     }

@@ -19,7 +19,7 @@ import UIKit
 /// take frame timings from a run without it.
 @MainActor
 final class ChatMotionScript {
-    private weak var chat: ChatViewController?
+    private weak var chat: LegacyChatViewController?
     private let name: String
     private let url: URL?
     private var task: Task<Void, Never>?
@@ -27,7 +27,7 @@ final class ChatMotionScript {
     private var filmDirectory: URL?
     private let encoder = DispatchQueue(label: "happy.chat-motion.film", qos: .utility)
 
-    init(chat: ChatViewController, name: String, run: String) {
+    init(chat: LegacyChatViewController, name: String, run: String) {
         self.chat = chat
         self.name = name
         let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("qa")

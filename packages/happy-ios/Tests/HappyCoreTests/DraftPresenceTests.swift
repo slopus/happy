@@ -250,7 +250,7 @@ final class DraftPresenceTests: XCTestCase {
         applications.assertQuiescent(commits.values.last!)
         try await Task.detached {
             let region = try store.writer.read { db in
-                try SQLRequest<Row>(sql: "SELECT sessionId FROM draft").databaseRegion(db)
+                try SQLRequest<GRDB.Row>(sql: "SELECT sessionId FROM draft").databaseRegion(db)
             }
             XCTAssertFalse(region.isModified(byEventsOfKind: .update(tableName: "draft", columnNames: ["text", "updatedAt"])))
             for index in 1...100 {

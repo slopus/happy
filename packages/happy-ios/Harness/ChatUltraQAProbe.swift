@@ -173,7 +173,7 @@ final class ChatUltraQAProbe: NSObject {
     }
     private struct FirstVisualTrack {
         var release: Double
-        var home: HomeViewController
+        var home: LegacyHomeViewController
         var baseline: CGRect
         var known: Set<ObjectIdentifier>
         var previousCallback: Double
@@ -404,12 +404,12 @@ final class ChatUltraQAProbe: NSObject {
     /// baseline, and the chats that exist now aren't new.
     private func startFirstVisual(release: Double) {
         guard let window, let root = window.rootViewController,
-              let home = Self.controllers(from: root).compactMap({ $0 as? HomeViewController }).first,
+              let home = Self.controllers(from: root).compactMap({ $0 as? LegacyHomeViewController }).first,
               let homeView = home.viewIfLoaded, homeView.window === window,
               let screen = window.layer.presentation(), let presented = homeView.layer.presentation(),
               presented.convert(presented.bounds, to: screen).intersects(window.bounds),
               (Self.presentedOpacity(homeView) ?? 0) > 0.01 else { return }
-        let chats = Self.controllers(from: root).filter { $0 is ChatViewController }
+        let chats = Self.controllers(from: root).filter { $0 is LegacyChatViewController }
         guard !chats.contains(where: { $0.viewIfLoaded?.window === window }) else { return }
         firstVisual = FirstVisualTrack(
             release: release, home: home, baseline: presented.convert(presented.bounds, to: screen),
@@ -442,7 +442,7 @@ final class ChatUltraQAProbe: NSObject {
         var shellCommitted = false
         var fraction = 0.0
         if let root = window.rootViewController,
-           let shell = Self.controllers(from: root).first(where: { $0 is ChatViewController && !track.known.contains(ObjectIdentifier($0)) }),
+           let shell = Self.controllers(from: root).first(where: { $0 is LegacyChatViewController && !track.known.contains(ObjectIdentifier($0)) }),
            let view = shell.viewIfLoaded, view.window === window, let presented = view.layer.presentation(),
            let opacity = Self.presentedOpacity(view) {
             shellCommitted = true
@@ -733,7 +733,7 @@ final class ChatUltraQAProbe: NSObject {
         }
         if (progress.readyMs >= 0 && progress.settledMs >= 0) || since > 5000 {
             // The chat that holds this list.
-            if let chat = sequence(first: list as UIResponder, next: { $0.next }).first(where: { $0 is ChatViewController }) as? ChatViewController {
+            if let chat = sequence(first: list as UIResponder, next: { $0.next }).first(where: { $0 is LegacyChatViewController }) as? LegacyChatViewController {
                 let ms = { (seconds: CFTimeInterval) in (seconds * 100_000).rounded() / 100 }
                 progress.constructionMs = ms(chat.constructionSeconds)
                 progress.loadingMs = ms(chat.loadingSeconds)

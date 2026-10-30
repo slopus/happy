@@ -70,7 +70,7 @@ final class StoriesMedia {
         } else {
             task = Task.detached(priority: .userInitiated) {
                 guard let response = try? await client.storyFrame(storyId, frameId: frame.id) else { return nil }
-                return StemCellsImages.decode(response.body, maxPixels: pixels)
+                return Images.decode(response.body, maxPixels: pixels)
             }
         }
         loading[job] = task
@@ -143,7 +143,7 @@ final class StoriesMedia {
         if let task = loading[job] { return await task.value }
         let task = Task.detached(priority: .userInitiated) { () -> UIImage? in
             guard let data = await read() else { return nil }
-            return StemCellsImages.decode(data, maxPixels: pixels)
+            return Images.decode(data, maxPixels: pixels)
         }
         loading[job] = task
         let image = await task.value
@@ -215,7 +215,7 @@ final class StoriesMedia {
 
 /// A recording's bytes for AVFoundation, which can't send the computer's
 /// token itself: a private URL scheme whose every request is answered with
-/// `Range` requests over the paired connection, as Stem Cells streams
+/// `Range` requests over the paired connection, as V2 streams
 /// conversation media.
 final class StoriesByteStream: NSObject, AVAssetResourceLoaderDelegate, @unchecked Sendable {
     static let scheme = "happy-story-media"

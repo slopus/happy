@@ -19,7 +19,7 @@ final class StoriesHeaderView: UIView, UIScrollViewDelegate {
     var onLayout: (() -> Void)?
     /// Each frame while `ticking`, for the change between open and closed.
     var onTick: (() -> Void)?
-    var images: StemCellsImages?
+    var images: Images?
     var ticking = false {
         didSet {
             guard ticking != oldValue else { return }
@@ -284,7 +284,7 @@ final class StoriesCircleView: UIControl {
         return item.isSelf || !item.allSeen ? color : color.withAlphaComponent(0.5)
     }
 
-    func configure(_ item: StoriesRowItem, images: StemCellsImages?) {
+    func configure(_ item: StoriesRowItem, images: Images?) {
         let previous = self.item
         self.item = item
         title.text = item.title
@@ -427,7 +427,7 @@ final class StoriesCircleView: UIControl {
         unseenRing.path = unseen
     }
 
-    private func loadPhoto(_ item: StoriesRowItem, images: StemCellsImages?) {
+    private func loadPhoto(_ item: StoriesRowItem, images: Images?) {
         // Without a way to read it, the photo waits for the next configure.
         let key = images == nil ? nil : item.photo.map { "\($0)#\(item.thumbhash ?? "")" }
         guard key != photoKey else { return }
@@ -444,7 +444,7 @@ final class StoriesCircleView: UIControl {
             avatar.image = cached
             return
         }
-        avatar.image = StemCellsImages.placeholder(item.thumbhash)
+        avatar.image = Images.placeholder(item.thumbhash)
         loading = Task { [weak self] in
             let image = await images.picture(path, thumbhash: item.thumbhash, pixels: pixels)
             guard let self, !Task.isCancelled, photoKey == key else { return }

@@ -12,7 +12,7 @@ enum DiffStyle {
     // MARK: Colours
 
     static let surface = Palette.surface
-    static let divider = Palette.divider
+    static let divider = Palette.legacyDivider
     static let text = Palette.text
     static let textSecondary = Palette.textSecondary
     static let hunkBackground = DiffPalette.hunkBackground
@@ -123,7 +123,7 @@ enum DiffStyle {
         }
         lock.unlock()
         let sample = String(repeating: "M", count: 50)
-        let width = (sample as NSString).size(withAttributes: [.font: Fonts.font(.mono, size: drawn)]).width / 50
+        let width = (sample as NSString).size(withAttributes: [.font: LegacyFonts.font(.mono, size: drawn)]).width / 50
         // A broken measurement (font not loaded) keeps the 0.6 em estimate.
         let advance: CGFloat? = DiffMetrics.acceptsAdvance(width, drawnFontSize: drawn) ? width : nil
         if let advance {

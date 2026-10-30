@@ -84,6 +84,14 @@ nothing here is wired to the release skill or to EAS.
    needs Steve's OK in the current conversation. Custom bars once hid the
    header across the app without anyone asking, and silently broke swipe
    back.
+10. **Naming: current code has no prefix; `Legacy*` is code used only by
+    the legacy relay protocol or its UI.** Shared components are main-app
+    code with plain names, and legacy reuses them. Never `V2`, `New`,
+    `Direct` or feature prefixes. A Happy Protocol V2 pairing is an agent
+    connection ("Connect Agent"), never a "computer". Wire names shared
+    with the desktop or daemon stay as they are.
+11. **No data migrations (not live)**; the only exception is importing the
+    RN app's credentials.
 
 ## Scope
 
@@ -408,7 +416,7 @@ and fetches only message rows inserted after its SQLite rowid cursor. This
 handles socket records arriving before lower-sequence delta records. Message
 deletion rebuilds the reducer; normal append, permission and outbox updates do
 not. Outbox rows are a removable overlay and delivery state comes from schema
-v3. Usage and todos travel on `ChatSnapshot` for the composer and chat.
+v3. Usage and todos travel on `LegacyChatSnapshot` for the composer and chat.
 Tool outcomes and sidechain children whose calls or owners have not reached
 disk yet are buffered across batches and joined when their missing records
 arrive. This deliberately improves on the RN reducer's discarded early
@@ -560,13 +568,13 @@ change a file another workstream owns, ask the coordinator.
 | Ops | `Core/Sessions/` RPC operations (`sync/ops.ts`) |
 | Push | `Sources/HappyApp/PushNotifications.swift`, `Core/Push/` routing, installation id, APNs source and token sync, the entitlements, `AppCoordinator.openSession(fromNotification:)` |
 | Sync perf | Presence (`Core/Presence/`), the merge rules' skip-if-unchanged and batching in `LocalStore`, the shared per-account observations (`Core/Observation/`), the thread preconditions in `SyncEngine`, `LocalStore` and `LocalChatFeed`, the sync benchmarks (`Tests/HappyCoreTests/SyncPerf*`) |
-| Apply perf | The off-main row derivation and changesets (`Core/Changes/`), the home list and chat apply paths (`SessionListViewController.apply`, `ChatViewController`'s session and snapshot handling, `ChatListView.apply`, `ChatRowMeasurer`), signposts and the main-thread counter (`HappyUI/Perf/`), the changeset tests |
+| Apply perf | The off-main row derivation and changesets (`Core/Changes/`), the home list and chat apply paths (`SessionListViewController.apply`, `LegacyChatViewController`'s session and snapshot handling, `ChatListView.apply`, `ChatRowMeasurer`), signposts and the main-thread counter (`HappyUI/Perf/`), the changeset tests |
 | Tablet | `Sources/HappyUI/Tablet/`, `Sources/HappyLayout/Tablet/`, `Sources/HappyCore/Tablet/`, the root container switch in `AppCoordinator`. Tablet branches inside other workstreams' screens go through their owners |
 
 Shared seams, changed only through the coordinator:
 
 - `Sources/HappyCore/Chat/ChatMessage.swift` and `ChatContracts.swift`:
-  the reducer produces `ChatMessage`, the UI reads `ChatSnapshot` from a
+  the reducer produces `ChatMessage`, the UI reads `LegacyChatSnapshot` from a
   `ChatFeed` and sends through `ChatSending`;
 - `Sources/HappyUI/Chat/ChatComposer.swift`: the chat screen hosts
   whatever `ChatComposerFactory.make` returns (a `ChatComposerView`),

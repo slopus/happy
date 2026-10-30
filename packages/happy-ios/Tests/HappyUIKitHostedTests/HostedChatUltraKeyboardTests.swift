@@ -34,13 +34,13 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private struct Chat {
         var controller: AccountController
         var navigation: UINavigationController
-        var chat: ChatViewController
+        var chat: LegacyChatViewController
         var list: ChatListView
         var dock: ChatDockView
     }
@@ -63,7 +63,7 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         let context = AppContext(account: controller, variant: .development, version: "test")
         let scene = try await hostedActiveScene()
         let hostWindow = scene.keyWindow
-        let chat = ChatViewController(context: context, session: account, sessionId: FixtureScenarios.prefix + FixtureScenario.long.rawValue)
+        let chat = LegacyChatViewController(context: context, session: account, sessionId: FixtureScenarios.prefix + FixtureScenario.long.rawValue)
         let navigation = UINavigationController(rootViewController: UIViewController())
         navigation.pushViewController(chat, animated: false)
         let window = hostedKeyWindow(in: scene, root: navigation)
@@ -111,7 +111,7 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         ])
     }
 
-    private func resting(_ chat: ChatViewController) -> CGFloat {
+    private func resting(_ chat: LegacyChatViewController) -> CGFloat {
         chat.view.bounds.height - chat.view.safeAreaInsets.bottom
     }
 
@@ -280,7 +280,7 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         // The library's inset-only pass, which keeps a viewport curve, not
         // a full pass.
         XCTAssertEqual(ultra.appliedPassCount, passes, "the keyboard moved the inset without a full list pass")
-        XCTAssertEqual(test.list.contentInsets.top, height - test.dock.frame.minY + ChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
+        XCTAssertEqual(test.list.contentInsets.top, height - test.dock.frame.minY + LegacyChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
         XCTAssertEqual(ultra.viewportInsets.top, Double(test.list.contentInsets.top), accuracy: 0.5)
         // The rows are still on their way to the new inset.
         let index = try XCTUnwrap(ultra.loadedIndexRange.first)
@@ -297,7 +297,7 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         post(UIResponder.keyboardDidHideNotification, up: false, in: window)
         let down = try await until { abs(self.resting(test.chat) - test.dock.frame.maxY) < 0.5 }
         XCTAssertTrue(down, "the dock is back on the safe area, at \(test.dock.frame.maxY)")
-        XCTAssertEqual(test.list.contentInsets.top, height - test.dock.frame.minY + ChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
+        XCTAssertEqual(test.list.contentInsets.top, height - test.dock.frame.minY + LegacyChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
     }
 
     /// The same notification on UICollectionView changes nothing: that

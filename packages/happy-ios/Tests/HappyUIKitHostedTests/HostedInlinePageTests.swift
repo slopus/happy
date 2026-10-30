@@ -21,7 +21,7 @@ final class HostedInlinePageTests: XCTestCase {
     <div class="row"><i style="height:70%"></i><i style="height:30%"></i></div><p id="probe">Voice</p></body></html>
     """
 
-    private final class Host: UIViewController, StemCellPageHosting {
+    private final class Host: UIViewController, PageHosting {
         let pageClient: DirectAgentClient
         var heights: [CGFloat] = []
         init(_ client: DirectAgentClient) { pageClient = client; super.init(nibName: nil, bundle: nil) }
@@ -51,15 +51,15 @@ final class HostedInlinePageTests: XCTestCase {
         window.overrideUserInterfaceStyle = .dark
         defer { window.isHidden = true }
         host.view.backgroundColor = UIColor(Palette.surface)
-        let view = StemCellInlinePageView(frame: CGRect(x: 16, y: 100, width: 361, height: StemCellChatPlanner.pageHeight))
+        let view = InlinePageView(frame: CGRect(x: 16, y: 100, width: 361, height: ChatPlanner.pageHeight))
         host.view.addSubview(view)
-        view.apply(StemCellInlinePage(artifactId: "art1", title: "Voice waveform", page: .init(version: 2, entry: "index.html")))
+        view.apply(InlinePage(artifactId: "art1", title: "Voice waveform", page: .init(version: 2, entry: "index.html")))
 
         let deadline = Date().addingTimeInterval(15)
         while (view.accessibilityValue != "loaded" || host.heights.isEmpty), Date() < deadline {
             try await Task.sleep(for: .milliseconds(100))
         }
-        XCTAssertEqual(view.accessibilityIdentifier, "stem-artifact-inline")
+        XCTAssertEqual(view.accessibilityIdentifier, "artifact-inline")
         XCTAssertEqual(view.accessibilityValue, "loaded")
         XCTAssertEqual(view.accessibilityLabel, "Voice waveform")
         let web = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
@@ -82,7 +82,7 @@ final class HostedInlinePageTests: XCTestCase {
 
         // The same page again loads nothing new.
         let before = await files.paths.count
-        view.apply(StemCellInlinePage(artifactId: "art1", title: "Voice waveform", page: .init(version: 2, entry: "index.html")))
+        view.apply(InlinePage(artifactId: "art1", title: "Voice waveform", page: .init(version: 2, entry: "index.html")))
         try await Task.sleep(for: .milliseconds(300))
         let after = await files.paths.count
         XCTAssertEqual(before, after)

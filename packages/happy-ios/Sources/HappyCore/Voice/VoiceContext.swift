@@ -16,7 +16,7 @@ public struct VoiceContextReducer: Sendable {
     private var loaded = false
     public init() {}
 
-    public mutating func apply(_ snapshot: ChatSnapshot) -> VoiceContextUpdate {
+    public mutating func apply(_ snapshot: LegacyChatSnapshot) -> VoiceContextUpdate {
         let changed = snapshot.messages.suffix(50).filter { messages[$0.id] != $0 }
         let lines = changed.compactMap(Self.format)
         var prompts: [String] = []
@@ -79,7 +79,7 @@ public actor VoiceContext {
         records = Dictionary(home.sessions.map { ($0.id, $0) }, uniquingKeysWith: { _, value in value })
         directory = Self.directory(home.sessions)
         var iterator = account.chatFeed.snapshots(sessionId: focused).makeAsyncIterator()
-        let snapshot = await iterator.next() ?? ChatSnapshot(sessionId: focused)
+        let snapshot = await iterator.next() ?? LegacyChatSnapshot(sessionId: focused)
         let metadata = records[focused]?.metadata
         let history = snapshot.messages.suffix(50).compactMap(VoiceContextReducer.format).joined(separator: "\n\n")
         let context = "\(directory)\n\nCURRENT SESSION: \(focused)\nProject: \(metadata?["path"]?.stringValue ?? "")\nSummary: \(metadata?["summary"]?["text"]?.stringValue ?? "")\n\n\(history)"
@@ -145,7 +145,7 @@ public actor VoiceContext {
         }
     }
 
-    private func chat(_ snapshot: ChatSnapshot) async {
+    private func chat(_ snapshot: LegacyChatSnapshot) async {
         var reducer = reducers[snapshot.sessionId] ?? VoiceContextReducer()
         let update = reducer.apply(snapshot)
         reducers[snapshot.sessionId] = reducer

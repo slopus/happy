@@ -32,7 +32,7 @@ final class StoryInlineView: UIView {
     private var drawnState: String?
     private var storyId: String?
     private weak var session: StoriesSession?
-    private var watch: StemCellsWatch?
+    private var watch: Watch?
     private var story: Story?
     private var posting = false
     /// The person reading is the story's author, so a draft is theirs to post.

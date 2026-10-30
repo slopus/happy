@@ -5,7 +5,7 @@ import HappyWire
 @testable import HappyCore
 
 /// What home did before the apply work (b1247fce), modelled: it runs the
-/// production `HomeState` once per delivery, as `HomeViewController.received`
+/// production `HomeState` once per delivery, as `LegacyHomeViewController.received`
 /// did on the main thread, and repeats `SessionListViewController.apply`'s
 /// row comparison (full `SessionRow` equality, a fresh diffable snapshot per
 /// change). It never runs UIKit, so it counts work, not UIKit time.

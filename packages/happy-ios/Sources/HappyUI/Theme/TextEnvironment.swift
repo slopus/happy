@@ -130,7 +130,7 @@ enum ScaledFonts {
         lock.unlock()
         // Before the first lookup, so a font asked for early is never
         // cached as its system fallback.
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
         let font = ChatTextStyle(face, size: size).font
         lock.lock()
         defer { lock.unlock() }

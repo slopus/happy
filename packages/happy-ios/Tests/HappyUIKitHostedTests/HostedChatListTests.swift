@@ -28,7 +28,7 @@ final class HostedChatListTests: XCTestCase {
     private let renderServices = RenderServices.isolated()
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// UIKit's vertical indicators in the list, shown or not.
@@ -65,7 +65,7 @@ final class HostedChatListTests: XCTestCase {
         view.width = width
         view.requests.grows = grows
         return ChatRowsInput(
-            snapshot: ChatSnapshot(sessionId: "s", messages: messages, isLoaded: true, hasMoreOlder: false, olderBoundary: nil, windowEpoch: 0),
+            snapshot: LegacyChatSnapshot(sessionId: "s", messages: messages, isLoaded: true, hasMoreOlder: false, olderBoundary: nil, windowEpoch: 0),
             session: ChatSessionState(record: nil, settings: AccountSettings()),
             view: view,
             render: renderServices
@@ -76,8 +76,8 @@ final class HostedChatListTests: XCTestCase {
 
     /// The phone's screen in the host's window: a 60-tall bar over a 70-tall
     /// composer, resting on the safe area or on the keyboard's top.
-    private func screen(_ root: UIView, keyboardTop: CGFloat? = nil, composerHeight: CGFloat = 70) -> ChatScreenLayout {
-        ChatScreenLayout(.init(
+    private func screen(_ root: UIView, keyboardTop: CGFloat? = nil, composerHeight: CGFloat = 70) -> LegacyChatScreenLayout {
+        LegacyChatScreenLayout(.init(
             size: root.bounds.size, safeArea: LayoutInsets(root.safeAreaInsets), keyboardTop: keyboardTop,
             accessories: [.inset(.fixed(width: 0, height: 60))], composerHeight: composerHeight
         ))
@@ -284,7 +284,7 @@ final class HostedChatListTests: XCTestCase {
         let context = AppContext(account: controller, variant: .development, version: "test")
         let scene = try await hostedActiveScene()
         let hostWindow = scene.keyWindow
-        let chat = ChatViewController(context: context, session: account, sessionId: FixtureScenarios.prefix + FixtureScenario.long.rawValue)
+        let chat = LegacyChatViewController(context: context, session: account, sessionId: FixtureScenarios.prefix + FixtureScenario.long.rawValue)
         let navigation = UINavigationController(rootViewController: UIViewController())
         navigation.pushViewController(chat, animated: false)
         let window = hostedKeyWindow(in: scene, root: navigation)

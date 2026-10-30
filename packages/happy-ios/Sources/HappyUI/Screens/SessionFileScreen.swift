@@ -163,7 +163,7 @@ final class SessionFileViewController: UIViewController {
 
     /// layout.maxWidth: 800 off a phone, unlimited on one.
     private var maxWidth: CGFloat {
-        traitCollection.horizontalSizeClass == .regular ? ChatScreenLayout.Metrics.regularMaxContentWidth : .greatestFiniteMagnitude
+        traitCollection.horizontalSizeClass == .regular ? LegacyChatScreenLayout.Metrics.regularMaxContentWidth : .greatestFiniteMagnitude
     }
 
     private func showTarget() {

@@ -4,14 +4,14 @@ import UIKit
 
 /// One paired computer's Stories, shared by the row, the viewer, the editor
 /// and every inline story: the store and the snapshots it hands out. Made
-/// once per computer beside its Stem Cells session.
+/// once per computer beside its V2 session.
 @MainActor
 final class StoriesSession {
-    /// The computer's Stem Cells; nil in the harness, which has none.
-    private(set) weak var stemCells: StemCellsSession?
+    /// The computer's V2; nil in the harness, which has none.
+    private(set) weak var v2: Session?
     let accountID: String
     let client: DirectAgentClient
-    let images: StemCellsImages
+    let images: Images
     let store: StoriesStore
     let media: StoriesMedia
     private(set) var snapshot = StoriesSnapshot()
@@ -21,10 +21,10 @@ final class StoriesSession {
 
     private static var sessions: [String: StoriesSession] = [:]
 
-    static func session(for stemCells: StemCellsSession) -> StoriesSession {
-        if let existing = sessions[stemCells.accountID] { return existing }
-        let session = StoriesSession(stemCells: stemCells)
-        sessions[stemCells.accountID] = session
+    static func session(for v2: Session) -> StoriesSession {
+        if let existing = sessions[v2.accountID] { return existing }
+        let session = StoriesSession(v2: v2)
+        sessions[v2.accountID] = session
         return session
     }
 
@@ -37,17 +37,17 @@ final class StoriesSession {
         Task { await store.stop() }
     }
 
-    private convenience init(stemCells: StemCellsSession) {
-        let events = stemCells.store
-        self.init(accountID: stemCells.accountID, client: stemCells.client, images: stemCells.images, offline: stemCells.offline) {
+    private convenience init(v2: Session) {
+        let events = v2.store
+        self.init(accountID: v2.accountID, client: v2.client, images: v2.images, offline: v2.offline) {
             await events.events(matching: StoriesStore.eventPrefixes)
         }
-        self.stemCells = stemCells
+        self.v2 = v2
     }
 
     /// Stories from parts: the harness draws the viewer and editor over a
     /// computer of its own this way.
-    init(accountID: String, client: DirectAgentClient, images: StemCellsImages, offline: StemCellsOfflineFile?, events: @escaping StoriesStore.Events) {
+    init(accountID: String, client: DirectAgentClient, images: Images, offline: OfflineFile?, events: @escaping StoriesStore.Events) {
         self.accountID = accountID
         self.client = client
         self.images = images
@@ -64,7 +64,7 @@ final class StoriesSession {
         }
         let store = store
         Task { await store.start() }
-        // Back in the foreground, the Stem Cells stream resumes and replays
+        // Back in the foreground, the V2 stream resumes and replays
         // what was missed, or says `resync`. What waits to be kept is saved
         // on the way out.
         observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak store] _ in
@@ -73,11 +73,11 @@ final class StoriesSession {
     }
 
     /// Calls `watch` with every snapshot from now on, starting with the current one.
-    func watch(_ watch: @escaping (StoriesSnapshot) -> Void) -> StemCellsWatch {
+    func watch(_ watch: @escaping (StoriesSnapshot) -> Void) -> Watch {
         let id = UUID()
         watchers[id] = watch
         watch(snapshot)
-        return StemCellsWatch { [weak self] in self?.watchers.removeValue(forKey: id) }
+        return Watch { [weak self] in self?.watchers.removeValue(forKey: id) }
     }
 }
 #endif

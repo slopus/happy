@@ -2,7 +2,7 @@ import Foundation
 
 // Stories: Telegram's stories row and viewer (`DefaultDayPresentationTheme`,
 // `DefaultDarkPresentationTheme` `storyUnseenColors`, `storySeenColors`,
-// `itemCheckColors`), on Stem Cells' own ground.
+// `itemCheckColors`), on V2' own ground.
 
 extension Palette {
     /// An unseen ring's gradient, top to bottom.

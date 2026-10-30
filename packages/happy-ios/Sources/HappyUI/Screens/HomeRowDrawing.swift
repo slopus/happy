@@ -85,7 +85,7 @@ struct HomeRowDrawing: Sendable {
                     context.setFillColor(resolved(Palette.surfaceSelected).cgColor); context.fill(selection)
                     context.restoreGState()
                 }
-                context.setStrokeColor(resolved(Palette.divider).cgColor)
+                context.setStrokeColor(resolved(Palette.legacyDivider).cgColor)
                 context.setLineWidth(environment.rows.hairline)
                 context.addPath(path.cgPath); context.strokePath()
             case .fill(let color, let frame, let round):
@@ -181,7 +181,7 @@ struct HomeRowDrawing: Sendable {
                 if let frame = layout.branchIcon { plan.marks.append(.icon("git-branch-outline", 13, Palette.textSecondary, frame)) }
                 if let frame = layout.draftIcon { plan.marks.append(.icon("create-outline", 13, Palette.textSecondary, frame)) }
                 drawChanges(parts, at: layout.changes)
-                fill(Palette.divider, layout.divider)
+                fill(Palette.legacyDivider, layout.divider)
                 plan.accessibilityLabel += parts.spoken.isEmpty ? "" : ", " + parts.spoken
             }
         }
@@ -205,7 +205,7 @@ struct HomeRowDrawing: Sendable {
             let layout = ArchiveToggleLayout(width: width, label: measured(value, TextStyles.archiveToggle), paddingTop: grouped ? ArchiveToggleLayout.unbanded.top : ArchiveToggleLayout.Metrics.paddingTop, paddingBottom: grouped ? ArchiveToggleLayout.unbanded.bottom : ArchiveToggleLayout.Metrics.paddingBottom)
             plan.size = layout.size
             text(value, TextStyles.archiveToggle, Palette.textSecondary, layout.label)
-            fill(Palette.divider, layout.leadingLine); fill(Palette.divider, layout.trailingLine)
+            fill(Palette.legacyDivider, layout.leadingLine); fill(Palette.legacyDivider, layout.trailingLine)
             plan.accessibilityLabel = value
         case .project(.machine(_, let name)):
             let layout = MachineHeaderLayout(width: width, hairline: environment.rows.hairline, icon: environment.rows.machineIcon, name: measured(name, TextStyles.projectMachine))

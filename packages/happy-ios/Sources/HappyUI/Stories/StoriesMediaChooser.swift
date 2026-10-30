@@ -83,7 +83,7 @@ enum StoriesMediaChooser {
                 bytes = jpeg
                 ext = "jpg"
             }
-            let preview = StemCellsImages.decode(bytes, maxPixels: 2048) ?? image
+            let preview = Images.decode(bytes, maxPixels: 2048) ?? image
             let id = ClientID.make()
             try? FileManager.default.createDirectory(at: uploads, withIntermediateDirectories: true)
             let file = uploads.appendingPathComponent(id).appendingPathExtension(ext)

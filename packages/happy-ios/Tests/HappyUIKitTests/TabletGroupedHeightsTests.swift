@@ -16,7 +16,7 @@ final class TabletGroupedHeightsTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func header(title: String, branch: String, changes: GitLineChanges?) -> TabletWorkspaceHeader {

@@ -26,7 +26,7 @@ final class MarkdownListDepthTests: XCTestCase {
     """
 
     func testAListThatOpensNestedCountsDepthFromItsLeastIndentedItem() {
-        let blocks = Markdown.parse(Self.crashing)
+        let blocks = LegacyMarkdown.parse(Self.crashing)
         let lists = blocks.compactMap { block -> [Int]? in
             if case .list(let items) = block { return items.map(\.depth) }
             return nil
@@ -37,7 +37,7 @@ final class MarkdownListDepthTests: XCTestCase {
     }
 
     func testANumberedListThatOpensNestedNeverGoesNegative() {
-        let blocks = Markdown.parse("    1. nested\n2. margin\n  3. half")
+        let blocks = LegacyMarkdown.parse("    1. nested\n2. margin\n  3. half")
         guard case .numberedList(let items) = blocks.first else { return XCTFail("\(blocks)") }
         XCTAssertEqual(items.map(\.depth), [2, 0, 1])
     }
@@ -48,7 +48,7 @@ final class MarkdownListDepthTests: XCTestCase {
         var generator = SeededGenerator(seed: 47)
         for _ in 0..<3_000 {
             let markdown = Self.fuzzed(using: &generator)
-            for block in Markdown.parse(markdown) {
+            for block in LegacyMarkdown.parse(markdown) {
                 switch block {
                 case .list(let items):
                     for item in items { XCTAssertGreaterThanOrEqual(item.depth, 0, markdown) }

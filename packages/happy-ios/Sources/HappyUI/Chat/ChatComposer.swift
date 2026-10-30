@@ -10,7 +10,7 @@ import UIKit
 // owns everything inside its own bounds: the text, the draft, attachments,
 // the mode chips, the context meter, send and stop.
 //
-//     ChatViewController
+//     LegacyChatViewController
 //       ├─ list (flipped collection view)
 //       └─ dock ─┬─ accessories (the screen's)
 //                └─ composer: any ChatComposerView   ← ChatComposerFactory.make
@@ -58,11 +58,11 @@ public struct ChatComposerState: Equatable, Sendable {
     /// The session record (metadata, agent state, thinking, active) and the
     /// account settings.
     public var session: ChatSessionState
-    /// The latest model usage, for the context meter (`ChatSnapshot.usage`).
+    /// The latest model usage, for the context meter (`LegacyChatSnapshot.usage`).
     public var usage: ChatUsage?
-    /// Unsent messages by local id (`ChatSnapshot.delivery`).
+    /// Unsent messages by local id (`LegacyChatSnapshot.delivery`).
     public var delivery: [String: OutboxDelivery]
-    /// The chat has been read at least once (`ChatSnapshot.isLoaded`).
+    /// The chat has been read at least once (`LegacyChatSnapshot.isLoaded`).
     public var isLoaded: Bool
     /// The agent is waiting on a question the person can answer by typing
     /// (AskUserQuestion / request_user_input); sending answers it.

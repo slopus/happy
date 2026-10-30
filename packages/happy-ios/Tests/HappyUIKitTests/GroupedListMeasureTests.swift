@@ -15,7 +15,7 @@ final class GroupedListMeasureTests: XCTestCase {
     #if DEBUG
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// An iPhone 17 Pro's screen.

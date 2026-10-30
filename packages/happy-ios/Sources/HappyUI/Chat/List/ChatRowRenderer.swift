@@ -332,7 +332,7 @@ struct MarkdownPiece {
     /// is at `environment`'s size; the block margins, the code's padding,
     /// the tables' estimated columns, the images' and the diagrams' boxes
     /// keep theirs, as RN's do. `body` sets paragraphs and lists, `header`
-    /// headings (Stem Cells passes desktop's).
+    /// headings (V2 passes desktop's).
     init(
         _ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights, syntax: CodeSyntaxService, in environment: TextEnvironment?,
         body: ChatTextStyle = ChatTextStyles.markdownText, header: (Int) -> ChatTextStyle = ChatTextStyles.markdownHeader
@@ -352,7 +352,7 @@ struct MarkdownPiece {
         }
 
         var diagramIndex = 0
-        for block in Markdown.parse(markdown) {
+        for block in LegacyMarkdown.parse(markdown) {
             switch block {
             case .text(let spans):
                 let measured = MeasuredText(ChatSpans.string(spans, style: body, color: color, in: environment))
@@ -367,7 +367,7 @@ struct MarkdownPiece {
             case .horizontalRule:
                 blocks.append(.rule)
                 drawers.append { placed, origin in
-                    ([.box(ChatBox(frame: placed.frame.offsetBy(dx: origin.x, dy: origin.y), fill: Palette.divider))], [])
+                    ([.box(ChatBox(frame: placed.frame.offsetBy(dx: origin.x, dy: origin.y), fill: Palette.legacyDivider))], [])
                 }
 
             case .list(let items):
@@ -432,7 +432,7 @@ struct MarkdownPiece {
                         grid.append(.box(ChatBox(frame: header, fill: Palette.surfaceHigh)))
                     }
                     for separator in table.separators {
-                        grid.append(.box(ChatBox(frame: separator, fill: Palette.divider)))
+                        grid.append(.box(ChatBox(frame: separator, fill: Palette.legacyDivider)))
                     }
                     var hits: [ChatHit] = []
                     for (rowIndex, cells) in table.cells.enumerated() where rowIndex < measured.count {
@@ -443,7 +443,7 @@ struct MarkdownPiece {
                     }
                     let content = ChatRowPlan(id: "table", size: table.contentSize, items: grid, hits: hits)
                     return ([
-                        .box(ChatBox(frame: frame, border: Palette.divider, borderWidth: MarkdownLayout.Metrics.tableBorder, radius: MarkdownLayout.Metrics.tableRadius)),
+                        .box(ChatBox(frame: frame, border: Palette.legacyDivider, borderWidth: MarkdownLayout.Metrics.tableBorder, radius: MarkdownLayout.Metrics.tableRadius)),
                         .scroller(
                             content, frame: table.scroll.offsetBy(dx: frame.minX, dy: frame.minY),
                             radius: MarkdownLayout.Metrics.tableRadius - MarkdownLayout.Metrics.tableBorder

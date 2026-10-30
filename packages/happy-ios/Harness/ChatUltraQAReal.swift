@@ -114,7 +114,7 @@ final class ChatUltraQAReal {
             sessions = snapshot.sessions.count
             controller.localSettings.chatListRenderer = .ultraList
             let context = AppContext(account: controller, variant: .preview, version: "chat-ultra-qa")
-            let navigation = UINavigationController(rootViewController: HomeViewController(context: context, session: session))
+            let navigation = UINavigationController(rootViewController: LegacyHomeViewController(context: context, session: session))
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
             let shell = TabletShellViewController(context: context, detail: navigation)
             window.rootViewController = shell

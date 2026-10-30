@@ -11,7 +11,7 @@ import XCTest
 final class SecondaryStringsTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     override func tearDown() {

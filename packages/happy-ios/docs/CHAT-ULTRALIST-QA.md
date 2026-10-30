@@ -173,7 +173,7 @@ push animation.
 
 Openings also record counts and maxima over the opening:
 `notReadyVisibleFrames`, `missedFrames`, `turnMaxMs` and `applyMaxMs`. When
-the opening closes, they also copy the opened ChatViewController's own
+the opening closes, they also copy the opened LegacyChatViewController's own
 timings in ms:
 
 - `constructionMs`: building it before the push.
@@ -197,7 +197,7 @@ It is tracked only when Home is on screen at the release, visible (not
 hidden, and with an opacity above 0.01 counting its ancestors) and with no
 chat shown over it, so tab and chat touches don't count. Each display-link
 sample reads presentation layers only (the window's, Home's, and a new
-ChatViewController's view if it is loaded; it never loads one). It has no
+LegacyChatViewController's view if it is loaded; it never loads one). It has no
 fallback to the model layer. The first response is the first sample where
 one of these holds:
 

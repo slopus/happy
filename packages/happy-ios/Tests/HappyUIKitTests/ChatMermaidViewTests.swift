@@ -22,7 +22,7 @@ final class ChatMermaidViewTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// A shown window, light, with `view` in it.

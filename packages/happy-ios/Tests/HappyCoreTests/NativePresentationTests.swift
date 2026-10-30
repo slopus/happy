@@ -14,7 +14,7 @@ final class NativePresentationTests: XCTestCase {
     }
 
     func testToolOutputStaysSeparateFromCollapsedRowAndPermissionStaysVisible() {
-        let snapshot = ChatSnapshot(sessionId: "s", messages: [
+        let snapshot = LegacyChatSnapshot(sessionId: "s", messages: [
             .toolCall(.init(id: "tool", createdAt: 1, tool: .init(name: "Bash", state: .running,
                 input: .object([:]), createdAt: 1, result: .string("large output"), permission: .init(id: "permit", status: .pending)))),
         ])
@@ -26,7 +26,7 @@ final class NativePresentationTests: XCTestCase {
     }
 
     func testDeliveryAndUnsupportedRowsAreNotLost() {
-        let snapshot = ChatSnapshot(sessionId: "s", messages: [
+        let snapshot = LegacyChatSnapshot(sessionId: "s", messages: [
             .userText(.init(id: "u", localId: "pending", createdAt: 1, text: "raw", displayText: "Shown")),
         ], delivery: ["pending": .failed("offline")])
         let row = ConversationRow.make(snapshot)[0]
@@ -36,7 +36,7 @@ final class NativePresentationTests: XCTestCase {
     }
 
     func testStreamDeltaReconfiguresOnlyChangedRow() {
-        let first = ChatSnapshot(sessionId: "s", messages: [
+        let first = LegacyChatSnapshot(sessionId: "s", messages: [
             .userText(.init(id: "u", createdAt: 1, text: "Hello")),
             .agentText(.init(id: "a", createdAt: 2, text: "Hi")),
         ])

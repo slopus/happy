@@ -1,6 +1,6 @@
 // Generates Tests/HappyCoreTests/Fixtures/media-layout-blocks.json from the
 // reference TypeScript: @slopus/happy-agent-client's splitMediaLayoutBlocks.
-// The Swift port (StemCellMediaBlocks.split) must reproduce every case.
+// The Swift port (MediaBlocks.split) must reproduce every case.
 //
 //   bun scripts/generate-media-block-fixtures.ts <happy-agent-client/sources>
 

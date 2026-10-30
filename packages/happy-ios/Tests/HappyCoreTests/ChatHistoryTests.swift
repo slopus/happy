@@ -96,7 +96,7 @@ final class ChatHistoryTests: XCTestCase {
     private let newest = "2147483647"
     private let route = "GET /v3/sessions/s/messages"
 
-    private func texts(_ snapshot: ChatSnapshot?) -> [String] {
+    private func texts(_ snapshot: LegacyChatSnapshot?) -> [String] {
         snapshot?.messages.compactMap { if case .agentText(let message) = $0 { return message.text }; return nil } ?? []
     }
 

@@ -359,7 +359,7 @@ final class DesktopSendButton: DesktopPressable {
         case .locked:
             backgroundColor = UIColor(Palette.surfaceHigh)
             layer.borderWidth = 1
-            layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+            layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
         case .active:
             backgroundColor = UIColor(Palette.composerSendFill)
         case .inactive:

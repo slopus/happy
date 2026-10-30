@@ -32,7 +32,7 @@ final class NoSessionsMeasureParityTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private static let titleText = NoSessionsView.titleText

@@ -15,11 +15,11 @@ final class ChatHistoryWindowTests: XCTestCase {
                                            text: "token \(seq)"), seq: seq)
     }
 
-    private func texts(_ snapshot: ChatSnapshot?) -> [String] {
+    private func texts(_ snapshot: LegacyChatSnapshot?) -> [String] {
         snapshot?.messages.compactMap { if case .agentText(let row) = $0 { return row.text }; return nil } ?? []
     }
 
-    private func next(_ stream: AsyncStream<ChatSnapshot>) async throws -> ChatSnapshot {
+    private func next(_ stream: AsyncStream<LegacyChatSnapshot>) async throws -> LegacyChatSnapshot {
         let value = try await syncPerfNext(stream)
         return try XCTUnwrap(value)
     }

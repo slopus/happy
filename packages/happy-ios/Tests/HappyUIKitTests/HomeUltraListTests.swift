@@ -26,7 +26,7 @@ private final class CaptureUltraView: HomeUltraListView {
 
 @MainActor
 final class HomeUltraListTests: XCTestCase {
-    override func setUp() { super.setUp(); Fonts.registerBundledFonts() }
+    override func setUp() { super.setUp(); LegacyFonts.registerBundledFonts() }
 
     func testDeferredArchivedTextKeepsNativePixelsAndOverlayGeometry() async {
         for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {

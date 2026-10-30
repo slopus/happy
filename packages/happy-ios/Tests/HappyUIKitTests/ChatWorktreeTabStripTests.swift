@@ -17,7 +17,7 @@ final class ChatWorktreeTabStripTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// The names a strip measured, and how many on the main thread.

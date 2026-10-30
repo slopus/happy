@@ -75,7 +75,7 @@ final class DuplicateSheetViewController: UIViewController {
         titleLabel.text(Strings.SessionDetail.duplicateSheetTitle)
         subtitleLabel.text(Strings.SessionDetail.duplicateSheetSubtitle)
         for divider in [headerDivider, actionsDivider] {
-            divider.backgroundColor = UIColor(Palette.divider)
+            divider.backgroundColor = UIColor(Palette.legacyDivider)
         }
         list.alwaysBounceVertical = false
         list.addSubview(spinner)
@@ -478,7 +478,7 @@ private final class DuplicateSheetRow: UIControl {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        divider.backgroundColor = UIColor(Palette.divider)
+        divider.backgroundColor = UIColor(Palette.legacyDivider)
         for subview in [textLabel, metaLabel, divider] {
             subview.isUserInteractionEnabled = false
             addSubview(subview)

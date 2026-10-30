@@ -20,8 +20,8 @@ with the same timing; new rows rise fully drawn from below their settled
 position. A reader away from the newest edge keeps their reading anchor.
 Reduce Motion bypasses the added follow animations.
 
-This behavior belongs to the Happy account chat (`ChatViewController`).
-The experimental Stem Cells chat has its own scroll view and layout.
+This behavior belongs to the Happy account chat (`LegacyChatViewController`).
+The experimental V2 chat has its own scroll view and layout.
 
 `ChatUltraListAdapter` uses `UltraListView(engineMode: .keyframe)` with
 inverted content and inverted rows. `NodeRow` prepares and draws static

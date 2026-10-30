@@ -14,7 +14,7 @@ final class NoSessionsTextSizeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// A view that sets the traits of what is put in it.

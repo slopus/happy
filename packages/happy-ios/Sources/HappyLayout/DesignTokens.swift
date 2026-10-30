@@ -77,7 +77,7 @@ public enum Palette {
     public static let surface = ColorToken("#ffffff", "#161616")
     public static let surfaceHigh = ColorToken("#F8F8F8", "#1E1E1E")
     public static let surfacePressedOverlay = ColorToken("#D1D1D6", "#242424")
-    public static let divider = ColorToken("#eaeaea", "#2A2A2A")
+    public static let legacyDivider = ColorToken("#eaeaea", "#2A2A2A")
     /// Item separators. theme.colors.glass.divider: rgba(60,60,67,0.12) and
     /// rgba(255,255,255,0.08).
     public static let itemDivider = ColorToken(

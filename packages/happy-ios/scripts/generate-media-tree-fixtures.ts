@@ -1,6 +1,6 @@
 // Generates Tests/HappyCoreTests/Fixtures/media-layout-html.json from the
 // reference TypeScript: @slopus/happy-agent-client's parseMediaLayoutHtml.
-// The Swift port (StemCellMediaTree.parse) must build the same tree, place
+// The Swift port (MediaTree.parse) must build the same tree, place
 // the same items and report the same truncation for every case.
 //
 //   bun scripts/generate-media-tree-fixtures.ts <happy-agent-client/sources>

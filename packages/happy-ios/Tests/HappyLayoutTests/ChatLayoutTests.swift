@@ -431,7 +431,7 @@ final class ToolRowLayoutTests: XCTestCase {
     }
 
     func testAStackOfBoxes() {
-        let layout = ChatStackLayout(width: 300, items: [
+        let layout = LegacyChatStackLayout(width: 300, items: [
             .init(block(height: 20), marginBottom: 12),
             .init(fixed(100, 30), padding: LayoutInsets(top: 12, left: 12, bottom: 12, right: 12), placement: .leading),
             .init(fixed(50, 10), marginTop: 8, placement: .center),
@@ -444,7 +444,7 @@ final class ToolRowLayoutTests: XCTestCase {
     func testAFullWidthSectionRunsToTheCardsEdgesUnderItsHeader() {
         // ToolSectionView fullWidth: -12 either side, -8 on top, 12 below,
         // inside a card body that is 12 in and 8 down.
-        let layout = ChatStackLayout(width: 329, items: [
+        let layout = LegacyChatStackLayout(width: 329, items: [
             .init(block(height: 120), marginTop: -8, marginBottom: 12, padding: LayoutInsets(top: 0, left: -12, bottom: 0, right: -12)),
         ])
         assertFrame(layout.contents[0], rect(-12, -8, 353, 120))
@@ -452,7 +452,7 @@ final class ToolRowLayoutTests: XCTestCase {
     }
 
     func testAClippedBox() {
-        let layout = ChatStackLayout(width: 300, items: [
+        let layout = LegacyChatStackLayout(width: 300, items: [
             .init(block(height: 200), padding: LayoutInsets(top: 12, left: 12, bottom: 12, right: 12), maxHeight: 115),
         ])
         assertFrame(layout.boxes[0], rect(0, 0, 300, 115))
@@ -514,8 +514,8 @@ final class ToolRowLayoutTests: XCTestCase {
 }
 
 final class ChatScreenLayoutTests: XCTestCase {
-    private func screen(keyboardTop: CGFloat?) -> ChatScreenLayout {
-        ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: keyboardTop, accessories: [.inset(block(height: 60))], composerHeight: 70))
+    private func screen(keyboardTop: CGFloat?) -> LegacyChatScreenLayout {
+        LegacyChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: keyboardTop, accessories: [.inset(block(height: 60))], composerHeight: 70))
     }
 
     func testTheDockRestsOnTheSafeArea() {
@@ -532,21 +532,21 @@ final class ChatScreenLayoutTests: XCTestCase {
     }
 
     func testTheRigActivityBarRunsFullWidthUnderTheInsetBars() {
-        let layout = ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [.inset(block(height: 57)), .fullWidth(block(height: 23))], composerHeight: 70))
+        let layout = LegacyChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [.inset(block(height: 57)), .fullWidth(block(height: 23))], composerHeight: 70))
         XCTAssertEqual(layout.accessories, [rect(8, 0, 377, 57), rect(0, 57, 393, 23)])
         assertFrame(layout.composer, rect(0, 80, 393, 70))
         assertFrame(layout.dock, rect(0, 668, 393, 150))
     }
 
     func testTheScrollButtonSitsAboveTheComposerCard() {
-        let layout = ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, composerHeight: 70, composerCardOffset: 20))
+        let layout = LegacyChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, composerHeight: 70, composerCardOffset: 20))
         assertFrame(layout.dock, rect(0, 748, 393, 70))
         assertFrame(layout.scrollButton, rect(180.5, 720, 32, 32))
     }
 
     func testOnATabletTheListStopsAtTheDock() {
         // An iPad's chat: 1024 by 768, status bar 24 and a 50 bar.
-        let layout = ChatScreenLayout(.init(
+        let layout = LegacyChatScreenLayout(.init(
             size: CGSize(width: 664, height: 768), safeArea: LayoutInsets(top: 74, left: 0, bottom: 20, right: 0), keyboardTop: nil,
             accessories: [.inset(block(height: 60))], composerHeight: 70, composerCardOffset: 20, docked: true, accessoryPaddingH: 12
         ))
@@ -566,7 +566,7 @@ final class ChatScreenLayoutTests: XCTestCase {
 
     func testAPhoneOnItsSideHasNoHeader() {
         // An iPhone SE held sideways: below the tablet width, no status bar.
-        let layout = ChatScreenLayout(.init(
+        let layout = LegacyChatScreenLayout(.init(
             size: CGSize(width: 667, height: 375), safeArea: LayoutInsets(top: 0, left: 0, bottom: 0, right: 0), keyboardTop: nil,
             accessories: [.inset(block(height: 60))], composerHeight: 70, composerCardOffset: 20, hidesHeader: true
         ))
@@ -585,7 +585,7 @@ final class ChatScreenLayoutTests: XCTestCase {
 
     func testWithoutTheHeaderTheListStartsUnderTheStatusBar() {
         // A short, wide window with a status bar (Stage Manager).
-        let layout = ChatScreenLayout(.init(
+        let layout = LegacyChatScreenLayout(.init(
             size: CGSize(width: 700, height: 500), safeArea: LayoutInsets(top: 24, left: 0, bottom: 20, right: 0), keyboardTop: nil,
             composerHeight: 70, hidesHeader: true
         ))
@@ -595,7 +595,7 @@ final class ChatScreenLayoutTests: XCTestCase {
         XCTAssertEqual(layout.backButton, rect(16, 32, 44, 44))
         XCTAssertEqual(layout.statusBarShadow, rect(0, 0, 700, 24))
         // The keyboard still carries the dock.
-        let typing = ChatScreenLayout(.init(
+        let typing = LegacyChatScreenLayout(.init(
             size: CGSize(width: 700, height: 500), safeArea: LayoutInsets(top: 24, left: 0, bottom: 20, right: 0), keyboardTop: 300,
             composerHeight: 70, hidesHeader: true
         ))
@@ -604,7 +604,7 @@ final class ChatScreenLayoutTests: XCTestCase {
     }
 
     func testTheTabStripHangsUnderTheHeader() {
-        let layout = ChatScreenLayout(.init(
+        let layout = LegacyChatScreenLayout(.init(
             size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [.inset(block(height: 60))], composerHeight: 70,
             headerAccessory: WorktreeTabStripLayout.Metrics.height
         ))
@@ -620,7 +620,7 @@ final class ChatScreenLayoutTests: XCTestCase {
     }
 
     func testOnATabletTheListStartsUnderTheStrip() {
-        let layout = ChatScreenLayout(.init(
+        let layout = LegacyChatScreenLayout(.init(
             size: CGSize(width: 664, height: 768), safeArea: LayoutInsets(top: 74, left: 0, bottom: 20, right: 0), keyboardTop: nil,
             composerHeight: 70, docked: true, accessoryPaddingH: 12, headerAccessory: 56
         ))
@@ -631,7 +631,7 @@ final class ChatScreenLayoutTests: XCTestCase {
     }
 
     func testWithoutTheHeaderNothingHangsUnderIt() {
-        let layout = ChatScreenLayout(.init(
+        let layout = LegacyChatScreenLayout(.init(
             size: CGSize(width: 667, height: 375), safeArea: LayoutInsets(), keyboardTop: nil,
             composerHeight: 70, hidesHeader: true, headerAccessory: 56
         ))
@@ -650,12 +650,12 @@ final class ChatScreenLayoutTests: XCTestCase {
     }
 
     func testDockDetailsHysteresis() {
-        XCTAssertTrue(ChatScreenLayout.dockDetailsVisible(distanceFromNewest: 30, currentlyVisible: true))
-        XCTAssertFalse(ChatScreenLayout.dockDetailsVisible(distanceFromNewest: 60, currentlyVisible: true))
-        XCTAssertFalse(ChatScreenLayout.dockDetailsVisible(distanceFromNewest: 30, currentlyVisible: false))
-        XCTAssertTrue(ChatScreenLayout.dockDetailsVisible(distanceFromNewest: 10, currentlyVisible: false))
-        XCTAssertFalse(ChatScreenLayout.showsScrollButton(distanceFromNewest: 300))
-        XCTAssertTrue(ChatScreenLayout.showsScrollButton(distanceFromNewest: 301))
+        XCTAssertTrue(LegacyChatScreenLayout.dockDetailsVisible(distanceFromNewest: 30, currentlyVisible: true))
+        XCTAssertFalse(LegacyChatScreenLayout.dockDetailsVisible(distanceFromNewest: 60, currentlyVisible: true))
+        XCTAssertFalse(LegacyChatScreenLayout.dockDetailsVisible(distanceFromNewest: 30, currentlyVisible: false))
+        XCTAssertTrue(LegacyChatScreenLayout.dockDetailsVisible(distanceFromNewest: 10, currentlyVisible: false))
+        XCTAssertFalse(LegacyChatScreenLayout.showsScrollButton(distanceFromNewest: 300))
+        XCTAssertTrue(LegacyChatScreenLayout.showsScrollButton(distanceFromNewest: 301))
     }
 
     func testQuestionBanner() {
@@ -767,7 +767,7 @@ final class QuestionSheetLayoutTests: XCTestCase {
     }
 }
 
-final class ChatHeaderLayoutTests: XCTestCase {
+final class LegacyChatHeaderLayoutTests: XCTestCase {
     func testTheCapsuleHugsATitleAlone() {
         let layout = ChatHeaderTitleLayout(maxWidth: 245, title: text("Fix the login", lineHeight: 20, maxLines: 1), subtitle: nil, changes: nil)
         assertSize(layout.size, CGSize(width: 132, height: 44))
@@ -799,18 +799,18 @@ final class ChatHeaderLayoutTests: XCTestCase {
     }
 
     func testTheHeaderScrimAndTheEmptyChatsPlace() {
-        let layout = ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [.inset(block(height: 60))], composerHeight: 70))
+        let layout = LegacyChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [.inset(block(height: 60))], composerHeight: 70))
         // The bar and 8 past it; the placeholder between the bar and the dock.
         assertFrame(layout.headerScrim, rect(0, 0, 393, 111))
         assertFrame(layout.placeholder, rect(0, 103, 393, 585))
-        let typing = ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: 500, composerHeight: 70))
+        let typing = LegacyChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: 500, composerHeight: 70))
         assertFrame(typing.placeholder, rect(0, 103, 393, 327))
     }
 
     func testTheBackdropStrengthensOnceContentIsUnderTheHeader() {
-        XCTAssertFalse(ChatScreenLayout.headerBackdropVisible(distanceFromOldest: 0))
-        XCTAssertFalse(ChatScreenLayout.headerBackdropVisible(distanceFromOldest: 0.4))
-        XCTAssertTrue(ChatScreenLayout.headerBackdropVisible(distanceFromOldest: 1))
+        XCTAssertFalse(LegacyChatScreenLayout.headerBackdropVisible(distanceFromOldest: 0))
+        XCTAssertFalse(LegacyChatScreenLayout.headerBackdropVisible(distanceFromOldest: 0.4))
+        XCTAssertTrue(LegacyChatScreenLayout.headerBackdropVisible(distanceFromOldest: 1))
     }
 }
 

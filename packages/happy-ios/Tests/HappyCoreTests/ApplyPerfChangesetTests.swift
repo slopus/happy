@@ -729,7 +729,7 @@ final class ApplyPerfChatFactsTests: XCTestCase {
         var reducer = ChatReducer()
         _ = reducer.reduce([ChatRecords.user("u1", localId: "local-1"), ChatRecords.text("a1")])
         let messages = reducer.messages
-        let facts = ChatSnapshotFacts(ChatSnapshot(sessionId: "s", messages: messages, isLoaded: true))
+        let facts = ChatSnapshotFacts(LegacyChatSnapshot(sessionId: "s", messages: messages, isLoaded: true))
         XCTAssertTrue(facts.isLoaded)
         XCTAssertFalse(facts.isEmpty)
         XCTAssertFalse(facts.hasPendingQuestion)

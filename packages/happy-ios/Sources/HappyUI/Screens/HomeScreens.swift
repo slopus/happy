@@ -21,14 +21,14 @@ import UIKit
 ///
 /// The dock sits at the foot of every state but Link Your Computer, which
 /// is not MainView in happy-app; content leaves it 108pt. Where a computer
-/// is a home of its own (`StemCellsPreference`), it leaves the offline
+/// is a home of its own (`Preference`), it leaves the offline
 /// checklist too: with no computer to reach there is nothing to start work
 /// on. There, the account's picture leads to the profiles' settings, where
 /// a computer is chosen instead.
 ///
 /// Screens pushed over it (settings, server, troubleshoot) stay where they
 /// are when a computer arrives, as they do in happy-app.
-public final class HomeViewController: UIViewController {
+public final class LegacyHomeViewController: UIViewController {
     private let context: AppContext
     private let session: AccountSession
     private let titleView = NavigationTitleView()
@@ -69,10 +69,10 @@ public final class HomeViewController: UIViewController {
         dockView.isHidden = true
         view.addSubview(dockView)
         accountControl = HomeAccountControl(context: context, controller: self)
-        if StemCellsPreference(variant: context.variant).isAvailable {
+        if Preference(variant: context.variant).isAvailable {
             accountControl?.opensSettings = { [weak self] in
                 guard let self else { return }
-                StemCellsSettingsViewController.open(context: context, computer: nil, from: self)
+                SettingsViewController.open(context: context, computer: nil, from: self)
             }
         }
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
@@ -126,7 +126,7 @@ public final class HomeViewController: UIViewController {
     private var showsDock: Bool {
         switch state {
         case nil, .link?: false
-        case .offline?: !StemCellsPreference(variant: context.variant).isAvailable
+        case .offline?: !Preference(variant: context.variant).isAvailable
         default: true
         }
     }

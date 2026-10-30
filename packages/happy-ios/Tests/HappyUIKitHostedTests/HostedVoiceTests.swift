@@ -7,7 +7,7 @@ import XCTest
 
 @MainActor
 final class HostedVoiceTests: XCTestCase {
-    override func setUp() { super.setUp(); Fonts.registerBundledFonts() }
+    override func setUp() { super.setUp(); LegacyFonts.registerBundledFonts() }
 
     func testCallControlsAndBackendDenialUseActualScreenAndReachSupport() async throws {
         let screen = VoiceStatusViewController(coordinator: .shared)

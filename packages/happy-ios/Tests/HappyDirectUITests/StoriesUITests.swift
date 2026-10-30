@@ -2,7 +2,7 @@ import ObjectiveC
 import XCTest
 
 /// Stories against a real throwaway Happy Agent on this Mac, as
-/// `StemCellsUITests` drives Stem Cells: a driver outside the test pairs the
+/// `UITests` drives V2: a driver outside the test pairs the
 /// simulator, plays the computer's side when the test prints a
 /// `STORIES_STEP` line, and records the screen. Nothing here holds a
 /// credential.
@@ -30,7 +30,7 @@ final class StoriesUITests: XCTestCase {
         continueAfterFailure = false
         print("StoriesUITests skips quiescence: \(Self.skipsQuiescence)")
         // Direct connection is an experiment, off on a fresh install.
-        app.launchEnvironment["STEM_DIRECT"] = "1"
+        app.launchEnvironment["HAPPY_DIRECT"] = "1"
         app.launch()
     }
 
@@ -38,9 +38,9 @@ final class StoriesUITests: XCTestCase {
 
     /// Pairs if this simulator has no computer yet, then waits for the sidebar.
     private func home() {
-        let anyRow = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:")).firstMatch
+        let anyRow = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "row:")).firstMatch
         if anyRow.waitForExistence(timeout: 8) { return }
-        print("STEM_PAIR_READY")
+        print("HAPPY_PAIR_READY")
         let match = app.buttons["Emoji match"]
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let deadline = Date().addingTimeInterval(120)
@@ -89,8 +89,8 @@ final class StoriesUITests: XCTestCase {
     /// draft a story of it inline, with Post and Edit under it.
     private func draftInConversation() -> (inline: XCUIElement, working: XCUIElement) {
         pause(1.5)
-        element("stem-new-work").tap()
-        let composer = app.textViews["stem-composer"]
+        element("new-work").tap()
+        let composer = app.textViews["composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         pause(1)
         if app.buttons["Continue"].exists { app.buttons["Continue"].tap(); pause(0.5) }
@@ -101,8 +101,8 @@ final class StoriesUITests: XCTestCase {
         pause(0.5)
         app.buttons["Send"].tap()
         if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
-        let pictures = app.descendants(matching: .any).matching(identifier: "stem-media")
-        let working = element("stem-working")
+        let pictures = app.descendants(matching: .any).matching(identifier: "media")
+        let working = element("working")
         var deadline = Date().addingTimeInterval(300)
         while Date() < deadline, pictures.count == 0 || working.exists { pause(2) }
         XCTAssertGreaterThan(pictures.count, 0, "no chart was presented")
@@ -325,7 +325,7 @@ final class StoriesUITests: XCTestCase {
         openStories(mine)
         pause(1.5)
         capture("row-open")
-        let firstRow = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stem-row:")).firstMatch
+        let firstRow = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "row:")).firstMatch
         XCTAssertGreaterThan(firstRow.frame.minY, mine.frame.maxY, "the sidebar runs under the stories")
 
         // Scrolling the list up closes them into the header.
@@ -337,8 +337,8 @@ final class StoriesUITests: XCTestCase {
         pause(1.5)
 
         // Off in Settings: home is as it was. On: the row returns.
-        element("stem-settings-mark").tap()
-        let toggle = app.switches["stem-settings-toggle:stories"]
+        element("settings-mark").tap()
+        let toggle = app.switches["settings-toggle:stories"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5), "no Stories switch")
         pause(1)
         capture("settings-stories-on")
@@ -349,7 +349,7 @@ final class StoriesUITests: XCTestCase {
         pause(2)
         XCTAssertFalse(element("story-circle:self").exists, "the row stayed with Stories off")
         capture("home-stories-off")
-        element("stem-settings-mark").tap()
+        element("settings-mark").tap()
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         toggle.tap()
         pause(1.5)

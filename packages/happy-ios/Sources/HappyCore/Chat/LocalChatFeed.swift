@@ -12,7 +12,7 @@ public final class LocalChatFeed: ChatFeed {
 
     /// Yields disk immediately, then only visible chat changes. Terminating
     /// the stream cancels its database observation and releases the reducer.
-    public func snapshots(sessionId: String) -> AsyncStream<ChatSnapshot> {
+    public func snapshots(sessionId: String) -> AsyncStream<LegacyChatSnapshot> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task {
                 var state = FeedState(sessionId: sessionId)
@@ -87,7 +87,7 @@ struct FeedState: Sendable {
         windowEpoch = epoch
     }
 
-    mutating func apply(_ page: ChatStorePage) -> ChatSnapshot {
+    mutating func apply(_ page: ChatStorePage) -> LegacyChatSnapshot {
         ThreadRules.assertOffMain()
         let change = page.change
         let records = page.records.compactMap(ChatNormalizer.normalize)
@@ -155,7 +155,7 @@ struct FeedState: Sendable {
         recordCount = change.messageCount
         lastChange = change
         let loaded = change.session?.isLoaded ?? false
-        return ChatSnapshot(
+        return LegacyChatSnapshot(
             sessionId: sessionId, messages: messages, delivery: delivery, isLoaded: loaded,
             usage: reducer.usage, todos: reducer.todos, hasMoreOlder: change.hasMoreOlder,
             olderBoundary: change.olderBoundary, windowEpoch: windowEpoch)

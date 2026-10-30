@@ -1,205 +1,130 @@
-import Foundation
-#if canImport(CoreGraphics)
 import CoreGraphics
-#endif
-import HappyLayout
+@testable import HappyLayout
 import XCTest
 
-final class ItemRowTrailingTests: XCTestCase {
-    func testASwitchTakesTheChevronsPlace() {
-        let layout = ItemRowLayout(.init(
-            width: 361,
-            hasIcon: true,
-            title: text("Analytics", lineHeight: 22, maxLines: 1),
-            subtitle: text("Usage data is shared", lineHeight: 20, maxLines: 2),
-            trailing: CGSize(width: 51, height: 31)
-        ))
-        XCTAssertEqual(layout.rowHeight, 66)
-        assertFrame(layout.title, rect(57, 11, 229, 22))
-        assertFrame(layout.trailing, rect(294, 17.5, 51, 31))
-        XCTAssertNil(layout.accessory)
+/// V2 settings on a 390-wide phone: the bar, the profile strip,
+/// the cards and the QR sheet, frame by frame.
+final class SettingsLayoutTests: XCTestCase {
+    /// A row home's search found comes to the middle of the page, as far
+    /// as the page scrolls.
+    func testARowSearchFoundScrollsToTheMiddle() {
+        let row = SettingsLayout.RowSpec(hasIcon: true, valueWidth: nil, accessory: .chevron)
+        let layout = SettingsLayout(width: 402, nameHeight: 34, subtitleHeight: 21, cards: Array(repeating: Array(repeating: row, count: 4), count: 6))
+        let insets = LayoutInsets(top: 114, left: 0, bottom: 34, right: 0)
+        // The fourth card's second row: cards from 209 (8, the strip's 104,
+        // 12, the name's 34, 2, the line's 21, 28), 232 apart, its middle 78
+        // into its card: 983 down. 726 shows between the insets.
+        let card = layout.cards[3]
+        XCTAssertEqual(card.frame.minY + card.rows[1].box.midY, 983)
+        XCTAssertEqual(layout.revealOffset(card: 3, row: 1, viewport: 874, insets: insets), 983 - 114 - 726 / 2)
+        // The first row can't come down to the middle: the page stays at its top.
+        XCTAssertEqual(layout.revealOffset(card: 0, row: 0, viewport: 874, insets: insets), -114)
+        // The last can't come up past the page's end.
+        XCTAssertEqual(layout.revealOffset(card: 5, row: 3, viewport: 874, insets: insets), layout.contentHeight + 34 - 874)
+        XCTAssertNil(layout.revealOffset(card: 6, row: 0, viewport: 874, insets: insets))
+        XCTAssertNil(layout.revealOffset(card: 0, row: 4, viewport: 874, insets: insets))
     }
 
-    func testDetailSpinnerAndChevronKeepRNsSpacing() {
-        let layout = ItemRowLayout(.init(
-            width: 361,
-            title: text("GitHub", lineHeight: 22, maxLines: 1),
-            detail: text("slopus/happy", lineHeight: 22, maxLines: 1),
-            trailing: CGSize(width: 20, height: 20),
-            accessory: CGSize(width: 8, height: 14)
-        ))
-        XCTAssertEqual(layout.rowHeight, 46)
-        assertFrame(layout.detail, rect(205, 12, 96, 22))
-        assertFrame(layout.trailing, rect(307, 13, 20, 20))
-        assertFrame(layout.accessory, rect(337, 16, 8, 14))
-        XCTAssertEqual(layout.title.width, 181)
+    func testSearchingTheCardsMoveUpUnderTheField() {
+        typealias L = SettingsLayout
+        let layout = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: true, accessory: .chevron)]], searching: true)
+        XCTAssertEqual(layout.cards[0].frame, CGRect(x: 16, y: 8, width: 358, height: 52))
+        XCTAssertEqual(layout.empty, CGRect(x: 0, y: 40, width: 390, height: 24))
+        XCTAssertEqual(layout.contentHeight, 92)
+        let nothing = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [], searching: true)
+        XCTAssertEqual(nothing.contentHeight, 40)
     }
 
-    func testAnUntitledGroupWithOwnPadding() {
-        // HomeListHeader's offline plaque: 4 above, 16 below.
-        let layout = ItemGroupLayout(.init(width: 393, rows: [block(height: 66)], untitledPaddingTop: 4, paddingBottom: 16))
-        assertFrame(layout.card, rect(16, 4, 361, 66))
-        assertSize(layout.size, CGSize(width: 393, height: 86))
-    }
-}
-
-final class SettingsPageLayoutTests: XCTestCase {
-    func testProfileHeader() {
-        let layout = SettingsProfileHeaderLayout(
-            width: 393,
-            name: text("Ada Lovelace", lineHeight: 25, maxLines: 1),
-            bio: text("Math", lineHeight: 19)
-        )
-        assertFrame(layout.card, rect(16, 16, 361, 206))
-        assertFrame(layout.avatar, rect(135.5, 24, 90, 90))
-        assertFrame(layout.name, rect(132.5, 126, 96, 25))
-        assertFrame(layout.bio, rect(164.5, 155, 32, 19))
-        assertSize(layout.size, CGSize(width: 393, height: 222))
-
-        let plain = SettingsProfileHeaderLayout(width: 393, name: text("Ada Lovelace", lineHeight: 25, maxLines: 1), bio: nil)
-        XCTAssertNil(plain.bio)
-        assertFrame(plain.card, rect(16, 16, 361, 183))
+    func testTheChosenProfileIsCentredLargerAndTheOthersShrinkWithDistance() {
+        typealias C = ProfileCarousel
+        XCTAssertEqual(C.Metrics.height, 104)
+        XCTAssertEqual(C.contentWidth(count: 3, width: 390), 558)
+        XCTAssertEqual(C.item(0, offset: 0, width: 390), C.Item(frame: CGRect(x: 149, y: 6, width: 92, height: 92), emphasis: 1))
+        XCTAssertEqual(C.item(1, offset: 0, width: 390), C.Item(frame: CGRect(x: 249, y: 22, width: 60, height: 60), emphasis: 0))
+        // Halfway between two, both are halfway sizes.
+        XCTAssertEqual(C.item(0, offset: 42, width: 390), C.Item(frame: CGRect(x: 157, y: 14, width: 76, height: 76), emphasis: 0.5))
+        XCTAssertEqual(C.item(1, offset: 42, width: 390), C.Item(frame: CGRect(x: 241, y: 14, width: 76, height: 76), emphasis: 0.5))
+        // A flick rests on an item, never past the ends.
+        XCTAssertEqual(C.snapped(100, count: 3), 84)
+        XCTAssertEqual(C.snapped(500, count: 3), 168)
+        XCTAssertEqual(C.index(at: -50, count: 3), 0)
     }
 
-    func testDropdownValue() {
-        let layout = DropdownValueLayout(preview: CGSize(width: 46, height: 28), label: text("Gray", lineHeight: 20, maxLines: 1))
-        assertFrame(layout.preview, rect(0, 0, 46, 28))
-        assertFrame(layout.label, rect(54, 4, 32, 20))
-        assertFrame(layout.chevron, rect(94, 5, 18, 18))
-        assertSize(layout.size, CGSize(width: 112, height: 28))
-
-        let long = DropdownValueLayout(preview: CGSize(width: 46, height: 28), label: text("Something very long name", lineHeight: 20, maxLines: 1))
-        XCTAssertEqual(long.label.width, 104, "the name gives way first")
-        XCTAssertEqual(long.size.width, 184)
-    }
-
-    func testOptionRowsAndList() {
-        let row = OptionRowLayout(width: 361, preview: CGSize(width: 46, height: 28), title: text("Blue", lineHeight: 21, maxLines: 1))
-        assertFrame(row.preview, rect(16, 10, 46, 28))
-        assertFrame(row.title, rect(74, 13.5, 239, 21))
-        assertFrame(row.check, rect(325, 14, 20, 20))
-        assertSize(row.size, CGSize(width: 361, height: 48))
-
-        let list = OptionListLayout(width: 361, rows: [block(height: 48), block(height: 48), block(height: 48)])
-        XCTAssertEqual(list.rows.map(\.minY), [6, 54, 102])
-        assertSize(list.size, CGSize(width: 361, height: 156))
-    }
-
-    func testBubblePreviewLines() {
-        XCTAssertEqual(BubblePreviewLayout.lines, [rect(19, 9, 18, 3), rect(11, 16, 26, 3)])
-    }
-
-    func testConnectCommandIsCentred() {
-        let layout = ConnectCommandLayout(
-            size: phone,
-            safeArea: phoneUnderBar,
-            title: text("Connect Claude", lineHeight: 23),
-            body: text("Run the following command in your terminal:", lineHeight: 19),
-            command: text("$ happy connect claude", lineHeight: 19, maxLines: 1)
-        )
-        assertFrame(layout.title, rect(140.5, 392, 112, 23))
-        assertFrame(layout.body, rect(24.5, 435, 344, 19))
-        assertFrame(layout.terminal, rect(56.5, 478, 280, 51))
-        assertFrame(layout.command, rect(16, 16, 176, 19))
-    }
-
-    func testChangelogBodyListsAndParagraphs() {
-        let items = [
-            ChangelogBodyLayout.Item(text: text("aaaa", lineHeight: 25), bulleted: true),
-            ChangelogBodyLayout.Item(text: text("bb", lineHeight: 25), bulleted: true),
-            ChangelogBodyLayout.Item(text: text("cc", lineHeight: 25), bulleted: false),
-        ]
-        let layout = ChangelogBodyLayout(width: 361, summary: nil, items: items, bullet: CGSize(width: 7, height: 25))
-        XCTAssertNil(layout.summary)
-        assertFrame(layout.bullets[0], rect(16, 15, 7, 25))
-        assertFrame(layout.texts[0], rect(31, 14, 314, 25))
-        assertFrame(layout.bullets[1], rect(16, 47, 7, 25))
-        assertFrame(layout.texts[1], rect(31, 46, 314, 25))
-        XCTAssertNil(layout.bullets[2])
-        assertFrame(layout.texts[2], rect(16, 88, 329, 25))
-        assertSize(layout.size, CGSize(width: 361, height: 129))
-
-        let summarised = ChangelogBodyLayout(width: 361, summary: text("s", lineHeight: 23), items: items, bullet: CGSize(width: 7, height: 25))
-        assertFrame(summarised.summary, rect(16, 14, 329, 23))
-        XCTAssertEqual(summarised.texts[0].minY, 53)
-    }
-}
-
-final class UsageLayoutTests: XCTestCase {
-    func testPeriodSelector() {
-        let layout = UsagePeriodSelectorLayout(width: 393, labels: [
-            text("Today", lineHeight: 18, maxLines: 1),
-            text("Last 7 days", lineHeight: 18, maxLines: 1),
-            text("Last 30 days", lineHeight: 18, maxLines: 1),
+    func testTheCardsAreInsetWithTilesValuesChevronsAndAToggle() {
+        typealias L = SettingsLayout
+        let layout = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [
+            [L.RowSpec(hasIcon: true, accessory: .toggle)],
+            [L.RowSpec(hasIcon: true, accessory: .chevron), L.RowSpec(hasIcon: true, valueWidth: 40, accessory: .chevron)],
+            [L.RowSpec(hasIcon: false, accessory: .none)],
         ])
-        let third: CGFloat = 329.0 / 3
-        assertFrame(layout.card, rect(16, 16, 361, 50))
-        assertFrame(layout.buttons[0], rect(8, 8, third, 34))
-        assertFrame(layout.buttons[2], rect(8 + 2 * (third + 8), 8, third, 34))
-        assertFrame(layout.labels[0], rect((third - 40) / 2, 8, 40, 18))
-        XCTAssertEqual(layout.labels[2].width, third - 24, accuracy: 0.001, "clamped inside the button's padding")
-        assertSize(layout.size, CGSize(width: 393, height: 82))
+        XCTAssertEqual(layout.strip, CGRect(x: 0, y: 8, width: 390, height: 104))
+        XCTAssertEqual(layout.name, CGRect(x: 24, y: 124, width: 342, height: 34))
+        XCTAssertEqual(layout.subtitle, CGRect(x: 24, y: 160, width: 342, height: 22))
+
+        let prioritizing = layout.cards[0]
+        XCTAssertEqual(prioritizing.frame, CGRect(x: 16, y: 210, width: 358, height: 52))
+        XCTAssertEqual(prioritizing.rows[0].icon, CGRect(x: 16, y: 11, width: 30, height: 30))
+        XCTAssertEqual(prioritizing.rows[0].title, CGRect(x: 62, y: 15, width: 209, height: 22))
+        XCTAssertEqual(prioritizing.rows[0].toggle, CGRect(x: 279, y: 12, width: 63, height: 28))
+        XCTAssertNil(prioritizing.rows[0].separator)
+
+        let more = layout.cards[1]
+        XCTAssertEqual(more.frame, CGRect(x: 16, y: 286, width: 358, height: 104))
+        XCTAssertEqual(more.rows[0].chevron, CGRect(x: 334, y: 19, width: 8, height: 14))
+        XCTAssertEqual(more.rows[0].title, CGRect(x: 62, y: 15, width: 264, height: 22))
+        XCTAssertEqual(more.rows[0].separator, CGRect(x: 62, y: 52 - 1.0 / 3, width: 296, height: 1.0 / 3))
+        XCTAssertEqual(more.rows[1].chevron, CGRect(x: 334, y: 71, width: 8, height: 14))
+        XCTAssertEqual(more.rows[1].value, CGRect(x: 286, y: 67, width: 40, height: 22))
+        XCTAssertEqual(more.rows[1].title, CGRect(x: 62, y: 67, width: 216, height: 22))
+        XCTAssertNil(more.rows[1].separator)
+
+        let disconnect = layout.cards[2]
+        XCTAssertEqual(disconnect.frame, CGRect(x: 16, y: 414, width: 358, height: 52))
+        XCTAssertNil(disconnect.rows[0].icon)
+        XCTAssertEqual(disconnect.rows[0].title, CGRect(x: 16, y: 15, width: 326, height: 22))
+        XCTAssertEqual(layout.contentHeight, 498)
     }
 
-    func testStats() {
-        let layout = UsageStatsLayout(width: 393, rows: [
-            .init(label: text("Total Tokens", lineHeight: 21), value: text("1.23M", lineHeight: 25)),
-            .init(label: text("Total Cost", lineHeight: 21), value: text("$1.5000", lineHeight: 25)),
+    func testTheQRSheetSitsAtTheFootWithThePictureCentredAboveIt() {
+        let sheet = QRSheetLayout(size: CGSize(width: 390, height: 844), safeTop: 47, safeBottom: 34, nameHeight: 28, text: .fixed(width: 300, height: 44))
+        XCTAssertEqual(sheet.sheet, CGRect(x: 0, y: 570, width: 390, height: 274))
+        XCTAssertEqual(sheet.close, CGRect(x: 330, y: 16, width: 44, height: 44))
+        XCTAssertEqual(sheet.title, CGRect(x: 74, y: 25, width: 242, height: 22))
+        XCTAssertEqual(sheet.text, CGRect(x: 30, y: 58, width: 330, height: 44))
+        XCTAssertEqual(sheet.primary, CGRect(x: 30, y: 126, width: 330, height: 52))
+        XCTAssertEqual(sheet.secondary, CGRect(x: 30, y: 188, width: 330, height: 52))
+        XCTAssertEqual(sheet.avatar, CGRect(x: 145, y: 237, width: 100, height: 100))
+        XCTAssertEqual(sheet.name, CGRect(x: 30, y: 353, width: 330, height: 28))
+    }
+
+    func testTheLinkSheetTitlesItThenNumbersItsSteps() {
+        let line = Measurable { _ in CGSize(width: 200, height: 22) }
+        let body = Measurable { _ in CGSize(width: 300, height: 42) }
+        let layout = LinkContentLayout(width: 345, title: Measurable { _ in CGSize(width: 200, height: 34) }, steps: [
+            .init(title: line, body: body), .init(title: line, body: body), .init(title: line, body: body),
         ])
-        assertFrame(layout.labels[0], rect(16, 18, 96, 21))
-        assertFrame(layout.values[0], rect(305, 16, 40, 25))
-        assertFrame(layout.labels[1], rect(16, 55, 80, 21))
-        assertFrame(layout.values[1], rect(289, 53, 56, 25))
-        assertFrame(layout.card, rect(16, 16, 361, 94))
-        assertSize(layout.size, CGSize(width: 393, height: 126))
-    }
-
-    func testChartSection() {
-        let layout = UsageChartSectionLayout(
-            width: 393,
-            title: text("Usage over time", lineHeight: 23),
-            toggles: [text("Tokens", lineHeight: 18), text("Cost", lineHeight: 18)],
-            chartHeight: 180
-        )
-        assertFrame(layout.title, rect(16, 16, 329, 23))
-        assertFrame(layout.toggles[0], rect(100.5, 63, 80, 30))
-        assertFrame(layout.toggles[1], rect(196.5, 63, 64, 30))
-        assertFrame(layout.toggleLabels[1], rect(16, 6, 32, 18))
-        assertFrame(layout.chart, rect(0, 125, 361, 180))
-        assertFrame(layout.card, rect(16, 16, 361, 321))
-        assertSize(layout.size, CGSize(width: 393, height: 337))
-    }
-
-    func testChartBars() {
-        let layout = UsageChartLayout(fractions: [1, 0.5, 0], value: CGSize(width: 30, height: 13), label: CGSize(width: 60, height: 13))
-        assertFrame(layout.bars[0], rect(10, 17, 40, 123))
-        assertFrame(layout.values[0], rect(15, 0, 30, 13))
-        assertFrame(layout.labels[0], rect(0, 151, 60, 13))
-        assertFrame(layout.bars[1], rect(54, 78.5, 40, 61.5))
-        assertFrame(layout.values[1], rect(59, 61.5, 30, 13))
-        assertFrame(layout.bars[2], rect(98, 138, 40, 2))
-        XCTAssertNil(layout.values[2], "an empty bar shows no value")
-        assertSize(layout.contentSize, CGSize(width: 148, height: 180))
-    }
-
-    func testModelBars() {
-        let layout = UsageModelBarsLayout(width: 361, rows: [
-            .init(label: text("opus", lineHeight: 18), value: text("3,000", lineHeight: 18), fraction: 1),
-            .init(label: text("haiku", lineHeight: 18), value: text("500", lineHeight: 18), fraction: 0.25),
+        XCTAssertEqual(layout.title, CGRect(x: 0, y: 0, width: 345, height: 34))
+        // The relay checklist's rows: the number in a 26 circle beside the
+        // step's line, centred on its 32 head, the line under it at 38.
+        XCTAssertEqual(layout.steps.map(\.box), [
+            CGRect(x: 0, y: 61, width: 26, height: 26),
+            CGRect(x: 0, y: 161, width: 26, height: 26),
+            CGRect(x: 0, y: 261, width: 26, height: 26),
         ])
-        assertFrame(layout.labels[0], rect(16, 24, 32, 18))
-        assertFrame(layout.values[0], rect(305, 24, 40, 18))
-        assertFrame(layout.tracks[0], rect(16, 46, 329, 8))
-        assertFrame(layout.fills[0], rect(16, 46, 329, 8))
-        assertFrame(layout.labels[1], rect(16, 70, 40, 18))
-        assertFrame(layout.fills[1], rect(16, 92, 82.25, 8))
-        assertSize(layout.size, CGSize(width: 361, height: 124))
+        XCTAssertEqual(layout.steps[0].title, CGRect(x: 38, y: 63, width: 307, height: 22))
+        XCTAssertEqual(layout.steps[0].body, CGRect(x: 38, y: 96, width: 307, height: 42))
+        XCTAssertEqual(layout.steps[2].body?.maxY, 338)
+        XCTAssertEqual(layout.size, CGSize(width: 345, height: 350))
     }
 
-    func testLoadingAndError() {
-        assertFrame(UsageStatusLayout.spinner(size: phone, safeArea: phoneUnderBar, spinner: CGSize(width: 37, height: 37)), rect(178, 442, 37, 37))
-        let error = UsageStatusLayout(size: phone, safeArea: phoneUnderBar, message: text("Failed to load usage data", lineHeight: 18))
-        assertFrame(error.icon, rect(172.5, 135, 48, 48))
-        assertFrame(error.message, rect(96.5, 183, 200, 18))
+    func testTheSwitchIsThreeFifthsOfTheButtonsCentred() {
+        let layout = LinkSwitchLayout(accessory: CGRect(x: 24, y: 400, width: 354, height: 36), tag: CGSize(width: 40.2, height: 17.5))
+        XCTAssertEqual(layout.control, CGRect(x: 95, y: 400, width: 212, height: 36))
+        XCTAssertEqual(layout.tag, CGRect(x: 256, y: 391, width: 41, height: 18))
+    }
+
+    func testTheBetaTagSitsAstrideTheSwitchAtDirectsEnd() {
+        let layout = LinkSwitchLayout(control: CGRect(x: 24, y: 400, width: 354, height: 36), tag: CGSize(width: 40.2, height: 17.5))
+        XCTAssertEqual(layout.tag, CGRect(x: 327, y: 391, width: 41, height: 18))
     }
 }

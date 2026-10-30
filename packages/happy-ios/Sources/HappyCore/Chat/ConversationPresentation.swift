@@ -13,7 +13,7 @@ public struct ConversationRow: Equatable, Sendable, Identifiable {
     public var localID: String?
     public var delivery: OutboxDelivery?
 
-    public static func make(_ snapshot: ChatSnapshot) -> [ConversationRow] {
+    public static func make(_ snapshot: LegacyChatSnapshot) -> [ConversationRow] {
         snapshot.messages.map { message in
             var row = ConversationRow(id: message.id, kind: .event, heading: "", text: "")
             switch message {

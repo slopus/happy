@@ -9,7 +9,7 @@ import XCTest
 final class DiffRowReuseTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func file(_ count: Int) -> DiffFile {

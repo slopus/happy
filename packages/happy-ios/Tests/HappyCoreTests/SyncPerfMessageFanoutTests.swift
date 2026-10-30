@@ -76,7 +76,7 @@ final class SyncPerfMessageFanoutTests: XCTestCase {
             }
         }
         defer { homeTask.cancel() }
-        let detailStream = SessionDetailFeed(store: store).snapshots(sessionId: "s0")
+        let detailStream = LegacySessionDetailFeed(store: store).snapshots(sessionId: "s0")
         let firstDetail = try await syncPerfNext(detailStream)
         let initialDetail = try XCTUnwrap(firstDetail)
         let troubleStream = store.troubleshootingSnapshots()

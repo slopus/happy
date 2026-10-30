@@ -15,7 +15,7 @@ final class HomeRowMeasurerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// The environment at the designed text size, made off the main

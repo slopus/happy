@@ -17,7 +17,7 @@ final class NewSessionComposerHeightTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// Lines no other test sets, so no screen before measured them.

@@ -268,7 +268,7 @@ enum MessageDetailRenderer {
         return .stack([ChatStackEntry(
             piece: .stack(parts),
             padding: LayoutInsets(top: border, left: border, bottom: border, right: border),
-            background: ChatBox(frame: .zero, fill: Palette.surface, border: Palette.divider, borderWidth: border, radius: radius)
+            background: ChatBox(frame: .zero, fill: Palette.surface, border: Palette.legacyDivider, borderWidth: border, radius: radius)
         )])
     }
 

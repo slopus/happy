@@ -13,7 +13,7 @@ final class HomeDockKindTextTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func makeCard() -> AgentInputCardView {

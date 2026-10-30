@@ -5,8 +5,8 @@ public struct DirectHomeSnapshot: Equatable, Sendable {
     public var loaded = false
     public var live = false
     public var usesSpaces = false
-    public var rows: [StemCellsRow] = []
-    public var allRows: [StemCellsRow] = []
+    public var rows: [Row] = []
+    public var allRows: [Row] = []
     public var settings: [String: JSONValue] = [:]
     public var error: String?
     public init() {}
@@ -17,8 +17,8 @@ public struct DirectHomeSnapshot: Equatable, Sendable {
 /// involved in this account's identity, persistence, settings or transport.
 public actor DirectSyncEngine {
     public nonisolated let client: DirectAgentClient
-    public nonisolated let spaces: StemCellsStore
-    public nonisolated let offline: StemCellsOfflineFile?
+    public nonisolated let spaces: Store
+    public nonisolated let offline: OfflineFile?
     public nonisolated let attachmentDirectory: URL
     private let url: URL?
     private var storage: DirectSyncStorage?
@@ -43,10 +43,10 @@ public actor DirectSyncEngine {
     public init(client: DirectAgentClient, directory: URL?) {
         self.client = client
         url = directory?.appendingPathComponent("direct.sqlite")
-        offline = directory.map(StemCellsOfflineFile.init(directory:))
+        offline = directory.map(OfflineFile.init(directory:))
         attachmentDirectory = (directory ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
             .appendingPathComponent("outbox-files", isDirectory: true)
-        spaces = StemCellsStore(client: client, offline: offline)
+        spaces = Store(client: client, offline: offline)
     }
 
     public func snapshots() -> AsyncStream<DirectHomeSnapshot> {
@@ -119,7 +119,7 @@ public actor DirectSyncEngine {
             derive()
             await spaces.startExternal()
         } catch {
-            snapshot.error = StemCellsStore.describe(error)
+            snapshot.error = Store.describe(error)
             publish()
             return
         }
@@ -149,7 +149,7 @@ public actor DirectSyncEngine {
                        let setting = try? JSONDecoder().decode(DirectUserSetting.self, from: JSONEncoder().encode(value)) {
                         try await database().receiveSetting(setting.key, value: setting.value, version: setting.version)
                         snapshot.settings = try await database().settings()
-                        // Stem Cells turned on here: its sidebar is read now,
+                        // V2 turned on here: its sidebar is read now,
                         // or the home has nothing to draw until a relaunch.
                         let previouslySpaces = snapshot.usesSpaces
                         derive()
@@ -168,7 +168,7 @@ public actor DirectSyncEngine {
                 return
             } catch {
                 guard current(generation) else { return }
-                snapshot.live = false; snapshot.error = StemCellsStore.describe(error)
+                snapshot.live = false; snapshot.error = Store.describe(error)
                 publish()
             }
             guard current(generation) else { return }
@@ -303,7 +303,7 @@ public actor DirectSyncEngine {
             } catch {
                 // Retain the original timestamp and ID, including across
                 // suspension and relaunch. Reconnect retries the same intent.
-                snapshot.error = StemCellsStore.describe(error)
+                snapshot.error = Store.describe(error)
                 publish()
                 if let error = error as? DirectAgentError, error == .revoked || (error.status.map { (400..<500).contains($0) } ?? false) { return }
                 do { try await Task.sleep(for: .seconds(min(30, 1 << min(attempt, 5)))) } catch { return }
@@ -321,10 +321,10 @@ public actor DirectSyncEngine {
 
     private func derive() {
         snapshot.loaded = desktop != nil
-        snapshot.usesSpaces = snapshot.settings[DirectSettings.stemCells] == .bool(true)
+        snapshot.usesSpaces = snapshot.settings[DirectSettings.v2] == .bool(true)
         if let desktop {
             snapshot.allRows = DirectSidebarRows.make(desktop, settings: snapshot.settings, collapsed: collapsed)
-            snapshot.rows = StemCellsRows.visible(snapshot.allRows)
+            snapshot.rows = Rows.visible(snapshot.allRows)
         }
         publish()
     }
@@ -408,7 +408,7 @@ public actor DirectSyncEngine {
                     // A later file may have failed after earlier progress was
                     // persisted. Mark that latest record, preserving its paths.
                     message = (try? await database.queuedMessages().first { $0.id == message.id }) ?? message
-                    message.failure = StemCellsStore.describe(error)
+                    message.failure = Store.describe(error)
                     try? await database.updateMessage(message)
                     for listener in messageListeners.values where listener.agentID == message.agentID { listener.continuation.yield(.failed(message.id, message.failure ?? "")) }
                     continue

@@ -11,7 +11,7 @@ import XCTest
 final class TextSizeTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private let largest = TextScale(.accessibilityExtraExtraExtraLarge).multiplier

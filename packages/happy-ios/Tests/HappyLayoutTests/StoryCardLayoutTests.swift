@@ -32,7 +32,7 @@ final class StoryCardLayoutTests: XCTestCase {
 
     /// In an agent's message: under its text, at the column's left.
     func testAStorySitsUnderItsMessage() {
-        let layout = StemCellMessageLayout.agent(width: 390, parts: [.markdown([.text(block(height: 24))]), .story])
+        let layout = MessageLayout.agent(width: 390, parts: [.markdown([.text(block(height: 24))]), .story])
         guard layout.parts.count == 2, case .story(let frame) = layout.parts[1] else { return XCTFail("two parts") }
         XCTAssertEqual(frame, CGRect(x: 16, y: 40, width: 200, height: 393))
         XCTAssertEqual(layout.size, CGSize(width: 390, height: 441))

@@ -57,7 +57,7 @@ final class HostedHomeChatTimingTests: XCTestCase {
         let context = AppContext(account: controller, variant: .preview, version: "timing")
         let scene = try await hostedActiveScene()
         let original = scene.keyWindow
-        let root = HomeViewController(context: context, session: account)
+        let root = LegacyHomeViewController(context: context, session: account)
         let navigation = UINavigationController(rootViewController: root)
         AppCoordinator.applyAppearance(to: navigation.navigationBar)
         let window = hostedKeyWindow(in: scene, root: navigation)
@@ -82,7 +82,7 @@ final class HostedHomeChatTimingTests: XCTestCase {
         var positions: [CGFloat] = []
         let frames = HomeTapFrames {
             times.append(CACurrentMediaTime())
-            guard let chat = navigation.topViewController as? ChatViewController,
+            guard let chat = navigation.topViewController as? LegacyChatViewController,
                   chat.isViewLoaded, chat.view.window != nil else { return }
             let x = chat.view.layer.presentation()?.convert(.zero, to: window.layer.presentation()).x
             if let x { positions.append(x) }
@@ -106,7 +106,7 @@ final class HostedHomeChatTimingTests: XCTestCase {
                      heavy ? "heavy" : "short", (returned - tapped) * 1000,
                      ((firstMovement ?? tapped) - tapped) * 1000, ((completed ?? tapped) - tapped) * 1000, samples,
                      longest * 1000, (gaps.max() ?? 0) * 1000))
-        let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
+        let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
         try await wait { chat.openingReport != nil }
         if let optional = Mirror(reflecting: chat).children.first(where: { $0.label == "construction" })?.value,
            let construction = Mirror(reflecting: optional).children.first?.value,

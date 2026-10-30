@@ -18,7 +18,7 @@ final class HostedChatFollowMotionTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func messages(_ count: Int) -> [ChatMessage] {
@@ -34,7 +34,7 @@ final class HostedChatFollowMotionTests: XCTestCase {
         var view = ChatRowsView()
         view.width = width
         return ChatRowsInput(
-            snapshot: ChatSnapshot(sessionId: "s", messages: messages, isLoaded: true, hasMoreOlder: false, olderBoundary: nil, windowEpoch: 0),
+            snapshot: LegacyChatSnapshot(sessionId: "s", messages: messages, isLoaded: true, hasMoreOlder: false, olderBoundary: nil, windowEpoch: 0),
             session: ChatSessionState(record: nil, settings: AccountSettings()),
             view: view,
             render: renderServices

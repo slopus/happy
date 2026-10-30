@@ -53,10 +53,10 @@ private actor DirectSyncFixture: DirectTransport {
     }
     var requested: [String] = []
     func requestedPaths() -> [String] { requested }
-    /// Stem Cells turned on from the computer while the phone watches.
-    func turnOnStemCells() {
+    /// V2 turned on from the computer while the phone watches.
+    func turnOnV2() {
         version += 1
-        let setting: JSONValue = .object(["key": .string(DirectSettings.stemCells), "value": .bool(true), "version": .string(String(format: "%08d", version)), "updatedAt": .number(Date().timeIntervalSince1970 * 1000)])
+        let setting: JSONValue = .object(["key": .string(DirectSettings.v2), "value": .bool(true), "version": .string(String(format: "%08d", version)), "updatedAt": .number(Date().timeIntervalSince1970 * 1000)])
         var object = value.objectValue!
         object["userSettings"] = .array([setting])
         value = .object(object)
@@ -188,7 +188,7 @@ final class DirectSyncEngineTests: XCTestCase {
         let settings: [String: JSONValue] = [DirectSettings.projectsVisibility: .object(["projectsHidden": .bool(true)]), "happy-desktop.bot.happy": .object(["hidden": .bool(true)])]
         let hidden = DirectSidebarRows.make(desktop, settings: settings)
         XCTAssertEqual(hidden.map(\.label), ["Artifacts", "Notes", "Groceries", "Bots", "Tasks", "Last created", "First created"])
-        let folded = StemCellsRows.visible(DirectSidebarRows.make(desktop, settings: [:], collapsed: ["project:p"]))
+        let folded = Rows.visible(DirectSidebarRows.make(desktop, settings: [:], collapsed: ["project:p"]))
         XCTAssertFalse(folded.contains { $0.label == "Root chat" || $0.label == "Feature" })
         XCTAssertTrue(folded.contains { $0.label == "App" })
     }
@@ -243,9 +243,9 @@ final class DirectSyncEngineTests: XCTestCase {
         await engine.stop()
     }
 
-    /// Stem Cells switched on from the computer while home is open: the
+    /// V2 switched on from the computer while home is open: the
     /// sidebar it now draws is read at once, not after a relaunch.
-    func testStemCellsTurnedOnRemotelyReadsTheSidebar() async throws {
+    func testV2TurnedOnRemotelyReadsTheSidebar() async throws {
         let transport = DirectSyncFixture()
         let engine = DirectSyncEngine(client: DirectAgentClient(transport: transport, token: "test"), directory: nil)
         await engine.start()
@@ -253,7 +253,7 @@ final class DirectSyncEngineTests: XCTestCase {
         let sidebar = "/v0/spaces/sidebar?widgets=true"
         let before = await transport.requestedPaths()
         XCTAssertFalse(before.contains(sidebar))
-        await transport.turnOnStemCells()
+        await transport.turnOnV2()
         _ = try await wait(engine) { $0.usesSpaces }
         for _ in 0..<200 {
             if (await transport.requestedPaths()).contains(sidebar) { break }

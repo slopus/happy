@@ -81,7 +81,7 @@ final class RealArchiveHarness {
             guard snapshot.sessionsSynced, archived > 0 else { throw URLError(.zeroByteResource) }
             controller.localSettings.homeListRenderer = .ultraList
             let context = AppContext(account: controller, variant: .preview, version: "archive-regression")
-            let navigation = UINavigationController(rootViewController: HomeViewController(context: context, session: session))
+            let navigation = UINavigationController(rootViewController: LegacyHomeViewController(context: context, session: session))
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
             let shell = TabletShellViewController(context: context, detail: navigation)
             window.rootViewController = shell

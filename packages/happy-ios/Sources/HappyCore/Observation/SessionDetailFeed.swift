@@ -3,7 +3,7 @@ import HappyStore
 /// One per account: a session's own screens follow its record, computer,
 /// settings and composer here. Fetching and comparing run off the main
 /// thread; every stream ends when the account stops.
-public final class SessionDetailFeed: Sendable {
+public final class LegacySessionDetailFeed: Sendable {
     private let store: LocalStore
     private let scope = AccountFeedScope()
 

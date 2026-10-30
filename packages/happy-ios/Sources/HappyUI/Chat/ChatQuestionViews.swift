@@ -162,7 +162,7 @@ final class ChatQuestionBannerView: UIView {
     private var dismissTarget: CGRect = .zero
 
     private func updateBorder() {
-        let color = isForm ? Palette.textLink : Palette.divider
+        let color = isForm ? Palette.textLink : Palette.legacyDivider
         card.layer.borderColor = UIColor(color).resolvedColor(with: traitCollection).cgColor
     }
 
@@ -274,7 +274,7 @@ final class AgentQuestionSheetController: UIViewController, UITextViewDelegate {
 
         cancelButton.setAttributedTitle(ChatTextStyles.sheetAction.string(Strings.Common.cancel, color: Palette.textLink), for: .normal)
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
-        headerDivider.backgroundColor = UIColor(Palette.divider)
+        headerDivider.backgroundColor = UIColor(Palette.legacyDivider)
         header.addSubview(cancelButton)
         header.addSubview(titleLabel.view)
         view.addSubview(header)
@@ -330,7 +330,7 @@ final class AgentQuestionSheetController: UIViewController, UITextViewDelegate {
         scrollView.addSubview(errorLabel.view)
 
         footer.backgroundColor = UIColor(Palette.groupedBackground)
-        footerDivider.backgroundColor = UIColor(Palette.divider)
+        footerDivider.backgroundColor = UIColor(Palette.legacyDivider)
         submitButton.backgroundColor = UIColor(Palette.textLink)
         submitButton.layer.cornerRadius = QuestionSheetLayout.Metrics.submitRadius
         submitButton.layer.cornerCurve = .continuous
@@ -384,11 +384,11 @@ final class AgentQuestionSheetController: UIViewController, UITextViewDelegate {
                 views.box.accessibilityTraits = selected ? [.button, .selected] : .button
                 views.box.layer.borderColor = (selected ? UIColor(Palette.textLink) : .clear).resolvedColor(with: traitCollection).cgColor
                 views.checkbox.backgroundColor = selected ? UIColor(Palette.textLink) : .clear
-                views.checkbox.layer.borderColor = UIColor(selected ? Palette.textLink : Palette.divider).resolvedColor(with: traitCollection).cgColor
+                views.checkbox.layer.borderColor = UIColor(selected ? Palette.textLink : Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
                 views.check.isHidden = !selected
             }
             block.input?.isEditable = !submitting
-            block.input?.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+            block.input?.layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
             block.placeholder?.view.isHidden = !(block.input?.text.isEmpty ?? true)
         }
         errorLabel.update(MeasuredText(ChatTextStyles.sheetError.string(errorText ?? "", color: Palette.statusError)))

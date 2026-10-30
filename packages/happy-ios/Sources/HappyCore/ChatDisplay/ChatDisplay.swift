@@ -7,7 +7,7 @@ import Foundation
 // half of `components/ChatList.tsx`.
 //
 // happy-app works on messages newest-first, as sync stores them; so does
-// everything here. `ChatSnapshot.messages` is oldest-first: reverse it once.
+// everything here. `LegacyChatSnapshot.messages` is oldest-first: reverse it once.
 
 /// A finished turn's intermediate work, folded into one "Worked for …" row
 /// above the turn's final answer (`AgentWorkGroupItem`).

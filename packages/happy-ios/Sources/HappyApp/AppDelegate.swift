@@ -14,7 +14,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
         PushNotifications.shared.install()
         return true
     }

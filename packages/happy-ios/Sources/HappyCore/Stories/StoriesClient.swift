@@ -2,7 +2,7 @@ import Foundation
 import HappyWire
 
 /// The Stories and Stickers routes (happy-agent `API.md` "Stories",
-/// "Stickers"), over the same paired device's tunnel as Stem Cells. Each
+/// "Stickers"), over the same paired device's tunnel as V2. Each
 /// write carries a fresh `mutationId`, so the store knows its own echo.
 extension DirectAgentClient {
     /// The user setting that turns Stories on; only the JSON `true` does.

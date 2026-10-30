@@ -10,7 +10,7 @@ import UIKit
 /// (`-screen agent -agentSocket PATH -agentToken TOKEN`): a simulator's app
 /// reaches the Mac's files, so it speaks HTTP over the daemon's own Unix
 /// socket where a phone would go through Tailcat. Everything past the
-/// transport is the app as it ships: pairing's account, Stem Cells, Stories.
+/// transport is the app as it ships: pairing's account, V2, Stories.
 @MainActor
 final class AgentHarness {
     private let coordinator: AppCoordinator

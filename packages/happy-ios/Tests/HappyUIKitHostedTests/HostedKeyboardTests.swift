@@ -35,7 +35,7 @@ private final class EndsEditing: NSObject, UITextFieldDelegate {
 final class HostedKeyboardTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     override func tearDown() {

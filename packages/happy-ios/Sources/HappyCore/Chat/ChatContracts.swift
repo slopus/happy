@@ -44,7 +44,7 @@ public struct ChatUsage: Equatable, Sendable {
 /// A session's chat as the UI shows it, oldest first, ordered by
 /// `ChatMessage.sortKey`. Unsent messages from the outbox are included as
 /// pending user messages; `delivery` says where each one is.
-public struct ChatSnapshot: Equatable, Sendable {
+public struct LegacyChatSnapshot: Equatable, Sendable {
     public var sessionId: String
     public var messages: [ChatMessage]
     /// Outbox state by `localId`, for messages the server doesn't have yet.
@@ -76,7 +76,7 @@ public struct ChatSnapshot: Equatable, Sendable {
 /// A session's chat, kept current from the local store. The first snapshot
 /// comes straight from disk, before any network.
 public protocol ChatFeed: Sendable {
-    func snapshots(sessionId: String) -> AsyncStream<ChatSnapshot>
+    func snapshots(sessionId: String) -> AsyncStream<LegacyChatSnapshot>
 }
 
 /// A picture or file picked to send. The sender owns `fileURL` from the

@@ -41,7 +41,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private let spawnRequests: SpawnRequests
 
     private var session = ChatSessionState(record: nil, settings: AccountSettings())
-    private var snapshot: ChatSnapshot?
+    private var snapshot: LegacyChatSnapshot?
     private var message: ChatMessage?
     /// The files the reader opened past "Show N more lines", by diff.
     private var diffExpanded: [Int: Set<Int>] = [:]
@@ -154,7 +154,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         scheduleMeasure()
     }
 
-    private func receive(_ snapshot: ChatSnapshot) {
+    private func receive(_ snapshot: LegacyChatSnapshot) {
         guard snapshot != self.snapshot else { return }
         self.snapshot = snapshot
         let message = snapshot.messages.first { $0.id == messageId }
@@ -236,7 +236,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     // MARK: Measuring
 
     private var maxContentWidth: CGFloat {
-        traitCollection.horizontalSizeClass == .regular ? ChatScreenLayout.Metrics.regularMaxContentWidth : .greatestFiniteMagnitude
+        traitCollection.horizontalSizeClass == .regular ? LegacyChatScreenLayout.Metrics.regularMaxContentWidth : .greatestFiniteMagnitude
     }
 
     private var devMode: Bool {

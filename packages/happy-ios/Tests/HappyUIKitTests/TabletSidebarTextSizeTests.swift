@@ -29,7 +29,7 @@ final class TabletSidebarTextSizeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func text(_ category: UIContentSizeCategory) -> TextEnvironment {

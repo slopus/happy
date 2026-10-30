@@ -361,7 +361,7 @@ final class HomeUltraOverlay: UIView {
             addSubview(avatar)
         }
         if let (value, style, frame) = plan.shimmer {
-            let label = ShimmerLabel(style: style)
+            let label = LegacyShimmerLabel(style: style)
             label.string = value; label.isShimmering = true; label.frame = frame
             label.alpha = plan.contentAlpha
             addSubview(label)

@@ -12,7 +12,7 @@ import XCTest
 final class SettingsViewsTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     func testProfileHeaderShowsNameAndBio() {

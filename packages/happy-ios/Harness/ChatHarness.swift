@@ -64,7 +64,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
         let window = HarnessWindow(windowScene: scene)
         window.rootViewController = UIViewController()
         window.makeKeyAndVisible()
@@ -131,7 +131,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.controller = controller
         controller.localSettings.chatListRenderer = ProcessInfo.processInfo.arguments.contains("-chatUltraList") ? .ultraList : .collectionView
         let context = AppContext(account: controller, variant: .development, version: "harness")
-        let chat = ChatViewController(context: context, session: account, sessionId: FixtureScenarios.prefix + fixture)
+        let chat = LegacyChatViewController(context: context, session: account, sessionId: FixtureScenarios.prefix + fixture)
         let home = UIViewController()
         home.title = "Chats"
         home.view.backgroundColor = .systemBackground
@@ -344,7 +344,7 @@ final class ChatScrollProbe: NSObject {
 
     private func keyboardTop(_ chat: UIViewController) -> CGFloat {
         let guideTop = chat.view.keyboardLayoutGuide.layoutFrame.minY
-        let top = (chat as? ChatViewController)?.ultraKeyboard?.keyboardTop(guideTop: guideTop) ?? guideTop
+        let top = (chat as? LegacyChatViewController)?.ultraKeyboard?.keyboardTop(guideTop: guideTop) ?? guideTop
         return chat.view.convert(CGPoint(x: 0, y: top), to: window).y
     }
 
@@ -352,7 +352,7 @@ final class ChatScrollProbe: NSObject {
     /// interactive dismissal on UltraList, or the layout guide on
     /// UICollectionView.
     private func keyboardDriver(_ chat: UIViewController) -> String {
-        guard let keyboard = (chat as? ChatViewController)?.ultraKeyboard else { return "guide" }
+        guard let keyboard = (chat as? LegacyChatViewController)?.ultraKeyboard else { return "guide" }
         return keyboard.isAvailable ? "controller" : "system"
     }
 
@@ -370,7 +370,7 @@ final class ChatScrollProbe: NSObject {
             tracking: list.isTracking, dragging: list.isDragging,
             active: activeRecognizers(list.scrollGestureView),
             dockPresentedMinY: dock?.superview.map { $0.convert(CGPoint(x: 0, y: presented), to: window).y } ?? .nan,
-            driving: (chat as? ChatViewController)?.ultraKeyboard?.isDriving ?? false
+            driving: (chat as? LegacyChatViewController)?.ultraKeyboard?.isDriving ?? false
         )
     }
 

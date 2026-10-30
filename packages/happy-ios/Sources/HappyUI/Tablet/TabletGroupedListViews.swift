@@ -62,7 +62,7 @@ final class TabletMachineRuleCell: UITableViewCell {
         backgroundColor = UIColor(Palette.groupedBackground)
         selectionStyle = .none
         for line in [leading, trailing] {
-            line.backgroundColor = UIColor(Palette.divider)
+            line.backgroundColor = UIColor(Palette.legacyDivider)
             contentView.addSubview(line)
         }
         contentView.addSubview(icon)
@@ -206,7 +206,7 @@ final class TabletCardSegmentView: UIView {
 
     func applyBorder() {
         layer.borderWidth = hairline
-        layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
     }
 
     override func didMoveToWindow() {
@@ -241,7 +241,7 @@ final class TabletChatCell: UITableViewCell {
         clipsToBounds = true
         contentView.clipsToBounds = true
         card.layer.cornerRadius = TabletChatRowLayout.Metrics.cardRadius
-        divider.backgroundColor = UIColor(Palette.divider)
+        divider.backgroundColor = UIColor(Palette.legacyDivider)
         rowClip.clipsToBounds = true
         rowClip.isUserInteractionEnabled = false
         rowClip.addSubview(titleLabel)

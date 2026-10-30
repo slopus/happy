@@ -107,10 +107,10 @@ final class AgentStoriesTests: XCTestCase {
 
     // MARK: Store
 
-    private var continuation: AsyncStream<StemCellsStore.ConversationEvent>.Continuation?
+    private var continuation: AsyncStream<Store.ConversationEvent>.Continuation?
 
     private func make(_ transport: StoriesTransport) -> StoriesStore {
-        let (stream, continuation) = AsyncStream.makeStream(of: StemCellsStore.ConversationEvent.self)
+        let (stream, continuation) = AsyncStream.makeStream(of: Store.ConversationEvent.self)
         self.continuation = continuation
         return StoriesStore(client: DirectAgentClient(transport: transport, token: "t"), events: { stream }, offline: nil, now: { 2_000 }, firstReadDelay: .zero)
     }
@@ -201,18 +201,18 @@ final class AgentStoriesTests: XCTestCase {
     // MARK: Rows
 
     func testRowsWearTheirRingsOnlyWhileAgentStoriesAreOn() {
-        var task = StemCellsRow(id: "space:1", nodeId: "1", kind: .space, label: "Stories", status: .working, collapsed: false, agentId: "a1")
+        var task = Row(id: "space:1", nodeId: "1", kind: .space, label: "Stories", status: .working, collapsed: false, agentId: "a1")
         task.hasAgent = true
         task.statusLine = "Testing with a few friends"
         task.hasHiddenSessions = true
-        let session = StemCellsRow(id: "session:sub", nodeId: "sub", kind: .session, depth: 1, label: "Sub", status: .awaitingInput, agentId: "sub")
-        let section = StemCellsRow(id: "s", nodeId: "s", kind: .section, label: "Priority")
-        var bot = StemCellsRow(id: "space:2", nodeId: "2", kind: .space, label: "Bot", unread: true, agentId: "a2")
+        let session = Row(id: "session:sub", nodeId: "sub", kind: .session, depth: 1, label: "Sub", status: .awaitingInput, agentId: "sub")
+        let section = Row(id: "s", nodeId: "s", kind: .section, label: "Priority")
+        var bot = Row(id: "space:2", nodeId: "2", kind: .space, label: "Bot", unread: true, agentId: "a2")
         bot.hasAgent = true
         let rows = [section, task, session, bot]
         // Off: untouched, nesting and all.
-        XCTAssertEqual(StemCellsRows.withStories(rows, rings: nil), rows)
-        let on = StemCellsRows.withStories(rows, rings: ["a1": StoryRing(agentId: "a1", storyIds: ["s1", "s2", "s3", "s4"], unseenCount: 2, latestPostedAt: nil), "sub": StoryRing(agentId: "sub", storyIds: ["x"], unseenCount: 1, latestPostedAt: nil)])
+        XCTAssertEqual(Rows.withStories(rows, rings: nil), rows)
+        let on = Rows.withStories(rows, rings: ["a1": StoryRing(agentId: "a1", storyIds: ["s1", "s2", "s3", "s4"], unseenCount: 2, latestPostedAt: nil), "sub": StoryRing(agentId: "sub", storyIds: ["x"], unseenCount: 1, latestPostedAt: nil)])
         // Stories don't nest: only top-level rows, none of them folding.
         XCTAssertEqual(on.map(\.id), ["s", "space:1", "space:2"])
         XCTAssertNil(on[1].collapsed)
@@ -221,10 +221,10 @@ final class AgentStoriesTests: XCTestCase {
         // Headings and separators go with the rows: desktop's own size among story rows.
         XCTAssertTrue(on[0].amongStories)
         XCTAssertFalse(rows[0].amongStories)
-        let rule = StemCellsRow(id: "r", nodeId: "r", kind: .separator, label: "")
-        XCTAssertTrue(StemCellsRows.withStories([rule], rings: [:])[0].amongStories)
-        XCTAssertEqual(on[1].story, StemCellsRow.StoryRowState(segments: 4, unseen: 2))
-        XCTAssertEqual(on[2].story, StemCellsRow.StoryRowState(segments: 0, unseen: 0))
+        let rule = Row(id: "r", nodeId: "r", kind: .separator, label: "")
+        XCTAssertTrue(Rows.withStories([rule], rings: [:])[0].amongStories)
+        XCTAssertEqual(on[1].story, Row.StoryRowState(segments: 4, unseen: 2))
+        XCTAssertEqual(on[2].story, Row.StoryRowState(segments: 0, unseen: 0))
         // One signal, in the corner: the spinner working, else a dot while unread.
         XCTAssertEqual(on[1].corner, .braille)
         XCTAssertEqual(on[2].corner, .dot)
@@ -242,13 +242,13 @@ final class AgentStoriesTests: XCTestCase {
     }
 
     func testARowsTimeCountsFromTheAgentsLastActivity() {
-        func row(_ agent: AgentWire.Agent) -> StemCellsRow? {
+        func row(_ agent: AgentWire.Agent) -> Row? {
             let space = AgentWire.Space(id: "sp", title: "T", icon: nil, target: .init(kind: "task", id: "t", agentId: agent.id, workspaceId: "w"), version: 1, createdAt: 0, updatedAt: 0)
             let task = try! JSONDecoder().decode(AgentWire.Task.self, from: Data(#"{"id":"t","title":"T","workspaceId":"w"}"#.utf8))
-            var places = StemCellsPlaces(tasks: [task], drafts: ["a1": "Ask about the build"])
+            var places = Places(tasks: [task], drafts: ["a1": "Ask about the build"])
             places.tasks[0].agent = agent
             let document = try! SpaceSidebar.parse(#"<nav><happy-search/><happy-create/><happy-space id="sp"/></nav>"#)
-            return StemCellsRows.all(document, spaces: ["sp": space], places: places, agentIcons: [:]).first { $0.kind == .space }
+            return Rows.all(document, spaces: ["sp": space], places: places, agentIcons: [:]).first { $0.kind == .space }
         }
         let status = AgentWire.AgentStatusLine(text: "On main", updatedAt: 1_000_000)
         // The daemon's last activity, to the minute.
@@ -262,9 +262,9 @@ final class AgentStoriesTests: XCTestCase {
     }
 
     func testADraftShowsAsTheStartOfItsTextOnOneLine() {
-        XCTAssertNil(StemCellsRows.draftPreview(nil))
-        XCTAssertNil(StemCellsRows.draftPreview("  \n\t "))
-        XCTAssertEqual(StemCellsRows.draftPreview("  Ship it\n\nafter   the tests "), "Ship it after the tests")
-        XCTAssertEqual(StemCellsRows.draftPreview(String(repeating: "a", count: 300))?.count, 120)
+        XCTAssertNil(Rows.draftPreview(nil))
+        XCTAssertNil(Rows.draftPreview("  \n\t "))
+        XCTAssertEqual(Rows.draftPreview("  Ship it\n\nafter   the tests "), "Ship it after the tests")
+        XCTAssertEqual(Rows.draftPreview(String(repeating: "a", count: 300))?.count, 120)
     }
 }

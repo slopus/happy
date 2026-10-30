@@ -146,7 +146,7 @@ final class TabletSidebarViewController: UIViewController {
     /// The sidebar's own hairline frame, on all four sides.
     private func applyBorder() {
         view.layer.borderWidth = view.hairline
-        view.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        view.layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
     }
 
     override func viewDidLayoutSubviews() {

@@ -68,7 +68,7 @@ public actor DirectSyncStorage {
     public func checkpoint(_ name: String) throws -> Checkpoint? {
         try checkOpen()
         return try database.read { db in
-            guard let row = try Row.fetchOne(db, sql: "SELECT value, cursor FROM checkpoint WHERE name = ?", arguments: [name]) else { return nil }
+            guard let row = try GRDB.Row.fetchOne(db, sql: "SELECT value, cursor FROM checkpoint WHERE name = ?", arguments: [name]) else { return nil }
             return Checkpoint(value: try JSONDecoder().decode(JSONValue.self, from: row["value"] as Data), cursor: row["cursor"])
         }
     }
@@ -128,7 +128,7 @@ public actor DirectSyncStorage {
     public func pendingSettings() throws -> [PendingSetting] {
         try checkOpen()
         return try database.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM pendingSetting ORDER BY key").map {
+            try GRDB.Row.fetchAll(db, sql: "SELECT * FROM pendingSetting ORDER BY key").map {
                 PendingSetting(key: $0["key"], value: try JSONDecoder().decode(JSONValue.self, from: $0["value"] as Data), mutationID: $0["mutationID"], updatedAt: $0["updatedAt"])
             }
         }
@@ -159,7 +159,7 @@ public actor DirectSyncStorage {
         return try database.read { db in
             var result: [String: JSONValue] = [:]
             for table in ["setting", "pendingSetting"] {
-                for row in try Row.fetchAll(db, sql: "SELECT key, value FROM \(table)") {
+                for row in try GRDB.Row.fetchAll(db, sql: "SELECT key, value FROM \(table)") {
                     result[row["key"] as String] = try JSONDecoder().decode(JSONValue.self, from: row["value"] as Data)
                 }
             }
@@ -187,7 +187,7 @@ public actor DirectSyncStorage {
     public func queuedMessages() throws -> [DirectQueuedMessage] {
         try checkOpen()
         return try database.read { db in
-            try Row.fetchAll(db, sql: "SELECT value FROM outbox ORDER BY rowid").map {
+            try GRDB.Row.fetchAll(db, sql: "SELECT value FROM outbox ORDER BY rowid").map {
                 try JSONDecoder().decode(DirectQueuedMessage.self, from: $0["value"] as Data)
             }
         }

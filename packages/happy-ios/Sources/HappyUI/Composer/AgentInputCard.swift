@@ -1640,7 +1640,7 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         case .blocked:
             backgroundColor = UIColor(Palette.surfaceHigh)
             layer.borderWidth = 1
-            layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+            layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
             iconView.tintColor = UIColor(Palette.textSecondary)
         case .send, .voice:
             backgroundColor = UIColor(Palette.surfaceHighest)
@@ -1782,7 +1782,7 @@ final class AttachmentThumbnailView: UIView {
     }
 
     private func applyColors() {
-        ring.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        ring.layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
     }
 
     private func load() {

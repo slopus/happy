@@ -56,8 +56,8 @@ final class HomeAccountControl: NSObject {
         }
         let item = UIBarButtonItem(image: icon, style: .plain, target: self, action: #selector(open))
         item.isEnabled = multiple
-        item.accessibilityLabel = opensSettings != nil ? Strings.StemCells.openSettings : multiple ? "Switch account" : "Happy"
-        item.accessibilityIdentifier = opensSettings != nil ? "stem-settings-mark" : nil
+        item.accessibilityLabel = opensSettings != nil ? Strings.openSettings : multiple ? "Switch account" : "Happy"
+        item.accessibilityIdentifier = opensSettings != nil ? "settings-mark" : nil
         controller?.navigationItem.leftBarButtonItem = item
     }
 

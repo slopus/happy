@@ -57,7 +57,7 @@ public final class AccountSession: Sendable {
     public let fileCache: SessionFileCache
     /// One session's record, computer, settings and composer, for the
     /// session's own screens.
-    public let sessionDetails: SessionDetailFeed
+    public let sessionDetails: LegacySessionDetailFeed
     public let machineDetails: MachineDetailFeed
     /// Socket status for the UI (connection dot in settings).
     public let statusUpdates: AsyncStream<RealtimeStatus>
@@ -127,7 +127,7 @@ public final class AccountSession: Sendable {
         self.homeFeed = HomeFeed(store: store)
         self.settingsFeed = SettingsFeed(store: store)
         self.machinesFeed = MachinesFeed(store: store)
-        self.sessionDetails = SessionDetailFeed(store: store)
+        self.sessionDetails = LegacySessionDetailFeed(store: store)
         self.machineDetails = MachineDetailFeed(store: store)
         self.troubleshootingFeed = TroubleshootingFeed(store: store)
         self.pairing = PairingService(api: api, keys: keys)

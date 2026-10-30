@@ -8,7 +8,7 @@ import CoreGraphics
 ///
 ///     |16| ( Plan, ask, build…     Sonnet 5 ⌄ (↑) ) |16|
 ///
-/// An accessory (Stem Cells' model control) may sit in the capsule just
+/// An accessory (V2' model control) may sit in the capsule just
 /// before the send button, as desktop's composer keeps its model control
 /// in its own bar; the entry gives up its room.
 /// The capsule is 56 tall, 8 below the dock's top and `max(10, safe

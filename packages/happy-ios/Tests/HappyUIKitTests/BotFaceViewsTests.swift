@@ -9,7 +9,7 @@ import XCTest
 final class BotFaceViewsTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     func testAFaceIsPaintedAsA256PixelPNG() async throws {

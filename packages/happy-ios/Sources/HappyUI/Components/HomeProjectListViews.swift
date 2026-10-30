@@ -222,7 +222,7 @@ final class ProjectCardCell: ProjectListCell {
 
     let avatar = AvatarView()
     let stem = UIView()
-    let nameLabel = ShimmerLabel(style: TextStyles.projectName)
+    let nameLabel = LegacyShimmerLabel(style: TextStyles.projectName)
     let dot = ActivityDotView()
     let changes = GitChangesView()
     let addButton = HeaderIconButton(.ionicons("add"), size: 18, label: "")
@@ -299,7 +299,7 @@ final class WorktreeCell: ProjectListCell {
     let trunk = UIView()
     let elbow = UIView()
     let chevron = IconView(.ionicons("chevron-down"), size: 13, tint: Palette.textSecondary)
-    let nameLabel = ShimmerLabel(style: TextStyles.worktreeName)
+    let nameLabel = LegacyShimmerLabel(style: TextStyles.worktreeName)
     let toggleLabel = StyledLabel(style: TextStyles.worktreeToggle, color: Palette.textSecondary, lines: 1)
     let dot = ActivityDotView()
     let changes = GitChangesView()
@@ -380,7 +380,7 @@ final class ProjectChatCell: ProjectListCell {
     static let reuseIdentifier = "project-chat"
 
     let avatar = AvatarView()
-    let nameLabel = ShimmerLabel(style: TextStyles.projectName)
+    let nameLabel = LegacyShimmerLabel(style: TextStyles.projectName)
     let timestampLabel = StyledLabel(style: TextStyles.projectTimestamp, color: Palette.textSecondary, lines: 1)
     let dot = StatusDotView()
     private(set) var row: SessionRow?

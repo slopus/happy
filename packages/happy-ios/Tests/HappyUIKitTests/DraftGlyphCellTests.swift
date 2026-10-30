@@ -20,7 +20,7 @@ final class DraftGlyphCellTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func laidOut(_ cell: UITableViewCell, width: CGFloat, scale: CGFloat, category: UIContentSizeCategory) -> CGFloat {

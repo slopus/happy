@@ -231,7 +231,7 @@ public struct ChatSnapshotFacts: Equatable, Sendable {
     /// Local ids of the user messages the server has stored.
     public var storedLocalIds: Set<String>
 
-    public init(_ snapshot: ChatSnapshot) {
+    public init(_ snapshot: LegacyChatSnapshot) {
         isLoaded = snapshot.isLoaded
         isEmpty = snapshot.messages.isEmpty
         hasMoreOlder = snapshot.hasMoreOlder

@@ -32,7 +32,7 @@ public struct StoriesSnapshot: Equatable, Sendable {
 
 /// One computer's Stories: the feed, every story the screens show, the
 /// person's recent stickers, and the setting that turns it all on. Events
-/// arrive off the Stem Cells store's one stream; reads and writes run here,
+/// arrive off the V2 store's one stream; reads and writes run here,
 /// off the main thread, and every change is one snapshot.
 ///
 /// The row's order is the daemon's. While the viewer is open (`hold`), a
@@ -50,9 +50,9 @@ public actor StoriesStore {
     }
 
     private let client: DirectAgentClient
-    public typealias Events = @Sendable () async -> AsyncStream<StemCellsStore.ConversationEvent>
+    public typealias Events = @Sendable () async -> AsyncStream<Store.ConversationEvent>
     private let events: Events
-    private let offline: StemCellsOfflineFile?
+    private let offline: OfflineFile?
     private let now: @Sendable () -> Int64
     private let firstReadDelay: Duration
     private let continuation: AsyncStream<StoriesSnapshot>.Continuation
@@ -79,7 +79,7 @@ public actor StoriesStore {
     /// Whether `stories.json` exists for this computer.
     private var keptOnDisk = false
 
-    public init(client: DirectAgentClient, events: @escaping Events, offline: StemCellsOfflineFile?, now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }, firstReadDelay: Duration = .seconds(1)) {
+    public init(client: DirectAgentClient, events: @escaping Events, offline: OfflineFile?, now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }, firstReadDelay: Duration = .seconds(1)) {
         self.client = client
         self.events = events
         self.offline = offline
@@ -88,9 +88,9 @@ public actor StoriesStore {
         (updates, continuation) = AsyncStream.makeStream(of: StoriesSnapshot.self, bufferingPolicy: .bufferingNewest(1))
     }
 
-    /// Events off the Stem Cells store's one stream.
-    public init(client: DirectAgentClient, stemCells: StemCellsStore, offline: StemCellsOfflineFile?) {
-        self.init(client: client, events: { await stemCells.events(matching: Self.eventPrefixes) }, offline: offline)
+    /// Events off the V2 store's one stream.
+    public init(client: DirectAgentClient, v2: Store, offline: OfflineFile?) {
+        self.init(client: client, events: { await v2.events(matching: Self.eventPrefixes) }, offline: offline)
     }
 
     public static let eventPrefixes = ["story.", "sticker_recents.", "user_settings."]

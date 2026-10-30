@@ -52,8 +52,8 @@ final class HomeDockView: UIView {
         didSet { if text != oldValue { setNeedsLayout() } }
     }
 
-    /// Drawn in the capsule just before send at the size it fits (Stem
-    /// Cells' model control); the entry gives up its room.
+    /// Drawn in the capsule just before send at the size it fits (V2's
+    /// model control); the entry gives up its room.
     var accessory: UIView? {
         didSet {
             guard accessory !== oldValue else { return }

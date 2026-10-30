@@ -31,7 +31,7 @@ final class MessageDetailTextSizeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func environment(_ category: UIContentSizeCategory) -> TextEnvironment {

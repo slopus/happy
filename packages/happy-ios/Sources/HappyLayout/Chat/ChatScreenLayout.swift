@@ -44,7 +44,7 @@ import CoreGraphics
 /// (`chatListTopContentInset`'s `headerAccessoryHeight`); on a tablet the
 /// list starts under it and the oldest end's spacer stays as it was. With
 /// no header there is nothing for it to hang from.
-public struct ChatScreenLayout: Equatable, Sendable {
+public struct LegacyChatScreenLayout: Equatable, Sendable {
     public enum Metrics {
         /// sessionInputHorizontalPadding on a phone.
         public static let accessoryPaddingH: CGFloat = 8

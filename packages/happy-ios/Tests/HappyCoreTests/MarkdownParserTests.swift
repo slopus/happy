@@ -12,7 +12,7 @@ final class MarkdownParserTests: XCTestCase {
     // MARK: parseMarkdown.test.ts
 
     func testUnorderedListsAcrossBulletMarkersKeepLinks() {
-        let blocks = Markdown.parse([
+        let blocks = LegacyMarkdown.parse([
             "* first item",
             "+ second item with [docs](https://example.com/docs)",
             "- third item with https://example.com/raw.",
@@ -34,13 +34,13 @@ final class MarkdownParserTests: XCTestCase {
 
     func testStandaloneImageBlocks() {
         XCTAssertEqual(
-            Markdown.parse("![Markdown renderable image](data:image/png;base64,abc123)"),
+            LegacyMarkdown.parse("![Markdown renderable image](data:image/png;base64,abc123)"),
             [.image(alt: "Markdown renderable image", url: "data:image/png;base64,abc123")]
         )
     }
 
     func testBareURLsInTextBecomeLinks() {
-        XCTAssertEqual(Markdown.parse("Visit https://example.com/docs for more."), [.text([
+        XCTAssertEqual(LegacyMarkdown.parse("Visit https://example.com/docs for more."), [.text([
             MarkdownSpan(text: "Visit "),
             MarkdownSpan(text: "https://example.com/docs", url: "https://example.com/docs"),
             MarkdownSpan(text: " for more."),
@@ -51,12 +51,12 @@ final class MarkdownParserTests: XCTestCase {
 
     func testStandardTable() {
         let md = ["| A | B |", "|---|---|", "| 1 | 2 |"].joined(separator: "\n")
-        XCTAssertEqual(Markdown.parse(md), [.table(headers: [plain("A"), plain("B")], rows: [[plain("1"), plain("2")]])])
+        XCTAssertEqual(LegacyMarkdown.parse(md), [.table(headers: [plain("A"), plain("B")], rows: [[plain("1"), plain("2")]])])
     }
 
     func testTableWithBlankLinesBetweenRows() {
         let md = ["| A | B |", "", "|---|---|", "", "| 1 | 2 |", "", "| 3 | 4 |"].joined(separator: "\n")
-        XCTAssertEqual(Markdown.parse(md), [.table(
+        XCTAssertEqual(LegacyMarkdown.parse(md), [.table(
             headers: [plain("A"), plain("B")],
             rows: [[plain("1"), plain("2")], [plain("3"), plain("4")]]
         )])
@@ -64,7 +64,7 @@ final class MarkdownParserTests: XCTestCase {
 
     func testEmptyInteriorCellsAreKept() {
         let md = ["| | Header1 | Header2 |", "|---|---|---|", "| Row1 | a | b |"].joined(separator: "\n")
-        XCTAssertEqual(Markdown.parse(md), [.table(
+        XCTAssertEqual(LegacyMarkdown.parse(md), [.table(
             headers: [plain(""), plain("Header1"), plain("Header2")],
             rows: [[plain("Row1"), plain("a"), plain("b")]]
         )])
@@ -79,7 +79,7 @@ final class MarkdownParserTests: XCTestCase {
             "| Storage | 5 GB | 50 GB |", "",
             "| Support | Email only | 24/7 chat |",
         ].joined(separator: "\n")
-        let blocks = Markdown.parse(md)
+        let blocks = LegacyMarkdown.parse(md)
         XCTAssertEqual(blocks.first, .header(level: 3, plain("Comparison")))
         guard blocks.count == 2, case .table(let headers, let rows) = blocks[1] else {
             return XCTFail("expected a header and one table, got \(blocks)")
@@ -92,58 +92,58 @@ final class MarkdownParserTests: XCTestCase {
 
     func testATableStopsAtTheFirstLineWithoutAPipe() {
         let md = ["| A | B |", "|---|---|", "| 1 | 2 |", "", "Some text after the table"].joined(separator: "\n")
-        let blocks = Markdown.parse(md)
+        let blocks = LegacyMarkdown.parse(md)
         XCTAssertEqual(blocks.count, 2)
         XCTAssertEqual(blocks[1], .text(plain("Some text after the table")))
     }
 
     func testPipesWithoutASeparatorAreText() {
-        XCTAssertEqual(Markdown.parse("a | b\nc | d"), [.text(plain("a | b")), .text(plain("c | d"))])
+        XCTAssertEqual(LegacyMarkdown.parse("a | b\nc | d"), [.text(plain("a | b")), .text(plain("c | d"))])
     }
 
     // MARK: linkUtils.test.ts
 
     func testHTTPLinks() {
-        XCTAssertTrue(Markdown.isHTTPLink("http://example.com"))
-        XCTAssertTrue(Markdown.isHTTPLink("https://example.com/docs"))
-        XCTAssertTrue(Markdown.isHTTPLink(" HTTPS://example.com/docs "))
-        XCTAssertFalse(Markdown.isHTTPLink("mailto:test@example.com"))
-        XCTAssertFalse(Markdown.isHTTPLink("data:text/plain,hello"))
-        XCTAssertFalse(Markdown.isHTTPLink("/Users/me/project/file.ts"))
-        XCTAssertFalse(Markdown.isHTTPLink("packages/happy-app/index.tsx"))
+        XCTAssertTrue(LegacyMarkdown.isHTTPLink("http://example.com"))
+        XCTAssertTrue(LegacyMarkdown.isHTTPLink("https://example.com/docs"))
+        XCTAssertTrue(LegacyMarkdown.isHTTPLink(" HTTPS://example.com/docs "))
+        XCTAssertFalse(LegacyMarkdown.isHTTPLink("mailto:test@example.com"))
+        XCTAssertFalse(LegacyMarkdown.isHTTPLink("data:text/plain,hello"))
+        XCTAssertFalse(LegacyMarkdown.isHTTPLink("/Users/me/project/file.ts"))
+        XCTAssertFalse(LegacyMarkdown.isHTTPLink("packages/happy-app/index.tsx"))
     }
 
     // MARK: Blocks
 
     func testHeadersNeedTheSpaceAndKeepNoInlineStyles() {
-        XCTAssertEqual(Markdown.parse("## A **bold** title"), [.header(level: 2, [
+        XCTAssertEqual(LegacyMarkdown.parse("## A **bold** title"), [.header(level: 2, [
             MarkdownSpan(text: "A "), MarkdownSpan(text: "bold"), MarkdownSpan(text: " title"),
         ])])
-        XCTAssertEqual(Markdown.parse("#nospace"), [.text(plain("#nospace"))])
-        XCTAssertEqual(Markdown.parse("####### seven"), [.text(plain("####### seven"))])
+        XCTAssertEqual(LegacyMarkdown.parse("#nospace"), [.text(plain("#nospace"))])
+        XCTAssertEqual(LegacyMarkdown.parse("####### seven"), [.text(plain("####### seven"))])
         // An indented header is not a header: headers are read before trimming.
-        XCTAssertEqual(Markdown.parse("  # indented"), [.text(plain("# indented"))])
+        XCTAssertEqual(LegacyMarkdown.parse("  # indented"), [.text(plain("# indented"))])
     }
 
     func testCodeBlocksKeepTheirLinesAndLanguage() {
         let md = ["```swift", "let a = 1", "", "  indented", "```", "after"].joined(separator: "\n")
-        XCTAssertEqual(Markdown.parse(md), [
+        XCTAssertEqual(LegacyMarkdown.parse(md), [
             .codeBlock(language: "swift", content: "let a = 1\n\n  indented"),
             .text(plain("after")),
         ])
-        XCTAssertEqual(Markdown.parse("```\nplain"), [.codeBlock(language: nil, content: "plain")])
-        XCTAssertEqual(Markdown.parse("```mermaid\ngraph TD\n```"), [.mermaid("graph TD")])
+        XCTAssertEqual(LegacyMarkdown.parse("```\nplain"), [.codeBlock(language: nil, content: "plain")])
+        XCTAssertEqual(LegacyMarkdown.parse("```mermaid\ngraph TD\n```"), [.mermaid("graph TD")])
     }
 
     func testHorizontalRuleAndOptions() {
         let md = ["---", "<options>", "<option>Yes</option>", "  <option>No, stop</option>", "junk", "</options>"].joined(separator: "\n")
-        XCTAssertEqual(Markdown.parse(md), [.horizontalRule, .options(["Yes", "No, stop"])])
-        XCTAssertEqual(Markdown.parse("<options>\n</options>"), [])
+        XCTAssertEqual(LegacyMarkdown.parse(md), [.horizontalRule, .options(["Yes", "No, stop"])])
+        XCTAssertEqual(LegacyMarkdown.parse("<options>\n</options>"), [])
     }
 
     func testNumberedListsWithDepth() {
         let md = ["1. one", "  2. nested", "3.  three", "not a list"].joined(separator: "\n")
-        XCTAssertEqual(Markdown.parse(md), [
+        XCTAssertEqual(LegacyMarkdown.parse(md), [
             .numberedList([
                 MarkdownNumberedItem(number: 1, depth: 0, spans: plain("one")),
                 MarkdownNumberedItem(number: 2, depth: 1, spans: plain("nested")),
@@ -157,25 +157,25 @@ final class MarkdownParserTests: XCTestCase {
     /// trapped build 47's bullets), rounding down.
     func testListDepthIsMeasuredFromTheLeastIndentedItemAndRoundsDown() {
         let md = ["   - a", " - b", "      - c"].joined(separator: "\n")
-        guard case .list(let items) = Markdown.parse(md).first else { return XCTFail() }
+        guard case .list(let items) = LegacyMarkdown.parse(md).first else { return XCTFail() }
         XCTAssertEqual(items.map(\.depth), [1, 0, 2])
     }
 
     func testABlankLineEndsAList() {
-        XCTAssertEqual(Markdown.parse("- a\n\n- b"), [
+        XCTAssertEqual(LegacyMarkdown.parse("- a\n\n- b"), [
             .list([MarkdownListItem(depth: 0, spans: plain("a"))]),
             .list([MarkdownListItem(depth: 0, spans: plain("b"))]),
         ])
     }
 
     func testCRLFLinesAreTrimmed() {
-        XCTAssertEqual(Markdown.parse("one\r\ntwo"), [.text(plain("one")), .text(plain("two"))])
+        XCTAssertEqual(LegacyMarkdown.parse("one\r\ntwo"), [.text(plain("one")), .text(plain("two"))])
     }
 
     // MARK: Spans
 
     func testInlineStyles() {
-        XCTAssertEqual(Markdown.parseSpans("a **b** *c* `d` [e](f)", header: false), [
+        XCTAssertEqual(LegacyMarkdown.parseSpans("a **b** *c* `d` [e](f)", header: false), [
             MarkdownSpan(text: "a "),
             MarkdownSpan(styles: [.bold], text: "b"),
             MarkdownSpan(text: " "),
@@ -188,25 +188,25 @@ final class MarkdownParserTests: XCTestCase {
     }
 
     func testUnclosedMarkersRunToTheEnd() {
-        XCTAssertEqual(Markdown.parseSpans("x **bold", header: false), [
+        XCTAssertEqual(LegacyMarkdown.parseSpans("x **bold", header: false), [
             MarkdownSpan(text: "x "), MarkdownSpan(styles: [.bold], text: "bold"),
         ])
-        XCTAssertEqual(Markdown.parseSpans("`code", header: false), [MarkdownSpan(styles: [.code], text: "code")])
+        XCTAssertEqual(LegacyMarkdown.parseSpans("`code", header: false), [MarkdownSpan(styles: [.code], text: "code")])
     }
 
     func testEmptyCodeSpanIsKeptAndEmptyBoldIsNot() {
-        XCTAssertEqual(Markdown.parseSpans("``", header: false), [MarkdownSpan(styles: [.code], text: "")])
-        XCTAssertEqual(Markdown.parseSpans("****", header: false), [])
+        XCTAssertEqual(LegacyMarkdown.parseSpans("``", header: false), [MarkdownSpan(styles: [.code], text: "")])
+        XCTAssertEqual(LegacyMarkdown.parseSpans("****", header: false), [])
     }
 
     func testALinkWithoutAURLKeepsItsBrackets() {
-        XCTAssertEqual(Markdown.parseSpans("see [note] here", header: false), [
+        XCTAssertEqual(LegacyMarkdown.parseSpans("see [note] here", header: false), [
             MarkdownSpan(text: "see "), MarkdownSpan(text: "[note]"), MarkdownSpan(text: " here"),
         ])
     }
 
     func testStyledURLsStayStyledAndTrailingPunctuationStaysOut() {
-        XCTAssertEqual(Markdown.parseSpans("**see https://a.io/x),**", header: false), [
+        XCTAssertEqual(LegacyMarkdown.parseSpans("**see https://a.io/x),**", header: false), [
             MarkdownSpan(styles: [.bold], text: "see "),
             MarkdownSpan(styles: [.bold], text: "https://a.io/x", url: "https://a.io/x"),
             MarkdownSpan(styles: [.bold], text: "),"),
@@ -214,7 +214,7 @@ final class MarkdownParserTests: XCTestCase {
     }
 
     func testUTF16OffsetsSurviveEmoji() {
-        XCTAssertEqual(Markdown.parseSpans("🎉 **ok** 👍🏽 `x`", header: false), [
+        XCTAssertEqual(LegacyMarkdown.parseSpans("🎉 **ok** 👍🏽 `x`", header: false), [
             MarkdownSpan(text: "🎉 "),
             MarkdownSpan(styles: [.bold], text: "ok"),
             MarkdownSpan(text: " 👍🏽 "),

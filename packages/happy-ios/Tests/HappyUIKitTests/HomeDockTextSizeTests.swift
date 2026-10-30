@@ -16,7 +16,7 @@ final class HomeDockTextSizeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     private func environment(_ category: UIContentSizeCategory, _ scale: CGFloat) -> TextEnvironment {

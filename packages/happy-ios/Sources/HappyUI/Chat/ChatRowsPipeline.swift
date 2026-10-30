@@ -34,7 +34,7 @@ struct ChatRowsView: Equatable, Sendable {
 }
 
 struct ChatRowsInput: Sendable {
-    var snapshot: ChatSnapshot?
+    var snapshot: LegacyChatSnapshot?
     var session: ChatSessionState
     var view = ChatRowsView()
     /// The account's diff documents and syntax colour.
@@ -43,7 +43,7 @@ struct ChatRowsInput: Sendable {
     /// being coloured are planned again after one.
     var recolour = 0
 
-    init(snapshot: ChatSnapshot? = nil, session: ChatSessionState, view: ChatRowsView = ChatRowsView(), render: RenderServices) {
+    init(snapshot: LegacyChatSnapshot? = nil, session: ChatSessionState, view: ChatRowsView = ChatRowsView(), render: RenderServices) {
         self.snapshot = snapshot
         self.session = session
         self.view = view

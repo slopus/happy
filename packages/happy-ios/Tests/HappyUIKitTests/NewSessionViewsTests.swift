@@ -9,7 +9,7 @@ import XCTest
 final class NewSessionViewsTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     func testNoSessionsOffersStartNewSessionAcrossTheScreen() async {

@@ -34,7 +34,7 @@ private final class SessionCommitBytes: TransactionObserver, @unchecked Sendable
     func databaseDidCommit(_ db: Database) {
         if !ids.isEmpty {
             let size = Set(ids).reduce(0) { total, id in
-                guard let row = try? Row.fetchOne(db, sql: "SELECT metadataCipher, agentStateCipher, dataKeyCipher FROM session WHERE rowid = ?", arguments: [id]) else { return total }
+                guard let row = try? GRDB.Row.fetchOne(db, sql: "SELECT metadataCipher, agentStateCipher, dataKeyCipher FROM session WHERE rowid = ?", arguments: [id]) else { return total }
                 return total + ["metadataCipher", "agentStateCipher", "dataKeyCipher"].reduce(0) { sum, column in
                     let value: String? = row[column]
                     return sum + (value?.utf8.count ?? 0)

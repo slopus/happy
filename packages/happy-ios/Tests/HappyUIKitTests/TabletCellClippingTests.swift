@@ -18,7 +18,7 @@ final class TabletCellClippingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        Fonts.registerBundledFonts()
+        LegacyFonts.registerBundledFonts()
     }
 
     /// `cell` at the largest text size, laid out at its own height.

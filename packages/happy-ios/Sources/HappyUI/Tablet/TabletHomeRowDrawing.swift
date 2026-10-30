@@ -41,7 +41,7 @@ extension HomeRowDrawing {
             let size = Icon.ionicons("desktop-outline").layout(size: 11, scale: environment.text.displayScale)?.size ?? CGSize(width: 11, height: 11)
             let layout = TabletMachineRuleLayout(width: width, hairline: environment.rows.hairline, icon: size, name: measured(name, TextStyles.tabletMachineName))
             plan.size = layout.size
-            fill(Palette.divider, layout.leadingLine); fill(Palette.divider, layout.trailingLine)
+            fill(Palette.legacyDivider, layout.leadingLine); fill(Palette.legacyDivider, layout.trailingLine)
             text(name, TextStyles.tabletMachineName, Palette.textSecondary, layout.name)
             plan.marks.append(.icon("desktop-outline", 11, Palette.textSecondary, layout.icon))
             plan.accessibilityLabel = name; plan.isHeading = id?.isEmpty != false
@@ -62,7 +62,7 @@ extension HomeRowDrawing {
             let layout = TabletChatRowLayout(.init(width: width, hairline: environment.rows.hairline, title: measured(title, TextStyles.tabletChatTitle, lines: 2), first: chat.first, last: chat.last, projectEnd: chat.projectEnd, showsBorder: chat.showsBorder))
             plan.size = layout.size
             plan.marks.append(.card(layout.card, radius: TabletChatRowLayout.Metrics.cardRadius, top: true, bottom: true, selection: selected ? layout.row : nil))
-            fill(Palette.divider, layout.divider)
+            fill(Palette.legacyDivider, layout.divider)
             plan.marks.append(.clip(layout.row))
             text(title, TextStyles.tabletChatTitle, chat.connected ? Palette.text : Palette.textSecondary, layout.title)
             if chat.hasDraft { plan.marks.append(.icon("create-outline", 14, Palette.textSecondary, layout.indicator)) }
