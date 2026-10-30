@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Happy Protocol V2 pairing (ui/computer). Not in happy-app's catalogs;
+  English only, as iOS's pairing strings are.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="pairing_title">Pair computer</string>
+    <string name="pairing_connecting">Connecting to %1$s…</string>
+    <string name="pairing_unverified">The name comes from the code and isn\'t verified until pairing completes.</string>
+    <string name="pairing_compare">Check that %1$s shows the same four emoji, in the same order.</string>
+    <string name="pairing_match">They match</string>
+    <string name="pairing_mismatch">They don\'t match</string>
+    <string name="pairing_confirming">Confirm on %1$s too.</string>
+    <string name="pairing_paired">Paired with %1$s</string>
+    <string name="pairing_paired_detail">It stays paired until you remove it here or on the computer.</string>
+    <string name="pairing_failed">Couldn\'t pair</string>
+    <string name="pairing_done">Done</string>
+</resources>

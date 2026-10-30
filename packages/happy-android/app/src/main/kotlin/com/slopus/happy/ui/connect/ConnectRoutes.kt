@@ -46,17 +46,17 @@ fun NavGraphBuilder.connectRoutes(graph: AppGraph, nav: NavHostController) {
  * others too, onto screens with nothing loaded); the rest are dropped.
  * Session links go to [onOpenSession], which the chat screen provides;
  * without it they are dropped too. Protocol V2 pairing codes open signed
- * in or out, through [LocalProtocolV2Pairing].
+ * in or out, through [LocalComputerPairing].
  */
 @Composable
 fun DeepLinkEffect(nav: NavHostController, signedIn: Boolean, onOpenSession: ((String) -> Unit)? = null) {
     val pending by DeepLinks.pending.collectAsStateWithLifecycle()
-    val pairProtocolV2 = LocalProtocolV2Pairing.current
+    val pairComputer = LocalComputerPairing.current
     LaunchedEffect(pending, signedIn) {
         val link = pending ?: return@LaunchedEffect
         if (!DeepLinks.consume(link)) return@LaunchedEffect
-        if (link is DeepLink.ProtocolV2Pairing) {
-            pairProtocolV2?.invoke(link.code)
+        if (link is DeepLink.ComputerPairing) {
+            pairComputer?.invoke(link.code)
             return@LaunchedEffect
         }
         if (!signedIn) {
@@ -69,7 +69,7 @@ fun DeepLinkEffect(nav: NavHostController, signedIn: Boolean, onOpenSession: ((S
             is DeepLink.Session -> onOpenSession?.invoke(link.id)
             is DeepLink.Screen -> nav.navigate(link.route)
             DeepLink.Home -> nav.popBackStack(HomeRoute, inclusive = false)
-            is DeepLink.ProtocolV2Pairing -> Unit
+            is DeepLink.ComputerPairing -> Unit
         }
     }
 }

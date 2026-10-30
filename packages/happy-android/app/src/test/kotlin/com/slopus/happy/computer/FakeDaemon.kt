@@ -1,4 +1,4 @@
-package com.slopus.happy.protocolv2
+package com.slopus.happy.computer
 
 import com.slopus.happy.crypto.CanonicalBase64Url
 import com.slopus.happy.crypto.Sodium
@@ -25,7 +25,7 @@ val PAIRING_TOKEN = ByteArray(32) { 3 }
 fun pairingCode(
     v: Any = 1, a: String = "tcFixedVectorAddress", p: Any = 24781, t: String = CanonicalBase64Url.encode(PAIRING_TOKEN),
     n: String = "Steve's Mac", e: Long = PAIRING_NOW + 300_000,
-) = ProtocolV2PairingLink.bundle(buildJsonObject {
+) = PairingLink.bundle(buildJsonObject {
     if (v is Int) put("v", v) else put("v", v.toString())
     put("a", a)
     if (p is Int) put("p", p) else put("p", p.toString())
@@ -38,13 +38,13 @@ fun pairingCode(
  * itself in turn. Once paired it answers health and config for the derived
  * device token, as [computerName], or 401 when [revoked].
  */
-class FakeProtocolV2Daemon(
+class FakeDaemon(
     private val desktopConfirmsAfterPolls: Int = 1,
     private val badDaemonMac: Boolean = false,
     var computerName: String? = "Studio",
     var revoked: Boolean = false,
     val deviceId: String = "dv3n8k1m5q9r2t6w0y4z7a1c",
-) : ProtocolV2Transport {
+) : Transport {
     val calls = mutableListOf<String>()
     private val privateKey = ByteArray(32) { 2 }
     private val publicKey = Sodium.scalarMultBase(privateKey)
@@ -59,11 +59,11 @@ class FakeProtocolV2Daemon(
     var rejected = false
     var closed = 0
 
-    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): ProtocolV2Response {
+    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
         calls += "$method $path"
         val json = body?.let { Json.parseToJsonElement(it.toString(Charsets.UTF_8)).jsonObject }
-        fun ok(value: JsonObject) = ProtocolV2Response(200, body = value.toString().toByteArray())
-        fun status(): ProtocolV2Response {
+        fun ok(value: JsonObject) = TransportResponse(200, body = value.toString().toByteArray())
+        fun status(): TransportResponse {
             val completed = phoneConfirmed && polls >= desktopConfirmsAfterPolls
             return ok(buildJsonObject {
                 put("status", if (rejected) "rejected" else if (completed) "completed" else "verifying")
@@ -74,10 +74,10 @@ class FakeProtocolV2Daemon(
                 }
             })
         }
-        fun paired(answer: () -> ProtocolV2Response) =
-            if (revoked || credential != CanonicalBase64Url.encode(deviceToken)) ProtocolV2Response(401, body = "{}".toByteArray()) else answer()
+        fun paired(answer: () -> TransportResponse) =
+            if (revoked || credential != CanonicalBase64Url.encode(deviceToken)) TransportResponse(401, body = "{}".toByteArray()) else answer()
         return when (path) {
-            ProtocolV2PairingService.ROUTE -> if (method == "POST") {
+            PairingService.ROUTE -> if (method == "POST") {
                 assertEquals(CanonicalBase64Url.encode(PAIRING_TOKEN), credential)
                 assertEquals("android", json!!["device"]!!.jsonObject["platform"]!!.jsonPrimitive.content)
                 commitment = CanonicalBase64Url.decode(json["commitment"]!!.jsonPrimitive.content)!!
@@ -86,7 +86,7 @@ class FakeProtocolV2Daemon(
                     put("nonce", CanonicalBase64Url.encode(nonce)); put("expiresAt", PAIRING_NOW + 300_000)
                 })
             } else error(path)
-            "${ProtocolV2PairingService.ROUTE}/reveal" -> {
+            "${PairingService.ROUTE}/reveal" -> {
                 assertEquals(handshake, credential)
                 val phoneKey = CanonicalBase64Url.decode(json!!["publicKey"]!!.jsonPrimitive.content)!!
                 val phoneNonce = CanonicalBase64Url.decode(json["nonce"]!!.jsonPrimitive.content)!!
@@ -101,14 +101,14 @@ class FakeProtocolV2Daemon(
                 deviceToken = hkdfSha256(shared, transcript, "happy-mobile-pair-v1 device-token".toByteArray(), 32)
                 status()
             }
-            "${ProtocolV2PairingService.ROUTE}/confirm" -> {
+            "${PairingService.ROUTE}/confirm" -> {
                 val mac = CanonicalBase64Url.decode(json!!["mac"]!!.jsonPrimitive.content)!!
                 assertArrayEquals(hmacSha256(confirmKey, "mobile".toByteArray() + transcript), mac)
                 phoneConfirmed = true
                 status()
             }
-            "${ProtocolV2PairingService.ROUTE}?wait=25" -> { polls++; status() }
-            "${ProtocolV2PairingService.ROUTE}/reject" -> { rejected = true; status() }
+            "${PairingService.ROUTE}?wait=25" -> { polls++; status() }
+            "${PairingService.ROUTE}/reject" -> { rejected = true; status() }
             "/v0/health" -> paired {
                 ok(buildJsonObject {
                     put("ready", true)

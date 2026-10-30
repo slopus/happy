@@ -51,7 +51,7 @@ object CanonicalBase64Url {
  * The phone's key pair, nonce and commitment for one pairing. The device
  * token is derived on both sides and never sent while pairing.
  */
-class ProtocolV2PairingCrypto(
+class PairingCrypto(
     privateKey: ByteArray? = null,
     nonce: ByteArray? = null,
     random: RandomSource = SecureRandomSource,
@@ -108,7 +108,7 @@ class ProtocolV2PairingCrypto(
 
         /** API.md "The emoji table": Telegram iOS's 333, exactly as listed there. */
         val emojiTable: List<String> by lazy {
-            val stream = ProtocolV2PairingCrypto::class.java.getResourceAsStream("/protocolv2/emoji.txt")
+            val stream = PairingCrypto::class.java.getResourceAsStream("/pairing/emoji.txt")
                 ?: error("Missing the pairing emoji table")
             stream.use { it.readBytes().toString(Charsets.UTF_8) }.split('\n')
         }

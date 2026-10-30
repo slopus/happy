@@ -21,8 +21,8 @@ sealed interface HappyCode {
      * still this kind and is refused by the pairing, never read as another.
      * The code is a secret, so it never prints.
      */
-    data class ProtocolV2Pairing(val text: String) : HappyCode {
-        override fun toString() = "ProtocolV2Pairing(…)"
+    data class ComputerPairing(val text: String) : HappyCode {
+        override fun toString() = "ComputerPairing(…)"
     }
 
     /** A `happy:` link of no kind this app knows. */
@@ -37,7 +37,7 @@ sealed interface HappyCode {
             val lower = text.lowercase()
             return when {
                 // Before the others: a pairing code must never reach relay approval.
-                isProtocolV2Pairing(text) -> ProtocolV2Pairing(text)
+                isComputerPairing(text) -> ComputerPairing(text)
                 text.startsWith(TERMINAL_URL_PREFIX) -> Terminal(text)
                 text.startsWith(AccountLink.URL_PREFIX) -> Account(text)
                 lower.startsWith("happy:") -> UnknownHappy(text)
@@ -46,7 +46,7 @@ sealed interface HappyCode {
         }
 
         /** happy-agent API.md "The QR code": scheme `happy`, host `direct`. */
-        fun isProtocolV2Pairing(text: String): Boolean {
+        fun isComputerPairing(text: String): Boolean {
             val lower = text.trim().lowercase()
             if (!lower.startsWith("happy://direct")) return false
             val rest = lower.removePrefix("happy://direct")

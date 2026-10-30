@@ -1,4 +1,4 @@
-package com.slopus.happy.protocolv2
+package com.slopus.happy.computer
 
 import io.tailcat.ClientConfiguration
 import io.tailcat.DERPMapProvider
@@ -11,7 +11,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 
 /** One HTTP answer from a paired computer. Header names are lower case. */
-class ProtocolV2Response(val status: Int, val headers: Map<String, String> = emptyMap(), val body: ByteArray = ByteArray(0)) {
+class TransportResponse(val status: Int, val headers: Map<String, String> = emptyMap(), val body: ByteArray = ByteArray(0)) {
     val text: String get() = body.toString(Charsets.UTF_8)
 }
 
@@ -21,14 +21,14 @@ class ProtocolV2Response(val status: Int, val headers: Map<String, String> = emp
  * authenticated by its bearer credential: the pairing token, a handshake
  * id, or the device token.
  */
-interface ProtocolV2Transport {
+interface Transport {
     suspend fun request(
         method: String,
         path: String,
         credential: String,
         body: ByteArray? = null,
         headers: Map<String, String> = emptyMap(),
-    ): ProtocolV2Response
+    ): TransportResponse
 
     /** Lets go of the tunnel, so the next request makes a new one. */
     suspend fun reset() {}
@@ -37,28 +37,28 @@ interface ProtocolV2Transport {
 }
 
 /**
- * [ProtocolV2Transport] over tailcat-kotlin: one Tailcat client per
+ * [Transport] over tailcat-kotlin: one Tailcat client per
  * computer, and a fresh TCP stream to `server.tailcat:<port>` for every
  * HTTP/1.1 request (`Connection: close`), as tailcat-swift is used on iOS.
  * The address is a secret; nothing here logs it.
  */
-class TailcatProtocolV2Transport(
+class TailcatTransport(
     private val address: String,
     private val port: Int,
     private val connectTimeoutMillis: Long = 20_000,
     private val requestTimeoutMillis: Long = 35_000,
-) : ProtocolV2Transport {
+) : Transport {
     private val lock = Mutex()
     private var client: TailcatClient? = null
     private var closed = false
 
     private suspend fun connection(): TailcatClient = lock.withLock {
-        if (closed) throw ProtocolV2Exception(ProtocolV2Exception.Reason.Unavailable)
+        if (closed) throw ComputerException(ComputerException.Reason.Unavailable)
         client ?: runInterruptible(Dispatchers.IO) {
             try {
                 TailcatClient.connect(address, ClientConfiguration(mapProvider = derpMap, connectTimeoutMillis = connectTimeoutMillis))
             } catch (e: Exception) {
-                throw ProtocolV2Exception(ProtocolV2Exception.Reason.Unavailable).initCause(e)
+                throw ComputerException(ComputerException.Reason.Unavailable).initCause(e)
             }
         }.also { client = it }
     }
@@ -69,8 +69,8 @@ class TailcatProtocolV2Transport(
         credential: String,
         body: ByteArray?,
         headers: Map<String, String>,
-    ): ProtocolV2Response {
-        val head = ProtocolV2Http.requestHead(method, path, port, credential, body, headers)
+    ): TransportResponse {
+        val head = TailcatHttp.requestHead(method, path, port, credential, body, headers)
         val tunnel = connection()
         return try {
             withTimeout(requestTimeoutMillis) {
@@ -79,7 +79,7 @@ class TailcatProtocolV2Transport(
                     try {
                         stream.write(head, timeoutMillis = requestTimeoutMillis)
                         if (body != null) stream.write(body, timeoutMillis = requestTimeoutMillis)
-                        val parser = ProtocolV2HttpParser()
+                        val parser = HttpResponseParser()
                         while (true) {
                             val bytes = stream.read(65536, timeoutMillis = requestTimeoutMillis)
                             parser.append(bytes, eof = bytes.isEmpty())?.let { return@runInterruptible it }
@@ -90,17 +90,17 @@ class TailcatProtocolV2Transport(
                     }
                 }
             }
-        } catch (e: ProtocolV2Exception) {
+        } catch (e: ComputerException) {
             throw e
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
             resetIfCurrent(tunnel)
-            throw ProtocolV2Exception(ProtocolV2Exception.Reason.Unavailable).initCause(e)
+            throw ComputerException(ComputerException.Reason.Unavailable).initCause(e)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             // Nothing came back on the tunnel: the computer may have restarted and forgotten it.
             resetIfCurrent(tunnel)
-            throw ProtocolV2Exception(ProtocolV2Exception.Reason.Unavailable).initCause(e)
+            throw ComputerException(ComputerException.Reason.Unavailable).initCause(e)
         }
     }
 
@@ -131,7 +131,7 @@ class TailcatProtocolV2Transport(
 }
 
 /** HTTP/1.1 framing shared by every transport. */
-object ProtocolV2Http {
+object TailcatHttp {
     private val methods = setOf("GET", "POST", "PATCH", "PUT", "DELETE")
 
     /** The request line and headers; refuses anything that could split them. */
@@ -139,7 +139,7 @@ object ProtocolV2Http {
         fun unsafe(text: String) = text.contains('\r') || text.contains('\n')
         if (method !in methods || !path.startsWith("/") || path.contains(' ') || unsafe(path) || unsafe(credential) ||
             headers.any { (name, value) -> unsafe(name) || name.contains(':') || unsafe(value) }
-        ) throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidResponse)
+        ) throw ComputerException(ComputerException.Reason.InvalidResponse)
         val head = StringBuilder()
             .append("$method $path HTTP/1.1\r\n")
             .append("Host: server.tailcat:$port\r\n")
@@ -157,13 +157,13 @@ object ProtocolV2Http {
  * Incremental HTTP/1.1 response decoding with strict framing and bounded
  * sizes: any TCP boundaries; length, chunked and close-delimited bodies.
  */
-class ProtocolV2HttpParser(private val limit: Int = 8 * 1024 * 1024) {
+class HttpResponseParser(private val limit: Int = 8 * 1024 * 1024) {
     private var data = ByteArray(0)
 
-    private fun invalid(): Nothing = throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidResponse)
+    private fun invalid(): Nothing = throw ComputerException(ComputerException.Reason.InvalidResponse)
 
     /** The response once complete, else null; [eof] says the stream ended. */
-    fun append(bytes: ByteArray, eof: Boolean): ProtocolV2Response? {
+    fun append(bytes: ByteArray, eof: Boolean): TransportResponse? {
         if (data.size + bytes.size > limit + 65536) invalid()
         data += bytes
         val divider = indexOf(data, CRLFCRLF, 0)
@@ -184,22 +184,22 @@ class ProtocolV2HttpParser(private val limit: Int = 8 * 1024 * 1024) {
             headers[name] = line.substring(colon + 1).trim()
         }
         val body = data.copyOfRange(divider + 4, data.size)
-        if (status == 204 || status == 304) return ProtocolV2Response(status, headers)
+        if (status == 204 || status == 304) return TransportResponse(status, headers)
         headers["transfer-encoding"]?.let { transfer ->
             if (!transfer.equals("chunked", ignoreCase = true) || "content-length" in headers) invalid()
             return chunked(status, headers, body, eof)
         }
         headers["content-length"]?.let { length ->
             val count = length.toIntOrNull()?.takeIf { it in 0..limit } ?: invalid()
-            if (body.size >= count) return ProtocolV2Response(status, headers, body.copyOf(count))
+            if (body.size >= count) return TransportResponse(status, headers, body.copyOf(count))
             if (eof) invalid()
             return null
         }
         if (body.size > limit) invalid()
-        return if (eof) ProtocolV2Response(status, headers, body) else null
+        return if (eof) TransportResponse(status, headers, body) else null
     }
 
-    private fun chunked(status: Int, headers: Map<String, String>, body: ByteArray, eof: Boolean): ProtocolV2Response? {
+    private fun chunked(status: Int, headers: Map<String, String>, body: ByteArray, eof: Boolean): TransportResponse? {
         var cursor = 0
         val decoded = java.io.ByteArrayOutputStream()
         var chunks = 0
@@ -216,10 +216,10 @@ class ProtocolV2HttpParser(private val limit: Int = 8 * 1024 * 1024) {
             if (++chunks > 65536) invalid()
             if (count == 0) {
                 if (body.size >= cursor + 2 && body[cursor] == '\r'.code.toByte() && body[cursor + 1] == '\n'.code.toByte()) {
-                    return ProtocolV2Response(status, headers, decoded.toByteArray())
+                    return TransportResponse(status, headers, decoded.toByteArray())
                 }
                 val end = indexOf(body, CRLFCRLF, cursor)
-                if (end >= 0 && end + 4 - cursor <= 32768) return ProtocolV2Response(status, headers, decoded.toByteArray())
+                if (end >= 0 && end + 4 - cursor <= 32768) return TransportResponse(status, headers, decoded.toByteArray())
                 if (body.size - cursor > 32768 || eof) invalid()
                 return null
             }

@@ -8,13 +8,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** happy-agent API.md, "Mobile connector": the test vectors, the emoji table and its function. */
-class ProtocolV2PairingTest {
+class PairingCryptoTest {
     private fun hex(text: String) = decodeHex(text)
     private fun ByteArray.lowerHex() = encodeHex(this).lowercase()
 
     @Test
     fun theTableIsApiMdsExactly() {
-        val table = ProtocolV2PairingCrypto.emojiTable
+        val table = PairingCrypto.emojiTable
         assertEquals(333, table.size)
         assertEquals("😉", table.first())
         assertEquals("🔷", table.last())
@@ -27,15 +27,15 @@ class ProtocolV2PairingTest {
     @Test
     fun emojiForApiMdsInputs() {
         val counting = ByteArray(32) { it.toByte() }
-        assertEquals(listOf("😉", "😉", "😉", "😉"), ProtocolV2PairingCrypto.emoji(ByteArray(32)))
-        assertEquals(listOf("💍", "☔️", "📅", "🍞"), ProtocolV2PairingCrypto.emoji(counting))
-        assertEquals(listOf("🙉", "🇷🇺", "☔️", "✈️"), ProtocolV2PairingCrypto.emoji(sha256(counting)))
-        assertEquals(emptyList<String>(), ProtocolV2PairingCrypto.emoji(ByteArray(31)))
+        assertEquals(listOf("😉", "😉", "😉", "😉"), PairingCrypto.emoji(ByteArray(32)))
+        assertEquals(listOf("💍", "☔️", "📅", "🍞"), PairingCrypto.emoji(counting))
+        assertEquals(listOf("🙉", "🇷🇺", "☔️", "✈️"), PairingCrypto.emoji(sha256(counting)))
+        assertEquals(emptyList<String>(), PairingCrypto.emoji(ByteArray(31)))
     }
 
     @Test
     fun theFixedVectors() {
-        val phone = ProtocolV2PairingCrypto(privateKey = ByteArray(32) { 1 }, nonce = ByteArray(32) { 4 })
+        val phone = PairingCrypto(privateKey = ByteArray(32) { 1 }, nonce = ByteArray(32) { 4 })
         val daemonKey = Sodium.scalarMultBase(ByteArray(32) { 2 })
         assertEquals("a4e09292b651c278b9772c569f5fa9bb13d906b46ab68c9df9dc2b4409f8a209", phone.publicKey.lowerHex())
         assertEquals("ce8d3ad1ccb633ec7b70c17814a5c76ecd029685050d344745ba05870e587d59", daemonKey.lowerHex())
@@ -55,7 +55,7 @@ class ProtocolV2PairingTest {
 
     @Test
     fun aLowOrderOrMisshapenDaemonKeyIsRefused() {
-        val phone = ProtocolV2PairingCrypto(privateKey = ByteArray(32) { 1 }, nonce = ByteArray(32) { 4 })
+        val phone = PairingCrypto(privateKey = ByteArray(32) { 1 }, nonce = ByteArray(32) { 4 })
         assertNull(phone.derive(ByteArray(32), ByteArray(32), ByteArray(32), "tc", 1))
         assertNull(phone.derive(ByteArray(31), ByteArray(32), ByteArray(32), "tc", 1))
         assertNull(phone.derive(Sodium.scalarMultBase(ByteArray(32) { 2 }), ByteArray(32), ByteArray(32), "tc", 0))

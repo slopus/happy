@@ -21,8 +21,8 @@ import com.slopus.happy.payments.PreferencesPurchasesCache
 import com.slopus.happy.payments.PurchaseAccount
 import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatPurchases
-import com.slopus.happy.protocolv2.ProtocolV2Accounts
-import com.slopus.happy.protocolv2.ProtocolV2PairingFlow
+import com.slopus.happy.computer.ComputerAccounts
+import com.slopus.happy.computer.PairingFlow
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
 import com.slopus.happy.ui.home.NewSessionDraftStore
@@ -177,30 +177,30 @@ class AppGraph(
      * Computers paired over Happy Protocol V2: accounts of their own beside
      * the relay account, kept through a relay sign-out.
      */
-    val protocolV2Accounts = ProtocolV2Accounts(
+    val computerAccounts = ComputerAccounts(
         secrets = ExpoSecureStore(
-            prefs = context.getSharedPreferences(ProtocolV2Accounts.SECRETS_PREFS, Context.MODE_PRIVATE),
+            prefs = context.getSharedPreferences(ComputerAccounts.SECRETS_PREFS, Context.MODE_PRIVATE),
             keys = secureStoreKeys,
-            keychainService = ProtocolV2Accounts.KEYCHAIN_SERVICE,
+            keychainService = ComputerAccounts.KEYCHAIN_SERVICE,
         ),
-        registry = context.getSharedPreferences(ProtocolV2Accounts.REGISTRY_PREFS, Context.MODE_PRIVATE),
+        registry = context.getSharedPreferences(ComputerAccounts.REGISTRY_PREFS, Context.MODE_PRIVATE),
     )
 
-    private val protocolV2PairingState = MutableStateFlow<ProtocolV2PairingFlow?>(null)
+    private val computerPairingState = MutableStateFlow<PairingFlow?>(null)
 
     /** The pairing on screen, if any. In memory only: its code is a secret. */
-    val protocolV2Pairing: StateFlow<ProtocolV2PairingFlow?> = protocolV2PairingState.asStateFlow()
+    val computerPairing: StateFlow<PairingFlow?> = computerPairingState.asStateFlow()
 
     /** Starts pairing the computer behind a `happy://direct?` code, replacing any unfinished pairing. */
-    fun startProtocolV2Pairing(code: String) {
-        protocolV2PairingState.value?.close()
-        protocolV2PairingState.value = ProtocolV2PairingFlow(scope, protocolV2Accounts, deviceName).also { it.start(code) }
+    fun startComputerPairing(code: String) {
+        computerPairingState.value?.close()
+        computerPairingState.value = PairingFlow(scope, computerAccounts, deviceName).also { it.start(code) }
     }
 
     /** The pairing screen left. */
-    fun endProtocolV2Pairing(flow: ProtocolV2PairingFlow) {
+    fun endComputerPairing(flow: PairingFlow) {
         flow.close()
-        protocolV2PairingState.compareAndSet(flow, null)
+        computerPairingState.compareAndSet(flow, null)
     }
 
     /** What the computer lists this phone as: the name the person gave it, else the model. */

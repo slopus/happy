@@ -26,8 +26,12 @@ architectures comparable (local store, delta sync, crypto layer).
 - **Happy Protocol V2**: a computer paired straight to the phone over
   Tailcat, with no relay account. It is an account of its own beside relay
   Happy accounts (see "Happy Protocol V2" below). Call it Happy Protocol V2
-  (`ProtocolV2…` in code) everywhere: code, strings, docs. Never "direct"
-  or "direct mode", except where the wire itself says it (`happy://direct?`).
+  in strings, docs and prose; never "direct" or "direct mode", except where
+  the wire itself says it (`happy://direct?`, endpoints, JSON keys).
+- **Naming in code:** current code has no prefix; old relay code that
+  clashes is `Legacy*`; never `V2`, `New`, `Direct` or feature prefixes.
+  `Legacy*` = used only by the legacy relay protocol or its UI. Shared
+  components are main-app code with plain names, and legacy reuses them.
 - **Excluded:** Stories, Stem Cells (and its spaces, sidebars,
   Prioritizing, Artifacts and Surfaces rows), and every experimental or social
   surface.
@@ -700,22 +704,22 @@ unless they provide `true`.
 
 A computer paired straight to the phone. The source of truth is happy-agent's
 `API.md`, "Mobile connector" (pairing, credentials, the QR code); iOS's port
-is `packages/happy-ios` (`ProtocolV2*`). The wire keeps its own names
+is `packages/happy-ios`. The wire keeps its own names
 (`happy://direct?`, `/v0/mobile-connector/…`).
 
-- **Pairing crypto** (`crypto/ProtocolV2Pairing.kt`): X25519, the
+- **Pairing crypto** (`crypto/PairingCrypto.kt`): X25519, the
   length-prefixed transcript, HKDF-SHA-256 keys, HMAC confirmations and the
-  333-emoji table (`resources/protocolv2/emoji.txt`, copied from API.md).
-  `ProtocolV2PairingTest` pins API.md's vectors and the table's SHA-256.
-- **Link, handshake, identity** (`app/…/protocolv2/`):
-  `ProtocolV2PairingLink` validates the code (a malformed `happy://direct?`
-  never falls back to relay approval); `ProtocolV2PairingService` commits,
+  333-emoji table (`resources/pairing/emoji.txt`, copied from API.md).
+  `PairingCryptoTest` pins API.md's vectors and the table's SHA-256.
+- **Link, handshake, identity** (`app/…/computer/`):
+  `PairingLink` validates the code (a malformed `happy://direct?`
+  never falls back to relay approval); `PairingService` commits,
   reveals, returns the emoji and on confirm waits for the computer and
-  checks its MAC before anything is kept; `ProtocolV2Identity` reads health
+  checks its MAC before anything is kept; `ComputerIdentity` reads health
   (protocol 27 or later) and `config.node`.
-- **Transport** (`TailcatProtocolV2Transport`): tailcat-kotlin, one client
+- **Transport** (`TailcatTransport`): tailcat-kotlin, one client
   per computer and a fresh TCP stream to `server.tailcat:<port>` per
-  HTTP/1.1 request, framed by `ProtocolV2HttpParser`. It uses upstream
+  HTTP/1.1 request, framed by `HttpResponseParser`. It uses upstream
   Tailcat's DERP map (`https://tailcat.dev/derpmap.json`); tailcat-kotlin's
   default (Tailscale's map) has none of Happy Agent's relay regions.
 - **tailcat-kotlin** has no published artifact. `tools/tailcat/build.sh`
@@ -723,8 +727,8 @@ is `packages/happy-ios` (`ProtocolV2*`). The wire keeps its own names
   variant) into `vendor/maven`, which `settings.gradle.kts` reads for the
   `io.tailcat` group only; the catalog pins the version. When it is
   published, switch the catalog and delete both.
-- **Live check:** `ProtocolV2LivePairingTest` pairs with a real Happy Agent
-  when `HAPPY_PROTOCOL_V2_LINK` holds a fresh code, writes the emoji for the
+- **Live check:** `LivePairingTest` pairs with a real Happy Agent
+  when `HAPPY_PAIRING_LINK` holds a fresh code, writes the emoji for the
   person confirming on the computer, then reads health and config with the
   new device token over a new tunnel. Remove the test device on the
   computer afterwards.

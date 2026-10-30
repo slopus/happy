@@ -27,5 +27,5 @@
     <string name="scan_not_happy_code">This QR code isn\'t a Happy code.</string>
     <string name="scan_terminal_code_elsewhere">This code connects a terminal. Scan it from Settings › Scan QR code to authenticate.</string>
     <string name="scan_account_code_elsewhere">This code links a new device. Scan it from Settings › Account › Link New Device.</string>
-    <string name="scan_protocol_v2_unavailable">This code pairs a computer with Happy Protocol V2. Pair it from the account menu on Home.</string>
+    <string name="scan_pairing_unavailable">This code pairs a computer with Happy Protocol V2. Pair it from the account menu on Home.</string>
 </resources>

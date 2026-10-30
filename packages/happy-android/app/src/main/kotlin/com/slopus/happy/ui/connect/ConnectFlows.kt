@@ -47,7 +47,7 @@ class ConnectFlow internal constructor(
     internal var okTitle = ""
     internal var messages = ScanMessages()
     internal var scanner: QrScanner = QrScanner { ScanResult.Cancelled }
-    internal var pairProtocolV2: ((String) -> Unit)? = null
+    internal var pairComputer: ((String) -> Unit)? = null
     internal var process: suspend (String) -> Boolean = { false }
     private var scanning = false
 
@@ -79,8 +79,8 @@ class ConnectFlow internal constructor(
      */
     internal suspend fun route(text: String) {
         when (val code = HappyCode.classify(text)) {
-            is HappyCode.ProtocolV2Pairing -> pairProtocolV2?.invoke(code.text)
-                ?: run { alert = errorAlert(messages.protocolV2Unavailable) }
+            is HappyCode.ComputerPairing -> pairComputer?.invoke(code.text)
+                ?: run { alert = errorAlert(messages.pairingUnavailable) }
             is HappyCode.Terminal ->
                 if (kind == ConnectKind.Terminal) process(code.url) else alert = errorAlert(messages.terminalElsewhere)
             is HappyCode.Account ->
@@ -95,8 +95,8 @@ class ConnectFlow internal constructor(
      */
     fun connectWithUrl(url: String) {
         scope.launch {
-            val pairing = HappyCode.classify(url) as? HappyCode.ProtocolV2Pairing
-            val pair = pairProtocolV2
+            val pairing = HappyCode.classify(url) as? HappyCode.ComputerPairing
+            val pair = pairComputer
             if (pairing != null && pair != null) pair(pairing.text) else process(url.trim())
         }
     }
@@ -119,7 +119,7 @@ internal data class ScanMessages(
     val notHappy: String = "",
     val terminalElsewhere: String = "",
     val accountElsewhere: String = "",
-    val protocolV2Unavailable: String = "",
+    val pairingUnavailable: String = "",
 )
 
 /**
@@ -226,10 +226,10 @@ private fun rememberConnectFlow(
         notHappy = stringResource(R.string.scan_not_happy_code),
         terminalElsewhere = stringResource(R.string.scan_terminal_code_elsewhere),
         accountElsewhere = stringResource(R.string.scan_account_code_elsewhere),
-        protocolV2Unavailable = stringResource(R.string.scan_protocol_v2_unavailable),
+        pairingUnavailable = stringResource(R.string.scan_pairing_unavailable),
     )
     flow.scanner = rememberQrScanner()
-    flow.pairProtocolV2 = LocalProtocolV2Pairing.current
+    flow.pairComputer = LocalComputerPairing.current
     val prefix = kind.prefix
     flow.process = process@{ url ->
         if (!url.startsWith(prefix)) {

@@ -1,7 +1,7 @@
-package com.slopus.happy.protocolv2
+package com.slopus.happy.computer
 
 import com.slopus.happy.crypto.CanonicalBase64Url
-import com.slopus.happy.crypto.ProtocolV2PairingCrypto
+import com.slopus.happy.crypto.PairingCrypto
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -14,13 +14,13 @@ import kotlinx.serialization.json.putJsonObject
 
 /** What a paired phone keeps to reach its computer. Every field is a secret but [deviceId]. */
 @Serializable
-data class ProtocolV2Credentials(
+data class ComputerCredentials(
     val address: String,
     val port: Int,
     val deviceId: String,
     val deviceToken: String,
 ) {
-    override fun toString() = "ProtocolV2Credentials(deviceId=$deviceId, port=$port)"
+    override fun toString() = "ComputerCredentials(deviceId=$deviceId, port=$port)"
 }
 
 /**
@@ -29,14 +29,14 @@ data class ProtocolV2Credentials(
  * desktop's confirmation and checks the daemon's MAC before anything is
  * kept. An unfinished pairing stores nothing; [cancel] rejects it.
  */
-class ProtocolV2PairingService(
-    private val link: ProtocolV2PairingLink,
-    private val transport: ProtocolV2Transport,
-    private val crypto: ProtocolV2PairingCrypto = ProtocolV2PairingCrypto(),
+class PairingService(
+    private val link: PairingLink,
+    private val transport: Transport,
+    private val crypto: PairingCrypto = PairingCrypto(),
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private var handshakeId: String? = null
-    private var secrets: ProtocolV2PairingCrypto.Secrets? = null
+    private var secrets: PairingCrypto.Secrets? = null
     private var expiresAt = link.expiresAtMillis
     @Volatile private var cancelled = false
 
@@ -47,9 +47,9 @@ class ProtocolV2PairingService(
     private class Status(val status: String, val deviceId: String? = null, val mac: String? = null) {
         fun check() = when (status) {
             "verifying", "completed" -> Unit
-            "expired" -> throw ProtocolV2Exception(ProtocolV2Exception.Reason.Expired)
-            "rejected" -> throw ProtocolV2Exception(ProtocolV2Exception.Reason.Rejected)
-            else -> throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidResponse)
+            "expired" -> throw ComputerException(ComputerException.Reason.Expired)
+            "rejected" -> throw ComputerException(ComputerException.Reason.Rejected)
+            else -> throw ComputerException(ComputerException.Reason.InvalidResponse)
         }
     }
 
@@ -65,14 +65,14 @@ class ProtocolV2PairingService(
         val key = CanonicalBase64Url.decode(started.publicKey)?.takeIf { it.size == 32 }
         val nonce = CanonicalBase64Url.decode(started.nonce)?.takeIf { it.size == 32 }
         if (CanonicalBase64Url.decode(started.handshakeId)?.size != 32 || key == null || nonce == null || !started.expiresAt.isFinite()) {
-            throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidResponse)
+            throw ComputerException(ComputerException.Reason.InvalidResponse)
         }
         // Kept even if cancelled meanwhile, so cancel can reject a handshake whose token was used.
         handshakeId = started.handshakeId
         expiresAt = minOf(link.expiresAtMillis, started.expiresAt.toLong())
         checkActive()
         val derived = crypto.derive(key, nonce, link.token, link.address, link.port)
-            ?: throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidResponse)
+            ?: throw ComputerException(ComputerException.Reason.InvalidResponse)
         val reveal = buildJsonObject {
             put("publicKey", CanonicalBase64Url.encode(crypto.publicKey))
             put("nonce", CanonicalBase64Url.encode(crypto.nonce))
@@ -80,16 +80,16 @@ class ProtocolV2PairingService(
         val status: Status = decode(transport.request("POST", "$ROUTE/reveal", started.handshakeId, reveal.bytes()))
         checkActive()
         status.check()
-        if (status.status != "verifying") throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidResponse)
+        if (status.status != "verifying") throw ComputerException(ComputerException.Reason.InvalidResponse)
         secrets = derived
         return derived.emoji
     }
 
     /** The person says the emoji match. Returns once the computer has confirmed too. */
-    suspend fun confirm(): ProtocolV2Credentials {
+    suspend fun confirm(): ComputerCredentials {
         checkActive()
-        val id = handshakeId ?: throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidResponse)
-        val derived = secrets ?: throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidResponse)
+        val id = handshakeId ?: throw ComputerException(ComputerException.Reason.InvalidResponse)
+        val derived = secrets ?: throw ComputerException(ComputerException.Reason.InvalidResponse)
         val body = buildJsonObject { put("mac", CanonicalBase64Url.encode(derived.mac("mobile"))) }
         var status: Status = decode(transport.request("POST", "$ROUTE/confirm", id, body.bytes()))
         while (true) {
@@ -99,10 +99,10 @@ class ProtocolV2PairingService(
                 val deviceId = status.deviceId?.takeIf { it.isNotEmpty() && it.length <= 128 }
                 val mac = status.mac?.let(CanonicalBase64Url::decode)
                 if (deviceId == null || mac == null || !derived.verifyDaemon(mac)) {
-                    throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidProof)
+                    throw ComputerException(ComputerException.Reason.InvalidProof)
                 }
                 secrets = null
-                return ProtocolV2Credentials(link.address, link.port, deviceId, CanonicalBase64Url.encode(derived.deviceToken))
+                return ComputerCredentials(link.address, link.port, deviceId, CanonicalBase64Url.encode(derived.deviceToken))
             }
             status = decode(transport.request("GET", "$ROUTE?wait=25", id))
         }
@@ -128,17 +128,17 @@ class ProtocolV2PairingService(
 
     private fun checkActive() {
         if (cancelled) throw CancellationException("Pairing cancelled")
-        if (expiresAt <= now()) throw ProtocolV2Exception(ProtocolV2Exception.Reason.Expired)
+        if (expiresAt <= now()) throw ComputerException(ComputerException.Reason.Expired)
     }
 
-    private inline fun <reified T> decode(response: ProtocolV2Response): T {
+    private inline fun <reified T> decode(response: TransportResponse): T {
         // A handshake the daemon no longer knows answers 401: treated as expired.
-        if (response.status == 401) throw ProtocolV2Exception(ProtocolV2Exception.Reason.Expired)
-        if (response.status != 200) throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidResponse)
+        if (response.status == 401) throw ComputerException(ComputerException.Reason.Expired)
+        if (response.status != 200) throw ComputerException(ComputerException.Reason.InvalidResponse)
         return try {
             json.decodeFromString<T>(response.text)
         } catch (_: Exception) {
-            throw ProtocolV2Exception(ProtocolV2Exception.Reason.InvalidResponse)
+            throw ComputerException(ComputerException.Reason.InvalidResponse)
         }
     }
 

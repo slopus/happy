@@ -1,4 +1,4 @@
-package com.slopus.happy.protocolv2
+package com.slopus.happy.computer
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
@@ -26,25 +26,25 @@ import java.io.IOException
 
 /** Paired computers kept on the phone, and one pairing from code to kept computer. */
 @RunWith(AndroidJUnit4::class)
-class ProtocolV2AccountsTest {
+class ComputerAccountsTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val keys = SoftwareKeys()
-    private val daemon = FakeProtocolV2Daemon().apply { deviceToken = ByteArray(32) { 7 } }
+    private val daemon = FakeDaemon().apply { deviceToken = ByteArray(32) { 7 } }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var transport: (ProtocolV2Credentials) -> ProtocolV2Transport = { daemon }
+    private var transport: (ComputerCredentials) -> Transport = { daemon }
 
-    private val secretPrefs get() = context.getSharedPreferences(ProtocolV2Accounts.SECRETS_PREFS, Context.MODE_PRIVATE)
-    private val registryPrefs get() = context.getSharedPreferences(ProtocolV2Accounts.REGISTRY_PREFS, Context.MODE_PRIVATE)
+    private val secretPrefs get() = context.getSharedPreferences(ComputerAccounts.SECRETS_PREFS, Context.MODE_PRIVATE)
+    private val registryPrefs get() = context.getSharedPreferences(ComputerAccounts.REGISTRY_PREFS, Context.MODE_PRIVATE)
 
-    private fun accounts() = ProtocolV2Accounts(
-        secrets = ExpoSecureStore(secretPrefs, keys, keychainService = ProtocolV2Accounts.KEYCHAIN_SERVICE),
+    private fun accounts() = ComputerAccounts(
+        secrets = ExpoSecureStore(secretPrefs, keys, keychainService = ComputerAccounts.KEYCHAIN_SERVICE),
         registry = registryPrefs,
         makeTransport = { transport(it) },
         now = { PAIRING_NOW },
     )
 
     private fun credentials(deviceId: String = "dv1") =
-        ProtocolV2Credentials("tcFixedVectorAddress", 24781, deviceId, CanonicalBase64Url.encode(daemon.deviceToken))
+        ComputerCredentials("tcFixedVectorAddress", 24781, deviceId, CanonicalBase64Url.encode(daemon.deviceToken))
 
     @Before
     fun setUp() {
@@ -60,7 +60,7 @@ class ProtocolV2AccountsTest {
         val account = accounts().add(credentials(), "Steve's Mac")
         assertEquals("Studio", account.name)
         assertEquals("abc", account.thumbhash)
-        assertTrue(account.id.startsWith("protocol-v2-"))
+        assertTrue(account.id.startsWith("computer-"))
         assertEquals(1, daemon.closed)
 
         // A new start reads the same list and credentials back.
@@ -88,7 +88,7 @@ class ProtocolV2AccountsTest {
 
     @Test
     fun anUnreachableComputerIsKeptUnderTheCodesName() = runBlocking {
-        transport = { object : ProtocolV2Transport by daemon {
+        transport = { object : Transport by daemon {
             override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>) =
                 throw IOException("offline")
         } }
@@ -101,8 +101,8 @@ class ProtocolV2AccountsTest {
         val accounts = accounts()
         try {
             accounts.add(credentials(), "Steve's Mac"); fail()
-        } catch (e: ProtocolV2Exception) {
-            assertEquals(ProtocolV2Exception.Reason.Revoked, e.reason)
+        } catch (e: ComputerException) {
+            assertEquals(ComputerException.Reason.Revoked, e.reason)
         }
         assertTrue(accounts.accounts.value.isEmpty())
         assertTrue(secretPrefs.all.isEmpty())
@@ -120,23 +120,23 @@ class ProtocolV2AccountsTest {
         assertTrue(accounts().accounts.value.isEmpty())
     }
 
-    private fun flow(daemon: FakeProtocolV2Daemon, accounts: ProtocolV2Accounts = accounts()) =
-        ProtocolV2PairingFlow(scope, accounts, "Pixel 9", makeTransport = { daemon }, now = { PAIRING_NOW })
+    private fun flow(daemon: FakeDaemon, accounts: ComputerAccounts = accounts()) =
+        PairingFlow(scope, accounts, "Pixel 9", makeTransport = { daemon }, now = { PAIRING_NOW })
 
-    private suspend inline fun <reified S : ProtocolV2PairingState> ProtocolV2PairingFlow.await(): S =
+    private suspend inline fun <reified S : PairingState> PairingFlow.await(): S =
         withTimeout(10_000) { state.first { it is S } as S }
 
     @Test
     fun aMatchedPairingKeepsTheComputer() = runBlocking {
-        val pairing = FakeProtocolV2Daemon()
+        val pairing = FakeDaemon()
         transport = { pairing }
         val accounts = accounts()
         val flow = flow(pairing, accounts)
         flow.start(pairingCode())
         assertEquals("Steve's Mac", flow.state.value?.computerName)
-        assertEquals(4, flow.await<ProtocolV2PairingState.Compare>().emoji.size)
+        assertEquals(4, flow.await<PairingState.Compare>().emoji.size)
         flow.confirm()
-        val paired = flow.await<ProtocolV2PairingState.Paired>()
+        val paired = flow.await<PairingState.Paired>()
         assertEquals("Studio", paired.account.name)
         assertEquals(listOf(paired.account), accounts.accounts.value)
         assertEquals(CanonicalBase64Url.encode(pairing.deviceToken), accounts.credentials(paired.account.id)?.deviceToken)
@@ -147,22 +147,22 @@ class ProtocolV2AccountsTest {
 
     @Test
     fun mismatchedEmojiRejectAndKeepNothing() = runBlocking {
-        val pairing = FakeProtocolV2Daemon()
+        val pairing = FakeDaemon()
         val flow = flow(pairing)
         flow.start(pairingCode())
-        flow.await<ProtocolV2PairingState.Compare>()
+        flow.await<PairingState.Compare>()
         flow.reject()
-        assertEquals(ProtocolV2Exception.Reason.Rejected.message, flow.await<ProtocolV2PairingState.Failed>().message)
+        assertEquals(ComputerException.Reason.Rejected.message, flow.await<PairingState.Failed>().message)
         withTimeout(10_000) { while (!pairing.rejected) kotlinx.coroutines.delay(10) }
         assertTrue(accounts().accounts.value.isEmpty())
     }
 
     @Test
     fun leavingAnUnfinishedPairingRejectsIt() = runBlocking {
-        val pairing = FakeProtocolV2Daemon()
+        val pairing = FakeDaemon()
         val flow = flow(pairing)
         flow.start(pairingCode())
-        flow.await<ProtocolV2PairingState.Compare>()
+        flow.await<PairingState.Compare>()
         flow.close()
         withTimeout(10_000) { while (!pairing.rejected) kotlinx.coroutines.delay(10) }
         assertTrue(accounts().accounts.value.isEmpty())
@@ -170,11 +170,11 @@ class ProtocolV2AccountsTest {
 
     @Test
     fun aBadCodeFailsWithoutConnecting() {
-        val pairing = FakeProtocolV2Daemon()
+        val pairing = FakeDaemon()
         val flow = flow(pairing)
         flow.start(pairingCode(e = PAIRING_NOW - 1))
-        val failed = flow.state.value as ProtocolV2PairingState.Failed
-        assertEquals(ProtocolV2Exception.Reason.Expired.message, failed.message)
+        val failed = flow.state.value as PairingState.Failed
+        assertEquals(ComputerException.Reason.Expired.message, failed.message)
         assertTrue(pairing.calls.isEmpty())
     }
 }

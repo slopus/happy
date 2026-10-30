@@ -125,10 +125,10 @@ class ConnectFlowTest {
     }
 
     @Test
-    fun aPairingCodeGoesToProtocolV2PairingFromAnyScanner() {
+    fun aPairingCodeGoesToComputerPairingFromAnyScanner() {
         val paired = CopyOnWriteArrayList<String>()
         rule.setHappyContent {
-            CompositionLocalProvider(LocalQrScanner provides scanner, LocalProtocolV2Pairing provides { paired += it }) {
+            CompositionLocalProvider(LocalQrScanner provides scanner, LocalComputerPairing provides { paired += it }) {
                 flow = rememberAccountLink(approve = { url -> approved += url })
             }
         }
@@ -234,10 +234,10 @@ class ConnectFlowTest {
     fun codesAreClassifiedByKind() {
         assertEquals(HappyCode.Terminal(terminalUrl), HappyCode.classify(" $terminalUrl "))
         assertEquals(HappyCode.Account(accountUrl), HappyCode.classify(accountUrl))
-        assertEquals(HappyCode.ProtocolV2Pairing("happy://direct?abc"), HappyCode.classify("happy://direct?abc"))
+        assertEquals(HappyCode.ComputerPairing("happy://direct?abc"), HappyCode.classify("happy://direct?abc"))
         // Malformed pairing codes stay pairing codes; they never fall back to relay approval.
-        assertEquals(HappyCode.ProtocolV2Pairing("happy://direct"), HappyCode.classify("happy://direct"))
-        assertEquals(HappyCode.ProtocolV2Pairing("Happy://Direct?%%"), HappyCode.classify("Happy://Direct?%%"))
+        assertEquals(HappyCode.ComputerPairing("happy://direct"), HappyCode.classify("happy://direct"))
+        assertEquals(HappyCode.ComputerPairing("Happy://Direct?%%"), HappyCode.classify("Happy://Direct?%%"))
         assertEquals(HappyCode.UnknownHappy("happy://directory?x"), HappyCode.classify("happy://directory?x"))
         assertEquals(HappyCode.UnknownHappy("happy://session/1"), HappyCode.classify("happy://session/1"))
         assertEquals(HappyCode.NotHappy("hello"), HappyCode.classify("hello"))
