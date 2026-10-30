@@ -37,6 +37,20 @@ interface Transport {
         headers: Map<String, String> = emptyMap(),
     ): TransportResponse
 
+    /**
+     * A GET whose answer keeps coming (Server-Sent Events): returns once the
+     * head is in; the body is read piece by piece from the
+     * [TransportStream]. A read that waits longer than [silenceMillis]
+     * fails, and lets go of the tunnel: an agent that restarted or slept
+     * never closes it.
+     */
+    suspend fun stream(
+        path: String,
+        credential: String,
+        headers: Map<String, String> = emptyMap(),
+        silenceMillis: Long = 40_000,
+    ): TransportStream = throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
+
     /** Lets go of the tunnel, so the next request makes a new one. */
     suspend fun reset() {}
 
@@ -109,6 +123,45 @@ class TailcatTransport(
             resetIfCurrent(tunnel)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         }
+    }
+
+    override suspend fun stream(path: String, credential: String, headers: Map<String, String>, silenceMillis: Long): TransportStream {
+        val head = TailcatHttp.requestHead("GET", path, port, credential, null, headers + ("Accept" to "text/event-stream"))
+        val tunnel = connection()
+        val socket: TailcatConnection = try {
+            withTimeout(requestTimeoutMillis) {
+                runInterruptible(Dispatchers.IO) {
+                    tunnel.openTCP(port).also { it.write(head, timeoutMillis = requestTimeoutMillis) }
+                }
+            }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            resetIfCurrent(tunnel)
+            throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            resetIfCurrent(tunnel)
+            throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
+        }
+        val reader = object : ByteSource {
+            override suspend fun read(): ByteArray = try {
+                runInterruptible(Dispatchers.IO) { socket.read(65536, timeoutMillis = silenceMillis) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                resetIfCurrent(tunnel)
+                throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
+            }
+
+            override fun close() {
+                try {
+                    socket.close()
+                } catch (_: Exception) {
+                    // Already gone.
+                }
+            }
+        }
+        return TransportStream.open(reader)
     }
 
     private suspend fun resetIfCurrent(used: TailcatClient) {
@@ -190,8 +243,8 @@ object TailcatHttp {
             .append("Host: server.tailcat:$port\r\n")
             .append("Authorization: Bearer $credential\r\n")
             .append("Connection: close\r\n")
-            .append("Accept: application/json\r\n")
-            .append("Content-Length: ${body?.size ?: 0}\r\n")
+        if (headers.keys.none { it.equals("Accept", ignoreCase = true) }) head.append("Accept: application/json\r\n")
+        head.append("Content-Length: ${body?.size ?: 0}\r\n")
         if (body != null && headers.keys.none { it.equals("Content-Type", ignoreCase = true) }) head.append("Content-Type: application/json\r\n")
         headers.forEach { (name, value) -> head.append("$name: $value\r\n") }
         return head.append("\r\n").toString().toByteArray(Charsets.UTF_8)

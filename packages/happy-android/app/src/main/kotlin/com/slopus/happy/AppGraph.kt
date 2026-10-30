@@ -5,6 +5,7 @@ import com.slopus.happy.accounts.AccountDisplay
 import com.slopus.happy.accounts.AccountStore
 import com.slopus.happy.accounts.RnServerConfigImporter
 import com.slopus.happy.accounts.accountId
+import com.slopus.happy.agent.AgentSessions
 import com.slopus.happy.auth.AndroidKeyStoreKeys
 import com.slopus.happy.auth.AuthCredentials
 import com.slopus.happy.auth.CredentialStore
@@ -335,6 +336,15 @@ class AppGraph(
     fun setForeground(value: Boolean) {
         foreground.value = value
     }
+
+    /** Each agent connection's live link and cached home (AgentSessions). */
+    val agentSessions = AgentSessions(
+        connections = agentConnections,
+        scope = scope,
+        cacheDir = File(appContext.noBackupFilesDir, "agent-connections"),
+        openId = openAgentId,
+        foreground = isForeground,
+    )
 
     private val logoutHooks = CopyOnWriteArrayList<suspend (authToken: String) -> Unit>()
 
