@@ -1569,6 +1569,46 @@ final class UITests: XCTestCase {
 
     }
 
+    /// Settings is the control; the same native gestures must leave a chat.
+    func testNativeSwipeBack() {
+        XCUIDevice.shared.orientation = .portrait
+        app.terminate()
+        app.launch()
+        home()
+        pause(1.5)
+        let name = ProcessInfo.processInfo.environment["HAPPY_STREAM_ROW"] ?? "Stream Lab"
+        let bot = row("space", name)
+        func mark(_ text: String) { print("HAPPY_NATIVE_POP \(text)") }
+        func swipe(_ from: CGFloat, _ to: CGFloat, y: CGFloat = 0.5) {
+            app.coordinate(withNormalizedOffset: CGVector(dx: from, dy: y)).press(
+                forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: to, dy: y)), withVelocity: .slow, thenHoldForDuration: 0.1
+            )
+            pause(1.5)
+        }
+        func atHome() -> Bool { app.buttons["search"].firstMatch.exists && !app.textViews["composer"].exists }
+        for (label, from) in [("edge", CGFloat(0.005)), ("content", CGFloat(0.3))] {
+            // Settings, the control.
+            app.buttons["settings"].firstMatch.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["settings"].waitForExistence(timeout: 5))
+            pause(1)
+            mark("settings \(label) start")
+            swipe(from, 0.95)
+            let settingsPopped = atHome()
+            mark("settings \(label) popped \(settingsPopped)")
+            XCTAssertTrue(settingsPopped, "Settings must pop with the native \(label) swipe")
+
+            // The agent chat, keyboard down.
+            bot.tap()
+            XCTAssertTrue(app.textViews["composer"].waitForExistence(timeout: 5))
+            pause(2)
+            mark("chat \(label) start")
+            swipe(from, 0.95)
+            let chatPopped = atHome()
+            mark("chat \(label) popped \(chatPopped)")
+            XCTAssertTrue(chatPopped, "Chat must pop with the native \(label) swipe")
+        }
+    }
+
     /// Stream Lab's conversation, with the transcript's probe on.
     private func openStreamLab(probe: String) -> XCUIElement {
         app.terminate()
