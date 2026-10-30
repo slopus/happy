@@ -419,6 +419,9 @@ final class SidebarView: UIScrollView {
         let input = layoutRows(shown)
         // Where the reader is, before the new places are known.
         let anchor = anchor()
+        let offset = contentOffset.y
+        let oldBottom = max(-contentInset.top, contentSize.height + contentInset.bottom - bounds.height)
+        let overscroll = max(0, offset - oldBottom)
         let result = SidebarLayout.layout(input, width: bounds.width, top: padding?.top ?? Metrics.contentTop, bottom: padding?.bottom ?? Metrics.contentBottom, scale: traitCollection.displayScale)
         layoutResult = result
         laidOut = (bounds.width, input)
@@ -446,7 +449,7 @@ final class SidebarView: UIScrollView {
         CATransaction.commit()
         let size = CGSize(width: bounds.width, height: result.contentHeight)
         if contentSize != size { contentSize = size }
-        keep(anchor, in: shown, result)
+        keep(anchor, in: shown, result, offset: offset, overscroll: overscroll)
     }
 
     /// A fold's rows: the ones it brought are put where they belong at once
@@ -510,16 +513,16 @@ final class SidebarView: UIScrollView {
     /// would otherwise push everything under the eye (a conversation added
     /// or archived elsewhere, Prioritizing's reordering). The list moves by
     /// what the content above moved, so the rows on screen stay where they
-    /// are. Clamped to what can be scrolled to, so it can't be left
-    /// hanging past the end.
-    private func keep(_ anchor: (id: String, y: CGFloat)?, in shown: [Row], _ result: SidebarLayout.Result) {
+    /// are. UIKit can adjust the offset when contentSize changes, so the
+    /// correction starts from the offset before that change. A bounce's
+    /// existing overscroll is preserved instead of snapping to the edge.
+    private func keep(_ anchor: (id: String, y: CGFloat)?, in shown: [Row], _ result: SidebarLayout.Result, offset: CGFloat, overscroll: CGFloat) {
         guard let anchor, let index = shown.firstIndex(where: { $0.id == anchor.id }),
               result.frames.indices.contains(index) else { return }
         let moved = result.frames[index].box.minY - anchor.y
-        guard abs(moved) > 0.01 else { return }
         let top = -contentInset.top
         let bottom = max(top, result.contentHeight + contentInset.bottom - bounds.height)
-        let next = min(bottom, max(top, contentOffset.y + moved))
+        let next = min(bottom + overscroll, max(top, offset + moved))
         guard abs(next - contentOffset.y) > 0.01 else { return }
         contentOffset.y = next
     }
