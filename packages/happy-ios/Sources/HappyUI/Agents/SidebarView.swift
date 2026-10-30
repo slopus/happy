@@ -56,6 +56,20 @@ final class SidebarView: UIScrollView {
     private var laidOut: (width: CGFloat, rows: [SidebarLayout.Row])?
     /// The row IDs `layoutResult`'s frames are for, in its order.
     private var placed: [String] = []
+    /// The row a finger just folded or opened. The rows its fold brings or
+    /// takes away arrive in a later `apply`, and only those glide; a change
+    /// from anywhere else is shown at once, as before.
+    private var folding: (id: String, at: CFTimeInterval)?
+    /// The next placing glides: rows the fold brought fade in where they
+    /// belong, the rest move to make room or close up.
+    private var foldGlide = false
+    /// Rows the fold took away, fading where they were. One that comes back
+    /// before it has gone (the fold opened again at once) is taken back.
+    private var leaving: [String: RowView] = [:]
+    private var entering: Set<String> = []
+    /// The width the rows were last placed at; `laidOut` is cleared when
+    /// rows come or go, so it can't say whether the width changed too.
+    private var placedWidth: CGFloat = 0
     private(set) var layoutResult: SidebarLayout.Result?
     /// The order shown while a carry is on, and after a drop until the
     /// document says the same.
@@ -161,6 +175,11 @@ final class SidebarView: UIScrollView {
         floating = nil
         for view in views.values { view.isHidden = false }
         if carry != nil { endCarry(); settle() }
+        // A fold mid-fade is finished, so nothing half-faded is waiting
+        // when the screen comes back.
+        folding = nil
+        foldGlide = false
+        settleFold()
     }
 
     /// Shows `rows`, touching only the rows that changed. Returns how many it touched.
@@ -173,6 +192,19 @@ final class SidebarView: UIScrollView {
         if self.rows.map(\.id) != rows.map(\.id) { laidOut = nil }
         self.rows = rows
         settleIfCaughtUp()
+        // The rows a fold the finger made brings or takes away, and nothing
+        // else: the folded row is still there and only rows came or went.
+        // Not under Reduce Motion, not while a row is carried, and not off
+        // screen, where there is nothing to watch.
+        // The fold is spent by the change that brings its rows, or after a
+        // second; one that only turns the chevron leaves it waiting.
+        let ids = Set(rows.map(\.id))
+        let changed = ids != Set(previous.keys)
+        if let fold = folding, CACurrentMediaTime() - fold.at > 1 { folding = nil }
+        let glides = folding.map { ids.contains($0.id) } == true && changed
+            && carry == nil && window != nil && !UIAccessibility.isReduceMotionEnabled
+        if changed { folding = nil }
+        if glides { foldGlide = true }
         var touched = 0
         var live = Set<String>()
         for row in rows {
@@ -181,9 +213,21 @@ final class SidebarView: UIScrollView {
             if let existing = views[row.id] {
                 view = existing
                 if previous[row.id] == row { continue }
+            } else if let back = leaving.removeValue(forKey: row.id) {
+                // Folded away and opened again before it had gone: the same
+                // view comes back from wherever its fade had got to.
+                view = back
+                views[row.id] = view
+                view.isUserInteractionEnabled = true
+                view.accessibilityElementsHidden = false
+                if glides { entering.insert(row.id) } else { view.alpha = 1 }
             } else {
                 view = makeRow()
                 views[row.id] = view
+                if glides {
+                    view.alpha = 0
+                    entering.insert(row.id)
+                }
             }
             view.configure(row)
             // Rows a tap doesn't open (a proposal's) read as what they are.
@@ -193,10 +237,18 @@ final class SidebarView: UIScrollView {
             touched += 1
         }
         for (id, view) in views where !live.contains(id) {
-            view.removeFromSuperview()
             views.removeValue(forKey: id)
             if editing?.id == id { editing = nil }
             touched += 1
+            guard glides else {
+                view.removeFromSuperview()
+                continue
+            }
+            // Fades where it is while the rows under it close up; it takes
+            // no touch and says nothing to VoiceOver meanwhile.
+            view.isUserInteractionEnabled = false
+            view.accessibilityElementsHidden = true
+            leaving[id] = view
         }
         // A lifted row that went away (archived elsewhere) is put down.
         if armed, let held = carry?.drag.held, held.contains(where: { !live.contains($0.id) }) { disarm() }
@@ -256,7 +308,7 @@ final class SidebarView: UIScrollView {
             break
         case .section:
             // A heading is a fold and nothing else: anywhere along it.
-            onFold?(row)
+            fold(row)
         case .separator: break
         default:
             // A ring with stories in it opens them, with a finger's room around it.
@@ -268,11 +320,18 @@ final class SidebarView: UIScrollView {
             // A row's fold is its chevron, with a finger's room around it;
             // a row that opens nothing (a proposal's) folds wherever it's tapped.
             if let chevron = view.frames?.chevron, onSelect == nil || point.x >= chevron.minX - 14 {
-                onFold?(row)
+                fold(row)
             } else {
                 onSelect?(row)
             }
         }
+    }
+
+    /// A fold the finger made: what it brings or takes away glides in when
+    /// it arrives (`apply`).
+    private func fold(_ row: Row) {
+        folding = (row.id, CACurrentMediaTime())
+        onFold?(row)
     }
 
     @objc private func tappedAway(_ gesture: UITapGestureRecognizer) {
@@ -344,7 +403,11 @@ final class SidebarView: UIScrollView {
         let input = layoutRows(shown)
         let width = bounds.width
         if laidOut?.width != width || laidOut?.rows != input || layoutResult?.frames.count != shown.count {
-            place(shown, animated: false)
+            // A width change lays out at once even mid-fold: rotation is
+            // not the fold's to animate.
+            let glide = foldGlide && placedWidth == width
+            foldGlide = false
+            if glide { placeFold(shown) } else { place(shown, animated: false); settleFold() }
         }
         // A row scrolled out of sight stops its title's sweep. Drawn whole
         // inside another screen's scroll, every row counts as seen.
@@ -359,6 +422,7 @@ final class SidebarView: UIScrollView {
         let result = SidebarLayout.layout(input, width: bounds.width, top: padding?.top ?? Metrics.contentTop, bottom: padding?.bottom ?? Metrics.contentBottom, scale: traitCollection.displayScale)
         layoutResult = result
         laidOut = (bounds.width, input)
+        placedWidth = bounds.width
         placed = shown.map(\.id)
         let move = {
             for (row, frame) in zip(shown, result.frames) {
@@ -383,6 +447,52 @@ final class SidebarView: UIScrollView {
         let size = CGSize(width: bounds.width, height: result.contentHeight)
         if contentSize != size { contentSize = size }
         keep(anchor, in: shown, result)
+    }
+
+    /// A fold's rows: the ones it brought are put where they belong at once
+    /// and fade in there, the others glide to their new places as desktop's
+    /// do, and the ones it took away fade where they stood while the rows
+    /// under them close up.
+    private func placeFold(_ shown: [Row]) {
+        // Arrivals start in place, so they don't fly in from wherever a new
+        // view begins.
+        let arriving = entering.filter { id in views[id]?.frames == nil }
+        if !arriving.isEmpty {
+            let input = layoutRows(shown)
+            let result = SidebarLayout.layout(input, width: bounds.width, top: padding?.top ?? Metrics.contentTop, bottom: padding?.bottom ?? Metrics.contentBottom, scale: traitCollection.displayScale)
+            UIView.performWithoutAnimation {
+                for (row, frame) in zip(shown, result.frames) where arriving.contains(row.id) {
+                    guard let view = views[row.id] else { continue }
+                    view.bounds = CGRect(origin: .zero, size: frame.box.size)
+                    view.center = CGPoint(x: frame.box.midX, y: frame.box.midY)
+                    view.frames = frame
+                    view.layoutIfNeeded()
+                }
+            }
+        }
+        place(shown, animated: true)
+        let fadingIn = entering.compactMap { views[$0] }
+        entering = []
+        let fadingOut = leaving
+        UIView.animate(withDuration: 0.16, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+            for view in fadingIn { view.alpha = 1 }
+            for view in fadingOut.values { view.alpha = 0 }
+        } completion: { _ in
+            // Only what is still leaving: a row taken back meanwhile stays.
+            for (id, view) in fadingOut where self.leaving[id] === view {
+                view.removeFromSuperview()
+                self.leaving.removeValue(forKey: id)
+            }
+        }
+    }
+
+    /// Anything a fold left half done, finished at once: what arrived is
+    /// shown whole and what left is gone.
+    private func settleFold() {
+        for id in entering { views[id]?.alpha = 1 }
+        entering = []
+        for view in leaving.values { view.removeFromSuperview() }
+        leaving = [:]
     }
 
     /// The first row on screen and where it sits in the content: what the

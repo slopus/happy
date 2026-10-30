@@ -343,5 +343,223 @@ final class HostedHomeScrollTraceTests: XCTestCase {
         XCTAssertLessThan(worst, control + 2, "an update moved the rows under the scroll")
         withExtendedLifetime(controller) {}
     }
+
+    // MARK: A fold the finger makes
+
+    /// Bots and its twenty, Tasks and its ten, open or folded, then a Later
+    /// section with thirty more: folding Tasks leaves the list long enough
+    /// that it never has to scroll back to stay inside what it holds, which
+    /// would move the rows for a reason that is not the fold's.
+    private static func tasks(open: Bool) -> [Row] {
+        let all = rows(count: 60)
+        let tasks = all.firstIndex { $0.id == "section:tasks" }!
+        var rows = Array(all[...tasks])
+        rows[tasks].collapsed = !open
+        if open { rows += all[(tasks + 1)..<(tasks + 11)] }
+        rows.append(Row(id: "section:later", nodeId: "later", kind: .section, label: "Later", collapsed: false))
+        rows += all[(tasks + 11)...]
+        return rows
+    }
+
+    /// Every row view in the list for `id`, the ones fading out included.
+    private func drawn(_ id: String, _ sidebar: SidebarView) -> [RowView] {
+        sidebar.subviews.compactMap { $0 as? RowView }.filter { $0.row?.id == id }
+    }
+
+    /// A finger on `id`'s heading. The store is left out: what the fold
+    /// would bring is applied by hand, so the case controls it exactly.
+    private func tapFold(_ id: String, _ sidebar: SidebarView) throws {
+        let view = try XCTUnwrap(sidebar.view(for: id), "no \(id)")
+        sidebar.tap(view, at: CGPoint(x: view.frame.midX, y: view.frame.midY))
+    }
+
+    /// Reduce Motion as this host reads it. A run that sets it says so in
+    /// `HAPPY_EXPECT_REDUCE_MOTION`, and the host must agree, so a run in
+    /// either state proves which state it tested rather than assuming.
+    private func reduceMotion() -> Bool {
+        let on = UIAccessibility.isReduceMotionEnabled
+        if let expected = ProcessInfo.processInfo.environment["HAPPY_EXPECT_REDUCE_MOTION"] {
+            XCTAssertEqual(on, expected == "1", "the host's Reduce Motion is not what this run set")
+        }
+        print("FOLD-TRACE reduce motion \(on ? "on" : "off")")
+        return on
+    }
+
+    /// Folding a section with a finger. With motion, what it took away fades
+    /// where it stood and is gone after, and opening it again fades its rows
+    /// in where they belong. Under Reduce Motion both happen at once: gone
+    /// on the fold, whole on the opening, nothing animating.
+    func testAFoldTheFingerMakesFadesItsRowsOrIsInstantUnderReduceMotion() async throws {
+        let still = reduceMotion()
+        let (controller, _, sidebar) = try await home()
+        sidebar.onFold = { _ in }
+        list(Self.tasks(open: true), at: -sidebar.contentInset.top, sidebar)
+        let child = "space:22"
+        let before = try XCTUnwrap(sidebar.view(for: child))
+
+        try tapFold("section:tasks", sidebar)
+        sidebar.apply(Self.tasks(open: false))
+        sidebar.layoutIfNeeded()
+        XCTAssertNil(sidebar.view(for: child), "a folded row is not one of the list's rows")
+        if still {
+            XCTAssertNil(before.superview, "under Reduce Motion a folded row is gone at once")
+            XCTAssertTrue(drawn(child, sidebar).isEmpty)
+        } else {
+            XCTAssertTrue(drawn(child, sidebar).first === before, "it fades where it stood instead of vanishing")
+            XCTAssertEqual(before.alpha, 0, "its fade is under way")
+            XCTAssertFalse(before.isUserInteractionEnabled, "a row on its way out takes no touch")
+            try await Task.sleep(for: .milliseconds(400))
+            XCTAssertNil(before.superview, "once faded, it is gone")
+        }
+
+        try tapFold("section:tasks", sidebar)
+        sidebar.apply(Self.tasks(open: true))
+        sidebar.layoutIfNeeded()
+        let back = try XCTUnwrap(sidebar.view(for: child))
+        let heading = try XCTUnwrap(sidebar.view(for: "section:tasks"))
+        XCTAssertGreaterThan(back.frame.minY, heading.frame.maxY - 0.5, "it is placed where it belongs, under its heading")
+        XCTAssertEqual(back.alpha, 1)
+        if still {
+            XCTAssertEqual(back.layer.presentation()?.opacity ?? 1, 1, "under Reduce Motion it is shown whole at once")
+            XCTAssertNil(back.layer.animationKeys(), "and nothing about it animates")
+        } else {
+            // A view that has never been drawn has no presentation layer to
+            // read yet; the fade itself is on the layer at once.
+            XCTAssertNotNil(back.layer.animation(forKey: "opacity"), "it fades in rather than being simply shown")
+            try await Task.sleep(for: .milliseconds(400))
+            XCTAssertEqual(back.layer.presentation()?.opacity ?? 1, 1)
+        }
+        withExtendedLifetime(controller) {}
+    }
+
+    /// Folded and opened again before anything settles, three times over.
+    /// With motion the same views come back rather than new ones over
+    /// half-faded old ones; either way exactly one view per row is left,
+    /// whole, and taking touches.
+    func testAFoldUndoneAtOnceLeavesOneWholeRow() async throws {
+        let still = reduceMotion()
+        let (controller, _, sidebar) = try await home()
+        sidebar.onFold = { _ in }
+        list(Self.tasks(open: true), at: -sidebar.contentInset.top, sidebar)
+        let child = "space:22"
+        let before = try XCTUnwrap(sidebar.view(for: child))
+
+        for _ in 0..<3 {
+            try tapFold("section:tasks", sidebar)
+            sidebar.apply(Self.tasks(open: false))
+            sidebar.layoutIfNeeded()
+            try tapFold("section:tasks", sidebar)
+            sidebar.apply(Self.tasks(open: true))
+            sidebar.layoutIfNeeded()
+        }
+        let row = try XCTUnwrap(sidebar.view(for: child))
+        if !still { XCTAssertTrue(row === before, "the row came back as itself") }
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(drawn(child, sidebar).count, 1, "one view for the row, nothing half-faded left")
+        XCTAssertTrue(row.superview === sidebar)
+        XCTAssertEqual(row.alpha, 1)
+        XCTAssertTrue(row.isUserInteractionEnabled)
+        XCTAssertFalse(row.accessibilityElementsHidden)
+        withExtendedLifetime(controller) {}
+    }
+
+    /// The other fold: a conversation's own chevron opening and closing its
+    /// subtasks, which goes the same way through `onFold` as a heading does.
+    /// Its subtasks fade out and in under it with motion, at once without.
+    func testAConversationsChevronFoldsItsSubtasksTheSameWay() async throws {
+        let still = reduceMotion()
+        let (controller, _, sidebar) = try await home()
+        var folded: [String] = []
+        sidebar.onFold = { folded.append($0.id) }
+        func rows(open: Bool) -> [Row] {
+            var rows = Self.rows(count: 30)
+            let at = rows.firstIndex { $0.id == "space:3" }!
+            rows[at].collapsed = !open
+            if open {
+                let subtasks = (0..<3).map {
+                    Row(id: "session:3-\($0)", nodeId: "session-3-\($0)", kind: .session, depth: 1, label: "Subtask \($0)", agentId: "agent-3")
+                }
+                rows.insert(contentsOf: subtasks, at: at + 1)
+            }
+            return rows
+        }
+        list(rows(open: true), at: -sidebar.contentInset.top, sidebar)
+        let parent = try XCTUnwrap(sidebar.view(for: "space:3"))
+        let chevron = try XCTUnwrap(parent.frames?.chevron, "a conversation with subtasks has its chevron")
+        let subtask = try XCTUnwrap(sidebar.view(for: "session:3-1"))
+        let after = try XCTUnwrap(sidebar.view(for: "space:4"))
+        let afterTop = after.frame.minY
+
+        // On the chevron, not the title: the title would open the chat.
+        sidebar.tap(parent, at: CGPoint(x: chevron.midX, y: parent.frame.midY))
+        XCTAssertEqual(folded, ["space:3"], "the chevron folds the conversation, and nothing else")
+        sidebar.apply(rows(open: false))
+        sidebar.layoutIfNeeded()
+        XCTAssertNil(sidebar.view(for: "session:3-1"))
+        XCTAssertLessThan(after.frame.minY, afterTop, "the rows under it close up")
+        if still {
+            XCTAssertNil(subtask.superview, "under Reduce Motion the subtasks are gone at once")
+        } else {
+            XCTAssertTrue(drawn("session:3-1", sidebar).first === subtask, "the subtask fades where it stood")
+            try await Task.sleep(for: .milliseconds(400))
+            XCTAssertNil(subtask.superview)
+        }
+
+        sidebar.tap(parent, at: CGPoint(x: chevron.midX, y: parent.frame.midY))
+        sidebar.apply(rows(open: true))
+        sidebar.layoutIfNeeded()
+        let back = try XCTUnwrap(sidebar.view(for: "session:3-1"))
+        XCTAssertGreaterThan(back.frame.minY, parent.frame.maxY - 0.5, "the subtask is placed under its conversation")
+        if still {
+            XCTAssertNil(back.layer.animationKeys(), "under Reduce Motion it is shown at once")
+        } else {
+            XCTAssertNotNil(back.layer.animation(forKey: "opacity"), "it fades in")
+        }
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(after.frame.minY, afterTop, accuracy: 0.01, "the rows under it are back where they were")
+        withExtendedLifetime(controller) {}
+    }
+
+    /// Only the reader's own fold glides. The same rows going because of
+    /// something elsewhere are shown at once, as every other update is.
+    func testAFoldFromElsewhereIsShownAtOnce() async throws {
+        let (controller, _, sidebar) = try await home()
+        sidebar.onFold = { _ in }
+        list(Self.tasks(open: true), at: -sidebar.contentInset.top, sidebar)
+        let before = try XCTUnwrap(sidebar.view(for: "space:22"))
+        sidebar.apply(Self.tasks(open: false))
+        sidebar.layoutIfNeeded()
+        XCTAssertNil(before.superview, "no fade for a change the reader didn't make")
+        XCTAssertTrue(drawn("space:22", sidebar).isEmpty)
+        withExtendedLifetime(controller) {}
+    }
+
+    /// The rows above a fold don't move on screen, while it glides or
+    /// after: the reader's place is kept as it is for every other update.
+    func testAFoldMovesNothingAboveIt() async throws {
+        let (controller, window, sidebar) = try await home()
+        sidebar.onFold = { _ in }
+        list(Self.tasks(open: true), at: -sidebar.contentInset.top, sidebar)
+        // The heading on screen with rows above it: a finger can reach it.
+        let heading = try XCTUnwrap(sidebar.view(for: "section:tasks"))
+        sidebar.setContentOffset(CGPoint(x: 0, y: heading.frame.minY - 300), animated: false)
+        sidebar.layoutIfNeeded()
+        let above = "space:17"
+        let start = try XCTUnwrap(windowY(above, sidebar, window), "no row above the fold on screen")
+
+        try tapFold("section:tasks", sidebar)
+        sidebar.apply(Self.tasks(open: false))
+        sidebar.layoutIfNeeded()
+        XCTAssertEqual(try XCTUnwrap(windowY(above, sidebar, window)), start, accuracy: 0.01, "folding moved the rows above it")
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(try XCTUnwrap(windowY(above, sidebar, window)), start, accuracy: 0.01, "the rows above it moved once it settled")
+
+        try tapFold("section:tasks", sidebar)
+        sidebar.apply(Self.tasks(open: true))
+        sidebar.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(try XCTUnwrap(windowY(above, sidebar, window)), start, accuracy: 0.01, "opening it moved the rows above it")
+        withExtendedLifetime(controller) {}
+    }
 }
 #endif
