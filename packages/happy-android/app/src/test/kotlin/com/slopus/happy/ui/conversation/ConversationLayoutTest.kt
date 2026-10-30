@@ -33,6 +33,9 @@ import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -160,6 +163,28 @@ class ConversationLayoutTest {
         rule.node(ConversationQuestionTags.CARD).assertIsDisplayed()
         rule.onNodeWithText("Waiting for your answer").assertIsDisplayed()
         shot("question")
+    }
+
+    @Test fun `the header is the screen's own colour, light and dark`() {
+        var dark by mutableStateOf(false)
+        rule.setContent {
+            com.slopus.happy.ui.theme.HappyTheme(preference = if (dark) com.slopus.happy.ui.theme.ThemePreference.Dark else com.slopus.happy.ui.theme.ThemePreference.Light) {
+                ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), null, ConversationScreenActions())
+            }
+        }
+        for (mode in listOf(false, true)) {
+            dark = mode
+            rule.waitForIdle()
+            val image = rule.onRoot().captureToImage().asAndroidBitmap()
+            val bar = rule.node(HeaderTags.BAR).bounds
+            val list = rule.node(ConversationScreenTags.LIST).bounds
+            val density = image.width / 411f
+            // The bar's right half below its icons, and the list's right edge: both plain background.
+            val header = image.getPixel(image.width - 4, ((bar.bottom.value - 2) * density).toInt())
+            val content = image.getPixel(image.width - 4, ((list.top.value + 2) * density).toInt())
+            assertEquals("dark=$dark", content, header)
+            shot(if (dark) "header-dark" else "header-light")
+        }
     }
 
     @Test fun `a subagent can't take messages`() {

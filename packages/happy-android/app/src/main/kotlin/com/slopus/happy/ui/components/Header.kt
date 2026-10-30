@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -78,6 +79,8 @@ fun Header(
     left: (@Composable () -> Unit)? = null,
     right: (@Composable () -> Unit)? = null,
     titleContent: (@Composable () -> Unit)? = null,
+    /** The bar's colour; a screen passes its own background so bar and content are one surface. */
+    background: Color? = null,
 ) {
     val colors = HappyTheme.colors
     val window = LocalWindowLayout.current
@@ -118,7 +121,7 @@ fun Header(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(if (scrolled && phone) colors.surfaceHigh else colors.header.background)
+            .background(if (scrolled && phone) colors.surfaceHigh else background ?: colors.header.background)
             .windowInsetsPadding(WindowInsets.statusBars),
     ) {
         // navigation/Header.tsx `content`: held to layout.headerMaxWidth and centred.

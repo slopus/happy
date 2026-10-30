@@ -1,0 +1,219 @@
+package com.slopus.happy.ui.conversation
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
+import com.slopus.happy.AppGraph
+import com.slopus.happy.R
+import com.slopus.happy.agent.AgentApiException
+import com.slopus.happy.agent.AgentEvent
+import com.slopus.happy.agent.AgentLinkStatus
+import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.chat.obj
+import com.slopus.happy.conversation.AgentInfo
+import com.slopus.happy.conversation.AgentRequest
+import com.slopus.happy.conversation.Conversation
+import com.slopus.happy.conversation.ConversationApi
+import com.slopus.happy.conversation.ConversationApiException
+import com.slopus.happy.conversation.ConversationSignal
+import com.slopus.happy.conversation.Mode
+import com.slopus.happy.conversation.NewTask
+import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.components.AlertButton
+import com.slopus.happy.ui.components.HappyAlert
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.serialization.Serializable
+
+/** One conversation of the agent connection [connectionId]; [agentId] null is a new, empty chat. */
+@Serializable data class ConversationRoute(val connectionId: String, val agentId: String? = null)
+
+/** A conversation's details. */
+@Serializable data class ConversationDetailsRoute(val connectionId: String, val agentId: String)
+
+/** The conversation screens. HappyApp's NavHost calls this once. */
+fun NavGraphBuilder.conversationRoutes(graph: AppGraph, nav: NavHostController) {
+    composable<ConversationRoute> { entry ->
+        val route = entry.toRoute<ConversationRoute>()
+        ConversationEntry(graph, nav, route)
+    }
+    composable<ConversationDetailsRoute> { entry ->
+        val route = entry.toRoute<ConversationDetailsRoute>()
+        ConversationDetails(graph, nav, route)
+    }
+}
+
+/** Opens a conversation over whatever is up. */
+fun NavHostController.openConversation(connectionId: String, agentId: String) {
+    navigate(ConversationRoute(connectionId, agentId))
+}
+
+/**
+ * A new, empty chat: pushed from home; from a chat it replaces that chat
+ * (animated by the NavHost's transition), so Back goes home.
+ */
+fun NavHostController.composeConversation(connectionId: String) {
+    val current = currentBackStackEntry
+    if (current?.destination?.hasRoute<ConversationRoute>() == true) {
+        navigate(ConversationRoute(connectionId)) {
+            popUpTo(current.destination.id) { inclusive = true }
+        }
+    } else {
+        navigate(ConversationRoute(connectionId))
+    }
+}
+
+/** The agent connection's client as a conversation asks it: refusals become [ConversationApiException]. */
+internal fun AgentSession.conversationRequest(): AgentRequest = { method, path, body ->
+    try {
+        client.send(method, path, body)
+    } catch (e: AgentApiException) {
+        throw ConversationApiException(e.status, e.code, e.message)
+    }
+}
+
+/** The connection's journal as one conversation hears it: its own events, and a resync on every (re)connect. */
+internal fun Flow<AgentEvent>.signalsFor(agentId: String): Flow<ConversationSignal> = mapNotNull { event ->
+    when {
+        event.type == AgentEvent.HELLO -> ConversationSignal.Resync
+        event.agentId == agentId -> ConversationSignal.Event(event.type, event.data)
+        else -> null
+    }
+}
+
+/**
+ * The conversation a back stack entry shows, kept through recreation. A
+ * new chat's ids are made once and saved, so after process death the same
+ * chat comes back (and its task, made again with the same ids, is the same
+ * task); once made it opens as the chat it became.
+ */
+private class ConversationHolder(session: AgentSession, route: ConversationRoute, saved: SavedStateHandle) : ViewModel() {
+    /** Not viewModelScope: a send or draft save in flight finishes after the screen goes. */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    val conversation: Conversation
+
+    init {
+        val task = if (route.agentId != null) null else NewTask(
+            saved.get<String>(TASK) ?: ConversationApi.clientId().also { saved[TASK] = it },
+            saved.get<String>(WORKSPACE) ?: ConversationApi.clientId().also { saved[WORKSPACE] = it },
+            saved.get<String>(AGENT) ?: ConversationApi.clientId().also { saved[AGENT] = it },
+            saved.get<String>(MUTATION) ?: ConversationApi.clientId().also { saved[MUTATION] = it },
+        )
+        val agentId = route.agentId ?: task!!.agentId
+        conversation = Conversation(
+            api = ConversationApi(session.conversationRequest()),
+            signals = session.events.signalsFor(agentId),
+            scope = scope,
+            agentId = agentId,
+            newTask = task.takeIf { saved.get<Boolean>(CREATED) != true },
+            onTaskCreated = { answer ->
+                saved[CREATED] = true
+                answer["task"].obj?.let { session.upsertTask(it, answer["membership"].obj) }
+            },
+        )
+        conversation.start()
+    }
+
+    override fun onCleared() {
+        conversation.close()
+    }
+
+    private companion object {
+        const val TASK = "taskId"
+        const val WORKSPACE = "workspaceId"
+        const val AGENT = "agentId"
+        const val MUTATION = "mutationId"
+        const val CREATED = "created"
+    }
+}
+
+@Composable
+internal fun linkStatusText(status: AgentLinkStatus?): String? = when (status) {
+    null, AgentLinkStatus.Connected -> null
+    AgentLinkStatus.Connecting -> stringResource(R.string.conversation_connecting)
+    AgentLinkStatus.Offline -> stringResource(R.string.conversation_offline)
+    AgentLinkStatus.Revoked -> stringResource(R.string.conversation_revoked)
+    AgentLinkStatus.UpdateRequired -> stringResource(R.string.conversation_update_required)
+}
+
+@Composable
+private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: ConversationRoute) {
+    val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+    if (session == null) {
+        ConversationDetailsScreen(null, null, stringResource(R.string.conversation_unavailable)) { nav.popBackStack() }
+        return
+    }
+    val holder = viewModel(key = "conversation") { ConversationHolder(session, route, createSavedStateHandle()) }
+    val conversation = holder.conversation
+    val state by conversation.state.collectAsStateWithLifecycle()
+    val status by session.status.collectAsStateWithLifecycle()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    DisposableEffect(conversation) { onDispose { conversation.setVisible(false) } }
+    ConversationScreen(
+        state = state,
+        connection = linkStatusText(status),
+        bubbleColor = settings.userMessageBubbleColor,
+        actions = remember(conversation, nav) {
+            ConversationScreenActions(
+                onBack = { nav.popBackStack() },
+                onCompose = { nav.composeConversation(route.connectionId) },
+                onDetails = { nav.navigate(ConversationDetailsRoute(route.connectionId, conversation.agentId)) },
+                onDraftChange = conversation::setDraft,
+                onSend = { conversation.send(it) },
+                onStop = conversation::stop,
+                onRetrySend = conversation::retrySend,
+                onDiscardSend = conversation::discardSend,
+                onRetryFailure = conversation::retryFailure,
+                onAnswer = conversation::answer,
+                onLoadOlder = conversation::loadOlder,
+                loadMedia = conversation::media,
+                onVisible = conversation::setVisible,
+            )
+        },
+    )
+    state.alert?.let { message ->
+        val title = stringResource(R.string.common_error)
+        val ok = stringResource(R.string.common_ok)
+        HappyAlert(Alert(title, message, listOf(AlertButton(ok))), onDismiss = conversation::dismissAlert)
+    }
+}
+
+@Composable
+private fun ConversationDetails(graph: AppGraph, nav: NavHostController, route: ConversationDetailsRoute) {
+    val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+    val unavailable = stringResource(R.string.conversation_unavailable)
+    val read by produceState<Triple<AgentInfo?, Mode?, String?>>(Triple(null, null, null), session, route.agentId) {
+        value = if (session == null) {
+            Triple(null, null, unavailable)
+        } else {
+            try {
+                val start = ConversationApi(session.conversationRequest()).bootstrap(route.agentId)
+                Triple(start.agent, start.draft?.mode ?: start.mode, null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Triple(null, null, Conversation.describe(e))
+            }
+        }
+    }
+    ConversationDetailsScreen(read.first, read.second, read.third) { nav.popBackStack() }
+}
+

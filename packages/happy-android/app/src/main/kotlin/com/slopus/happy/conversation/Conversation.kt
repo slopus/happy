@@ -81,6 +81,7 @@ class Conversation(
     val agentId: String,
     private var newTask: NewTask? = null,
     initialDraft: String = "",
+    /** The answer to `POST /v0/tasks`, so home lists the task at once. */
     private val onTaskCreated: (JsonObject) -> Unit = {},
     private val lane: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
     private val now: () -> Long = System::currentTimeMillis,
@@ -420,7 +421,7 @@ class Conversation(
             val made = withRetries { api.createTask(task) }
             newTask = null
             onTaskCreated(made)
-            made["agent"]?.let(AgentInfo::parse)?.let { agent = it }
+            made["task"].obj?.get("agent")?.let(AgentInfo::parse)?.let { agent = it }
             publish { it.copy(created = true) }
             // Typed while it was made: that goes up now under the real agent.
             if (!draftSynced) saveDraftSoon(0)

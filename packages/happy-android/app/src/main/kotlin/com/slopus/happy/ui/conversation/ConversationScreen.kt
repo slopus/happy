@@ -99,7 +99,8 @@ class ConversationScreenActions(
 )
 
 /**
- * One conversation with a paired agent. Spec: the standard header (back;
+ * One conversation with a paired agent. Spec: the standard header, in the
+ * transcript's own surface colour so bar and content are one (back;
  * the chat's title, or "New chat" before its first send, with the
  * connection's state under it in the header's subtitle while it isn't
  * live, never in the content; compose, then details once the chat
@@ -150,7 +151,8 @@ fun ConversationScreen(
         Header(
             title = state.title ?: stringResource(if (state.created && state.loaded) R.string.conversation_untitled else R.string.conversation_compose),
             subtitle = connection,
-            scrolled = listState.canScrollForward,
+            // One surface with the transcript, light and dark: no tint when it scrolls under.
+            background = colors.surface,
             left = { HeaderBackButton(actions.onBack) },
             right = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

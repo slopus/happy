@@ -203,7 +203,7 @@ class ConversationTest {
         // The default model at its own effort, as nothing was picked.
         assertEquals("\"high\"", agent.requests.first { it.second.endsWith("/send") }.third!!["mode"]!!.jsonObject["effort"].toString())
         assertTrue(chat.state.value.created)
-        assertEquals("t1", made!!["id"].toString().trim('"'))
+        assertEquals("t1", made!!["task"]!!.jsonObject["id"].toString().trim('"'))
         assertEquals(listOf("Second", "First"), chat.state.value.rows.map { (it as ConversationRow.User).text })
     }
 

@@ -38,7 +38,7 @@ open class ConversationApi(private val request: AgentRequest) {
 
     private suspend fun call(method: String, path: String, body: JsonElement? = null): JsonObject = decode(request(method, path, body))
 
-    /** A new chat: a task, its folder and its one agent, made together. Answers the task object. */
+    /** A new chat: a task, its folder and its one agent, made together. Answers `{task, membership}`. */
     open suspend fun createTask(task: NewTask): JsonObject = call(
         "POST",
         "/v0/tasks",
@@ -48,7 +48,7 @@ open class ConversationApi(private val request: AgentRequest) {
             put("agentId", task.agentId)
             put("mutationId", task.mutationId)
         },
-    )["task"].obj ?: throw invalid()
+    ).takeIf { it["task"].obj != null } ?: throw invalid()
 
     open suspend fun bootstrap(agentId: String): Bootstrap =
         Bootstrap.parse(call("GET", "/v0/agents/${escape(agentId)}/bootstrap")) ?: throw invalid()

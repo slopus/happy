@@ -34,7 +34,8 @@ object ConversationDetailsTags {
 }
 
 /**
- * A conversation's details: the standard header ("Chat details", back),
+ * A conversation's details: the standard header ("Chat details", back) in
+ * the grouped background, as the cards sit on,
  * then settings cards (ItemGroup). Conversation: title, status, model,
  * effort, permission mode, subtasks running of total, created and updated.
  * Identifiers: the agent and workspace ids, each copied on tap. A
@@ -45,7 +46,7 @@ object ConversationDetailsTags {
 @Composable
 fun ConversationDetailsScreen(agent: AgentInfo?, mode: Mode?, error: String?, onBack: () -> Unit) {
     val colors = HappyTheme.colors
-    Screen(header = { Header(title = stringResource(R.string.conversation_details), left = { HeaderBackButton(onBack) }) }) {
+    Screen(header = { Header(title = stringResource(R.string.conversation_details), left = { HeaderBackButton(onBack) }, background = colors.grouped.background) }) {
         when {
             agent == null && error != null -> Text(
                 error,
