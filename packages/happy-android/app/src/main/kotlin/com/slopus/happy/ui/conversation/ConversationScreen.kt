@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,22 +39,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.conversation.Activity
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.ui.chat.MessageCallbacks
+import com.slopus.happy.ui.chat.SessionStatusColors
 import com.slopus.happy.ui.chat.PrimaryAction
 import com.slopus.happy.ui.chat.resolvePrimaryAction
 import com.slopus.happy.ui.chat.userMessageBubblePalette
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.MaterialSymbols
-import com.slopus.happy.ui.layout.LocalWindowLayout
-import com.slopus.happy.ui.layout.contentMaxWidth
+import com.slopus.happy.ui.components.StatusDot
+import com.slopus.happy.ui.components.StateArt
+import com.slopus.happy.ui.components.StatePage
 import com.slopus.happy.ui.theme.HappyTheme
 import java.io.File
 
@@ -69,7 +75,6 @@ object ConversationScreenTags {
     const val LOADING = "conversation.loading"
     const val EMPTY = "conversation.empty"
     const val ERROR = "conversation.error"
-    const val RETRY = "conversation.error.retry"
     const val READ_ONLY = "conversation.readOnly"
     const val OLDER = "conversation.older"
     const val OLDER_FAILED = "conversation.older.failed"
@@ -162,14 +167,28 @@ fun ConversationScreen(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.testTag(ConversationScreenTags.TITLE),
                     )
-                    connection?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.textSecondary,
-                            maxLines = 1,
-                            modifier = Modifier.testTag(ConversationScreenTags.SUBTITLE),
-                        )
+                    // One status line, under the title and nowhere else: the
+                    // connection while it isn't live, otherwise what the agent
+                    // is doing. The bar's own height never changes with it, so
+                    // the transcript doesn't move when a send starts the work.
+                    val working = activityLabel(state.activity)
+                    val status = connection ?: working
+                    if (status != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .testTag(ConversationScreenTags.SUBTITLE)
+                                .semantics { liveRegion = LiveRegionMode.Polite },
+                        ) {
+                            if (connection == null && state.activity != null) {
+                                StatusDot(
+                                    if (state.activity == Activity.AwaitingAnswer) SessionStatusColors.attention else SessionStatusColors.thinking,
+                                    pulsing = true,
+                                )
+                            }
+                            Text(status, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             },
@@ -200,15 +219,24 @@ fun ConversationScreen(
         )
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
-                !state.loaded -> CircularProgressIndicator(
-                    color = colors.textSecondary,
-                    modifier = Modifier.align(Alignment.Center).testTag(ConversationScreenTags.LOADING),
+                !state.loaded -> StatePage(
+                    title = null,
+                    body = null,
+                    art = StateArt.Waiting,
+                    tag = ConversationScreenTags.LOADING,
                 )
-                state.rows.isEmpty() -> Placeholder(
-                    text = state.error?.let { stringResource(R.string.conversation_load_failed) + "\n" + it }
-                        ?: stringResource(if (state.created) R.string.conversation_empty else R.string.conversation_empty_new),
-                    tag = if (state.error != null) ConversationScreenTags.ERROR else ConversationScreenTags.EMPTY,
-                    onRetry = actions.onRetryLoad.takeIf { state.error != null },
+                state.error != null && state.rows.isEmpty() -> StatePage(
+                    title = stringResource(R.string.conversation_load_failed),
+                    body = state.error,
+                    icon = Ionicon.CloudOfflineOutline,
+                    action = stringResource(R.string.common_retry) to actions.onRetryLoad,
+                    tag = ConversationScreenTags.ERROR,
+                )
+                state.rows.isEmpty() -> StatePage(
+                    title = null,
+                    body = stringResource(if (state.created) R.string.conversation_empty else R.string.conversation_empty_new),
+                    art = StateArt.Ready,
+                    tag = ConversationScreenTags.EMPTY,
                 )
                 else -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder)
             }
@@ -238,24 +266,6 @@ fun ConversationScreen(
                     onStop = actions.onStop,
                     onModeChange = actions.onModeChange,
                 )
-            }
-        }
-    }
-}
-
-@Composable
-internal fun Placeholder(text: String, tag: String, onRetry: (() -> Unit)? = null) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text,
-            style = MaterialTheme.typography.bodyLarge,
-            color = HappyTheme.colors.textSecondary,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(32.dp).contentMaxWidth(LocalWindowLayout.current).testTag(tag),
-        )
-        if (onRetry != null) {
-            FilledTonalButton(onClick = onRetry, modifier = Modifier.testTag(ConversationScreenTags.RETRY)) {
-                Text(stringResource(R.string.common_retry))
             }
         }
     }
@@ -307,6 +317,22 @@ private fun Transcript(
             }
         }
     }
+}
+
+/** What the agent is doing, as the bar's status line says it. */
+@Composable
+internal fun activityLabel(activity: Activity?): String? = activity?.let {
+    stringResource(
+        when (it) {
+            Activity.AwaitingAnswer -> R.string.conversation_activity_awaiting_answer
+            Activity.WaitingForModel -> R.string.conversation_activity_waiting_for_model
+            Activity.Thinking -> R.string.conversation_activity_thinking
+            Activity.PreparingTools -> R.string.conversation_activity_preparing_tools
+            Activity.RunningTools -> R.string.conversation_activity_running_tools
+            Activity.Working -> R.string.conversation_activity_working
+            Activity.Delegating -> R.string.conversation_activity_delegating
+        },
+    )
 }
 
 /** The send/stop button the composer shows; kept beside the screen for its tests. */

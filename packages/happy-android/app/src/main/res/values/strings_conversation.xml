@@ -74,6 +74,7 @@
     <string name="conversation_permission_full_access">Full access</string>
     <string name="conversation_permission_full_access_description">Runs anything on this computer without asking.</string>
     <string name="conversation_chief_of_staff">Chief of Staff</string>
+    <string name="conversation_chief_unavailable">Can\'t open the Chief of Staff</string>
     <string name="conversation_chief_missing">There\'s no Chief of Staff on this computer.</string>
     <string name="conversation_mode_permission">Permissions</string>
     <string name="conversation_mode_model">Model</string>

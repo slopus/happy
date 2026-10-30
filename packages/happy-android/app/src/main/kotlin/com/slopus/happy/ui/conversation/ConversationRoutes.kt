@@ -155,11 +155,7 @@ private class ConversationHolder(session: AgentSession, route: ConversationRoute
             },
         )
         conversation.start()
-        // Once per back stack entry: not again after rotation or process death.
-        if (route.prefill != null && saved.get<Boolean>(PREFILLED) != true) {
-            saved[PREFILLED] = true
-            conversation.prefill(route.prefill)
-        }
+        saved.takePrefill(route.prefill)?.let(conversation::prefill)
     }
 
     override fun onCleared() {
@@ -172,9 +168,21 @@ private class ConversationHolder(session: AgentSession, route: ConversationRoute
         const val AGENT = "agentId"
         const val MUTATION = "mutationId"
         const val CREATED = "created"
-        const val PREFILLED = "prefilled"
     }
 }
+
+/**
+ * A route's prefill the first time this back stack entry asks for it, and
+ * null ever after: a rotation or a return from process death keeps the
+ * draft the person has been editing instead of writing the prompt again.
+ */
+internal fun SavedStateHandle.takePrefill(prefill: String?): String? {
+    if (prefill == null || get<Boolean>(PREFILLED) == true) return null
+    this[PREFILLED] = true
+    return prefill
+}
+
+private const val PREFILLED = "prefilled"
 
 @Composable
 internal fun linkStatusText(status: AgentLinkStatus?): String? = when (status) {

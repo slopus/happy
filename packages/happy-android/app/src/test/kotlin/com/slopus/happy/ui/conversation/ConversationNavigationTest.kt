@@ -2,6 +2,7 @@ package com.slopus.happy.ui.conversation
 
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.lifecycle.SavedStateHandle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -43,6 +44,7 @@ class ConversationNavigationTest {
             NavHost(nav, startDestination = TestHome) {
                 composable<TestHome> { Text("home") }
                 composable<ConversationRoute> { Text("chat ${it.toRoute<ConversationRoute>().agentId}") }
+                composable<ChiefOfStaffRoute> { Text("chief") }
             }
         }
     }
@@ -75,6 +77,31 @@ class ConversationNavigationTest {
         rule.runOnIdle { nav.openConversation("c1", "a1") }
         rule.runOnIdle { nav.composeConversation("c1") }
         rule.runOnIdle { assertEquals(listOf("home", "chat:null"), stack()) }
+    }
+
+    @Test fun `the chief of staff screen is pushed, and a prefill rides the route`() {
+        host()
+        rule.runOnIdle { nav.openChiefOfStaff("c1", "Change this agent connection's name to ") }
+        rule.runOnIdle {
+            assertTrue(nav.currentBackStackEntry!!.destination.hasRoute<ChiefOfStaffRoute>())
+            assertEquals("Change this agent connection's name to ", nav.currentBackStackEntry!!.toRoute<ChiefOfStaffRoute>().prefix)
+        }
+        rule.runOnIdle { nav.openConversation("c1", "chief", "Change this agent connection's avatar: ") }
+        rule.runOnIdle {
+            assertEquals("Change this agent connection's avatar: ", nav.currentBackStackEntry!!.toRoute<ConversationRoute>().prefill)
+            assertEquals(listOf("home", "chat:chief"), stack())
+        }
+    }
+
+    @Test fun `a prefill is taken once per entry, not again after recreation`() {
+        val saved = SavedStateHandle()
+        val prefix = "Change this agent connection's name to "
+        assertEquals(prefix, saved.takePrefill(prefix))
+        assertNull(saved.takePrefill(prefix))
+        // Rotation or a return from process death restores the same values.
+        assertNull(SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) }).takePrefill(prefix))
+        // A route with no prefill never asks for one.
+        assertNull(SavedStateHandle().takePrefill(null))
     }
 
     @Test fun `a chat hears its own events and a resync on every connect`() = runBlocking {

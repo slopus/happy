@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -142,6 +143,44 @@ class ConversationLayoutTest {
         rule.onNodeWithText("Ship it").assertDoesNotExist()
     }
 
+    @Test fun `the working line is the bar's, and starting work doesn't move the transcript`() {
+        var state by mutableStateOf(ConversationState(created = true, loaded = true, rows = history, agent = agent))
+        rule.setHappyContent { ConversationScreen(state, null, ConversationScreenActions()) }
+        val bar = rule.node(ConversationScreenTags.BAR).bounds
+        val list = rule.node(ConversationScreenTags.LIST).bounds
+        rule.node(ConversationScreenTags.SUBTITLE).assertDoesNotExist()
+        state = state.copy(working = true, activity = Activity.WaitingForModel)
+        rule.waitForIdle()
+        // Neither the bar nor the transcript gives up any room for it.
+        assertEquals(bar, rule.node(ConversationScreenTags.BAR).bounds)
+        assertEquals(list, rule.node(ConversationScreenTags.LIST).bounds)
+        // And it is under the title, in the content nowhere.
+        rule.onNodeWithText("Waiting for the model…").assertIsDisplayed()
+        rule.node(ConversationScreenTags.SUBTITLE).assertIsDisplayed()
+        shot("working-line")
+    }
+
+    @Test fun `a sent message stays in view, and reading older history is left alone`() {
+        var rows by mutableStateOf(history)
+        rule.setHappyContent {
+            ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, hasMore = true), null, ConversationScreenActions())
+        }
+        // At the newest end: the message just sent is the one on screen.
+        val sent = ConversationRow.User("s:user", "s", "Ship it", parseMarkdown("Ship it"), emptyList(), Delivery.Sending)
+        rows = listOf(sent) + history
+        rule.waitForIdle()
+        rule.onNodeWithText("Ship it").assertIsDisplayed()
+        shot("sent-in-view")
+        // Reading older history: a row arriving at the newest end doesn't move the page.
+        rule.node(ConversationScreenTags.LIST).performScrollToNode(hasTestTag(ConversationScreenTags.OLDER))
+        rule.waitForIdle()
+        val older = rule.onNodeWithText("The login page loops back", substring = true).bounds
+        rows = listOf(ConversationRow.Text("a:0", "And again", parseMarkdown("And again"))) + rows
+        rule.waitForIdle()
+        assertEquals(older, rule.onNodeWithText("The login page loops back", substring = true).bounds)
+        rule.onNodeWithText("And again").assertDoesNotExist()
+    }
+
     @Test fun `a failed send offers retry and discard`() {
         val retries = ArrayList<String>()
         val failed = ConversationRow.User("x:user", "x", "Hello", parseMarkdown("Hello"), emptyList(), Delivery.Failed("Unknown model."))
@@ -256,7 +295,7 @@ class ConversationLayoutTest {
         var retries = 0
         rule.setHappyContent { ChiefOfStaffScreen("There's no Chief of Staff on this computer.", onRetry = { retries++ }, onBack = {}) }
         rule.onNodeWithText("Chief of Staff").assertIsDisplayed()
-        rule.node(ConversationScreenTags.RETRY).performClick()
+        rule.onNodeWithText("Retry").performClick()
         assertEquals(1, retries)
         shot("chief-missing")
     }

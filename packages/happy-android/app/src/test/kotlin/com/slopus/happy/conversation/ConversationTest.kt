@@ -173,6 +173,10 @@ class ConversationTest {
         assertEquals("", chat.state.value.draft)
         val row = chat.state.value.rows.single() as ConversationRow.User
         assertEquals(Delivery.Pending, row.delivery)
+        // The row drawn at once is keyed by the id the send carried, so the
+        // agent's own copy takes its place rather than arriving beside it:
+        // the list keeps its anchor and nothing jumps.
+        assertEquals("$id:user", row.key)
         signals.emit(event("message.created", """{"agentId":"a1","runId":null,"message":{"id":"$id","role":"user","status":"pending","createdAt":5,"content":[{"type":"text","text":"Hello"}],"metadata":{}}}"""))
         signals.emit(event("run.started", """{"agentId":"a1","run":{"id":"r1","status":"running","startedAt":5},"acceptedMessageIds":["$id"]}"""))
         advanceUntilIdle()

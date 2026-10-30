@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,19 +44,16 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
-import com.slopus.happy.conversation.Activity
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.InlinePictures
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.ui.attachments.rememberComposerImages
 import com.slopus.happy.ui.chat.PrimaryAction
-import com.slopus.happy.ui.chat.SessionStatusColors
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.RemoteImage
-import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.theme.HappyTheme
 import java.io.File
 
@@ -66,13 +64,12 @@ object ConversationComposerTags {
     const val ATTACH = "conversation.composer.attach"
     const val PICTURES = "conversation.composer.pictures"
     const val PICTURE_REMOVE = "conversation.composer.pictures.remove"
-    const val STATUS = "conversation.composer.status"
 }
 
 /**
- * The conversation's composer as an Android bottom bar: what the agent is
- * doing (a pulsing dot and a label) over the pictures waiting to go
- * (64 dp thumbnails, each with a remove button), then add-picture (the
+ * The conversation's composer as an Android bottom bar: the pictures
+ * waiting to go (64 dp thumbnails, each with a remove button), then
+ * add-picture (the
  * system photo picker), a filled text field in the extra-large shape
  * growing to six lines, and the filled send button, which becomes Stop
  * while the agent works and nothing is typed; then the mode chips.
@@ -97,7 +94,8 @@ internal fun ConversationComposer(
     val hasContent = text.isNotBlank() || attached.isNotEmpty()
     val primary = primaryActionOf(hasContent, state)
     // The field's own selection; text set from outside puts the cursor at its end, or where focus asks.
-    var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
+    // Saved, so a rotation or a return from process death keeps the caret where it was.
+    var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
     if (field.text != text) field = TextFieldValue(text, TextRange(text.length))
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -110,7 +108,6 @@ internal fun ConversationComposer(
 
     Surface(color = colors.surface, modifier = modifier.fillMaxWidth().testTag(ConversationComposerTags.COMPOSER)) {
         Column(Modifier.padding(bottom = 8.dp)) {
-            state.activity?.let { ActivityLine(it) }
             if (attached.isNotEmpty()) {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
@@ -211,29 +208,5 @@ internal fun ConversationComposer(
             ),
             onDismiss = { tooLarge = false },
         )
-    }
-}
-
-@Composable
-private fun ActivityLine(activity: Activity) {
-    val label = stringResource(
-        when (activity) {
-            Activity.AwaitingAnswer -> R.string.conversation_activity_awaiting_answer
-            Activity.WaitingForModel -> R.string.conversation_activity_waiting_for_model
-            Activity.Thinking -> R.string.conversation_activity_thinking
-            Activity.PreparingTools -> R.string.conversation_activity_preparing_tools
-            Activity.RunningTools -> R.string.conversation_activity_running_tools
-            Activity.Working -> R.string.conversation_activity_working
-            Activity.Delegating -> R.string.conversation_activity_delegating
-        },
-    )
-    val color = if (activity == Activity.AwaitingAnswer) SessionStatusColors.attention else SessionStatusColors.thinking
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(horizontal = 20.dp).padding(top = 8.dp).testTag(ConversationComposerTags.STATUS),
-    ) {
-        StatusDot(color, pulsing = true)
-        Text(label, style = MaterialTheme.typography.labelMedium, color = HappyTheme.colors.textSecondary)
     }
 }
