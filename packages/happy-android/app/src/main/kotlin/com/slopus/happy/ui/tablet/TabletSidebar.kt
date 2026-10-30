@@ -56,6 +56,9 @@ import com.slopus.happy.ui.home.HomeListHost
 import com.slopus.happy.ui.home.HomeListScope
 import com.slopus.happy.ui.home.HomeNavigation
 import com.slopus.happy.ui.home.HomeServices
+import com.slopus.happy.ui.home.AccountMenu
+import com.slopus.happy.ui.home.AccountMenuButton
+import com.slopus.happy.ui.home.rememberAccountMenu
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.Dispatchers
@@ -167,7 +170,7 @@ fun TabletSidebar(
         } else {
             null
         }
-        TabletSidebarContent(host, machines, selectedSessionId, headerHeight, modifier, groupedRows, grouped, stopping)
+        TabletSidebarContent(host, machines, selectedSessionId, headerHeight, modifier, groupedRows, grouped, stopping, rememberAccountMenu(graph), { graph.open(it) })
     }
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
 }
@@ -195,6 +198,9 @@ fun TabletSidebarContent(
     groupedRows: List<TabletGroupedRow>? = null,
     grouped: TabletGroupedActions = TabletGroupedActions(onStop = {}, onNewInCheckout = {}),
     stopping: Set<String> = emptySet(),
+    /** Every account on the phone; the sidebar carries the switcher the phone's home bar has. */
+    accounts: AccountMenu = AccountMenu(),
+    onSwitchAccount: (String) -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     val line = hairline()
@@ -221,6 +227,9 @@ fun TabletSidebarContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(TabletSidebarSpec.controlsGap),
         ) {
+            // The shell hides the phone's home bar, so the account switcher lives here instead,
+            // beside New session and in reach whatever the detail pane shows.
+            AccountMenuButton(accounts, onSwitchAccount)
             NewSessionButton(host.navigation.onNewSession, Modifier.weight(1f))
             if (state?.hasArchivedSessions == true) {
                 ArchiveButton(hidden = state.archiveHidden, onClick = { host.callbacks.onSetArchiveHidden(!state.archiveHidden) })
@@ -259,6 +268,7 @@ fun TabletSidebarContent(
                 }
                 else -> HomeList(
                     state = state,
+                    listState = host.listState,
                     callbacks = host.callbacks,
                     actions = host.actions,
                     update = host.update,
