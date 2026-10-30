@@ -8,6 +8,12 @@ const LOG_SERVER_KEY = 'log-server-url';
 const USE_CUSTOM_SERVER_FOR_VOICE_KEY = 'use-custom-server-for-voice';
 const DEFAULT_SERVER_URL = 'https://api.cluster-fluster.com';
 
+// Callers build requests as `${getServerUrl()}/v1/...`, so a server URL saved as
+// "https://host/" turns every request into "https://host//v1/..." and 404s.
+function withoutTrailingSlashes(url: string): string {
+    return url.replace(/\/+$/, '');
+}
+
 export function getServerUrl(): string {
     // A selected private run must not silently reuse a previously persisted
     // server (including another loopback run). Production ignores this path.
@@ -21,10 +27,14 @@ export function getServerUrl(): string {
         }
         return parsed.origin;
     }
-    return serverConfigStorage.getString(SERVER_KEY) ||
-           (globalThis as any).__HAPPY_CONFIG__?.serverUrl ||
-           process.env.EXPO_PUBLIC_HAPPY_SERVER_URL ||
-           DEFAULT_SERVER_URL;
+    // Normalized on read as well: the injected web config and the env URL never pass
+    // through setServerUrl.
+    return withoutTrailingSlashes(
+        serverConfigStorage.getString(SERVER_KEY) ||
+        (globalThis as any).__HAPPY_CONFIG__?.serverUrl ||
+        process.env.EXPO_PUBLIC_HAPPY_SERVER_URL ||
+        DEFAULT_SERVER_URL
+    );
 }
 
 export function rewriteLoopbackHost(url: string): string {
@@ -43,8 +53,8 @@ export function rewriteLoopbackHost(url: string): string {
 }
 
 export function setServerUrl(url: string | null): void {
-    if (url && url.trim()) {
-        serverConfigStorage.set(SERVER_KEY, url.trim());
+    if (url && withoutTrailingSlashes(url.trim())) {
+        serverConfigStorage.set(SERVER_KEY, withoutTrailingSlashes(url.trim()));
     } else {
         serverConfigStorage.delete(SERVER_KEY);
     }
