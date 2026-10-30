@@ -101,6 +101,8 @@ final class SidebarView: UIScrollView {
         alwaysBounceVertical = true
         delaysContentTouches = true
         contentInsetAdjustmentBehavior = .never
+        // The indicator insets set below are all of them; UIKit would add the safe area again.
+        automaticallyAdjustsScrollIndicatorInsets = false
         connectors.fillColor = UIColor(Palette.rowText).withAlphaComponent(Metrics.connectorAlpha).cgColor
         layer.addSublayer(connectors)
         // The hold opens with the drag's lift, whichever comes first; the

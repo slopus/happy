@@ -238,6 +238,8 @@ public final class GroupedListView: UIScrollView {
         super.init(frame: .zero)
         backgroundColor = UIColor(Palette.groupedBackground)
         contentInsetAdjustmentBehavior = .never
+        // The indicator insets set below are all of them; UIKit would add the safe area again.
+        automaticallyAdjustsScrollIndicatorInsets = false
         alwaysBounceVertical = true
         keyboardDismissMode = .interactive
         // Assignments in a class's own initializer skip didSet.

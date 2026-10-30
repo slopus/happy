@@ -229,6 +229,8 @@ final class ChatViewController: UIViewController {
         scrollView.alwaysBounceVertical = true
         scrollView.keyboardDismissMode = .interactive
         scrollView.contentInsetAdjustmentBehavior = .never
+        // The indicator insets set below are all of them; UIKit would add the safe area again.
+        scrollView.automaticallyAdjustsScrollIndicatorInsets = false
         scrollView.delegate = self
         view.addSubview(scrollView)
         scrollView.addSubview(introView)

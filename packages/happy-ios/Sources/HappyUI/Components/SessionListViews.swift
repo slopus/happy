@@ -416,6 +416,8 @@ public final class NoSessionsView: UIView {
         backgroundColor = UIColor(Palette.groupedBackground)
         // The content is placed in the safe area by its layout.
         scrollView.contentInsetAdjustmentBehavior = .never
+        // The indicator insets set below are all of them; UIKit would add the safe area again.
+        scrollView.automaticallyAdjustsScrollIndicatorInsets = false
         scrollView.alwaysBounceVertical = false
         // Nothing to show until the first sizes are in.
         scrollView.isHidden = true

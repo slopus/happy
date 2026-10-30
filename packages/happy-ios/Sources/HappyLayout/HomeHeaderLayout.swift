@@ -195,6 +195,13 @@ public struct HomeContentInsets: Equatable, Sendable {
         listBottom = safeArea.bottom + dock
     }
 
+    /// The scroll indicator's room: from the chrome's foot to the dock's
+    /// top. The view sets these alone (`automaticallyAdjustsScrollIndicatorInsets`
+    /// off), or UIKit adds the safe area again at both ends.
+    public var indicatorInsets: LayoutInsets {
+        LayoutInsets(top: chromeTop, bottom: listBottom)
+    }
+
     /// The safe area the empty states lay out in: they are padded by
     /// `topContentInset` and `bottomContentInset` alone.
     public var emptyStateSafeArea: LayoutInsets {

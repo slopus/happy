@@ -151,6 +151,8 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         super.viewDidLoad()
         tableView.separatorStyle = .none
         tableView.contentInsetAdjustmentBehavior = .never
+        // The indicator insets set below are all of them; UIKit would add the safe area again.
+        tableView.automaticallyAdjustsScrollIndicatorInsets = false
         // Every row's height is arithmetic on lines already worked out
         // (nothing is measured for it), so the table asks for all of them
         // instead of estimating the rows it hasn't shown. With estimates,
@@ -201,12 +203,12 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     }
 
     /// MainView.tsx: rows start 12 below the header and end above the
-    /// dock; the scroll indicator starts at the header's edge.
+    /// dock; the scroll indicator runs from the header's edge to the dock.
     private func applyContentInsets() {
         guard isViewLoaded, let insets = contentInsets else { return }
         if let ultraList { ultraList.setInsets(insets); return }
         tableView.contentInset = UIEdgeInsets(top: insets.contentTop, left: 0, bottom: insets.listBottom, right: 0)
-        tableView.verticalScrollIndicatorInsets = UIEdgeInsets(top: insets.chromeTop, left: 0, bottom: 0, right: 0)
+        tableView.verticalScrollIndicatorInsets = UIEdgeInsets(insets.indicatorInsets)
         if !didScrollToTop {
             didScrollToTop = true
             tableView.contentOffset = CGPoint(x: 0, y: -insets.contentTop)
