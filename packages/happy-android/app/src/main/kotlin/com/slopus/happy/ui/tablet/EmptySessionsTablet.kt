@@ -62,7 +62,8 @@ object EmptySessionsTabletSpec {
  * - A reachable computer: terminal, "No sessions yet", start a new session.
  * - Computers, none reachable: cloud-offline, the one computer's name (or
  *   "No machines are reachable"), troubleshoot.
- * - None linked: terminal, "No sessions yet", install Happy; no button.
+ * - None linked: terminal, "No sessions yet", install Happy, and Scan QR code
+ *   (the common scan flow), so the shell is never a dead end without a computer.
  */
 @Composable
 fun EmptySessionsTablet(
@@ -70,6 +71,7 @@ fun EmptySessionsTablet(
     onNewSession: () -> Unit,
     onTroubleshoot: () -> Unit,
     modifier: Modifier = Modifier,
+    onLinkComputer: () -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     val hasOnline = machines.any { it.online }
@@ -115,12 +117,11 @@ fun EmptySessionsTablet(
             textAlign = TextAlign.Center,
             modifier = Modifier.testTag(EmptySessionsTabletTags.DESCRIPTION),
         )
-        // The description's 24 margin stays without a button, so the block centres the same way.
         Spacer(Modifier.height(EmptySessionsTabletSpec.descriptionGap))
         when {
             hasOnline -> EmptyButton(Ionicon.Add, stringResource(R.string.tablet_start_new_session), onNewSession)
             hasOffline -> EmptyButton(Ionicon.HelpCircleOutline, stringResource(R.string.tablet_troubleshoot), onTroubleshoot)
-            else -> Unit
+            else -> EmptyButton(Ionicon.QrCodeOutline, stringResource(R.string.onboarding_scan_button), onLinkComputer)
         }
     }
 }

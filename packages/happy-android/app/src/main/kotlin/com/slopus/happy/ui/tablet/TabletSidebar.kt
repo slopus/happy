@@ -247,6 +247,7 @@ fun TabletSidebarContent(
                     machines = machines,
                     onNewSession = host.navigation.onNewSession,
                     onTroubleshoot = host.navigation.onTroubleshoot,
+                    onLinkComputer = host.actions.onLinkComputer,
                 )
                 // MainView.tsx's sidebar mounts SessionsList, whose project grouping is its own.
                 host.grouping == SessionListGrouping.Project -> if (groupedRows == null) {

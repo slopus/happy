@@ -86,7 +86,7 @@ class OnboardingFlowTest {
         // The other phone approves.
         server.approveAccountRequest(decodeBase64(publicKey), AccountLink.sealSecret(server.secret, decodeBase64(publicKey)))
 
-        // The account has no computer, so home is the link page (the filter only shows while loading).
+        // The account has no computer, so home shows its link state (the filter only shows while loading).
         rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 10_000)
         val signedIn = graph.auth.state.value as AuthState.SignedIn
         assertArrayEquals(server.secret, signedIn.credentials.secretBytes())

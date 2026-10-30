@@ -217,14 +217,28 @@ class TabletShellTest {
         assertDp("64 glyph", 64, rule.node(EmptySessionsTabletTags.ICON).bounds.let { it.bottom - it.top })
     }
 
-    // index.tsx: with no computer linked the link page takes the whole window, shell and all.
+    // Unlike index.tsx, no computer linked keeps the shell: the sidebar's empty state offers Scan QR code,
+    // and the account switcher and New session stay beside it.
     @Test
-    fun theLinkPageTakesTheWholeWindow() {
+    fun noComputerKeepsTheShell() {
         signIn(machine = false)
-        waitFor(HomeTags.LINK)
-        rule.onAllNodesWithTag(TabletSidebarTags.SIDEBAR, useUnmergedTree = true).assertCountEquals(0)
-        rule.onAllNodesWithTag(TabletShellTags.HEADER, useUnmergedTree = true).assertCountEquals(0)
-        assertDp("link page from the left edge", 0, rule.node(HomeTags.LINK).bounds.left)
+        waitFor(EmptySessionsTabletTags.ROOT)
+        rule.node(TabletSidebarTags.SIDEBAR).assertExists()
+        rule.node(TabletShellTags.HEADER).assertExists()
+        rule.node(AccountMenuTags.BUTTON).assertExists()
+        rule.node(EmptySessionsTabletTags.BUTTON).assertExists().performClick()
+        rule.onAllNodesWithTag(HomeTags.LINK, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(HomeTags.TABLET_BLANK).assertExists()
+    }
+
+    // Sessions cached with no computer linked list in the sidebar, the shell kept.
+    @Test
+    fun noComputerStillListsCachedSessions() {
+        session("a", 200)
+        signIn(machine = false)
+        waitFor(FlatRowTags.ROW)
+        rule.node(TabletSidebarTags.SIDEBAR).assertExists()
+        rule.onAllNodesWithTag(EmptySessionsTabletTags.ROOT, useUnmergedTree = true).assertCountEquals(0)
     }
 
     // An unfolded foldable on its side, 841 wide: the shell, with a 252 sidebar (30%).

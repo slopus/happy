@@ -1,7 +1,5 @@
 package com.slopus.happy.ui.home
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import com.slopus.happy.model.WorktreeToggle
 import com.slopus.happy.model.ProjectHomeRow
@@ -13,7 +11,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -25,6 +22,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -116,12 +114,14 @@ class HomeLayoutTest {
     )
     private var newSession = 0
     private var whatsNew = 0
+    private var linkComputer = 0
     private val actions = HomeScreenActions(
         onSettings = {},
         onNewSession = { newSession++ },
         onTroubleshoot = {},
         onOpenUrl = {},
         onWhatsNew = { whatsNew++ },
+        onLinkComputer = { linkComputer++ },
     )
 
     private fun cli(id: String, at: Long = noon, active: Boolean = true) = session(
@@ -264,7 +264,6 @@ class HomeLayoutTest {
         rule.setHappyContent {
             HomeScreen(
                 current, ConnectionStatus.CONNECTED, SessionListGrouping.Flat, callbacks, actions,
-                linkContent = { Box(Modifier.fillMaxSize()) },
                 offlineContent = { computers, _ -> offlineComputers = computers },
             )
         }
@@ -281,14 +280,24 @@ class HomeLayoutTest {
         rule.waitForIdle()
         assertEquals(listOf("Studio"), offlineComputers)
 
-        // No computer at all: the first-run link page replaces the whole screen, header included.
+        // No computer and nothing to list: the link state is home's empty state, under home's own
+        // header. The account menu, Settings and New chat stay reachable; Scan QR code starts the scan.
         current = state(emptyList(), machines = emptyList())
         rule.waitForIdle()
+        assertEquals(HomeEmptyState.Link, current!!.emptyState)
         rule.node(HomeTags.LINK).assertExists()
-        rule.onAllNodesWithTag(AccountMenuTags.BUTTON, useUnmergedTree = true).assertCountEquals(0)
-        val link = rule.node(HomeTags.LINK).bounds
-        assertDp("link page from the top", 0, link.top)
-        assertDp("link page full width", PHONE_WIDTH, link.right - link.left)
+        rule.node(AccountMenuTags.BUTTON).assertExists()
+        rule.node(HomeTags.SETTINGS).assertExists()
+        rule.node(HomeTags.COMPOSE).assertExists()
+        assertTrue("link state under the header", rule.node(HomeTags.LINK).bounds.top >= rule.node(HomeTags.SETTINGS).bounds.bottom)
+        rule.onNodeWithText("Scan QR code").performClick()
+        assertEquals(1, linkComputer)
+
+        // Sessions cached with no computer linked still list; the link state is only for an empty home.
+        current = state(listOf(cli("a")), machines = emptyList())
+        rule.waitForIdle()
+        rule.node(FlatRowTags.ROW).assertExists()
+        rule.onAllNodesWithTag(HomeTags.LINK, useUnmergedTree = true).assertCountEquals(0)
     }
 
     /**

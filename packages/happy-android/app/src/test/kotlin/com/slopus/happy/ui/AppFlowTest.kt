@@ -67,7 +67,7 @@ class AppFlowTest {
     @After
     fun tearDown() = server.close()
 
-    // A new account has no computer, so the link page takes the home over (index.tsx); its gear logs out.
+    // A new account has no computer: home keeps its header and shows the link state; Settings › Account logs out.
     @Test
     fun createAccountThenLogout() {
         // The first screen makes no empty account; make one directly, as a terminal code would.
@@ -76,7 +76,8 @@ class AppFlowTest {
         assertTrue(graph.auth.state.value is AuthState.SignedIn)
 
         rule.onNodeWithContentDescription("Settings").performClick()
-        rule.onNodeWithText("Log out and start over").performScrollTo().performClick()
+        rule.onNodeWithText("Account").performScrollTo().performClick()
+        rule.onNodeWithText("Sign out and clear local data").performScrollTo().performClick()
         rule.onNode(hasText("Logout") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
 
         rule.waitUntilAtLeastOneExists(hasText("Start"), 5_000)
@@ -86,7 +87,7 @@ class AppFlowTest {
 
     @Test
     fun restoreWithSecretKeyThenSync() {
-        // With no computer the link page takes the home over, and the filter only shows while loading.
+        // The filter only shows while loading.
         server.addMachine("m1")
         server.addSession("s1", updatedAt = 100)
         server.setSettings(buildJsonObject { put("analyticsOptOut", true) }, version = 2)

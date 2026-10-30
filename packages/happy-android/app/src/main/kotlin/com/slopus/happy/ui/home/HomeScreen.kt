@@ -63,6 +63,8 @@ import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.TitleAlignment
 import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.theme.HappyColors
+import com.slopus.happy.ui.components.StateArt
+import com.slopus.happy.ui.components.StatePage
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -72,7 +74,7 @@ object HomeTags {
     const val TITLE = "home.title"
     const val STATUS = "home.status"
     const val LOADING = "home.loading"
-    /** The first-run link page standing in for the whole home screen. */
+    /** Home's empty state with no computer linked: Make art and Scan QR code, under the usual header. */
     const val LINK = "home.link"
     /** The tablet detail with no session open: blank, as MainView.tsx leaves it. */
     const val TABLET_BLANK = "home.tabletBlank"
@@ -115,15 +117,18 @@ class HomeScreenActions(
     val onOpenUrl: (String) -> Unit,
     val onWhatsNew: () -> Unit,
     val onSwitchAccount: (String) -> Unit = {},
+    /** Links a computer from the empty home: the terminal scan Settings uses, approved with this account. */
+    val onLinkComputer: () -> Unit = {},
 )
 
 /**
- * Signed in, on a phone. With no computer linked, [linkContent] takes the
- * whole screen, sessions or not (index.tsx shouldShowFirstRunInstall: the
- * onboarding's link page, no home chrome). Otherwise the home header (logo; "Happy" centred
+ * Signed in, on a phone. Home is always home: the header (logo; "Happy" centred
  * with the connection status under it while the socket isn't healthy; the
- * filter menu and settings gear sharing one control), then the loading
- * spinner, the no-sessions state, [offlineContent] (the onboarding's
+ * filter menu and settings gear sharing one control), the account menu and
+ * the composer are there whether or not a computer is linked, and whatever the
+ * account already lists stays listed. Under the header: the loading spinner,
+ * the link state (no computer and nothing to list: what's missing and the way
+ * to link one, never a takeover), the no-sessions state, [offlineContent] (the onboarding's
  * offline checklist, given the computers' names) or the list: the banners,
  * then the flat chat list or the project hierarchy. The [dock] rests over
  * the bottom of all of these and, focused, covers the whole screen.
@@ -137,17 +142,12 @@ fun HomeScreen(
     actions: HomeScreenActions,
     modifier: Modifier = Modifier,
     update: HomeUpdate? = null,
-    linkContent: @Composable () -> Unit = {},
     offlineContent: @Composable (computers: List<String>, onShowArchived: (() -> Unit)?) -> Unit = { _, _ -> },
     dock: HomeDockState? = null,
     dockActions: HomeDockActions? = null,
     accounts: AccountMenu = AccountMenu(),
     listState: LazyListState = rememberLazyListState(),
 ) {
-    if (state?.showsInstallStep == true) {
-        Box(modifier = modifier.fillMaxSize().testTag(HomeTags.LINK)) { linkContent() }
-        return
-    }
     Box(modifier = modifier.fillMaxSize()) {
         HomeContent(state, connectionStatus, accounts, callbacks, actions, update, offlineContent, dock, dockActions, listState)
         if (dock != null && dockActions != null && dock.focused) HomeDockFocus(dock, dockActions)
@@ -184,6 +184,16 @@ private fun HomeContent(
                         modifier = Modifier.size(20.dp).testTag(HomeTags.LOADING),
                     )
                 }
+                // No computer linked and nothing to show: say so where home is, with the way to
+                // link one beside it. Home keeps its bar, its account menu and its compose, and a
+                // cached list is never replaced by this (resolveHomeEmptyState: sessions win).
+                state.emptyState == HomeEmptyState.Link -> StatePage(
+                    tag = HomeTags.LINK,
+                    art = StateArt.Make,
+                    title = stringResource(R.string.onboarding_link_title),
+                    body = stringResource(R.string.tablet_install_description),
+                    action = stringResource(R.string.onboarding_scan_button) to actions.onLinkComputer,
+                )
                 state.emptyState == HomeEmptyState.Offline ->
                     offlineContent(state.computers, if (state.hasArchivedSessions) showArchived else null)
                 state.emptyState == HomeEmptyState.NoSessions ->

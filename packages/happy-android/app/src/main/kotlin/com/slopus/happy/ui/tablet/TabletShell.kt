@@ -48,7 +48,6 @@ import com.slopus.happy.ui.files.MessageDetailRoute
 import com.slopus.happy.ui.files.SessionChangesRoute
 import com.slopus.happy.ui.files.SessionFileRoute
 import com.slopus.happy.ui.home.HomeNavigation
-import com.slopus.happy.ui.home.HomeServices
 import com.slopus.happy.ui.home.LocalHomeInSidebar
 import com.slopus.happy.ui.layout.LocalTabletShell
 import com.slopus.happy.ui.layout.LocalWindowLayout
@@ -86,15 +85,15 @@ object TabletShellSpec {
 /**
  * SidebarNavigator.tsx `isDesktopLayout`, with firstRunOnboarding.ts
  * `shouldSuppressTabletShell` on native Android: signed in, a window at least
- * 768 wide, and not on the first-run screens (the link page that takes the
- * home over while no computer is linked, or an `onboarding/` route).
+ * 768 wide, and not on an `onboarding/` route. Unlike happy-app, having no
+ * computer linked keeps the shell: the link state is home's empty state.
  */
 object TabletShellRule {
-    fun suppressesShell(signedIn: Boolean, isTablet: Boolean, showsInstallStep: Boolean, isOnboardingRoute: Boolean): Boolean =
-        signedIn && isTablet && (showsInstallStep || isOnboardingRoute)
+    fun suppressesShell(signedIn: Boolean, isTablet: Boolean, isOnboardingRoute: Boolean): Boolean =
+        signedIn && isTablet && isOnboardingRoute
 
-    fun showsShell(signedIn: Boolean, isTablet: Boolean, showsInstallStep: Boolean, isOnboardingRoute: Boolean): Boolean =
-        signedIn && isTablet && !suppressesShell(signedIn, isTablet, showsInstallStep, isOnboardingRoute)
+    fun showsShell(signedIn: Boolean, isTablet: Boolean, isOnboardingRoute: Boolean): Boolean =
+        signedIn && isTablet && !suppressesShell(signedIn, isTablet, isOnboardingRoute)
 
     /**
      * SessionsList.tsx `selectedSessionId`: the session under `/session/<id>/…`,
@@ -143,16 +142,8 @@ fun TabletShell(
     ProvideWindowLayout {
         val window = LocalWindowLayout.current
         val entry by nav.currentBackStackEntryAsState()
-        val wide = signedIn && window.isTablet
-        val showsInstallStep = if (wide) {
-            val services = remember(graph) { HomeServices.of(graph) }
-            val state by services.list.state.collectAsStateWithLifecycle()
-            state?.showsInstallStep == true
-        } else {
-            false
-        }
         val onboardingRoute = entry?.destination?.hasRoute<OnboardingSettingsRoute>() == true
-        val shows = TabletShellRule.showsShell(signedIn, window.isTablet, showsInstallStep, onboardingRoute)
+        val shows = TabletShellRule.showsShell(signedIn, window.isTablet, onboardingRoute)
         val local by graph.localSettings.values.collectAsStateWithLifecycle()
         val zen = local.zenMode
 

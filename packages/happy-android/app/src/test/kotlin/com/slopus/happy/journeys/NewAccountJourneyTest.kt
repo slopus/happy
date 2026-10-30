@@ -60,7 +60,7 @@ class NewAccountJourneyTest {
         graph = journey.graph()
         rule.setContent { HappyApp(graph) }
 
-        // A new account → Link Your Computer.
+        // A new account: home, with its link state (no computer yet) under the usual header.
         // The first screen makes no empty account; make one directly, as a terminal code would.
         runBlocking { graph.auth.createAccount() }
         rule.waitFor(HomeTags.LINK)
@@ -83,8 +83,9 @@ class NewAccountJourneyTest {
         }
         journey.machine(updatedAt = 10)
         server.dropSockets()
-        rule.waitFor(HomeDockTags.CAPSULE, 15_000)
-        rule.node(HomeTags.LINK).assertDoesNotExist()
+        // The dock was there all along; the link state giving way is what says the computer arrived.
+        rule.waitUntilDoesNotExist(hasTestTag(HomeTags.LINK), 15_000)
+        rule.waitFor(HomeDockTags.CAPSULE)
 
         // The dock: a prompt and an image from the clipboard.
         rule.node(HomeDockTags.CAPSULE).performClick()

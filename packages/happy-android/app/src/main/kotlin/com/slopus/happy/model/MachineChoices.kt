@@ -210,13 +210,6 @@ fun resolveWorktreeCreationMachine(choice: MachineChoice?, agent: AgentType, age
     return agentMachine?.takeIf { it.isOnline }
 }
 
-/**
- * firstRunOnboarding.ts shouldShowFirstRunInstall on a phone or tablet: no
- * computer linked, online or not, takes the home over with the link page,
- * whatever sessions the account still lists.
- */
-fun shouldShowFirstRunInstall(machineCount: Int): Boolean = machineCount == 0
-
 /** firstRunOnboarding.ts `HomeEmptyState` */
 enum class HomeEmptyState { Link, Offline, NoSessions, List }
 

@@ -40,8 +40,6 @@ import com.slopus.happy.ui.machine.MachineScreen
 import com.slopus.happy.ui.machine.MachineScreenActions
 import com.slopus.happy.ui.machine.recentMachineSessions
 import com.slopus.happy.ui.onboarding.LinkComputerChecklist
-import com.slopus.happy.ui.onboarding.OnboardingLinkComputer
-import com.slopus.happy.ui.onboarding.OnboardingSettingsRoute
 import com.slopus.happy.ui.session.DuplicateSheet
 import com.slopus.happy.ui.session.SessionInfoActions
 import com.slopus.happy.ui.session.SessionInfoLive
@@ -58,7 +56,6 @@ import kotlinx.serialization.json.JsonObject
 class HomeNavigation(
     val onSettings: () -> Unit,
     val onWhatsNew: () -> Unit,
-    val onOnboardingSettings: () -> Unit,
     val onOpenSession: (String) -> Unit,
     val onOpenMachine: (String) -> Unit,
     val onTroubleshoot: () -> Unit,
@@ -69,7 +66,6 @@ class HomeNavigation(
         fun of(graph: AppGraph, nav: NavHostController, onOpenSession: (String) -> Unit, onTroubleshoot: () -> Unit) = HomeNavigation(
             onSettings = { nav.navigate(SettingsRoute) },
             onWhatsNew = { nav.navigate(ChangelogRoute) },
-            onOnboardingSettings = { nav.navigate(OnboardingSettingsRoute) },
             onOpenSession = onOpenSession,
             onOpenMachine = { id -> nav.navigate(MachineRoute(id)) },
             onTroubleshoot = onTroubleshoot,
@@ -105,7 +101,6 @@ fun NavGraphBuilder.homeRoutes(
                     callbacks = host.callbacks,
                     actions = host.actions,
                     update = host.update,
-                    linkContent = { OnboardingLinkComputer(graph, onSettings = host.navigation.onOnboardingSettings) },
                     offlineContent = { computers, onShowArchived ->
                         LinkComputerChecklist(graph, computers = computers, onTroubleshoot = host.navigation.onTroubleshoot, onShowArchived = onShowArchived)
                     },
