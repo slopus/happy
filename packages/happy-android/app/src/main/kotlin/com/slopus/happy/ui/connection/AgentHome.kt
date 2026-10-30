@@ -331,10 +331,10 @@ private fun Message(tag: String, title: String?, body: String, action: Pair<Stri
 fun AgentHome(
     graph: AppGraph,
     id: String,
-    onOpenConversation: (agentId: String) -> Unit = {},
-    onCompose: () -> Unit = {},
-    onSettings: () -> Unit = {},
-    onAppearance: () -> Unit = {},
+    onOpenConversation: (agentId: String) -> Unit,
+    onCompose: () -> Unit,
+    onSettings: () -> Unit,
+    onAppearance: () -> Unit,
 ) {
     val session = remember(id) { graph.agentSessions.session(id) } ?: return
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
