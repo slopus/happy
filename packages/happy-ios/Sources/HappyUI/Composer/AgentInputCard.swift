@@ -392,6 +392,7 @@ public final class AgentInputCardView: UIView {
     private let effortChip = ComposerChipButton(chip: .effort)
     /// The compact card's button for the chips.
     private let optionsButton = ComposerOptionsButton()
+    private var menuPresenter: ComposerMenuPresenter?
     private let primaryHost = PassthroughView()
     private let primaryButton = ComposerPrimaryButton()
     private var installedDesktopControls: AgentInputDesktopControlsView?
@@ -541,6 +542,7 @@ public final class AgentInputCardView: UIView {
                 guard let self else { return }
                 self.delegate?.agentInputCard(self, didOpenMenuIn: which)
             }
+            chip.onOpenMenu = { [weak self] which in self?.showMenu(chip: which) }
             middle.addSubview(chip)
         }
         middle.addSubview(separator)
@@ -562,6 +564,7 @@ public final class AgentInputCardView: UIView {
             guard let self else { return }
             self.delegate?.agentInputCardDidRefuse(self, control: .options)
         }
+        optionsButton.onOpen = { [weak self] in self?.showMenu(chip: nil) }
         actionsGroup.addSubview(optionsButton)
 
         primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
@@ -583,6 +586,7 @@ public final class AgentInputCardView: UIView {
 
     public override func didMoveToWindow() {
         super.didMoveToWindow()
+        if window == nil { menuPresenter?.close(); menuPresenter = nil }
         textSizeMayHaveChanged()
     }
 
@@ -754,7 +758,40 @@ public final class AgentInputCardView: UIView {
     }
 
     public func blur() {
+        menuPresenter?.close()
+        menuPresenter = nil
         textView.resignFirstResponder()
+    }
+
+    private func showMenu(chip: AgentInputChip?) {
+        var responder: UIResponder? = self
+        var host: UIView?
+        while let current = responder {
+            if let controller = current as? UIViewController { host = controller.view; break }
+            responder = current.next
+        }
+        guard let host else { return }
+        let chips: [(AgentInputChip, AgentInputChipConfiguration)] = [
+            configuration.permission.map { (.permission, $0) },
+            configuration.model.map { (.model, $0) },
+            configuration.effort.map { (.effort, $0) },
+        ].compactMap { $0 }
+        menuPresenter?.close()
+        let presenter = ComposerMenuPresenter(card: self, chips: chips)
+        presenter.onSelect = { [weak self] key, chip in
+            guard let self else { return }
+            delegate?.agentInputCard(self, didSelect: key, in: chip)
+        }
+        presenter.onPress = { [weak self] chip in
+            guard let self else { return }
+            delegate?.agentInputCard(self, didPress: chip)
+        }
+        presenter.onMenu = { [weak self] chip in
+            guard let self else { return }
+            delegate?.agentInputCard(self, didOpenMenuIn: chip)
+        }
+        menuPresenter = presenter
+        presenter.show(in: host, chip: chip)
     }
 
     /// Where a chip stands, in `view`: what its owner's picker opens over.
@@ -1109,6 +1146,7 @@ public final class AgentInputCardView: UIView {
 
     public override func layoutSubviews() {
         super.layoutSubviews()
+        defer { menuPresenter?.follow() }
         surface.frame = bounds
         material.frame = surface.bounds
         frosted.frame = surface.bounds
@@ -1285,6 +1323,8 @@ public final class AgentInputCardView: UIView {
         separator.isHidden = config.zenMode || config.effort == nil
         optionsButton.refuses = config.refusesControls
         optionsButton.configure(config.zenMode ? [] : [config.permission.map { (.permission, $0) }, config.model.map { (.model, $0) }, config.effort.map { (.effort, $0) }].compactMap { $0 })
+        if config.refusesControls || config.zenMode { menuPresenter?.close(); menuPresenter = nil }
+        else { menuPresenter?.update(chips: [config.permission.map { (.permission, $0) }, config.model.map { (.model, $0) }, config.effort.map { (.effort, $0) }].compactMap { $0 }) }
 
         primaryButton.configure(
             action: config.primaryAction,
@@ -1506,6 +1546,7 @@ final class ComposerChipButton: UIButton {
     var onPress: ((AgentInputChip) -> Void)?
     /// The chip's menu opened.
     var onMenu: ((AgentInputChip) -> Void)?
+    var onOpenMenu: ((AgentInputChip) -> Void)?
     /// Presses shake the chip instead of opening its menu.
     var refuses = false {
         didSet {
@@ -1529,7 +1570,7 @@ final class ComposerChipButton: UIButton {
         label.isUserInteractionEnabled = false
         addSubview(label)
         addSubview(iconView)
-        showsMenuAsPrimaryAction = true
+        showsMenuAsPrimaryAction = false
         // The menus list their rows top-down in our order (SwiftUI's
         // `.menuOrder(.fixed)`, which happy-app gets by pre-reversing).
         preferredMenuElementOrder = .fixed
@@ -1547,6 +1588,8 @@ final class ComposerChipButton: UIButton {
             onRefuse?(chip)
         } else if chipConfiguration?.opensPicker == true {
             onPress?(chip)
+        } else if chipConfiguration?.menu != nil {
+            onOpenMenu?(chip)
         }
     }
 
@@ -1603,10 +1646,8 @@ final class ComposerChipButton: UIButton {
     private func applyMenu() {
         let model = chipConfiguration?.menu
         let opensPicker = chipConfiguration?.opensPicker == true
-        menu = refuses || opensPicker ? nil : model.map(makeMenu)
-        // Open while it changed (usage read as it opened): it shows the new one.
-        if let menu { contextMenuInteraction?.updateVisibleMenu { menu.replacing($0) } }
-        showsMenuAsPrimaryAction = !refuses && !opensPicker
+        menu = nil
+        showsMenuAsPrimaryAction = false
         isEnabled = refuses || opensPicker || model != nil
     }
 
@@ -1642,6 +1683,7 @@ final class ComposerOptionsButton: UIButton {
     var onPress: ((AgentInputChip) -> Void)?
     var onMenu: ((AgentInputChip) -> Void)?
     var onRefuse: (() -> Void)?
+    var onOpen: (() -> Void)?
     var refuses = false {
         didSet {
             guard refuses != oldValue else { return }
@@ -1673,16 +1715,17 @@ final class ComposerOptionsButton: UIButton {
     }
 
     @objc private func tapped() {
-        guard refuses else { return }
-        AgentInputCardView.shake(self, .refusal)
-        onRefuse?()
+        if refuses {
+            AgentInputCardView.shake(self, .refusal)
+            onRefuse?()
+        } else if !chips.isEmpty {
+            onOpen?()
+        }
     }
 
     private func applyMenu() {
-        menu = refuses || chips.isEmpty ? nil : makeMenu()
-        // Open while it changed: it shows the new one.
-        if let menu { contextMenuInteraction?.updateVisibleMenu { _ in menu } }
-        showsMenuAsPrimaryAction = !refuses
+        menu = nil
+        showsMenuAsPrimaryAction = false
     }
 
     private func makeMenu() -> UIMenu {

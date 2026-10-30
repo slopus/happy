@@ -26,6 +26,11 @@ final class AttachSheetViewController: UIViewController {
     }
 
     var onAction: ((Action) -> Void)?
+    /// Embedded above a live keyboard rather than presented as a modal sheet.
+    var dismissPanel: ((@escaping () -> Void) -> Void)?
+    static var contentHeight: CGFloat { layout(width: 0, title: 0, photos: 0, tiles: 1).height }
+    var opensPermissionPanel = false
+    private var configuredPermissionMenu: UIMenu?
     /// The permission row's value: the mode's name.
     var permission: String {
         didSet { if permission != oldValue { rows[2].value.text = permission; view.setNeedsLayout() } }
@@ -33,9 +38,10 @@ final class AttachSheetViewController: UIViewController {
     /// The permission row's menu, as the composer's model control opens
     /// its own; nil until the models are read, the row dimmed meanwhile.
     var permissionMenu: UIMenu? {
-        get { rows[2].menu }
+        get { configuredPermissionMenu }
         set {
-            rows[2].menu = newValue
+            configuredPermissionMenu = newValue
+            rows[2].menu = opensPermissionPanel ? nil : newValue
             rows[2].alpha = newValue == nil ? 0.5 : 1
         }
     }
@@ -92,7 +98,7 @@ final class AttachSheetViewController: UIViewController {
         closeButton.tintColor = UIColor(Palette.headerTint)
         closeButton.accessibilityLabel = Strings.close
         closeButton.accessibilityIdentifier = "attach-close"
-        closeButton.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
+        closeButton.addAction(UIAction { [weak self] _ in self?.close() }, for: .touchUpInside)
         closeGlass.cornerConfiguration = .capsule()
         closeGlass.contentView.addSubview(closeButton)
         view.addSubview(closeGlass)
@@ -237,6 +243,17 @@ final class AttachSheetViewController: UIViewController {
     /// Closed or swiped away with nothing chosen (a choice is `onAction`).
     var onGone: (() -> Void)?
 
+    func close() { dismissSheet() }
+
+    private func dismissSheet(completion: (() -> Void)? = nil) {
+        if let dismissPanel {
+            let onGone = chose ? nil : onGone
+            dismissPanel { onGone?(); completion?() }
+        } else {
+            dismiss(animated: true, completion: completion)
+        }
+    }
+
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         if isBeingDismissed, !chose { onGone?() }
@@ -246,7 +263,7 @@ final class AttachSheetViewController: UIViewController {
     private func finish(_ action: Action) {
         chose = true
         let onAction = onAction
-        dismiss(animated: true) { onAction?(action) }
+        dismissSheet { onAction?(action) }
     }
 
     // MARK: Layout

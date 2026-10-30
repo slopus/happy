@@ -353,6 +353,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
         titleView.finishEditing()
         picker?.close(animated: false)
         chatMenu?.close()
+        attachPermission?.close()
+        attachPermission = nil
+        attachPanel?.close()
+        attachPanel = nil
         giveBarBack(animated: animated)
         // Left holding something, new work isn't offered again as empty.
         if isMovingFromParent, !previewing, let spaceId {
@@ -629,6 +633,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private var picked: AgentWire.Mode?
     /// The "+" sheet while it is up: its permission menu follows the mode.
     private weak var attachSheet: AttachSheetViewController?
+    private var attachPanel: ComposerPanelPresenter?
+    private var attachPermission: ComposerMenuPresenter?
     /// The model or effort list while it is open.
     private var picker: PickerPresenter?
     /// The header's overflow and permission choices, without changing focus.
@@ -695,6 +701,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// takes the keyboard.
     func presentAttach(from host: UIViewController) {
         let sheet = AttachSheetViewController(limit: ComposerAttachmentRules.remaining(selected: pictures.images.count), permission: permissionName)
+        sheet.opensPermissionPanel = true
         sheet.permissionMenu = permissionMenu
         if session.models.catalog == nil { session.models.load() }
         sheet.onAction = { [weak self] action in
@@ -706,18 +713,34 @@ final class ChatViewController: UIViewController, ComposeHosting {
             case .paste: pasteFromClipboard()
             case .files: presentFiles()
             // Its menu waits for the models, read as the sheet opened.
-            case .permission: session.models.load()
+            case .permission: presentAttachmentPermission()
             }
         }
-        // The keyboard goes while the sheet is up: a menu over the sheet
-        // gives the keys back to the composer as it opens, which would put
-        // the keyboard over the sheet. It comes back once the sheet is
-        // closed, or once what was chosen there is done.
         keyboardOwed = card.textView.isFirstResponder
-        card.blur()
         sheet.onGone = { [weak self] in self?.settleFocus(added: false) }
         attachSheet = sheet
-        host.present(sheet, animated: true)
+        let panel = ComposerPanelPresenter(content: sheet, height: AttachSheetViewController.contentHeight, host: host, anchor: card)
+        panel.onOutside = { [weak sheet] in sheet?.close() }
+        sheet.dismissPanel = { [weak self, weak panel] completion in
+            self?.attachPermission?.close()
+            self?.attachPermission = nil
+            panel?.close(completion: completion)
+            if self?.attachPanel === panel { self?.attachPanel = nil }
+        }
+        attachPanel?.close()
+        attachPanel = panel
+        panel.show()
+    }
+
+    private func presentAttachmentPermission() {
+        session.models.load()
+        guard let menus else { return }
+        attachPermission?.close()
+        let configuration = AgentInputChipConfiguration(content: .label(permissionName), accessibilityLabel: Strings.permission, menu: ModelPickers.permissionMenu(menus))
+        let presenter = ComposerMenuPresenter(card: card, chips: [(.permission, configuration)])
+        presenter.onSelect = { [weak self] key, _ in self?.choose(key) }
+        attachPermission = presenter
+        presenter.show(in: view, chip: .permission)
     }
 
     /// The mode the next message runs with, by its name.
@@ -1168,6 +1191,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
         card.setLayoutFrame(screen.card)
         picker?.follow()
         chatMenu?.follow()
+        attachPanel?.follow()
+        attachPermission?.follow()
         let foot = ChatFootLayout(size: view.bounds.size, card: screen.card)
         composerScrim.setLayoutFrame(foot.scrim)
         jump.setLayoutFrame(foot.jump)
