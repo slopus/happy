@@ -98,7 +98,7 @@ class OfflineJourneyTest {
     @Test
     fun aDropQueuesSendsAndABacklogThatGoOutWhenTheServerIsBack() {
         openChat()
-        rule.node(HomeTags.STATUS).assertDoesNotExist()
+        rule.node(HomeTags.STATUS).assertExists()
 
         // The socket goes and won't come back; home says so.
         server.acceptSockets = false

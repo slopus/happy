@@ -2,6 +2,12 @@ package com.slopus.happy.ui
 
 import android.provider.Settings
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
@@ -9,6 +15,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -18,6 +26,10 @@ import androidx.navigationevent.NavigationEvent
 import androidx.navigationevent.NavigationEventDispatcher
 import androidx.navigationevent.NavigationEventInput
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.AppGraph
 import com.slopus.happy.crypto.Base64Variant
 import com.slopus.happy.crypto.SecretKeyBackup
@@ -42,10 +54,11 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The NavHost's motion (NavMotion): a short shared-X-axis slide, mirrored
- * by Back and by a right-to-left layout, none with animations off, and only
- * in the stack, never the tablet's sidebar. Read halfway through, with the
- * clock held: the library's own default would show both screens in place.
+ * Telegram's ordinary motion (NavMotion): 150 ms, 48 dp of foreground
+ * travel and concurrent alpha; the underlying page stays in place.
+ * System completion and predictive gestures use that same reverse path,
+ * including cancellation and RTL from the other edge. The tablet sidebar
+ * stays fixed and reduced motion is instant.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -104,17 +117,17 @@ class NavMotionTest {
     private fun left(tag: String): Dp = rule.node(tag).bounds.left
 
     private fun assertTravelling(what: String, offset: Dp, towardsEnd: Boolean) {
-        val max = NavMotion.travel + TOLERANCE
+        val max = 48.dp + TOLERANCE
         if (towardsEnd) {
-            assertTrue("$what is on its way from the end side, not in place: $offset", offset > 1.dp)
+            assertTrue("$what travels from the end side: $offset", offset > 1.dp)
         } else {
-            assertTrue("$what is on its way from the start side, not in place: $offset", offset < (-1).dp)
+            assertTrue("$what travels from the start side: $offset", offset < (-1).dp)
         }
-        assertTrue("$what travels no further than ${NavMotion.travel}, not the pane's width: $offset", offset.value in -max.value..max.value)
+        assertTrue("$what stays within Telegram's 48 dp travel: $offset", offset.value in -max.value..max.value)
     }
 
     @Test
-    fun aPushSlidesTheNewScreenInFromTheEndAndTheOldOneOutTowardsTheStart() {
+    fun aPushSlidesTheNewScreenOverTheStationaryOldPage() {
         show()
         val startAtRest = left(StartTags.CONTENT)
         pushServer()
@@ -123,8 +136,45 @@ class NavMotionTest {
         val outgoing = left(StartTags.CONTENT) - startAtRest
         settle()
         assertTravelling("the new screen", incoming - left(ServerTags.FORM), towardsEnd = true)
-        assertTravelling("the old screen", outgoing, towardsEnd = false)
+        assertEquals("the old page stays in place beneath the foreground", 0.dp, outgoing)
         rule.node(StartTags.CONTENT).assertDoesNotExist()
+    }
+
+    @Test
+    fun theUnderlyingPageStaysOpaqueThroughTheEntirePushAndPop() {
+        lateinit var nav: NavHostController
+        rule.setContent {
+            nav = rememberNavController()
+            val motion = rememberNavMotion()
+            Box(Modifier.fillMaxSize().background(Color.Green)) {
+                NavHost(
+                    navController = nav,
+                    startDestination = "first",
+                    enterTransition = motion.enter,
+                    exitTransition = motion.exit,
+                    popEnterTransition = motion.popEnter,
+                    popExitTransition = motion.popExit,
+                ) {
+                    composable("first") { Box(Modifier.fillMaxSize().background(Color.Red)) }
+                    composable("second") { Box(Modifier.fillMaxSize().background(Color.Blue)) }
+                }
+            }
+        }
+        fun opaque(at: String) {
+            rule.waitForIdle()
+            val pixels = rule.onRoot().captureToImage().toPixelMap()
+            assertEquals("no window background shows through either page at $at", 0f, pixels[pixels.width / 2, pixels.height / 2].green, 0.01f)
+        }
+        rule.mainClock.autoAdvance = false
+        rule.runOnUiThread { nav.navigate("second") }
+        rule.mainClock.advanceTimeByFrame()
+        repeat(4) { rule.mainClock.advanceTimeBy(32); opaque("push frame $it") }
+        settle()
+        rule.mainClock.autoAdvance = false
+        rule.runOnUiThread { nav.popBackStack() }
+        rule.mainClock.advanceTimeByFrame()
+        repeat(4) { rule.mainClock.advanceTimeBy(32); opaque("pop frame $it") }
+        settle()
     }
 
     @Test
@@ -142,7 +192,7 @@ class NavMotionTest {
         val incoming = left(StartTags.CONTENT) - startAtRest
         val outgoing = left(ServerTags.FORM) - serverAtRest
         settle()
-        assertTravelling("the screen Back returns to", incoming, towardsEnd = false)
+        assertEquals("Back reveals a destination already in place", 0.dp, incoming)
         assertTravelling("the screen Back leaves", outgoing, towardsEnd = true)
         assertEquals(startAtRest, left(StartTags.CONTENT))
     }
@@ -162,7 +212,7 @@ class NavMotionTest {
         val incoming = left(StartTags.CONTENT) - startAtRest
         val outgoing = left(ServerTags.FORM) - serverAtRest
         settle()
-        assertTravelling("system Back returns to", incoming, towardsEnd = false)
+        assertEquals("system Back reveals a destination already in place", 0.dp, incoming)
         assertTravelling("system Back leaves", outgoing, towardsEnd = true)
         rule.node(ServerTags.FORM).assertDoesNotExist()
     }
@@ -191,8 +241,9 @@ class NavMotionTest {
         repeat(3) { rule.mainClock.advanceTimeByFrame() }
         rule.waitForIdle()
         val sign = if (direction == LayoutDirection.Ltr) 1 else -1
-        assertTravelling("gesture returns to", (left(StartTags.CONTENT) - startAtRest) * sign, towardsEnd = false)
-        assertTravelling("gesture leaves", (left(ServerTags.FORM) - serverAtRest) * sign, towardsEnd = true)
+        assertEquals("gesture reveals the stationary destination", startAtRest, left(StartTags.CONTENT))
+        // Halfway through decelerate(1.5): 48 * (1 - .5^3) = 42 dp.
+        assertDp("Telegram foreground at half gesture progress", 42.dp, (left(ServerTags.FORM) - serverAtRest) * sign)
         val during = rule.node(ServerTags.FORM).bounds
         assertEquals("the gesture never scales the outgoing page", serverBounds.right - serverBounds.left, during.right - during.left)
         rule.runOnUiThread { input.cancel() }
@@ -232,7 +283,7 @@ class NavMotionTest {
         rule.mainClock.advanceTimeByFrame()
         // Already where it rests: no slide.
         val incoming = left(ServerTags.FORM)
-        // Gone within a few frames, well before even the outgoing fade (FADE_OUT_MILLIS) would end.
+        // Gone within a few frames, with no page travelling across the pane.
         repeat(3) { rule.mainClock.advanceTimeByFrame() }
         rule.node(StartTags.CONTENT).assertDoesNotExist()
         settle()
