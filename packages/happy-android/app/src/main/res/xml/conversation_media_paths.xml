@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The one directory a conversation's media goes in, and the only thing the
+  file provider will hand out: not the cache's root, nothing else of the
+  app's. MediaFiles.DIRECTORY must stay in step with it.
+-->
+<paths>
+    <cache-path name="conversation-media" path="conversation-media/" />
+</paths>

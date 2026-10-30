@@ -151,8 +151,17 @@ fun ConversationScreen(
         )
     }
     val pictures = rememberPictureViewer()
-    val rowActions = remember(actions, legacy, pictures) {
-        ConversationRowActions(legacy, actions.onRetryFailure, actions.loadMedia, actions.onOpenArtifact, pictures::show)
+    val media = rememberMediaOpener(actions.loadMedia)
+    val rowActions = remember(actions, legacy, pictures, media) {
+        ConversationRowActions(
+            legacy = legacy,
+            onRetryFailure = actions.onRetryFailure,
+            loadMedia = actions.loadMedia,
+            onOpenArtifact = actions.onOpenArtifact,
+            onOpenPicture = pictures::show,
+            onOpenMedia = media::open,
+            mediaOpening = media::state,
+        )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
     val visible by rememberUpdatedState(actions.onVisible)

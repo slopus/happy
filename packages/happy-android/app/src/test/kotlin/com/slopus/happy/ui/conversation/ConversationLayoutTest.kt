@@ -2,6 +2,7 @@ package com.slopus.happy.ui.conversation
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
@@ -21,6 +22,7 @@ import com.slopus.happy.conversation.ComposerFocus
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Delivery
 import com.slopus.happy.conversation.MediaItem
+import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.conversation.Message
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.conversation.ModeCatalog
@@ -31,7 +33,9 @@ import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.PrimaryAction
+import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import androidx.compose.ui.unit.height
@@ -311,6 +315,48 @@ class ConversationLayoutTest {
         )
         rule.onNodeWithText(prefix + "\n\nkeep me").assertIsDisplayed()
         shot("prefilled")
+    }
+
+    @Test fun `a video is opened by tapping it, and says so when nothing reads it`() {
+        val ref = MediaRef("c3", 1, MediaItem("video", "repro.mp4", "video/mp4"))
+        val opened = ArrayList<String>()
+        fun card(opening: MediaOpening?) = @Composable {
+            ConversationRowView(
+                ConversationRow.Media("m:0", listOf(ref)),
+                userMessageBubblePalette(null, false),
+                ConversationRowActions(
+                    legacy = MessageCallbacks(),
+                    onRetryFailure = {},
+                    loadMedia = { ByteArray(0) },
+                    onOpenMedia = { opened += it.key },
+                    mediaOpening = { opening },
+                ),
+            )
+        }
+        rule.setHappyContent(content = card(null))
+        // No longer a desktop-only card: it is the thing you tap.
+        rule.onNodeWithText("Videos play in Happy Agent on your computer.").assertDoesNotExist()
+        rule.node(ConversationRowTags.MEDIA_FILE).performClick()
+        assertEquals(listOf("c3/1"), opened)
+    }
+
+    @Test fun `a video nothing can read says so on its card`() {
+        val ref = MediaRef("c3", 1, MediaItem("video", "repro.mp4", "video/mp4"))
+        rule.setHappyContent {
+            ConversationRowView(
+                ConversationRow.Media("m:0", listOf(ref)),
+                userMessageBubblePalette(null, false),
+                ConversationRowActions(
+                    legacy = MessageCallbacks(),
+                    onRetryFailure = {},
+                    loadMedia = { ByteArray(0) },
+                    onOpenMedia = {},
+                    mediaOpening = { MediaOpening.Failed("Nothing on this phone opens this kind of file.") },
+                ),
+            )
+        }
+        rule.onNodeWithText("Nothing on this phone opens this kind of file.").assertIsDisplayed()
+        shot("media-no-app")
     }
 
     @Test fun `a picture in the transcript opens full screen and closes`() {

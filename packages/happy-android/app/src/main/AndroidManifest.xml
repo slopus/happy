@@ -18,6 +18,11 @@
     <!-- expo-store-review's isAvailableAsync looks for the Play Store (ui/home/ReviewPrompt.kt). -->
     <queries>
         <package android:name="com.android.vending" />
+        <!-- Whether anything on the phone can open a conversation's video or file. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="*/*" />
+        </intent>
     </queries>
 
     <application
@@ -66,6 +71,21 @@
         <receiver
             android:name=".push.BackgroundSendReceiver"
             android:exported="false" />
+        <!--
+          Hands one conversation media file at a time to whatever opens it,
+          read-only and per URI (conversation/MediaFiles.kt). It shares the
+          one directory conversation_media_paths.xml names and nothing else,
+          and no other app may call it.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.conversation.media"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/conversation_media_paths" />
+        </provider>
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/notification_icon" />

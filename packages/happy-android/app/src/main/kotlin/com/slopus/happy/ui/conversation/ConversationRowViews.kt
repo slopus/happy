@@ -101,6 +101,10 @@ class ConversationRowActions(
     val onOpenArtifact: ((artifactId: String) -> Unit)? = null,
     /** Shows one picture full screen. */
     val onOpenPicture: (bytes: ByteArray, cacheKey: String, name: String?) -> Unit = { _, _, _ -> },
+    /** Opens a presented video or file in whatever on the phone reads it. */
+    val onOpenMedia: ((MediaRef) -> Unit)? = null,
+    /** What that is doing: reading, or why it could not open. */
+    val mediaOpening: (MediaRef) -> MediaOpening? = { null },
 )
 
 /**
@@ -287,11 +291,18 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
             }
         }
         other.forEach { ref ->
+            val opening = actions.mediaOpening(ref)
+            val open = actions.onOpenMedia
             InfoCard(
                 icon = if (ref.item.kind == "video") Ionicon.PlayCircleOutline else Ionicon.DocumentTextOutline,
                 title = ref.item.name,
-                detail = stringResource(if (ref.item.kind == "video") R.string.conversation_video_unavailable else R.string.conversation_file_unavailable),
-                onClick = null,
+                detail = when {
+                    opening is MediaOpening.Failed -> opening.reason
+                    opening is MediaOpening.Reading -> stringResource(R.string.conversation_media_reading)
+                    open == null -> stringResource(if (ref.item.kind == "video") R.string.conversation_video_unavailable else R.string.conversation_file_unavailable)
+                    else -> null
+                },
+                onClick = open?.let { { it(ref) } },
                 modifier = Modifier.testTag(ConversationRowTags.MEDIA_FILE),
                 vertical = 0.dp,
             )
