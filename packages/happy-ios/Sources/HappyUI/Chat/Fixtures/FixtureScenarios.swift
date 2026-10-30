@@ -271,6 +271,9 @@ enum FixtureScenarios {
         b.user("<command-message>review</command-message><command-name>/review</command-name><command-args>the anchoring change</command-args>")
         b.user("/goal ship the native chat list with stable anchoring")
         b.agent("Goal noted. I'll keep working until the list keeps its place in every case above.")
+        if ProcessInfo.processInfo.arguments.contains("-qa-wide-code") {
+            b.agent("```text\n" + String(repeating: "0123456789abcdef", count: 24) + "\n```")
+        }
     }
 
     static func tools(_ b: inout Builder) {

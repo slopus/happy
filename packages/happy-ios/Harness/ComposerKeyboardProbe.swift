@@ -114,6 +114,23 @@ final class ComposerKeyboardProbe: NSObject {
         let navigation = views.compactMap { $0 as? UINavigationBar }.first { !$0.isHidden }
         let title = navigation?.topItem?.titleView
         let titleContent = title.flatMap { descendants($0).first { String(describing: type(of: $0)) == "ChatTitleView" } } ?? title
+        let horizontalScrollers: [[String: Any]] = views.compactMap { view in
+            guard let scroll = view as? UIScrollView, scroll.isScrollEnabled, scroll.alwaysBounceHorizontal,
+                  scroll.contentSize.width > scroll.bounds.width + 1, !scroll.isHidden, scroll.alpha > 0.01 else { return nil }
+            var visible = scroll.convert(scroll.bounds, to: window).intersection(window.bounds)
+            var ancestor = scroll.superview
+            while let parent = ancestor {
+                if parent.clipsToBounds { visible = visible.intersection(parent.convert(parent.bounds, to: window)) }
+                ancestor = parent.superview
+            }
+            let top = navigation.map { $0.convert($0.bounds, to: window).maxY } ?? window.safeAreaInsets.top
+            let bottom = card.map { $0.convert($0.bounds, to: window).minY } ?? window.bounds.maxY
+            visible = visible.intersection(CGRect(x: 0, y: top, width: window.bounds.width, height: max(0, bottom - top)))
+            guard !visible.isNull, visible.width > 20, visible.height > 10 else { return nil }
+            return ["id": identity(scroll), "class": String(describing: type(of: scroll)), "frame": rect(visible),
+                    "offset": [Double(scroll.contentOffset.x), Double(scroll.contentOffset.y)],
+                    "contentSize": [Double(scroll.contentSize.width), Double(scroll.contentSize.height)], "bounds": rect(scroll.bounds)]
+        }
         return [
             "ready": true, "time": CACurrentMediaTime(), "editorID": identity(editor),
             "responderID": identity(responder), "firstResponder": editor.isFirstResponder,
@@ -126,6 +143,7 @@ final class ComposerKeyboardProbe: NSObject {
             "keyboardVisible": keyboardVisible, "panels": panels,
             "chips": chips, "compact": card?.configuration.compact ?? false,
             "headerTitleFrame": titleContent.map { rect($0.convert($0.bounds, to: window)) } ?? [],
+            "horizontalScrollers": horizontalScrollers,
             "keyboardHides": keyboardHides, "editingEnds": editingEnds,
             "lostResponderFrames": lostResponderFrames, "missingKeyboardFrames": missingKeyboardFrames
         ]

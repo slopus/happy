@@ -1614,16 +1614,32 @@ final class UITests: XCTestCase {
     func testNativeSwipeBackCancelsAndCompletesWithTheKeyboard() {
         XCUIDevice.shared.orientation = .portrait
         defer { XCUIDevice.shared.orientation = .portrait }
+        app.terminate()
+        app.launchEnvironment["HAPPY_CHAT_PROBE"] = "native-pop"
+        app.launch()
         home()
         let bot = row("space", ProcessInfo.processInfo.environment["HAPPY_STREAM_ROW"] ?? "Stream Lab")
         let composer = app.textViews["composer"]
+        bot.tap()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap()
+        composer.typeText("Swipe verification draft")
+        app.buttons["Back"].tap()
+        XCTAssertTrue(app.buttons["search"].firstMatch.waitForExistence(timeout: 5))
+        func probe() -> [String: String] {
+            let value = app.descendants(matching: .any)["transcript"].value as? String ?? ""
+            return Dictionary(value.split(separator: " ").compactMap { token -> (String, String)? in
+                let pair = token.split(separator: "=", maxSplits: 1)
+                return pair.count == 2 ? (String(pair[0]), String(pair[1])) : nil
+            }, uniquingKeysWith: { _, last in last })
+        }
         for (orientationName, orientation) in [("portrait", UIDeviceOrientation.portrait), ("landscape", .landscapeLeft)] {
             XCUIDevice.shared.orientation = orientation
             pause(1.5)
             for keyboardUp in [false, true] {
                 for (kind, from) in [("edge", CGFloat(0.005)), ("content", CGFloat(0.3))] {
                     let label = "\(orientationName)-keyboard-\(keyboardUp)-\(kind)"
-                    if let focus = ProcessInfo.processInfo.environment["HAPPY_POP_FOCUS"], focus != label { continue }
+                    if let focus = ProcessInfo.processInfo.environment["HAPPY_POP_FOCUS"], !label.hasPrefix(focus) { continue }
                     bot.tap()
                     XCTAssertTrue(composer.waitForExistence(timeout: 5))
                     pause(1)
@@ -1639,8 +1655,17 @@ final class UITests: XCTestCase {
                     XCTAssertEqual(showsBar, orientationName != "landscape" || !keyboardUp)
                     let top = showsBar ? bar.frame.maxY : 0
                     let bottom = composer.frame.minY - 24
-                    let y = (top + bottom) / 2 / app.frame.height
-                    print("HAPPY_NATIVE_POP geometry \(label) y \(y) bar \(bar.frame) composer \(composer.frame) keyboard \(app.keyboards.firstMatch.frame)")
+                    var y = (top + bottom) / 2 / app.frame.height
+                    if ProcessInfo.processInfo.environment["HAPPY_POP_REQUIRE_FITTING"] == "1" {
+                        let fitting = (probe()["hFit"] ?? "").split(separator: ",").compactMap { Double($0) }
+                        XCTAssertEqual(fitting.count, 7, "a real visible fitting table must be under the finger")
+                        guard fitting.count == 7 else { return }
+                        XCTAssertLessThanOrEqual(fitting[5], fitting[6] + 1)
+                        y = (fitting[1] + fitting[3] / 2) / app.frame.height
+                        print("HAPPY_NATIVE_POP fitting \(label) \(fitting)")
+                    }
+                    let keyboardFrame = keyboardUp ? app.keyboards.firstMatch.frame : .zero
+                    print("HAPPY_NATIVE_POP geometry \(label) y \(y) bar \(showsBar ? bar.frame : .zero) composer \(composer.frame) keyboard \(keyboardFrame)")
                     capture("pop-\(label)-before")
                     func drag(to x: CGFloat, hold: TimeInterval) {
                         app.coordinate(withNormalizedOffset: CGVector(dx: from, dy: y)).press(
@@ -1649,9 +1674,24 @@ final class UITests: XCTestCase {
                         )
                         pause(1.5)
                     }
-                    drag(to: from + 0.08, hold: 0.4)
+                    let before = probe()
+                    let draft = composer.value as? String
+                    XCTAssertTrue(draft?.contains("Swipe verification draft") == true)
+                    // Content recognition has a larger activation distance than
+                    // the edge. Travel remains below half of the window, then
+                    // hold still so releasing cancels rather than flings home.
+                    let cancellationTravel = kind == "content" ? min(0.32, 134 / app.frame.width) : 0.08
+                    drag(to: from + cancellationTravel, hold: 0.4)
                     XCTAssertTrue(composer.exists, "\(label): cancelled swipe left chat")
                     XCTAssertEqual(app.keyboards.firstMatch.exists, keyboardUp, "\(label): cancelled swipe changed keyboard")
+                    XCTAssertEqual(composer.value as? String, draft, "\(label): cancellation changed the draft")
+                    let after = probe()
+                    let sampleKey = kind == "content" ? "popContent" : "popEdge"
+                    let translationKey = sampleKey + "X"
+                    XCTAssertGreaterThan(Double(after[sampleKey] ?? "") ?? -1, Double(before[sampleKey] ?? "") ?? 0,
+                                         "\(label): cancellation must follow observed native motion during UIKit's interactive transition")
+                    XCTAssertGreaterThan(Double(after[translationKey] ?? "") ?? 0, 0)
+                    print("HAPPY_NATIVE_POP observed \(label) \(sampleKey)=\(after[sampleKey] ?? "missing") translation=\(after[translationKey] ?? "missing")")
                     print("HAPPY_NATIVE_POP \(label) cancelled")
                     capture("pop-\(label)-cancelled")
                     if !keyboardUp, kind == "content" {
