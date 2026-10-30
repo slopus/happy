@@ -153,23 +153,12 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private var showingDraft = false
     /// The last keystroke's stamp, never going back.
     private var lastDraftEdit: Double = 0
-    /// A message sent while the agent was idle, not yet drawn: as it lands
-    /// it is lifted to desktop's line (`SendLift`).
-    private var liftPending: String?
-    /// The lifted send and its line, while the reply hasn't filled the room
-    /// under it; `viewport` as it was lifted in, and whether it has been
-    /// another height since (`SendLift.releases`).
-    private var lift: (id: String, line: CGFloat, viewport: CGFloat, resized: Bool)?
     /// A content height laid out while a finger, or a bounce, holds the
     /// transcript's scroll (`ChatScrollHold`).
     private var scrollHold = ChatScrollHold()
     #if DEBUG
     private var probe: ScrollProbe?
     #endif
-    /// Where the transcript's rows end, as last laid out; nil while they
-    /// stand off the top (a short one resting on its composer), where
-    /// dropping a lift would move them.
-    private var rowsEnd: CGFloat?
     /// The computer was reachable when last heard: pictures that failed
     /// while it wasn't are asked for again when it is back.
     private var live = true
@@ -1236,36 +1225,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let stackRow = Dictionary(zip(stackedIds, stackRows), uniquingKeysWith: { first, _ in first })
         func row(_ id: String) -> Int? { stackRow[id] }
         func stacked() -> ChatStackLayout {
-            let held = lift.flatMap { lift in row(lift.id).map { ChatStackLayout.Lift(row: $0, line: lift.line) } }
-            return ChatStackLayout(heights: heights, width: width, viewport: viewport, pinsFirst: pins, lift: held)
+            ChatStackLayout(heights: heights, width: width, viewport: viewport, pinsFirst: pins)
         }
-        // The room under a lift taken another height by the keyboard or the
-        // composer may go once it is out of view.
-        if let held = lift, held.viewport != viewport {
-            lift = (held.id, held.line, viewport, true)
-            // Resized with the reader up in history, the room already out of view.
-            if !followsNewest, SendLift.releases(resized: true, viewportBottom: scrollView.contentOffset.y + scrollView.bounds.height - scrollView.contentInset.bottom, rowsEnd: rowsEnd) {
-                lift = nil
-            }
-        }
-        var stack = stacked()
-        if let id = liftPending, let sent = row(id) {
-            liftPending = nil
-            // Where it lands following the end; lifted from there if below the
-            // line. The intro's line counts only while it is on screen there:
-            // scrolled away, the line is desktop's 30%.
-            let shownFrom = max(0, stack.contentHeight - viewport)
-            let introLine = introLayout.flatMap { $0.line.maxY > shownFrom ? $0.line.maxY : nil }
-            let line = SendLift(viewport: viewport, introLine: introLine)
-            if line.lifts(shownAt: stack.frames[sent].minY - shownFrom) {
-                lift = (id, line.line, viewport, false)
-            } else {
-                lift = nil
-            }
-            stack = stacked()
-        }
-        if !stack.holding { lift = nil }
-        rowsEnd = stack.frames.first?.minY == 0 ? stack.frames.last?.maxY : nil
+        let stack = stacked()
         contentTop = stack.frames.first { $0.height > 0 }?.minY ?? 0
         if let introLayout {
             introView.setLayoutFrame(stack.frames[0])
@@ -1474,13 +1436,11 @@ final class ChatViewController: UIViewController, ComposeHosting {
         guard !text.isEmpty || !picked.isEmpty else { return }
         acceptingSend = true
         Haptics.play(.send)
-        // Idle, a reader at the end sees it lifted; mid-turn it waits under
-        // the reply at the end, which a reader near it follows. One reading
-        // further up stays where they are, as on desktop.
+        // A reader at or near the end follows it there; one reading further
+        // up stays where they are. The transcript is never lifted.
         let id = ClientID.make()
-        let lands = SendLift.Send(working: chat.working, following: followsNewest, distanceFromEnd: newestOffset - scrollView.contentOffset.y)
+        let lands = SendFollow.Send(following: followsNewest, distanceFromEnd: newestOffset - scrollView.contentOffset.y)
         if lands.follows { followsNewest = true }
-        liftPending = lands.lifts ? id : nil
         let conversation = conversation
         let store = session.store
         let staged = pictures
@@ -1884,12 +1844,6 @@ extension ChatViewController: UIScrollViewDelegate {
         // Back inside its ends after a bounce: what was held is given.
         if scrollHold.held != nil, let height = scrollHold.release(scroll: scrollState) { setContentHeight(height, "size-scroll") }
         guard moving else { return }
-        // The room under a lift stays as the reader scrolls away and back;
-        // taken another height meanwhile, it goes once wholly out of view.
-        if let held = lift, SendLift.releases(resized: held.resized, viewportBottom: scrollView.contentOffset.y + scrollView.bounds.height - scrollView.contentInset.bottom, rowsEnd: rowsEnd) {
-            lift = nil
-            view.setNeedsLayout()
-        }
         if scrollView.contentOffset.y < 200 - scrollView.contentInset.top, chat.hasMore {
             let conversation = conversation
             Task { await conversation.loadOlder() }
