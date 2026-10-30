@@ -5,7 +5,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -14,7 +13,6 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import com.slopus.happy.AppGraph
-import com.slopus.happy.R
 import com.slopus.happy.auth.AccountLinkRequest
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.model.Machine
@@ -23,16 +21,17 @@ import com.slopus.happy.model.collectMachineChoices
 import com.slopus.happy.ui.RestoreManualRoute
 import com.slopus.happy.ui.RestoreRoute
 import com.slopus.happy.ui.ServerRoute
-import com.slopus.happy.ui.components.Alert
-import com.slopus.happy.ui.components.AlertButton
-import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.troubleshoot.TroubleshootComputer
 import com.slopus.happy.ui.troubleshoot.TroubleshootScreen
 import com.slopus.happy.ui.troubleshoot.TroubleshootSession
 import com.slopus.happy.ui.troubleshoot.buildOfflineMachineTroubleshooting
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -82,54 +81,57 @@ fun NavGraphBuilder.onboardingRoutes(
 /**
  * restore/index.tsx: registers a link request, shows its QR code and waits
  * for the other phone. Approval signs in, which replaces the signed-out
- * screens with home (happy-app's `router.dismissTo('/')`). A failure is an
- * alert and leaves the spinner, as in happy-app. The request lives as long
- * as the screen is on the back stack ([RestoreLink]): "Use secret key"
+ * screens with home (happy-app's `router.dismissTo('/')`). A failure says
+ * so in the code's place with Retry, which starts a new request; happy-app
+ * leaves its spinner turning with nothing behind it. The request lives as
+ * long as the screen is on the back stack ([RestoreLink]): "Use secret key"
  * covers it without ending the wait, so an approval made meanwhile still
  * signs in.
  */
 @Composable
 private fun Restore(graph: AppGraph, nav: NavHostController) {
     val link = viewModel { RestoreLink(graph) }
-    val ready by link.ready.collectAsStateWithLifecycle()
-    val failedNow by link.failed.collectAsStateWithLifecycle()
-    val failed = Alert(
-        stringResource(R.string.common_error),
-        stringResource(R.string.errors_authentication_failed),
-        listOf(AlertButton(stringResource(R.string.common_ok))),
-    )
+    val code by link.code.collectAsStateWithLifecycle()
     RestoreScreen(
-        qrUrl = link.request.url.takeIf { ready },
+        code = code,
         onBack = { nav.popBackStack() },
+        onRetry = link::retry,
         onUseSecretKey = { nav.navigate(RestoreManualRoute) },
     )
-    if (failedNow) HappyAlert(failed, onDismiss = { link.failed.value = false })
 }
 
 /**
  * [Restore]'s link request and its wait, kept by the Restore back stack
  * entry: expo-router leaves restore/index mounted under restore/manual, and
  * a covered Compose destination would otherwise drop both. Popping the
- * screen cancels the wait.
+ * screen cancels the wait. Each attempt is a new request with its own key,
+ * and one attempt at a time: [retry] stops the last one before the next
+ * begins, so an old wait can neither sign in nor show its code afterwards.
  */
-internal class RestoreLink(graph: AppGraph) : ViewModel() {
-    val request = AccountLinkRequest(graph.authApi)
-    val ready = MutableStateFlow(false)
-    val failed = MutableStateFlow(false)
+internal class RestoreLink(private val graph: AppGraph) : ViewModel() {
+    private val state = MutableStateFlow<RestoreCode>(RestoreCode.Waiting)
+    val code: StateFlow<RestoreCode> = state.asStateFlow()
+    private var attempt: Job? = null
 
     init {
-        viewModelScope.launch {
+        retry()
+    }
+
+    fun retry() {
+        val previous = attempt
+        attempt = viewModelScope.launch {
+            previous?.cancelAndJoin()
+            state.value = RestoreCode.Waiting
+            val request = AccountLinkRequest(graph.authApi)
             try {
                 request.start()
-                ready.value = true
+                state.value = RestoreCode.Ready(request.url)
                 val linked = request.awaitApproval()
-                if (linked != null) graph.auth.signIn(linked.token, linked.secret) else failed.value = true
+                if (linked != null) graph.auth.signIn(linked.token, linked.secret) else state.value = RestoreCode.Failed
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                failed.value = true
-            } finally {
-                ready.value = false
+                state.value = RestoreCode.Failed
             }
         }
     }

@@ -467,7 +467,8 @@ graph over the same database and keys for process death.
   chat's composer draft (the session composer's mirror is in the
   database), the chat list's scroll position, the home dock's text and
   focus (`rememberSaveable`), and an open composer or dock picker.
-- Kept through a recreation only: Restore's QR request (a ViewModel).
+- Kept through a recreation only: Restore's QR request (a ViewModel), or
+  its failure with Retry; a recreation never starts a new request.
 - Lost, as in happy-app: pending chats (memory only), open alerts and
   confirmations, an in-flight Resume or Stop spinner, Restore's QR request
   after process death.

@@ -18,6 +18,8 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +34,7 @@ import com.slopus.happy.ui.components.RoundButtonTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -127,7 +130,7 @@ class OnboardingLayoutTest {
 
     @Test
     fun restoreScreenWaitsWithASpinnerInTheCodesPlace() {
-        rule.setHappyContent { RestoreScreen(qrUrl = null, onBack = {}, onUseSecretKey = {}) }
+        rule.setHappyContent { RestoreScreen(RestoreCode.Waiting, onBack = {}, onRetry = {}, onUseSecretKey = {}) }
         val instruction = rule.node(RestoreTags.INSTRUCTION).bounds
         val path = rule.node(RestoreTags.PATH).bounds
         val slot = rule.node(RestoreTags.QR_SLOT).bounds
@@ -142,7 +145,7 @@ class OnboardingLayoutTest {
 
     @Test
     fun restoreScreenShowsTheCodeInAWhiteFrame() {
-        rule.setHappyContent { RestoreScreen(qrUrl = "happy:///account?abc", onBack = {}, onUseSecretKey = {}) }
+        rule.setHappyContent { RestoreScreen(RestoreCode.Ready("happy:///account?abc"), onBack = {}, onRetry = {}, onUseSecretKey = {}) }
         rule.node(RestoreTags.QR_SLOT).assertDoesNotExist()
         val path = rule.node(RestoreTags.PATH).bounds
         val frame = rule.node(RestoreTags.QR_FRAME).bounds
@@ -152,6 +155,25 @@ class OnboardingLayoutTest {
         assertBox("code", code, frame.left + 12.dp, frame.top + 12.dp, 260.dp, 260.dp)
         val useKey = rule.node(RestoreTags.USE_KEY).bounds
         assertDp("use key 32 below the frame", frame.bottom + 32.dp, useKey.top)
+    }
+
+    @Test
+    fun aFailedRequestSaysSoInTheCodesPlaceWithRetry() {
+        var retried = 0
+        rule.setHappyContent { RestoreScreen(RestoreCode.Failed, onBack = {}, onRetry = { retried++ }, onUseSecretKey = {}) }
+        rule.node(RestoreTags.QR_SLOT).assertDoesNotExist()
+        rule.node(RestoreTags.QR_FRAME).assertDoesNotExist()
+        rule.onNodeWithText("Authentication failed").assertExists()
+        val path = rule.node(RestoreTags.PATH).bounds
+        val failed = rule.node(RestoreTags.FAILED).bounds
+        // The same 260 square the spinner had, so nothing around it moves.
+        assertBox("failed slot", failed, ((PHONE_WIDTH - 260) / 2f).dp, path.bottom + 32.dp, 260.dp, 260.dp)
+        val retry = rule.node(RestoreTags.RETRY).bounds
+        assertTrue("retry inside the slot", retry.top >= failed.top && retry.bottom <= failed.bottom)
+        assertDp("use key 32 below the slot", failed.bottom + 32.dp, rule.node(RestoreTags.USE_KEY).bounds.top)
+
+        rule.node(RestoreTags.RETRY).performClick()
+        assertEquals(1, retried)
     }
 
     @Test

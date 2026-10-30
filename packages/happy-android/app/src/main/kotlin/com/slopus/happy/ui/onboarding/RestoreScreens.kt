@@ -33,6 +33,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.ui.components.HappyTextField
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.connect.QrCode
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
@@ -50,9 +52,23 @@ object RestoreTags {
     const val QR_SLOT = "restore.qrSlot"
     const val QR_FRAME = "restore.qrFrame"
     const val QR_CODE = "restore.qrCode"
+    const val FAILED = "restore.failed"
+    const val RETRY = "restore.retry"
     const val USE_KEY = "restore.useKey"
     const val KEY_INPUT = "restore.keyInput"
     const val KEY_BODY = "restore.keyBody"
+}
+
+/** What the code's place on the restore screen holds. */
+sealed interface RestoreCode {
+    /** The link request is being registered. */
+    data object Waiting : RestoreCode
+
+    /** Registered: [url] is the code the other phone scans, and this one is waiting for its answer. */
+    data class Ready(val url: String) : RestoreCode
+
+    /** Registering or waiting failed; nothing is waiting any more until Retry starts a new request. */
+    data object Failed : RestoreCode
 }
 
 /** restore/index.tsx and restore/manual.tsx */
@@ -65,6 +81,10 @@ object RestoreSpec {
     val qrRadius = 16.dp
     val qrFramePadding = 12.dp
     val spinner = 20.dp
+    val failedIcon = 40.dp
+    val failedGap = 12.dp
+    val failedPadding = 24.dp
+    val failed = happyTextStyle(fontSize = 15, lineHeight = 20)
     val buttonWidth = 280.dp
     val buttonGap = 32.dp
     val instruction = happyTextStyle(fontSize = 17, lineHeight = 22)
@@ -87,12 +107,14 @@ object RestoreSpec {
  *
  * Spec: centred column, 32/24 padding; instruction 17/22, 8 above the path
  * 15/20 secondary, 32 above the code. Until the request is registered
- * ([qrUrl] null) a 260 square, radius 16, surfaceHigh, holds a small
- * spinner; then the 260 code sits in a white frame with 12 padding and
- * radius 16. A 280 wide quiet button 32 below.
+ * ([RestoreCode.Waiting]) a 260 square, radius 16, surfaceHigh, holds a
+ * small spinner; then the 260 code sits in a white frame with 12 padding and
+ * radius 16. If it failed, the same square says so with a glyph (errors get
+ * no picture, StateArt) and [onRetry], instead of a spinner nothing is
+ * behind any more. A 280 wide quiet button 32 below.
  */
 @Composable
-fun RestoreScreen(qrUrl: String?, onBack: () -> Unit, onUseSecretKey: () -> Unit) {
+fun RestoreScreen(code: RestoreCode, onBack: () -> Unit, onRetry: () -> Unit, onUseSecretKey: () -> Unit) {
     val colors = HappyTheme.colors
     Screen(header = { StackHeader(stringResource(R.string.onboarding_restore_title), onBack, TitleAlignment.Center) }) {
         BoxWithConstraints {
@@ -120,30 +142,53 @@ fun RestoreScreen(qrUrl: String?, onBack: () -> Unit, onUseSecretKey: () -> Unit
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(bottom = RestoreSpec.pathGap).testTag(RestoreTags.PATH),
                 )
-                if (qrUrl == null) {
-                    Box(
-                        modifier = Modifier
-                            .size(RestoreSpec.qrSize)
-                            .testTag(RestoreTags.QR_SLOT)
-                            .clip(RoundedCornerShape(RestoreSpec.qrRadius))
-                            .background(colors.surfaceHigh),
-                        contentAlignment = Alignment.Center,
-                    ) {
+                @Composable
+                fun Slot(tag: String, content: @Composable () -> Unit) = Box(
+                    modifier = Modifier
+                        .size(RestoreSpec.qrSize)
+                        .testTag(tag)
+                        .clip(RoundedCornerShape(RestoreSpec.qrRadius))
+                        .background(colors.surfaceHigh),
+                    contentAlignment = Alignment.Center,
+                ) { content() }
+
+                when (code) {
+                    RestoreCode.Waiting -> Slot(RestoreTags.QR_SLOT) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(RestoreSpec.spinner),
                             color = colors.text,
                             strokeWidth = 2.dp,
                         )
                     }
-                } else {
-                    Box(
+                    is RestoreCode.Ready -> Box(
                         modifier = Modifier
                             .testTag(RestoreTags.QR_FRAME)
                             .clip(RoundedCornerShape(RestoreSpec.qrRadius))
                             .background(Color.White)
                             .padding(RestoreSpec.qrFramePadding),
                     ) {
-                        QrCode(data = qrUrl, size = RestoreSpec.qrSize, modifier = Modifier.testTag(RestoreTags.QR_CODE))
+                        QrCode(data = code.url, size = RestoreSpec.qrSize, modifier = Modifier.testTag(RestoreTags.QR_CODE))
+                    }
+                    RestoreCode.Failed -> Slot(RestoreTags.FAILED) {
+                        Column(
+                            modifier = Modifier.padding(RestoreSpec.failedPadding),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(RestoreSpec.failedGap),
+                        ) {
+                            Icon(Ionicon.AlertCircleOutline, RestoreSpec.failedIcon, colors.textSecondary)
+                            Text(
+                                text = stringResource(R.string.errors_authentication_failed),
+                                style = RestoreSpec.failed,
+                                color = colors.textSecondary,
+                                textAlign = TextAlign.Center,
+                            )
+                            RoundButton(
+                                title = stringResource(R.string.common_retry),
+                                onClick = onRetry,
+                                size = RoundButtonSize.Small,
+                                modifier = Modifier.testTag(RestoreTags.RETRY),
+                            )
+                        }
                     }
                 }
                 Box(

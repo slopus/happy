@@ -641,6 +641,9 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
     /** New phones' account link requests, by base64 box public key, with the approval once given. */
     val accountRequests = mutableMapOf<String, String?>()
 
+    /** Status codes the next account link requests (registering or asking again) fail with, in order. */
+    val failAccountRequests = ArrayDeque<Int>()
+
     fun addTerminalRequest(publicKey: ByteArray, supportsV2: Boolean) = synchronized(this) {
         terminalRequests[encodeBase64(publicKey)] = TerminalRequest(supportsV2)
     }
@@ -661,6 +664,7 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
     }
 
     private fun accountRequest(request: RecordedRequest): MockResponse {
+        failAccountRequests.removeFirstOrNull()?.let { return json(it, """{"error":"boom"}""") }
         val body = HappyJson.parseToJsonElement(request.body!!.utf8()).jsonObject
         val key = boxKey(body.getValue("publicKey").jsonPrimitive.content) ?: return json(401, """{"error":"Invalid public key"}""")
         val response = accountRequests.getOrPut(key) { null }
