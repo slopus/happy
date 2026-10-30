@@ -150,7 +150,7 @@ class SessionAvatarServices private constructor(graph: AppGraph) {
         val http = graph.http
         val token = signedIn.credentials.token
         val encryption = signedIn.encryption
-        val hydrator = SessionAvatarHydrator(this) { id, descriptor -> load(store, http, graph.serverConfig.url.value, token, encryption, id, descriptor) }
+        val hydrator = SessionAvatarHydrator(this) { id, descriptor -> load(store, http, graph.serverUrl, token, encryption, id, descriptor) }
         launch { hydrator.avatars.collect { send(it) } }
         launch {
             store.versions.map { it.sessions }.distinctUntilChanged().collect {

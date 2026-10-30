@@ -63,8 +63,32 @@ enum class LiveMessageResult {
  * says what changed; [changes] ticks once per transaction that changed
  * anything.
  */
-class HappyStore(private val helper: SQLiteOpenHelper) {
+class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
     private val db: SQLiteDatabase get() = helper.writableDatabase
+
+    /**
+     * Points the store at another account's database. Everything watching
+     * the store sees a change and reads again. The previous database stays
+     * open for reads already under way; its owner closes it.
+     */
+    fun use(next: SQLiteOpenHelper) {
+        if (next === helper) return
+        helper = next
+        while (true) {
+            val before = versionState.value
+            val after = before.copy(
+                sessions = before.sessions + 1,
+                sessionActivity = before.sessionActivity + 1,
+                machines = before.machines + 1,
+                machineActivity = before.machineActivity + 1,
+                account = before.account + 1,
+                messages = before.messages.mapValues { it.value + 1 },
+                outbox = before.outbox.mapValues { it.value + 1 },
+            )
+            if (versionState.compareAndSet(before, after)) break
+        }
+        changeCount.value = changeCount.value + 1
+    }
 
     private val versionState = MutableStateFlow(StoreVersions())
     val versions: StateFlow<StoreVersions> = versionState.asStateFlow()

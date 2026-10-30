@@ -281,12 +281,28 @@ than enforced; a chat's rows are one contiguous run of seqs, so trimming
 the middle would break paging. **No migrations:** the native app hasn't
 shipped, so a database from any other schema version is dropped and created
 again, and storage keys and preferences are renamed outright, without
-fallbacks. The one exception is reading the React Native app's credentials
-(below). Logout (`AppGraph.logout`):
+fallbacks. The one exception is importing the React Native app's account:
+its credential item and its MMKV `server-config` (below).
+
+**Accounts** (`accounts/`, iOS's AccountController and AccountRegistry):
+several Happy (relay) accounts and agent connections, switched from Home's
+avatar menu. `AccountStore` keeps the registry (no secrets: id = the
+account's anon id, server, added order, cached name and avatar, the open
+id). The first account keeps the React Native credential item (`Shared`),
+so an upgrade stays signed in; the rest have items of their own (`Own`,
+keychain service `account`). The first reconcile that finds the shared
+item reads React Native's server with `RnServerConfigImporter` (read-only;
+an unreadable file marks the account unconfirmed and no request is sent
+with its token). Each account has its own database, `account-<id>.db`;
+`HappyStore.use` points the one store at the open account's. Switching
+keeps every account signed in (`MultipleAccountsTest`).
+
+Logout (`AppGraph.logout`) signs out the open account only:
 the `beforeLogout` hooks first, while signed in (the push unregister); then
-the database, local settings, the What's New marker, the new-session draft
-(stored and in memory, `afterLogoutWipe`), picked-image copies and the
-image loader's caches; then the credentials. The server choice stays
+its database and credentials; the next account by added order opens. With
+the last account also go local settings, the What's New marker, the
+new-session draft (stored and in memory, `afterLogoutWipe`), picked-image
+copies and the image loader's caches. The server choice stays
 (`LogoutWipeTest`).
 
 **Large sessions** (`perf/LargeDataTest`, `perf/ChatDisplayTimingTest`).

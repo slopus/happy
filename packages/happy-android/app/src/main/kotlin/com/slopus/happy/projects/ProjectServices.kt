@@ -38,7 +38,7 @@ class ProjectServices private constructor(graph: AppGraph) {
     private val api = ProjectApi(
         graph.http,
         OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build(),
-        serverUrl = { graph.serverConfig.url.value },
+        serverUrl = { graph.serverUrl },
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)

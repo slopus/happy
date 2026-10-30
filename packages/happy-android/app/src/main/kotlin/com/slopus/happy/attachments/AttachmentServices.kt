@@ -17,7 +17,7 @@ class AttachmentServices private constructor(private val graph: AppGraph) {
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
-    val api = AttachmentApi(client, serverUrl = { graph.serverConfig.url.value })
+    val api = AttachmentApi(client, serverUrl = { graph.serverUrl })
 
     private var account: Pair<AuthState.SignedIn, AttachmentTransfers>? = null
 

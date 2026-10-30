@@ -78,10 +78,20 @@ class AuthRepository(
         signIn(api.getToken(AuthChallenge.create(secret, random)), secret)
     }
 
-    /** Forgets the credentials. Clearing local data is the caller's job (AppGraph.logout). */
+    /**
+     * Forgets the open account's credentials; another signed-in account, if
+     * any, opens. Clearing local data is the caller's job (AppGraph.logout).
+     */
     suspend fun logout() {
-        withContext(io) { credentialStore.clear() }
-        mutableState.value = AuthState.SignedOut
+        mutableState.value = withContext(io) {
+            credentialStore.clear()
+            signedIn(credentialStore.read())
+        }
+    }
+
+    /** The open account changed in [credentialStore] (a switch): reads it again. */
+    suspend fun reload() {
+        mutableState.value = withContext(io) { signedIn(credentialStore.read()) }
     }
 
     private fun signedIn(credentials: AuthCredentials?): AuthState {

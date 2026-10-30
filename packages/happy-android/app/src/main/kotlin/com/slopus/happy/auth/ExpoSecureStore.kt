@@ -102,6 +102,9 @@ class ExpoSecureStore(
     /** Prefs key of [key] (createKeychainAwareKey). */
     fun prefsKey(key: String): String = "$keychainService-$key"
 
+    /** The keys of this keychain service's items. */
+    fun keys(): List<String> = prefs.all.keys.filter { it.startsWith("$keychainService-") }.map { it.removePrefix("$keychainService-") }
+
     /** getItemImpl / readJSONEncodedItem. Throws [GeneralSecurityException] on anything else that fails. */
     fun getItem(key: String): String? {
         val stored = prefs.getString(prefsKey(key), null) ?: prefs.getString(key, null) ?: return null
