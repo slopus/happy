@@ -66,8 +66,10 @@ private actor ScrollTraceTransport: AgentTransport {
         case "/v0/spaces/sidebar":
             if bootstrapDelay { try await Task.sleep(for: .milliseconds(350)) }
             let spaces = (0..<Self.count).map(space)
+            let html = "<nav><happy-search/><happy-create/>" + (0..<Self.count).map { "<happy-space id=\"s\($0)\"/>" }.joined() + "</nav>"
+            _ = try SpaceSidebar.parse(html)
             object = ["artifactId": "sidebar", "version": 1,
-                      "html": "<nav>" + (0..<Self.count).map { "<happy-space id=\"s\($0)\"/>" }.joined() + "</nav>",
+                      "html": html,
                       "spaces": try JSONSerialization.jsonObject(with: JSONEncoder().encode(spaces))]
         case "/v0/bots": object = ["bots": []]
         case "/v0/tasks": object = ["tasks": []]
@@ -94,6 +96,7 @@ final class HomeControllerScrollHarness: NSObject {
     private var account: AccountController?
     private var home: AgentHomeViewController?
     private var sidebar: SidebarView?
+    private var session: Session?
     private let probe = UIView()
     private var link: CADisplayLink?
     private var updates: Task<Void, Never>?
@@ -133,6 +136,7 @@ final class HomeControllerScrollHarness: NSObject {
             let connection = try await account.agentConnections.add(.init(address: "full-home-scroll", port: 1, deviceID: UUID().uuidString, deviceToken: "fixture"), name: "Trace Mac")
             let context = AppContext(account: account, variant: .development, version: "scroll-fixture")
             let home = AgentHomeViewController(context: context, id: connection.id)
+            session = Session.session(for: connection.id, context: context)
             self.home = home
             let navigation = UINavigationController(rootViewController: home)
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
@@ -141,7 +145,8 @@ final class HomeControllerScrollHarness: NSObject {
             sidebar = Self.find(SidebarView.self, in: home.view)
             probe.isAccessibilityElement = true
             probe.accessibilityIdentifier = "home-controller-probe"
-            probe.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+            probe.accessibilityLabel = "Full home trace"
+            probe.frame = CGRect(x: 8, y: 120, width: 4, height: 4)
             window.addSubview(probe)
             for (index, title) in ["Start", "Stop"].enumerated() {
                 let button = UIButton(type: .system)
@@ -207,6 +212,14 @@ final class HomeControllerScrollHarness: NSObject {
 
     @objc private func tick(_ link: CADisplayLink) {
         guard let sidebar else { return }
+        if !ready, CACurrentMediaTime() - lastProbe > 1 {
+            lastProbe = CACurrentMediaTime()
+            let snapshot = session?.snapshot
+            let info: [String: Any] = ["sidebarRows": sidebar.rows.count, "sessionRows": snapshot?.rows.count ?? -1,
+                                       "availability": String(describing: snapshot?.availability), "nodes": snapshot?.document?.items.count ?? -1]
+            probe.accessibilityValue = "setup:\(sidebar.rows.count)"
+            if let path = Self.argument("-traceOutput"), let data = try? JSONSerialization.data(withJSONObject: info) { try? data.write(to: URL(fileURLWithPath: path + ".setup.json")) }
+        }
         if !ready, sidebar.rows.count == ScrollTraceTransport.count {
             sidebar.setContentOffset(CGPoint(x: 0, y: 1800), animated: false)
             ready = true
