@@ -59,6 +59,40 @@ final class AgentInputCompactCardTests: XCTestCase {
         (view as? ComposerOptionsButton) ?? view.subviews.lazy.compactMap(options).first
     }
 
+    private func host(_ card: AgentInputCardView) -> UIViewController {
+        let controller = UIViewController()
+        controller.view.frame = CGRect(x: 0, y: 0, width: 874, height: 402)
+        controller.view.addSubview(card)
+        card.frame.origin = CGPoint(x: 8, y: 320)
+        controller.view.layoutIfNeeded()
+        return controller
+    }
+
+    private func descendants(_ view: UIView) -> [UIView] {
+        [view] + view.subviews.flatMap(descendants)
+    }
+
+    private func panel(_ controller: UIViewController, id: String = "composer-options-panel") throws -> PickerPanelView {
+        try XCTUnwrap(descendants(controller.view).compactMap { $0 as? PickerPanelView }.last { $0.accessibilityIdentifier == id })
+    }
+
+    private func lines(_ panel: PickerPanelView) -> [PickerLineView] {
+        descendants(panel).compactMap { $0 as? PickerLineView }
+    }
+
+    private func tap(_ key: String, in panel: PickerPanelView) throws {
+        let row = try XCTUnwrap(lines(panel).first { $0.accessibilityIdentifier == "picker-row:\(key)" })
+        XCTAssertTrue(row.isEnabled)
+        row.sendActions(for: .touchUpInside)
+    }
+
+    private func openOptions(_ card: AgentInputCardView) throws {
+        let button = try XCTUnwrap(options(card))
+        XCTAssertNil(button.menu)
+        XCTAssertFalse(button.showsMenuAsPrimaryAction)
+        _ = button.perform(Selector(("tapped")))
+    }
+
     func testCompactIsOneRowAndTheSameText() async throws {
         let card = card()
         let textView = card.textView
@@ -130,40 +164,42 @@ final class AgentInputCompactCardTests: XCTestCase {
     func testTheMenuHoldsEveryChipAsItActs() throws {
         let card = card()
         setCompact(card, true)
-        let menu = try XCTUnwrap(options(card)?.menu)
-        XCTAssertEqual(menu.children.map(\.title), ["Permission: Write", "Model: Opus", "Effort: High"])
-        // A chip with a menu: its rows load as it opens.
-        let permission = try XCTUnwrap(menu.children[0] as? UIMenu)
-        XCTAssertTrue(permission.children.first is UIDeferredMenuElement)
-        // A chip that opens its owner's picker.
-        let model = try XCTUnwrap(menu.children[1] as? UIAction)
-        XCTAssertFalse(model.attributes.contains(.disabled))
-        // A chip with neither, dimmed on the card: dimmed here.
-        let effort = try XCTUnwrap(menu.children[2] as? UIAction)
-        XCTAssertTrue(effort.attributes.contains(.disabled))
+        let controller = host(card)
+        try openOptions(card)
+        let rows = lines(try panel(controller))
+        XCTAssertEqual(rows.map(\.accessibilityLabel), ["Model: Opus", "Effort: High"])
+        XCTAssertEqual(rows.map(\.isEnabled), [true, false])
+        XCTAssertNil(card.layout(width: width).middleContent.permission, "permissions belong to the header")
     }
 
     func testEachRowReportsItsOwnChip() throws {
         let card = card()
         let recorder = Recorder()
         card.delegate = recorder
+        card.configuration.effort = AgentInputChipConfiguration(content: .label("High"), accessibilityLabel: "Effort: High", menu: AgentInputMenu(sections: [.init(options: [
+            .init(key: "low", label: "Low"), .init(key: "high", label: "High", isChecked: true),
+        ])], selectedKey: nil))
         setCompact(card, true)
-        let button = try XCTUnwrap(options(card))
-        let model = try XCTUnwrap(button.menu?.children[1] as? UIAction)
-        button.sendAction(model)
-        button.onSelect?("read", .permission)
-        button.onMenu?(.permission)
-        XCTAssertEqual(recorder.events, ["press model", "select read permission", "menu permission"])
+        let controller = host(card)
+        try openOptions(card)
+        try tap("chip:0", in: panel(controller))
+        XCTAssertFalse(descendants(controller.view).contains { $0.accessibilityIdentifier == "composer-options-panel" })
+        try openOptions(card)
+        try tap("chip:1", in: panel(controller))
+        try tap("low", in: panel(controller, id: "composer-chip-panel"))
+        XCTAssertEqual(recorder.events, ["press model", "menu effort", "select low effort"])
     }
 
     func testTheMenuFollowsTheChips() throws {
         let card = card()
         setCompact(card, true)
+        let controller = host(card)
+        try openOptions(card)
         var configuration = card.configuration
         configuration.model = AgentInputChipConfiguration(content: .label("Sonnet"), accessibilityLabel: "Model: Sonnet", menu: nil, opensPicker: true)
         configuration.effort = nil
         card.configuration = configuration
-        XCTAssertEqual(try XCTUnwrap(options(card)?.menu).children.map(\.title), ["Permission: Write", "Model: Sonnet"])
+        XCTAssertEqual(lines(try panel(controller)).map(\.accessibilityLabel), ["Model: Sonnet"])
     }
 
     func testRefusingShakesAndSaysSo() throws {
