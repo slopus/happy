@@ -264,6 +264,9 @@ struct SettingsRow {
     var id: String
     var title: String
     var icon: (glyph: String, tile: Tile)?
+    /// An account's or connection's own picture, drawn round in the icon's
+    /// place; the icon is the fallback for one that hasn't come yet.
+    var image: UIImage?
     var value: String?
     var accessory: SettingsLayout.Accessory = .chevron
     var destructive = false
@@ -354,11 +357,25 @@ final class SettingsCardView: UIView {
             let origin = frames.box.origin
             func local(_ rect: CGRect) -> CGRect { rect.offsetBy(dx: -origin.x, dy: -origin.y) }
             tile.isHidden = frames.icon == nil
-            if let icon = row.icon, let frame = frames.icon {
+            if let frame = frames.icon {
                 tile.frame = local(frame)
-                tile.backgroundColor = UIColor(Self.color(icon.tile))
-                glyph.image = Glyphs.image(icon.glyph, size: SettingsLayout.Metrics.glyph)
-                glyph.frame = tile.bounds
+                if let picture = row.image {
+                    // Its own picture, round, filling the square an icon
+                    // would have had: the rows read as the accounts they are.
+                    tile.backgroundColor = .clear
+                    tile.layer.cornerRadius = frame.height / 2
+                    glyph.image = picture
+                    glyph.contentMode = .scaleAspectFill
+                    glyph.clipsToBounds = true
+                    glyph.frame = tile.bounds
+                } else if let icon = row.icon {
+                    tile.backgroundColor = UIColor(Self.color(icon.tile))
+                    tile.layer.cornerRadius = SettingsLayout.Metrics.tileRadius
+                    glyph.image = Glyphs.image(icon.glyph, size: SettingsLayout.Metrics.glyph)
+                    glyph.contentMode = .center
+                    glyph.clipsToBounds = false
+                    glyph.frame = tile.bounds
+                }
             }
             title.text = row.title
             title.textColor = UIColor(row.destructive ? Palette.settingsDestructive : Palette.settingsText)

@@ -45,7 +45,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     private var shownID: String?
     private var profiles: [Profile] = []
     private let scroll = UIScrollView()
-    private let carousel = ProfileCarouselView()
     private let name = UILabel()
     private let subtitle = UILabel()
     private var nameField: RenameField?
@@ -53,6 +52,19 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     private var heldName: (id: String, name: String)?
     private var cards: [SettingsCardView] = []
     private var rows: [[SettingsRow]] = []
+    /// What the page shows now, card by card, and where the profiles'
+    /// strip is: for the tests, which read the page rather than the screen.
+    var shownRowIDs: [[String]] { rows.map { $0.map(\.id) } }
+    var stripFrame: CGRect { settingsLayout.strip }
+    /// The ids of the rows drawn with a tick.
+    var tickedRowIDs: [String] { rows.joined().filter { $0.value == "✓" }.map(\.id) }
+    /// The profile the page is showing, which its heading names.
+    var shownProfileID: String? { shownID }
+
+    /// Runs the row `id`'s action, as a finger on it would.
+    func tapRow(_ id: String) {
+        rows.joined().first { $0.id == id }?.action?()
+    }
     /// The frames last applied.
     private var settingsLayout = SettingsLayout(width: 0, nameHeight: 0, subtitleHeight: 0, cards: [])
     private lazy var searchController = UISearchController(searchResultsController: nil)
@@ -97,10 +109,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         scroll.keyboardDismissMode = .interactive
         scroll.delegate = self
         view.addSubview(scroll)
-        carousel.onSelect = { [weak self] index in self?.choose(index) }
-        carousel.onTap = { [weak self] index in self?.choose(index, closing: true) }
-        carousel.onAdd = { [weak self] _ in self?.connectAgent() }
-        scroll.addSubview(carousel)
         name.font = Fonts.ui(.medium, size: 28)
         name.textColor = UIColor(Palette.settingsText)
         name.textAlignment = .center
@@ -213,14 +221,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         if shown == nil { shownID = (profiles.first(where: \.isActive) ?? profiles[0]).id }
         for account in accounts { loadImage(account) }
         watchShown()
-        showCarousel()
         rebuild(animated: false)
-    }
-
-    private func showCarousel() {
-        let items = profiles.map { ProfileCarouselView.Item(id: $0.id, label: $0.name, image: images[$0.id], isAgentConnection: $0.isAgentConnection) }
-        let selected = profiles.firstIndex { $0.id == shownID } ?? 0
-        if carousel.items != items || carousel.selected != selected { carousel.set(items, selected: selected) }
     }
 
     private func loadImage(_ account: AccountSummary) {
@@ -233,7 +234,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
             let image = await ProfilePictures.load(account, context: context)
             guard !Task.isCancelled, imageKeys[account.id] == key else { return }
             images[account.id] = image
-            showCarousel()
+            rebuild(animated: false)
         }
     }
 
@@ -332,28 +333,54 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
 
     // MARK: Rows
 
+    /// Every account and agent connection this phone has, in one card, the
+    /// active one ticked, with Connect Agent under them. Tapping one makes
+    /// it the active one, as its circle used to; there is no selector, no
+    /// selector and no second Add anywhere on the page.
+    private func accountRows() -> [SettingsRow] {
+        typealias Row = SettingsRow
+        // A signed-in Happy account and an open agent connection both
+        // call themselves active, so more than one row would be ticked.
+        // The one being looked at is the first in the order shown, which
+        // is the connection where there is one: the same one the
+        // switcher names.
+        let active = profiles.first(where: \.isActive)?.id
+        var rows: [SettingsRow] = profiles.enumerated().map { index, profile in
+            Row(
+                id: "account:\(profile.id)",
+                title: profile.name,
+                icon: (profile.isAgentConnection ? "desktop-outline" : "person-circle-outline", profile.isAgentConnection ? .blue : .gray),
+                image: images[profile.id],
+                // An account with no username is named "Happy account" and
+                // its line says the same: the row would say it twice.
+                value: profile.id == active ? "✓" : (profile.subtitle == profile.name ? nil : profile.subtitle),
+                accessory: .none,
+                action: { [weak self] in self?.choose(index, closing: true) }
+            )
+        }
+        rows.append(Row(SettingsIndex.connectAgent, accessory: .none, action: { [weak self] in self?.connectAgent() }))
+        return rows
+    }
+
     private func rowsFor(_ profile: Profile) -> [[SettingsRow]] {
         typealias Row = SettingsRow
         let id = profile.id
-        let adding = [
-            Row(SettingsIndex.connectAgent, action: { [weak self] in self?.connectAgent() }),
-            Row(SettingsIndex.addAccount, action: { [weak self] in self?.addHappyAccount() }),
-        ]
         if profile.isAgentConnection {
             typealias Index = SettingsIndex
             return [
+                accountRows(),
                 [
                     Row(Index.editName, action: { [weak self] in self?.beginRename() }),
                     Row(Index.status, value: profile.subtitle, accessory: .none),
                 ],
                 [Row(Index.appearance, action: { [weak self] in self?.open(.appearance) })],
-                adding,
                 [Row(Index.about, action: { [weak self] in self?.open(.about) })],
                 [Row(id: "disconnect", title: Strings.disconnect, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) })],
             ]
         }
         let model = SettingsIndexModel(profile: snapshot.profile)
         return [
+            accountRows(),
             [
                 Row(id: "account", title: Strings.Settings.account, icon: ("person-circle-outline", .blue), action: { [weak self] in self?.push(.settingsAccount, for: id) }),
                 Row(id: "appearance", title: Strings.Settings.appearance, icon: ("color-palette-outline", .purple), action: { [weak self] in self?.push(.settingsAppearance, for: id) }),
@@ -370,7 +397,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
                 Row(id: "enter-terminal", title: Strings.enterTerminalURL, icon: ("link-outline", .indigo), accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: false) }),
             ],
             [Row(id: "support-us", title: Strings.SupportUs.title, icon: ("heart-outline", .red), action: { [weak self] in self?.show(SupportUsViewController()) })],
-            adding,
             [Row(SettingsIndex.about, action: { [weak self] in self?.open(.about) })],
             [Row(id: "sign-out", title: Strings.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: false) })],
         ]
@@ -451,7 +477,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         for (index, profile) in profiles.enumerated() where profile.name.localizedCaseInsensitiveContains(query) {
             found.append(SettingsRow(id: "profile:\(profile.id)", title: profile.name, icon: (profile.isAgentConnection ? "desktop-outline" : "person-outline", .blue), value: profile.isAgentConnection ? Strings.agentConnection : Strings.happyAccount, action: { [weak self] in
                 self?.endSearch()
-                self?.carousel.set(self?.carousel.items ?? [], selected: index)
                 self?.choose(index)
             }))
         }
@@ -487,7 +512,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         }
         page?.reload()
         let searching = query != nil
-        carousel.isHidden = searching
         name.isHidden = searching || nameField != nil
         subtitle.isHidden = searching
         empty.isHidden = !(searching && !(query ?? "").isEmpty && rows.isEmpty)
@@ -523,9 +547,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         let specs = rows.map { card in
             card.map { SettingsLayout.RowSpec(hasIcon: $0.icon != nil, valueWidth: SettingsCardView.valueWidth($0.value), accessory: $0.accessory) }
         }
-        let layout = SettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, searching: searching)
+        let layout = SettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, searching: searching, showsStrip: false)
         settingsLayout = layout
-        carousel.frame = layout.strip
         name.frame = layout.name
         nameField?.frame = layout.name
         subtitle.frame = layout.subtitle

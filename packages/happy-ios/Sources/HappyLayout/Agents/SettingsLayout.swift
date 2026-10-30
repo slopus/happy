@@ -140,12 +140,15 @@ public struct SettingsLayout: Equatable, Sendable {
     public var contentHeight: CGFloat
 
     /// Searching, the strip and the name are hidden and the cards move up
-    /// into the strip's place.
-    public init(width: CGFloat, nameHeight: CGFloat, subtitleHeight: CGFloat, cards specs: [[RowSpec]], searching: Bool = false) {
+    /// into the strip's place. Without a strip (the accounts are a card
+    /// among the others, not a row of circles) the name starts where the
+    /// strip would have, and nothing else moves.
+    public init(width: CGFloat, nameHeight: CGFloat, subtitleHeight: CGFloat, cards specs: [[RowSpec]], searching: Bool = false, showsStrip: Bool = true) {
         typealias M = Metrics
-        strip = CGRect(x: 0, y: M.stripTop, width: width, height: ProfileCarousel.Metrics.height)
+        strip = showsStrip ? CGRect(x: 0, y: M.stripTop, width: width, height: ProfileCarousel.Metrics.height) : .zero
         let textWidth = max(0, width - 2 * M.textSide)
-        name = CGRect(x: M.textSide, y: strip.maxY + M.nameGap, width: textWidth, height: nameHeight)
+        let nameTop = showsStrip ? strip.maxY + M.nameGap : M.stripTop
+        name = CGRect(x: M.textSide, y: nameTop, width: textWidth, height: nameHeight)
         subtitle = CGRect(x: M.textSide, y: name.maxY + M.subtitleGap, width: textWidth, height: subtitleHeight)
         let cardWidth = max(0, width - 2 * M.side)
         var y = searching ? M.stripTop : subtitle.maxY + M.cardsTop
