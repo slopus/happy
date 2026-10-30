@@ -9,6 +9,8 @@ import android.util.Base64
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.InputDevice
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
@@ -21,6 +23,10 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -39,6 +45,8 @@ import com.slopus.happy.conversation.Message
 import com.slopus.happy.conversation.Presentation
 import com.slopus.happy.ui.connection.AgentHomeActions
 import com.slopus.happy.ui.connection.AgentHomeScreen
+import com.slopus.happy.ui.connection.AgentHomeList
+import com.slopus.happy.ui.connection.agentHomeItems
 import com.slopus.happy.ui.connection.AgentHomeTags
 import com.slopus.happy.ui.conversation.ConversationScreen
 import com.slopus.happy.ui.conversation.ConversationScreenActions
@@ -271,6 +279,88 @@ class ScrollFlingTest {
         instrumentation.runOnMainSync { churn.cancel() }
     }
 
+    /** Same starting key/offset, input and timed removal for placement A/B. */
+    @Test fun home_removal_during_fling() {
+        val initial = feed(2, Random(1))
+        val expanded = initial.conversations.filter { it.childCount > 0 }.map { it.agentId }.toSet()
+        var current by mutableStateOf(initial)
+        val list = LazyListState(firstVisibleItemIndex = 70, firstVisibleItemScrollOffset = 24)
+        content {
+            HappyTheme {
+                AgentHomeList(agentHomeItems(current, expanded), list, now, {}, {}, PaddingValues(0.dp), Modifier)
+            }
+        }
+        fun describe() = "first=${list.firstVisibleItemIndex}:${list.firstVisibleItemScrollOffset}, scrolling=${list.isScrollInProgress}, " +
+            "visible=${list.layoutInfo.visibleItemsInfo.joinToString { "${it.key}@${it.offset}" }}"
+        val events = ArrayList<String>()
+        fun event(message: String) {
+            val line = "${System.nanoTime()} $message ${describe()}"
+            events += line
+            log("paired: $line")
+        }
+        instrumentation.runOnMainSync { event("initial") }
+        check(device.takeScreenshot(java.io.File(app.getExternalFilesDir(null), "scroll-home-paired-before.png")))
+        val indicators = churn {
+            var tick = 0
+            while (isActive) {
+                delay(100)
+                tick++
+                current = current.copy(rows = current.rows.mapIndexed { index, row ->
+                    if (row is AgentFeedRow.Conversation && index % 17 == tick % 17) row.copy(working = !row.working) else row
+                })
+            }
+        }
+        lateinit var trace: FrameTrace
+        instrumentation.runOnMainSync { trace = FrameTrace(AgentHomeTags.LIST, list); trace.start() }
+        shell("dumpsys gfxinfo ${app.packageName} reset")
+        fixedFling(trace, onReleased = {
+            updates.launch {
+                event("released")
+                delay(300)
+                val removed = current.conversations.filter { it.agentId.endsWith("-child-2") || it.agentId.endsWith("-child-3") }
+                event("before-removal ids=${removed.joinToString { it.agentId }}")
+                val ids = removed.map { it.agentId }.toSet()
+                val counts = removed.groupingBy { it.parentId }.eachCount()
+                current = current.copy(rows = current.rows.mapNotNull { row ->
+                    if (row is AgentFeedRow.Conversation) {
+                        if (row.agentId in ids) null else row.copy(childCount = row.childCount - (counts[row.agentId] ?: 0))
+                    } else row
+                })
+                event("removal-published")
+            }
+        })
+        instrumentation.runOnMainSync { trace.stop(); indicators.cancel(); event("finished") }
+        trace.report("home-paired", gestureCount = 1, requireBothDirections = false)
+        java.io.File(app.getExternalFilesDir(null), "scroll-home-paired-events.txt").writeText(events.joinToString("\n"))
+        java.io.File(app.getExternalFilesDir(null), "scroll-home-paired-gfx.txt").writeText(shell("dumpsys gfxinfo ${app.packageName} framestats"))
+        check(device.takeScreenshot(java.io.File(app.getExternalFilesDir(null), "scroll-home-paired.png")))
+    }
+
+    private fun fixedFling(trace: FrameTrace, onReleased: () -> Unit) {
+        val x = device.displayWidth / 2f
+        val high = device.displayHeight / 4f
+        val low = device.displayHeight * 4 / 5f
+        val down = SystemClock.uptimeMillis()
+        val stepMillis = InstrumentationRegistry.getArguments().getString("touchStepMs")?.toLong() ?: 24L
+        val touches = ArrayList<String>()
+        trace.gesture(0, 1)
+        for (step in 0..13) {
+            val time = down + step * stepMillis
+            val delay = time - SystemClock.uptimeMillis()
+            if (delay > 0) SystemClock.sleep(delay)
+            val action = when (step) { 0 -> MotionEvent.ACTION_DOWN; 13 -> MotionEvent.ACTION_UP; else -> MotionEvent.ACTION_MOVE }
+            val y = high + (low - high) * minOf(step, 12) / 12f
+            val event = MotionEvent.obtain(down, time, action, x, y, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+            check(instrumentation.uiAutomation.injectInputEvent(event, true))
+            event.recycle()
+            touches += "$time,${SystemClock.uptimeMillis()},$action,$x,$y"
+        }
+        trace.released()
+        onReleased()
+        SystemClock.sleep(2_500)
+        java.io.File(app.getExternalFilesDir(null), "scroll-home-paired-touch.csv").writeText("eventUptimeMs,injectedUptimeMs,action,x,y\n" + touches.joinToString("\n"))
+    }
+
     // ---- measuring ----
 
     private fun churn(block: suspend CoroutineScope.() -> Unit): Job = updates.launch {
@@ -319,15 +409,16 @@ class ScrollFlingTest {
     }
 
     private data class Sample(val frame: Long, val gesture: Int, val direction: Int, val released: Boolean, val delta: Float,
-        val shared: Int, val atStart: Boolean, val atEnd: Boolean)
+        val shared: Int, val atStart: Boolean, val atEnd: Boolean, val index: Int?, val offset: Int?, val scrolling: Boolean?)
 
     /** Each frame, how far the rows on screen moved since the last one: the median over the rows on both frames. */
     @OptIn(InternalComposeUiApi::class)
-    private inner class FrameTrace(private val listTag: String) : ViewTreeObserver.OnPreDrawListener {
+    private inner class FrameTrace(private val listTag: String, private val state: LazyListState? = null) : ViewTreeObserver.OnPreDrawListener {
         private val root = root()
         private var running = false
         private var last: Map<String, Float>? = null
         private val samples = ArrayList<Sample>()
+        private val rowPositions = ArrayList<String>()
         private var atStart = false
         private var atEnd = false
         @Volatile private var gesture = -1
@@ -349,11 +440,15 @@ class ScrollFlingTest {
                 atEnd = it.value() == it.maxValue()
             }
             val out = HashMap<String, Float>()
+            // Reusable offscreen slots can retain semantics and stale
+            // coordinates. The paired run records only placed visible keys.
+            val placedKeys = state?.layoutInfo?.visibleItemsInfo?.map { it.key.toString() }?.toSet()
             fun walk(node: SemanticsNode) {
                 node.children.forEach { child ->
                     val tag = child.config.getOrNull(SemanticsProperties.TestTag)
                     if (listTag == AgentHomeTags.LIST) {
-                        if (tag?.startsWith("agentHome.row.") == true) out[tag] = child.positionInRoot.y
+                        if (tag?.startsWith("agentHome.row.") == true &&
+                            (placedKeys == null || tag.removePrefix("agentHome.row.") in placedKeys)) out[tag] = child.positionInRoot.y
                     } else {
                         // Including text in the identity rejects a reused
                         // semantics node whose content changed this frame.
@@ -380,21 +475,27 @@ class ScrollFlingTest {
             // falsely turn one moving frame into a zero then doubled step.
             val frameTimeNanos = System.nanoTime()
             val now = positions()
+            if (state != null) {
+                val layout = state.layoutInfo.visibleItemsInfo.associate { it.key.toString() to it.offset }
+                now.forEach { (key, y) -> rowPositions += "$frameTimeNanos,$key,$y,${layout[key.removePrefix("agentHome.row.")]}" }
+            }
             last?.let { before ->
                 val moved = now.keys.filter { it in before }.map { now.getValue(it) - before.getValue(it) }.sorted()
                 samples += Sample(frameTimeNanos, gesture, direction, frameTimeNanos >= releaseTime,
-                    if (moved.isEmpty()) Float.NaN else moved[moved.size / 2], moved.size, atStart, atEnd)
+                    if (moved.isEmpty()) Float.NaN else moved[moved.size / 2], moved.size, atStart, atEnd,
+                    state?.firstVisibleItemIndex, state?.firstVisibleItemScrollOffset, state?.isScrollInProgress)
             }
             last = now
             return true
         }
 
-        fun report(name: String) {
-            val csv = "frameNanos,gesture,direction,released,deltaPx,sharedNodes,atStart,atEnd\n" + samples.joinToString("\n") {
-                "${it.frame},${it.gesture},${it.direction},${it.released},${it.delta},${it.shared},${it.atStart},${it.atEnd}"
+        fun report(name: String, gestureCount: Int = 6, requireBothDirections: Boolean = true) {
+            val csv = "frameNanos,gesture,direction,released,deltaPx,sharedNodes,atStart,atEnd,index,offset,scrolling\n" + samples.joinToString("\n") {
+                "${it.frame},${it.gesture},${it.direction},${it.released},${it.delta},${it.shared},${it.atStart},${it.atEnd},${it.index},${it.offset},${it.scrolling}"
             }
             java.io.File(app.getExternalFilesDir(null), "scroll-$name-motion.csv").writeText(csv)
-            for (i in 0..5) {
+            if (state != null) java.io.File(app.getExternalFilesDir(null), "scroll-$name-positions.csv").writeText("frameNanos,key,y,layoutOffsetPx\n" + rowPositions.joinToString("\n"))
+            for (i in 0 until gestureCount) {
                 val f = samples.filter { it.gesture == i }
                 val tail = f.filter { it.released }
                 val moving = tail.filter { kotlin.math.abs(it.delta) >= 1f }
@@ -407,10 +508,12 @@ class ScrollFlingTest {
                 log("$name fling $i: ${f.size} frames; post-release ${moving.size} moving, $against against direction ($offBoundary off boundary), $stalls isolated stalls, $gaps no-shared; " +
                     "first ${moving.take(5).map { it.delta.toInt() }}, last ${moving.takeLast(5).map { it.delta.toInt() }}")
             }
-            val measured = (0..5).filter { i ->
+            val measured = (0 until gestureCount).filter { i ->
                 samples.count { it.gesture == i && it.released && !it.atStart && !it.atEnd && kotlin.math.abs(it.delta) >= 1f } >= 10
             }
-            check(measured.count { it < 3 } >= 2 && measured.count { it >= 3 } >= 2) { "Too few inertial flings measured: $measured" }
+            check(if (requireBothDirections) measured.count { it < 3 } >= 2 && measured.count { it >= 3 } >= 2 else measured.isNotEmpty()) {
+                "Too few inertial flings measured: $measured"
+            }
             log("$name trace: ${samples.size} frames sampled after layout, before drawing; CSV saved")
         }
     }
