@@ -372,10 +372,15 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
             guard confirmed, busyAccount == nil else { return }
             busyAccount = entry.id
             rebuild()
+            // Asked before, since afterwards the connection is gone. Only a
+            // computer has a session; a Happy account's removal forgets
+            // nothing, since `Session.forget` also clears shared caches.
+            let isConnection = context.account.agentConnections.accounts.contains { $0.id == entry.id }
             do {
                 // Removes that account's credentials and cache; the active
                 // account is untouched, and the list redraws without it.
                 try await context.account.signOut(accountID: entry.id)
+                if isConnection { Session.forget(entry.id) }
             } catch {
                 Alerts.show(Strings.Common.error, Strings.AccountSwitcher.signOutFailed, on: self)
             }
@@ -726,7 +731,12 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
                 on: self
             )
             guard confirmed else { return }
+            // The computers before, and forgotten only those actually gone
+            // after: a logout that keeps one keeps its session too.
+            let connections = context.account.agentConnections.accounts.map(\.id)
             await context.account.signOut()
+            let remaining = Set(context.account.agentConnections.accounts.map(\.id))
+            for id in connections where !remaining.contains(id) { Session.forget(id) }
         }
     }
 }

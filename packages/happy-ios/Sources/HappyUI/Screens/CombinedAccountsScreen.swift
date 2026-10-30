@@ -56,15 +56,25 @@ final class CombinedAccountsViewController: UIViewController {
             busy = false
         }
     }
-    private func remove(_ account: AccountSummary) {
+    func remove(_ account: AccountSummary) {
         guard !busy else { return }; busy = true
         Task { [weak self] in
             guard let self else { return }
             defer { busy = false }
             guard await Alerts.confirm(account.isAgentConnection ? "Disconnect agent?" : "Sign out?", "Remove this account and its credentials from this phone?", confirmTitle: account.isAgentConnection ? "Disconnect" : "Sign out", destructive: true, on: self) else { return }
-            do { try await context.account.signOut(accountID: account.id) }
-            catch { Alerts.show("Could not remove account", error.localizedDescription, on: self) }
+            await signOut(account)
         }
+    }
+
+    /// Once confirmed: the account goes, and a computer's session with it,
+    /// only if it really went. A Happy account forgets nothing, since
+    /// `Session.forget` also clears caches shared by every account.
+    func signOut(_ account: AccountSummary) async {
+        do {
+            try await context.account.signOut(accountID: account.id)
+            if account.isAgentConnection { Session.forget(account.id) }
+        }
+        catch { Alerts.show("Could not remove account", error.localizedDescription, on: self) }
     }
     private func loadImage(_ account: AccountSummary) {
         let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
