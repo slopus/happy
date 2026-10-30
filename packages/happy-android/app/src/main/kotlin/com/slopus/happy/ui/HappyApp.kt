@@ -106,7 +106,15 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                         signedIn != null -> HomeRoute
                         else -> StartRoute
                     }
-                    NavHost(navController = nav, startDestination = start) {
+                    val motion = rememberNavMotion()
+                    NavHost(
+                        navController = nav,
+                        startDestination = start,
+                        enterTransition = motion.enter,
+                        exitTransition = motion.exit,
+                        popEnterTransition = motion.popEnter,
+                        popExitTransition = motion.popExit,
+                    ) {
                         composable<StartRoute> { Start(graph, nav, add) }
                         composable<AgentHomeRoute> {
                             agent?.let { id ->

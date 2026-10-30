@@ -82,6 +82,12 @@ architectures comparable (local store, delta sync, crypto layer).
    `HeaderBackButton` renders nothing. Tablet tests use
    `w1280dp-h800dp-xhdpi`; without `ProvideWindowLayout` a composable lays
    out as an unlimited phone.
+   **Moving between screens:** the one NavHost takes `ui/NavMotion`'s four
+   transitions, Material's shared X axis (300 ms, 30 dp whatever the pane's
+   width, mirrored by Back and by right-to-left, none with animations off).
+   Never leave a NavHost on navigation-compose's defaults: those are a 700 ms
+   crossfade. The back gesture keeps the library's predictive animation. An
+   account or agent switch remounts the stack at once; it is not a push.
 4. **The local store is SQLite through the framework API**
    (`SQLiteOpenHelper`, WAL, hand-written SQL in `data/`). Why not a library:
    the schema is a handful of tables whose rows are mostly JSON documents
