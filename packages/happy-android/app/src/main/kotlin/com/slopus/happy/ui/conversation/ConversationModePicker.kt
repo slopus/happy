@@ -38,7 +38,7 @@ import com.slopus.happy.ui.theme.HappyTheme
 object ConversationModeTags {
     /** The composer's one "model effort" label. */
     const val MODEL = "conversation.modes.model"
-    /** The [+] menu's permissions row. */
+    /** The header menu's permissions row. */
     const val PERMISSION = "conversation.modes.permission"
     /** The effort rows' heading in the model picker. */
     const val EFFORT = "conversation.modes.effort"
@@ -46,7 +46,7 @@ object ConversationModeTags {
     const val OPTIONS = "conversation.modes.options"
 }
 
-/** Which picker is open: permissions (from [+]), or model and effort (from the label). */
+/** Which picker is open: permissions (from the header), or model and effort (from the label). */
 internal enum class ModePicker { Permission, Model }
 
 /** Each permission mode, least to most trusted, with its name and what it allows. */
@@ -61,7 +61,7 @@ private val permissionText = mapOf(
 internal fun conversationModelPick(catalog: ModeCatalog, current: Mode, choice: ModelChoice): Mode? =
     catalog.pick(current, choice.providerId, choice.modelId).takeIf { it != current }
 
-/** A permission mode's name, as the [+] menu shows it. */
+/** A permission mode's name, as the header menu shows it. */
 @Composable
 internal fun permissionName(key: String): String = permissionText[key]?.first?.let { stringResource(it) } ?: key
 
@@ -111,7 +111,7 @@ internal fun ConversationModeLabel(catalog: ModeCatalog?, mode: Mode?, onOpen: (
  * with the chosen model's effort levels after them. A pick closes it.
  */
 @Composable
-internal fun ConversationModePicker(open: ModePicker?, onClose: () -> Unit, catalog: ModeCatalog?, mode: Mode?, onModeChange: (Mode) -> Unit, anchorCenterY: Int) {
+internal fun ConversationModePicker(open: ModePicker?, onClose: () -> Unit, catalog: ModeCatalog?, mode: Mode?, onModeChange: (Mode) -> Unit, anchorCenterY: Int, belowAnchor: Boolean = false) {
     val current = mode ?: catalog?.defaults ?: return
     val picker = open ?: return
     val efforts = catalog?.model(current.providerId, current.modelId)?.efforts.orEmpty()
@@ -120,7 +120,7 @@ internal fun ConversationModePicker(open: ModePicker?, onClose: () -> Unit, cata
         next?.let(onModeChange)
     }
     when (picker) {
-        ModePicker.Permission -> ModePanel(stringResource(R.string.conversation_mode_permission), onClose, anchorCenterY) {
+        ModePicker.Permission -> ModePanel(stringResource(R.string.conversation_mode_permission), onClose, anchorCenterY, belowAnchor) {
             ModeCatalog.PERMISSION_MODES.forEach { key ->
                 val (name, description) = permissionText.getValue(key)
                 item(key) {
@@ -130,7 +130,7 @@ internal fun ConversationModePicker(open: ModePicker?, onClose: () -> Unit, cata
                 }
             }
         }
-        ModePicker.Model -> ModePanel(stringResource(R.string.conversation_mode_model), onClose, anchorCenterY) {
+        ModePicker.Model -> ModePanel(stringResource(R.string.conversation_mode_model), onClose, anchorCenterY, belowAnchor) {
             catalog?.models.orEmpty().groupBy { it.providerId }.values.forEachIndexed { index, models ->
                 item("provider:${models[0].providerId}") {
                     if (index > 0) HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -172,13 +172,14 @@ private fun PickerHeading(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ModePanel(title: String, onDismiss: () -> Unit, anchorCenterY: Int, content: LazyListScope.() -> Unit) {
+private fun ModePanel(title: String, onDismiss: () -> Unit, anchorCenterY: Int, belowAnchor: Boolean, content: LazyListScope.() -> Unit) {
     ConversationPopup(
         title = title,
         onDismiss = onDismiss,
         anchorCenterY = anchorCenterY,
         alignEnd = true,
         width = 360.dp,
+        belowAnchor = belowAnchor,
         modifier = Modifier.testTag(ConversationModeTags.PICKER),
     ) {
         LazyColumn(Modifier.fillMaxWidth().testTag(ConversationModeTags.OPTIONS)) {

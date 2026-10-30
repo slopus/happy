@@ -95,6 +95,9 @@ object ConversationScreenTags {
     const val OLDER_FAILED = "conversation.older.failed"
     const val OLDER_RETRY = "conversation.older.retry"
     const val COMPOSE = "conversation.header.compose"
+    const val COMPOSE_ICON = "conversation.header.compose.icon"
+    const val MORE = "conversation.header.more"
+    const val MENU = "conversation.header.menu"
     const val DETAILS = "conversation.header.details"
     /** The fade behind the dock. */
     const val FADE = "conversation.fade"
@@ -133,7 +136,7 @@ class ConversationScreenActions(
  * top app bar in the transcript's surface colour, scrolled or not (back
  * arrow; the chat's title, or "New chat" before its first send, with the
  * connection or activity state always under it, never in the content;
- * new chat, then details once the chat exists), the transcript newest at
+ * compose, then a three-dot menu for permissions and chat details), the transcript newest at
  * the bottom, and the dock above the keyboard and navigation bar: the open
  * question ([ConversationQuestionCard]), then [ConversationComposer]. A
  * subagent or archived chat has a line saying so instead. Past the oldest
@@ -243,14 +246,7 @@ fun ConversationScreen(
                 }
             },
             actions = {
-                IconButton(onClick = actions.onCompose, modifier = Modifier.testTag(ConversationScreenTags.COMPOSE)) {
-                    Icon(MaterialSymbols.Edit, stringResource(R.string.conversation_compose))
-                }
-                if (state.created) {
-                    IconButton(onClick = actions.onDetails, modifier = Modifier.testTag(ConversationScreenTags.DETAILS)) {
-                        Icon(MaterialSymbols.Info, stringResource(R.string.conversation_details))
-                    }
-                }
+                ConversationHeaderActions(state, actions)
             },
             // One surface with the transcript, light and dark: no tint when it scrolls under.
             colors = TopAppBarDefaults.topAppBarColors(

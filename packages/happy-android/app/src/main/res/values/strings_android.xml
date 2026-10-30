@@ -4,6 +4,11 @@
   generated from the catalogs (tools/translations); this file is not.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Native compact composer: queued previews are in its attachment menu. -->
+    <plurals name="conversation_attached_picture_count">
+        <item quantity="one">%1$d attached image</item>
+        <item quantity="other">%1$d attached images</item>
+    </plurals>
     <!-- serverConfig.ts validateServerUrl -->
     <string name="server_url_empty">Server URL cannot be empty</string>
     <string name="server_url_protocol">Server URL must use HTTP or HTTPS protocol</string>

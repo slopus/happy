@@ -124,12 +124,13 @@ class ConversationLayoutTest {
         rule.onNodeWithText("New chat").assertDoesNotExist()
     }
 
-    @Test fun `a new chat is empty with New chat and only compose in the header`() {
+    @Test fun `a new chat is empty with compose and overflow in the header`() {
         show(ConversationState(created = false, loaded = true))
         rule.node(ConversationScreenTags.TITLE).assertIsDisplayed()
         rule.onNodeWithText("New chat").assertIsDisplayed()
         rule.node(ConversationScreenTags.EMPTY).assertIsDisplayed()
         rule.node(ConversationScreenTags.COMPOSE).assertIsDisplayed()
+        rule.node(ConversationScreenTags.MORE).assertIsDisplayed()
         rule.node(ConversationScreenTags.DETAILS).assertDoesNotExist()
         // The composer runs edge to edge, 8 in, above the navigation bar.
         val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
@@ -143,7 +144,8 @@ class ConversationLayoutTest {
         rule.onNodeWithText("Fix the login redirect").assertIsDisplayed()
         rule.node(ConversationScreenTags.SUBTITLE).assertIsDisplayed()
         rule.onNodeWithText("Offline").assertIsDisplayed()
-        rule.node(ConversationScreenTags.DETAILS).assertIsDisplayed()
+        rule.node(ConversationScreenTags.DETAILS).assertDoesNotExist()
+        rule.node(ConversationScreenTags.MORE).assertIsDisplayed()
         rule.node(ConversationRowTags.FAILURE).assertIsDisplayed()
         // The header is the standard 64 bar.
         assertDp("header", 64, rule.node(ConversationScreenTags.BAR).bounds.height)
@@ -357,20 +359,20 @@ class ConversationLayoutTest {
         rule.onNodeWithText("GPT-5.6 Sol").performClick()
         rule.waitForIdle()
         assertEquals(listOf(Mode("codex", "openai/gpt-5.6-sol", "high", null, "auto")), picks)
-        // The permission mode and Add picture live in the [+] menu.
+        // [+] is exclusively attachments; permissions live in the header overflow.
         rule.node(ConversationComposerTags.MORE).performClick()
         rule.waitForIdle()
-        rule.onNodeWithText("Permissions: Auto").assertIsDisplayed()
+        rule.node(ConversationModeTags.PERMISSION).assertDoesNotExist()
         rule.node(ConversationComposerTags.ATTACH).assertIsDisplayed()
     }
 
-    @Test fun `the permission sheet lists the four modes`() {
+    @Test fun `the header permission picker lists the four modes`() {
         val picks = ArrayList<Mode>()
         show(
             ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode, catalog = ModeCatalog(emptyList(), mode)),
             actions = ConversationScreenActions(onModeChange = { picks += it }),
         )
-        rule.node(ConversationComposerTags.MORE).performClick()
+        rule.node(ConversationScreenTags.MORE).performClick()
         rule.waitForIdle()
         rule.node(ConversationModeTags.PERMISSION).performClick()
         rule.waitForIdle()
