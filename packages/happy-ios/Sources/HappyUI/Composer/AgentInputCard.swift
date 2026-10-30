@@ -401,6 +401,7 @@ public final class AgentInputCardView: UIView {
     private var desktopControls: AgentInputDesktopControlsView {
         if let installedDesktopControls { return installedDesktopControls }
         let controls = AgentInputDesktopControlsView()
+        controls.onOpenSettings = { [weak self] in self?.showMenu(chip: nil) }
         controls.onSelect = { [weak self] key, chip in
             guard let self else { return }
             self.delegate?.agentInputCard(self, didSelect: key, in: chip)
@@ -565,7 +566,6 @@ public final class AgentInputCardView: UIView {
             self.delegate?.agentInputCardDidRefuse(self, control: .options)
         }
         optionsButton.onOpen = { [weak self] in self?.showMenu(chip: nil) }
-        desktopControls.onOpenSettings = { [weak self] in self?.showMenu(chip: nil) }
         actionsGroup.addSubview(optionsButton)
 
         primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
@@ -772,12 +772,8 @@ public final class AgentInputCardView: UIView {
             responder = current.next
         }
         guard let host else { return }
-        let chips: [(AgentInputChip, AgentInputChipConfiguration)] = [
-            configuration.model.map { (.model, $0) },
-            configuration.effort.map { (.effort, $0) },
-        ].compactMap { $0 }
         menuPresenter?.close()
-        let presenter = ComposerMenuPresenter(card: self, chips: chips)
+        let presenter = ComposerMenuPresenter(card: self, chips: menuChips)
         presenter.onSelect = { [weak self] key, chip in
             guard let self else { return }
             delegate?.agentInputCard(self, didSelect: key, in: chip)
@@ -794,10 +790,20 @@ public final class AgentInputCardView: UIView {
         presenter.show(in: host, chip: chip)
     }
 
+    private var menuChips: [(AgentInputChip, AgentInputChipConfiguration)] {
+        let chips: [(AgentInputChip, AgentInputChipConfiguration)] = [configuration.model.map { (.model, $0) }, configuration.effort.map { (.effort, $0) }].compactMap { $0 }
+        guard let settings = configuration.desktop?.settings else { return chips }
+        return settings.sections.filter { $0.chip != .permission }.map { section in
+            if let existing = chips.first(where: { $0.0 == section.chip }) { return existing }
+            return (section.chip, AgentInputChipConfiguration(content: .label(section.title), accessibilityLabel: section.title, menu: AgentInputMenu(sections: [.init(options: section.options)], selectedKey: section.selectedKey)))
+        }
+    }
+
     /// Where a chip stands, in `view`: what its owner's picker opens over.
     /// Nil while the chip is hidden. On the compact card, the options
     /// button that holds it.
     public func chipFrame(_ chip: AgentInputChip, in view: UIView) -> CGRect? {
+        if configuration.desktop != nil { return installedDesktopControls?.settingsFrame(in: view) }
         if isCompact {
             guard !optionsButton.isHidden, optionsButton.window != nil else { return nil }
             return optionsButton.convert(optionsButton.bounds, to: view)
@@ -1324,7 +1330,7 @@ public final class AgentInputCardView: UIView {
         optionsButton.refuses = config.refusesControls
         optionsButton.configure(config.zenMode ? [] : [config.model.map { (.model, $0) }, config.effort.map { (.effort, $0) }].compactMap { $0 })
         if config.refusesControls || config.zenMode { menuPresenter?.close(); menuPresenter = nil }
-        else { menuPresenter?.update(chips: [config.model.map { (.model, $0) }, config.effort.map { (.effort, $0) }].compactMap { $0 }) }
+        else { menuPresenter?.update(chips: menuChips) }
 
         primaryButton.configure(
             action: config.primaryAction,

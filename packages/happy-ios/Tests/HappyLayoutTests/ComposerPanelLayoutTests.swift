@@ -20,4 +20,8 @@ final class ComposerPanelLayoutTests: XCTestCase {
         XCTAssertEqual(layout.frame, CGRect(x: 217, y: 17, width: 440, height: 356))
         XCTAssertEqual(ComposerPanelLayout.available(size: CGSize(width: 402, height: 874), safeArea: LayoutInsets(top: 116, left: 0, bottom: 34, right: 0), bottom: 530), CGRect(x: 0, y: 116, width: 402, height: 414))
     }
+
+    func testHeaderBoundsRespectTheHeaderAndComposer() {
+        XCTAssertEqual(ComposerPanelLayout.available(size: CGSize(width: 402, height: 874), safeArea: LayoutInsets(top: 62, left: 0, bottom: 34, right: 0), top: 116, bottom: 430), CGRect(x: 0, y: 116, width: 402, height: 314))
+    }
 }

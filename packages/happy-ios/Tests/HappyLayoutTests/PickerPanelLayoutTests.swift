@@ -109,6 +109,21 @@ final class PickerPanelLayoutTests: XCTestCase {
         XCTAssertEqual(wide.frame.width, 386)
     }
 
+    func testHeaderMenuGrowsBelowItsAnchor() {
+        let layout = Layout(items: [.row, .row], width: 240, below: CGRect(x: 350, y: 62, width: 44, height: 44), in: bounds)
+        XCTAssertEqual(layout.frame, CGRect(x: 154, y: 116, width: 240, height: 104))
+        XCTAssertEqual(layout.viewport, CGRect(x: 0, y: 8, width: 240, height: 88))
+        XCTAssertEqual(layout.initialOffset, 0)
+    }
+
+    func testHeaderMenuScrollsWithinTheSpaceAboveTheComposer() {
+        let layout = Layout(items: Array(repeating: .row, count: 10), width: 240, below: CGRect(x: 350, y: 0, width: 44, height: 44), in: CGRect(x: 62, y: 0, width: 750, height: 190), selected: 9)
+        XCTAssertEqual(layout.frame, CGRect(x: 154, y: 54, width: 240, height: 128))
+        XCTAssertEqual(layout.viewport, CGRect(x: 0, y: 8, width: 240, height: 112))
+        XCTAssertEqual(layout.contentHeight, 440)
+        XCTAssertEqual(layout.initialOffset, 328)
+    }
+
     /// A long name ends early so the gauge at the line's end stays whole;
     /// a short one keeps its own width. The name stands past the check's
     /// column: the line it is laid in starts there.

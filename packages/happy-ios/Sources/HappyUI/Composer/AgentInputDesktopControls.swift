@@ -121,6 +121,11 @@ final class AgentInputDesktopControlsView: UIView {
         imageButton.glyphSize.width
     }
 
+    func settingsFrame(in view: UIView) -> CGRect? {
+        guard !settingsButton.isHidden, settingsButton.window != nil else { return nil }
+        return settingsButton.convert(settingsButton.bounds, to: view)
+    }
+
     func configure(_ configuration: AgentInputDesktopConfiguration, showsImage: Bool, hasAttachments: Bool, imageAccessibilityLabel: String) {
         self.configuration = configuration
         settingsButton.isHidden = configuration.settings?.sections.contains(where: { $0.chip != .permission }) != true
