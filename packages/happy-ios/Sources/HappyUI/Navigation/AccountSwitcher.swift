@@ -49,10 +49,20 @@ final class AccountSwitcher: NSObject {
         return account.name ?? account.username ?? Strings.happyAccount
     }
 
+    /// The one account the switcher calls current. A signed-in Happy
+    /// account and an open agent connection each report themselves active,
+    /// from two fields that know nothing of each other
+    /// (`AccountController.accounts`), so in that mixed case more than one
+    /// says so. The first in the order they are shown in wins, which is
+    /// the one the button already draws.
+    private func current(in accounts: [AccountSummary]) -> AccountSummary? {
+        accounts.first(where: \.isActive)
+    }
+
     private func show() {
         let accounts = context.account.accounts
         accounts.forEach(loadImage)
-        guard let active = accounts.first(where: \.isActive) else { return }
+        guard let active = current(in: accounts) else { return }
         button.title = name(active)
         button.subtitle = subtitle
         button.picture = images[active.id] ?? Self.fallback(active)
@@ -89,11 +99,14 @@ final class AccountSwitcher: NSObject {
         }.withRenderingMode(.alwaysOriginal)
     }
 
-    private func menuElements() -> [UIMenuElement] {
+    /// Not private, so a test can read what the menu would show without
+    /// opening it; the menu itself asks for these on every tap.
+    func menuElements() -> [UIMenuElement] {
         let accounts = context.account.accounts
+        let current = current(in: accounts)?.id
         let choices: [UIMenuElement] = accounts.map { account in
-            let action = UIAction(title: name(account), image: images[account.id] ?? Self.fallback(account), state: account.isActive ? .on : .off) { [weak self] _ in
-                self?.choose(account)
+            let action = UIAction(title: name(account), image: images[account.id] ?? Self.fallback(account), state: account.id == current ? .on : .off) { [weak self] _ in
+                self?.choose(account, current: current)
             }
             action.subtitle = account.isAgentConnection ? (account.connectionStatus ?? Strings.agentConnection) : account.username.map { "@\($0)" } ?? account.serverURL.host
             action.accessibilityIdentifier = "account-\(account.id)"
@@ -115,8 +128,10 @@ final class AccountSwitcher: NSObject {
         ]
     }
 
-    private func choose(_ account: AccountSummary) {
-        guard !account.isActive, !switching else { return }
+    /// `current` is the ticked one, not every account that calls itself
+    /// active: in the mixed case the other one is a real switch.
+    private func choose(_ account: AccountSummary, current: String?) {
+        guard account.id != current, !switching else { return }
         switching = true
         Task { [weak self] in
             guard let self else { return }

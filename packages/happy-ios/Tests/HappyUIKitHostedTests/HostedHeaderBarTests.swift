@@ -277,6 +277,42 @@ final class HostedHeaderBarTests: XCTestCase {
         XCTAssertNil(chat.navigationItem.leftBarButtonItem)
     }
 
+    /// A signed-in Happy account and an open agent connection each report
+    /// themselves active, from two fields that know nothing of each other
+    /// (`AccountController.accounts`: the anon ID and the connections'
+    /// active ID). The menu must still tick exactly one, and it has to be
+    /// the one the button draws, or the switcher says two things at once.
+    func testTheMenuTicksOneAccountWithAComputerAndAnAccountBothActive() async throws {
+        let controller = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
+            agentTransport: { _ in HeaderUnreachable() },
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: HeaderNoNetwork(), connector: HeaderNoSockets()
+        )
+        try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 12, count: 32)))
+        await controller.agentConnections.setForeground(false)
+        let computer = try await controller.agentConnections.add(JSONDecoder().decode(AgentConnectionCredentials.self,
+            from: Data(#"{"address":"switcher-test","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"test"}"#.utf8)), name: "A computer")
+        addTeardownBlock { @MainActor in try? await controller.agentConnections.remove(computer.id) }
+
+        // Both say they are active: that is the case under test.
+        let accounts = controller.accounts
+        XCTAssertEqual(accounts.filter(\.isActive).count, 2, "the fixture is not the mixed case")
+
+        let context = AppContext(account: controller, variant: .preview, version: "test")
+        let host = UIViewController()
+        let switcher = AccountSwitcher(context: context, controller: host)
+        let actions = switcher.menuElements().flatMap { ($0 as? UIMenu)?.children ?? [$0] }.compactMap { $0 as? UIAction }
+        let ticked = actions.filter { $0.state == .on }
+        XCTAssertEqual(ticked.count, 1, "the menu ticked \(ticked.map(\.title))")
+        // The button draws the first active one, so the tick belongs there.
+        let shown = try XCTUnwrap(accounts.first(where: \.isActive))
+        XCTAssertEqual(ticked.first?.accessibilityIdentifier, "account-\(shown.id)")
+        // Every account is still offered, with Add and Manage Accounts.
+        XCTAssertEqual(actions.count, accounts.count + 2)
+    }
+
     /// No ground, no blur, no line, the same scrolled as at the edge: the
     /// bar is whatever background the screen has.
     private static func assertClear(_ bar: UINavigationBar, file: StaticString = #filePath, line: UInt = #line) {
