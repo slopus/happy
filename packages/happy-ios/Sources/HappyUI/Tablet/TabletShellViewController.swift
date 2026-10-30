@@ -331,7 +331,9 @@ final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
         while let current = ancestor {
             if current is HorizontalListView { return true }
             if let scroll = current as? UIScrollView,
-               scroll.alwaysBounceHorizontal || scroll.contentSize.width > scroll.bounds.width + 1 { return true }
+               scroll.isScrollEnabled, scroll.contentSize.width > scroll.bounds.width + 1 {
+                return true
+            }
             ancestor = current.superview
         }
         return false

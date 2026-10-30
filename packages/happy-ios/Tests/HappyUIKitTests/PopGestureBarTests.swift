@@ -48,6 +48,12 @@ final class PopGestureBarTests: XCTestCase {
         XCTAssertTrue(delegate.gestureRecognizer(edge, shouldBeRequiredToFailBy: horizontal.panGestureRecognizer))
         XCTAssertFalse(delegate.gestureRecognizer(navigation.content, shouldBeRequiredToFailBy: horizontal.panGestureRecognizer))
         XCTAssertTrue(PopGestureDelegate.hasHorizontalContent(above: horizontal))
+        // Chat's code/table scroller allows horizontal bounce even when the
+        // content fits. Such a row has no horizontal history to protect.
+        horizontal.alwaysBounceHorizontal = true
+        horizontal.contentSize.width = horizontal.bounds.width
+        XCTAssertFalse(PopGestureDelegate.hasHorizontalContent(above: horizontal))
+        XCTAssertTrue(delegate.gestureRecognizer(navigation.content, shouldBeRequiredToFailBy: horizontal.panGestureRecognizer))
         XCTAssertFalse(PopGestureDelegate.hasHorizontalContent(above: list.contentView))
         let horizontalList = HorizontalListView(engineMode: .keyframe)
         top.view.addSubview(horizontalList)
