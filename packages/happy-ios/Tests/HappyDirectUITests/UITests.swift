@@ -1501,6 +1501,79 @@ final class UITests: XCTestCase {
         idle()
     }
 
+    /// A phone held sideways with the keyboard up leaves the full card a
+    /// sliver of transcript: the card goes to one row, the chips behind its
+    /// options button, and back to the full card upright. The draft and the
+    /// keyboard carry across both turns. The transcript's room sideways is
+    /// read off the screen (`HAPPY_COMPACT`), empty and with three lines.
+    func testCompactComposerSideways() {
+        // Upright to start, whatever a run before left; back upright however it ends.
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let composer = openStreamLab(probe: "watch")
+        let options = app.buttons["composer-options"]
+        let model = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
+        composer.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        if let draft = composer.value as? String, !draft.isEmpty, draft != composer.placeholderValue {
+            composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: draft.count))
+        }
+        pause(1)
+        XCTAssertFalse(options.exists && options.isHittable, "the options button upright")
+        XCTAssertTrue(model.isHittable, "no model chip upright")
+        capture("compact-0-portrait-empty")
+
+        /// The transcript's room: from under the bar to 8 above the card.
+        /// The card's top is 8 over the text's container, which is 44 or
+        /// the text and its 4 + 4, the text centred in it (a hairline left
+        /// out).
+        func room(_ name: String) -> CGFloat {
+            let bar = app.navigationBars.firstMatch.frame
+            let text = composer.frame
+            let container = max(44, text.height + 8)
+            let cardTop = text.minY - 4 - (container - 8 - text.height) / 2 - 8
+            let room = cardTop - 8 - bar.maxY
+            print("HAPPY_COMPACT \(name) window \(app.windows.firstMatch.frame) bar \(bar) keyboard \(app.keyboards.firstMatch.frame) "
+                + "composer \(text) options \(options.frame) send \(app.buttons["Send"].frame) cardTop \(cardTop) room \(room)")
+            return room
+        }
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        pause(2.5)
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "the keyboard went with the turn")
+        XCTAssertTrue(options.waitForExistence(timeout: 3) && options.isHittable, "no options button sideways")
+        XCTAssertFalse(model.exists && model.isHittable, "the chips still in the row sideways")
+        XCTAssertTrue(app.buttons["Send"].isHittable)
+        XCTAssertGreaterThan(room("landscape empty"), 0, "no transcript sideways")
+        capture("compact-1-landscape-empty")
+
+        options.tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 3), "the options menu has no model")
+        capture("compact-2-options")
+        row.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["picker-models"].waitForExistence(timeout: 5), "the model list didn't open")
+        capture("compact-3-picker")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
+        pause(1)
+
+        if !app.keyboards.firstMatch.exists { composer.tap() }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        composer.typeText("first line\nsecond line\nthird line")
+        pause(1.5)
+        XCTAssertTrue(options.isHittable, "no options button with three lines")
+        XCTAssertTrue(app.buttons["Send"].isHittable)
+        XCTAssertGreaterThan(room("landscape three lines"), 0, "no transcript sideways with three lines")
+        capture("compact-4-landscape-three-lines")
+
+        XCUIDevice.shared.orientation = .portrait
+        pause(2.5)
+        XCTAssertFalse(options.exists && options.isHittable, "the options button upright again")
+        XCTAssertTrue(model.isHittable, "no model chip upright again")
+        XCTAssertEqual(composer.value as? String, "first line\nsecond line\nthird line")
+        capture("compact-5-portrait-again")
+    }
+
     /// Stream Lab's conversation, with the transcript's probe on.
     private func openStreamLab(probe: String) -> XCUIElement {
         app.terminate()

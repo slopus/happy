@@ -16,6 +16,14 @@ import CoreGraphics
 /// card's top as that is in from its side; each remove button hangs over
 /// its photo's corner inside the strip, so none is cut.
 ///
+/// `compact` puts the text in the action row, for a screen too short for
+/// the card (the chat on a phone held sideways, keyboard up):
+///
+///     │ 8 [+42] 2 [ text (two lines, then scrolls) ] 2 [opt 42] 8 [42] 8 │ row 44+
+///
+/// The chips go behind the options button (`options`), which opens them;
+/// the buttons keep to the row's foot as the text grows.
+///
 /// Frames are in the card's bounds. `middleContent` is in `middle`'s.
 public struct AgentInputCardLayout: Equatable, Sendable {
     public enum Metrics {
@@ -108,6 +116,14 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         public var zenMode: Bool
         /// The full-screen editor's button, shown once the text scrolls.
         public var offersExpand: Bool
+        /// One row: the text between add and the options button
+        /// (`compactTextCap`), the chips behind that button.
+        public var compact: Bool
+
+        /// The compact card's options button: there whenever a chip is.
+        public var showsOptions: Bool {
+            !zenMode && (permission != nil || model != nil || effort != nil)
+        }
 
         public init(
             width: CGFloat,
@@ -125,7 +141,8 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             effort: Chip? = nil,
             separator: CGSize = .zero,
             zenMode: Bool = false,
-            offersExpand: Bool = false
+            offersExpand: Bool = false,
+            compact: Bool = false
         ) {
             self.width = width
             self.metrics = metrics
@@ -143,6 +160,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             self.separator = separator
             self.zenMode = zenMode
             self.offersExpand = offersExpand
+            self.compact = compact
         }
     }
 
@@ -187,6 +205,8 @@ public struct AgentInputCardLayout: Equatable, Sendable {
     public var middle: CGRect
     public var middleContent: MiddleContent
     public var primary: CGRect
+    /// The compact card's options button; nil on the full card.
+    public var options: CGRect?
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -215,6 +235,54 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             attachments = nil
         }
         attachmentInsets = AttachmentInsets(leading: inside, top: M.attachmentRemoveOverhang, trailing: inside)
+
+        if input.compact {
+            let columns = Self.compactColumns(width: width, borderWidth: border, metrics: metrics, input: input)
+            let lineHeight = input.lineHeight ?? metrics.inputLineHeight
+            let text = MultiTextInputLayout(
+                contentHeight: input.textContentHeight,
+                hasText: input.hasText,
+                maxHeight: Self.compactTextCap(lineHeight: lineHeight, metrics: metrics),
+                lineHeight: lineHeight,
+                paddingTop: metrics.inputPaddingTop,
+                paddingBottom: metrics.inputPaddingBottom
+            )
+            let minimum = input.inputMinHeight ?? metrics.inputMinHeight
+            let containerHeight = max(minimum, text.height + metrics.inputPaddingTop + metrics.inputPaddingBottom)
+            inputContainer = CGRect(x: columns.containerX, y: y, width: columns.containerWidth, height: containerHeight)
+            self.text = CGRect(
+                x: columns.containerX + insets.inputContainerPaddingLeft,
+                y: y + metrics.inputPaddingTop + (containerHeight - metrics.inputPaddingTop - metrics.inputPaddingBottom - text.height) / 2,
+                width: max(0, columns.containerWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight),
+                height: text.height
+            )
+            textScrolls = text.scrollEnabled
+            if input.offersExpand, textScrolls {
+                let size = metrics.primaryActionSize
+                let expand = CGRect(x: inputContainer.maxX - size, y: inputContainer.minY, width: size, height: size)
+                self.expand = expand
+                textTrailingInset = max(0, self.text.maxX - expand.minX)
+            } else {
+                expand = nil
+                textTrailingInset = 0
+            }
+            // The buttons stand where they do beside one line, however
+            // many the text grows to.
+            let centreY = y + containerHeight - minimum / 2
+            func button(_ x: CGFloat, _ size: CGFloat) -> CGRect {
+                CGRect(x: x, y: centreY - size / 2, width: size, height: size)
+            }
+            actionRow = CGRect(x: contentX, y: y, width: contentWidth, height: containerHeight)
+            add = columns.add.map { button($0, metrics.actionSize) }
+            options = columns.options.map { button($0, metrics.actionSize) }
+            primary = button(columns.primary, metrics.primaryActionSize)
+            middle = CGRect(x: inputContainer.maxX, y: y, width: 0, height: containerHeight)
+            middleContent = MiddleContent()
+            y += containerHeight + metrics.shellPaddingBottom + border
+            size = CGSize(width: width, height: y)
+            return
+        }
+        options = nil
 
         // The input container centres the text view in its padding box.
         let text = MultiTextInputLayout(
@@ -363,6 +431,47 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             content.effort = ChipFrame(frame: frame, label: label(chip.labelSize, in: frame) { _ in 0 })
         }
         return content
+    }
+
+    /// The compact card's text cap, its padding included: two lines show,
+    /// and the third scrolls, as the full card's 120 shows five (and 2).
+    public static func compactTextCap(lineHeight: CGFloat, metrics: MobileComposerMetrics = .mobile) -> CGFloat {
+        2 * lineHeight + metrics.inputPaddingTop + metrics.inputPaddingBottom + 2
+    }
+
+    /// Where the compact card's columns start: add, the text's container
+    /// and how wide it is, the options button and send.
+    public struct CompactColumns: Equatable, Sendable {
+        public var add: CGFloat?
+        public var containerX: CGFloat
+        public var containerWidth: CGFloat
+        public var options: CGFloat?
+        public var primary: CGFloat
+    }
+
+    public static func compactColumns(width: CGFloat, borderWidth: CGFloat, metrics: MobileComposerMetrics, input: Input) -> CompactColumns {
+        let border = max(0, borderWidth)
+        let contentX = border + metrics.shellInset
+        let contentMaxX = max(contentX, width - border - metrics.shellInset)
+        let gap = metrics.actionRowGeometry.gap ?? 0
+        let primary = contentMaxX - metrics.primaryActionSize
+        let options = input.showsOptions ? primary - metrics.primaryActionMarginLeft - metrics.actionSize : nil
+        let containerMaxX = (options ?? primary - metrics.primaryActionMarginLeft) - gap
+        let add = input.showsAdd && !input.zenMode ? contentX : nil
+        let containerX = add.map { $0 + metrics.actionSize + gap } ?? contentX
+        return CompactColumns(add: add, containerX: containerX, containerWidth: max(0, containerMaxX - containerX), options: options, primary: primary)
+    }
+
+    /// The width the text wraps at, inside its container: what its height
+    /// is measured at.
+    public static func textWidth(_ input: Input) -> CGFloat {
+        let metrics = input.metrics
+        let border = max(0, input.borderWidth)
+        let insets = AgentInputInsets(shellInset: metrics.shellInset, actionSize: metrics.actionSize, addIconSize: metrics.addIconSize)
+        let container = input.compact
+            ? compactColumns(width: max(0, input.width), borderWidth: border, metrics: metrics, input: input).containerWidth
+            : max(0, input.width - 2 * border - 2 * metrics.shellInset)
+        return max(0, container - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight)
     }
 
     /// The thumbnails in the attachment strip's scrolling content, and that

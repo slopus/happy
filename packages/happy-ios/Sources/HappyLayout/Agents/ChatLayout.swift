@@ -60,6 +60,19 @@ public struct ChatScreenLayout: Equatable, Sendable {
         listBottom = max(0, size.height - card.minY + M.listGap)
         viewport = max(0, size.height - listTop - listBottom)
     }
+
+    /// The least transcript the full card may leave; under it the card is
+    /// compact (`AgentInputCardLayout.Input.compact`). A threshold, not
+    /// what compact gives: on a phone held sideways with the keyboard up,
+    /// that is about 58 points to the full card's 16.
+    public static let compactBelow: CGFloat = 120
+
+    /// Whether the card goes compact, decided from `restingCardHeight`: the
+    /// full card's height with one line of text at a width. Never from the
+    /// card as it is, so going compact (or typing) can't undo itself.
+    public static func compacts(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, restingCardHeight: (CGFloat) -> CGFloat) -> Bool {
+        ChatScreenLayout(size: size, safeArea: safeArea, keyboardTop: keyboardTop, cardHeight: restingCardHeight).viewport < compactBelow
+    }
 }
 
 /// The conversation's rows stacked in a scroll view: newest last, resting

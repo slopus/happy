@@ -1058,6 +1058,11 @@ final class ChatViewController: UIViewController, ComposeHosting {
         }
         timeShown()
         header.maxWidth = ChatTitleLayout.maxWidth(barWidth: view.bounds.width)
+        // From where the keyboard rests, not the finger dragging it: the
+        // card keeps its shape through a drag and changes once it settles.
+        card.configuration.compact = ChatScreenLayout.compacts(
+            size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), keyboardTop: keyboardTop
+        ) { [card] width in card.restingHeight(fitting: width) }
         let screen = ChatScreenLayout(
             size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets),
             keyboardTop: fingerOnKeyboard ? keyboardTracker.frame.minY : keyboardTop

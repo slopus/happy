@@ -16,6 +16,9 @@ extension Strings {
         /// card shows, and the one that puts the text back in the card.
         public static let expandEditor = "Expand"
         public static let collapseEditor = "Collapse"
+        /// The compact card's button for the chips (iOS only, for a phone
+        /// held sideways with the keyboard up).
+        public static let options = "Options"
 
         /// AgentInput.tsx `t('agentInput.permissionMode.title')`: the chip's
         /// label and its menu's heading.
