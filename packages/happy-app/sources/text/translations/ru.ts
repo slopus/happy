@@ -429,6 +429,7 @@ export const ru: TranslationStructure = {
         activeNow: 'Активен сейчас',
         unknown: 'неизвестно',
         unread: 'новые результаты',
+        backgroundWork: ({ count }: { count: number }) => `${count} в фоне`,
     },
 
     time: {
