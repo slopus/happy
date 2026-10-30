@@ -340,6 +340,11 @@ public struct NoSessionsLayout: Equatable, Sendable {
         /// "Start New Session": a RoundButton this tall, stretched across
         /// the screen (`alignSelf: 'stretch'`).
         public var buttonHeight: CGFloat?
+        /// The button's label width, when the button is as wide as its
+        /// label and centred instead (home's notice, as the first screen's
+        /// Start): at least `StartLayout.Metrics.buttonMinWidth`, inside the
+        /// text's margins.
+        public var buttonLabelWidth: CGFloat?
         public var action: Measurable?
 
         public init(
@@ -349,6 +354,7 @@ public struct NoSessionsLayout: Equatable, Sendable {
             title: Measurable,
             description: Measurable,
             buttonHeight: CGFloat? = nil,
+            buttonLabelWidth: CGFloat? = nil,
             action: Measurable?
         ) {
             self.size = size
@@ -357,6 +363,7 @@ public struct NoSessionsLayout: Equatable, Sendable {
             self.title = title
             self.description = description
             self.buttonHeight = buttonHeight
+            self.buttonLabelWidth = buttonLabelWidth
             self.action = action
         }
     }
@@ -397,7 +404,12 @@ public struct NoSessionsLayout: Equatable, Sendable {
         y = title.maxY + M.titleMarginBottom
         description = centred(descriptionSize, y)
         y = description.maxY + M.descriptionMarginBottom
-        button = input.buttonHeight.map { CGRect(x: insets.left, y: y, width: width, height: $0) }
+        button = input.buttonHeight.map { height in
+            guard let label = input.buttonLabelWidth else { return CGRect(x: insets.left, y: y, width: width, height: height) }
+            let fitted = label + RoundButtonMetrics.of(.large).paddingHorizontal * 2
+            let buttonWidth = min(textWidth, max(StartLayout.Metrics.buttonMinWidth, fitted))
+            return centred(CGSize(width: buttonWidth, height: height), y)
+        }
         y = button?.maxY ?? y
         action = actionSize.map { centred($0, y + M.actionMarginTop) }
         y = action?.maxY ?? y

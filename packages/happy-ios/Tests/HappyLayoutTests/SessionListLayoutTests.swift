@@ -314,6 +314,29 @@ final class SessionListChromeLayoutTests: XCTestCase {
         assertFrame(layout.action, rect(130.5, 531.5, 132, 40))
     }
 
+    /// Home's notice: the button as wide as its label and 24 each side,
+    /// at least 200, never past the text's 24 margins, centred.
+    func testNoSessionsButtonFittedToItsLabel() {
+        func button(label: CGFloat) -> CGRect? {
+            NoSessionsLayout(.init(
+                size: phone,
+                safeArea: phoneUnderBar,
+                title: text("Connect a computer", lineHeight: 30),
+                description: text("Scan its code.", lineHeight: 22),
+                buttonHeight: 50,
+                buttonLabelWidth: label,
+                action: nil
+            )).button
+        }
+        let short = button(label: 100)
+        XCTAssertEqual(short?.width, 200)
+        XCTAssertEqual(short?.midX, 196.5)
+        XCTAssertEqual(button(label: 210)?.width, 258)
+        XCTAssertEqual(button(label: 210)?.minX, 67.5)
+        XCTAssertEqual(button(label: 400)?.width, 345)
+        XCTAssertEqual(button(label: 400)?.minX, 24)
+    }
+
     func testNoSessionsThatFitsFillsTheScreenAndDoesNotScroll() {
         let layout = NoSessionsLayout(.init(
             size: phone,

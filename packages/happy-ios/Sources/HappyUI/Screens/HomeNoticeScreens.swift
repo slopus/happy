@@ -43,6 +43,8 @@ final class HomeNoticeViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.accessibilityIdentifier = "home-notice"
+        // As wide as its words, as the first screen's Start.
+        content.fitsButtonToLabel = true
         content.startNewSession.onTap = { [weak self] in self?.primary() }
         content.showArchived.onTap = { [weak self] in
             self?.session.updateSettings(["hideInactiveSessions": .bool(false)])

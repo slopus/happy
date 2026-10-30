@@ -396,6 +396,12 @@ public final class NoSessionsView: UIView {
         didSet { if showsArchivedAction != oldValue { setNeedsLayout() } }
     }
 
+    /// The button as wide as its label and centred (`NoSessionsLayout`'s
+    /// `buttonLabelWidth`), rather than across the screen.
+    var fitsButtonToLabel = false {
+        didSet { if fitsButtonToLabel != oldValue { setNeedsLayout() } }
+    }
+
     /// What was asked to be measured last, and what was measured for it
     /// and applied. Laying out uses only what was applied.
     private(set) var requested: NoSessionsMeasureInput?
@@ -483,6 +489,7 @@ public final class NoSessionsView: UIView {
             title: .fixed(sizes.title),
             description: .fixed(sizes.description),
             buttonHeight: sizes.buttonHeight,
+            buttonLabelWidth: fitsButtonToLabel ? sizes.buttonLabel.width : nil,
             action: sizes.action.map(Measurable.fixed)
         ))
         scrollView.isHidden = false
