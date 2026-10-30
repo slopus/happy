@@ -41,8 +41,8 @@ final class ChatViewController: UIViewController {
     /// sheet, and whatever was chosen on it, is done.
     private var keyboardOwed = false
     /// New work from home's dock: it fades in and out over home with the
-    /// composer where the dock is (`NewWorkTransition`); the swipe
-    /// back (`SwipeBack`) drives the way back.
+    /// composer where the dock is (`NewWorkTransition`); the system's
+    /// swipe back slides it away as it does any screen.
     var opensOverHome = false
     /// The keyboard new work opens with, not yet asked for.
     private var focusPending = false

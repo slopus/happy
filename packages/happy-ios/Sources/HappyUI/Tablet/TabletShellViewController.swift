@@ -42,7 +42,7 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
     private var isTablet = false
     private var showsShell = false
     private var zenMode = false
-    private(set) var swipeBack: SwipeBackController?
+    private var popGesture: PopGestureDelegate?
 
     public init(context: AppContext, detail: UINavigationController) {
         self.context = context
@@ -66,7 +66,7 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
         view.addSubview(detail.view)
         detail.didMove(toParent: self)
         detail.delegate = self
-        swipeBack = SwipeBackController(navigation: detail)
+        popGesture = PopGestureDelegate(navigation: detail)
         header.isHidden = true
         header.zenButton.addAction(UIAction { [weak self] _ in self?.toggleZen() }, for: .touchUpInside)
         header.backButton.addAction(UIAction { [weak self] _ in self?.goBack() }, for: .touchUpInside)
@@ -204,26 +204,20 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
         update()
     }
 
-    /// The finger's pop is Telegram's; a screen with its own way in and out
-    /// (new work from home's dock) brings it; every other one slides as
-    /// UIKit's does.
+    /// A screen with its own way in and out (new work from home's dock)
+    /// brings it; every other one slides as UIKit's does. A pop the
+    /// system's swipe is driving is UIKit's own: a screen's animator there
+    /// would leave the swipe with nothing to drive, and it would not start.
     public func navigationController(
         _ navigationController: UINavigationController, animationControllerFor operation: UINavigationController.Operation,
         from fromVC: UIViewController, to toVC: UIViewController
     ) -> (any UIViewControllerAnimatedTransitioning)? {
-        if operation == .pop, let interaction = swipeBack?.interaction { return SwipeBackAnimator(interaction: interaction) }
+        if operation == .pop, popGesture?.isSwiping == true { return nil }
         switch operation {
         case .push: return (toVC as? NavigationTransitionProviding)?.navigationTransition(.push, other: fromVC)
         case .pop: return (fromVC as? NavigationTransitionProviding)?.navigationTransition(.pop, other: toVC)
         default: return nil
         }
-    }
-
-    public func navigationController(
-        _ navigationController: UINavigationController,
-        interactionControllerFor animationController: any UIViewControllerAnimatedTransitioning
-    ) -> (any UIViewControllerInteractiveTransitioning)? {
-        animationController is SwipeBackAnimator ? swipeBack?.interaction : nil
     }
 
     // MARK: Header
@@ -243,4 +237,42 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
     }
 }
 
+/// UIKit's own swipe back, kept wherever there is something to go back
+/// to. UIKit stops its edge swipe on a screen whose back button is hidden
+/// or replaced (happy-app's plain headers, a bar item at the left);
+/// react-native-screens' stack keeps it, and so does this. The swipe is
+/// the system's: its gesture, its animation, iOS 26's swipe from anywhere
+/// on the screen included. Only when it may begin is decided here.
+final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
+    private weak var navigation: UINavigationController?
+    nonisolated(unsafe) private weak var system: (any UIGestureRecognizerDelegate)?
+
+    init(navigation: UINavigationController) {
+        self.navigation = navigation
+        system = navigation.interactivePopGestureRecognizer?.delegate
+        super.init()
+        navigation.interactivePopGestureRecognizer?.delegate = self
+    }
+
+    /// The edge or content swipe is under the finger now.
+    var isSwiping: Bool {
+        guard let navigation else { return false }
+        var gestures = [navigation.interactivePopGestureRecognizer]
+        if #available(iOS 26.0, *) { gestures.append(navigation.interactiveContentPopGestureRecognizer) }
+        return gestures.contains { $0?.state == .began || $0?.state == .changed }
+    }
+
+    func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+        guard let navigation else { return false }
+        return navigation.viewControllers.count > 1 && navigation.transitionCoordinator == nil
+    }
+
+    nonisolated override func responds(to selector: Selector!) -> Bool {
+        super.responds(to: selector) || system?.responds(to: selector) == true
+    }
+
+    nonisolated override func forwardingTarget(for selector: Selector!) -> Any? {
+        system?.responds(to: selector) == true ? system : super.forwardingTarget(for: selector)
+    }
+}
 #endif
