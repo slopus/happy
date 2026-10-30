@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.AgentQuestionOption
@@ -70,7 +71,8 @@ object ConversationQuestionSpec {
 /**
  * The question a run waits on, over the composer. Spec: 8 in from the
  * sides and 8 above the composer, a surfaceHigh card, radius 16, padding
- * 12, at most 360 high and scrolling inside. "Question", "Permission
+ * 12, at most 360 high (less on a short screen, see [ConversationScreen])
+ * and scrolling inside. "Question", "Permission
  * request" or "<server> asks for permission" (13/18 semibold,
  * textSecondary), then the agent's context in Markdown. Prompts that all
  * offer options use the legacy choice form (InlineQuestionForm); a prompt
@@ -89,6 +91,8 @@ fun ConversationQuestionCard(
     modifier: Modifier = Modifier,
     /** How a secret request is made and answered; null where this build cannot. */
     secrets: SecretRequestActions? = null,
+    /** The card's height cap: [ConversationQuestionSpec.maxHeight], or less where the screen is short. */
+    maxHeight: Dp = ConversationQuestionSpec.maxHeight,
 ) {
     val colors = HappyTheme.colors
     val secret = question.secret
@@ -100,7 +104,7 @@ fun ConversationQuestionCard(
         .testTag(ConversationQuestionTags.CARD)
         .clip(RoundedCornerShape(ConversationQuestionSpec.radius))
         .background(colors.surfaceHigh)
-        .heightIn(max = ConversationQuestionSpec.maxHeight)
+        .heightIn(max = maxHeight)
     val header: @Composable () -> Unit = {
         val title = when {
             question.permissionFrom != null -> stringResource(R.string.conversation_permission_from, question.permissionFrom)

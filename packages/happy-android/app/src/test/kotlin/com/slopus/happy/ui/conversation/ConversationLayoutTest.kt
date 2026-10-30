@@ -43,6 +43,7 @@ import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.setHappyContent
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.compose.runtime.getValue
@@ -428,6 +429,41 @@ class ConversationLayoutTest {
         rule.onNodeWithText("Retry").performClick()
         assertEquals(1, retries)
         shot("artifact-failed")
+    }
+
+    /** A question long enough to fill any cap, over a chat with history. */
+    private fun tallQuestion() {
+        val question = Question(
+            "q2", "pending", (1..12).joinToString("\n\n") { "Step $it of the migration touches another table." },
+            listOf(Question.Prompt("p1", "Plan", "Which order should the tables move in?", false, emptyList(), null)),
+            null, false,
+        )
+        show(ConversationState(created = true, loaded = true, rows = history, agent = agent, question = question, activity = Activity.AwaitingAnswer))
+    }
+
+    /** The card at most half the screen and 360, with the bar above it and the composer below it, whole. */
+    private fun assertQuestionLeavesRoom(screenHeight: Int, name: String) {
+        val screen = rule.onRoot().bounds
+        val card = rule.node(ConversationQuestionTags.CARD).assertIsDisplayed().bounds
+        val bar = rule.node(ConversationScreenTags.BAR).assertIsDisplayed().bounds
+        val composer = rule.node(ConversationComposerTags.COMPOSER).assertIsDisplayed().bounds
+        // The cap is on the card itself: what the tag reports is the card.
+        assertDp("card height", minOf(360.dp, screenHeight.dp / 2), card.height)
+        assertEquals("bar on screen", true, bar.top >= screen.top && bar.bottom <= card.top)
+        assertEquals("composer on screen", true, composer.top >= card.bottom && composer.bottom <= screen.bottom)
+        shot(name)
+    }
+
+    @Config(qualifiers = "w411dp-h731dp-xxhdpi")
+    @Test fun `on a 731dp phone a long question stays at 360 over the composer`() {
+        tallQuestion()
+        assertQuestionLeavesRoom(731, "question-cap-731")
+    }
+
+    @Config(qualifiers = "w731dp-h411dp-xxhdpi")
+    @Test fun `on a 411dp-tall screen a long question takes half and keeps the composer`() {
+        tallQuestion()
+        assertQuestionLeavesRoom(411, "question-cap-411")
     }
 
     @Test fun `details list the agent and its mode`() {

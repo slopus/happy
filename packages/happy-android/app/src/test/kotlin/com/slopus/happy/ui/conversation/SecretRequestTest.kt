@@ -346,6 +346,12 @@ class SecretRequestTest {
         val save = pinned(SecretRequestTags.SUBMIT).bounds
         pinned(SecretRequestTags.CANCEL)
         assertTrue("save $save inside card $card", save.top >= card.top && save.bottom <= card.bottom)
+        // The card leaves the bar and the composer whole on screen.
+        val screen = rule.onRoot().bounds
+        val bar = rule.node(ConversationScreenTags.BAR).assertIsDisplayed().bounds
+        val composer = rule.node(ConversationComposerTags.COMPOSER).assertIsDisplayed().bounds
+        assertTrue("bar $bar on screen $screen", bar.top >= screen.top && bar.bottom <= card.top)
+        assertTrue("composer $composer below card $card on screen $screen", composer.top >= card.bottom && composer.bottom <= screen.bottom)
         // The form is taller than the card: the last of it is out of view until scrolled to.
         rule.node(SecretRequestTags.EXISTING).assertIsNotDisplayed()
         shot("$name-at-rest")

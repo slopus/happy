@@ -267,6 +267,8 @@ fun ConversationScreen(
                     question = question,
                     onAnswer = { answers -> actions.onAnswer(question.id, answers) },
                     secrets = actions.secrets,
+                    // Half the screen at most, so a short one keeps the bar and the composer in view.
+                    maxHeight = minOf(ConversationQuestionSpec.maxHeight, androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp / 2),
                 )
             }
             if (state.created && !state.canSend) {
