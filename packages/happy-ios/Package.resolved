@@ -1,5 +1,5 @@
 {
-  "originHash" : "be49091cc987a7de46e2e2d704de9e34cfa0a36bdd160bf4667972820c86b1af",
+  "originHash" : "cc899ca95ed900f34c778746aa09c3edb10f1d183e0a455787ed14d22500e4db",
   "pins" : [
     {
       "identity" : "client-sdk-swift",
@@ -69,7 +69,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/slopus/tailcat-swift.git",
       "state" : {
-        "revision" : "70a66d473b32e5c8217cf8652237d9848af4ce3e"
+        "revision" : "673131f2b91aabc77a4d587bc3f46f69b7de801d"
       }
     },
     {
