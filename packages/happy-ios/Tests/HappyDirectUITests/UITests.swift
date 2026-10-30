@@ -313,8 +313,7 @@ final class UITests: XCTestCase {
             let model = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: ")).firstMatch
             XCTAssertTrue(model.waitForExistence(timeout: 5), "no model chip")
             open(model, "picker-models")
-            // A model's line, not the panel's links out (benchmarks).
-            let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND selected == false AND NOT (identifier IN %@)", "picker-row:", ["picker-row:benchmarks"]))
+            let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND selected == false", "picker-row:"))
             let other = rows.allElementsBoundByIndex.first { $0.isHittable }
             XCTAssertNotNil(other, "no other model to pick")
             other?.tap()

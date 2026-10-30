@@ -279,7 +279,6 @@ extension Strings {
     public static let provider = "Provider"
     public static let effort = "Effort"
     public static let modelsNotConfigured = "Models not configured"
-    public static let latestBenchmarks = "Latest benchmarks"
     public static let hiddenAccount = "Hidden account. It still works; it’s only kept out of the lists."
     public static func accountRemoved(_ name: String) -> String { "The \(name) account is no longer configured on this Happy Agent." }
     public static func accountOff(_ name: String) -> String { "The \(name) account is switched off, so nothing is sent to it." }

@@ -38,8 +38,7 @@ final class ModelPickersTests: XCTestCase {
     }
 
     /// Each service under its heading, which opens its accounts; a hairline
-    /// between; the selected model checked and opened on; the benchmarks
-    /// under the list.
+    /// between; the selected model checked and opened on; nothing under the list.
     func testTheModelListIsEachServiceUnderItsHeading() {
         let content = ModelPickers.modelContent(menus, usage: [:])
         let headings: [(String, String?, String?)] = content.lines.compactMap { line in
@@ -52,7 +51,7 @@ final class ModelPickersTests: XCTestCase {
         XCTAssertEqual(options(content.lines).map(\.label), ["GPT Sol", "Opus 5 1M", "Sonnet 5"])
         XCTAssertEqual(options(content.lines).filter(\.checked).map(\.label), ["Sonnet 5"])
         XCTAssertEqual(content.selected, content.lines.lastIndex { if case .option(_, "Sonnet 5", _, _, _) = $0 { true } else { false } })
-        XCTAssertEqual(content.footer, [.separator, .link(key: "benchmarks", label: "Latest benchmarks")])
+        XCTAssertEqual(content.footer, [], "no benchmarks link under the models")
         XCTAssertEqual(ModelPickers.listedAccounts(menus), ["codex", "claude", "claude-work"])
     }
 

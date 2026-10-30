@@ -144,7 +144,7 @@ enum ModelPickers {
     /// The model list: a notice about the account first, then each service
     /// under its heading (its name, the account it lists, that account's
     /// windows, and a chevron to its accounts), a hairline between them,
-    /// the selected model checked; under them, the benchmarks link.
+    /// the selected model checked.
     static func modelContent(_ menus: ModelMenus, usage: [String: AccountUsage]) -> PickerContent {
         var lines: [Line] = []
         func block() { if !lines.isEmpty { lines.append(.separator) } }
@@ -177,7 +177,6 @@ enum ModelPickers {
         }
         return PickerContent(
             id: "picker-models", label: Strings.selectModel, lines: lines,
-            footer: [.separator, .link(key: "benchmarks", label: Strings.latestBenchmarks)],
             minWidth: PickerMetrics.modelsMinWidth, maxWidth: PickerMetrics.modelsMaxWidth
         )
     }
@@ -269,8 +268,8 @@ enum ModelPickers {
 
     // MARK: Picks
 
-    /// What a pick makes the mode; nil leaves it as it is (the benchmarks
-    /// link, a key that isn't a pick).
+    /// What a pick makes the mode; nil leaves it as it is (a key that
+    /// isn't a pick).
     static func pick(_ key: String, menus: ModelMenus, catalog: ModelCatalog) -> AgentWire.Mode? {
         let parts = key.split(separator: "\t", maxSplits: 1).map(String.init)
         guard parts.count == 2, let kind = Kind(rawValue: parts[0]) else { return nil }
@@ -296,12 +295,9 @@ enum ModelPickers {
         }
     }
 
-    static let benchmarks = URL(string: "https://happy.engineering/model-benchmarks")!
-
-    /// A pick from a list or the "+" sheet's menu: the benchmarks link
-    /// opens, anything else that changes the mode comes back as the new one.
+    /// A pick from a list or the "+" sheet's menu: one that changes the
+    /// mode comes back as the new one.
     static func choose(_ key: String, state: ModelState, mode: AgentWire.Mode?, onPick: (AgentWire.Mode) -> Void) {
-        if key == "benchmarks" { return UIApplication.shared.open(benchmarks) }
         guard let catalog = state.catalog, let mode else { return }
         let menus = ModelMenus(catalog: catalog, selection: mode)
         if let next = pick(key, menus: menus, catalog: catalog), next != mode { onPick(next) }

@@ -188,7 +188,7 @@ final class UsageGaugeView: UIView {
 }
 
 /// One line of a panel: a model, effort or account with its check in the
-/// column before its name, a service's heading, the benchmarks link, a
+/// column before its name, a service's heading, a
 /// notice, a hairline, or an account's windows. Names, the link and notices
 /// start past the check's column, as a menu's titles; headings and windows
 /// keep to its leading edge, as a menu's section titles.
