@@ -16,6 +16,11 @@ final class HomeAccountControl: NSObject {
     var opensSettings: (() -> Void)? {
         didSet { update(accounts) }
     }
+    /// Items the screen keeps at the bar's left, before the picture.
+    var leading: [UIBarButtonItem] = [] {
+        didSet { if let item { place(item) } }
+    }
+    private var item: UIBarButtonItem?
 
     init(context: AppContext, controller: UIViewController) {
         self.context = context; self.controller = controller
@@ -58,7 +63,12 @@ final class HomeAccountControl: NSObject {
         item.isEnabled = multiple
         item.accessibilityLabel = opensSettings != nil ? Strings.openSettings : multiple ? "Switch account" : "Happy"
         item.accessibilityIdentifier = opensSettings != nil ? "settings-mark" : nil
-        controller?.navigationItem.leftBarButtonItem = item
+        self.item = item
+        place(item)
+    }
+
+    private func place(_ item: UIBarButtonItem) {
+        controller?.navigationItem.leftBarButtonItems = leading + [item]
     }
 
     @objc private func open() {
