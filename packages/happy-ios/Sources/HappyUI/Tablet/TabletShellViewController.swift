@@ -42,7 +42,7 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
     private var isTablet = false
     private var showsShell = false
     private var zenMode = false
-    private var popGesture: TabletPopGestureDelegate?
+    private(set) var swipeBack: SwipeBackController?
 
     public init(context: AppContext, detail: UINavigationController) {
         self.context = context
@@ -66,7 +66,7 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
         view.addSubview(detail.view)
         detail.didMove(toParent: self)
         detail.delegate = self
-        popGesture = TabletPopGestureDelegate(navigation: detail)
+        swipeBack = SwipeBackController(navigation: detail)
         header.isHidden = true
         header.zenButton.addAction(UIAction { [weak self] _ in self?.toggleZen() }, for: .touchUpInside)
         header.backButton.addAction(UIAction { [weak self] _ in self?.goBack() }, for: .touchUpInside)
@@ -76,7 +76,7 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
     /// AppCoordinator calls this after it replaces the stack's root: sign
     /// in, sign out, an account switch, the server confirmation.
     func rootDidChange() {
-        let session = detail.viewControllers.first is HomeViewController ? context.account.session : nil
+        let session = detail.viewControllers.first is LegacyHomeViewController ? context.account.session : nil
         // A new language builds the sidebar again too, as the root was.
         if session !== self.session || language != AppLocalization.language {
             self.session = session
@@ -148,7 +148,6 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
         if isTablet != self.isTablet {
             self.isTablet = isTablet
             traitOverrides.isTabletLayout = isTablet
-            popGesture?.isTablet = isTablet
         }
         if isTablet, sidebar == nil, let session {
             installSidebar(for: session)
@@ -205,17 +204,26 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
         update()
     }
 
-    /// A screen with its own way in and out (new work from home's dock)
-    /// brings it; every other one slides as UIKit's does.
+    /// The finger's pop is Telegram's; a screen with its own way in and out
+    /// (new work from home's dock) brings it; every other one slides as
+    /// UIKit's does.
     public func navigationController(
         _ navigationController: UINavigationController, animationControllerFor operation: UINavigationController.Operation,
         from fromVC: UIViewController, to toVC: UIViewController
     ) -> (any UIViewControllerAnimatedTransitioning)? {
+        if operation == .pop, let interaction = swipeBack?.interaction { return SwipeBackAnimator(interaction: interaction) }
         switch operation {
-        case .push: (toVC as? NavigationTransitionProviding)?.navigationTransition(.push, other: fromVC)
-        case .pop: (fromVC as? NavigationTransitionProviding)?.navigationTransition(.pop, other: toVC)
-        default: nil
+        case .push: return (toVC as? NavigationTransitionProviding)?.navigationTransition(.push, other: fromVC)
+        case .pop: return (fromVC as? NavigationTransitionProviding)?.navigationTransition(.pop, other: toVC)
+        default: return nil
         }
+    }
+
+    public func navigationController(
+        _ navigationController: UINavigationController,
+        interactionControllerFor animationController: any UIViewControllerAnimatedTransitioning
+    ) -> (any UIViewControllerInteractiveTransitioning)? {
+        animationController is SwipeBackAnimator ? swipeBack?.interaction : nil
     }
 
     // MARK: Header
@@ -235,37 +243,4 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
     }
 }
 
-/// Keeps the edge swipe back on a tablet. Screens with happy-app's plain
-/// header hide their back button there (`dropsBackButtonOnTablet`), and
-/// UIKit stops the swipe for a screen without one; react-native-screens'
-/// stack keeps it. On a tablet the swipe may begin whenever there is
-/// something to go back to and no transition is running. Everything else,
-/// and every decision off a tablet, is UIKit's own delegate's.
-final class TabletPopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
-    var isTablet = false
-    private weak var navigation: UINavigationController?
-    nonisolated(unsafe) private weak var system: (any UIGestureRecognizerDelegate)?
-
-    init(navigation: UINavigationController) {
-        self.navigation = navigation
-        system = navigation.interactivePopGestureRecognizer?.delegate
-        super.init()
-        navigation.interactivePopGestureRecognizer?.delegate = self
-    }
-
-    func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
-        if isTablet, let navigation {
-            return navigation.viewControllers.count > 1 && navigation.transitionCoordinator == nil
-        }
-        return system?.gestureRecognizerShouldBegin?(gesture) ?? true
-    }
-
-    nonisolated override func responds(to selector: Selector!) -> Bool {
-        super.responds(to: selector) || system?.responds(to: selector) == true
-    }
-
-    nonisolated override func forwardingTarget(for selector: Selector!) -> Any? {
-        system?.responds(to: selector) == true ? system : super.forwardingTarget(for: selector)
-    }
-}
 #endif
