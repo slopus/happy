@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.tailcat</groupId>
+  <artifactId>tailcat-kotlin</artifactId>
+  <version>0.1.0-a08de5c</version>
+  <description>slopus/tailcat-kotlin a08de5ceb3cbe564cd3243a7d4ba2634aa25bba6, JVM variant</description>
+  <licenses><license><name>BSD-3-Clause</name></license></licenses>
+</project>

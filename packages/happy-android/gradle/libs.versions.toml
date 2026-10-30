@@ -21,6 +21,8 @@ bouncycastle = "1.86"
 play-services-code-scanner = "16.1.0"
 play-review = "2.0.2"
 zxing = "3.5.4"
+# slopus/tailcat-kotlin at a pinned commit, built into vendor/maven by tools/tailcat/build.sh.
+tailcat = "0.1.0-a08de5c"
 firebase-messaging = "25.0.1"
 coil = "3.6.3"
 revenuecat = "10.28.1"
@@ -61,6 +63,7 @@ androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", vers
 play-review = { module = "com.google.android.play:review", version.ref = "play-review" }
 play-services-code-scanner = { module = "com.google.android.gms:play-services-code-scanner", version.ref = "play-services-code-scanner" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+tailcat = { module = "io.tailcat:tailcat-kotlin", version.ref = "tailcat" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }

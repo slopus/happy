@@ -696,6 +696,39 @@ interface (200 until reported, capped at 600). Where there is no WebView
 MarkdownView's code block shows instead; layout tests see the code block
 unless they provide `true`.
 
+## Happy Protocol V2
+
+A computer paired straight to the phone. The source of truth is happy-agent's
+`API.md`, "Mobile connector" (pairing, credentials, the QR code); iOS's port
+is `packages/happy-ios` (`ProtocolV2*`). The wire keeps its own names
+(`happy://direct?`, `/v0/mobile-connector/…`).
+
+- **Pairing crypto** (`crypto/ProtocolV2Pairing.kt`): X25519, the
+  length-prefixed transcript, HKDF-SHA-256 keys, HMAC confirmations and the
+  333-emoji table (`resources/protocolv2/emoji.txt`, copied from API.md).
+  `ProtocolV2PairingTest` pins API.md's vectors and the table's SHA-256.
+- **Link, handshake, identity** (`app/…/protocolv2/`):
+  `ProtocolV2PairingLink` validates the code (a malformed `happy://direct?`
+  never falls back to relay approval); `ProtocolV2PairingService` commits,
+  reveals, returns the emoji and on confirm waits for the computer and
+  checks its MAC before anything is kept; `ProtocolV2Identity` reads health
+  (protocol 27 or later) and `config.node`.
+- **Transport** (`TailcatProtocolV2Transport`): tailcat-kotlin, one client
+  per computer and a fresh TCP stream to `server.tailcat:<port>` per
+  HTTP/1.1 request, framed by `ProtocolV2HttpParser`. It uses upstream
+  Tailcat's DERP map (`https://tailcat.dev/derpmap.json`); tailcat-kotlin's
+  default (Tailscale's map) has none of Happy Agent's relay regions.
+- **tailcat-kotlin** has no published artifact. `tools/tailcat/build.sh`
+  builds its pinned commit's JVM jar (the same sources as its Android
+  variant) into `vendor/maven`, which `settings.gradle.kts` reads for the
+  `io.tailcat` group only; the catalog pins the version. When it is
+  published, switch the catalog and delete both.
+- **Live check:** `ProtocolV2LivePairingTest` pairs with a real Happy Agent
+  when `HAPPY_PROTOCOL_V2_LINK` holds a fresh code, writes the emoji for the
+  person confirming on the computer, then reads health and config with the
+  new device token over a new tunnel. Remove the test device on the
+  computer afterwards.
+
 ## Autocomplete
 
 `@` file mentions and `/` commands in the chat composer. Logic is in

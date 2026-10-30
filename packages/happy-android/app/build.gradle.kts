@@ -345,6 +345,7 @@ dependencies {
     // expo-camera's launchScanner does on Android; ZXing's encoder draws them.
     implementation(libs.play.services.code.scanner)
     implementation(libs.zxing.core)
+    implementation(libs.tailcat)
 
     // The review ask (utils/requestReview.ts): expo-store-review's Play in-app review.
     implementation(libs.play.review)
