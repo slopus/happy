@@ -60,6 +60,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var motionScript: ChatMotionScript?
     private var qaReal: ChatUltraQAReal?
     private var stories: StoriesHarness?
+    private var homeControllerScroll: HomeControllerScrollHarness?
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -71,6 +72,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         let arguments = ProcessInfo.processInfo.arguments
         #if DEBUG || HAPPY_FIXTURES
+        if arguments.contains("-fullHomeScroll") {
+            homeControllerScroll = HomeControllerScrollHarness(window: window)
+            return
+        }
         if arguments.contains("-qaRealChat") {
             qaReal = ChatUltraQAReal(window: window)
             return
