@@ -132,6 +132,7 @@ vi.mock('@/hooks/useWorktreeCleanup', () => ({ maybeCleanupWorktree: vi.fn() }))
 vi.mock('@/hooks/useHappyAction', () => ({ useHappyAction: (action: unknown) => [false, action] }));
 vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: () => ({}) }));
 vi.mock('@/hooks/useProjectWorktree', () => ({ useWorktreeTabSuccessor: () => null }));
+vi.mock('@/hooks/useNavigateToSession', () => ({ navigateToSession: vi.fn() }));
 vi.mock('@/utils/copySessionMetadataToClipboard', () => ({
     copySessionMetadataToClipboard: vi.fn(), copySessionMetadataAndLogsToClipboard: vi.fn(),
 }));
