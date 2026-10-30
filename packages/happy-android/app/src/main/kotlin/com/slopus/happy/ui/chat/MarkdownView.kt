@@ -51,7 +51,7 @@ import com.slopus.happy.chat.markdown.tokenizeCode
 import com.slopus.happy.ui.components.MarkdownImage
 import com.slopus.happy.ui.components.MermaidView
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.delay
 import androidx.compose.ui.text.SpanStyle as ComposeSpanStyle
@@ -89,8 +89,8 @@ object MarkdownSpec {
     val codeRadius = 8.dp
     val codeMarginVertical = 8.dp
     val codePadding = 16.dp
-    val codeLanguage = happyTextStyle(fontSize = 12, family = PlexMono)
-    val codeText = happyTextStyle(fontSize = 14, lineHeight = 20, family = PlexMono)
+    val codeLanguage = happyTextStyle(fontSize = 12, family = AppMono)
+    val codeText = happyTextStyle(fontSize = 14, lineHeight = 20, family = AppMono)
     val copyButtonText = happyTextStyle(fontSize = 12, lineHeight = 16)
     val ruleMargin = 8.dp
     val optionGap = 8.dp
@@ -191,7 +191,7 @@ fun spansToAnnotatedString(spans: List<MarkdownSpan>): AnnotatedString = buildAn
         val style = ComposeSpanStyle(
             fontWeight = if (SpanStyle.Bold in span.styles || SpanStyle.Semibold in span.styles) FontWeight.SemiBold else null,
             fontStyle = if (SpanStyle.Italic in span.styles) FontStyle.Italic else null,
-            fontFamily = if (SpanStyle.Code in span.styles) PlexMono else null,
+            fontFamily = if (SpanStyle.Code in span.styles) AppMono else null,
         )
         val url = span.url
         if (url != null && isHttpMarkdownLink(url)) {

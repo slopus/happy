@@ -45,7 +45,7 @@ import com.slopus.happy.ui.diff.DiffFileHeader
 import com.slopus.happy.ui.diff.DiffFileSummary
 import com.slopus.happy.ui.diff.diffPalette
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
@@ -133,7 +133,7 @@ private fun PatchFileCard(file: String, change: PatchEntry, env: MessageDetailEn
                 ),
             )
             if (movePath != null) {
-                Text(movePath, style = happyTextStyle(fontSize = 12, family = PlexMono), color = palette.textSecondary, modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 9.dp))
+                Text(movePath, style = happyTextStyle(fontSize = 12, family = AppMono), color = palette.textSecondary, modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 9.dp))
             }
         }
         diff.first?.let { DiffChunk(it, showLineNumbers = env.showLineNumbers) }

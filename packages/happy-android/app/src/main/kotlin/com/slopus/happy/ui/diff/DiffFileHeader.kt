@@ -28,7 +28,7 @@ import com.slopus.happy.diff.FileChangeKind
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.files.FileIcon
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 
 /** What a file header shows: a built [DiffFile] has it, and so does a git-status entry (`DiffFileSummary`). */
@@ -42,10 +42,10 @@ data class DiffFileSummary(val path: String, val kind: FileChangeKind, val addit
 private val RnFontPadding = PlatformTextStyle(includeFontPadding = true)
 
 object DiffHeaderSpec {
-    val dir = happyTextStyle(fontSize = 12, family = PlexMono)
-    val name = TextStyle(fontFamily = PlexMono, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, platformStyle = RnFontPadding)
-    val badge = TextStyle(fontFamily = PlexMono, fontWeight = FontWeight.SemiBold, fontSize = 10.5.sp, platformStyle = RnFontPadding)
-    val stat = happyTextStyle(fontSize = 12, family = PlexMono)
+    val dir = happyTextStyle(fontSize = 12, family = AppMono)
+    val name = TextStyle(fontFamily = AppMono, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, platformStyle = RnFontPadding)
+    val badge = TextStyle(fontFamily = AppMono, fontWeight = FontWeight.SemiBold, fontSize = 10.5.sp, platformStyle = RnFontPadding)
+    val stat = happyTextStyle(fontSize = 12, family = AppMono)
 }
 
 /**

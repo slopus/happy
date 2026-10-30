@@ -102,7 +102,7 @@ class ToolLayoutTest {
     fun diffGutterWidth() {
         show(tool("Write", """{"file_path":"/repo/a.kt","content":"a\nb"}"""), ToolEnvironment(showLineNumbers = true))
         val gutter = rule.node(DiffTags.GUTTER).bounds
-        // Plex Mono is 0.6 em; the measured advance rounds to whole pixels, so allow one dp.
+        // The system monospace is 0.6 em; the measured advance rounds to whole pixels, so allow one dp.
         val expected = kotlin.math.ceil(4 * 12 * 0.6f) + 12
         val width = (gutter.right - gutter.left).value
         assertTrue("gutter $width", width >= expected - 0.5f && width <= expected + 1.5f)

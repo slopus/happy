@@ -38,7 +38,7 @@ import com.slopus.happy.diff.DiffSpan
 import com.slopus.happy.diff.SpanEmphasis
 import com.slopus.happy.diff.SpanKind
 import com.slopus.happy.diff.SplitRow
-import com.slopus.happy.ui.theme.PlexSans
+import com.slopus.happy.ui.theme.AppSans
 import com.slopus.happy.ui.theme.happyTextStyle
 
 private val messageStyle = happyTextStyle(fontSize = 13)
@@ -112,7 +112,7 @@ internal fun DiffRowCode(row: DiffRow, palette: DiffPalette, metrics: DiffMetric
         }
         is DiffRow.Message -> Text(
             text = messageText(row),
-            style = metrics.code.copy(fontFamily = PlexSans),
+            style = metrics.code.copy(fontFamily = AppSans),
             color = palette.textSecondary,
             maxLines = 1,
             softWrap = false,

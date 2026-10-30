@@ -35,7 +35,7 @@ import com.slopus.happy.ui.chat.rememberToolText
 import com.slopus.happy.ui.diff.DarkSyntaxColors
 import com.slopus.happy.ui.diff.SyntaxText
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.serialization.json.JsonObject
 
@@ -102,8 +102,8 @@ private fun CommandView(
 ) {
     val chat = ChatTheme.colors
     val dark = HappyTheme.colors.dark
-    val commandStyle = happyTextStyle(fontSize = 14, lineHeight = 20, family = PlexMono)
-    val outputStyle = happyTextStyle(fontSize = 13, lineHeight = 18, family = PlexMono)
+    val commandStyle = happyTextStyle(fontSize = 14, lineHeight = 20, family = AppMono)
+    val outputStyle = happyTextStyle(fontSize = 13, lineHeight = 18, family = AppMono)
     Column(
         Modifier
             .fillMaxWidth()

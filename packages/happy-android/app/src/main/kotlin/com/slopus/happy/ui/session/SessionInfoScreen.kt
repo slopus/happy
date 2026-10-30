@@ -34,7 +34,7 @@ import com.slopus.happy.ui.components.TitleAlignment
 import com.slopus.happy.ui.components.confirm
 import com.slopus.happy.ui.home.ArchiveResult
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -79,7 +79,7 @@ object SessionInfoSpec {
     val yellow = Color(0xFFFFCC00)
     val icon = 29.dp
     val changesIcon = 26.dp
-    val code = happyTextStyle(fontSize = 12, lineHeight = 18, family = PlexMono)
+    val code = happyTextStyle(fontSize = 12, lineHeight = 18, family = AppMono)
     const val UPDATE_COMMAND = "npm install -g happy@latest"
 }
 

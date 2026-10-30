@@ -22,7 +22,7 @@ import com.slopus.happy.text.pluralResource
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 
 object DiffHeaderRightTags {
@@ -73,7 +73,7 @@ fun DiffHeaderRight(
             .semantics { contentDescription = label }
             .padding(horizontal = 8.dp, vertical = 3.dp),
     ) {
-        Text("\u00B7\u2192", style = happyTextStyle(fontSize = 13, family = PlexMono), color = if (ignoreWhitespace) colors.text else colors.textSecondary)
+        Text("\u00B7\u2192", style = happyTextStyle(fontSize = 13, family = AppMono), color = if (ignoreWhitespace) colors.text else colors.textSecondary)
     }
     if (fileCount != null) {
         Text(

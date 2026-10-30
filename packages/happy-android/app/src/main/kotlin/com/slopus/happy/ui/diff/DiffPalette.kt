@@ -15,7 +15,7 @@ import com.slopus.happy.diff.DiffLayout
 import com.slopus.happy.diff.DiffLineType
 import com.slopus.happy.diff.SpanKind
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.RnLineHeightStyle
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -128,7 +128,7 @@ fun diffPalette(): DiffPalette {
 @Immutable
 data class DiffMetrics(val fontSize: Float, val lineHeight: Dp, val charWidth: Dp) {
     /** Mono at [fontSize], every line [lineHeight] high. */
-    val code: TextStyle get() = TextStyle(fontFamily = PlexMono, fontSize = fontSize.sp, lineHeight = lineHeight.value.sp, lineHeightStyle = RnLineHeightStyle)
+    val code: TextStyle get() = TextStyle(fontFamily = AppMono, fontSize = fontSize.sp, lineHeight = lineHeight.value.sp, lineHeightStyle = RnLineHeightStyle)
 
     /** Line numbers and hunk headers: one size down, same line height. */
     val small: TextStyle get() = code.copy(fontSize = (fontSize - 1).sp)

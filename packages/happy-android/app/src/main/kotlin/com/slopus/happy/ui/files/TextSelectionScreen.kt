@@ -35,7 +35,7 @@ import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import java.util.UUID
 
@@ -118,7 +118,7 @@ fun TextSelectionScreen(text: String?, onBack: () -> Unit, onCopy: () -> Unit) {
                 SelectionContainer {
                     Text(
                         text,
-                        style = happyTextStyle(fontSize = 14, lineHeight = 20, family = PlexMono),
+                        style = happyTextStyle(fontSize = 14, lineHeight = 20, family = AppMono),
                         color = colors.text,
                         modifier = Modifier
                             .fillMaxWidth()

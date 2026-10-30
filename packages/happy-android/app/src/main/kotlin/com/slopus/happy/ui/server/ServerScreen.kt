@@ -38,7 +38,7 @@ import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.StackHeader
 import com.slopus.happy.ui.components.TitleAlignment
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.launch
 
@@ -67,7 +67,7 @@ object ServerSpec {
     val buttonsTop = 4.dp
     val buttonsBottom = 12.dp
     val label = happyTextStyle(fontSize = 12, letterSpacing = 0.5f, weight = FontWeight.SemiBold)
-    val input = happyTextStyle(fontSize = 15, family = PlexMono)
+    val input = happyTextStyle(fontSize = 15, family = AppMono)
     val message = happyTextStyle(fontSize = 12)
 }
 

@@ -16,7 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 
 sealed interface TerminalLine {
@@ -46,7 +46,7 @@ object TerminalBlockSpec {
     val borderWidth = 1.dp
     val paddingVertical = 14.dp
     val paddingHorizontal = 18.dp
-    val line = happyTextStyle(fontSize = 14, lineHeight = 24, family = PlexMono)
+    val line = happyTextStyle(fontSize = 14, lineHeight = 24, family = AppMono)
     const val PROMPT = "$ "
 }
 

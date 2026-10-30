@@ -48,7 +48,7 @@ import com.slopus.happy.ui.components.PromptModal
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.home.formatLocaleDateTime
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -75,8 +75,8 @@ object MachineSpec {
     val stop = Color(0xFFFF9500)
     val delete = Color(0xFFFF3B30)
     val chevron = Color(0xFFC7C7CC)
-    val mono13 = happyTextStyle(fontSize = 13, lineHeight = 20, family = PlexMono)
-    val mono12 = happyTextStyle(fontSize = 12, lineHeight = 20, family = PlexMono)
+    val mono13 = happyTextStyle(fontSize = 13, lineHeight = 20, family = AppMono)
+    val mono12 = happyTextStyle(fontSize = 12, lineHeight = 20, family = AppMono)
     val cliStatus = happyTextStyle(fontSize = 14)
     val rename = 24.dp
     const val RECENT_SESSIONS = 5

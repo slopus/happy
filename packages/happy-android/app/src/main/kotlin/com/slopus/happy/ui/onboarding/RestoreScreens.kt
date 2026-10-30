@@ -41,7 +41,7 @@ import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.StackHeader
 import com.slopus.happy.ui.components.TitleAlignment
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 
 object RestoreTags {
@@ -77,7 +77,7 @@ object RestoreSpec {
     val inputRadius = 12.dp
     val inputMinHeight = 120.dp
     val inputGap = 24.dp
-    val input = happyTextStyle(fontSize = 15, lineHeight = 22, family = PlexMono)
+    val input = happyTextStyle(fontSize = 15, lineHeight = 22, family = AppMono)
 }
 
 /**

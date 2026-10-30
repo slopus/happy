@@ -57,7 +57,7 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import java.text.DateFormat
 import java.util.Date
@@ -110,7 +110,7 @@ object MessageSpec {
     val chipPaddingVertical = 2.dp
     val chipRadius = 10.dp
     const val CHIP_OPACITY = 0.65f
-    val chipText = happyTextStyle(fontSize = 13, family = PlexMono)
+    val chipText = happyTextStyle(fontSize = 13, family = AppMono)
     val agentMarginHorizontal = 16.dp
     val agentMarginVertical = 10.dp
     val copyHeight = 20.dp

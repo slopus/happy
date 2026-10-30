@@ -56,7 +56,7 @@ import com.slopus.happy.ui.components.StackHeader
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -191,7 +191,7 @@ private val DarkFileDiff = FileDiffColors(c(0x0D2E1F), c(0x3FB950), c(0xC9D1D9),
 /** theme.ts `glass.border`, the native bars' hairline. */
 private fun glassBorder(dark: Boolean) = if (dark) Color(1f, 1f, 1f, 0.14f) else Color(1f, 1f, 1f, 0.82f)
 
-private val codeStyle = happyTextStyle(fontSize = 14, lineHeight = 20, family = PlexMono)
+private val codeStyle = happyTextStyle(fontSize = 14, lineHeight = 20, family = AppMono)
 
 /**
  * session/[id]/file.tsx, header "File Viewer" with back. While loading: a
@@ -284,7 +284,7 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
         ) {
             FileIcon(filePath.substringAfterLast('/').ifEmpty { filePath }, 20.dp)
             val label = if (requested != null) "$filePath:$requested${column?.takeIf { it > 0 }?.let { ":$it" }.orEmpty()}" else filePath
-            Text(label, style = happyTextStyle(fontSize = 14, family = PlexMono), color = colors.textSecondary, modifier = Modifier.padding(start = 8.dp).weight(1f))
+            Text(label, style = happyTextStyle(fontSize = 14, family = AppMono), color = colors.textSecondary, modifier = Modifier.padding(start = 8.dp).weight(1f))
         }
         if (load.diff != null) {
             Row(

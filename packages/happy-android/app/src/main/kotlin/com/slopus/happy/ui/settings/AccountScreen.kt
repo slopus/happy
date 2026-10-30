@@ -52,7 +52,7 @@ import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.StackHeader
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
+import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -72,7 +72,7 @@ object AccountSpec {
     val secretLabelGap = 10.dp
     val secretIcon = 18.dp
     val secretLabel = happyTextStyle(fontSize = 11, letterSpacing = 0.5f, weight = FontWeight.SemiBold)
-    val secretText = happyTextStyle(fontSize = 13, lineHeight = 20, letterSpacing = 0.5f, family = PlexMono)
+    val secretText = happyTextStyle(fontSize = 13, lineHeight = 20, letterSpacing = 0.5f, family = AppMono)
     val copiedGreen = Color(0xFF34C759)
 }
 
