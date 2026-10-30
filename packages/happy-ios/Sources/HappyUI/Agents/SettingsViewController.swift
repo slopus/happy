@@ -186,6 +186,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         navigationItem.searchController = searchController
         navigationItem.hidesSearchBarWhenScrolling = false
         navigationItem.preferredSearchBarPlacement = .integratedButton
+        // In the bar at the top, not iOS 26's toolbar at the bottom.
+        if #available(iOS 26.0, *) { navigationItem.searchBarPlacementAllowsToolbarIntegration = false }
         definesPresentationContext = true
     }
 
