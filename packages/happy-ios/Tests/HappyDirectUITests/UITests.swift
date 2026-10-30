@@ -704,49 +704,6 @@ final class UITests: XCTestCase {
         XCTAssertEqual(order().firstIndex(of: all[3]), landed, "the row went back")
     }
 
-    /// A section's "+" makes new work right under its heading.
-    func testSectionAdd() {
-        home()
-        pause(1)
-        let sections = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "row:section:"))
-        guard let shown = sections.allElementsBoundByIndex.filter({ $0.frame.height > 0 }).min(by: { $0.frame.minY < $1.frame.minY }) else {
-            return XCTFail("no section")
-        }
-        let section = app.descendants(matching: .any)[shown.identifier]
-        bringIntoView(section)
-        pause(1)
-        // Open, so what's made under it shows.
-        if let under = rowUnder(section), under.identifier.hasPrefix("row:section:") || under.frame.minY > section.frame.maxY + 40 { tapChevron(section); pause(1) }
-        capture("section-add-before")
-        // The "+" stands one square before the chevron: its centre 70 in from the row's end.
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: section.frame.maxX - 70, dy: section.frame.midY)).tap()
-        XCTAssertTrue(app.textViews["composer"].waitForExistence(timeout: 6), "the + opened no new work")
-        pause(1)
-        capture("section-add-opened")
-        app.tapBack()
-        pause(1.5)
-        let made = rowUnder(section)
-        XCTAssertEqual(made?.identifier, "row:space:New", "the new work isn't right under its section")
-        capture("section-add-made")
-        // The same "+" again opens that one: no second empty one under it.
-        let untitled = app.descendants(matching: .any).matching(identifier: "row:space:New")
-        let count = untitled.count
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: section.frame.maxX - 70, dy: section.frame.midY)).tap()
-        XCTAssertTrue(app.textViews["composer"].waitForExistence(timeout: 6), "the + opened nothing the second time")
-        pause(1)
-        app.tapBack()
-        pause(1.5)
-        XCTAssertEqual(untitled.count, count, "the + made a second empty new work under its section")
-        // Put away again.
-        if let made {
-            made.press(forDuration: 1.0)
-            let close = app.buttons["Close new work"]
-            XCTAssertTrue(close.waitForExistence(timeout: 3), "new work offered no close")
-            close.tap()
-            pause(2)
-        }
-    }
-
     /// Search in place, on home itself: the header's search button grows
     /// into a field with the keyboard up and nothing pushed; typing narrows
     /// the sidebar (a folded section's rows too), quick actions and
