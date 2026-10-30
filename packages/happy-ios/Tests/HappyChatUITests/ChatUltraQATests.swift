@@ -1344,7 +1344,46 @@ final class ChatUltraQATests: XCTestCase {
         app.navigationBars.allElementsBoundByIndex.filter { $0.exists && $0.frame.height > 20 && $0.frame.maxY > 0 }
     }
 
-    /// Home floats its own header with no bar, a chat has the bar in
+    /// The legacy home's filter item has a label and no identifier yet.
+    private static let homeFilterLabel = "Filter"
+
+    /// Home's own bar (`HeaderBar`), as its owner states it: one bar, the
+    /// account switcher alone on the left, and filter, compose and
+    /// settings on the right, settings outermost (`HeaderBar.Trailing`,
+    /// emitted reversed). Home is the root, so nothing sits left of the
+    /// switcher: no back button. Home floated a header of its own with no
+    /// bar until 2621dfe58, which is what this clip used to require.
+    ///
+    /// A phone's contract only. A window at least 768 points wide is a
+    /// tablet layout, whose blank root beside the sidebar is changing in
+    /// the header work: it is recorded as not judged, not asserted.
+    private func requireHomeBar(_ when: String) {
+        guard app.windows.firstMatch.frame.width < 768 else {
+            covered("Home's bar \(when)", "not judged: tablet layout")
+            return
+        }
+        let bars = shownBars()
+        require("Home has its one bar \(when)", bars.count == 1, "\(bars.count) bars")
+        guard bars.count == 1, let bar = bars.first else { return }
+        let items = [
+            ("account-switcher", bar.buttons["account-switcher"]),
+            ("filter", bar.buttons[Self.homeFilterLabel]),
+            ("compose", bar.buttons["compose"]),
+            ("settings", bar.buttons["settings"]),
+        ]
+        let missing = items.filter { !$0.1.exists }.map(\.0)
+        require("Home's bar has the switcher, filter, compose and settings \(when)", missing.isEmpty, "missing \(missing)")
+        guard missing.isEmpty else { return }
+        let xs = items.map { $0.1.frame.midX }
+        require("Home's bar reads switcher, filter, compose, settings from the left \(when)",
+                zip(xs, xs.dropFirst()).allSatisfy { $0 < $1 }, "\(zip(items.map(\.0), xs).map { "\($0) \(Int($1))" })")
+        let switcher = items[0].1.frame
+        let lefter = bar.buttons.allElementsBoundByIndex.filter { $0.exists && $0.frame.width > 0 && $0.frame.maxX <= switcher.minX + 0.5 }
+        require("nothing left of the switcher on Home's bar \(when)", lefter.isEmpty,
+                "\(lefter.map { "\($0.identifier.isEmpty ? $0.label : $0.identifier) \($0.frame)" })")
+    }
+
+    /// Home has its own bar (`requireHomeBar`), a chat has the bar in
     /// portrait, and Settings has the ordinary bar. In landscape a chat has
     /// no bar on a phone layout; a window at least 768 points wide is a
     /// tablet layout (`TabletBreakpoint`), where the chat beside the sidebar
@@ -1362,7 +1401,7 @@ final class ChatUltraQATests: XCTestCase {
         launchHome(clip: "n1-bar")
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 20))
         Thread.sleep(forTimeInterval: 1)
-        require("Home has no navigation bar", shownBars().isEmpty, "\(shownBars().count) bars")
+        requireHomeBar("at launch")
         screenshot("01-home")
 
         let target = row("Scroll indicator")
@@ -1387,7 +1426,7 @@ final class ChatUltraQATests: XCTestCase {
         screenshot("03-chat-after-attempted-cancelled-swipe")
 
         backToHome()
-        require("Home has no bar again after the chat", shownBars().isEmpty, "\(shownBars().count) bars")
+        requireHomeBar("back from the chat")
         screenshot("04-home-again")
 
         app.buttons["Settings"].tap()
@@ -1397,7 +1436,7 @@ final class ChatUltraQATests: XCTestCase {
         settings.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 10))
         Thread.sleep(forTimeInterval: 0.8)
-        require("Home has no bar after Settings", shownBars().isEmpty, "\(shownBars().count) bars")
+        requireHomeBar("back from Settings")
 
         mark("rotate landscape")
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -1424,7 +1463,7 @@ final class ChatUltraQATests: XCTestCase {
         require("the chat has its bar back in portrait", shownBars().count == 1, "\(shownBars().map { $0.frame })")
         screenshot("08-chat-portrait-again")
         backToHome()
-        require("Home has no bar after the rotated chat", shownBars().isEmpty, "\(shownBars().count) bars")
+        requireHomeBar("back from the rotated chat")
         attach("\(clip) openings", "\(state()["opens"] ?? [])")
         attach("\(clip) first visual responses", "\(state()["firstVisuals"] ?? [])")
     }
