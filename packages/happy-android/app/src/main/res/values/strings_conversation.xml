@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Conversations with a paired Happy Agent (ui/conversation). Not in
+  happy-app's catalogs; English only, as iOS's are.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="conversation_compose">New chat</string>
+    <string name="conversation_details">Chat details</string>
+    <string name="conversation_connecting">Connecting…</string>
+    <string name="conversation_offline">Offline</string>
+    <string name="conversation_revoked">This device was removed</string>
+    <string name="conversation_update_required">Update required</string>
+    <string name="conversation_unavailable">This agent connection is not available on this device.</string>
+    <string name="conversation_empty_new">Send a message to start a new task.</string>
+    <string name="conversation_empty">No messages yet.</string>
+    <string name="conversation_read_only">This conversation is driven by another agent and can\'t take messages.</string>
+    <string name="conversation_archived">This conversation is archived.</string>
+    <string name="conversation_activity_awaiting_answer">Waiting for your answer</string>
+    <string name="conversation_activity_waiting_for_model">Waiting for the model…</string>
+    <string name="conversation_activity_thinking">Thinking…</string>
+    <string name="conversation_activity_preparing_tools">Preparing tools…</string>
+    <string name="conversation_activity_running_tools">Running tools…</string>
+    <string name="conversation_activity_working">Working…</string>
+    <string name="conversation_activity_delegating">Subtasks are working</string>
+    <string name="conversation_sending">Sending…</string>
+    <string name="conversation_pending">Waiting for the agent</string>
+    <string name="conversation_not_sent">Not sent: %1$s</string>
+    <string name="conversation_thinking">Thinking</string>
+    <string name="conversation_tool_running">Running</string>
+    <string name="conversation_tool_failed">Failed</string>
+    <string name="conversation_from_agent">From another agent</string>
+    <string name="conversation_failure_resolved">Retried</string>
+    <string name="conversation_compacting">Compacting the conversation…</string>
+    <string name="conversation_compacted">Conversation compacted</string>
+    <string name="conversation_compaction_failed">Compaction failed</string>
+    <string name="conversation_artifact">Artifact</string>
+    <string name="conversation_artifact_unavailable">Open it in Happy Agent on your computer.</string>
+    <string name="conversation_file_unavailable">Files open in Happy Agent on your computer.</string>
+    <string name="conversation_video_unavailable">Videos play in Happy Agent on your computer.</string>
+    <string name="conversation_picture_failed">Couldn\'t load this picture.</string>
+    <string name="conversation_question">Question</string>
+    <string name="conversation_permission">Permission request</string>
+    <string name="conversation_permission_from">%1$s asks for permission</string>
+    <string name="conversation_answer">Answer</string>
+    <string name="conversation_answer_placeholder">Your answer</string>
+    <string name="conversation_secret_unavailable">This asks for a secret. Answer it in Happy Agent on your computer.</string>
+    <string name="conversation_load_failed">Couldn\'t load this conversation</string>
+    <string name="conversation_close">Close</string>
+    <string name="conversation_details_title">Title</string>
+    <string name="conversation_details_status">Status</string>
+    <string name="conversation_details_model">Model</string>
+    <string name="conversation_details_effort">Effort</string>
+    <string name="conversation_details_permission_mode">Permission mode</string>
+    <string name="conversation_details_created">Created</string>
+    <string name="conversation_details_updated">Updated</string>
+    <string name="conversation_details_subtasks">Subtasks</string>
+    <string name="conversation_details_subtasks_value">%1$d running of %2$d</string>
+    <string name="conversation_details_agent_id">Agent ID</string>
+    <string name="conversation_details_workspace_id">Workspace ID</string>
+    <string name="conversation_details_parent">Started by another agent</string>
+    <string name="conversation_details_copied">Copied</string>
+    <string name="conversation_details_conversation">Conversation</string>
+    <string name="conversation_details_identifiers">Identifiers</string>
+    <string name="conversation_status_idle">Idle</string>
+    <string name="conversation_status_working">Working</string>
+    <string name="conversation_untitled">New Task</string>
+</resources>
