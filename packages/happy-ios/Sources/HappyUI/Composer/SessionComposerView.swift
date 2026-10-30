@@ -58,9 +58,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
                 guard let self else { return }
                 self.agentInputCard(self.card, didSelect: key, in: .permission)
             }
-            elements.append(UIMenu(title: configuration.accessibilityLabel, children: permissions.children))
+            elements.append(UIMenu(title: configuration.accessibilityLabel, identifier: .init("chat-permissions"), children: permissions.children))
         }
-        elements.append(UIAction(title: Strings.Home.details) { _ in onInfo() })
+        let details = UIAction(title: Strings.Home.details) { _ in onInfo() }
+        details.accessibilityIdentifier = "chat-info"
+        elements.append(details)
         return elements
     }
 

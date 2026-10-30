@@ -130,6 +130,7 @@ extension UIMenu {
                         state: option.isChecked || option.key == model.selectedKey ? .on : .off
                     ) { _ in onSelect(option.key) }
                     action.subtitle = option.subtitle
+                    action.accessibilityIdentifier = option.key
                     return action
                 })
             }
