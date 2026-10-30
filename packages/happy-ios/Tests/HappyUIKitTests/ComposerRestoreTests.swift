@@ -117,6 +117,67 @@ final class ComposerRestoreTests: XCTestCase {
         XCTAssertEqual(screen.restores, [0], "once")
     }
 
+    func testLegacyHeaderKeepsEveryPermissionModeAndPersistsActualMenuPicks() async throws {
+        let account = try account(drafts: ["s": "kept draft"])
+        let composer = measuredComposer("s", account)
+        composer.update(ChatComposerState(session: ChatSessionState(record: session("s"), settings: AccountSettings())))
+        _ = composer.composerHeight(fitting: 393)
+        try await until { composer.isRestored }
+        let card = try card(composer)
+        card.setText("kept draft", selection: NSRange(location: 2, length: 4))
+        let host = UIView(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        composer.frame = CGRect(x: 0, y: 600, width: 393, height: composer.composerHeight(fitting: 393))
+        host.addSubview(composer)
+        composer.layoutIfNeeded()
+        XCTAssertTrue(composer.hasPermissionMenu)
+        XCTAssertNil(card.layoutInput(width: 393).permission)
+        let keys = try XCTUnwrap(card.configuration.permission?.menu).sections.flatMap(\.options).map(\.key)
+        XCTAssertEqual(Set(keys), ["auto", "acceptEdits", "plan", "bypassPermissions", "default"])
+
+        func descendants<T: UIView>(_ type: T.Type, in view: UIView) -> [T] {
+            (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(type, in: $0) }
+        }
+        func tap(_ id: String) throws {
+            let control = try XCTUnwrap(descendants(UIControl.self, in: host).first { $0.accessibilityIdentifier == id })
+            control.sendActions(for: .touchUpInside)
+        }
+        var details = 0
+        func open() {
+            composer.presentChatMenu(in: host, anchor: { CGRect(x: 340, y: 62, width: 44, height: 44) }, onInfo: { details += 1 })
+        }
+        for key in keys {
+            open()
+            try tap("picker-row:chip:0")
+            let panel = try XCTUnwrap(descendants(PickerPanelView.self, in: host).first { $0.accessibilityIdentifier == "chat-permissions" })
+            let offered = panel.content?.lines.compactMap { line -> String? in
+                if case .option(let key, _, _, let disabled, _) = line, !disabled { return key }
+                return nil
+            }
+            XCTAssertEqual(offered, keys)
+            try tap("picker-row:\(key)")
+            XCTAssertFalse(descendants(PickerPanelView.self, in: host).contains { $0.accessibilityIdentifier == "chat-permissions" })
+            var stored: String?
+            for _ in 0..<1000 where stored != key {
+                stored = try await Task.detached { try account.store.composerState(sessionId: "s").values["permissionMode"]?.stringValue }.value
+                if stored != key { try await Task.sleep(for: .milliseconds(10)) }
+            }
+            XCTAssertEqual(stored, key, "header selection uses the existing session mode writer")
+            open()
+            try tap("picker-row:chip:0")
+            let reopened = try XCTUnwrap(descendants(PickerPanelView.self, in: host).first { $0.accessibilityIdentifier == "chat-permissions" })
+            XCTAssertTrue(reopened.content?.lines.contains { line in
+                if case .option(let selected, _, true, false, _) = line { return selected == key }
+                return false
+            } == true)
+            composer.closeChatMenu()
+            XCTAssertEqual(card.text, "kept draft")
+            XCTAssertEqual(card.selectedRange, NSRange(location: 2, length: 4))
+        }
+        open()
+        try tap("picker-row:chat-info")
+        XCTAssertEqual(details, 1, "the former avatar's Details action remains reachable")
+    }
+
     func testARestoreHeldAcrossARetargetIsTheNewChats() async throws {
         let screen = Screen()
         let account = try account(drafts: ["s": "old\nold\nold\nold", "t": "new"])
