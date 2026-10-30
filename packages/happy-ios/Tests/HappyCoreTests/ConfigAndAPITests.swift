@@ -54,6 +54,25 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertEqual(unreachable, .unreachable)
     }
 
+    func testServerProbeAcceptsASelfHostedServerServingTheWebApp() async {
+        let http = FakeHTTP()
+        let probe = ServerProbe(transport: http)
+        let url = URL(string: "https://happy.example.com")!
+        http.onRaw("GET ", "<!DOCTYPE html><html><body>Happy</body></html>")
+        http.onRaw("GET /health", #"{"status":"ok","timestamp":"2026-10-30T00:00:00.000Z","service":"happy-server"}"#)
+        let selfHosted = await probe.check(url)
+        XCTAssertEqual(selfHosted, .ok)
+        XCTAssertEqual(http.requests("GET /health").count, 1)
+
+        http.onRaw("GET /health", #"{"status":"ok","service":"something-else"}"#)
+        let otherService = await probe.check(url)
+        XCTAssertEqual(otherService, .notHappyServer)
+
+        http.onRaw("GET /health", "not json")
+        let notJSON = await probe.check(url)
+        XCTAssertEqual(notJSON, .notHappyServer)
+    }
+
     func testAppVariantsUseTheRNBundleIds() {
         XCTAssertEqual(AppVariant.development.bundleIdentifier, "com.slopus.happy.dev")
         XCTAssertEqual(AppVariant.preview.bundleIdentifier, "com.slopus.happy.preview")

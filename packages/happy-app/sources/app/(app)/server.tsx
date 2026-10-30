@@ -20,6 +20,7 @@ import {
     setUseCustomServerForVoice,
     shouldUseCustomServerForVoice,
 } from '@/sync/serverConfig';
+import { probeHappyServer } from '@/sync/serverProbe';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -100,28 +101,15 @@ export default function ServerConfigScreen() {
             setIsValidating(true);
             setError(null);
             
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/plain'
-                }
-            });
-            
-            if (!response.ok) {
+            const result = await probeHappyServer(url);
+            if (result === 'serverError') {
                 setError(t('server.serverReturnedError'));
-                return false;
-            }
-            
-            const text = await response.text();
-            if (!text.includes('Welcome to Happy Server!')) {
+            } else if (result === 'notHappyServer') {
                 setError(t('server.notValidHappyServer'));
-                return false;
+            } else if (result === 'unreachable') {
+                setError(t('server.failedToConnectToServer'));
             }
-            
-            return true;
-        } catch (err) {
-            setError(t('server.failedToConnectToServer'));
-            return false;
+            return result === 'ok';
         } finally {
             setIsValidating(false);
         }
