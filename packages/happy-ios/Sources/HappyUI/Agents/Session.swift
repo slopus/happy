@@ -25,8 +25,15 @@ final class Session {
     let warm: WarmChats
     private(set) var snapshot = Snapshot()
     private var watchers: [UUID: (Snapshot) -> Void] = [:]
-    private var following: Task<Void, Never>?
+    /// Readable, not settable, so a test can say the follow was let go of
+    /// rather than take `stop`'s word for it.
+    private(set) var following: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
+
+    /// The notifications this session watches for, for the same reason.
+    /// Nothing adds to it today; it is emptied by `stop` all the same, so
+    /// that anything added later is covered by the same teardown.
+    var watchedCount: Int { observers.count }
 
     private static var sessions: [String: Session] = [:]
 

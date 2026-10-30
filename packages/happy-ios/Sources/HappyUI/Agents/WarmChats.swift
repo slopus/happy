@@ -128,9 +128,20 @@ final class WarmChats {
         stopped = true
         stopAll()
         path.cancel()
+        // Cancelling asks the monitor to stop; dropping the handler is what
+        // makes certain nothing of ours is called again, and it is the part
+        // of a cancelled monitor that can be read back.
+        path.pathUpdateHandler = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
     }
+
+    /// What `stop` is meant to have let go of, readable so a test can say
+    /// so rather than trust the flag: the notifications watched for, the
+    /// conversations held, and whether the path monitor can still call in.
+    var watchedCount: Int { observers.count }
+    var warmedCount: Int { chats.count }
+    var listensToPath: Bool { path.pathUpdateHandler != nil }
 
     /// Low Data Mode, Low Power Mode, a hot phone or a memory warning.
     private var constrained: Bool {
