@@ -1,13 +1,16 @@
 package com.slopus.happy.ui.home
 
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -38,6 +41,11 @@ class HomeListScope(
     val navigation: HomeNavigation,
     /** The phone home's new-session dock; null in the tablet sidebar. */
     val dock: NewSessionDock?,
+    /**
+     * Where the list sits, held above the host so the breakpoint's swap of
+     * phone list for sidebar list keeps the reader's place.
+     */
+    val listState: LazyListState,
 )
 
 /**
@@ -54,6 +62,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val local by graph.localSettings.values.collectAsStateWithLifecycle()
     val connection by graph.connectionStatus.collectAsStateWithLifecycle()
+    val registry by graph.accountStore.registry.collectAsStateWithLifecycle()
     val updateUrl by services.updateUrl.collectAsStateWithLifecycle()
     val resources = LocalResources.current
     val latestChangelog = remember(resources) { Changelog.bundled(resources).latestTitle }
@@ -145,8 +154,22 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
         )
     }
 
+    // The breakpoint swaps this host for the sidebar's and back, taking the list with it, so the
+    // place it was at is kept in the services and the rebuilt list opens there (SessionScreenSlots'
+    // tab strip does the same). Keyed by account: switching never lands on another account's place.
+    val accountKey = registry.activeId.orEmpty()
+    val listState = remember(accountKey) {
+        val saved = services.homeListOffsets[accountKey]
+        LazyListState(saved?.first ?: 0, saved?.second ?: 0)
+    }
+    LaunchedEffect(listState, accountKey) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .distinctUntilChanged()
+            .collect { services.homeListOffsets[accountKey] = it }
+    }
+
     ProvideAvatarSettings(settings) {
-        content(HomeListScope(state, connection, settings.sessionListGrouping, callbacks, actions, update, navigation, dock))
+        content(HomeListScope(state, connection, settings.sessionListGrouping, callbacks, actions, update, navigation, dock, listState))
     }
     dock?.dialogs?.invoke()
     duplicating?.let { session ->

@@ -224,6 +224,14 @@ class HomeServices private constructor(private val graph: AppGraph) {
     /** Where each checkout's tab strip was scrolled to (first item, offset), across the screens that show it. */
     val stripOffsets = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
 
+    /**
+     * Where home's list sits, by account. The tablet shell swaps the phone's
+     * host for the sidebar's at the breakpoint, which throws the list away, so
+     * the anchor is kept out here and the rebuilt list starts from it. Keyed by
+     * account so one never opens on another's place.
+     */
+    val homeListOffsets = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
+
     private var pendingChatStarter: PendingChatStarter? = null
 
     /** The tab strip's `+`, starting with the new-session [SessionStarter] one start at a time. */

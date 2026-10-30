@@ -112,6 +112,7 @@ fun NavGraphBuilder.homeRoutes(
                     dock = host.dock?.state,
                     dockActions = host.dock?.actions,
                     accounts = rememberAccountMenu(graph),
+                    listState = host.listState,
                 )
             }
         }

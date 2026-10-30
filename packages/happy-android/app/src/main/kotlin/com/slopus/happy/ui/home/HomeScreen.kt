@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -140,13 +142,14 @@ fun HomeScreen(
     dock: HomeDockState? = null,
     dockActions: HomeDockActions? = null,
     accounts: AccountMenu = AccountMenu(),
+    listState: LazyListState = rememberLazyListState(),
 ) {
     if (state?.showsInstallStep == true) {
         Box(modifier = modifier.fillMaxSize().testTag(HomeTags.LINK)) { linkContent() }
         return
     }
     Box(modifier = modifier.fillMaxSize()) {
-        HomeContent(state, connectionStatus, accounts, callbacks, actions, update, offlineContent, dock, dockActions)
+        HomeContent(state, connectionStatus, accounts, callbacks, actions, update, offlineContent, dock, dockActions, listState)
         if (dock != null && dockActions != null && dock.focused) HomeDockFocus(dock, dockActions)
     }
 }
@@ -162,6 +165,7 @@ private fun HomeContent(
     offlineContent: @Composable (computers: List<String>, onShowArchived: (() -> Unit)?) -> Unit,
     dock: HomeDockState?,
     dockActions: HomeDockActions?,
+    listState: LazyListState,
 ) {
     val colors = HappyTheme.colors
     Column(modifier = Modifier.fillMaxSize().background(colors.grouped.background)) {
@@ -190,6 +194,7 @@ private fun HomeContent(
                     actions,
                     update,
                     contentTop = HomeSpec.contentTop,
+                    listState = listState,
                     bottomSpacer = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).height(HomeDockSpec.contentInset)) },
                 )
             }
@@ -284,10 +289,12 @@ fun HomeList(
     contentTop: Dp,
     bottomSpacer: @Composable () -> Unit,
     selectedSessionId: String? = null,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val colors = HappyTheme.colors
     val flat = state.grouping == SessionListGrouping.Flat
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .background(if (flat) flatListBackground(colors) else colors.grouped.background)
