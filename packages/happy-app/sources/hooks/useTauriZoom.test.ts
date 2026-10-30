@@ -12,3 +12,14 @@ describe('useTauriZoom browser defaults', () => {
         expect(getBrowserAppZoomValue()).toBe('1');
     });
 });
+
+describe('browser page height', () => {
+    it('sizes the zoomed body to the visible viewport, not the toolbar-hidden one', async () => {
+        const { readFileSync } = await import('node:fs');
+        const css = readFileSync(new URL('../theme.css', import.meta.url), 'utf8');
+        const rule = css.match(/html\.happy-app-zoomed body \{([^}]*)\}/)?.[1] ?? '';
+        const heights = [...rule.matchAll(/height:\s*([^;]+);/g)].map((m) => m[1].trim());
+        // The last declaration wins; 100vh before it is the fallback for browsers without dvh.
+        expect(heights.at(-1)).toBe('calc(100dvh / var(--happy-app-zoom))');
+    });
+});
