@@ -2,6 +2,7 @@
 import HappyCore
 import HappyLayout
 import UIKit
+import UltraView
 
 /// The window's root: SidebarNavigator.tsx. It holds the app's one
 /// navigation stack (AppCoordinator's) and, on a tablet-wide window, the
@@ -245,13 +246,16 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
 /// on the screen included. Only when it may begin is decided here.
 final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
     private weak var navigation: UINavigationController?
-    nonisolated(unsafe) private weak var system: (any UIGestureRecognizerDelegate)?
+    private weak var edgeSystem: (any UIGestureRecognizerDelegate)?
+    private weak var contentSystem: (any UIGestureRecognizerDelegate)?
 
     init(navigation: UINavigationController) {
         self.navigation = navigation
-        system = navigation.interactivePopGestureRecognizer?.delegate
+        edgeSystem = navigation.interactivePopGestureRecognizer?.delegate
+        if #available(iOS 26.0, *) { contentSystem = navigation.interactiveContentPopGestureRecognizer?.delegate }
         super.init()
         navigation.interactivePopGestureRecognizer?.delegate = self
+        if #available(iOS 26.0, *) { navigation.interactiveContentPopGestureRecognizer?.delegate = self }
     }
 
     /// The edge or content swipe is under the finger now.
@@ -264,15 +268,75 @@ final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
 
     func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
         guard let navigation else { return false }
-        return navigation.viewControllers.count > 1 && navigation.transitionCoordinator == nil
+        var begins = navigation.viewControllers.count > 1 && navigation.transitionCoordinator == nil
+        if #available(iOS 26.0, *), gesture === navigation.interactiveContentPopGestureRecognizer {
+            // Unlike the edge recognizer, the content pan can begin anywhere.
+            // Leave vertical scrolling and the opposite direction to content.
+            let velocity = (gesture as? UIPanGestureRecognizer)?.velocity(in: navigation.view) ?? .zero
+            let leading = navigation.view.effectiveUserInterfaceLayoutDirection == .rightToLeft ? -velocity.x : velocity.x
+            begins = begins && leading > abs(velocity.y)
+        }
+        return begins
     }
 
-    nonisolated override func responds(to selector: Selector!) -> Bool {
-        super.responds(to: selector) || system?.responds(to: selector) == true
+    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if isContent(gesture), Self.hasHorizontalContent(above: touch.view) { return false }
+        let result = system(for: gesture)?.gestureRecognizer?(gesture, shouldReceive: touch) ?? true
+        return result
     }
 
-    nonisolated override func forwardingTarget(for selector: Selector!) -> Any? {
-        system?.responds(to: selector) == true ? system : super.forwardingTarget(for: selector)
+    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldReceive event: UIEvent) -> Bool {
+        let result = system(for: gesture)?.gestureRecognizer?(gesture, shouldReceive: event) ?? true
+        return result
+    }
+
+    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        // UIKit knows its scroll-view pans, but UltraList's physics pan is a
+        // regular pan that also begins for horizontal motion. It must wait
+        // for the native pop rather than race it.
+        if let navigation, navigation.viewControllers.count > 1,
+           other is UIPanGestureRecognizer, let view = other.view,
+           let top = navigation.topViewController?.viewIfLoaded, view.isDescendant(of: top) {
+            if gesture === navigation.interactivePopGestureRecognizer { return true }
+            if isContent(gesture), !Self.hasHorizontalContent(above: view), Self.isScrollPan(other) { return true }
+        }
+        let result = system(for: gesture)?.gestureRecognizer?(gesture, shouldBeRequiredToFailBy: other) ?? false
+        return result
+    }
+
+    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldRequireFailureOf other: UIGestureRecognizer) -> Bool {
+        let result = system(for: gesture)?.gestureRecognizer?(gesture, shouldRequireFailureOf: other) ?? false
+        return result
+    }
+
+    private func isContent(_ gesture: UIGestureRecognizer) -> Bool {
+        if #available(iOS 26.0, *) { return gesture === navigation?.interactiveContentPopGestureRecognizer }
+        return false
+    }
+
+    /// Forward only UIKit's public delegate decisions. Advertising all of
+    /// its private selectors makes the replacement delegate look like the
+    /// internal transition object, and the native swipes stop receiving touches.
+    private func system(for gesture: UIGestureRecognizer) -> (any UIGestureRecognizerDelegate)? {
+        isContent(gesture) ? contentSystem : edgeSystem
+    }
+
+    private static func isScrollPan(_ gesture: UIGestureRecognizer) -> Bool {
+        if let scroll = gesture.view as? UIScrollView { return gesture === scroll.panGestureRecognizer }
+        return (gesture.view?.superview as? UltraScrollView)?.contentView === gesture.view
+    }
+
+    static func hasHorizontalContent(above view: UIView?) -> Bool {
+        var ancestor = view
+        while let current = ancestor {
+            if current is HorizontalListView { return true }
+            if let scroll = current as? UIScrollView,
+               scroll.isScrollEnabled, scroll.contentSize.width > scroll.bounds.width + 1 {
+                return true
+            }
+            ancestor = current.superview
+        }
+        return false
     }
 }
 #endif

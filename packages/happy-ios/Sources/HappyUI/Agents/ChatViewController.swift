@@ -370,6 +370,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        #if DEBUG
+        probe?.observePop()
+        #endif
         // Leaving keeps a name being typed, as a tap away does.
         titleView.finishEditing()
         picker?.close(animated: false)
@@ -2002,6 +2005,10 @@ extension ChatViewController {
         private var heldWrites = 0
         private var keyboardFrames = 0
         private var keyboardGap: CGFloat = 0
+        private var edgeSamples = 0
+        private var contentSamples = 0
+        private var edgeTranslation: CGFloat = 0
+        private var contentTranslation: CGFloat = 0
         private let started = CACurrentMediaTime()
 
         @MainActor init(_ screen: ChatViewController, relayout: Bool) {
@@ -2024,8 +2031,27 @@ extension ChatViewController {
                 keyboardFrames += 1
                 keyboardGap = max(keyboardGap, abs(top - screen.card.frame.maxY - 8))
             }
-            report()
+            observePop()
             watch()
+            report()
+        }
+
+        /// Public recognizer motion while UIKit has an interactive transition.
+        /// A cancelled drag must have entered this state, beyond merely leaving
+        /// the chat visible after a gesture that never started.
+        @MainActor func observePop() {
+            guard let screen, screen.transitionCoordinator?.isInteractive == true,
+                  let navigation = screen.navigationController else { return }
+            var gestures = [(navigation.interactivePopGestureRecognizer, false)]
+            if #available(iOS 26.0, *) { gestures.append((navigation.interactiveContentPopGestureRecognizer, true)) }
+            for (gesture, content) in gestures {
+                guard let pan = gesture as? UIPanGestureRecognizer, pan.state == .began || pan.state == .changed else { continue }
+                let x = pan.translation(in: navigation.view).x
+                let leading = navigation.view.effectiveUserInterfaceLayoutDirection == .rightToLeft ? -x : x
+                guard leading > 0 else { continue }
+                if content { contentSamples += 1; contentTranslation = max(contentTranslation, leading) }
+                else { edgeSamples += 1; edgeTranslation = max(edgeTranslation, leading) }
+            }
         }
 
         @MainActor func wrote(_ what: String, _ value: CGFloat) {
@@ -2059,7 +2085,31 @@ extension ChatViewController {
             guard let screen else { return }
             let scroll = screen.scrollView
             let bottom = screen.ultra.map { CGFloat($0.list.contentInsets.top) } ?? scroll.contentInset.bottom
-            (screen.ultra?.list ?? scroll).accessibilityValue = "\(screen.timing) stretched=\(stretchedFrames) backwards=\(backwards) held=\(heldWrites) top=\(Int(scroll.contentInset.top)) bottom=\(bottom) keyboardFrames=\(keyboardFrames) keyboardGap=\(keyboardGap) guide=\(screen.keyboardTracker.frame.minY) cardBottom=\(screen.card.frame.maxY)"
+            (screen.ultra?.list ?? scroll).accessibilityValue = "\(screen.timing) stretched=\(stretchedFrames) backwards=\(backwards) held=\(heldWrites) top=\(Int(scroll.contentInset.top)) bottom=\(bottom) keyboardFrames=\(keyboardFrames) keyboardGap=\(keyboardGap) guide=\(screen.keyboardTracker.frame.minY) cardBottom=\(screen.card.frame.maxY) popEdge=\(edgeSamples) popContent=\(contentSamples) popEdgeX=\(edgeTranslation) popContentX=\(contentTranslation)\(horizontalScrollers())"
+        }
+
+        @MainActor private func horizontalScrollers() -> String {
+            guard let screen, let window = screen.view.window else { return "" }
+            let card = screen.card.convert(screen.card.bounds, to: window)
+            let top = screen.view.convert(CGPoint(x: 0, y: screen.view.safeAreaInsets.top), to: window).y
+            let visible = CGRect(x: 0, y: top, width: window.bounds.width, height: max(0, card.minY - top))
+            var fitting: String?
+            var wide: String?
+            func visit(_ view: UIView) {
+                guard !view.isHidden, view.alpha > 0 else { return }
+                if let scroller = view as? ChatScrollerView, !scroller.vertical {
+                    let frame = scroller.convert(scroller.bounds, to: window).intersection(visible)
+                    if !frame.isNull, frame.width > 20, frame.height > 10 {
+                        let value = String(format: "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f", frame.minX, frame.minY, frame.width, frame.height,
+                                           scroller.contentOffset.x, scroller.contentSize.width, scroller.bounds.width)
+                        if scroller.contentSize.width > scroller.bounds.width + 1 { wide = wide ?? value }
+                        else { fitting = fitting ?? value }
+                    }
+                }
+                for child in view.subviews { visit(child) }
+            }
+            visit(screen.ultra?.list ?? screen.scrollView)
+            return " hFit=\(fitting ?? "none") hWide=\(wide ?? "none")"
         }
     }
 }
