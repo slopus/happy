@@ -267,6 +267,12 @@ export function useSessionQuickActions(
                 onAfterArchive?.();
                 return;
             }
+            if (session.metadata?.codexThreadId) {
+                const result = await sessionArchive(session.id);
+                if (!result.success) throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+                onAfterArchive?.();
+                return;
+            }
             await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
 
             // Try to kill the CLI process; if it's already dead, force-archive via server

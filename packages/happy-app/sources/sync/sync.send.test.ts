@@ -80,6 +80,7 @@ beforeEach(async () => {
         getActiveSessions: () => [],
         applySessions: (sessions: any[]) => { for (const session of sessions) mocks.state.sessions[session.id] = session; },
         markSessionMessageSent: vi.fn(),
+        deleteSession: vi.fn((id: string) => { delete mocks.state.sessions[id]; }),
     };
     engine = new (sync.constructor as any)();
     engine.credentials = { token: 'test-only', secret: 'test-only' };
@@ -101,6 +102,51 @@ afterEach(() => {
 });
 
 describe('first message session hydration', () => {
+    it('hydrates sessions beyond the first page', async () => {
+        const first = await sessionRecord('first');
+        const older = await sessionRecord('older');
+        fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [first], nextCursor: 'cursor_v1_first' }) })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [older], nextCursor: null }) });
+        await engine.fetchSessions();
+        expect(Object.keys(mocks.state.sessions).sort()).toEqual(['first', 'older']);
+        expect(fetchMock.mock.calls[1][0]).toContain('cursor=cursor_v1_first');
+        expect(engine.encryption.getSessionEncryption('older')).toBeTruthy();
+    });
+
+    it('removes an offline deleted copy after a complete paginated catalog refresh', async () => {
+        mocks.state.sessions.deleted = { id: 'deleted' };
+        const kept = await sessionRecord('kept');
+        fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [], nextCursor: 'next' }) })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [kept], nextCursor: null }) });
+        await engine.fetchSessions();
+        expect(mocks.state.deleteSession).toHaveBeenCalledWith('deleted');
+        expect(Object.keys(mocks.state.sessions)).toEqual(['kept']);
+    });
+
+    it('keeps local records when pagination fails or the legacy catalog is truncated', async () => {
+        const stale = { id: 'stale' }; mocks.state.sessions.stale = stale;
+        fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [], nextCursor: 'next' }) })
+            .mockRejectedValueOnce(new Error('offline'));
+        await expect(engine.fetchSessions()).rejects.toThrow('offline');
+        expect(mocks.state.deleteSession).not.toHaveBeenCalled();
+        fetchMock.mockResolvedValueOnce({ ok: false, status: 404 })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [] }) });
+        await engine.fetchSessions();
+        expect(mocks.state.sessions.stale).toBe(stale);
+        expect(mocks.state.deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('preserves a live replacement received during the catalog fetch', async () => {
+        mocks.state.sessions.live = { id: 'live', updatedAt: 1 };
+        fetchMock.mockImplementation(async () => {
+            mocks.state.sessions.live = { id: 'live', updatedAt: 2 };
+            return { ok: true, json: async () => ({ sessions: [] }) };
+        });
+        await engine.fetchSessions();
+        expect(mocks.state.sessions.live.updatedAt).toBe(2);
+        expect(mocks.state.deleteSession).not.toHaveBeenCalled();
+    });
+
     it.each([false, true])('sends a new top-of-list session despite an unrelated corrupt record (legacy=%s)', async (legacy) => {
         const target = await sessionRecord('new-session', legacy);
         const unrelated = { ...await sessionRecord('old-session'), metadata: 'not valid base64!' };
