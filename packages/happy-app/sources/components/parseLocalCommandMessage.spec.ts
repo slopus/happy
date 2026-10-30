@@ -128,8 +128,8 @@ describe('isUserSlashCommandEcho', () => {
         expect(isUserSlashCommandEcho('/compact', false)).toBe(false);
     });
 
-    it('detects a trailing command echo with a localId', () => {
-        expect(isUserSlashCommandEcho('привет давай /maintain', true)).toBe(true);
+    it('does not suppress a mid-message command echo (no SDK wrapper replaces it)', () => {
+        expect(isUserSlashCommandEcho('привет давай /maintain', true)).toBe(false);
     });
 
     it('does not treat the SDK wrapper itself as a raw echo', () => {
