@@ -43,6 +43,8 @@ data class ConversationState(
     val rows: List<ConversationRow> = emptyList(),
     val hasMore: Boolean = false,
     val loadingOlder: Boolean = false,
+    /** The last page of older history failed; it waits for Retry rather than asking again by itself. */
+    val olderFailed: Boolean = false,
     val agent: AgentInfo? = null,
     val mode: Mode? = null,
     val working: Boolean = false,
@@ -201,12 +203,12 @@ class Conversation(
         if (visible) markRead()
     }
 
-    /** Runs older than the first one shown. */
-    fun loadOlder() {
+    /** Runs older than the first one shown. After a failure only [retry] (Retry) asks again. */
+    fun loadOlder(retry: Boolean = false) {
         scope.launch(lane) {
             val first = runs.firstOrNull()?.first ?: return@launch
-            if (!snapshot.hasMore || snapshot.loadingOlder || held != null) return@launch
-            publish { it.copy(loadingOlder = true) }
+            if (!snapshot.hasMore || snapshot.loadingOlder || held != null || (snapshot.olderFailed && !retry)) return@launch
+            publish { it.copy(loadingOlder = true, olderFailed = false) }
             try {
                 val page = api.messages(agentId, before = first)
                 if (runs.firstOrNull()?.first == first) {
@@ -219,7 +221,7 @@ class Conversation(
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                publish { it.copy(loadingOlder = false) }
+                publish { it.copy(loadingOlder = false, olderFailed = true) }
             }
         }
     }

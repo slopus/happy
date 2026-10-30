@@ -25,6 +25,7 @@ private class FakeAgent {
     var bootstrap = """{"agent":{"id":"a1","workspaceId":"w1","status":"idle","title":"Fix it"},"mode":$MODE,"draft":{"value":null,"updatedAt":null},"pending":[]}"""
     var page = """{"runs":[],"hasMore":false}"""
     var failSends = 0
+    var failOlder = false
     var sendStatus = 202
 
     val request: AgentRequest = { method, path, body ->
@@ -33,6 +34,7 @@ private class FakeAgent {
         when {
             route == "/v0/tasks" -> ok("""{"task":{"id":${(body as JsonObject)["id"]},"agent":{"id":"${(body as JsonObject)["agentId"]!!.toString().trim('"')}","workspaceId":"w","status":"idle"}},"membership":{}}""")
             route.endsWith("/bootstrap") -> ok(bootstrap)
+            route.endsWith("/messages") && failOlder && "before=" in path -> TransportResponse(503, body = "{}".toByteArray())
             route.endsWith("/messages") -> ok(page)
             route.endsWith("/send") && failSends > 0 -> { failSends--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/send") -> TransportResponse(sendStatus, body = """{"error":"Unknown model.","code":"invalid_request"}""".toByteArray())
@@ -107,6 +109,27 @@ class ConversationTest {
         signals.emit(event("message.delta", """{"agentId":"a1","runId":"r1","messageId":"m","blockIndex":0,"offset":9,"append":"x"}"""))
         advanceUntilIdle()
         assertEquals(reads + 1, agent.paths("GET").count { it.endsWith("/bootstrap") })
+    }
+
+    @Test fun `a failed older page waits for Retry`() = runTest {
+        val agent = FakeAgent()
+        agent.page = """{"runs":[{"id":"r2","status":"completed","messages":[{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{}}]}],"hasMore":true}"""
+        agent.failOlder = true
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.loadOlder()
+        advanceUntilIdle()
+        assertTrue(chat.state.value.olderFailed)
+        val asked = agent.requests.count { "before=" in it.second }
+        chat.loadOlder()
+        advanceUntilIdle()
+        assertEquals(asked, agent.requests.count { "before=" in it.second })
+        agent.failOlder = false
+        agent.page = """{"runs":[{"id":"r1","status":"completed","messages":[{"id":"o","role":"user","createdAt":0,"content":[{"type":"text","text":"Older"}],"metadata":{}}]}],"hasMore":false}"""
+        chat.loadOlder(retry = true)
+        advanceUntilIdle()
+        assertFalse(chat.state.value.olderFailed)
+        assertEquals(listOf("m:user", "o:user"), chat.state.value.rows.map { it.key })
     }
 
     @Test fun `grow follows the API's delta rules`() {

@@ -183,7 +183,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                 onDiscardSend = conversation::discardSend,
                 onRetryFailure = conversation::retryFailure,
                 onAnswer = conversation::answer,
-                onLoadOlder = conversation::loadOlder,
+                onLoadOlder = { retry -> conversation.loadOlder(retry) },
                 loadMedia = conversation::media,
                 onVisible = conversation::setVisible,
             )

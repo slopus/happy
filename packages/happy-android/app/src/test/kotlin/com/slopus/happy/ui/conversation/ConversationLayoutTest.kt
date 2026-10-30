@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.conversation.Activity
@@ -185,6 +186,16 @@ class ConversationLayoutTest {
             assertEquals("dark=$dark", content, header)
             shot(if (dark) "header-dark" else "header-light")
         }
+    }
+
+    @Test fun `a failed older page shows Retry`() {
+        val asks = ArrayList<Boolean>()
+        show(ConversationState(created = true, loaded = true, rows = history, agent = agent, hasMore = true, olderFailed = true), actions = ConversationScreenActions(onLoadOlder = { asks += it }))
+        rule.node(ConversationScreenTags.LIST).performScrollToNode(androidx.compose.ui.test.hasTestTag(ConversationScreenTags.OLDER))
+        rule.node(ConversationScreenTags.OLDER_FAILED).assertIsDisplayed()
+        shot("older-failed")
+        rule.node(ConversationScreenTags.OLDER_RETRY).performClick()
+        assertEquals(listOf(true), asks)
     }
 
     @Test fun `a subagent can't take messages`() {

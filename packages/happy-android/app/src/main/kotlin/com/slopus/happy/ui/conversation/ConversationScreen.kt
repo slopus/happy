@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.conversation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
@@ -64,6 +66,8 @@ object ConversationScreenTags {
     const val ERROR = "conversation.error"
     const val READ_ONLY = "conversation.readOnly"
     const val OLDER = "conversation.older"
+    const val OLDER_FAILED = "conversation.older.failed"
+    const val OLDER_RETRY = "conversation.older.retry"
     const val COMPOSE = "conversation.header.compose"
     const val DETAILS = "conversation.header.details"
 }
@@ -91,7 +95,8 @@ class ConversationScreenActions(
     val onDiscardSend: (String) -> Unit = {},
     val onRetryFailure: (String) -> Unit = {},
     val onAnswer: suspend (questionId: String, answers: Map<String, List<String>>) -> Unit = { _, _ -> },
-    val onLoadOlder: () -> Unit = {},
+    /** Older history; `retry` after a failed page (Retry), which nothing else asks again. */
+    val onLoadOlder: (retry: Boolean) -> Unit = {},
     val loadMedia: suspend (MediaRef) -> ByteArray = { throw IllegalStateException() },
     val onOpenArtifact: ((String) -> Unit)? = null,
     /** The newest message is on screen while the app is up: unread clears. */
@@ -111,7 +116,10 @@ class ConversationScreenActions(
  * (blue dot pulsing while the agent works, orange while it waits on an
  * answer). Stop takes the round button while the agent works and the
  * composer is empty. A subagent or archived chat has no composer, a 14/20
- * textSecondary line in its place. Before history is read a 24 spinner
+ * textSecondary line in its place. Past the oldest row a 32 slot: a 16
+ * spinner while a page loads; after a failed page "Couldn't load earlier
+ * messages." (13/18 textSecondary) and Retry (13/18 semibold, link
+ * colour), 12 apart, and nothing asks again until Retry. Before history is read a 24 spinner
  * sits centred; a new chat and an empty one say so in 16/24 textSecondary,
  * 32 in; a chat that could not be read says why the same way.
  */
@@ -253,7 +261,7 @@ private fun Transcript(
     listState: androidx.compose.foundation.lazy.LazyListState,
     bubble: com.slopus.happy.ui.chat.BubblePalette,
     actions: ConversationRowActions,
-    onLoadOlder: () -> Unit,
+    onLoadOlder: (retry: Boolean) -> Unit,
 ) {
     val nearOldest by remember {
         derivedStateOf {
@@ -263,8 +271,8 @@ private fun Transcript(
         }
     }
     val loadOlder by rememberUpdatedState(onLoadOlder)
-    LaunchedEffect(nearOldest, state.hasMore, state.loadingOlder) {
-        if (nearOldest && state.hasMore && !state.loadingOlder) loadOlder()
+    LaunchedEffect(nearOldest, state.hasMore, state.loadingOlder, state.olderFailed) {
+        if (nearOldest && state.hasMore && !state.loadingOlder && !state.olderFailed) loadOlder(false)
     }
     LazyColumn(
         state = listState,
@@ -277,7 +285,25 @@ private fun Transcript(
         }
         item(key = "older", contentType = "older") {
             Box(Modifier.fillMaxWidth().heightIn(min = ConversationScreenSpec.olderSlot).testTag(ConversationScreenTags.OLDER), contentAlignment = Alignment.Center) {
-                if (state.loadingOlder) CircularProgressIndicator(Modifier.size(16.dp), color = HappyTheme.colors.textSecondary, strokeWidth = 2.dp)
+                when {
+                    state.loadingOlder -> CircularProgressIndicator(Modifier.size(16.dp), color = HappyTheme.colors.textSecondary, strokeWidth = 2.dp)
+                    state.olderFailed -> Row(
+                        Modifier.padding(vertical = 8.dp).testTag(ConversationScreenTags.OLDER_FAILED),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(stringResource(R.string.conversation_older_failed), style = ConversationRowSpec.notice, color = HappyTheme.colors.textSecondary)
+                        Text(
+                            stringResource(R.string.common_retry),
+                            style = ConversationRowSpec.label,
+                            color = HappyTheme.colors.textLink,
+                            modifier = Modifier
+                                .testTag(ConversationScreenTags.OLDER_RETRY)
+                                .clickable(role = Role.Button) { onLoadOlder(true) }
+                                .padding(vertical = 6.dp),
+                        )
+                    }
+                }
             }
         }
     }

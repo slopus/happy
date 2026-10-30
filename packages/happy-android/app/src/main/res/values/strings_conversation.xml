@@ -44,6 +44,7 @@
     <string name="conversation_answer">Answer</string>
     <string name="conversation_answer_placeholder">Your answer</string>
     <string name="conversation_secret_unavailable">This asks for a secret. Answer it in Happy Agent on your computer.</string>
+    <string name="conversation_older_failed">Couldn\'t load earlier messages.</string>
     <string name="conversation_load_failed">Couldn\'t load this conversation</string>
     <string name="conversation_close">Close</string>
     <string name="conversation_details_title">Title</string>
