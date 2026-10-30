@@ -127,6 +127,17 @@ public protocol ChatComposerView: UIView {
     var isTextFocused: Bool { get }
     func focus()
     func blur()
+    var hasPermissionMenu: Bool { get }
+    func presentChatMenu(in host: UIView, anchor: @escaping () -> CGRect, onInfo: @escaping () -> Void)
+    func closeChatMenu()
+    func followChatMenu()
+}
+
+extension ChatComposerView {
+    public var hasPermissionMenu: Bool { false }
+    public func presentChatMenu(in host: UIView, anchor: @escaping () -> CGRect, onInfo: @escaping () -> Void) {}
+    public func closeChatMenu() {}
+    public func followChatMenu() {}
 }
 
 @MainActor

@@ -565,6 +565,7 @@ public final class AgentInputCardView: UIView {
             self.delegate?.agentInputCardDidRefuse(self, control: .options)
         }
         optionsButton.onOpen = { [weak self] in self?.showMenu(chip: nil) }
+        desktopControls.onOpenSettings = { [weak self] in self?.showMenu(chip: nil) }
         actionsGroup.addSubview(optionsButton)
 
         primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
@@ -772,7 +773,6 @@ public final class AgentInputCardView: UIView {
         }
         guard let host else { return }
         let chips: [(AgentInputChip, AgentInputChipConfiguration)] = [
-            configuration.permission.map { (.permission, $0) },
             configuration.model.map { (.model, $0) },
             configuration.effort.map { (.effort, $0) },
         ].compactMap { $0 }
@@ -807,7 +807,7 @@ public final class AgentInputCardView: UIView {
         case .model: modelChip
         case .effort: effortChip
         }
-        guard !button.isHidden, button.window != nil else { return nil }
+        guard !middle.isHidden, !button.isHidden, button.window != nil else { return nil }
         return button.convert(button.bounds, to: view)
     }
 
@@ -1099,7 +1099,7 @@ public final class AgentInputCardView: UIView {
             hasText: textView.hasText,
             lineHeight: inputLineHeight,
             inputMinHeight: config.inputMinHeight,
-            showsSettings: desktop.settings != nil,
+            showsSettings: desktop.settings?.sections.contains(where: { $0.chip != .permission }) == true,
             stopContentWidth: desktop.showsStop ? desktopControls.stopContentWidth : nil,
             imageContentWidth: config.showsAdd ? desktopControls.imageContentWidth : nil,
             zenMode: config.zenMode
@@ -1129,7 +1129,7 @@ public final class AgentInputCardView: UIView {
             lineHeight: textScale == nil ? nil : inputLineHeight,
             inputMinHeight: config.inputMinHeight,
             showsAdd: config.showsAdd,
-            permission: config.permission.map { _ in chip(permissionChip) },
+            permission: nil,
             model: config.model.map { _ in chip(modelChip) },
             modelIsMenu: config.model?.menu != nil,
             effort: config.effort.map { _ in chip(effortChip) },
@@ -1317,14 +1317,14 @@ public final class AgentInputCardView: UIView {
         for chip in [permissionChip, modelChip, effortChip] {
             chip.refuses = config.refusesControls
         }
-        permissionChip.configure(config.zenMode ? nil : config.permission)
+        permissionChip.configure(nil)
         modelChip.configure(config.zenMode ? nil : config.model)
         effortChip.configure(config.zenMode ? nil : config.effort)
         separator.isHidden = config.zenMode || config.effort == nil
         optionsButton.refuses = config.refusesControls
-        optionsButton.configure(config.zenMode ? [] : [config.permission.map { (.permission, $0) }, config.model.map { (.model, $0) }, config.effort.map { (.effort, $0) }].compactMap { $0 })
+        optionsButton.configure(config.zenMode ? [] : [config.model.map { (.model, $0) }, config.effort.map { (.effort, $0) }].compactMap { $0 })
         if config.refusesControls || config.zenMode { menuPresenter?.close(); menuPresenter = nil }
-        else { menuPresenter?.update(chips: [config.permission.map { (.permission, $0) }, config.model.map { (.model, $0) }, config.effort.map { (.effort, $0) }].compactMap { $0 }) }
+        else { menuPresenter?.update(chips: [config.model.map { (.model, $0) }, config.effort.map { (.effort, $0) }].compactMap { $0 }) }
 
         primaryButton.configure(
             action: config.primaryAction,

@@ -51,6 +51,14 @@ public struct PickerPanelLayout: Equatable, Sendable {
         self.init(items: items, footer: footer, width: width, trailing: anchor.maxX, bottom: anchor.minY - Metrics.anchorGap, in: bounds, selected: selected)
     }
 
+    /// A header menu grows down from its button and scrolls above the composer.
+    public init(items: [Item], footer: [Item] = [], width: CGFloat, below anchor: CGRect, in bounds: CGRect, selected: Int? = nil) {
+        let top = max(bounds.minY + Metrics.margin, anchor.maxY + Metrics.anchorGap)
+        let available = CGRect(x: bounds.minX, y: top - Metrics.margin, width: bounds.width, height: max(0, bounds.maxY - top + Metrics.margin))
+        self.init(items: items, footer: footer, width: width, trailing: anchor.maxX, bottom: bounds.maxY - Metrics.margin, in: available, selected: selected)
+        frame.origin.y = top
+    }
+
     /// A panel stacked over another in place: the same trailing edge and
     /// bottom, so it covers the panel under it from where that stands.
     public init(items: [Item], footer: [Item] = [], width: CGFloat, stackedOver base: CGRect, in bounds: CGRect, selected: Int? = nil) {

@@ -20,6 +20,15 @@ final class ComposerMenuPresenter {
     var onSelect: ((String, AgentInputChip) -> Void)?
     var onPress: ((AgentInputChip) -> Void)?
     var onMenu: ((AgentInputChip) -> Void)?
+    var anchor: (() -> CGRect)?
+    var opensBelowAnchor = false
+    var title = Strings.Composer.options
+    var rootID = "composer-options-panel"
+    var pageID = "composer-chip-panel"
+    var top: (() -> CGFloat)?
+    var bottom: (() -> CGFloat)?
+    var rootActions: [PickerContent.Line] = []
+    var onRootAction: ((String) -> Void)?
 
     init(card: AgentInputCardView, chips: [(AgentInputChip, AgentInputChipConfiguration)]) {
         self.card = card
@@ -36,7 +45,7 @@ final class ComposerMenuPresenter {
             push(Page(title: configuration.accessibilityLabel, chip: chip, menu: menu, sections: menu.sections))
             onMenu?(chip)
         } else {
-            push(Page(title: Strings.Composer.options, chip: nil, menu: nil, sections: []))
+            push(Page(title: title, chip: nil, menu: nil, sections: []))
         }
     }
 
@@ -65,13 +74,15 @@ final class ComposerMenuPresenter {
     func follow() {
         guard let card, overlay.superview != nil else { return }
         let cardFrame = card.convert(card.bounds, to: overlay)
-        let bounds = ComposerPanelLayout.available(size: overlay.bounds.size, safeArea: LayoutInsets(overlay.safeAreaInsets), bottom: cardFrame.maxY)
-        let anchor = card.chipFrame(pages.last?.chip ?? .model, in: overlay) ?? cardFrame
+        let bounds = ComposerPanelLayout.available(size: overlay.bounds.size, safeArea: LayoutInsets(overlay.safeAreaInsets), top: top?(), bottom: bottom?() ?? cardFrame.maxY)
+        let anchor = anchor?() ?? card.chipFrame(pages.last?.chip ?? .model, in: overlay) ?? cardFrame
         for (index, panel) in overlay.panels.enumerated() {
             let content = content(for: pages[index])
             let width = min(PickerType.panelWidth(content), bounds.width - 2 * PickerMetrics.margin)
             let items = content.lines.map { PickerType.item($0, width: width) }
-            let layout = PickerPanelLayout(items: items, width: width, over: anchor, in: bounds, selected: content.selected)
+            let layout = opensBelowAnchor
+                ? PickerPanelLayout(items: items, width: width, below: anchor, in: bounds, selected: content.selected)
+                : PickerPanelLayout(items: items, width: width, over: anchor, in: bounds, selected: content.selected)
             panel.apply(content, layout: layout, opening: panel.content == nil)
         }
     }
@@ -82,6 +93,7 @@ final class ComposerMenuPresenter {
             lines = chips.enumerated().map { index, entry in
                 .option(key: "chip:\(index)", label: entry.1.accessibilityLabel, checked: false, disabled: !entry.1.opensPicker && entry.1.menu == nil, gauge: nil)
             }
+            lines += rootActions
         } else {
             for section in page.sections {
                 if !lines.isEmpty { lines.append(.separator) }
@@ -92,7 +104,7 @@ final class ComposerMenuPresenter {
                 }
             }
         }
-        return PickerContent(id: page.chip == nil ? "composer-options-panel" : "composer-chip-panel", label: page.title, lines: lines, minWidth: 240, maxWidth: 360)
+        return PickerContent(id: page.chip == nil ? rootID : pageID, label: page.title, lines: lines, minWidth: 240, maxWidth: 360)
     }
 
     private func push(_ page: Page) {
@@ -110,6 +122,7 @@ final class ComposerMenuPresenter {
     private func tapped(_ line: PickerContent.Line) {
         guard case .option(let key, _, _, let disabled, _) = line, !disabled, let page = pages.last else { return }
         if page.chip == nil {
+            if !key.hasPrefix("chip:") { close(); onRootAction?(key); return }
             guard let index = Int(key.dropFirst("chip:".count)), chips.indices.contains(index) else { return }
             let (chip, configuration) = chips[index]
             if configuration.opensPicker { close(); onPress?(chip) }

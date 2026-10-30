@@ -353,8 +353,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         titleView.finishEditing()
         picker?.close(animated: false)
         chatMenu?.close()
-        attachPermission?.close()
-        attachPermission = nil
         attachPanel?.close()
         attachPanel = nil
         giveBarBack(animated: animated)
@@ -631,10 +629,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
     }
     /// A pick made here, until the conversation's own mode says it back.
     private var picked: AgentWire.Mode?
-    /// The "+" sheet while it is up: its permission menu follows the mode.
+    /// The attachment panel while it is up.
     private weak var attachSheet: AttachSheetViewController?
     private var attachPanel: ComposerPanelPresenter?
-    private var attachPermission: ComposerMenuPresenter?
     /// The model or effort list while it is open.
     private var picker: PickerPresenter?
     /// The header's overflow and permission choices, without changing focus.
@@ -683,26 +680,13 @@ final class ChatViewController: UIViewController, ComposeHosting {
             ModelPickers.configure(card, menus: menus)
             picker?.update(menus: menus, usage: session.models.usage)
         }
-        if let attachSheet {
-            attachSheet.permission = permissionName
-            attachSheet.permissionMenu = permissionMenu
-        }
-    }
-
-    /// The "+" sheet's permission menu; nil until the models are read.
-    private var permissionMenu: UIMenu? {
-        menus.map { menus in
-            UIMenu(ModelPickers.permissionMenu(menus)) { [weak self] key in self?.choose(key) }
-        }
     }
 
     /// The "+" sheet over `host`: new work for a picture opens it over this screen as
     /// the screen comes in. What it adds waits in the composer, which then
     /// takes the keyboard.
     func presentAttach(from host: UIViewController) {
-        let sheet = AttachSheetViewController(limit: ComposerAttachmentRules.remaining(selected: pictures.images.count), permission: permissionName)
-        sheet.opensPermissionPanel = true
-        sheet.permissionMenu = permissionMenu
+        let sheet = AttachSheetViewController(limit: ComposerAttachmentRules.remaining(selected: pictures.images.count))
         if session.models.catalog == nil { session.models.load() }
         sheet.onAction = { [weak self] action in
             guard let self else { return }
@@ -712,8 +696,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
             case .add(let ids): add(assets: ids)
             case .paste: pasteFromClipboard()
             case .files: presentFiles()
-            // Its menu waits for the models, read as the sheet opened.
-            case .permission: presentAttachmentPermission()
             }
         }
         keyboardOwed = card.textView.isFirstResponder
@@ -722,25 +704,12 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let panel = ComposerPanelPresenter(content: sheet, height: AttachSheetViewController.contentHeight, host: host, anchor: card)
         panel.onOutside = { [weak sheet] in sheet?.close() }
         sheet.dismissPanel = { [weak self, weak panel] completion in
-            self?.attachPermission?.close()
-            self?.attachPermission = nil
             panel?.close(completion: completion)
             if self?.attachPanel === panel { self?.attachPanel = nil }
         }
         attachPanel?.close()
         attachPanel = panel
         panel.show()
-    }
-
-    private func presentAttachmentPermission() {
-        session.models.load()
-        guard let menus else { return }
-        attachPermission?.close()
-        let configuration = AgentInputChipConfiguration(content: .label(permissionName), accessibilityLabel: Strings.permission, menu: ModelPickers.permissionMenu(menus))
-        let presenter = ComposerMenuPresenter(card: card, chips: [(.permission, configuration)])
-        presenter.onSelect = { [weak self] key, _ in self?.choose(key) }
-        attachPermission = presenter
-        presenter.show(in: view, chip: .permission)
     }
 
     /// The mode the next message runs with, by its name.
@@ -1192,7 +1161,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         picker?.follow()
         chatMenu?.follow()
         attachPanel?.follow()
-        attachPermission?.follow()
         let foot = ChatFootLayout(size: view.bounds.size, card: screen.card)
         composerScrim.setLayoutFrame(foot.scrim)
         jump.setLayoutFrame(foot.jump)

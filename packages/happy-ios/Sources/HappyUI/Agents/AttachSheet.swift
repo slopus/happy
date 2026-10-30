@@ -8,11 +8,10 @@ import UIKit
 /// circle, the title, and Photos (the whole library) at the right; a strip
 /// of the camera and the newest photos and videos, picked in order with numbered
 /// checks, Photos turning into "Add N" while any are; then Paste from
-/// clipboard, Add files, and the permission the next message runs with.
+/// clipboard and Add files.
 ///
 /// It only says what was chosen: the sheet goes first, then `onAction`
-/// hears it, except for the permission, picked in a menu over the sheet,
-/// which stays with the value updated by whoever presents it.
+/// hears it.
 @MainActor
 final class AttachSheetViewController: UIViewController {
     enum Action: Equatable {
@@ -22,29 +21,12 @@ final class AttachSheetViewController: UIViewController {
         case add([String])
         case paste
         case files
-        case permission
     }
 
     var onAction: ((Action) -> Void)?
     /// Embedded above a live keyboard rather than presented as a modal sheet.
     var dismissPanel: ((@escaping () -> Void) -> Void)?
     static var contentHeight: CGFloat { layout(width: 0, title: 0, photos: 0, tiles: 1).height }
-    var opensPermissionPanel = false
-    private var configuredPermissionMenu: UIMenu?
-    /// The permission row's value: the mode's name.
-    var permission: String {
-        didSet { if permission != oldValue { rows[2].value.text = permission; view.setNeedsLayout() } }
-    }
-    /// The permission row's menu, as the composer's model control opens
-    /// its own; nil until the models are read, the row dimmed meanwhile.
-    var permissionMenu: UIMenu? {
-        get { configuredPermissionMenu }
-        set {
-            configuredPermissionMenu = newValue
-            rows[2].menu = opensPermissionPanel ? nil : newValue
-            rows[2].alpha = newValue == nil ? 0.5 : 1
-        }
-    }
 
     private let limit: Int
     /// Going because something was chosen.
@@ -66,13 +48,11 @@ final class AttachSheetViewController: UIViewController {
     private let rows: [AttachRow]
     private let thumbnails = PHCachingImageManager()
 
-    init(limit: Int, permission: String) {
+    init(limit: Int) {
         self.limit = limit
-        self.permission = permission
         rows = [
             AttachRow(icon: .ionicons("copy-outline"), title: Strings.pasteFromClipboard, id: "attach-paste", value: nil),
             AttachRow(icon: .ionicons("document-outline"), title: Strings.addFiles, id: "attach-files", value: nil),
-            AttachRow(icon: .ionicons("shield-checkmark-outline"), title: Strings.permission, id: "attach-permission", value: permission),
         ]
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .pageSheet
@@ -85,7 +65,7 @@ final class AttachSheetViewController: UIViewController {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    private static func layout(width: CGFloat, title: CGFloat, photos: CGFloat, tiles: Int, values: [CGFloat?] = [nil, nil, 0], scale: CGFloat = 3) -> AttachSheetLayout {
+    private static func layout(width: CGFloat, title: CGFloat, photos: CGFloat, tiles: Int, values: [CGFloat?] = [nil, nil], scale: CGFloat = 3) -> AttachSheetLayout {
         AttachSheetLayout(width: width, titleWidth: title, photosWidth: photos, tiles: tiles, values: values, scale: scale)
     }
 
@@ -236,7 +216,7 @@ final class AttachSheetViewController: UIViewController {
         switch index {
         case 0: finish(.paste)
         case 1: finish(.files)
-        default: onAction?(.permission)
+        default: break
         }
     }
 

@@ -6,8 +6,9 @@ public struct ComposerPanelLayout: Equatable, Sendable {
     public var frame: CGRect
     public var content: CGRect
 
-    public static func available(size: CGSize, safeArea: LayoutInsets, bottom: CGFloat) -> CGRect {
-        CGRect(x: safeArea.left, y: safeArea.top, width: max(0, size.width - safeArea.left - safeArea.right), height: max(0, min(bottom, size.height - safeArea.bottom) - safeArea.top))
+    public static func available(size: CGSize, safeArea: LayoutInsets, top: CGFloat? = nil, bottom: CGFloat) -> CGRect {
+        let top = max(safeArea.top, top ?? safeArea.top)
+        return CGRect(x: safeArea.left, y: top, width: max(0, size.width - safeArea.left - safeArea.right), height: max(0, min(bottom, size.height - safeArea.bottom) - top))
     }
 
     public init(size: CGSize, safeArea: LayoutInsets, bottom: CGFloat, contentHeight: CGFloat, maximumWidth: CGFloat = 440) {
