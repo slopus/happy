@@ -241,7 +241,14 @@ class ConversationDeviceTest {
         capture("$down-secret-keyboard-down")
         logSave("keyboard down")
         val field = rule.onAllNodesWithTag(SecretRequestTags.VALUE, useUnmergedTree = true).onFirst()
-        field.performScrollTo().performClick()
+        field.performScrollTo()
+        logValue("scrolled to")
+        field.performClick()
+        logValue("tapped")
+        SystemClock.sleep(1_200)
+        rule.waitForIdle()
+        logValue("tapped, keyboard settled")
+        capture("$up-secret-tapped")
         field.performTextInput("synthetic-value")
         logValue("right after input")
         SystemClock.sleep(1_200)
@@ -290,6 +297,8 @@ class ConversationDeviceTest {
         val node = rule.onAllNodesWithTag(SecretRequestTags.VALUE, useUnmergedTree = true).fetchSemanticsNodes().firstOrNull()
         val length = node?.config?.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.EditableText) { null }?.length
         val focused = node?.config?.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Focused) { null }
-        log("secret value $state: node ${node?.id} length $length focused $focused")
+        // The top bar's place in the window: below zero means the window was panned, not laid out.
+        val bar = rule.onAllNodesWithTag(ConversationScreenTags.BAR, useUnmergedTree = true).fetchSemanticsNodes().firstOrNull()
+        log("secret value $state: node ${node?.id} length $length focused $focused field at ${node?.positionInWindow} bar at ${bar?.positionInWindow}")
     }
 }
