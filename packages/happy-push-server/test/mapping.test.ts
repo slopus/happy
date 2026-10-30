@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildApnsRequest } from '@/providers/apns';
+import { buildExpoMessage, classifyExpoTicket } from '@/providers/expo';
 import { buildFcmMessage } from '@/providers/fcm';
 import type { DeviceRecord } from '@/storage/devices';
 import { formatPushToken, mintDeviceId, parsePushToken } from '@/token';
@@ -7,8 +8,8 @@ import { formatPushToken, mintDeviceId, parsePushToken } from '@/token';
 const NOW = Date.UTC(2026, 9, 29, 12, 0, 0);
 const NOW_SECONDS = Math.floor(NOW / 1000);
 
-const ios: DeviceRecord = { id: 'x', appId: 'com.ex3ndr.happy', platform: 'ios', environment: 'production', nativeToken: 'a'.repeat(64), active: true };
-const android: DeviceRecord = { ...ios, platform: 'android', nativeToken: 'fcm-token' };
+const ios: DeviceRecord = { id: 'x', appId: 'com.ex3ndr.happy', platform: 'ios', provider: 'apns', environment: 'production', pushToken: 'a'.repeat(64), active: true };
+const android: DeviceRecord = { ...ios, platform: 'android', provider: 'fcm', pushToken: 'fcm-token' };
 
 describe('HappyPushToken tokens', () => {
     it('mints 22-char base62 ids that round-trip through the token format', () => {
@@ -97,5 +98,31 @@ describe('buildFcmMessage', () => {
     it('maps ttl to android.ttl', () => {
         expect((buildFcmMessage({ to: 'x', title: 't', ttl: 45 }, android) as Built).message.android.ttl).toBe('45s');
         expect((buildFcmMessage({ to: 'x', title: 't' }, android) as Built).message.android.ttl).toBeUndefined();
+    });
+});
+
+describe('buildExpoMessage', () => {
+    const expo: DeviceRecord = { ...ios, provider: 'expo', pushToken: 'ExponentPushToken[abc]' };
+
+    it.each([
+        ['an alert', { title: 't' }, { to: 'ExponentPushToken[abc]', priority: 'high', title: 't' }],
+        ['a data-only push', { data: { a: 1 } }, { to: 'ExponentPushToken[abc]', priority: 'normal', data: { a: 1 } }],
+        ['an explicit priority', { title: 't', priority: 'normal' }, { to: 'ExponentPushToken[abc]', priority: 'normal', title: 't' }],
+        ['a silent alert', { title: 't', sound: null }, { to: 'ExponentPushToken[abc]', priority: 'high', title: 't', sound: null }],
+        ['threadId, which Expo has no field for', { title: 't', threadId: 'x' }, { to: 'ExponentPushToken[abc]', priority: 'high', title: 't' }],
+    ] as const)('maps %s', (_name, fields, expected) => {
+        expect(buildExpoMessage({ to: 'x', ...fields }, expo)).toEqual(expected);
+    });
+});
+
+describe('classifyExpoTicket', () => {
+    it.each([
+        [{ status: 'ok', id: 'r1' }, { ok: true, id: 'r1' }],
+        [{ status: 'error', message: 'm', details: { error: 'DeviceNotRegistered' } }, { ok: false, error: 'DeviceNotRegistered', unregistered: true, reason: 'DeviceNotRegistered' }],
+        [{ status: 'error', message: 'm', details: { error: 'InvalidCredentials' } }, { ok: false, error: 'InvalidCredentials', unregistered: false }],
+        [{ status: 'error', message: 'free text' }, { ok: false, error: undefined, unregistered: false, reason: 'free text' }],
+        [null, { ok: false, error: undefined, unregistered: false, reason: 'UnknownError' }],
+    ])('classifies %j', (ticket, expected) => {
+        expect(classifyExpoTicket(ticket)).toMatchObject(expected);
     });
 });

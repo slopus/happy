@@ -125,7 +125,7 @@ export async function sendApns(params: {
     const host = params.device.environment === 'development' ? SANDBOX_HOST : PRODUCTION_HOST;
     let response: Response;
     try {
-        response = await fetch(`${host}/3/device/${params.device.nativeToken}`, {
+        response = await fetch(`${host}/3/device/${params.device.pushToken}`, {
             method: 'POST',
             headers: { ...headers, authorization: `bearer ${params.jwt}`, 'apns-id': params.apnsId },
             body,

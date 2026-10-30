@@ -35,10 +35,11 @@ export function createApp() {
             appId: input.appId,
             deviceId: input.deviceId,
             platform: input.platform,
-            // APNs sandbox vs production; FCM has no such split.
-            environment: input.platform === 'ios' ? input.environment ?? 'production' : 'production',
+            provider: input.provider,
+            // APNs sandbox vs production; FCM and Expo have no such split.
+            environment: input.provider === 'apns' ? input.environment ?? 'production' : 'production',
             // APNs accepts either case; normalizing keeps dedupe exact.
-            nativeToken: input.platform === 'ios' ? input.nativeToken.toLowerCase() : input.nativeToken,
+            pushToken: input.provider === 'apns' ? input.pushToken.toLowerCase() : input.pushToken,
             metadata: input.metadata,
         }, Date.now());
         return c.json({ token: formatPushToken(id) });

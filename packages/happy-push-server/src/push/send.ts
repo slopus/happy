@@ -9,6 +9,7 @@
 
 import type { Env } from '@/env';
 import { getApnsJwt, readApnsConfig, sendApns, type ApnsConfig } from '@/providers/apns';
+import { EXPO_BATCH_SIZE, sendExpoBatch, type ExpoResult } from '@/providers/expo';
 import { FcmAuthError, FcmConfigError, getFcmAccessToken, readFcmConfig, sendFcm, type FcmConfig } from '@/providers/fcm';
 import { fetchFailureReason, providerFailure, type ProviderFailure, type ProviderName, type ProviderResult, type PushErrorCode } from '@/providers/types';
 import type { PushMessage } from '@/schema';
@@ -34,6 +35,12 @@ export type PushTicket =
         details?: { error?: PushErrorCode; provider?: ProviderName; reason?: string };
     };
 
+interface Job {
+    index: number;
+    device: DeviceRecord;
+    message: PushMessage;
+}
+
 export async function sendPushMessages(env: Env, messages: readonly PushMessage[]): Promise<PushTicket[]> {
     const now = Date.now();
     const signal = AbortSignal.timeout(SEND_DEADLINE_MS);
@@ -45,48 +52,85 @@ export async function sendPushMessages(env: Env, messages: readonly PushMessage[
     const devices = await findDevices(env.DB, ids);
     const credentials = createRequestCredentials(env, now, signal);
     const deliveries: DeliveryRecord[] = [];
+    const tickets = new Array<PushTicket>(recipients.length);
 
-    const tickets = await mapWithConcurrency(recipients, SEND_CONCURRENCY, async ({ to, message }): Promise<PushTicket> => {
+    const settle = (job: Job, result: ProviderResult | ExpoResult, ticketId: string) => {
+        if (result.ok) {
+            deliveries.push({ kind: 'sent', device: job.device });
+            tickets[job.index] = { status: 'ok', id: 'id' in result ? result.id : ticketId };
+            return;
+        }
+        console.log(
+            `push: ${result.provider} failed device=${job.device.id.slice(0, 6)} token=${redactToken(job.device.pushToken)} ` +
+            `reason=${result.reason} status=${result.httpStatus ?? '-'} unregistered=${result.unregistered}`
+        );
+        deliveries.push(result.unregistered
+            ? { kind: 'unregistered', device: job.device, error: `${result.provider}:${result.reason}` }
+            : { kind: 'failed', device: job.device, error: `${result.provider}:${result.reason}` });
+        tickets[job.index] = errorTicket(job.device, result);
+    };
+
+    // Resolve every recipient first, so Expo installs can be batched.
+    const jobs = (await Promise.all(recipients.map(async ({ to, message }, index): Promise<Job | null> => {
         const id = parsePushToken(to);
         const device = id ? devices.get(id) : undefined;
         if (!device || !device.active) {
-            return {
+            tickets[index] = {
                 status: 'error',
                 message: `"${to}" is not a registered push notification recipient`,
                 details: { error: 'DeviceNotRegistered' },
             };
+            return null;
         }
         // Keyed by recipient, not sender: the hosted happy-server sends for
         // every user from a few IPs, while one token getting flooded is the
         // abuse an open send endpoint invites. Unknown tokens are answered
         // above without touching the limiter.
         if (!(await isWithinLimit(env.SEND_RATE_LIMITER, `send:${device.id}`))) {
-            return {
+            tickets[index] = {
                 status: 'error',
                 message: `Too many notifications to "${formatPushToken(device.id)}"; retry in a minute`,
                 details: { error: 'MessageRateExceeded', reason: 'RecipientRateLimited' },
             };
+            return null;
         }
-        if (signal.aborted) {
-            return errorTicket(device, providerFailure(device.platform === 'ios' ? 'apns' : 'fcm', 'Timeout'));
-        }
+        return { index, device, message };
+    }))).filter((job): job is Job => job !== null);
 
-        const ticketId = crypto.randomUUID();
-        const result = await deliver(device, message, ticketId, credentials, now, signal);
-        if (result.ok) {
-            deliveries.push({ kind: 'sent', device });
-            return { status: 'ok', id: ticketId };
+    // One task per native recipient and one per Expo batch, all sharing the
+    // same connection budget and deadline.
+    const tasks: Array<() => Promise<void>> = [];
+    const expoByApp = new Map<string, Job[]>();
+    for (const job of jobs) {
+        if (job.device.provider !== 'expo') {
+            tasks.push(async () => {
+                if (signal.aborted) {
+                    settle(job, providerFailure(job.device.provider, 'Timeout'), '');
+                    return;
+                }
+                const ticketId = crypto.randomUUID();
+                settle(job, await deliver(job.device, job.message, ticketId, credentials, now, signal), ticketId);
+            });
+            continue;
         }
-
-        console.log(
-            `push: ${result.provider} failed device=${device.id.slice(0, 6)} token=${redactToken(device.nativeToken)} ` +
-            `reason=${result.reason} status=${result.httpStatus ?? '-'} unregistered=${result.unregistered}`
-        );
-        deliveries.push(result.unregistered
-            ? { kind: 'unregistered', device, error: `${result.provider}:${result.reason}` }
-            : { kind: 'failed', device, error: `${result.provider}:${result.reason}` });
-        return errorTicket(device, result);
-    });
+        // Expo rejects a batch that mixes tokens of different Expo projects,
+        // and one app id is one project.
+        const group = expoByApp.get(job.device.appId) ?? [];
+        group.push(job);
+        expoByApp.set(job.device.appId, group);
+    }
+    for (const group of expoByApp.values()) {
+        for (let i = 0; i < group.length; i += EXPO_BATCH_SIZE) {
+            const batch = group.slice(i, i + EXPO_BATCH_SIZE);
+            tasks.push(async () => {
+                const results = signal.aborted
+                    ? batch.map(() => providerFailure('expo', 'Timeout'))
+                    : await sendExpoBatch(batch, signal);
+                batch.forEach((job, j) => settle(job, results[j]!, ''));
+            });
+        }
+    }
+    await mapWithConcurrency(tasks, SEND_CONCURRENCY, (task) => task());
 
     try {
         await recordDeliveries(env.DB, deliveries, now);
@@ -106,7 +150,7 @@ async function deliver(
     now: number,
     signal: AbortSignal
 ): Promise<ProviderResult> {
-    if (device.platform === 'ios') {
+    if (device.provider === 'apns') {
         const auth = await credentials.apns();
         if (!auth.ok) {
             return auth.failure;
@@ -183,13 +227,15 @@ function errorTicket(device: DeviceRecord, result: ProviderFailure): PushTicket 
     };
 }
 
+const providerLabel: Record<DeviceRecord['provider'], string> = { apns: 'APNs', fcm: 'FCM', expo: 'Expo push' };
+
 function ticketMessage(device: DeviceRecord, error: PushErrorCode | undefined, reason: string): string {
     const recipient = `"${formatPushToken(device.id)}"`;
     switch (error) {
         case 'DeviceNotRegistered':
             return `${recipient} is not a registered push notification recipient (${reason})`;
         case 'InvalidCredentials':
-            return `Push credentials for ${device.platform} are invalid or missing (${reason})`;
+            return `${providerLabel[device.provider]} credentials are invalid or missing (${reason})`;
         case 'MessageTooBig':
             return 'Notification payload exceeds the 4096-byte limit';
         case 'MessageRateExceeded':

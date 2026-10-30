@@ -140,7 +140,7 @@ export function buildFcmMessage(message: PushMessage, device: DeviceRecord): Rec
         android.ttl = `${message.ttl}s`;
     }
 
-    return { message: { token: device.nativeToken, data, android } };
+    return { message: { token: device.pushToken, data, android } };
 }
 
 export async function sendFcm(params: {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APP_ID, IOS_TOKEN, androidDevice, createHarness, deviceRow, fakeRateLimiter, iosDevice, postJson } from './helpers';
+import { APP_ID, EXPO_TOKEN, FCM_TOKEN, IOS_TOKEN, androidDevice, createHarness, deviceRow, expoDevice, fakeRateLimiter, iosDevice, postJson } from './helpers';
 
 const TOKEN_PATTERN = /^HappyPushToken\[[0-9A-Za-z]{22}\]$/;
 
@@ -18,7 +18,7 @@ describe('POST /v1/devices/register', () => {
             device_id: 'ios-device-0001',
             platform: 'ios',
             environment: 'development',
-            native_token: IOS_TOKEN,
+            push_token: IOS_TOKEN,
             active: 1,
         });
         expect(JSON.parse(row.metadata as string)).toEqual({ deviceName: 'Steve’s iPhone', osVersion: '26.1', appVersion: '1.9.0' });
@@ -36,9 +36,9 @@ describe('POST /v1/devices/register', () => {
         const h = createHarness();
         const first = await h.register(iosDevice());
         const rotated = 'b'.repeat(64);
-        const second = await h.register(iosDevice({ nativeToken: rotated }));
+        const second = await h.register(iosDevice({ pushToken: rotated }));
         expect(second).toBe(first);
-        expect(deviceRow(h, first)!.native_token).toBe(rotated);
+        expect(deviceRow(h, first)!.push_token).toBe(rotated);
     });
 
     it('keeps the token stable after unregister and reactivates on re-register', async () => {
@@ -67,7 +67,7 @@ describe('POST /v1/devices/register', () => {
     it('mints distinct tokens per device id and per app id', async () => {
         const h = createHarness();
         const a = await h.register(iosDevice());
-        const b = await h.register(iosDevice({ deviceId: 'ios-device-0002', nativeToken: 'c'.repeat(64) }));
+        const b = await h.register(iosDevice({ deviceId: 'ios-device-0002', pushToken: 'c'.repeat(64) }));
         const c = await h.register(iosDevice({ appId: 'com.slopus.happy.preview' }));
         expect(new Set([a, b, c]).size).toBe(3);
     });
@@ -97,8 +97,8 @@ describe('POST /v1/devices/register', () => {
 
     it('normalizes APNs tokens to lowercase', async () => {
         const h = createHarness();
-        const token = await h.register(iosDevice({ nativeToken: 'ABCDEF'.repeat(10) + 'ABCD' }));
-        expect(deviceRow(h, token)!.native_token).toBe('abcdef'.repeat(10) + 'abcd');
+        const token = await h.register(iosDevice({ pushToken: 'ABCDEF'.repeat(10) + 'ABCD' }));
+        expect(deviceRow(h, token)!.push_token).toBe('abcdef'.repeat(10) + 'abcd');
     });
 
     it('stores android installs as production regardless of environment', async () => {
@@ -108,14 +108,14 @@ describe('POST /v1/devices/register', () => {
     });
 
     it.each([
-        ['missing deviceId', { appId: APP_ID, platform: 'ios', nativeToken: IOS_TOKEN }, 'deviceId'],
+        ['missing deviceId', { appId: APP_ID, platform: 'ios', pushToken: IOS_TOKEN }, 'deviceId'],
         ['short deviceId', iosDevice({ deviceId: 'short' }), 'deviceId'],
         ['long deviceId', iosDevice({ deviceId: 'x'.repeat(129) }), 'deviceId'],
         ['bad appId', iosDevice({ appId: 'com.happy/../evil' }), 'appId'],
         ['unknown platform', iosDevice({ platform: 'web' }), 'platform'],
-        ['non-hex APNs token', iosDevice({ nativeToken: 'z'.repeat(64) }), 'nativeToken'],
-        ['short APNs token', iosDevice({ nativeToken: 'a'.repeat(32) }), 'nativeToken'],
-        ['FCM token with spaces', androidDevice({ nativeToken: 'bad token '.repeat(10) }), 'nativeToken'],
+        ['non-hex APNs token', iosDevice({ pushToken: 'z'.repeat(64) }), 'pushToken'],
+        ['short APNs token', iosDevice({ pushToken: 'a'.repeat(32) }), 'pushToken'],
+        ['FCM token with spaces', androidDevice({ pushToken: 'bad token '.repeat(10) }), 'pushToken'],
         ['bad environment', iosDevice({ environment: 'staging' }), 'environment'],
         ['metadata too long', iosDevice({ metadata: { deviceName: 'x'.repeat(129) } }), 'metadata.deviceName'],
     ])('rejects %s', async (_name, body, path) => {
@@ -160,6 +160,83 @@ describe('POST /v1/devices/register', () => {
         const response = await postJson(h.request, '/v1/devices/unregister', { deviceId: 'never-registered', appId: APP_ID });
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ ok: true });
+    });
+});
+
+describe('Expo tokens', () => {
+    it.each([
+        ['ExponentPushToken', EXPO_TOKEN],
+        ['ExpoPushToken', 'ExpoPushToken[yyyyyyyyyyyyyyyyyyyyyy]'],
+    ])('registers an %s and keeps the device platform', async (_name, pushToken) => {
+        const h = createHarness();
+        const token = await h.register(expoDevice({ platform: 'android', pushToken, environment: 'development' }));
+        expect(token).toMatch(TOKEN_PATTERN);
+        // environment is APNs-only, so it is ignored for Expo installs.
+        expect(deviceRow(h, token)).toMatchObject({ platform: 'android', provider: 'expo', environment: 'production', push_token: pushToken, active: 1 });
+    });
+
+    it('keeps the same token when an install moves from Expo to a native token', async () => {
+        const h = createHarness();
+        const expo = await h.register(expoDevice({ deviceId: 'ios-device-0001' }));
+        const native = await h.register(iosDevice());
+        expect(native).toBe(expo);
+        expect(deviceRow(h, expo)).toMatchObject({ provider: 'apns', push_token: IOS_TOKEN, active: 1 });
+    });
+
+    it('keeps the same token when an install moves from a native token back to Expo', async () => {
+        const h = createHarness();
+        const native = await h.register(androidDevice());
+        const expo = await h.register(expoDevice({ deviceId: 'android-device-0001', platform: 'android' }));
+        expect(expo).toBe(native);
+        expect(deviceRow(h, native)).toMatchObject({ provider: 'expo', push_token: EXPO_TOKEN, platform: 'android' });
+    });
+
+    it('moves an Expo token to the newest device id', async () => {
+        const h = createHarness();
+        const before = await h.register(expoDevice({ deviceId: 'install-before-reinstall' }));
+        const after = await h.register(expoDevice({ deviceId: 'install-after-reinstall' }));
+        expect(after).not.toBe(before);
+        expect(deviceRow(h, before)).toMatchObject({ active: 0, inactive_reason: 'superseded' });
+        expect(deviceRow(h, after)).toMatchObject({ active: 1 });
+    });
+
+    it('does not let an Expo token supersede a native install, or the reverse', async () => {
+        const h = createHarness();
+        const native = await h.register(androidDevice({ deviceId: 'android-device-0001' }));
+        await h.register(expoDevice({ deviceId: 'expo-device-0002', platform: 'android' }));
+        expect(deviceRow(h, native)).toMatchObject({ active: 1 });
+    });
+
+    it.each([
+        ['an Expo token as an APNs token', iosDevice({ pushToken: EXPO_TOKEN }), 'pushToken'],
+        ['a native token as an Expo token', expoDevice({ pushToken: IOS_TOKEN }), 'pushToken'],
+        ['an Expo token without brackets', expoDevice({ pushToken: 'ExponentPushToken' }), 'pushToken'],
+        ['an Expo token with bad characters', expoDevice({ pushToken: 'ExponentPushToken[a b]' }), 'pushToken'],
+        ['an over-long Expo token', expoDevice({ pushToken: `ExponentPushToken[${'x'.repeat(201)}]` }), 'pushToken'],
+        ['apns for android', androidDevice({ provider: 'apns' }), 'provider'],
+        ['fcm for ios', iosDevice({ provider: 'fcm' }), 'provider'],
+        ['an unknown provider', iosDevice({ provider: 'webpush' }), 'provider'],
+    ])('rejects %s', async (_name, body, path) => {
+        const h = createHarness();
+        const response = await postJson(h.request, '/v1/devices/register', body);
+        expect(response.status).toBe(400);
+        const json = await response.json() as { errors: Array<{ details: Array<{ path: string }> }> };
+        expect(json.errors[0]!.details.map((d) => d.path)).toContain(path);
+    });
+
+    it('accepts an explicit native provider', async () => {
+        const h = createHarness();
+        const token = await h.register(androidDevice({ provider: 'fcm' }));
+        expect(deviceRow(h, token)).toMatchObject({ provider: 'fcm', push_token: FCM_TOKEN });
+    });
+});
+
+describe('nativeToken alias', () => {
+    it('still accepts the original nativeToken field', async () => {
+        const h = createHarness();
+        const { pushToken, ...rest } = iosDevice();
+        const token = await h.register({ ...rest, nativeToken: pushToken });
+        expect(deviceRow(h, token)).toMatchObject({ provider: 'apns', push_token: IOS_TOKEN });
     });
 });
 

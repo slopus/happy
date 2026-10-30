@@ -1,12 +1,14 @@
-import type { ApnsEnvironment, DeviceMetadata, Platform } from '@/schema';
+import type { ApnsEnvironment, DeviceMetadata, Platform, PushProvider } from '@/schema';
 import { mintDeviceId } from '@/token';
 
 export interface DeviceRecord {
     id: string;
     appId: string;
     platform: Platform;
+    provider: PushProvider;
     environment: ApnsEnvironment;
-    nativeToken: string;
+    /** APNs device token, FCM registration token, or Expo push token, per `provider`. */
+    pushToken: string;
     active: boolean;
 }
 
@@ -14,8 +16,9 @@ interface DeviceRow {
     id: string;
     app_id: string;
     platform: Platform;
+    provider: PushProvider;
     environment: ApnsEnvironment;
-    native_token: string;
+    push_token: string;
     active: number;
 }
 
@@ -23,8 +26,9 @@ export interface UpsertDeviceInput {
     appId: string;
     deviceId: string;
     platform: Platform;
+    provider: PushProvider;
     environment: ApnsEnvironment;
-    nativeToken: string;
+    pushToken: string;
     /** Omitted metadata keeps whatever the row already has. */
     metadata?: DeviceMetadata;
 }
@@ -34,23 +38,26 @@ export interface UpsertDeviceInput {
  *
  * The (appId, deviceId) row keeps the id it was first minted with: token
  * rotation, new metadata, and re-registering after unregister all update the
- * same row. If the native token is currently live on a *different* install
- * (reinstall with a new deviceId, restored backup), that other install is
- * deactivated first, so one physical token is never delivered to twice.
+ * same row, and so does switching provider (an app that registered its Expo
+ * token and later its native one keeps its push token). If the push token is
+ * currently live on a *different* install (reinstall with a new deviceId,
+ * restored backup), that other install is deactivated first, so one token is
+ * never delivered to twice.
  */
 export async function upsertDevice(db: D1Database, input: UpsertDeviceInput, now: number): Promise<string> {
     const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
     const supersede = db.prepare(
         `UPDATE devices SET active = 0, inactive_reason = 'superseded', updated_at = ?1
-         WHERE app_id = ?2 AND platform = ?3 AND native_token = ?4 AND device_id <> ?5 AND active = 1`
-    ).bind(now, input.appId, input.platform, input.nativeToken, input.deviceId);
+         WHERE app_id = ?2 AND provider = ?3 AND push_token = ?4 AND device_id <> ?5 AND active = 1`
+    ).bind(now, input.appId, input.provider, input.pushToken, input.deviceId);
     const upsert = db.prepare(
-        `INSERT INTO devices (id, app_id, device_id, platform, environment, native_token, metadata, active, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, COALESCE(?7, '{}'), 1, ?8, ?8)
+        `INSERT INTO devices (id, app_id, device_id, platform, provider, environment, push_token, metadata, active, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?9, ?5, ?6, COALESCE(?7, '{}'), 1, ?8, ?8)
          ON CONFLICT (app_id, device_id) DO UPDATE SET
              platform = excluded.platform,
+             provider = excluded.provider,
              environment = excluded.environment,
-             native_token = excluded.native_token,
+             push_token = excluded.push_token,
              metadata = CASE WHEN ?7 IS NULL THEN devices.metadata ELSE excluded.metadata END,
              active = 1,
              inactive_reason = NULL,
@@ -58,7 +65,7 @@ export async function upsertDevice(db: D1Database, input: UpsertDeviceInput, now
              last_error_at = NULL,
              updated_at = excluded.updated_at
          RETURNING id`
-    ).bind(mintDeviceId(), input.appId, input.deviceId, input.platform, input.environment, input.nativeToken, metadata, now);
+    ).bind(mintDeviceId(), input.appId, input.deviceId, input.platform, input.environment, input.pushToken, metadata, now, input.provider);
 
     const run = async () => {
         const [, result] = await db.batch<{ id: string }>([supersede, upsert]);
@@ -72,7 +79,7 @@ export async function upsertDevice(db: D1Database, input: UpsertDeviceInput, now
     try {
         return await run();
     } catch (error) {
-        // Two installs registering the same native token at the same instant
+        // Two installs registering the same push token at the same instant
         // can both pass the supersede step; the partial unique index rejects
         // the loser, and a retry supersedes the winner.
         if (isUniqueViolation(error)) {
@@ -98,15 +105,16 @@ export async function findDevices(db: D1Database, ids: readonly string[]): Promi
     }
     const placeholders = ids.map(() => '?').join(', ');
     const { results } = await db.prepare(
-        `SELECT id, app_id, platform, environment, native_token, active FROM devices WHERE id IN (${placeholders})`
+        `SELECT id, app_id, platform, provider, environment, push_token, active FROM devices WHERE id IN (${placeholders})`
     ).bind(...ids).all<DeviceRow>();
     for (const row of results) {
         devices.set(row.id, {
             id: row.id,
             appId: row.app_id,
             platform: row.platform,
+            provider: row.provider,
             environment: row.environment,
-            nativeToken: row.native_token,
+            pushToken: row.push_token,
             active: row.active === 1,
         });
     }
@@ -135,8 +143,8 @@ export async function recordDeliveries(db: D1Database, deliveries: readonly Deli
                 // re-registered a fresh token mid-send, leave it alone.
                 return db.prepare(
                     `UPDATE devices SET active = 0, inactive_reason = ?1, last_error = ?1, last_error_at = ?2, updated_at = ?2
-                     WHERE id = ?3 AND native_token = ?4`
-                ).bind(delivery.error, now, delivery.device.id, delivery.device.nativeToken);
+                     WHERE id = ?3 AND push_token = ?4`
+                ).bind(delivery.error, now, delivery.device.id, delivery.device.pushToken);
         }
     });
     await db.batch(statements);

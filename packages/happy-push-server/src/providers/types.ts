@@ -6,7 +6,7 @@ export type PushErrorCode =
     | 'MessageRateExceeded'
     | 'MismatchSenderId';
 
-export type ProviderName = 'apns' | 'fcm';
+export type ProviderName = 'apns' | 'fcm' | 'expo';
 
 export interface ProviderFailure {
     ok: false;

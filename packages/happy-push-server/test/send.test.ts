@@ -6,11 +6,14 @@ import { recordDeliveries } from '@/storage/devices';
 import { parsePushToken } from '@/token';
 import {
     APP_ID,
+    EXPO_TOKEN,
     FCM_TOKEN,
     IOS_TOKEN,
     androidDevice,
     createHarness,
     decodeJwt,
+    expoDevice,
+    expoOk,
     fakeRateLimiter,
     deviceRow,
     generateApnsKey,
@@ -80,7 +83,7 @@ describe('POST /v1/push/send rate limiting', () => {
         const h = configured({ SEND_RATE_LIMITER: limiter });
         const providers = mockProviders({ apns: () => new Response(null, { status: 200 }) });
         const a = await h.register(iosDevice());
-        const b = await h.register(iosDevice({ deviceId: 'ios-device-0002', nativeToken: 'b'.repeat(64) }));
+        const b = await h.register(iosDevice({ deviceId: 'ios-device-0002', pushToken: 'b'.repeat(64) }));
 
         const result = await tickets(await h.send({ to: [a, a, a, b], title: 'hi' }));
         expect(result.map((t) => t.status === 'ok' ? 'ok' : t.details?.error)).toEqual(['ok', 'ok', 'MessageRateExceeded', 'ok']);
@@ -235,7 +238,7 @@ describe('APNs delivery', () => {
         const h = configured();
         const providers = mockProviders({ apns: () => new Response(null, { status: 200 }) });
         const token = await h.register(iosDevice());
-        const second = await h.register(iosDevice({ deviceId: 'ios-device-0002', nativeToken: 'b'.repeat(64) }));
+        const second = await h.register(iosDevice({ deviceId: 'ios-device-0002', pushToken: 'b'.repeat(64) }));
 
         await h.send([{ to: token, title: 'one' }, { to: second, title: 'one' }]);
         vi.advanceTimersByTime(49 * 60 * 1000);
@@ -286,7 +289,7 @@ describe('APNs delivery', () => {
         expect(providers.apnsCalls()).toHaveLength(1);
 
         // Re-registering revives the same token.
-        expect(await h.register(iosDevice({ nativeToken: 'd'.repeat(64) }))).toBe(token);
+        expect(await h.register(iosDevice({ pushToken: 'd'.repeat(64) }))).toBe(token);
         expect(deviceRow(h, token)).toMatchObject({ active: 1, last_error: null });
     });
 
@@ -407,7 +410,7 @@ describe('FCM delivery', () => {
         let issued = 0;
         const providers = mockProviders({ oauth: () => oauthOk(`token-${++issued}`), fcm: fcmOk });
         const token = await h.register(androidDevice());
-        const second = await h.register(androidDevice({ deviceId: 'android-device-0002', nativeToken: 'other-' + 'y'.repeat(140) }));
+        const second = await h.register(androidDevice({ deviceId: 'android-device-0002', pushToken: 'other-' + 'y'.repeat(140) }));
 
         await h.send([{ to: token, title: 'a' }, { to: second, title: 'a' }]);
         vi.advanceTimersByTime(54 * 60 * 1000);
@@ -484,7 +487,7 @@ describe('FCM delivery', () => {
         const h = configured();
         const providers = mockProviders({ oauth: () => json({ error: 'invalid_grant' }, 400), fcm: fcmOk });
         const a = await h.register(androidDevice());
-        const b = await h.register(androidDevice({ deviceId: 'android-device-0002', nativeToken: 'other-' + 'y'.repeat(140) }));
+        const b = await h.register(androidDevice({ deviceId: 'android-device-0002', pushToken: 'other-' + 'y'.repeat(140) }));
 
         const result = await tickets(await h.send({ to: [a, b], title: 'hi' }));
         expect(result).toHaveLength(2);
@@ -514,7 +517,7 @@ describe('fan-out', () => {
             apns: (request) => request.url.endsWith('b'.repeat(64)) ? json({ reason: 'Unregistered' }, 410) : new Response(null, { status: 200 }),
         });
         const ios = await h.register(iosDevice());
-        const deadIos = await h.register(iosDevice({ deviceId: 'ios-device-0002', nativeToken: 'b'.repeat(64) }));
+        const deadIos = await h.register(iosDevice({ deviceId: 'ios-device-0002', pushToken: 'b'.repeat(64) }));
         const android = await h.register(androidDevice());
 
         const result = await tickets(await h.send([
@@ -544,7 +547,7 @@ describe('fan-out', () => {
         });
         const tokens: string[] = [];
         for (let i = 0; i < 20; i++) {
-            tokens.push(await h.register(iosDevice({ deviceId: `ios-device-${1000 + i}`, nativeToken: i.toString(16).padStart(64, '0') })));
+            tokens.push(await h.register(iosDevice({ deviceId: `ios-device-${1000 + i}`, pushToken: i.toString(16).padStart(64, '0') })));
         }
         const result = await tickets(await h.send({ to: tokens, title: 'hi' }));
         expect(result.every((t) => t.status === 'ok')).toBe(true);
@@ -553,15 +556,167 @@ describe('fan-out', () => {
 });
 
 describe('recordDeliveries', () => {
-    it('does not deactivate an install whose native token changed while the send was in flight', async () => {
+    it('does not deactivate an install whose push token changed while the send was in flight', async () => {
         const h = configured();
         const token = await h.register(iosDevice());
         const id = parsePushToken(token)!;
-        const stale = { id, appId: APP_ID, platform: 'ios' as const, environment: 'production' as const, nativeToken: IOS_TOKEN, active: true };
+        const stale = { id, appId: APP_ID, platform: 'ios' as const, provider: 'apns' as const, environment: 'production' as const, pushToken: IOS_TOKEN, active: true };
 
-        await h.register(iosDevice({ nativeToken: 'e'.repeat(64) }));
+        await h.register(iosDevice({ pushToken: 'e'.repeat(64) }));
         await recordDeliveries(h.db, [{ kind: 'unregistered', device: stale, error: 'apns:Unregistered' }], Date.now());
 
-        expect(deviceRow(h, token)).toMatchObject({ active: 1, native_token: 'e'.repeat(64) });
+        expect(deviceRow(h, token)).toMatchObject({ active: 1, push_token: 'e'.repeat(64) });
+    });
+});
+
+describe('Expo forwarding', () => {
+    const EXPO_TOKEN_2 = 'ExpoPushToken[zzzzzzzzzzzzzzzzzzzzzz]';
+
+    it('forwards to Expo without credentials and returns Expo ticket ids', async () => {
+        // No APNs/FCM credentials at all: Expo installs do not need them.
+        const h = createHarness();
+        const providers = mockProviders({ expo: expoOk });
+        const token = await h.register(expoDevice());
+
+        const result = await tickets(await h.send({
+            to: token,
+            title: "It's ready!",
+            subtitle: 'happy',
+            body: 'Claude finished',
+            data: { sessionId: 'sess_1' },
+            sound: 'default',
+            badge: 2,
+            channelId: 'messages',
+            categoryId: 'session',
+            threadId: 'sess_1',
+            ttl: 60,
+            mutableContent: true,
+            interruptionLevel: 'time-sensitive',
+            contentAvailable: true,
+        }));
+
+        expect(result).toEqual([{ status: 'ok', id: 'expo-ticket-0' }]);
+        const [call] = providers.expoCalls();
+        expect(call!.url).toBe('https://exp.host/--/api/v2/push/send');
+        expect(call!.headers.authorization).toBeUndefined();
+        expect(JSON.parse(call!.body)).toEqual([{
+            to: EXPO_TOKEN,
+            priority: 'high',
+            title: "It's ready!",
+            subtitle: 'happy',
+            body: 'Claude finished',
+            data: { sessionId: 'sess_1' },
+            sound: 'default',
+            badge: 2,
+            channelId: 'messages',
+            categoryId: 'session',
+            ttl: 60,
+            mutableContent: true,
+            interruptionLevel: 'time-sensitive',
+            _contentAvailable: true,
+        }]);
+        expect(deviceRow(h, token)!.last_sent_at).toBe(Date.now());
+    });
+
+    it('keeps ticket order across providers and sends every Expo recipient in one request', async () => {
+        const h = configured();
+        const providers = mockProviders({
+            apns: () => new Response(null, { status: 200 }),
+            oauth: () => oauthOk(),
+            fcm: () => json({ name: 'projects/happy-test/messages/1' }),
+            expo: expoOk,
+        });
+        const expoA = await h.register(expoDevice());
+        const ios = await h.register(iosDevice());
+        const expoB = await h.register(expoDevice({ deviceId: 'expo-device-0002', platform: 'android', pushToken: EXPO_TOKEN_2 }));
+        const android = await h.register(androidDevice());
+
+        const result = await tickets(await h.send([
+            { to: [expoA, ios], title: 'one' },
+            { to: 'HappyPushToken[0123456789ABCDEFGHIJKL]', title: 'two' },
+            { to: [android, expoB], title: 'three' },
+        ]));
+
+        expect(result.map((t) => t.status === 'ok' ? t.id!.startsWith('expo-') ? 'expo-ok' : 'ok' : t.details?.error)).toEqual([
+            'expo-ok', 'ok', 'DeviceNotRegistered', 'ok', 'expo-ok',
+        ]);
+        expect(providers.expoCalls()).toHaveLength(1);
+        const batch = JSON.parse(providers.expoCalls()[0]!.body) as Array<{ to: string; title: string }>;
+        expect(batch.map((m) => [m.to, m.title])).toEqual([[EXPO_TOKEN, 'one'], [EXPO_TOKEN_2, 'three']]);
+        expect(result[0]!.id).toBe('expo-ticket-0');
+        expect(result[4]!.id).toBe('expo-ticket-1');
+    });
+
+    it('sends one Expo request per app id', async () => {
+        const h = createHarness();
+        const providers = mockProviders({ expo: expoOk });
+        const a = await h.register(expoDevice());
+        const b = await h.register(expoDevice({ appId: 'com.slopus.happy.preview', pushToken: EXPO_TOKEN_2 }));
+        const result = await tickets(await h.send({ to: [a, b], title: 'hi' }));
+        expect(result.every((t) => t.status === 'ok')).toBe(true);
+        expect(providers.expoCalls()).toHaveLength(2);
+    });
+
+    it('deactivates the install on DeviceNotRegistered and passes other Expo errors through', async () => {
+        const h = createHarness();
+        mockProviders({
+            expo: () => json({ data: [
+                { status: 'error', message: 'not registered', details: { error: 'DeviceNotRegistered', expoPushToken: EXPO_TOKEN } },
+                { status: 'error', message: 'slow down', details: { error: 'MessageRateExceeded' } },
+                { status: 'error', message: 'something new', details: { error: 'SomethingNew' } },
+            ] }),
+        });
+        const dead = await h.register(expoDevice());
+        const throttled = await h.register(expoDevice({ deviceId: 'expo-device-0002', pushToken: EXPO_TOKEN_2 }));
+        const other = await h.register(expoDevice({ deviceId: 'expo-device-0003', pushToken: 'ExponentPushToken[wwwwwwwwwwwwwwwwwwwwww]' }));
+
+        const result = await tickets(await h.send({ to: [dead, throttled, other], title: 'hi' }));
+
+        expect(result[0]).toMatchObject({ status: 'error', details: { error: 'DeviceNotRegistered', provider: 'expo', reason: 'DeviceNotRegistered' } });
+        expect(result[1]).toMatchObject({ status: 'error', details: { error: 'MessageRateExceeded', provider: 'expo' } });
+        expect(result[2]).toMatchObject({ status: 'error', details: { provider: 'expo', reason: 'SomethingNew' } });
+        expect(result[2]!.details!.error).toBeUndefined();
+        expect(deviceRow(h, dead)).toMatchObject({ active: 0, inactive_reason: 'expo:DeviceNotRegistered' });
+        expect(deviceRow(h, throttled)).toMatchObject({ active: 1, last_error: 'expo:MessageRateExceeded' });
+        expect(deviceRow(h, other)).toMatchObject({ active: 1 });
+    });
+
+    it.each([
+        ['HTTP 500', () => json({ errors: [{ code: 'INTERNAL_SERVER_ERROR', message: 'boom' }] }, 500), 'INTERNAL_SERVER_ERROR', undefined],
+        ['HTTP 429', () => json({ errors: [{ code: 'TOO_MANY_REQUESTS', message: 'slow' }] }, 429), 'TOO_MANY_REQUESTS', 'MessageRateExceeded'],
+        ['a non-JSON body', () => new Response('<html>', { status: 502 }), 'HTTP 502', undefined],
+        ['a ticket count mismatch', () => json({ data: [] }), 'HTTP 200', undefined],
+        ['a network error', () => { throw new TypeError('fetch failed'); }, 'NetworkError', undefined],
+    ])('fails every Expo recipient without deactivating on %s', async (_name, expo, reason, error) => {
+        const h = createHarness();
+        mockProviders({ expo });
+        const a = await h.register(expoDevice());
+        const b = await h.register(expoDevice({ deviceId: 'expo-device-0002', pushToken: EXPO_TOKEN_2 }));
+        const result = await tickets(await h.send({ to: [a, b], title: 'hi' }));
+        for (const ticket of result) {
+            expect(ticket).toMatchObject({ status: 'error', details: { provider: 'expo', reason } });
+            expect(ticket.details!.error).toBe(error);
+        }
+        expect(deviceRow(h, a)).toMatchObject({ active: 1 });
+        expect(deviceRow(h, b)).toMatchObject({ active: 1 });
+    });
+
+    it('applies the per-recipient rate limit before forwarding', async () => {
+        const limiter = fakeRateLimiter(1);
+        const h = createHarness({ SEND_RATE_LIMITER: limiter });
+        const providers = mockProviders({ expo: expoOk });
+        const token = await h.register(expoDevice());
+        const result = await tickets(await h.send({ to: [token, token], title: 'hi' }));
+        expect(result.map((t) => t.status === 'ok' ? 'ok' : t.details?.error)).toEqual(['ok', 'MessageRateExceeded']);
+        expect(JSON.parse(providers.expoCalls()[0]!.body)).toHaveLength(1);
+    });
+
+    it('still answers a raw Expo token with DeviceNotRegistered without calling Expo', async () => {
+        const h = createHarness();
+        const providers = mockProviders({ expo: expoOk });
+        await h.register(expoDevice());
+        const [ticket] = await tickets(await h.send({ to: EXPO_TOKEN, title: 'hi' }));
+        expect(ticket).toMatchObject({ status: 'error', details: { error: 'DeviceNotRegistered' } });
+        expect(providers.calls).toHaveLength(0);
     });
 });

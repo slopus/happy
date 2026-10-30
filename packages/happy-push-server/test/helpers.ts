@@ -49,11 +49,23 @@ export function postJson(
 }
 
 export function iosDevice(overrides: Record<string, unknown> = {}) {
-    return { deviceId: 'ios-device-0001', appId: APP_ID, platform: 'ios', nativeToken: IOS_TOKEN, ...overrides };
+    return { deviceId: 'ios-device-0001', appId: APP_ID, platform: 'ios', pushToken: IOS_TOKEN, ...overrides };
+}
+
+export const EXPO_TOKEN = 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]';
+
+export function expoDevice(overrides: Record<string, unknown> = {}) {
+    return { deviceId: 'expo-device-0001', appId: APP_ID, platform: 'ios', provider: 'expo', pushToken: EXPO_TOKEN, ...overrides };
+}
+
+/** Answers an Expo send with one ok ticket per message, ids `expo-ticket-<n>`. */
+export function expoOk(request: RecordedRequest): Response {
+    const messages = JSON.parse(request.body) as unknown[];
+    return json({ data: messages.map((_, i) => ({ status: 'ok', id: `expo-ticket-${i}` })) });
 }
 
 export function androidDevice(overrides: Record<string, unknown> = {}) {
-    return { deviceId: 'android-device-0001', appId: APP_ID, platform: 'android', nativeToken: FCM_TOKEN, ...overrides };
+    return { deviceId: 'android-device-0001', appId: APP_ID, platform: 'android', pushToken: FCM_TOKEN, ...overrides };
 }
 
 export function toPem(der: ArrayBuffer, label: string): string {
@@ -113,6 +125,7 @@ export function mockProviders(routes: {
     apns?: (request: RecordedRequest) => Response | Promise<Response>;
     fcm?: (request: RecordedRequest) => Response | Promise<Response>;
     oauth?: (request: RecordedRequest) => Response | Promise<Response>;
+    expo?: (request: RecordedRequest) => Response | Promise<Response>;
 }) {
     const calls: RecordedRequest[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -128,6 +141,7 @@ export function mockProviders(routes: {
         if (url.hostname.endsWith('push.apple.com') && routes.apns) return routes.apns(recorded);
         if (url.hostname === 'fcm.googleapis.com' && routes.fcm) return routes.fcm(recorded);
         if (url.hostname === 'oauth2.googleapis.com' && routes.oauth) return routes.oauth(recorded);
+        if (url.hostname === 'exp.host' && routes.expo) return routes.expo(recorded);
         throw new Error(`unexpected fetch to ${request.url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -136,6 +150,7 @@ export function mockProviders(routes: {
         apnsCalls: () => calls.filter((c) => new URL(c.url).hostname.endsWith('push.apple.com')),
         fcmCalls: () => calls.filter((c) => new URL(c.url).hostname === 'fcm.googleapis.com'),
         oauthCalls: () => calls.filter((c) => new URL(c.url).hostname === 'oauth2.googleapis.com'),
+        expoCalls: () => calls.filter((c) => new URL(c.url).hostname === 'exp.host'),
     };
 }
 

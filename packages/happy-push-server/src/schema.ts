@@ -31,29 +31,53 @@ export const deviceMetadataSchema = z.object({
 });
 export type DeviceMetadata = z.infer<typeof deviceMetadataSchema>;
 
+/**
+ * How an install is delivered to: natively over APNs or FCM, or forwarded to
+ * Expo's push service for apps that only have an Expo push token so far.
+ */
+export const pushProviderSchema = z.enum(['apns', 'fcm', 'expo']);
+export type PushProvider = z.infer<typeof pushProviderSchema>;
+
+const nativeProviderFor: Record<Platform, PushProvider> = { ios: 'apns', android: 'fcm' };
+
 // APNs device tokens are 32 bytes today; Apple reserves the right to grow
 // them, so accept up to 100 bytes of hex.
-const apnsTokenSchema = z.string().regex(/^[0-9a-fA-F]{64,200}$/, 'nativeToken must be an APNs device token in hex');
-const fcmTokenSchema = z.string().min(32).max(1024).regex(/^[A-Za-z0-9_:-]+$/, 'nativeToken must be an FCM registration token');
+const tokenSchemas: Record<PushProvider, z.ZodType<string>> = {
+    apns: z.string().regex(/^[0-9a-fA-F]{64,200}$/, 'pushToken must be an APNs device token in hex'),
+    fcm: z.string().min(32).max(1024).regex(/^[A-Za-z0-9_:-]+$/, 'pushToken must be an FCM registration token'),
+    expo: z.string().max(256).regex(/^Expo(nent)?PushToken\[[A-Za-z0-9_-]{1,200}\]$/, 'pushToken must be an Expo push token'),
+};
 
-export const registerRequestSchema = z.object({
-    deviceId: deviceIdSchema,
-    appId: appIdSchema,
-    platform: platformSchema,
-    nativeToken: z.string(),
-    environment: apnsEnvironmentSchema.optional(),
-    metadata: deviceMetadataSchema.optional(),
-}).superRefine((value, ctx) => {
-    const tokenSchema = value.platform === 'ios' ? apnsTokenSchema : fcmTokenSchema;
-    const result = tokenSchema.safeParse(value.nativeToken);
-    if (!result.success) {
-        ctx.addIssue({
-            code: 'custom',
-            path: ['nativeToken'],
-            message: result.error.issues[0]?.message ?? 'invalid nativeToken',
-        });
-    }
-});
+export const registerRequestSchema = z.preprocess(
+    // `nativeToken` is the field's first name; requests using it stay valid.
+    (body) => {
+        if (body && typeof body === 'object' && !Array.isArray(body) && !('pushToken' in body) && 'nativeToken' in body) {
+            const { nativeToken, ...rest } = body as Record<string, unknown>;
+            return { ...rest, pushToken: nativeToken };
+        }
+        return body;
+    },
+    z.object({
+        deviceId: deviceIdSchema,
+        appId: appIdSchema,
+        platform: platformSchema,
+        /** Defaults to the platform's native provider: apns for ios, fcm for android. */
+        provider: pushProviderSchema.optional(),
+        pushToken: z.string(),
+        environment: apnsEnvironmentSchema.optional(),
+        metadata: deviceMetadataSchema.optional(),
+    }).superRefine((value, ctx) => {
+        const provider = value.provider ?? nativeProviderFor[value.platform];
+        if (provider !== 'expo' && provider !== nativeProviderFor[value.platform]) {
+            ctx.addIssue({ code: 'custom', path: ['provider'], message: `provider "${provider}" does not deliver to ${value.platform}` });
+            return;
+        }
+        const result = tokenSchemas[provider].safeParse(value.pushToken);
+        if (!result.success) {
+            ctx.addIssue({ code: 'custom', path: ['pushToken'], message: result.error.issues[0]?.message ?? 'invalid pushToken' });
+        }
+    }).transform((value) => ({ ...value, provider: value.provider ?? nativeProviderFor[value.platform] }))
+);
 export type RegisterRequest = z.infer<typeof registerRequestSchema>;
 
 export const unregisterRequestSchema = z.object({
