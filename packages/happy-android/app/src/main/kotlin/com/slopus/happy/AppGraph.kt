@@ -381,7 +381,7 @@ class AppGraph(
     private fun forgetDatabase(id: String?) {
         id ?: return
         val database = synchronized(databases) { databases.remove(id) } ?: return
-        database.close()
+        store.retire(database)
         if (!inMemoryDatabases) appContext.deleteDatabase("account-$id.db")
     }
 

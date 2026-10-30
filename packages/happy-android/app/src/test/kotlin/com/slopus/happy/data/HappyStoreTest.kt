@@ -1,12 +1,21 @@
 package com.slopus.happy.data
 
+import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,6 +33,43 @@ class HappyStoreTest {
 
     @After
     fun tearDown() = database.close()
+
+    /** Logout moves the store to another database and closes the old one while a read may still be on it. */
+    @Test
+    fun retiringADatabaseWaitsForTheReadOnIt() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val old = HappyDatabase(context, name = null)
+        val opened = CountDownLatch(1)
+        val proceed = CountDownLatch(1)
+        // Stops a read just after it has taken the old database, before its query.
+        val pausing = object : SQLiteOpenHelper(context, null, null, 1) {
+            override fun onCreate(db: SQLiteDatabase) = Unit
+            override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            override fun getWritableDatabase(): SQLiteDatabase = old.writableDatabase.also {
+                opened.countDown()
+                proceed.await()
+            }
+            override fun close() = old.close()
+        }
+        store.use(pausing)
+        val read = Executors.newSingleThreadExecutor().submit<Any?> { store.settings() }
+        assertTrue(opened.await(5, TimeUnit.SECONDS))
+
+        store.use(database)
+        val retired = Executors.newSingleThreadExecutor().submit { store.retire(pausing) }
+        try {
+            retired.get(200, TimeUnit.MILLISECONDS)
+            fail("closed under the read")
+        } catch (_: TimeoutException) {
+        }
+        proceed.countDown()
+
+        // The read finishes on the old database, which closes after it.
+        assertNull(read.get(5, TimeUnit.SECONDS))
+        retired.get(5, TimeUnit.SECONDS)
+        store.saveSettings(JsonObject(emptyMap()), 1)
+        assertEquals(1L, store.settings()?.version)
+    }
 
     @Test
     fun upsertKeepsTheNewerCopyAndTheMessageWatermark() {

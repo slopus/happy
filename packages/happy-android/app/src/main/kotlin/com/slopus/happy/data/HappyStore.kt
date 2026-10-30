@@ -7,6 +7,9 @@ import android.database.sqlite.SQLiteOpenHelper
 import com.slopus.happy.model.StoredSessionAvatar
 import com.slopus.happy.model.mergeSessionAvatar
 import com.slopus.happy.net.HappyJson
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -64,7 +67,14 @@ enum class LiveMessageResult {
  * anything.
  */
 class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
+    /** Held to read [helper] and use its database; [retire] takes it exclusively to close one. */
+    private val access = ReentrantReadWriteLock()
+
+    /** Only inside [access]'s read lock, so [retire] cannot close it under a read. */
     private val db: SQLiteDatabase get() = helper.writableDatabase
+
+    private inline fun <T> query(sql: String, args: Array<String>?, block: (Cursor) -> T): T =
+        access.read { db.rawQuery(sql, args).use(block) }
 
     /**
      * Points the store at another account's database. Everything watching
@@ -88,6 +98,15 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
             if (versionState.compareAndSet(before, after)) break
         }
         changeCount.value = changeCount.value + 1
+    }
+
+    /**
+     * Closes a database the store has moved off ([use]) once the reads and
+     * transactions already under way on it are done.
+     */
+    fun retire(previous: SQLiteOpenHelper) {
+        check(previous !== helper) { "retiring the database in use" }
+        access.write { previous.close() }
     }
 
     private val versionState = MutableStateFlow(StoreVersions())
@@ -120,7 +139,7 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
 
     private fun dirty(): Dirty = checkNotNull(dirty.get()) { "write outside a transaction" }
 
-    fun <T> transaction(block: () -> T): T {
+    fun <T> transaction(block: () -> T): T = access.read {
         val db = db
         val outermost = dirty.get() == null
         if (outermost) dirty.set(Dirty())
@@ -164,7 +183,7 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
     // Sync watermarks: bookkeeping, not data anyone displays.
 
     fun cursor(key: String): Long? =
-        db.rawQuery("SELECT value FROM sync_state WHERE key = ?", arrayOf(key)).use { c ->
+        query("SELECT value FROM sync_state WHERE key = ?", arrayOf(key)) { c ->
             if (c.moveToFirst()) c.getLong(0) else null
         }
 
@@ -238,34 +257,34 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
     }
 
     fun sessionIds(): Set<String> =
-        db.rawQuery("SELECT id FROM sessions", null).use { c ->
+        query("SELECT id FROM sessions", null) { c ->
             buildSet { while (c.moveToNext()) add(c.getString(0)) }
         }
 
     /** Most recently updated first. */
     fun sessions(): List<SessionRecord> =
-        db.rawQuery("SELECT $SESSION_COLUMNS FROM sessions ORDER BY updated_at DESC", null).use { c ->
+        query("SELECT $SESSION_COLUMNS FROM sessions ORDER BY updated_at DESC", null) { c ->
             buildList { while (c.moveToNext()) add(c.toSession()) }
         }
 
     fun session(id: String): SessionRecord? =
-        db.rawQuery("SELECT $SESSION_COLUMNS FROM sessions WHERE id = ?", arrayOf(id)).use { c ->
+        query("SELECT $SESSION_COLUMNS FROM sessions WHERE id = ?", arrayOf(id)) { c ->
             if (c.moveToFirst()) c.toSession() else null
         }
 
     fun sessionActivity(): List<ActivityRow> =
-        db.rawQuery("SELECT id, active, active_at FROM sessions", null).use { c ->
+        query("SELECT id, active, active_at FROM sessions", null) { c ->
             buildList { while (c.moveToNext()) add(ActivityRow(c.getString(0), c.getInt(1) != 0, c.getLong(2))) }
         }
 
     fun machineActivity(): List<ActivityRow> =
-        db.rawQuery("SELECT id, active, active_at FROM machines", null).use { c ->
+        query("SELECT id, active, active_at FROM machines", null) { c ->
             buildList { while (c.moveToNext()) add(ActivityRow(c.getString(0), c.getInt(1) != 0, c.getLong(2))) }
         }
 
     /** Sessions the server has messages for that this device has not stored: id to the last seq it has. */
     fun sessionsBehind(): List<Pair<String, Long>> =
-        db.rawQuery("SELECT id, messages_seq FROM sessions WHERE seq > messages_seq ORDER BY updated_at DESC", null).use { c ->
+        query("SELECT id, messages_seq FROM sessions WHERE seq > messages_seq ORDER BY updated_at DESC", null) { c ->
             buildList { while (c.moveToNext()) add(c.getString(0) to c.getLong(1)) }
         }
 
@@ -278,16 +297,16 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
     // Messages
 
     fun messagesSeq(sessionId: String): Long =
-        db.rawQuery("SELECT messages_seq FROM sessions WHERE id = ?", arrayOf(sessionId)).use { c ->
+        query("SELECT messages_seq FROM sessions WHERE id = ?", arrayOf(sessionId)) { c ->
             if (c.moveToFirst()) c.getLong(0) else 0L
         }
 
     /** The stored run of a session's messages, or null for an unknown session. */
     fun messageHistory(sessionId: String): MessageHistory? =
-        db.rawQuery(
+        query(
             "SELECT messages_oldest_seq, messages_seq, messages_has_older FROM sessions WHERE id = ?",
             arrayOf(sessionId),
-        ).use { c ->
+        ) { c ->
             if (!c.moveToFirst()) return null
             if (c.isNull(0)) {
                 MessageHistory(isLoaded = false, oldestSeq = 0, newestSeq = c.getLong(1), hasOlder = false)
@@ -367,7 +386,7 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
             else -> LiveMessageResult.GAP
         }
         // The session row moves with its newest message either way.
-        db.rawQuery("SELECT seq, updated_at FROM sessions WHERE id = ?", arrayOf(sessionId)).use { c ->
+        query("SELECT seq, updated_at FROM sessions WHERE id = ?", arrayOf(sessionId)) { c ->
             c.moveToFirst()
             if (c.getLong(0) < message.seq || c.getLong(1) < message.createdAt) {
                 db.execSQL(
@@ -394,10 +413,10 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
 
     /** The newest [limit] messages of a session, oldest first. */
     fun messages(sessionId: String, limit: Int = Int.MAX_VALUE): List<MessageRecord> =
-        db.rawQuery(
+        query(
             "SELECT * FROM (SELECT $MESSAGE_COLUMNS FROM messages WHERE session_id = ? ORDER BY seq DESC LIMIT ?) ORDER BY seq ASC",
             arrayOf(sessionId, limit.toString()),
-        ).use { c -> buildList { while (c.moveToNext()) add(c.toMessage()) } }
+        ) { c -> buildList { while (c.moveToNext()) add(c.toMessage()) } }
 
     private fun updateHistory(sessionId: String, oldest: Long, newest: Long, hasOlder: Boolean) {
         val values = ContentValues().apply {
@@ -418,10 +437,10 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
     private fun writeMessages(sessionId: String, messages: List<MessageRecord>) {
         if (messages.isEmpty()) return
         val stored = HashMap<Long, MessageRecord>()
-        db.rawQuery(
+        query(
             "SELECT $MESSAGE_COLUMNS FROM messages WHERE session_id = ? AND seq BETWEEN ? AND ?",
             arrayOf(sessionId, messages.minOf { it.seq }.toString(), messages.maxOf { it.seq }.toString()),
-        ).use { c -> while (c.moveToNext()) c.toMessage().let { stored[it.seq] = it } }
+        ) { c -> while (c.moveToNext()) c.toMessage().let { stored[it.seq] = it } }
         for (message in messages) {
             val row = message.copy(sessionId = sessionId)
             if (stored[row.seq] == row) continue
@@ -496,12 +515,12 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
     }
 
     fun machines(): List<MachineRecord> =
-        db.rawQuery("SELECT $MACHINE_COLUMNS FROM machines ORDER BY active_at DESC", null).use { c ->
+        query("SELECT $MACHINE_COLUMNS FROM machines ORDER BY active_at DESC", null) { c ->
             buildList { while (c.moveToNext()) add(c.toMachine()) }
         }
 
     fun machine(id: String): MachineRecord? =
-        db.rawQuery("SELECT $MACHINE_COLUMNS FROM machines WHERE id = ?", arrayOf(id)).use { c ->
+        query("SELECT $MACHINE_COLUMNS FROM machines WHERE id = ?", arrayOf(id)) { c ->
             if (c.moveToFirst()) c.toMachine() else null
         }
 
@@ -510,7 +529,7 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
     /** Accepts messages for delivery, after any already waiting for the session. */
     fun enqueueOutbox(records: List<OutboxRecord>) = transaction {
         for (record in records) {
-            val position = db.rawQuery("SELECT COALESCE(MAX(position), 0) + 1 FROM outbox", null).use { c ->
+            val position = query("SELECT COALESCE(MAX(position), 0) + 1 FROM outbox", null) { c ->
                 c.moveToFirst()
                 c.getLong(0)
             }
@@ -538,10 +557,10 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
 
     /** A session's outbox in acceptance order; every session's when [sessionId] is null. */
     fun outbox(sessionId: String? = null): List<OutboxRecord> =
-        db.rawQuery(
+        query(
             "SELECT $OUTBOX_COLUMNS FROM outbox" + (if (sessionId != null) " WHERE session_id = ?" else "") + " ORDER BY position",
             sessionId?.let { arrayOf(it) },
-        ).use { c -> buildList { while (c.moveToNext()) add(c.toOutbox()) } }
+        ) { c -> buildList { while (c.moveToNext()) add(c.toOutbox()) } }
 
     /** Moves rows to [state], counting an attempt when they start sending. */
     fun setOutboxState(sessionId: String, localIds: Collection<String>, state: OutboxState, error: String? = null) = transaction {
@@ -565,10 +584,10 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
      */
     fun markOutboxSent(sessionId: String, accepted: Map<String, Pair<String, Long>>) = transaction {
         for ((localId, server) in accepted) {
-            val echoed = db.rawQuery(
+            val echoed = query(
                 "SELECT 1 FROM messages WHERE session_id = ? AND local_id = ? LIMIT 1",
                 arrayOf(sessionId, localId),
-            ).use { it.moveToFirst() }
+            ) { it.moveToFirst() }
             val changed = if (echoed) {
                 db.delete("outbox", "local_id = ? AND session_id = ?", arrayOf(localId, sessionId))
             } else {
@@ -594,7 +613,7 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
 
     /** At startup: a send interrupted by the process dying is queued again (the server dedupes on localId). */
     fun requeueInterruptedSends() = transaction {
-        val sessions = db.rawQuery("SELECT DISTINCT session_id FROM outbox WHERE state = ?", arrayOf(OutboxState.SENDING.name)).use { c ->
+        val sessions = query("SELECT DISTINCT session_id FROM outbox WHERE state = ?", arrayOf(OutboxState.SENDING.name)) { c ->
             buildList { while (c.moveToNext()) add(c.getString(0)) }
         }
         if (sessions.isEmpty()) return@transaction
@@ -634,12 +653,12 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
 
     /** Logout: everything goes, schema stays. */
     /** Every session's stored composer document (sync/SessionComposer.kt), by session id. */
-    fun composers(): Map<String, String> = db.rawQuery("SELECT session_id, value FROM composer", null).use { c ->
+    fun composers(): Map<String, String> = query("SELECT session_id, value FROM composer", null) { c ->
         buildMap { while (c.moveToNext()) put(c.getString(0), c.getString(1)) }
     }
 
     /** Stores a session's composer document, or removes it when [value] is null. A session not stored is ignored. */
-    fun saveComposer(sessionId: String, value: String?) {
+    fun saveComposer(sessionId: String, value: String?): Unit = access.read {
         if (value == null) {
             db.delete("composer", "session_id = ?", arrayOf(sessionId))
             return
@@ -662,7 +681,7 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
     }
 
     private fun document(key: String): Pair<JsonObject, Long?>? =
-        db.rawQuery("SELECT value, version FROM account WHERE key = ?", arrayOf(key)).use { c ->
+        query("SELECT value, version FROM account WHERE key = ?", arrayOf(key)) { c ->
             if (!c.moveToFirst()) return null
             val value = try {
                 HappyJson.parseToJsonElement(c.getString(0)).jsonObject
