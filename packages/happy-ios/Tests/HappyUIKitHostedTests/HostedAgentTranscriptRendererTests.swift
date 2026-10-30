@@ -142,6 +142,31 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         XCTAssertTrue(chat.sendFollowsNewest)
     }
 
+    func testAnAppendTargetsTheIncomingNewestRowAboveTheComposer() async throws {
+        let (_, session) = try await self.session()
+        let chat = self.chat(session)
+        let scene = try await hostedActiveScene()
+        let window = hostedKeyWindow(in: scene, root: UINavigationController(rootViewController: chat))
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(250))
+        let transcript = try XCTUnwrap(find(AgentChatUltraList.self, in: chat.view))
+        let input = try XCTUnwrap(find(AgentInputCardView.self, in: chat.view))
+        let plans = (0..<40).map { ChatRowPlan(id: "row-\($0)", size: CGSize(width: chat.view.bounds.width, height: 80), items: []) }
+        transcript.apply(plans)
+        try await until { transcript.list.loadedItemView(at: 0) != nil }
+        transcript.scrollToNewest(animated: false)
+        try await until { abs(transcript.distanceFromNewest) < 1 }
+        let old = try XCTUnwrap(transcript.list.loadedItemView(at: 0))
+        let oldY = old.convert(old.bounds, to: chat.view).minY
+        transcript.apply(plans + [ChatRowPlan(id: "sent", size: CGSize(width: chat.view.bounds.width, height: 60), items: [])])
+        try await until { (transcript.list.loadedItemView(at: 0) as? AgentChatRowView)?.row.plan.id == "sent" }
+        let sent = try XCTUnwrap(transcript.list.loadedItemView(at: 0))
+        XCTAssertEqual(sent.convert(sent.bounds, to: chat.view).maxY, input.frame.minY - ChatScreenLayout.Metrics.listGap, accuracy: 1)
+        XCTAssertEqual(old.convert(old.bounds, to: chat.view).minY, oldY - 60, accuracy: 1,
+                       "the previous newest moves only by the appended row's height")
+    }
+
     private func until(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {

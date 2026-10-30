@@ -1394,7 +1394,15 @@ final class UITests: XCTestCase {
         }
         composer.tap()
         pause(1)
-        XCTAssertEqual(input.frame.maxY, app.keyboards.firstMatch.frame.minY - 8, accuracy: 2, "the composer does not ride the keyboard")
+        func assertKeyboardDock(file: StaticString = #filePath, line: UInt = #line) {
+            // XCUI's keyboard frame can exclude the 44pt prediction strip.
+            // The UIKit keyboard notification includes it; the card sits
+            // eight points above that full frame in either orientation.
+            let gap = app.keyboards.firstMatch.frame.minY - input.frame.maxY
+            XCTAssertTrue(abs(gap - 8) <= 2 || abs(gap - 52) <= 2,
+                          "the composer does not ride the full keyboard (XCUI gap \(gap))", file: file, line: line)
+        }
+        assertKeyboardDock()
         let first = say("stream 1 20 wait 2500 first")
         XCTAssertTrue(first.waitForExistence(timeout: 5))
         pause(0.2)
@@ -1432,7 +1440,7 @@ final class UITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         pause(1.5)
         capture("send-landscape-keyboard")
-        XCTAssertEqual(input.frame.maxY, app.keyboards.firstMatch.frame.minY - 8, accuracy: 2)
+        assertKeyboardDock()
         let landscapeEnd = messages.allElementsBoundByIndex.map(\.frame).filter { $0.minY < input.frame.minY }.map(\.maxY).max() ?? 0
         XCTAssertEqual(landscapeEnd, input.frame.minY - 8, accuracy: 6, "rotation put the newest message under the composer")
         XCUIDevice.shared.orientation = .portrait

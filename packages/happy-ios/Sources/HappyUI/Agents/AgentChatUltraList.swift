@@ -149,7 +149,7 @@ final class AgentChatUltraList: UIView {
         let follows = followsNewest && !list.isTracking && !list.isDragging && !list.isDecelerating
         list.applyChanges(items: items, newSize: viewportSize,
                           newInsets: .init(top: insets.top, bottom: insets.bottom),
-                          scrollTo: follows ? newestTarget() : nil,
+                          scrollTo: follows ? .init(index: 0, identity: items.first?.identity) : nil,
                           anchorMode: .preserveVisibleContent,
                           transition: animated && follows && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
     }
