@@ -49,6 +49,14 @@ public struct Places: Equatable, Sendable {
     func isHappy(_ space: AgentWire.Space) -> Bool {
         space.target.kind == "bot" && bot(space.target.id)?.systemKey == Self.happyBotKey
     }
+
+    /// Happy's own bot's conversation, which Settings' asks are typed into
+    /// (`ChatPrefill`). A bot the account has been told is not active is
+    /// not asked to do anything; one whose status it has not been told is
+    /// taken as active, as the rows take it.
+    var chiefOfStaffAgentId: String? {
+        bots.first { $0.systemKey == Self.happyBotKey && ($0.status ?? "active") == "active" }?.agent?.id
+    }
 }
 
 /// One drawn row of the V2 sidebar, as `happyAgentSpacesItems` makes

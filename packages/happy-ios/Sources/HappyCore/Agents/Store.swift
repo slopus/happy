@@ -23,6 +23,10 @@ public struct Snapshot: Equatable, Sendable {
     public var document: SpaceSidebarDocument?
     /// Happy's own row, below which new work goes.
     public var happySpaceId: String?
+    /// Happy's own conversation, which Settings' asks are typed into
+    /// (`ChatPrefill`); nil until the bots have been read, or where the
+    /// account has no Chief of Staff running.
+    public var happyAgentId: String?
     /// The person's V2 setting, which runs Prioritizing; nil until read.
     public var prioritizing: Bool?
     /// The last act the daemon refused: its reason, empty when it gave none.
@@ -734,6 +738,7 @@ public actor Store {
             snapshot.document = document
         }
         snapshot.happySpaceId = spaces.values.first { places.isHappy($0) }?.id
+        snapshot.happyAgentId = places.chiefOfStaffAgentId
         var references = References.entities(owners: composedOwners)
         references.artifacts = artifactTitles
         references.pages = artifactPages

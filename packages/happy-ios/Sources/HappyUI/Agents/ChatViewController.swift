@@ -42,6 +42,13 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private var keyboardOwed = false
     /// The keyboard new work opens with, not yet asked for.
     private var focusPending = false
+    /// The ask a screen opened this conversation with (Settings' rename
+    /// and avatar), put in the composer unsent once the draft it already
+    /// had has arrived.
+    private let prefill: ChatPrefill?
+    /// The ask has been put in: it goes in once, however many drafts
+    /// arrive afterwards.
+    private var prefilled = false
     /// New work on its way to the screen from this one's compose.
     private var composing: UUID?
     private let previewing: Bool
@@ -167,13 +174,16 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private let header = ChatHeaderView()
     private var titleView: ChatTitleView { header.titleView }
 
-    init(session: Session, agentId: String, title: String, spaceId: String?, seedling intro: Intro?, creation: Creation? = nil, previewing: Bool = false) {
+    init(session: Session, agentId: String, title: String, spaceId: String?, seedling intro: Intro?, creation: Creation? = nil, prefill: ChatPrefill? = nil, previewing: Bool = false) {
         self.session = session
         self.spaceId = spaceId
         self.intro = intro
         self.previewing = previewing
+        self.prefill = previewing ? nil : prefill
         opensFocused = creation != nil
-        focusPending = creation != nil
+        // An ask typed in for the person brings the keyboard up too, so
+        // they only have to finish the sentence.
+        focusPending = creation != nil || (prefill != nil && !previewing)
         if creation == nil {
             let held = session.warm.hold(agentId)
             warm = held
@@ -597,6 +607,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
             draftArrivals = snapshot.draftArrivals
             // Typed here since, on its way to the conversation: that stands.
             if snapshot.draftUpdatedAt >= lastDraftEdit { showDraft(snapshot.draft) }
+            showPrefill()
         }
         proposals.want(snapshot.items.flatMap(\.proposalIds))
         updateHeaderStatus()
@@ -1514,6 +1525,26 @@ final class ChatViewController: UIViewController, ComposeHosting {
         card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0), animatesHeight: false)
         showingDraft = false
         updatePrimary()
+    }
+
+    /// The ask Settings opened this conversation with, once the draft it
+    /// already had is in the composer: the words go above that draft, two
+    /// lines over it, with the caret after them and the keyboard up, so
+    /// the person finishes the sentence and sends it themselves.
+    ///
+    /// It goes in once. Nothing is sent, and the conversation's stored
+    /// draft is not written by opening: only typing does that, as
+    /// anywhere else, so an ask left untouched is not kept.
+    private func showPrefill() {
+        guard let prefill, !prefilled, !previewing else { return }
+        prefilled = true
+        let shown = prefill.applied(to: card.text)
+        showingDraft = true
+        card.setText(shown.text, selection: NSRange(location: shown.caret, length: 0), animatesHeight: false)
+        showingDraft = false
+        updatePrimary()
+        // On screen already: the keyboard now. Still arriving: with it.
+        if view.window != nil, !focusPending { card.focus() }
     }
 
     private func showFileUnavailable() {
