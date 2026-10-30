@@ -188,11 +188,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         navigationItem.searchController = searchController
         navigationItem.hidesSearchBarWhenScrolling = false
         navigationItem.preferredSearchBarPlacement = .integratedButton
-        // In the bar at the top, not iOS 26's toolbar at the bottom; at
-        // the left, after back.
+        // In the bar at the top, not iOS 26's toolbar at the bottom.
         if #available(iOS 26.0, *) { navigationItem.searchBarPlacementAllowsToolbarIntegration = false }
-        navigationItem.leftItemsSupplementBackButton = true
-        navigationItem.leftBarButtonItems = [navigationItem.searchBarPlacementBarButtonItem]
         definesPresentationContext = true
     }
 

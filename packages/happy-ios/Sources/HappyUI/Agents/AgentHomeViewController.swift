@@ -64,8 +64,6 @@ final class AgentHomeViewController: UIViewController, DockHosting, UISearchResu
             updateTitle()
         }
         accountControl = HomeAccountControl(context: context, controller: self)
-        // Search first at the left, before the picture; settings alone at the right.
-        accountControl?.leading = [navigationItem.searchBarPlacementBarButtonItem]
         observation = context.account.observeAccounts { [weak self] _ in self?.updateTitle() }
         updateTitle()
     }
