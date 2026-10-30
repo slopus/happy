@@ -59,18 +59,38 @@ final class HomeNoticeViewController: UIViewController {
         switch kind {
         case .connecting:
             content.showsArchivedAction = false
+            scene(.snail)
         case .noComputer:
+            // Empty with the thing that fills it right there: desktop's wand.
+            scene(.wand)
             content.titleLabel.string = Strings.Home.noComputerTitle
             content.descriptionLabel.string = Strings.Home.noComputerDescription
             content.startNewSession.title = Strings.scanQRCode
             content.showsArchivedAction = false
         case .offline(let choices, let hasArchived):
+            // Desktop deliberately has no art for offline: the glyph stays.
+            content.artwork = nil
             content.titleLabel.string = choices.count == 1 ? Strings.Onboarding.offlineTitleOne(name: choices[0].name) : Strings.Onboarding.offlineTitleMany
             content.descriptionLabel.string = Strings.Home.offlineDescription
             content.startNewSession.title = Strings.Troubleshoot.title
             content.showsArchivedAction = hasArchived
         }
         content.setNeedsLayout()
+    }
+
+    /// The desktop picture for this notice, in the glyph's box; one is
+    /// kept and re-pointed rather than rebuilt, so changing kind in
+    /// place does not restart a play that is already resting.
+    private func scene(_ wanted: StateScene) {
+        if let showing = content.artwork as? StateSceneView {
+            showing.scene = wanted
+            return
+        }
+        content.artwork = StateSceneView(
+            scene: wanted,
+            size: NoSessionsLayout.Metrics.iconSize,
+            replayLabel: Strings.Home.noComputerTitle
+        )
     }
 
     private func primary() {

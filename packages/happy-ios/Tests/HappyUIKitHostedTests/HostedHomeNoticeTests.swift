@@ -121,6 +121,7 @@ final class HostedHomeNoticeTests: XCTestCase {
         XCTAssertEqual(notice()?.kind, .connecting)
         XCTAssertFalse(navigation.isNavigationBarHidden, "home keeps its bar")
         try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual((subview(NoSessionsView.self, in: home.view)?.artwork as? StateSceneView)?.scene, .snail, "connecting is not the snail")
         capture(window, "1-connecting")
         let first = try XCTUnwrap(notice())
 
@@ -129,9 +130,11 @@ final class HostedHomeNoticeTests: XCTestCase {
         let none = try await until { notice()?.kind == .noComputer }
         XCTAssertTrue(none, "no computer, no notice to scan one")
         let view = try XCTUnwrap(subview(NoSessionsView.self, in: home.view))
+        XCTAssertLessThanOrEqual(view.scrollView.contentSize.height, view.bounds.height + 0.5, "the notice scrolls before any picture")
         XCTAssertEqual(view.titleLabel.string, Strings.Home.noComputerTitle)
         XCTAssertEqual(view.startNewSession.title, Strings.scanQRCode)
         try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual((view.artwork as? StateSceneView)?.scene, .wand, "no computer is not the wand")
         capture(window, "2-no-computer")
 
         // One computer, offline: its name, and Troubleshoot.
@@ -146,6 +149,10 @@ final class HostedHomeNoticeTests: XCTestCase {
         XCTAssertEqual(view.startNewSession.title, Strings.Troubleshoot.title)
         XCTAssertTrue(notice() === first, "the notice changes in place")
         try await Task.sleep(for: .milliseconds(300))
+        XCTAssertNil(view.artwork, "offline keeps its plain glyph, as desktop does")
+        // The picture sits in the glyph's own box, so the notice must not
+        // have started to scroll.
+        XCTAssertLessThanOrEqual(view.scrollView.contentSize.height, view.bounds.height + 0.5, "the notice began to scroll")
         capture(window, "3-offline")
         withExtendedLifetime(controller) {}
     }

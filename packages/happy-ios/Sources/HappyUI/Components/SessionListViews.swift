@@ -396,6 +396,18 @@ public final class NoSessionsView: UIView {
         didSet { if showsArchivedAction != oldValue { setNeedsLayout() } }
     }
 
+    /// A picture drawn in the glyph's place, the same box, so the
+    /// layout is unchanged: home's notice puts a `StateSceneView` here.
+    var artwork: UIView? {
+        didSet {
+            guard artwork !== oldValue else { return }
+            oldValue?.removeFromSuperview()
+            if let artwork { scrollView.addSubview(artwork) }
+            icon.isHidden = artwork != nil
+            setNeedsLayout()
+        }
+    }
+
     /// The button as wide as its label and centred (`NoSessionsLayout`'s
     /// `buttonLabelWidth`), rather than across the screen.
     var fitsButtonToLabel = false {
@@ -499,6 +511,7 @@ public final class NoSessionsView: UIView {
         let end = max(0, layout.contentHeight - bounds.height)
         if scrollView.contentOffset.y > end { scrollView.contentOffset.y = end }
         icon.setLayoutFrame(layout.icon)
+        artwork?.setLayoutFrame(layout.icon)
         titleLabel.setLayoutFrame(layout.title)
         descriptionLabel.setLayoutFrame(layout.description)
         if let frame = layout.button { startNewSession.setLayoutFrame(frame) }
