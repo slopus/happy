@@ -56,6 +56,8 @@ final class SidebarView: UIScrollView {
     private var views: [String: RowView] = [:]
     private let connectors = CAShapeLayer()
     private var laidOut: (width: CGFloat, rows: [SidebarLayout.Row])?
+    /// The row IDs `layoutResult`'s frames are for, in its order.
+    private var placed: [String] = []
     private(set) var layoutResult: SidebarLayout.Result?
     /// The order shown while a carry is on, and after a drop until the
     /// document says the same.
@@ -364,9 +366,12 @@ final class SidebarView: UIScrollView {
     /// Lays `shown` out and moves each row to its place, gliding when asked.
     private func place(_ shown: [Row], animated: Bool) {
         let input = layoutRows(shown)
+        // Where the reader is, before the new places are known.
+        let anchor = anchor()
         let result = SidebarLayout.layout(input, width: bounds.width, top: padding?.top ?? Metrics.contentTop, bottom: padding?.bottom ?? Metrics.contentBottom, scale: traitCollection.displayScale)
         layoutResult = result
         laidOut = (bounds.width, input)
+        placed = shown.map(\.id)
         let move = {
             for (row, frame) in zip(shown, result.frames) {
                 guard let view = self.views[row.id] else { continue }
@@ -389,6 +394,36 @@ final class SidebarView: UIScrollView {
         CATransaction.commit()
         let size = CGSize(width: bounds.width, height: result.contentHeight)
         if contentSize != size { contentSize = size }
+        keep(anchor, in: shown, result)
+    }
+
+    /// The first row on screen and where it sits in the content: what the
+    /// reader is looking at. Nil at the very top, where new rows are meant
+    /// to be seen arriving, while a row is carried, or before a layout.
+    private func anchor() -> (id: String, y: CGFloat)? {
+        guard scrolls, carry == nil, let frames = layoutResult?.frames, frames.count == placed.count else { return nil }
+        guard contentOffset.y > -contentInset.top + 0.5 else { return nil }
+        let window = bounds.inset(by: contentInset)
+        guard let index = frames.firstIndex(where: { $0.box.intersects(window) }) else { return nil }
+        return (placed[index], frames[index].box.minY)
+    }
+
+    /// The reader's place, kept: rows that changed above what is on screen
+    /// would otherwise push everything under the eye (a conversation added
+    /// or archived elsewhere, Prioritizing's reordering). The list moves by
+    /// what the content above moved, so the rows on screen stay where they
+    /// are. Clamped to what can be scrolled to, so it can't be left
+    /// hanging past the end.
+    private func keep(_ anchor: (id: String, y: CGFloat)?, in shown: [Row], _ result: SidebarLayout.Result) {
+        guard let anchor, let index = shown.firstIndex(where: { $0.id == anchor.id }),
+              result.frames.indices.contains(index) else { return }
+        let moved = result.frames[index].box.minY - anchor.y
+        guard abs(moved) > 0.01 else { return }
+        let top = -contentInset.top
+        let bottom = max(top, result.contentHeight + contentInset.bottom - bounds.height)
+        let next = min(bottom, max(top, contentOffset.y + moved))
+        guard abs(next - contentOffset.y) > 0.01 else { return }
+        contentOffset.y = next
     }
 
     func view(for rowId: String) -> RowView? { views[rowId] }
