@@ -72,19 +72,15 @@ enum HeaderBar {
         return item
     }
 
-    static func chatMenuItem(_ action: @escaping () -> Void) -> UIBarButtonItem {
+    static func chatMenuItem(_ elements: @escaping @MainActor () -> [UIMenuElement]) -> UIBarButtonItem {
         let image = UIImage(systemName: "ellipsis", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22))
-        let item = UIBarButtonItem(image: image, primaryAction: UIAction { _ in action() })
+        let deferred = UIDeferredMenuElement.uncached { completion in completion(elements()) }
+        let item = UIBarButtonItem(image: image, primaryAction: nil, menu: UIMenu(children: [deferred]))
         item.accessibilityLabel = Strings.ChatActions.more
         item.accessibilityIdentifier = "chat-more"
         return item
     }
 
-    /// The public navigation bar's bounds, in the menu's host view.
-    static func menuAnchor(in controller: UIViewController) -> CGRect {
-        guard let bar = controller.navigationController?.navigationBar else { return .zero }
-        return bar.convert(bar.bounds, to: controller.view)
-    }
 }
 
 /// Search that opens from the screen's own bar button: a field takes the

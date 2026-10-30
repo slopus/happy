@@ -986,10 +986,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         if tablet, switcher == nil { switcher = AccountSwitcher(context: context, controller: self) }
         navigationItem.leftBarButtonItem = tablet ? switcher?.barItem : nil
         var items = [HeaderBar.chatMenuItem { [weak self] in
-            guard let self else { return }
-            composer.presentChatMenu(in: view, anchor: { [weak self] in
-                self.map { HeaderBar.menuAnchor(in: $0) } ?? .zero
-            }, onInfo: { [weak self] in self?.openInfo() })
+            guard let self else { return [] }
+            return composer.chatMenuElements(onInfo: { [weak self] in self?.openInfo() })
         }]
         if let host = self as UIViewController as? ComposeHosting {
             items.append(HeaderBar.composeItem { [weak host] in host?.compose() })
