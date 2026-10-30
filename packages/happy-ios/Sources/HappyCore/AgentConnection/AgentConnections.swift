@@ -55,7 +55,7 @@ public final class AgentConnections {
             await engine.stop()
             if engines[id] === engine { engines.removeValue(forKey: id) }
         }
-        var account = AgentConnection(id: id, name: "Happy Agent")
+        var account = AgentConnection(id: id, name: AgentName.friendly(name))
         let transport = makeTransport(value)
         do { account = try await AgentIdentity.refresh(account, transport: transport, token: value.deviceToken) }
         catch PairingError.revoked { await transport.close(); throw PairingError.revoked }

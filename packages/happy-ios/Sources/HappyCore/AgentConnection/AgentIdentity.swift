@@ -27,7 +27,7 @@ enum AgentIdentity {
         var updated = account
         if let node = config.config.node {
             guard !node.name.isEmpty, node.name.count <= 128, !node.name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw PairingError.invalidResponse }
-            updated.name = node.name
+            updated.name = AgentName.friendly(node.name)
             updated.thumbhash = node.avatar?.thumbhash
             if node.avatar == nil { updated.avatar = nil; updated.avatarETag = nil }
             else {

@@ -86,7 +86,7 @@ actor AgentConnectionStorage {
         }
         if let file, let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode(Registry.self, from: data) { registry = saved }
         registry.accounts.removeAll { values[$0.id] == nil }
-        for id in values.keys.sorted() where !registry.accounts.contains(where: { $0.id == id }) { registry.accounts.append(AgentConnection(id: id, name: "Happy Agent")) }
+        for id in values.keys.sorted() where !registry.accounts.contains(where: { $0.id == id }) { registry.accounts.append(AgentConnection(id: id, name: AgentName.fallback)) }
         if !registry.accounts.contains(where: { $0.id == registry.activeID }) { registry.activeID = nil }
         for index in registry.accounts.indices { registry.accounts[index].status = registry.accounts[index].revoked ? .revoked : .paused }
         try persist()
