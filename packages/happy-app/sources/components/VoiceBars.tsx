@@ -53,6 +53,17 @@ export const VoiceBars: React.FC<VoiceBarsProps> = ({
                 Animated.timing(bar3, { toValue: 0.3, duration: 200, useNativeDriver: true }),
             ]).start();
         }
+
+        // The consumer mounts this conditionally, so the else branch never
+        // runs for an unmount. On web RNW's Animated uses the JS driver: each
+        // Animated.loop is a requestAnimationFrame chain that restarts forever
+        // (iterations: -1) unless stopped here - three 60 fps loops leaked per
+        // speech turn otherwise.
+        return () => {
+            bar1.stopAnimation();
+            bar2.stopAnimation();
+            bar3.stopAnimation();
+        };
     }, [isActive, bar1, bar2, bar3]);
 
     const barWidth = size === 'small' ? 2 : 3;
