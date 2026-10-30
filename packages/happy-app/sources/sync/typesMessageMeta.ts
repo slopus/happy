@@ -9,6 +9,9 @@ export const MessageMetaSchema = z.object({
     // Snapshot at send time, not the agent's live state: starting this message's
     // own turn must not briefly make an idle send look queued.
     queuedWhileBusy: z.boolean().optional(),
+    // Steer joins the run under way; queue waits for it. Sent only to Happy
+    // Agent daemons that advertise honoring it (rigSupportsFollowUpQueueing).
+    delivery: z.enum(['steer', 'queue']).optional(),
     permissionMode: z.string().optional(), // Permission mode key for this message
     model: z.string().nullable().optional(), // Model name for this message (null = reset)
     modelProviderId: z.string().optional(), // Provider qualifier for metadata-driven clients such as Rig

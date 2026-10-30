@@ -15,19 +15,25 @@ import {
     isRigMetadataV1,
     rigSendsMessageReceipts,
 } from './rig';
+import { rigSupportsFollowUpQueueing, type FollowUpDelivery } from './followUpBehavior';
 
 export function resolveMessageDeliveryMeta(
     session: Pick<Session, 'metadata' | 'thinking' | 'agentState'>,
     isNewSession = false,
     hasPendingUserMessage = false,
-): Pick<MessageMeta, 'expectsAcceptance' | 'queuedWhileBusy'> {
-    if (!rigSendsMessageReceipts(session.metadata)) return {};
+    delivery?: FollowUpDelivery,
+): Pick<MessageMeta, 'expectsAcceptance' | 'queuedWhileBusy' | 'delivery'> {
+    // A daemon that does not honor the field would steer a message labelled
+    // as queued, so it travels only where the capability says it is read.
+    const deliveryMeta = delivery && rigSupportsFollowUpQueueing(session.metadata) ? { delivery } : {};
+    if (!rigSendsMessageReceipts(session.metadata)) return deliveryMeta;
     const state = resolveSessionState({
         agentState: session.agentState,
         thinking: session.thinking,
         isOnline: true,
     });
     return {
+        ...deliveryMeta,
         expectsAcceptance: true,
         // Startup is not a previous turn to wait for. Ignore connectivity here:
         // being offline alone does not mean another turn is occupying the agent.

@@ -232,6 +232,15 @@ export const pt: TranslationStructure = {
         enterToSend: 'Enter para enviar',
         enterToSendEnabled: 'Pressione Enter para enviar (Shift+Enter para nova linha)',
         enterToSendDisabled: 'Enter insere uma nova linha',
+        followUpBehavior: 'Comportamento de acompanhamento',
+        followUpBehaviorOptions: {
+            steer: 'Enter direciona, ⌘↵ enfileira',
+            queue: 'Enter enfileira, ⌘↵ direciona',
+            steerTouch: 'Enviar direciona, toque longo enfileira',
+            queueTouch: 'Enviar enfileira, toque longo direciona',
+            alwaysSteer: 'Sempre direcionar',
+            alwaysQueue: 'Sempre enfileirar',
+        },
         commandPalette: 'Paleta de comandos',
         commandPaletteEnabled: 'Pressione ⌘K para abrir',
         commandPaletteDisabled: 'Acesso rápido a comandos desativado',
@@ -455,6 +464,15 @@ export const pt: TranslationStructure = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: 'Direcionar',
+            queue: 'Fila',
+            steerHint: ({ chord }: { chord: string }) => `Direcionar · ${chord} para enfileirar`,
+            queueHint: ({ chord }: { chord: string }) => `Fila · ${chord} para direcionar`,
+            sendAsSteer: 'Enviar para direcionar',
+            sendAsQueue: 'Enviar para a fila',
+        },
         permissionMode: {
             title: 'MODO DE PERMISSÃO',
             auto: 'decide sozinho, pergunta na dúvida',
@@ -945,6 +963,8 @@ export const pt: TranslationStructure = {
         usageLimitUntil: ({ time }: { time: string }) => `Limite de uso atingido até ${time}`,
         sentAsGoal: 'Sent as goal',
         sendsAfterThisTurn: 'Sends after this turn',
+        queued: 'Na fila',
+        steering: 'Direcionando',
         sending: 'Sending…',
         sendFailed: ({ reason }: { reason: string }) => `Não enviado: ${reason}`,
         unknownTime: 'horário desconhecido',

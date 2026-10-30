@@ -234,6 +234,15 @@ export const ja: TranslationStructure = {
         enterToSend: 'Enterで送信',
         enterToSendEnabled: 'Enterで送信（Shift+Enterで改行）',
         enterToSendDisabled: 'Enterで改行',
+        followUpBehavior: 'フォローアップの動作',
+        followUpBehaviorOptions: {
+            steer: 'Enterで誘導、⌘↵でキュー',
+            queue: 'Enterでキュー、⌘↵で誘導',
+            steerTouch: '送信で誘導、長押しでキュー',
+            queueTouch: '送信でキュー、長押しで誘導',
+            alwaysSteer: '常に誘導',
+            alwaysQueue: '常にキュー',
+        },
         commandPalette: 'コマンドパレット',
         commandPaletteEnabled: '⌘Kで開く',
         commandPaletteDisabled: 'クイックコマンドアクセスは無効',
@@ -457,6 +466,15 @@ export const ja: TranslationStructure = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: '誘導',
+            queue: 'キュー',
+            steerHint: ({ chord }: { chord: string }) => `誘導 · ${chord}でキュー`,
+            queueHint: ({ chord }: { chord: string }) => `キュー · ${chord}で誘導`,
+            sendAsSteer: '誘導として送信',
+            sendAsQueue: 'キューに送信',
+        },
         permissionMode: {
             title: '権限モード',
             auto: '自分で判断し、迷ったら確認します',
@@ -947,6 +965,8 @@ export const ja: TranslationStructure = {
         usageLimitUntil: ({ time }: { time: string }) => `${time}まで使用制限中`,
         sentAsGoal: 'Sent as goal',
         sendsAfterThisTurn: 'Sends after this turn',
+        queued: 'キュー済み',
+        steering: '誘導中',
         sending: 'Sending…',
         sendFailed: ({ reason }: { reason: string }) => `未送信: ${reason}`,
         unknownTime: '不明な時間',

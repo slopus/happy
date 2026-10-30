@@ -94,6 +94,7 @@ function RenderBlock(props: {
 function UserMessageFrame(props: {
   pending?: boolean;
   queuedWhileBusy?: boolean;
+  delivery?: 'steer' | 'queue';
   createdAt: number;
   sendError?: string;
   author?: SessionAuthor;
@@ -112,7 +113,11 @@ function UserMessageFrame(props: {
   const statusText = props.sendError !== undefined
     ? t('message.sendFailed', { reason: props.sendError })
     : showPendingStatus
-      ? (props.queuedWhileBusy === true ? t('message.sendsAfterThisTurn') : t('message.sending'))
+      ? (props.queuedWhileBusy !== true ? t('message.sending')
+        // A busy send names its delivery when the daemon was told one.
+        : props.delivery === 'queue' ? t('message.queued')
+          : props.delivery === 'steer' ? t('message.steering')
+            : t('message.sendsAfterThisTurn'))
       : '';
   return (
     <View style={[styles.userMessageContainer, fromOther && styles.userMessageContainerOther]}>
@@ -212,7 +217,7 @@ function UserTextBlock(props: {
   }
   if (parsed.kind === 'goal-run') {
     return (
-      <UserMessageFrame pending={props.message.pending} queuedWhileBusy={props.message.meta?.queuedWhileBusy} createdAt={props.message.createdAt} sendError={props.message.sendError} author={props.message.author}>
+      <UserMessageFrame pending={props.message.pending} queuedWhileBusy={props.message.meta?.queuedWhileBusy} delivery={props.message.meta?.delivery} createdAt={props.message.createdAt} sendError={props.message.sendError} author={props.message.author}>
         <LongPressCopyable style={copyTargetStyle} text={parsed.goal}>
           <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.goalMessageBubble]}>
             <MarkdownView externalCopyHandler markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
@@ -228,7 +233,7 @@ function UserTextBlock(props: {
   if (parsed.kind === 'command-run') {
     const commandText = parsed.args ? `/${parsed.commandName} ${parsed.args}` : `/${parsed.commandName}`;
     return (
-      <UserMessageFrame pending={props.message.pending} queuedWhileBusy={props.message.meta?.queuedWhileBusy} createdAt={props.message.createdAt} sendError={props.message.sendError} author={props.message.author}>
+      <UserMessageFrame pending={props.message.pending} queuedWhileBusy={props.message.meta?.queuedWhileBusy} delivery={props.message.meta?.delivery} createdAt={props.message.createdAt} sendError={props.message.sendError} author={props.message.author}>
         <LongPressCopyable style={copyTargetStyle} text={commandText}>
           {parsed.args ? (
             <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.commandMessageBubble]}>
@@ -244,7 +249,7 @@ function UserTextBlock(props: {
   }
 
   return (
-    <UserMessageFrame pending={props.message.pending} queuedWhileBusy={props.message.meta?.queuedWhileBusy} createdAt={props.message.createdAt} sendError={props.message.sendError} author={props.message.author}>
+    <UserMessageFrame pending={props.message.pending} queuedWhileBusy={props.message.meta?.queuedWhileBusy} delivery={props.message.meta?.delivery} createdAt={props.message.createdAt} sendError={props.message.sendError} author={props.message.author}>
       {/* Long-press copies the whole message through our own menu rather than the
           OS selection callout. Rewind remains in session actions. */}
       <LongPressCopyable style={copyTargetStyle} text={parsed.text}>

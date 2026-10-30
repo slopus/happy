@@ -233,6 +233,15 @@ export const es: TranslationStructure = {
         enterToSend: 'Enter para enviar',
         enterToSendEnabled: 'Presiona Enter para enviar (Shift+Enter para una nueva línea)',
         enterToSendDisabled: 'Enter inserta una nueva línea',
+        followUpBehavior: 'Comportamiento de seguimiento',
+        followUpBehaviorOptions: {
+            steer: 'Enter dirige, ⌘↵ pone en cola',
+            queue: 'Enter pone en cola, ⌘↵ dirige',
+            steerTouch: 'Enviar dirige, mantener pulsado pone en cola',
+            queueTouch: 'Enviar pone en cola, mantener pulsado dirige',
+            alwaysSteer: 'Dirigir siempre',
+            alwaysQueue: 'Poner siempre en cola',
+        },
         commandPalette: 'Paleta de comandos',
         commandPaletteEnabled: 'Presione ⌘K para abrir',
         commandPaletteDisabled: 'Acceso rápido a comandos deshabilitado',
@@ -456,6 +465,15 @@ export const es: TranslationStructure = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: 'Dirigir',
+            queue: 'En cola',
+            steerHint: ({ chord }: { chord: string }) => `Dirigir · ${chord} para poner en cola`,
+            queueHint: ({ chord }: { chord: string }) => `En cola · ${chord} para dirigir`,
+            sendAsSteer: 'Enviar para dirigir',
+            sendAsQueue: 'Enviar a la cola',
+        },
         permissionMode: {
             title: 'MODO DE PERMISOS',
             auto: 'decide por sí mismo, pregunta si duda',
@@ -946,6 +964,8 @@ export const es: TranslationStructure = {
         usageLimitUntil: ({ time }: { time: string }) => `Límite de uso alcanzado hasta ${time}`,
         sentAsGoal: 'Sent as goal',
         sendsAfterThisTurn: 'Sends after this turn',
+        queued: 'En cola',
+        steering: 'Dirigiendo',
         sending: 'Sending…',
         sendFailed: ({ reason }: { reason: string }) => `No enviado: ${reason}`,
         unknownTime: 'tiempo desconocido',

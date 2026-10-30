@@ -8,6 +8,8 @@ export type SupportedKey = 'Enter' | 'Escape' | 'ArrowUp' | 'ArrowDown' | 'Arrow
 export interface KeyPressEvent {
     key: SupportedKey;
     shiftKey: boolean;
+    /** ⌘ on macOS, Ctrl elsewhere. Web only; native never sets it. */
+    commandKey?: boolean;
 }
 
 export type OnKeyPressCallback = (event: KeyPressEvent) => boolean;

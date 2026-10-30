@@ -231,6 +231,15 @@ export const it: TranslationStructure = {
         enterToSend: 'Invio con Enter',
         enterToSendEnabled: 'Premi Invio per inviare (Maiusc+Invio per una nuova riga)',
         enterToSendDisabled: 'Invio inserisce una nuova riga',
+        followUpBehavior: 'Comportamento dei follow-up',
+        followUpBehaviorOptions: {
+            steer: 'Invio guida, ⌘↵ accoda',
+            queue: 'Invio accoda, ⌘↵ guida',
+            steerTouch: 'Invia guida, pressione lunga accoda',
+            queueTouch: 'Invia accoda, pressione lunga guida',
+            alwaysSteer: 'Guida sempre',
+            alwaysQueue: 'Accoda sempre',
+        },
         commandPalette: 'Palette comandi',
         commandPaletteEnabled: 'Premi ⌘K per aprire',
         commandPaletteDisabled: 'Accesso rapido ai comandi disabilitato',
@@ -454,6 +463,15 @@ export const it: TranslationStructure = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: 'Guida',
+            queue: 'Coda',
+            steerHint: ({ chord }: { chord: string }) => `Guida · ${chord} per accodare`,
+            queueHint: ({ chord }: { chord: string }) => `Coda · ${chord} per guidare`,
+            sendAsSteer: 'Invia per guidare',
+            sendAsQueue: 'Invia in coda',
+        },
         permissionMode: {
             title: 'MODALITÀ PERMESSI',
             auto: 'decide da sé, chiede in caso di dubbio',
@@ -944,6 +962,8 @@ export const it: TranslationStructure = {
         usageLimitUntil: ({ time }: { time: string }) => `Limite di utilizzo raggiunto fino a ${time}`,
         sentAsGoal: 'Sent as goal',
         sendsAfterThisTurn: 'Sends after this turn',
+        queued: 'In coda',
+        steering: 'Guida in corso',
         sending: 'Sending…',
         sendFailed: ({ reason }: { reason: string }) => `Non inviato: ${reason}`,
         unknownTime: 'ora sconosciuta',
