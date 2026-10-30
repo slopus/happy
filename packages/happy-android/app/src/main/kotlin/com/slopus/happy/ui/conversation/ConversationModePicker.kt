@@ -8,15 +8,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,13 +40,14 @@ object ConversationModeTags {
     const val MODEL = "conversation.modes.model"
     /** The [+] menu's permissions row. */
     const val PERMISSION = "conversation.modes.permission"
-    /** The effort rows' heading in the model sheet. */
+    /** The effort rows' heading in the model picker. */
     const val EFFORT = "conversation.modes.effort"
-    const val SHEET = "conversation.modes.sheet"
+    const val PICKER = "conversation.modes.picker"
+    const val OPTIONS = "conversation.modes.options"
 }
 
-/** Which mode sheet is open: permissions (from the [+] menu), or model and effort (from the label). */
-internal enum class ModeSheet { Permission, Model }
+/** Which picker is open: permissions (from [+]), or model and effort (from the label). */
+internal enum class ModePicker { Permission, Model }
 
 /** Each permission mode, least to most trusted, with its name and what it allows. */
 private val permissionText = mapOf(
@@ -70,7 +68,7 @@ internal fun permissionName(key: String): String = permissionText[key]?.first?.l
 /**
  * The model and effort a message runs with as one label, ChatGPT's way: the
  * model in bold, the effort after it in regular weight. One button for
- * TalkBack ("Model Opus 5 1M, effort High") that opens the model sheet,
+ * TalkBack ("Model Opus 5 1M, effort High") that opens the model picker,
  * where effort is picked too. Before the computer's models are read it shows
  * what the chat runs with and does nothing.
  */
@@ -108,21 +106,21 @@ internal fun ConversationModeLabel(catalog: ModeCatalog?, mode: Mode?, onOpen: (
 }
 
 /**
- * The open mode sheet ([open]), a Material 3 modal bottom sheet of radio
+ * The open mode picker ([open]), an anchored popup of radio
  * rows: the permission modes, or the models under their provider's name
  * with the chosen model's effort levels after them. A pick closes it.
  */
 @Composable
-internal fun ConversationModeSheets(open: ModeSheet?, onClose: () -> Unit, catalog: ModeCatalog?, mode: Mode?, onModeChange: (Mode) -> Unit) {
+internal fun ConversationModePicker(open: ModePicker?, onClose: () -> Unit, catalog: ModeCatalog?, mode: Mode?, onModeChange: (Mode) -> Unit, anchorCenterY: Int) {
     val current = mode ?: catalog?.defaults ?: return
-    val sheet = open ?: return
+    val picker = open ?: return
     val efforts = catalog?.model(current.providerId, current.modelId)?.efforts.orEmpty()
     fun pick(next: Mode?) {
         onClose()
         next?.let(onModeChange)
     }
-    when (sheet) {
-        ModeSheet.Permission -> ModeSheet(stringResource(R.string.conversation_mode_permission), onClose) {
+    when (picker) {
+        ModePicker.Permission -> ModePanel(stringResource(R.string.conversation_mode_permission), onClose, anchorCenterY) {
             ModeCatalog.PERMISSION_MODES.forEach { key ->
                 val (name, description) = permissionText.getValue(key)
                 item(key) {
@@ -132,11 +130,11 @@ internal fun ConversationModeSheets(open: ModeSheet?, onClose: () -> Unit, catal
                 }
             }
         }
-        ModeSheet.Model -> ModeSheet(stringResource(R.string.conversation_mode_model), onClose) {
+        ModePicker.Model -> ModePanel(stringResource(R.string.conversation_mode_model), onClose, anchorCenterY) {
             catalog?.models.orEmpty().groupBy { it.providerId }.values.forEachIndexed { index, models ->
                 item("provider:${models[0].providerId}") {
                     if (index > 0) HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    SheetHeading(models[0].providerName)
+                    PickerHeading(models[0].providerName)
                 }
                 models.forEach { model ->
                     item("${model.providerId}/${model.modelId}") {
@@ -149,7 +147,7 @@ internal fun ConversationModeSheets(open: ModeSheet?, onClose: () -> Unit, catal
             if (efforts.size > 1) {
                 item("effort") {
                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    SheetHeading(stringResource(R.string.conversation_mode_effort), Modifier.testTag(ConversationModeTags.EFFORT))
+                    PickerHeading(stringResource(R.string.conversation_mode_effort), Modifier.testTag(ConversationModeTags.EFFORT))
                 }
                 efforts.forEach { level ->
                     item("effort:$level") {
@@ -164,7 +162,7 @@ internal fun ConversationModeSheets(open: ModeSheet?, onClose: () -> Unit, catal
 }
 
 @Composable
-private fun SheetHeading(text: String, modifier: Modifier = Modifier) {
+private fun PickerHeading(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
         style = MaterialTheme.typography.titleSmall,
@@ -173,22 +171,25 @@ private fun SheetHeading(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ModeSheet(title: String, onDismiss: () -> Unit, content: LazyListScope.() -> Unit) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = HappyTheme.colors.surface,
-        modifier = Modifier.testTag(ConversationModeTags.SHEET),
+private fun ModePanel(title: String, onDismiss: () -> Unit, anchorCenterY: Int, content: LazyListScope.() -> Unit) {
+    ComposerPopup(
+        title = title,
+        onDismiss = onDismiss,
+        anchorCenterY = anchorCenterY,
+        alignEnd = true,
+        width = 360.dp,
+        modifier = Modifier.testTag(ConversationModeTags.PICKER),
     ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleLarge,
-            color = HappyTheme.colors.text,
-            modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp),
-        )
-        LazyColumn(Modifier.fillMaxWidth()) {
+        LazyColumn(Modifier.fillMaxWidth().testTag(ConversationModeTags.OPTIONS)) {
+            item("title") {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = HappyTheme.colors.text,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                )
+            }
             content()
             item { Spacer(Modifier.height(16.dp)) }
         }

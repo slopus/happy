@@ -12,24 +12,26 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -43,7 +45,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -78,6 +81,8 @@ object ConversationComposerTags {
     const val PRIMARY = "conversation.composer.primary"
     /** The [+] that opens the menu of pictures and permissions. */
     const val MORE = "conversation.composer.more"
+    const val MENU = "conversation.composer.menu"
+    const val PASTE = "conversation.composer.paste"
     /** The menu's "Add picture". */
     const val ATTACH = "conversation.composer.attach"
     const val PICTURES = "conversation.composer.pictures"
@@ -109,8 +114,9 @@ private object Slot {
  * pictures waiting to go, the words on top (up to eight lines, then it
  * scrolls), and under them [+], the model and effort as one label
  * ([ConversationModeLabel]) and send, which becomes Stop while the agent
- * works and nothing is typed. [+] opens a menu: Add picture (the system photo
- * picker) and the permission mode. The pill is glass over [backdrop] (the
+ * works and nothing is typed. [+] opens a menu: paste an image, Add picture
+ * (the system photo picker) and the permission mode. Both menus float above
+ * the composer and keyboard, keeping the draft and caret in place. The pill is glass over [backdrop] (the
  * transcript under it), its tint alone where nothing blurs. With Reduce
  * Motion it changes shape at once. Pictures that together pass what one
  * message carries ([InlinePictures]) are refused with an alert, keeping text
@@ -139,22 +145,21 @@ internal fun ConversationComposer(
     var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
     if (field.text != text) field = TextFieldValue(text, TextRange(text.length))
     val focus = remember { FocusRequester() }
-    val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var focused by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
-    var sheet by rememberSaveable { mutableStateOf<ModeSheet?>(null) }
+    var picker by rememberSaveable { mutableStateOf<ModePicker?>(null) }
+    var moreCenterY by remember { mutableIntStateOf(0) }
+    var modelCenterY by remember { mutableIntStateOf(0) }
     LaunchedEffect(state.composerFocus?.serial) {
         val ask = state.composerFocus ?: return@LaunchedEffect
         field = field.copy(selection = TextRange(ask.cursor.coerceIn(0, field.text.length)))
         focus.requestFocus()
         keyboard?.show()
     }
-    fun openSheet(which: ModeSheet) {
-        // The sheet takes the keyboard's place.
-        focusManager.clearFocus()
+    fun openPicker(which: ModePicker) {
         menu = false
-        sheet = which
+        picker = which
     }
 
     val open = focused || text.isNotEmpty() || attached.isNotEmpty()
@@ -202,28 +207,9 @@ internal fun ConversationComposer(
             }
             ComposerLayout(open) {
                 Box(Modifier.layoutId(Slot.MORE)) {
-                    IconButton(onClick = { menu = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)) {
+                    IconButton(onClick = { picker = null; menu = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)
+                        .onGloballyPositioned { moreCenterY = it.boundsInWindow().center.y.toInt() }) {
                         Icon(MaterialSymbols.Add, stringResource(R.string.conversation_composer_more), tint = colors.text)
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.conversation_attach_picture)) },
-                            leadingIcon = { Icon(MaterialSymbols.Image, contentDescription = null) },
-                            onClick = {
-                                menu = false
-                                pictures?.pick()
-                            },
-                            modifier = Modifier.testTag(ConversationComposerTags.ATTACH),
-                        )
-                        val current = state.mode ?: state.catalog?.defaults
-                        if (current != null) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.conversation_mode_permission_item, permissionName(current.permissionMode))) },
-                                leadingIcon = { Icon(MaterialSymbols.Lock, contentDescription = null) },
-                                onClick = { openSheet(ModeSheet.Permission) },
-                                modifier = Modifier.testTag(ConversationModeTags.PERMISSION),
-                            )
-                        }
                     }
                 }
                 BasicTextField(
@@ -258,8 +244,8 @@ internal fun ConversationComposer(
                     ConversationModeLabel(
                         catalog = state.catalog,
                         mode = state.mode,
-                        onOpen = { openSheet(ModeSheet.Model) },
-                        modifier = Modifier.layoutId(Slot.LABEL),
+                        onOpen = { openPicker(ModePicker.Model) },
+                        modifier = Modifier.layoutId(Slot.LABEL).onGloballyPositioned { modelCenterY = it.boundsInWindow().center.y.toInt() },
                     )
                 }
                 val sendLabel = stringResource(if (primary == PrimaryAction.Stop) R.string.conversation_stop else R.string.conversation_send)
@@ -302,8 +288,48 @@ internal fun ConversationComposer(
                 }
             }
         }
+        if (menu) {
+            ComposerPopup(
+                title = stringResource(R.string.conversation_composer_more),
+                onDismiss = { menu = false },
+                anchorCenterY = moreCenterY,
+                alignEnd = false,
+                width = 280.dp,
+                modifier = Modifier.testTag(ConversationComposerTags.MENU),
+            ) {
+                LazyColumn {
+                    item {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.image_upload_paste_from_clipboard)) },
+                            onClick = { menu = false; pictures?.paste() },
+                            modifier = Modifier.testTag(ConversationComposerTags.PASTE),
+                        )
+                    }
+                    item {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.conversation_attach_picture)) },
+                            leadingIcon = { Icon(MaterialSymbols.Image, contentDescription = null) },
+                            onClick = { menu = false; pictures?.pick() },
+                            modifier = Modifier.testTag(ConversationComposerTags.ATTACH),
+                        )
+                    }
+                    val current = state.mode ?: state.catalog?.defaults
+                    if (current != null) {
+                        item {
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.conversation_mode_permission_item, permissionName(current.permissionMode))) },
+                                leadingIcon = { Icon(MaterialSymbols.Lock, contentDescription = null) },
+                                onClick = { openPicker(ModePicker.Permission) },
+                                modifier = Modifier.testTag(ConversationModeTags.PERMISSION),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        ConversationModePicker(picker, onClose = { picker = null }, catalog = state.catalog, mode = state.mode, onModeChange = onModeChange, anchorCenterY = if (picker == ModePicker.Permission) moreCenterY else modelCenterY)
     }
-    ConversationModeSheets(sheet, onClose = { sheet = null }, catalog = state.catalog, mode = state.mode, onModeChange = onModeChange)
     if (tooLarge) {
         HappyAlert(
             Alert(
