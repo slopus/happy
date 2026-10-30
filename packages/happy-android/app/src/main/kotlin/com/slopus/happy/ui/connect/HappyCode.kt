@@ -19,8 +19,11 @@ sealed interface HappyCode {
      * `happy://direct?…`: a computer offering to pair over Happy Protocol V2.
      * Classified by scheme and host alone, so a malformed pairing code is
      * still this kind and is refused by the pairing, never read as another.
+     * The code is a secret, so it never prints.
      */
-    data class ProtocolV2Pairing(val text: String) : HappyCode
+    data class ProtocolV2Pairing(val text: String) : HappyCode {
+        override fun toString() = "ProtocolV2Pairing(…)"
+    }
 
     /** A `happy:` link of no kind this app knows. */
     data class UnknownHappy(val text: String) : HappyCode

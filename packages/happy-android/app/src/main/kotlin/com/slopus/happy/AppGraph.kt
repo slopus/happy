@@ -21,6 +21,8 @@ import com.slopus.happy.payments.PreferencesPurchasesCache
 import com.slopus.happy.payments.PurchaseAccount
 import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatPurchases
+import com.slopus.happy.protocolv2.ProtocolV2Accounts
+import com.slopus.happy.protocolv2.ProtocolV2PairingFlow
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
 import com.slopus.happy.ui.home.NewSessionDraftStore
@@ -170,6 +172,41 @@ class AppGraph(
             )
         },
     )
+
+    /**
+     * Computers paired over Happy Protocol V2: accounts of their own beside
+     * the relay account, kept through a relay sign-out.
+     */
+    val protocolV2Accounts = ProtocolV2Accounts(
+        secrets = ExpoSecureStore(
+            prefs = context.getSharedPreferences(ProtocolV2Accounts.SECRETS_PREFS, Context.MODE_PRIVATE),
+            keys = secureStoreKeys,
+            keychainService = ProtocolV2Accounts.KEYCHAIN_SERVICE,
+        ),
+        registry = context.getSharedPreferences(ProtocolV2Accounts.REGISTRY_PREFS, Context.MODE_PRIVATE),
+    )
+
+    private val protocolV2PairingState = MutableStateFlow<ProtocolV2PairingFlow?>(null)
+
+    /** The pairing on screen, if any. In memory only: its code is a secret. */
+    val protocolV2Pairing: StateFlow<ProtocolV2PairingFlow?> = protocolV2PairingState.asStateFlow()
+
+    /** Starts pairing the computer behind a `happy://direct?` code, replacing any unfinished pairing. */
+    fun startProtocolV2Pairing(code: String) {
+        protocolV2PairingState.value?.close()
+        protocolV2PairingState.value = ProtocolV2PairingFlow(scope, protocolV2Accounts, deviceName).also { it.start(code) }
+    }
+
+    /** The pairing screen left. */
+    fun endProtocolV2Pairing(flow: ProtocolV2PairingFlow) {
+        flow.close()
+        protocolV2PairingState.compareAndSet(flow, null)
+    }
+
+    /** What the computer lists this phone as: the name the person gave it, else the model. */
+    private val deviceName: String =
+        android.provider.Settings.Global.getString(appContext.contentResolver, "device_name")?.takeIf { it.isNotBlank() }
+            ?: android.os.Build.MODEL.orEmpty()
 
     /** The updates socket's state; disconnected when signed out. */
     @OptIn(ExperimentalCoroutinesApi::class)

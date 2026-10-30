@@ -28,6 +28,7 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.connect.DeepLinkEffect
+import com.slopus.happy.ui.connect.LocalProtocolV2Pairing
 import com.slopus.happy.ui.tablet.TabletShell
 import com.slopus.happy.ui.connect.connectRoutes
 import com.slopus.happy.ui.files.filesRoutes
@@ -36,6 +37,8 @@ import com.slopus.happy.ui.onboarding.RestoreManualScreen
 import com.slopus.happy.ui.onboarding.TroubleshootRoute
 import com.slopus.happy.ui.machine.MachineRoute
 import com.slopus.happy.ui.onboarding.onboardingRoutes
+import com.slopus.happy.ui.protocolv2.pairProtocolV2
+import com.slopus.happy.ui.protocolv2.protocolV2Routes
 import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
@@ -77,26 +80,31 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
             val nav = rememberNavController()
             val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
             val troubleshoot = { nav.navigate(TroubleshootRoute) }
-            // The tablet shell (sidebar beside the stack) or, on a phone, just the stack.
-            TabletShell(graph, nav, signedIn = signedIn != null, onOpenSession = openSession, onTroubleshoot = troubleshoot) {
-                NavHost(navController = nav, startDestination = if (signedIn != null) HomeRoute else WelcomeRoute) {
-                    composable<WelcomeRoute> { Welcome(graph, nav) }
-                    composable<ServerRoute> { Server(graph, nav) }
-                    composable<RestoreManualRoute> { RestoreManual(graph, nav) }
-                    homeRoutes(
-                        graph,
-                        nav,
-                        onOpenSession = openSession,
-                        onTroubleshoot = troubleshoot,
-                    )
-                    settingsRoutes(graph, nav)
-                    onboardingRoutes(graph, nav, onOpenMachine = { id -> nav.navigate(MachineRoute(id)) })
-                    connectRoutes(graph, nav)
-                    chatRoutes(graph, nav, onInfo = { id -> nav.navigate(SessionInfoRoute(id)) })
-                    filesRoutes(graph, nav)
+            val pairProtocolV2 = remember(nav) { { code: String -> nav.pairProtocolV2(graph, code) } }
+            // Every scanner, signed in or out, sends happy://direct? codes here.
+            CompositionLocalProvider(LocalProtocolV2Pairing provides pairProtocolV2) {
+                // The tablet shell (sidebar beside the stack) or, on a phone, just the stack.
+                TabletShell(graph, nav, signedIn = signedIn != null, onOpenSession = openSession, onTroubleshoot = troubleshoot) {
+                    NavHost(navController = nav, startDestination = if (signedIn != null) HomeRoute else WelcomeRoute) {
+                        composable<WelcomeRoute> { Welcome(graph, nav) }
+                        composable<ServerRoute> { Server(graph, nav) }
+                        composable<RestoreManualRoute> { RestoreManual(graph, nav) }
+                        homeRoutes(
+                            graph,
+                            nav,
+                            onOpenSession = openSession,
+                            onTroubleshoot = troubleshoot,
+                        )
+                        settingsRoutes(graph, nav)
+                        onboardingRoutes(graph, nav, onOpenMachine = { id -> nav.navigate(MachineRoute(id)) })
+                        connectRoutes(graph, nav)
+                        chatRoutes(graph, nav, onInfo = { id -> nav.navigate(SessionInfoRoute(id)) })
+                        filesRoutes(graph, nav)
+                        protocolV2Routes(graph, nav)
+                    }
                 }
+                DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
             }
-            DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
             PushRegistrationEffect(graph)
         }
     } } } }

@@ -56,6 +56,14 @@ sealed interface DeepLink {
      */
     data class Screen(val route: Any, val signedOut: Boolean = false) : DeepLink
 
+    /**
+     * `happy://direct?…`: a computer offering to pair over Happy Protocol V2.
+     * Opens signed in or out. The code is a secret, so it never prints.
+     */
+    data class ProtocolV2Pairing(val code: String) : DeepLink {
+        override fun toString() = "ProtocolV2Pairing(…)"
+    }
+
     /** `/`, and app paths with no screen on Android (excluded features, or none at all): Home. */
     data object Home : DeepLink
 }
@@ -70,6 +78,7 @@ sealed interface DeepLink {
  * app's (another scheme or host, or not a URL).
  */
 fun parseDeepLink(link: String): DeepLink? {
+    if (HappyCode.isProtocolV2Pairing(link)) return DeepLink.ProtocolV2Pairing(link.trim())
     val uri = try {
         URI(link.trim())
     } catch (_: URISyntaxException) {
