@@ -146,7 +146,15 @@ class ConnectFlowTest {
     @Test
     fun aPastedLinkWithoutThePrefixIsInvalid() {
         setTerminal()
+        // A Happy code of another kind names the screen it belongs to, as the
+        // camera does; only a link of no known kind is simply invalid.
+        val elsewhere = "This code links a new device. Scan it from Settings › Account › Link New Device."
         rule.runOnIdle { flow.connectWithUrl(accountUrl) }
+        rule.onNodeWithText(elsewhere).assertExists()
+        rule.onNodeWithText("OK").performClick()
+        rule.onNodeWithText(elsewhere).assertDoesNotExist()
+
+        rule.runOnIdle { flow.connectWithUrl("https://example.com/not-happy") }
         rule.onNodeWithText("Invalid authentication URL").assertExists()
         assertTrue(approved.isEmpty())
         rule.onNodeWithText("OK").performClick()

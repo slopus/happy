@@ -101,23 +101,18 @@ class ConnectFlow internal constructor(
     }
 
     /**
-     * connectWithUrl: a pasted link. A Protocol V2 pairing link pairs;
-     * anything else without the flow's prefix is "Invalid authentication URL".
-     * The first screen routes a pasted link as it routes a scanned code.
+     * connectWithUrl: a pasted link, routed by [route] exactly as the same
+     * code read by the camera is, so typing a terminal link into Link New
+     * Device names the screen it belongs to instead of calling it invalid.
+     * Only a link of no kind this app knows reads differently: it is
+     * "Invalid authentication URL", since nothing was scanned.
      */
     fun connectWithUrl(url: String) {
         scope.launch {
-            if (kind == ConnectKind.Add) {
-                if (HappyCode.classify(url).let { it is HappyCode.UnknownHappy || it is HappyCode.NotHappy }) {
-                    alert = errorAlert(messages.invalidUrl)
-                } else {
-                    route(url)
-                }
-                return@launch
+            when (HappyCode.classify(url)) {
+                is HappyCode.UnknownHappy, is HappyCode.NotHappy -> alert = errorAlert(messages.invalidUrl)
+                else -> route(url)
             }
-            val pairing = HappyCode.classify(url) as? HappyCode.AgentPairing
-            val pair = connectAgent
-            if (pairing != null && pair != null) pair(pairing.text) else process(url.trim())
         }
     }
 

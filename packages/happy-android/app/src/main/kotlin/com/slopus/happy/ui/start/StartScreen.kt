@@ -48,7 +48,6 @@ import com.slopus.happy.R
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
-import com.slopus.happy.ui.onboarding.GetHelpAlert
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -62,7 +61,6 @@ object StartTags {
     const val ENTER_LINK = "start.enterLink"
     const val RESTORE = "start.restore"
     const val SERVER = "start.server"
-    const val HELP = "start.help"
 }
 
 /**
@@ -105,7 +103,7 @@ object StartSpec {
  * out of the bars and the cutout. It ignores the keyboard.
  *
  *   ⋮ (top right)  a drop-down: enter a link, restore a legacy account,
- *                  the legacy server, get help. A new Happy account is
+ *                  and the legacy server. A new Happy account is
  *                  only ever made by Start (a terminal code)
  *   logo           centred in the space above Start
  *   Start          centred across, as wide as its label (at least 200),
@@ -125,7 +123,6 @@ fun StartScreen(
 ) {
     val dark = HappyTheme.colors.dark
     val tint = if (dark) StartSpec.darkText else StartSpec.lightText
-    var help by remember { mutableStateOf(false) }
     Box(modifier = modifier.fillMaxSize()) {
         GrainGradient(
             palette = if (dark) StartSpec.darkPalette else StartSpec.lightPalette,
@@ -178,13 +175,11 @@ fun StartScreen(
                         onEnterLink = onEnterLink,
                         onRestore = onRestore,
                         onServer = onServer,
-                        onHelp = { help = true },
                     )
                 }
             }
         }
     }
-    if (help) GetHelpAlert(onDismiss = { help = false })
 }
 
 /** A 48 round touch target with a 24 glyph in the palette's text colour, straight on the gradient. */
@@ -205,7 +200,7 @@ private fun StartControl(icon: Ionicon, description: String, tint: Color, onClic
     }
 }
 
-/** The ⋮ drop-down: the ways in besides scanning, and help. */
+/** The ⋮ drop-down: the ways in besides scanning. */
 @Composable
 private fun StartMenu(
     open: Boolean,
@@ -215,7 +210,6 @@ private fun StartMenu(
     onEnterLink: () -> Unit,
     onRestore: () -> Unit,
     onServer: () -> Unit,
-    onHelp: () -> Unit,
 ) {
     val colors = HappyTheme.colors
     DropdownMenu(
@@ -253,7 +247,5 @@ private fun StartMenu(
             detail = customServerLabel,
             onClick = onServer,
         )
-        HorizontalDivider(color = colors.divider)
-        item(stringResource(R.string.onboarding_get_help), Ionicon.HelpCircleOutline, StartTags.HELP, itemEnabled = true, onClick = onHelp)
     }
 }

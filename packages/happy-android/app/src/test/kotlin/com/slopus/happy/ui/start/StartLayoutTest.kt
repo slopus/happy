@@ -129,8 +129,8 @@ class StartLayoutTest {
         rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("happy.example.com").assertExists()
         rule.onNodeWithText("Create account").assertDoesNotExist()
-        rule.onNodeWithText("Get help").performClick()
-        rule.onNodeWithText("Stuck? Come ask us.").assertExists()
+        // Nothing else: no account is made here, and help lives in Settings.
+        rule.onNodeWithText("Get help").assertDoesNotExist()
     }
 
     /** Legacy Server names a custom server under it, and says nothing for the default one. */

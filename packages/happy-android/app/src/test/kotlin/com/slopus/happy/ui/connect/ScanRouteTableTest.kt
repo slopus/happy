@@ -146,22 +146,17 @@ class ScanRouteTableTest {
     }
 
     /**
-     * A pasted link is approved, or pairs, exactly as the scanned code is.
-     * The refusals read differently, because a typed link is checked by its
-     * prefix instead of classified: Settings' two scanners say "Invalid
-     * authentication URL" where the camera would have named the screen the
-     * code belongs to. Add keeps its own words for an account code, since
-     * that is the wrong phone rather than a typing mistake.
+     * A pasted link lands where the same code read by the camera lands: a
+     * terminal link typed into Link New Device names Settings' terminal
+     * scanner, rather than being called invalid. The one difference is a
+     * link of no kind this app knows, which says "Invalid authentication
+     * URL" instead of talking about a QR code that nobody scanned.
      */
     @Test
     fun aPastedLinkGoesWhereTheScannedOneGoes() {
         start()
         val wrong = table.mapNotNull { (kind, code, scanned) ->
-            val expected = when {
-                scanned !is Lands.Says -> scanned
-                kind == ConnectKind.Add && scanned.message == accountNeedsPhone -> scanned
-                else -> Lands.Says(invalidUrl)
-            }
+            val expected = if (scanned == Lands.Says(notHappyHere)) Lands.Says(invalidUrl) else scanned
             val actual = land(kind, code, paste = true)
             if (actual == expected) null else "$kind pasting $code: expected $expected, got $actual"
         }

@@ -136,8 +136,11 @@ win:
   `prepare`; a failed approval keeps no account), `happy:///account?`
   says it needs a signed-in phone, `happy://direct?` pairs an agent. The
   ⋮ drop-down holds Enter link manually (same routing), Restore Legacy
-  Account, Legacy Server and Get help. There is no "Create account": a
-  Happy account is only made by a terminal code. Dialogs are Material 3
+  Account and Legacy Server, and nothing else: no "Get help", and no
+  "Create account" because a Happy account is only ever made by a
+  terminal code. A pasted link routes exactly as the scanned code does
+  (`ConnectFlow.connectWithUrl` through `route`); only a link of no known
+  kind reads differently, as "Invalid authentication URL". Dialogs are Material 3
   (`HappyAlert`, `PromptModal`), not happy-app's iOS-style card, and only
   screens with a text field of their own move for the keyboard
   (`Screen(avoidKeyboard = true)`); the first screen never does. Palette: blue and violet
