@@ -34,12 +34,12 @@ final class AccountSwitcher: NSObject {
         button.accessibilityIdentifier = "account-switcher"
         button.showsMenuAsPrimaryAction = true
         button.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in done(self?.menuElements() ?? []) }])
-        controller.navigationItem.leftBarButtonItem = item
         observation = context.account.observeAccounts { [weak self] _ in self?.show() }
         show()
     }
 
-    /// The item, for a screen that sets its left items itself.
+    /// The item the screen puts in its bar. One item throughout, so a
+    /// screen places it once and it keeps itself up to date.
     var barItem: UIBarButtonItem { item }
 
     private func name(_ account: AccountSummary) -> String {

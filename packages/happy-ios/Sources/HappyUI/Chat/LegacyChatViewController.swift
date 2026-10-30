@@ -193,6 +193,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// `traitCollection.isTabletLayout`, kept here so the row inputs can be
     /// built off the main thread.
     private var isTabletLayout = false
+    /// A tablet's way to the accounts, where the bar runs over the sidebar.
+    private var switcher: AccountSwitcher?
     /// PermissionFooter's list cap for this window, read on the main thread
     /// and handed to the measure with the rest of the row style.
     private var permissionListMaxHeight = PermissionFooterLayout.Metrics.maxListHeight
@@ -970,10 +972,17 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// (`TabletBranches`): a phone's glass capsule and avatar over the
     /// scrim, or a tablet's opaque bar (`header.background`) with the plain
     /// title and no avatar. The back button is `dropsBackButtonOnTablet`'s.
+    ///
+    /// On a tablet the bar runs over the sidebar as well, and the back
+    /// button is gone, so the account switcher takes the left as it does on
+    /// home: with a chat open it is still the way to the accounts. A phone
+    /// has its back button there and home a screen behind.
     private func applyHeaderBranch() {
         let tablet = isTabletLayout
         configureHeaderAppearance()
         if sessionApplied { navigationItem.titleView = tablet ? plainTitleView : titleView }
+        if tablet, switcher == nil { switcher = AccountSwitcher(context: context, controller: self) }
+        navigationItem.leftBarButtonItem = tablet ? switcher?.barItem : nil
         var items = tablet ? [] : [avatarItem]
         if let host = self as UIViewController as? ComposeHosting {
             items.append(HeaderBar.composeItem { [weak host] in host?.compose() })

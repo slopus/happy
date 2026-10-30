@@ -233,6 +233,50 @@ final class HostedHeaderBarTests: XCTestCase {
         keep(window, "legacy-home-light")
     }
 
+    /// On a tablet the bar runs over the sidebar, where home itself draws
+    /// nothing and a chat has no back button: the switcher is there at the
+    /// root and stays there with a chat open, so the accounts are always a
+    /// tap away.
+    func testTheSwitcherStaysOnATabletWithAChatOpen() async throws {
+        let controller = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: HeaderNoNetwork(), connector: HeaderNoSockets()
+        )
+        try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 11, count: 32)))
+        let account = try XCTUnwrap(controller.session)
+        let context = AppContext(account: controller, variant: .preview, version: "test")
+        let home = LegacyHomeViewController(context: context, session: account)
+        let navigation = UINavigationController(rootViewController: home)
+        AppCoordinator.applyAppearance(to: navigation.navigationBar)
+        let scene = try await hostedActiveScene()
+        let window = hostedKeyWindow(in: scene, root: navigation)
+        defer { window.isHidden = true }
+        // What TabletShellViewController sets on a tablet-wide window.
+        navigation.traitOverrides.isTabletLayout = true
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertTrue(home.traitCollection.isTabletLayout)
+        XCTAssertEqual(home.navigationItem.leftBarButtonItem?.customView?.accessibilityIdentifier, "account-switcher", "beside the sidebar, home still shows the switcher")
+        keep(window, "tablet-home")
+
+        let chat = LegacyChatViewController(context: context, session: account, sessionId: "tablet-switcher")
+        navigation.pushViewController(chat, animated: false)
+        try await until { navigation.topViewController === chat && navigation.transitionCoordinator == nil }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertTrue(chat.navigationItem.hidesBackButton, "a tablet's chat has no back button")
+        XCTAssertEqual(chat.navigationItem.leftBarButtonItem?.customView?.accessibilityIdentifier, "account-switcher", "with a chat open the accounts are still reachable")
+        keep(window, "tablet-chat")
+
+        // A phone's chat keeps its back button there instead.
+        navigation.traitOverrides.isTabletLayout = false
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertFalse(chat.navigationItem.hidesBackButton)
+        XCTAssertNil(chat.navigationItem.leftBarButtonItem)
+    }
+
     /// No ground, no blur, no line, the same scrolled as at the edge: the
     /// bar is whatever background the screen has.
     private static func assertClear(_ bar: UINavigationBar, file: StaticString = #filePath, line: UInt = #line) {

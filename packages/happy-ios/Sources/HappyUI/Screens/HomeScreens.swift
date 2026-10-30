@@ -286,7 +286,10 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         if floating {
             // The account's name is the bar's title; the connection hangs under it.
             switcher?.subtitle = blank || !HomeConnectionStatus.shows(status) ? nil : Strings.Home.connectionStatus(status)
-            navigationItem.leftBarButtonItem = blank ? nil : switcher?.barItem
+            // Beside the sidebar home draws nothing, but the bar is over
+            // the sidebar too: the switcher stays, or a tablet has no way
+            // to the accounts at all.
+            navigationItem.leftBarButtonItem = switcher?.barItem
             var items: [HeaderBar.Trailing: UIBarButtonItem] = [.filter: filterItem, .settings: settingsItem]
             if canCompose, let host = self as UIViewController as? ComposeHosting {
                 items[.compose] = composeItem(host)
