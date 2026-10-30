@@ -313,6 +313,21 @@ class ConversationLayoutTest {
         shot("prefilled")
     }
 
+    @Test fun `a picture in the transcript opens full screen and closes`() {
+        val png = java.io.ByteArrayOutputStream()
+            .also { Bitmap.createBitmap(40, 30, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.GREEN) }.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            .toByteArray()
+        val data = android.util.Base64.encodeToString(png, android.util.Base64.NO_WRAP)
+        show(ConversationState(created = true, loaded = true, rows = rows(Message("p1", "user", 1, listOf(Block.Image("image/png", data)))), agent = agent))
+        rule.node(ConversationRowTags.PICTURE).performClick()
+        rule.waitForIdle()
+        rule.node(PictureViewerTags.IMAGE).assertIsDisplayed()
+        shot("picture-viewer")
+        rule.node(PictureViewerTags.CLOSE).performClick()
+        rule.waitForIdle()
+        rule.node(PictureViewerTags.VIEWER).assertDoesNotExist()
+    }
+
     @Test fun `details list the agent and its mode`() {
         rule.setHappyContent { ConversationDetailsScreen(agent.copy(subagentsRunning = 1), mode, null) {} }
         rule.onNodeWithText("anthropic/opus-5").assertIsDisplayed()

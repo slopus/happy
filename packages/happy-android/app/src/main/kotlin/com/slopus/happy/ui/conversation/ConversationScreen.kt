@@ -150,8 +150,9 @@ fun ConversationScreen(
             onDiscard = actions.onDiscardSend,
         )
     }
-    val rowActions = remember(actions, legacy) {
-        ConversationRowActions(legacy, actions.onRetryFailure, actions.loadMedia, actions.onOpenArtifact)
+    val pictures = rememberPictureViewer()
+    val rowActions = remember(actions, legacy, pictures) {
+        ConversationRowActions(legacy, actions.onRetryFailure, actions.loadMedia, actions.onOpenArtifact, pictures::show)
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
     val visible by rememberUpdatedState(actions.onVisible)
@@ -240,6 +241,7 @@ fun ConversationScreen(
                 )
                 else -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder)
             }
+            PictureViewerHost(pictures)
         }
         Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).imePadding()) {
             state.question?.let { question ->
