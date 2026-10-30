@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,6 +57,8 @@ import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuButton
 import com.slopus.happy.ui.home.rememberAccountMenu
+import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.delay
 
@@ -92,6 +95,34 @@ internal fun agentBarColors(container: Color = HappyTheme.colors.surface): TopAp
 internal fun BarIconButton(icon: Ionicon, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     IconButton(onClick = onClick, modifier = modifier) {
         Icon(icon, 24.dp, LocalContentColor.current, contentDescription = label)
+    }
+}
+
+/**
+ * A top app bar whose [container] colour runs the whole width (under the
+ * status bar too) while the bar itself is held to the content width and
+ * centred, so on a wide window its controls line up with the rows beneath
+ * rather than sitting out at the glass. A no-op on a phone, where the
+ * content width is the window ([ContentWidth]).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun AgentTopBar(
+    tag: String,
+    container: Color,
+    navigationIcon: @Composable () -> Unit,
+    title: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    val layout = LocalWindowLayout.current
+    Box(Modifier.fillMaxWidth().background(container)) {
+        TopAppBar(
+            modifier = Modifier.contentMaxWidth(layout).testTag(tag),
+            colors = agentBarColors(Color.Transparent),
+            navigationIcon = navigationIcon,
+            title = title,
+            actions = actions,
+        )
     }
 }
 
@@ -143,9 +174,9 @@ fun AgentHomeScreen(
     // One surface under the bar and the page, the chat's own (surface), light and dark.
     Column(modifier = Modifier.fillMaxSize().background(colors.surface)) {
         if (searching) {
-            TopAppBar(
-                modifier = Modifier.testTag(AgentHomeTags.BAR),
-                colors = agentBarColors(),
+            AgentTopBar(
+                tag = AgentHomeTags.BAR,
+                container = colors.surface,
                 navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), closeSearch) },
                 title = { AgentSearchField(query, { query = it }) },
                 actions = {
@@ -155,9 +186,9 @@ fun AgentHomeScreen(
                 },
             )
         } else {
-            TopAppBar(
-                modifier = Modifier.testTag(AgentHomeTags.BAR),
-                colors = agentBarColors(),
+            AgentTopBar(
+                tag = AgentHomeTags.BAR,
+                container = colors.surface,
                 navigationIcon = {
                     Box(Modifier.padding(horizontal = 4.dp)) { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) }
                 },

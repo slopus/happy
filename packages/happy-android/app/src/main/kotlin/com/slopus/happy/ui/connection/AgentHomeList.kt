@@ -58,6 +58,8 @@ import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.home.BlockedDotColor
 import com.slopus.happy.ui.home.UnreadDotColor
 import com.slopus.happy.ui.home.formatSessionListTimestamp
+import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -209,7 +211,7 @@ private fun SectionRow(section: AgentFeedSection, modifier: Modifier) {
     }
     Box(
         modifier = modifier
-            .fillMaxWidth()
+            .contentMaxWidth(LocalWindowLayout.current)
             .height(AgentHomeSpec.sectionHeight())
             .testTag(AgentHomeTags.row("section-${section.key}"))
             .background(colors.surface)
@@ -264,7 +266,7 @@ private fun ConversationRow(
     val unread = row.unread || item.hiddenUnread
     Box(
         modifier = modifier
-            .fillMaxWidth()
+            .contentMaxWidth(LocalWindowLayout.current)
             .height(AgentHomeSpec.conversationHeight())
             .testTag(AgentHomeTags.row(row.key))
             .background(colors.surface)

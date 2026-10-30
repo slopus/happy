@@ -43,6 +43,8 @@ import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import java.text.Normalizer
@@ -209,7 +211,7 @@ fun AgentSearchResults(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .contentMaxWidth(LocalWindowLayout.current)
                             .padding(horizontal = AgentSearchSpec.rowPadding, vertical = 14.dp)
                             .testTag(AgentSearchTags.NO_RESULTS),
                     )
@@ -222,7 +224,7 @@ fun AgentSearchResults(
                         style = AgentSearchSpec.heading,
                         color = colors.grouped.sectionTitle,
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .contentMaxWidth(LocalWindowLayout.current)
                             .padding(start = AgentSearchSpec.rowPadding, end = AgentSearchSpec.rowPadding, top = 16.dp, bottom = 6.dp)
                             .semantics { heading() },
                     )
@@ -246,7 +248,7 @@ private fun ResultRow(key: String, title: String, onClick: () -> Unit, icon: @Co
     val height = with(LocalDensity.current) { maxOf(56.dp, 22.dp + AgentSearchSpec.ROW_LINE.sp.toDp()) }
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .contentMaxWidth(LocalWindowLayout.current)
             .heightIn(min = height)
             .testTag(AgentSearchTags.result(key))
             .clickable(role = Role.Button, onClick = onClick)

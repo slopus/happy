@@ -4,10 +4,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -94,7 +92,6 @@ class AgentSettingsActions(
  * agent's device list (API.md, "Credentials on the connector's socket"),
  * so removing forgets the agent here only; the footer says so.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentConnectionSettingsScreen(
     name: String,
@@ -111,9 +108,9 @@ fun AgentConnectionSettingsScreen(
     // The bar on the page's own grey (black in dark), the groups on it: one surface, as the chat's details.
     Screen(
         header = {
-            TopAppBar(
-                modifier = Modifier.testTag(AgentSettingsTags.BAR),
-                colors = agentBarColors(colors.grouped.background),
+            AgentTopBar(
+                tag = AgentSettingsTags.BAR,
+                container = colors.grouped.background,
                 navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), actions.onBack) },
                 title = { Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.titleLarge, maxLines = 1) },
             )
