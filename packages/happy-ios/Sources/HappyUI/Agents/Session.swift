@@ -98,12 +98,43 @@ final class Session {
     }
 }
 
-/// Stops watching when released.
+/// Stops watching at `invalidate`, or when it is let go of, whichever comes
+/// first, and exactly once. The cancel always runs on the main actor.
+///
+/// Not `isolated deinit`. That aborts on the iOS 26.3 simulator runtime
+/// whenever a screen holding one is freed: libmalloc's "pointer being freed
+/// was not allocated", in `TaskLocal::StopLookupScope::~StopLookupScope`
+/// under `swift_task_deinitOnExecutor`. It is the runtime's hop to the
+/// actor that fails, not this code: clean main (829dab29f) aborts the same
+/// way, and the same build is fine on 26.5. Whether a 26.3 device does it
+/// too is untested; this avoids the hop either way.
+///
+/// A `@MainActor` class does not promise its deinit runs on the main actor:
+/// the last reference can go anywhere, so the deinit says where it is.
 @MainActor
 final class Watch {
-    private var cancel: (() -> Void)?
-    init(_ cancel: @escaping () -> Void) { self.cancel = cancel }
-    func invalidate() { cancel?(); cancel = nil }
-    isolated deinit { cancel?() }
+    private var cancel: (@MainActor @Sendable () -> Void)?
+
+    init(_ cancel: @escaping @MainActor @Sendable () -> Void) { self.cancel = cancel }
+
+    func invalidate() {
+        // Taken before it is called, so a cancel that lets this watch go
+        // (`deinit` below) finds nothing left to call.
+        let cancel = cancel
+        self.cancel = nil
+        cancel?()
+    }
+
+    /// Nonisolated, and the only thing left holding the object, so reading
+    /// the cancel races with nothing. The cancel itself is `Sendable` and
+    /// main-actor, and it never names the watch, so handing it on is safe.
+    deinit {
+        guard let cancel else { return }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { cancel() }
+        } else {
+            DispatchQueue.main.async { cancel() }
+        }
+    }
 }
 #endif

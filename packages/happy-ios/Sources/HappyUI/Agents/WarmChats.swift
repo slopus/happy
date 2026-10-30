@@ -109,6 +109,14 @@ final class WarmChats {
         path.start(queue: DispatchQueue(label: "V2WarmChats.path", qos: .utility))
     }
 
+    /// KNOWN HAZARD, not fixed here: an `isolated deinit` let go of on the
+    /// main thread aborts on the iOS 26.3 runtime, as `Watch`'s did, and
+    /// `Session.forget` lets this go there when an agent is disconnected.
+    /// A nonisolated deinit can't stand in: Swift 6 won't read `observers`
+    /// or `chats` from one. The way out is to take this apart by hand
+    /// (`stopAll` already does half of it, from `Session.forget`) and leave
+    /// no deinit at all; that is a change to who owns a session's
+    /// teardown, so it is its own piece of work.
     isolated deinit {
         pump?.cancel()
         easing?.cancel()

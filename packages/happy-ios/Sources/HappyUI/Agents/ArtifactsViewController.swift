@@ -83,6 +83,8 @@ final class ArtifactsViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
         if indexPath.row == artifacts.count - 1, nextPage != nil { read(append: true) }
     }
-    isolated deinit { reading?.cancel(); following?.cancel() }
+    // Not `isolated deinit`: that aborts on the iOS 26.3 runtime (see
+    // `Watch`). Cancelling a task needs no actor.
+    deinit { reading?.cancel(); following?.cancel() }
 }
 #endif
