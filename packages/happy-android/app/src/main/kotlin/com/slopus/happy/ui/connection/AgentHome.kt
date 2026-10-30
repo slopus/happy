@@ -54,7 +54,6 @@ import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuButton
 import com.slopus.happy.ui.home.HomeSpec
-import com.slopus.happy.ui.home.flatListBackground
 import com.slopus.happy.ui.home.rememberAccountMenu
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -121,11 +120,12 @@ fun AgentHomeScreen(
         agentSearchResults(feed, query, untitled, headings, searchEntries.first, searchEntries.second)
     }
 
-    // One surface under the bar and the page, the bar's own colour, light and dark.
-    Column(modifier = Modifier.fillMaxSize().background(flatListBackground(colors))) {
+    // One surface under the bar and the page, the chat's own (surface), light and dark.
+    Column(modifier = Modifier.fillMaxSize().background(colors.surface)) {
         if (searching) {
             Header(
                 alignment = TitleAlignment.Start,
+                background = colors.surface,
                 left = { HeaderBackButton(onClick = closeSearch) },
                 titleContent = { AgentSearchField(query, { query = it }) },
                 right = {
@@ -139,6 +139,7 @@ fun AgentHomeScreen(
         } else {
             Header(
                 alignment = TitleAlignment.Start,
+                background = colors.surface,
                 left = { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) },
                 titleContent = { HeaderTitle(name, status) },
                 right = {
@@ -224,6 +225,7 @@ private fun rememberSearchEntries(actions: AgentHomeActions): Pair<List<AgentSea
         ) to listOf(
             AgentSearchEntry("appearance", appearance, Ionicon.ColorPaletteOutline, actions.onAppearance),
             AgentSearchEntry("status", status, Ionicon.LaptopOutline, actions.onSettings),
+            // Opens settings, where removing asks first; search never removes anything itself.
             AgentSearchEntry("remove", remove, Ionicon.TrashOutline, actions.onSettings),
         )
     }
@@ -292,7 +294,7 @@ private fun Banner(text: String) {
         color = colors.textDestructive,
         modifier = Modifier
             .fillMaxWidth()
-            .background(flatListBackground(colors))
+            .background(colors.surface)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .testTag(AgentHomeTags.BANNER),
     )

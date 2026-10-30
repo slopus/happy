@@ -7,6 +7,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -129,6 +132,19 @@ class AgentHomeLayoutTest {
     }
 
     @Test
+    fun theBarAndPageAreTheChatsSurface() {
+        var surface = 0
+        rule.setHappyContent(dark = true) {
+            surface = com.slopus.happy.ui.theme.HappyTheme.colors.surface.toArgb()
+            AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions, now = 1L)
+        }
+        val bar = rule.node(HeaderTags.BAR).captureToImage().toPixelMap()
+        assertEquals(surface, bar[bar.width / 2, 4].toArgb())
+        val list = rule.node(AgentHomeTags.LIST).captureToImage().toPixelMap()
+        assertEquals(surface, list[list.width / 2, list.height - 4].toArgb())
+    }
+
+    @Test
     fun idleUpdatesMoveNoRow() {
         var current by mutableStateOf(feed())
         rule.setHappyContent { AgentHomeScreen("Studio", current, AgentLinkStatus.Connected, accounts, actions, now = 1L) }
@@ -236,6 +252,10 @@ class AgentHomeLayoutTest {
         rule.node(AgentSearchTags.FIELD).performTextReplacement("Settings")
         rule.node(AgentSearchTags.result("entry-settings")).performClick()
         assertEquals(1, settings)
+        // "Remove connection" only opens settings, where removing asks first.
+        rule.node(AgentSearchTags.FIELD).performTextReplacement("remove")
+        rule.node(AgentSearchTags.result("entry-remove")).performClick()
+        assertEquals(2, settings)
     }
 
     @Test

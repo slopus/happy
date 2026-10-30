@@ -43,7 +43,6 @@ import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.hairline
-import com.slopus.happy.ui.home.flatListBackground
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import java.text.Normalizer
@@ -201,7 +200,7 @@ fun AgentSearchResults(
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(flatListBackground(colors))
+                .background(colors.surface)
                 .testTag(AgentSearchTags.RESULTS),
         ) {
             if (results.isEmpty()) {

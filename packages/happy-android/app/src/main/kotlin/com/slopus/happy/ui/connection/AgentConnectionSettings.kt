@@ -31,7 +31,8 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.components.ItemGroup
 import com.slopus.happy.ui.components.Screen
-import com.slopus.happy.ui.components.StackHeader
+import com.slopus.happy.ui.components.Header
+import com.slopus.happy.ui.components.HeaderBackButton
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,7 +74,16 @@ fun AgentConnectionSettingsScreen(
 ) {
     val colors = HappyTheme.colors
     var confirming by remember { mutableStateOf(false) }
-    Screen(header = { StackHeader(title = stringResource(R.string.settings_title), onBack = onBack) }) {
+    // The bar on the page's own grey (black in dark), the cards on it: one surface, as the chat's details.
+    Screen(
+        header = {
+            Header(
+                title = stringResource(R.string.settings_title),
+                left = { HeaderBackButton(onClick = onBack) },
+                background = colors.grouped.background,
+            )
+        },
+    ) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             ItemGroup {
                 Item(

@@ -57,7 +57,6 @@ import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.home.BlockedDotColor
 import com.slopus.happy.ui.home.UnreadDotColor
-import com.slopus.happy.ui.home.flatListBackground
 import com.slopus.happy.ui.home.formatSessionListTimestamp
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -212,7 +211,7 @@ private fun SectionRow(section: AgentFeedSection, modifier: Modifier) {
             .fillMaxWidth()
             .height(AgentHomeSpec.sectionHeight())
             .testTag(AgentHomeTags.row("section-${section.key}"))
-            .background(flatListBackground(colors))
+            .background(colors.surface)
             .padding(start = AgentHomeSpec.paddingHorizontal, end = AgentHomeSpec.paddingHorizontal, top = AgentHomeSpec.sectionPaddingTop),
     ) {
         Text(
@@ -267,7 +266,7 @@ private fun ConversationRow(
             .fillMaxWidth()
             .height(AgentHomeSpec.conversationHeight())
             .testTag(AgentHomeTags.row(row.key))
-            .background(flatListBackground(colors))
+            .background(colors.surface)
             .clickable(role = Role.Button) { onOpen(row.agentId) },
     ) {
         Row(
@@ -393,7 +392,7 @@ fun AgentHomeList(
     val reduceMotion = rememberReduceMotion()
     LazyColumn(
         state = state,
-        modifier = modifier.fillMaxSize().background(flatListBackground(HappyTheme.colors)).testTag(AgentHomeTags.LIST),
+        modifier = modifier.fillMaxSize().background(HappyTheme.colors.surface).testTag(AgentHomeTags.LIST),
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)
