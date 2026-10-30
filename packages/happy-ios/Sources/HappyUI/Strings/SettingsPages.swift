@@ -30,6 +30,9 @@ extension Strings {
         public static let title = "Accounts"
         public static let footer = "Tap an account to switch to it. Touch and hold an account to sign it out."
         public static let addAccount = "Add Account"
+        public static let manageAccounts = "Manage Accounts"
+        /// The bar's switcher, to VoiceOver.
+        public static let switcher = "Account"
         /// Precedes the start of the account id when nothing better is known.
         public static let fallbackTitle = "Account"
         public static let signOut = "Sign Out"

@@ -251,7 +251,7 @@ final class RowView: UIView {
     private func applyTrailing(_ row: Row) {
         trailing.isHidden = true
         // A heading search shows (`collapsed` nil) folds nothing.
-        let folds = row.kind == .section || ((row.kind == .space || row.kind == .session) && row.collapsed != nil)
+        let folds = (row.kind == .section && row.collapsed != nil) || ((row.kind == .space || row.kind == .session) && row.collapsed != nil)
         chevron.isHidden = !folds
         rule.isHidden = row.kind != .separator
         if folds {

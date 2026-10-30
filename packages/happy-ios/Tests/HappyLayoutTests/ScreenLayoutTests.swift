@@ -50,6 +50,7 @@ final class ScreenLayoutTests: XCTestCase {
         XCTAssertEqual(up.listBottom, 336)
         // 13 characters at 8 a character: 104 wide, centred.
         XCTAssertEqual(up.nothingFound, rect(149, 158, 104, 22))
+        XCTAssertEqual(up.nothingFoundPill, rect(135, 150, 132, 38))
         // Down: the home indicator alone.
         let down = SearchLayout(size: CGSize(width: 402, height: 874), contentTop: 126, safeBottom: 34, keyboardTop: 874, nothingFound: nothing)
         XCTAssertEqual(down.listBottom, 34)

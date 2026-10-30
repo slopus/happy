@@ -30,7 +30,6 @@ import UIKit
 public final class LegacyHomeViewController: UIViewController {
     private let context: AppContext
     private let session: AccountSession
-    private let titleView = NavigationTitleView()
     private let dockView = HomeDockView()
     private var dock: HomeDockController?
     /// Home's content worked out off the main thread from the account's
@@ -45,7 +44,7 @@ public final class LegacyHomeViewController: UIViewController {
     private var grouping: SessionListGrouping = .flat
     private var content: UIViewController?
     private var preparesArchives = false
-    private var accountControl: HomeAccountControl?
+    private var switcher: AccountSwitcher?
 
     public init(context: AppContext, session: AccountSession) {
         self.context = context
@@ -62,18 +61,10 @@ public final class LegacyHomeViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.groupedBackground)
         dockView.scrim.ground = UIColor(Palette.groupedBackground)
-        // OnboardingHeader's title, which scales; the rows below don't yet.
-        setScaledTitleView(titleView)
         showsBackTitle()
         dockView.isHidden = true
         view.addSubview(dockView)
-        accountControl = HomeAccountControl(context: context, controller: self)
-        if Preference(variant: context.variant).isAvailable {
-            accountControl?.opensSettings = { [weak self] in
-                guard let self else { return }
-                SettingsViewController.open(context: context, computer: nil, from: self)
-            }
-        }
+        switcher = AccountSwitcher(context: context, controller: self)
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
             input: HomeDerivation.Input(
                 expandedProjects: context.account.localSettings.expandedProjects,
@@ -309,13 +300,15 @@ public final class LegacyHomeViewController: UIViewController {
         content?.view.isHidden = blank
         dock?.isAvailable = showsDock && !blank
         if floating {
-            titleView.title = blank ? nil : Strings.Home.sessionsTitle
-            titleView.subtitle = blank || !HomeConnectionStatus.shows(status) ? nil : Strings.Home.connectionStatus(status)
-            navigationItem.rightBarButtonItems = blank ? nil : [settingsItem, filterItem]
+            // The account's name is the bar's title; the connection hangs under it.
+            switcher?.subtitle = blank || !HomeConnectionStatus.shows(status) ? nil : Strings.Home.connectionStatus(status)
+            navigationItem.leftBarButtonItem = blank ? nil : switcher?.barItem
+            var items: [HeaderBar.Trailing: UIBarButtonItem] = [.filter: filterItem, .settings: settingsItem]
+            if let host = self as UIViewController as? ComposeHosting {
+                items[.compose] = composeItem(host)
+            }
+            navigationItem.rightBarButtonItems = blank ? nil : HeaderBar.trailing(items)
         }
-        // Not `sizeToFit`, which would hold a longer server to the width of
-        // the one before it.
-        titleView.frame.size = titleView.intrinsicContentSize
         view.setNeedsLayout()
     }
 
@@ -359,11 +352,11 @@ public final class LegacyHomeViewController: UIViewController {
         didSet { if status != oldValue { updateNavigation(animated: false) } }
     }
 
-    private lazy var settingsItem: UIBarButtonItem = {
-        let item = UIBarButtonItem(image: .icon(.ionicons("settings-outline"), size: 22), primaryAction: UIAction { [weak self] _ in self?.openSettings() })
-        item.accessibilityLabel = Strings.Settings.title
-        return item
-    }()
+    private lazy var settingsItem = HeaderBar.settingsItem { [weak self] in self?.openSettings() }
+
+    private func composeItem(_ host: ComposeHosting) -> UIBarButtonItem {
+        HeaderBar.composeItem { [weak host] in host?.compose() }
+    }
 
     private lazy var filterItem: UIBarButtonItem = {
         let item = UIBarButtonItem(image: .icon(.ionicons("filter"), size: 22), menu: filterMenu())

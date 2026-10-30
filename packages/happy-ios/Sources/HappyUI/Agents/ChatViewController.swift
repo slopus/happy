@@ -237,6 +237,10 @@ final class ChatViewController: UIViewController {
         working.isHidden = true
         scrollView.addSubview(working)
         introView.accessibilityIdentifier = "intro"
+        HeaderBar.edge(scrollView, in: self)
+        if let host = self as UIViewController as? ComposeHosting {
+            navigationItem.rightBarButtonItems = HeaderBar.trailing([.compose: HeaderBar.composeItem { [weak host] in host?.compose() }])
+        }
         // New work asks what it is; a conversation already going asks for the next message.
         if case .seedling = intro { card.configuration.placeholder = Strings.composerPlaceholder }
         card.configuration.showsAdd = true

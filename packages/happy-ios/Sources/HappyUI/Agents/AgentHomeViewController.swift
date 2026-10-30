@@ -3,20 +3,20 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// Home for a paired computer in development and preview builds: that
-/// computer's V2 under the navigation bar. The bar has the active
-/// account's picture at the left (`HomeAccountControl`), the computer's
-/// name as its title with its connection under it while it isn't live,
-/// and search (the bar's own, which grows into a field) and settings at
-/// the right.
-final class AgentHomeViewController: UIViewController, DockHosting, UISearchResultsUpdating, UISearchControllerDelegate {
+/// Home for an agent connection: its V2 under a clear navigation bar, the
+/// list running under it with iOS 26's soft scroll edge as the bar's shade.
+/// At the left, alone, the account switcher (`AccountSwitcher`): the active
+/// account's picture and name, with the connection under it while it isn't
+/// live. At the right, `HeaderBar.Trailing`'s order: search, compose,
+/// settings. Search is the bar's own field (`BarSearch`); what it finds
+/// shows over home, which stays where it was.
+final class AgentHomeViewController: UIViewController, DockHosting {
     private let context: AppContext
     private let id: String
-    private let titleView = NavigationTitleView()
     private let v2: HomeViewController
-    private lazy var searchController = UISearchController(searchResultsController: nil)
+    private(set) lazy var search = BarSearch(host: self, placeholder: Strings.search, fieldIdentifier: "search-field")
     private var observation: AccountsObservation?
-    private var accountControl: HomeAccountControl?
+    private var switcher: AccountSwitcher?
     private var live = true
 
     init(context: AppContext, id: String) {
@@ -38,42 +38,53 @@ final class AgentHomeViewController: UIViewController, DockHosting, UISearchResu
         view.addSubview(v2.view)
         v2.didMove(toParent: self)
         navigationItem.largeTitleDisplayMode = .never
-        setScaledTitleView(titleView)
-        let settings = UIBarButtonItem(image: .icon(.ionicons("settings-outline"), size: 22), primaryAction: UIAction { [weak self] _ in self?.openSettings() })
-        settings.accessibilityLabel = Strings.openSettings
-        settings.accessibilityIdentifier = "settings"
-        navigationItem.rightBarButtonItem = settings
-        searchController.searchResultsUpdater = self
-        searchController.delegate = self
-        searchController.obscuresBackgroundDuringPresentation = false
-        searchController.searchBar.placeholder = Strings.search
-        searchController.searchBar.searchTextField.accessibilityIdentifier = "search-field"
-        navigationItem.searchController = searchController
-        navigationItem.hidesSearchBarWhenScrolling = false
-        navigationItem.preferredSearchBarPlacement = .integratedButton
-        // In the bar at the top, not iOS 26's toolbar at the bottom.
-        if #available(iOS 26.0, *) { navigationItem.searchBarPlacementAllowsToolbarIntegration = false }
-        definesPresentationContext = true
-        v2.onSearchEnded = { [weak self] in
-            guard let self, searchController.isActive else { return }
-            searchController.isActive = false
+        HeaderBar.edge(v2.list, in: self)
+        search.onBegin = { [weak self] in self?.v2.beginSearch() }
+        search.onChange = { [weak self] query in
+            self?.v2.search(query)
+            self?.updateEdge()
         }
+        search.onEnd = { [weak self] in
+            self?.v2.endSearch()
+            self?.updateEdge()
+        }
+        search.onActiveChanged = { [weak self] in self?.updateBar() }
+        v2.onSearchEnded = { [weak self] in self?.search.end() }
         v2.onSnapshot = { [weak self] snapshot in
             guard let self, snapshot.live != live else { return }
             live = snapshot.live
             updateTitle()
         }
-        accountControl = HomeAccountControl(context: context, controller: self)
+        switcher = AccountSwitcher(context: context, controller: self)
         observation = context.account.observeAccounts { [weak self] _ in self?.updateTitle() }
         updateTitle()
+        updateBar()
     }
 
-    /// The computer's name, with "connecting" under it until it is live.
+    /// The connection, under the account's name until it is live.
     private func updateTitle() {
-        guard let account = context.account.agentConnections.accounts.first(where: { $0.id == id }) else { return }
-        titleView.title = account.name
-        titleView.subtitle = live ? nil : Strings.Home.connectionStatus(.connecting)
-        titleView.frame.size = titleView.intrinsicContentSize
+        switcher?.subtitle = live ? nil : Strings.Home.connectionStatus(.connecting)
+    }
+
+    /// The switcher at the left and the actions at the right, or the search
+    /// field while it is open.
+    private func updateBar() {
+        guard !search.applies(to: navigationItem), let switcher else { return }
+        navigationItem.leftBarButtonItem = switcher.barItem
+        var items: [HeaderBar.Trailing: UIBarButtonItem] = [
+            .search: HeaderBar.searchItem { [weak self] in self?.search.begin() },
+            .settings: HeaderBar.settingsItem { [weak self] in self?.openSettings() },
+        ]
+        if let host = self as UIViewController as? ComposeHosting {
+            items[.compose] = HeaderBar.composeItem { [weak host] in host?.compose() }
+        }
+        navigationItem.rightBarButtonItems = HeaderBar.trailing(items)
+    }
+
+    /// The bar shades whichever list is under it: the results while they
+    /// cover home, home's own otherwise.
+    private func updateEdge() {
+        HeaderBar.edge(v2.resultsList ?? v2.list, in: self)
     }
 
     override func viewDidLayoutSubviews() {
@@ -83,21 +94,12 @@ final class AgentHomeViewController: UIViewController, DockHosting, UISearchResu
 
     var newWorkDock: UIView { v2.newWorkDock }
 
-    // MARK: Search
+    /// Search is open: compose and the like close it first.
+    var isSearching: Bool { search.isActive }
 
-    func willPresentSearchController(_ searchController: UISearchController) {
-        v2.beginSearch()
-    }
+    func endSearch() { search.end() }
 
-    func updateSearchResults(for searchController: UISearchController) {
-        v2.search(searchController.searchBar.text ?? "")
-    }
-
-    func willDismissSearchController(_ searchController: UISearchController) {
-        v2.endSearch()
-    }
-
-    @objc private func openSettings() {
+    private func openSettings() {
         SettingsViewController.open(context: context, computer: id, from: self)
     }
 }

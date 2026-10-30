@@ -118,19 +118,24 @@ public struct EmptyLayout: Equatable, Sendable {
     }
 }
 
-/// Home while it searches, in place: the dock steps aside, so the list
-/// keeps clear of the keyboard (or, with it down, the home indicator)
-/// instead; and when nothing answers, a line says so, centred 24 in from
-/// the sides, `nothingFoundGap` under where the list starts.
+/// Home's search results, over home: their list keeps clear of the keyboard
+/// (or, with it down, the home indicator); and when nothing answers, a line
+/// says so in a small capsule over home, centred 24 in from the sides,
+/// `nothingFoundGap` under where the list starts. Home itself never moves.
 public struct SearchLayout: Equatable, Sendable {
     public enum Metrics {
         public static let sideInset: CGFloat = 24
         public static let nothingFoundGap: CGFloat = 32
+        /// The capsule around the line.
+        public static let pillHorizontal: CGFloat = 14
+        public static let pillVertical: CGFloat = 8
     }
 
     /// The room under the list, from the screen's foot.
     public var listBottom: CGFloat
     public var nothingFound: CGRect
+    /// The capsule behind `nothingFound`.
+    public var nothingFoundPill: CGRect
 
     /// `keyboardTop` is the keyboard's top in the screen, its height when down.
     public init(size: CGSize, contentTop: CGFloat, safeBottom: CGFloat, keyboardTop: CGFloat, nothingFound label: Measurable) {
@@ -139,6 +144,7 @@ public struct SearchLayout: Equatable, Sendable {
         let width = max(0, size.width - 2 * M.sideInset)
         let text = label.size(fitting: width)
         nothingFound = CGRect(x: ((size.width - text.width) / 2).rounded(), y: contentTop + M.nothingFoundGap, width: text.width, height: text.height)
+        nothingFoundPill = nothingFound.insetBy(dx: -M.pillHorizontal, dy: -M.pillVertical)
     }
 }
 

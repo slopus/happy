@@ -11,12 +11,12 @@ import UIKit
 /// Desktop's Search and Create rows aren't drawn: search is the bar's
 /// and create is the dock.
 ///
-/// Search happens here, in place: the bar's search grows into a field
-/// with the keyboard up (the host drives `beginSearch`, `search(_:)` and
-/// `endSearch`), the dock steps aside, and the sidebar
-/// narrows to what answers as it's typed, with the quick actions and the
-/// settings that answer below it, as desktop's ⌘K palette lists them.
-/// Ending it puts the list back as it was, folds and scroll and all.
+/// Search is the bar's field (the host drives `beginSearch`, `search(_:)`
+/// and `endSearch`); what answers shows in its own component over home
+/// (`HomeSearchResultsView`): the rows that answer, then the quick actions
+/// and the settings that do, as desktop's ⌘K palette lists them. Home's
+/// list is never touched by it: its rows, scroll and insets stay as they
+/// were through opening, typing and closing.
 final class HomeViewController: UIViewController {
     private let context: AppContext
     /// The computer this screen always shows; nil to follow the choice.
@@ -47,17 +47,13 @@ final class HomeViewController: UIViewController {
     private var storiesChange: StoriesHomeController.Change?
     /// Search, in the bar, while it is open.
     private var search: Search?
-    private let nothingFound = UILabel()
+    /// What search finds, over home.
+    private let resultsView = HomeSearchResultsView()
     /// The keyboard's top in this screen; nil while it has never shown.
     private var keyboardTop: CGFloat?
 
     private struct Search {
         var query = ""
-        /// How far below its top the list was when search opened: where
-        /// it goes back to.
-        var fromTop: CGFloat
-        /// Something is typed, so the list is narrowed to what answers it.
-        var narrowed = false
         /// What each quick action or setting found does, by its row's id.
         var results: [String: () -> Void] = [:]
     }
@@ -82,6 +78,12 @@ final class HomeViewController: UIViewController {
     /// The dock, which new work's own composer stands in for as it opens.
     var newWorkDock: UIView { dock }
 
+    /// Home's list, under the bar: the scroll edge the bar shades.
+    var list: UIScrollView { sidebar }
+
+    /// Search's results over home, while something answers.
+    var resultsList: UIScrollView? { resultsView.showsResults ? resultsView.list : nil }
+
     /// The bar and dock home lays its content between.
     var contentInsets = HomeContentInsets(safeArea: .zero, dock: 0) {
         didSet { if contentInsets != oldValue { view.setNeedsLayout() } }
@@ -105,14 +107,6 @@ final class HomeViewController: UIViewController {
         view.addSubview(empty)
         view.addSubview(banner)
         view.addSubview(dockScrim)
-        nothingFound.text = Strings.nothingFound
-        nothingFound.font = Fonts.ui(.regular, size: 17)
-        nothingFound.textColor = UIColor(Palette.rowText)
-        nothingFound.textAlignment = .center
-        nothingFound.numberOfLines = 0
-        nothingFound.isHidden = true
-        nothingFound.accessibilityIdentifier = "search-nothing"
-        view.addSubview(nothingFound)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         dock.configuration.showsAdd = true
         dock.configuration.addAccessibilityLabel = Strings.addPicture
@@ -131,6 +125,13 @@ final class HomeViewController: UIViewController {
         dock.textView.accessibilityLabel = Strings.composerPlaceholder
         dock.textView.accessibilityIdentifier = "new-work"
         view.addSubview(dock)
+        resultsView.isHidden = true
+        resultsView.list.onSelect = { [weak self] row in self?.open(row) }
+        resultsView.list.onIntent = { [weak self] row in
+            guard let agentId = row.agentId, row.targetKind != "surface" else { return }
+            self?.session?.warm.intent(agentId)
+        }
+        view.addSubview(resultsView)
         sidebar.onSelect = { [weak self] row in self?.open(row) }
         sidebar.onIntent = { [weak self] row in
             guard let agentId = row.agentId, row.targetKind != "surface" else { return }
@@ -206,6 +207,7 @@ final class HomeViewController: UIViewController {
         session = id.flatMap { Session.session(for: $0, context: context) }
         stories.attach(session)
         sidebar.images = session?.images
+        resultsView.list.images = session?.images
         sidebar.apply([])
         snapshot = Snapshot()
         agentHome = HomeSnapshot()
@@ -231,7 +233,8 @@ final class HomeViewController: UIViewController {
         let previous = self.snapshot
         self.snapshot = snapshot
         onSnapshot?(snapshot)
-        if previous.rows != snapshot.rows || (search?.narrowed == true && previous.allRows != snapshot.allRows) { showRows() }
+        if previous.rows != snapshot.rows { showRows() }
+        if search != nil, previous.allRows != snapshot.allRows { showResults() }
         warmUp()
         if previous.availability != snapshot.availability || previous.error != snapshot.error || previous.creationError != snapshot.creationError {
             applyChrome()
@@ -247,7 +250,8 @@ final class HomeViewController: UIViewController {
         snapshot.allRows = agentHome.allRows
         snapshot.error = agentHome.error
         onSnapshot?(snapshot)
-        if previous != snapshot.rows || search?.narrowed == true { showRows() }
+        if previous != snapshot.rows { showRows() }
+        if search != nil { showResults() }
         warmUp()
         applyChrome()
     }
@@ -258,8 +262,7 @@ final class HomeViewController: UIViewController {
         empty.message = !hasAgentConnection ? Strings.noAgentConnection : Strings.unsupported
         empty.showsPair = !hasAgentConnection
         sidebar.isHidden = !empty.isHidden
-        // Searching, the bar is the field: the stories wait.
-        stories.isSuppressed = sidebar.isHidden || search != nil
+        stories.isSuppressed = sidebar.isHidden
         let reason = { (text: String) in text.isEmpty ? Strings.unanswered : text }
         let notice = snapshot.creationError.map { Strings.newWorkFailed(reason($0)) } ?? snapshot.error.map(reason)
         // Prioritizing being off is Settings' business: home says nothing of it.
@@ -297,88 +300,50 @@ final class HomeViewController: UIViewController {
     func search(_ query: String) {
         guard search != nil, search?.query != query else { return }
         search?.query = query
-        showRows(toTop: true)
+        showResults()
     }
 
-    /// Search opens in the bar, in place: the field takes the bar with the
-    /// keyboard up and the dock steps aside. Nothing is pushed.
+    /// The bar's field opened. Home stays exactly as it is; the results
+    /// show over it once something is typed.
     func beginSearch() {
         guard session != nil, search == nil, !sidebar.isHidden else { return }
         sidebar.disarm()
         picker?.close(animated: true)
-        search = Search(fromTop: sidebar.contentOffset.y + sidebar.contentInset.top)
-        stories.isSuppressed = true
-        sidebar.keyboardDismissMode = .onDrag
-        searchMoves(animated: true)
+        search = Search()
+        resultsView.clear()
+        resultsView.isHidden = false
     }
 
-    /// The field folds back into the search button, and the list is the
-    /// sidebar's again, where it was.
+    /// The field closed: the results go, and home is as it was.
     func endSearch(animated: Bool = true) {
-        guard let ended = search else { return }
+        guard search != nil else { return }
         search = nil
-        sidebar.keyboardDismissMode = .none
-        stories.isSuppressed = sidebar.isHidden
-        searchMoves(animated: animated)
+        resultsView.clear()
+        resultsView.isHidden = true
         onSearchEnded?()
-        showRows()
-        restore(fromTop: ended.fromTop)
     }
 
-    /// The dock and the list's room, as search now has them.
-    private func searchMoves(animated: Bool) {
-        let searching = search != nil
-        let change = {
-            self.dock.alpha = searching ? 0 : 1
-            self.dockScrim.presence = searching ? 0 : 1
-            self.view.setNeedsLayout()
-            self.view.layoutIfNeeded()
-        }
-        dock.isUserInteractionEnabled = !searching
-        if animated {
-            // The classic spring.
-            UIView.animate(withDuration: 0.42, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: change)
-        } else {
-            UIView.performWithoutAnimation(change)
-        }
-    }
-
-    /// The rows the sidebar shows: the document's, or, with something
-    /// typed, the rows that answer it and then the quick actions and
-    /// settings that do. `toTop`: the query changed, so the list starts
-    /// at its top; emptied, it goes back to where it was.
-    private func showRows(toTop: Bool = false) {
+    /// Home's own rows: the document's, with the stories' rings.
+    private func showRows() {
         let drawn = usesSpaces ? Self.drawn(snapshot.rows) : snapshot.rows
-        let query = search?.query.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard var search, !query.isEmpty else {
-            let wasNarrowed = self.search?.narrowed == true
-            self.search?.narrowed = false
-            self.search?.results = [:]
-            nothingFound.isHidden = true
-            sidebar.apply(Rows.withStories(drawn, rings: stories.rings))
-            if wasNarrowed, let fromTop = self.search?.fromTop { restore(fromTop: fromTop) }
+        sidebar.apply(Rows.withStories(drawn, rings: stories.rings))
+    }
+
+    /// What answers the query, in the results over home: the rows that
+    /// answer it, then the quick actions and settings that do.
+    private func showResults() {
+        guard var search else { return }
+        let query = search.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            search.results = [:]
+            self.search = search
+            resultsView.clear()
             return
         }
         let found = results(for: query)
-        search.narrowed = true
         search.results = found.runs
         self.search = search
-        let rows = HappyCore.Search.rows(snapshot.allRows, query: query) + found.rows
-        nothingFound.isHidden = !rows.isEmpty
-        sidebar.apply(rows)
-        if toTop {
-            sidebar.layoutIfNeeded()
-            sidebar.contentOffset.y = -sidebar.contentInset.top
-        }
-    }
-
-    /// The list `fromTop` below its top, as far as it now goes.
-    private func restore(fromTop: CGFloat) {
-        view.layoutIfNeeded()
-        sidebar.layoutIfNeeded()
-        let top = -sidebar.contentInset.top
-        let end = max(top, sidebar.contentSize.height + sidebar.contentInset.bottom - sidebar.bounds.height)
-        sidebar.contentOffset.y = max(top, min(end, top + fromTop))
+        resultsView.show(HappyCore.Search.rows(snapshot.allRows, query: query) + found.rows, query: query)
     }
 
     /// The quick actions and settings that answer `query`, at most six of
@@ -439,6 +404,7 @@ final class HomeViewController: UIViewController {
     @objc private func keyboardWillChange(_ notification: Notification) {
         guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         keyboardTop = min(view.bounds.height, view.convert(frame, from: nil).minY)
+        resultsView.keyboardTop = keyboardTop
         guard search != nil, view.window != nil else { return }
         // A keyboard of a screen over home's moves it only once it's back.
         let top = parent ?? self
@@ -448,9 +414,8 @@ final class HomeViewController: UIViewController {
         }
         let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
         let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
-        view.setNeedsLayout()
         UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState]) {
-            self.view.layoutIfNeeded()
+            self.resultsView.layoutIfNeeded()
         }
     }
 
@@ -462,11 +427,11 @@ final class HomeViewController: UIViewController {
         dock.setLayoutFrame(docked.card)
         picker?.follow()
         dockScrim.frame = docked.scrim
-        // Searching, the dock has stepped aside: the keyboard, or the home
-        // indicator, is what the list keeps clear of.
-        let searching = SearchLayout(size: bounds.size, contentTop: contentInsets.contentTop, safeBottom: view.safeAreaInsets.bottom, keyboardTop: keyboardTop ?? bounds.height, nothingFound: nothingFound.measurable)
-        nothingFound.frame = searching.nothingFound
-        let listBottom = search != nil ? searching.listBottom : dock.isHidden ? contentInsets.listBottom : docked.listBottom
+        // Search's results keep clear of the keyboard; home's list never
+        // changes for them.
+        resultsView.frame = bounds
+        resultsView.insets = UIEdgeInsets(top: contentInsets.contentTop, left: 0, bottom: view.safeAreaInsets.bottom, right: 0)
+        let listBottom = dock.isHidden ? contentInsets.listBottom : docked.listBottom
         let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset)
         banner.frame = layout.banner
         storiesBand.frame = CGRect(x: 0, y: contentInsets.chromeTop, width: bounds.width, height: max(0, bounds.height - contentInsets.chromeTop))
@@ -574,8 +539,6 @@ final class HomeViewController: UIViewController {
     }
 
     private func fold(_ row: Row) {
-        // Narrowed, nothing folds: the document's folds wait for the search to end.
-        guard search?.narrowed != true else { return }
         if !usesSpaces, let engine = session?.engine {
             Task { try? await engine.fold(row.id) }
             return

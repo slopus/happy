@@ -176,6 +176,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     private func setUpBar() {
         title = Strings.Settings.title
         navigationItem.largeTitleDisplayMode = .never
+        HeaderBar.edge(scroll, in: self)
         let qr = UIBarButtonItem(image: Glyphs.image("qr-code-outline", size: 22), primaryAction: UIAction { [weak self] _ in self?.showQR() })
         qr.accessibilityLabel = Strings.showQR
         qr.accessibilityIdentifier = "settings-qr"

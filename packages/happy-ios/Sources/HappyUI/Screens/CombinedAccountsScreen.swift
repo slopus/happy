@@ -3,71 +3,8 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// The same inventory is used by a legacy home and a direct home.
-@MainActor
-final class HomeAccountControl: NSObject {
-    private let context: AppContext
-    private weak var controller: UIViewController?
-    private var observation: AccountsObservation?
-    private var imageJob: Task<Void, Never>?
-    private var accounts: [AccountSummary] = []
-    /// Where a computer is a home of its own: the active account's picture,
-    /// always, opens the profiles' settings, which is where switching went.
-    var opensSettings: (() -> Void)? {
-        didSet { update(accounts) }
-    }
-
-    init(context: AppContext, controller: UIViewController) {
-        self.context = context; self.controller = controller
-        super.init()
-        observation = context.account.observeAccounts { [weak self] accounts in self?.update(accounts) }
-    }
-
-    private func update(_ accounts: [AccountSummary]) {
-        self.accounts = accounts
-        let settings = opensSettings != nil
-        let multiple = accounts.count > 1 || settings
-        let active = accounts.first(where: \.isActive)
-        imageJob?.cancel()
-        let fallback = multiple ? UIImage(systemName: active?.isAgentConnection == true ? "desktopcomputer" : "person.crop.circle.fill") : UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
-        apply(fallback, multiple: multiple)
-        guard multiple, let active else { return }
-        let bytes = context.account.agentConnections.accounts.first { $0.id == active.id }?.avatar
-        let pictures = context.account.pictures(for: active.id)
-        imageJob = Task { [weak self] in
-            var image: UIImage?
-            if let bytes { image = await Task.detached { AccountPictureImages.decode(bytes)?.picture as? UIImage }.value }
-            else if let url = active.avatarURL { image = await pictures?.image(url) }
-            if image == nil, let thumbhash = active.avatarThumbhash { image = await pictures?.placeholderImage(thumbhash) }
-            guard !Task.isCancelled, let self, let image else { return }
-            apply(image, multiple: true)
-        }
-    }
-
-    private func apply(_ image: UIImage?, multiple: Bool) {
-        let side = multiple ? HomeHeaderLayout.Metrics.logoBox : HomeHeaderLayout.Metrics.logoSize
-        let size = CGSize(width: side, height: side)
-        let icon = image.map { image in
-            UIGraphicsImageRenderer(size: size).image { _ in
-                let rect = CGRect(origin: .zero, size: size)
-                if multiple { UIBezierPath(ovalIn: rect).addClip() }
-                image.draw(in: rect)
-            }.withRenderingMode(multiple ? .alwaysOriginal : .alwaysTemplate)
-        }
-        let item = UIBarButtonItem(image: icon, style: .plain, target: self, action: #selector(open))
-        item.isEnabled = multiple
-        item.accessibilityLabel = opensSettings != nil ? Strings.openSettings : multiple ? "Switch account" : "Happy"
-        item.accessibilityIdentifier = opensSettings != nil ? "settings-mark" : nil
-        controller?.navigationItem.leftBarButtonItem = item
-    }
-
-    @objc private func open() {
-        if let opensSettings { return opensSettings() }
-        guard let controller else { return }
-        controller.navigationController?.pushViewController(CombinedAccountsViewController(context: context), animated: true)
-    }
-}
-
+/// Every account and connection, each signed out or disconnected from
+/// here, and the one way to add another; the switcher's Manage Accounts.
 final class CombinedAccountsViewController: UIViewController {
     private let context: AppContext
     private let list = GroupedListView()
@@ -103,14 +40,12 @@ final class CombinedAccountsViewController: UIViewController {
             remove.showsChevron = false
             rows.append(remove)
         }
-        let scan = ItemRowView(title: "Connect Agent", subtitle: "Scan an agent’s or a terminal’s code", icon: ItemIcon(.ionicons("qr-code-outline"), tint: Palette.iconBlue)) { [weak self] in
-            guard let self else { return }; AccountAdding.begin(context: context, from: self)
-        }
-        let add = ItemRowView(title: "Add Happy account", icon: ItemIcon(.ionicons("add-circle-outline"), tint: Palette.iconBlue)) { [weak self] in
+        let add = ItemRowView(title: Strings.AccountSwitcher.addAccount, icon: ItemIcon(.ionicons("add-circle-outline"), tint: Palette.iconBlue)) { [weak self] in
             guard let self else { return }
             AccountAdding.begin(context: context, from: self)
         }
-        list.sections = [ItemGroupView(rows: rows), ItemGroupView(rows: [scan, add])]
+        add.accessibilityIdentifier = "accounts-add"
+        list.sections = [ItemGroupView(rows: rows), ItemGroupView(rows: [add])]
     }
     private func select(_ account: AccountSummary) {
         guard !busy, !account.isActive else { return }; busy = true

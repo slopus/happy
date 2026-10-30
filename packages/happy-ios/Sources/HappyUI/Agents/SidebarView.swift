@@ -344,7 +344,7 @@ final class SidebarView: UIScrollView {
             let story = row.story.map { _ in
                 SidebarLayout.StoryRow(corner: corner, timeWidth: StoryRowText.timeWidth(row, scale: textScale), last: StoryRowText.lastLine(row), text: StoryRowText.text(textScale))
             }
-            return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: row.kind == .section, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story, amongStories: row.amongStories)
+            return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: row.kind == .section && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story, amongStories: row.amongStories)
         }
     }
 

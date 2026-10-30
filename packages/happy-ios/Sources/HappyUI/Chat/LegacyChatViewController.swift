@@ -918,6 +918,9 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         configureHeaderAppearance()
         if sessionApplied { navigationItem.titleView = tablet ? plainTitleView : titleView }
         var items = tablet ? [] : [avatarItem]
+        if let host = self as UIViewController as? ComposeHosting {
+            items.append(HeaderBar.composeItem { [weak host] in host?.compose() })
+        }
         #if DEBUG
         items.append(fixturesMenu())
         #endif

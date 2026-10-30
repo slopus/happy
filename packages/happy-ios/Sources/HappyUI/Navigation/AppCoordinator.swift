@@ -321,16 +321,9 @@ public final class AppCoordinator {
         ]
     }
 
+    /// Clear, over each screen's own background (`HeaderBar`).
     static func applyAppearance(to bar: UINavigationBar) {
-        let appearance = UINavigationBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor(Palette.groupedBackground)
-        appearance.shadowColor = .clear
-        appearance.titleTextAttributes = Self.nativeTitleAttributes
-        bar.standardAppearance = appearance
-        bar.scrollEdgeAppearance = appearance
-        bar.compactAppearance = appearance
-        bar.tintColor = UIColor(Palette.headerTint)
+        HeaderBar.apply(to: bar)
     }
 }
 #endif
