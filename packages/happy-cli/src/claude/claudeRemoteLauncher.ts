@@ -19,7 +19,8 @@ import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { launchFailureMessage } from "./utils/launchFailureMessage";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
-import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { MessageBatch } from '@/utils/MessageQueue2';
 
 interface PermissionsField {
     date: number;
@@ -277,10 +278,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }
 
     try {
-        let pending: {
-            message: MessageParam['content'];
-            mode: EnhancedMode;
-        } | null = null;
+        let pending: MessageBatch<EnhancedMode> | null = null;
 
         // Track session ID to detect when it actually changes
         // This prevents context loss when mode changes (permission mode, model, etc.)
@@ -322,23 +320,26 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     isAborted: (toolCallId: string) => {
                         return permissionHandler.isAborted(toolCallId);
                     },
-                    nextMessage: async () => {
+                    nextMessage: async (inputSignal, onlySteer) => {
+                        const waitSignal = inputSignal ? AbortSignal.any([controller.signal, inputSignal]) : controller.signal;
+                        if (waitSignal.aborted) return null;
+                        let msg;
                         if (pending) {
-                            let p = pending;
+                            msg = pending;
                             pending = null;
-                            permissionHandler.handleModeChange(p.mode.permissionMode);
-                            return p;
-                        }
-
-                        let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
-
-                        // Check if mode has changed
-                        if (msg) {
-                            if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
+                        } else {
+                            msg = onlySteer && modeHash
+                                ? await session.queue.waitForSteeringMessage(modeHash, waitSignal, candidate => candidate.permissionMode === mode?.permissionMode)
+                                : await session.queue.waitForMessagesAndGetAsString(waitSignal);
+                            if (msg && ((modeHash && msg.hash !== modeHash) || msg.isolate)) {
                                 logger.debug('[remote]: mode has changed, pending message');
                                 pending = msg;
                                 return null;
                             }
+                        }
+
+                        // Check if mode has changed
+                        if (msg) {
                             modeHash = msg.hash;
                             mode = msg.mode;
                             permissionHandler.handleModeChange(mode.permissionMode);
@@ -376,12 +377,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 return {
                                     message: contentBlocks,
                                     mode: msg.mode,
+                                    restore: msg.restore,
                                 };
                             }
 
                             return {
                                 message: msg.message,
-                                mode: msg.mode
+                                mode: msg.mode,
+                                restore: msg.restore,
                             }
                         }
 
@@ -434,7 +437,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         // run before the mapper has even opened that turn.
                         if (status === 'failed') await messageQueue.flush();
                         session.client.closeClaudeSessionTurn(status ?? 'completed');
-                        if (status !== 'failed' && !pending && session.queue.size() === 0) {
+                        if (status !== 'failed' && !session.thinking && !pending && session.queue.size() === 0) {
                             session.api.push().sendSessionNotification({
                                 kind: 'done',
                                 metadata: session.client.getMetadata(),

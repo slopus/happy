@@ -454,6 +454,7 @@ export const it: TranslationStructure = {
     },
 
     agentInput: {
+        sendMode: en.agentInput.sendMode,
         permissionMode: {
             title: 'MODALITÀ PERMESSI',
             auto: 'decide da sé, chiede in caso di dubbio',
