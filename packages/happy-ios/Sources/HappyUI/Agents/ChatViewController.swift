@@ -129,6 +129,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
     }
     private var watch: Watch?
     private var modelsWatch: Watch?
+    private var headerWatch: Watch?
+    private var headerState: Strings.HeaderStatus.State = .connecting
     private var copied: (id: String, until: Task<Void, Never>)?
     /// The newest row is in view: what arrives keeps it there.
     private var followsNewest = true {
@@ -289,6 +291,11 @@ final class ChatViewController: UIViewController, ComposeHosting {
         applyIntro()
         proposals.onChange = { [weak self] in self?.replan() }
         watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
+        headerWatch = session.watchHeader { [weak self] state in
+            guard let self else { return }
+            headerState = state
+            updateHeaderStatus()
+        }
         if let warm {
             // Read ahead: what it has shows on the first frame.
             session.warm.watch(warm.chat, token: warm.token) { [weak self] snapshot in self?.apply(snapshot) }
@@ -369,6 +376,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
             planning?.cancel()
             watch?.invalidate()
             modelsWatch?.invalidate()
+            headerWatch?.invalidate()
             proposals.stop()
             // Read ahead, it stays read for a quick way back.
             if let warm {
@@ -599,7 +607,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
             if snapshot.draftUpdatedAt >= lastDraftEdit { showDraft(snapshot.draft) }
         }
         proposals.want(snapshot.items.flatMap(\.proposalIds))
-        header.status = Self.status(snapshot.activity)
+        updateHeaderStatus()
         if wasSettled != settled(snapshot), let intro { introView.configure(intro, settled: settled(snapshot)) }
         showIntro()
         updatePrimary()
@@ -1099,13 +1107,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
     }
 
     /// The header's grey line: what the agent is at, in a word, while it is.
-    private static func status(_ activity: Activity?) -> String? {
-        guard let activity else { return nil }
-        return switch activity.phase {
-        case .thinking, .waitingForModel: Strings.phaseThinking
-        case .awaitingAnswer: Strings.phaseAwaitingAnswer
-        default: Strings.phaseWorking
-        }
+    private func updateHeaderStatus() {
+        header.status = Strings.HeaderStatus.text(headerState, activity: chat.activity, loaded: chat.loaded)
     }
 
     // MARK: Layout

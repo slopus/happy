@@ -2,14 +2,31 @@ import CoreGraphics
 import HappyLayout
 import XCTest
 
-/// A conversation's title in the navigation bar: the name alone on the
-/// bar's line, or the name over its status, both centred.
+/// A conversation's title in the navigation bar: the name over its
+/// status, both centred, the name on the same line with or without one.
 final class ChatHeaderLayoutTests: XCTestCase {
-    func testTheNameAloneIsCentredOnTheBarsLine() {
+    func testStatusTextWidthsDoNotMoveEitherLineWhenTheirRoomIsReserved() {
+        let baseline = ChatHeaderLayout(titleWidth: 40, statusWidth: 30, maxWidth: 274, reservedStatusWidth: 180)
+        XCTAssertEqual(baseline.size, CGSize(width: 180, height: 44))
+        XCTAssertEqual(baseline.title, CGRect(x: 70, y: 3, width: 40, height: 22))
+        XCTAssertEqual(baseline.status, CGRect(x: 0, y: 25, width: 180, height: 16))
+        for width: CGFloat in [20, 55, 100, 180] {
+            XCTAssertEqual(ChatHeaderLayout(titleWidth: 40, statusWidth: width, maxWidth: 274, reservedStatusWidth: 180), baseline)
+        }
+    }
+
+    func testTheNameKeepsItsLineWithNoStatus() {
         let layout = ChatHeaderLayout(titleWidth: 140.3, statusWidth: nil, maxWidth: 274)
         XCTAssertEqual(layout.size, CGSize(width: 141, height: 44))
-        XCTAssertEqual(layout.title, CGRect(x: 0, y: 11, width: 141, height: 22))
+        XCTAssertEqual(layout.title, CGRect(x: 0, y: 3, width: 141, height: 22))
         XCTAssertNil(layout.status)
+    }
+
+    func testTheStatusComingAndGoingMovesTheNameNot() {
+        let idle = ChatHeaderLayout(titleWidth: 60, statusWidth: nil, maxWidth: 274)
+        let working = ChatHeaderLayout(titleWidth: 60, statusWidth: 40, maxWidth: 274)
+        XCTAssertEqual(idle.title, working.title)
+        XCTAssertEqual(idle.size, working.size)
     }
 
     func testTheStatusSitsUnderTheNameAndTheWiderLineSetsTheWidth() {

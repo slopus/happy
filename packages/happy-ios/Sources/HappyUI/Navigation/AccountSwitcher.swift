@@ -4,7 +4,7 @@ import HappyLayout
 import UIKit
 
 /// Home's left bar item, alone there on both homes: the active account's
-/// picture and name, with the connection under it while it isn't live,
+/// picture and name, with the connection always under it,
 /// and a chevron. A tap opens the native menu: every account and agent
 /// connection (the active one ticked; another switches to it), then Add
 /// (`AccountAdding`) and Manage Accounts. Adding or a failed
@@ -21,8 +21,8 @@ final class AccountSwitcher: NSObject {
     private var jobs: [String: Task<Void, Never>] = [:]
     private var switching = false
 
-    /// Under the name: the connection while it isn't live.
-    var subtitle: String? {
+    /// Under the name: the connection's current state, never empty.
+    var subtitle: String = Strings.HeaderStatus.text(.connecting) {
         didSet { if subtitle != oldValue { show() } }
     }
 
@@ -67,7 +67,7 @@ final class AccountSwitcher: NSObject {
         button.subtitle = subtitle
         button.picture = images[active.id] ?? Self.fallback(active)
         button.accessibilityLabel = Strings.AccountSwitcher.switcher
-        button.accessibilityValue = [name(active), subtitle].compactMap { $0 }.joined(separator: ", ")
+        button.accessibilityValue = [name(active), subtitle].joined(separator: ", ")
         button.frame.size = button.sizeThatFits(.zero)
         item.customView = button
     }
@@ -159,11 +159,10 @@ final class AccountSwitcherButton: UIButton {
         didSet { titleText.string = title; setNeedsLayout() }
     }
 
-    var subtitle: String? {
+    var subtitle: String = Strings.HeaderStatus.text(.connecting) {
         didSet {
-            subtitleText.string = subtitle ?? ""
-            subtitleText.isHidden = subtitle == nil
-            setNeedsLayout()
+            guard subtitle != oldValue else { return }
+            HeaderStatusTransition.apply(to: subtitleText) { [self] in subtitleText.string = subtitle }
         }
     }
 
@@ -179,7 +178,8 @@ final class AccountSwitcherButton: UIButton {
         chevron.tintColor = UIColor(Palette.textSecondary)
         titleText.lineBreakMode = .byTruncatingTail
         subtitleText.lineBreakMode = .byTruncatingTail
-        subtitleText.isHidden = true
+        subtitleText.string = subtitle
+        subtitleText.accessibilityIdentifier = "account-status"
         for view in [pictureView, titleText, subtitleText, chevron] as [UIView] {
             view.isUserInteractionEnabled = false
             addSubview(view)
@@ -192,10 +192,20 @@ final class AccountSwitcherButton: UIButton {
         let unbounded = CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
         return AccountSwitcherLayout(
             title: titleText.sizeThatFits(unbounded),
-            subtitle: subtitle == nil ? nil : subtitleText.sizeThatFits(unbounded),
-            chevron: chevron.image?.size ?? .zero
+            subtitle: subtitleText.sizeThatFits(unbounded),
+            subtitleHeight: subtitleText.lineHeight,
+            chevron: chevron.image?.size ?? .zero,
+            reservedSubtitleWidth: reservedSubtitleWidth
         )
     }
+
+    private lazy var reservedSubtitleWidth: CGFloat = {
+        let measure = StyledLabel(style: TextStyles.headerSubtitle, color: Palette.textSecondary, lines: 1)
+        return Strings.HeaderStatus.State.allCases.map {
+            measure.string = Strings.HeaderStatus.text($0)
+            return measure.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)).width
+        }.max() ?? 0
+    }()
 
     override func sizeThatFits(_ size: CGSize) -> CGSize { measured().size }
     override var intrinsicContentSize: CGSize { measured().size }

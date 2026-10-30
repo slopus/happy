@@ -285,7 +285,12 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         content?.view.isHidden = blank
         if floating {
             // The account's name is the bar's title; the connection hangs under it.
-            switcher?.subtitle = blank || !HomeConnectionStatus.shows(status) ? nil : Strings.Home.connectionStatus(status)
+            let headerState: Strings.HeaderStatus.State = switch status {
+            case .connected: .online
+            case .connecting: .connecting
+            case .disconnected, .error: .offline
+            }
+            switcher?.subtitle = Strings.HeaderStatus.text(headerState)
             // Beside the sidebar home draws nothing, but the bar is over
             // the sidebar too: the switcher stays, or a tablet has no way
             // to the accounts at all.
@@ -335,7 +340,8 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     }
 
     /// The connection, under "Sessions" while it isn't connected.
-    private var status: RealtimeStatus = HomeConnectionStatus.initial {
+    /// Not private, so a test can flip it.
+    var status: RealtimeStatus = HomeConnectionStatus.initial {
         didSet { if status != oldValue { updateNavigation(animated: false) } }
     }
 

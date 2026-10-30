@@ -17,7 +17,10 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     private(set) lazy var search = BarSearch(host: self, placeholder: Strings.search, fieldIdentifier: "search-field")
     private var observation: AccountsObservation?
     private var switcher: AccountSwitcher?
-    private var live = true
+    private var headerWatch: Watch?
+    var headerState: Strings.HeaderStatus.State = .connecting {
+        didSet { updateTitle() }
+    }
 
     init(context: AppContext, id: String) {
         self.context = context
@@ -50,20 +53,16 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         }
         search.onActiveChanged = { [weak self] in self?.updateBar() }
         v2.onSearchEnded = { [weak self] in self?.search.end() }
-        v2.onSnapshot = { [weak self] snapshot in
-            guard let self, snapshot.live != live else { return }
-            live = snapshot.live
-            updateTitle()
-        }
         switcher = AccountSwitcher(context: context, controller: self)
+        headerWatch = Session.session(for: id, context: context)?.watchHeader { [weak self] in self?.headerState = $0 }
         observation = context.account.observeAccounts { [weak self] _ in self?.updateTitle() }
         updateTitle()
         updateBar()
     }
 
-    /// The connection, under the account's name until it is live.
+    /// The connection, always under the account's name.
     private func updateTitle() {
-        switcher?.subtitle = live ? nil : Strings.Home.connectionStatus(.connecting)
+        switcher?.subtitle = Strings.HeaderStatus.text(headerState)
     }
 
     /// The switcher at the left and the actions at the right, or the search

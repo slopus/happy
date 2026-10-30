@@ -185,15 +185,21 @@ final class HomeViewController: UIViewController {
             connectionWatch = Task { [weak self, engine = session.engine] in
                 for await snapshot in await engine.snapshots() {
                     guard !Task.isCancelled, let self else { return }
-                    self.agentHome = snapshot
-                    if self.usesSpaces { self.apply(session.snapshot) }
-                    else { self.applyClassic() }
+                    self.applyConnection(snapshot)
                 }
             }
             // New work opens on the computer's models: read ahead of compose.
             session.models.load()
         }
         applyChrome()
+    }
+
+    /// Connection snapshots may change the notice over the list. Its
+    /// arrival never changes the rows' inset or screen positions.
+    func applyConnection(_ snapshot: HomeSnapshot) {
+        agentHome = snapshot
+        if usesSpaces, let session { apply(session.snapshot) }
+        else { applyClassic() }
     }
 
     private func apply(_ snapshot: Snapshot) {
@@ -377,7 +383,7 @@ final class HomeViewController: UIViewController {
         // On a wide window the list, the stories, what search finds and the
         // empty state all hold to `ContentWidth.maxWidth` and sit in the
         // middle; a phone is as wide as it ever was.
-        let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset, maxWidth: ContentWidth.maxWidth)
+        let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset, maxWidth: ContentWidth.maxWidth, bannerOverlaysList: !usesSpaces)
         resultsView.frame = layout.content
         resultsView.insets = UIEdgeInsets(top: contentInsets.contentTop, left: 0, bottom: view.safeAreaInsets.bottom, right: 0)
         banner.frame = layout.banner

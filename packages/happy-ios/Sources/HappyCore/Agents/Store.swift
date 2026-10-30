@@ -71,6 +71,7 @@ public actor Store {
     public nonisolated let updates: AsyncStream<Snapshot>
 
     private var snapshot = Snapshot()
+    private var sidebarReadSucceeded = false
     private var following: Task<Void, Never>?
     /// The last Prioritizing write; each waits for the one before, so the
     /// daemon ends on the last choice.
@@ -158,11 +159,17 @@ public actor Store {
     /// standalone start() remains available for existing fixtures/consumers.
     public func startExternal() async { await restoreOffline() }
 
-    public func externalResync(loadSidebar: Bool) async {
+    @discardableResult
+    public func externalResync(loadSidebar: Bool) async -> Bool {
         for listener in listeners.values { listener.continuation.yield(.resync) }
         for listener in typeListeners.values { listener.continuation.yield(.resync) }
         snapshot.live = true
-        if loadSidebar { await load() } else { publish() }
+        if loadSidebar {
+            await load()
+            return sidebarReadSucceeded
+        }
+        publish()
+        return true
     }
 
     public func externalEvent(_ envelope: JSONValue) {
@@ -304,6 +311,7 @@ public actor Store {
     }
 
     private func read() async {
+        sidebarReadSucceeded = false
         do {
             async let health = client.health()
             async let sidebar = client.sidebar(widgets: true)
@@ -344,6 +352,7 @@ public actor Store {
                 stale = true
             }
             snapshot.availability = .available
+            sidebarReadSucceeded = true
             rebuildPlaces()
             let pending = heldEvents ?? []
             heldEvents = nil

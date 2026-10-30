@@ -29,6 +29,12 @@ final class Session {
     /// rather than take `stop`'s word for it.
     private(set) var following: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
+    private var connectionObservation: AccountsObservation?
+    private var connectionFollowing: Task<Void, Never>?
+    private var connectionSnapshot = HomeSnapshot()
+    private var connectionStatus: ConnectionStatus = .connecting
+    private var headerWatchers: [UUID: (Strings.HeaderStatus.State) -> Void] = [:]
+    private(set) var headerState: Strings.HeaderStatus.State = .connecting
 
     /// The notifications this session watches for, for the same reason.
     /// Nothing adds to it today; it is emptied by `stop` all the same, so
@@ -48,7 +54,7 @@ final class Session {
             // holding it is freed.
             existing.stop()
         }
-        let session = Session(accountID: accountID, engine: engine)
+        let session = Session(accountID: accountID, engine: engine, account: context.account)
         sessions[accountID] = session
         return session
     }
@@ -80,12 +86,16 @@ final class Session {
     func stop() {
         following?.cancel()
         following = nil
+        connectionFollowing?.cancel()
+        connectionFollowing = nil
+        connectionObservation?.cancel()
+        connectionObservation = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
         warm.stop()
     }
 
-    private init(accountID: String, engine: SyncEngine) {
+    private init(accountID: String, engine: SyncEngine, account: AccountController) {
         self.accountID = accountID
         self.engine = engine
         let client = engine.client
@@ -119,6 +129,18 @@ final class Session {
                 for watcher in self.watchers.values { watcher(snapshot) }
             }
         }
+        connectionObservation = account.observeAccounts { [weak self, weak account] _ in
+            guard let self, let account else { return }
+            connectionStatus = account.agentConnections.accounts.first { $0.id == accountID }?.status ?? .paused
+            updateHeaderState()
+        }
+        connectionFollowing = Task { [weak self, engine] in
+            for await snapshot in await engine.snapshots() {
+                guard !Task.isCancelled, let self else { return }
+                connectionSnapshot = snapshot
+                updateHeaderState()
+            }
+        }
         // AgentConnections owns foreground/background and account switching.
         // Opening an offscreen account's settings never starts another stream.
     }
@@ -129,6 +151,31 @@ final class Session {
         watchers[id] = watch
         watch(snapshot)
         return Watch { [weak self] in self?.watchers.removeValue(forKey: id) }
+    }
+
+    static func headerState(status: ConnectionStatus, snapshot: HomeSnapshot) -> Strings.HeaderStatus.State {
+        switch status {
+        case .paused, .revoked: return .offline
+        case .retrying: return .connecting
+        case .connecting: return .connecting
+        case .connected:
+            if snapshot.error != nil && !snapshot.live { return .offline }
+            return snapshot.live && snapshot.loaded && !snapshot.syncing ? .online : .syncing
+        }
+    }
+
+    private func updateHeaderState() {
+        let next = Self.headerState(status: connectionStatus, snapshot: connectionSnapshot)
+        guard next != headerState else { return }
+        headerState = next
+        for watch in headerWatchers.values { watch(next) }
+    }
+
+    func watchHeader(_ watch: @escaping (Strings.HeaderStatus.State) -> Void) -> Watch {
+        let id = UUID()
+        headerWatchers[id] = watch
+        watch(headerState)
+        return Watch { [weak self] in self?.headerWatchers.removeValue(forKey: id) }
     }
 }
 

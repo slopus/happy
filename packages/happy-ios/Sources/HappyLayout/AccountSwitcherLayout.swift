@@ -7,6 +7,9 @@ import CoreGraphics
 /// picture, its name with the connection under it while it isn't live,
 /// and a chevron that says it opens a menu. The name shortens before the
 /// switcher grows past `maxWidth`, so the right's buttons always fit.
+/// The name's place never depends on the connection: the line under it
+/// is kept whether or not it says anything (`subtitleHeight`), so a
+/// connection that comes and goes moves nothing.
 ///
 ///     |◉| Steve ⌄
 ///     |◉| connecting
@@ -29,18 +32,19 @@ public struct AccountSwitcherLayout: Equatable, Sendable {
     public var subtitle: CGRect?
     public var chevron: CGRect
 
-    /// `title`, `subtitle` and `chevron` as measured on one line each.
-    public init(title: CGSize, subtitle: CGSize?, chevron: CGSize, maxWidth: CGFloat = Metrics.maxWidth) {
+    /// `title`, `subtitle` and `chevron` as measured on one line each;
+    /// `subtitleHeight` is the subtitle's line, kept when there is none.
+    public init(title: CGSize, subtitle: CGSize?, subtitleHeight: CGFloat, chevron: CGSize, maxWidth: CGFloat = Metrics.maxWidth, reservedSubtitleWidth: CGFloat = 0) {
         typealias M = Metrics
         let textX = M.leading + M.picture + M.pictureGap
         let fixed = textX + M.chevronGap + chevron.width + M.trailing
         let room = max(0, min(maxWidth, M.maxWidth) - fixed)
         let titleWidth = min(title.width, room)
-        let subtitleWidth = min(subtitle?.width ?? 0, room)
+        let subtitleWidth = min(max(subtitle?.width ?? 0, reservedSubtitleWidth), room)
         let textWidth = max(titleWidth + M.chevronGap + chevron.width, subtitleWidth)
         size = CGSize(width: (textX + textWidth + M.trailing).rounded(.up), height: M.height)
         picture = CGRect(x: M.leading, y: (M.height - M.picture) / 2, width: M.picture, height: M.picture)
-        let textHeight = title.height + (subtitle?.height ?? 0)
+        let textHeight = title.height + max(subtitleHeight, subtitle?.height ?? 0)
         let top = ((M.height - textHeight) / 2).rounded()
         self.title = CGRect(x: textX, y: top, width: titleWidth, height: title.height)
         self.subtitle = subtitle.map { CGRect(x: textX, y: top + title.height, width: subtitleWidth, height: $0.height) }

@@ -4,6 +4,9 @@ import HappyWire
 public struct HomeSnapshot: Equatable, Sendable {
     public var loaded = false
     public var live = false
+    /// Bootstrap/sidebar reconciliation is still running. An open stream
+    /// alone does not mean the phone has caught up.
+    public var syncing = true
     public var usesSpaces = false
     public var rows: [Row] = []
     public var allRows: [Row] = []
@@ -39,6 +42,7 @@ public actor SyncEngine {
     private var cursor: String?
     private var dirty = false
     private var revision = 0
+    private var sidebarSyncing = false
 
     public init(client: AgentClient, directory: URL?) {
         self.client = client
@@ -126,6 +130,9 @@ public actor SyncEngine {
         var attempt = 0
         while current(generation) {
             do {
+                sidebarSyncing = false
+                snapshot.syncing = true
+                publish()
                 try await reconcile(generation)
                 beginDelivery(generation)
                 beginMessageDelivery(generation)
@@ -133,13 +140,15 @@ public actor SyncEngine {
                 for try await frame in stream {
                     guard current(generation) else { return }
                     if frame.event == "hello" {
+                        sidebarSyncing = true
+                        snapshot.syncing = true
                         snapshot.live = true; snapshot.error = nil; attempt = 0
                         publish()
                         // The bootstrap cursor precedes its reads. Opening from
                         // it is safe even after a crash, replay or daemon replacement.
                         let hello = try JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8))
                         if hello["gap"] == .bool(true) { scheduleReconcile(generation) }
-                        await spaces.externalResync(loadSidebar: snapshot.usesSpaces)
+                        try await resyncSidebar(generation, loadSidebar: snapshot.usesSpaces)
                         continue
                     }
                     guard let event = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8)) else { continue }
@@ -152,8 +161,9 @@ public actor SyncEngine {
                         // V2 turned on here: its sidebar is read now,
                         // or the home has nothing to draw until a relaunch.
                         let previouslySpaces = snapshot.usesSpaces
+                        if !previouslySpaces && snapshot.settings[DesktopSettingKeys.v2] == .bool(true) { snapshot.syncing = true }
                         derive()
-                        if snapshot.usesSpaces && !previouslySpaces { await spaces.externalResync(loadSidebar: true) }
+                        if snapshot.usesSpaces && !previouslySpaces { try await resyncSidebar(generation, loadSidebar: true) }
                     }
                     // Events are delivery hints, never a durable checkpoint.
                     // Coalesce catalog invalidations; message token events go
@@ -180,6 +190,17 @@ public actor SyncEngine {
 
     private func current(_ generation: Int) -> Bool { !stopped && !Task.isCancelled && self.generation == generation }
 
+    private func resyncSidebar(_ generation: Int, loadSidebar: Bool) async throws {
+        sidebarSyncing = true
+        if !snapshot.syncing { snapshot.syncing = true; publish() }
+        let ready = await spaces.externalResync(loadSidebar: loadSidebar)
+        guard current(generation) else { throw CancellationError() }
+        guard ready else { throw AgentClientError.invalidResponse }
+        sidebarSyncing = false
+        snapshot.syncing = !snapshot.live || refresh != nil
+        publish()
+    }
+
     private func scheduleReconcile(_ generation: Int) {
         dirty = true
         revision += 1
@@ -199,7 +220,13 @@ public actor SyncEngine {
                     failures += 1
                 }
             }
-            if self.generation == generation { refresh = nil }
+            if self.generation == generation {
+                refresh = nil
+                if snapshot.live && !sidebarSyncing && snapshot.syncing {
+                    snapshot.syncing = false
+                    publish()
+                }
+            }
         }
     }
 
@@ -236,8 +263,9 @@ public actor SyncEngine {
         cursor = desktop.cursor
         snapshot.settings = try await database.settings()
         let previouslySpaces = snapshot.usesSpaces
+        if !previouslySpaces && snapshot.settings[DesktopSettingKeys.v2] == .bool(true) { snapshot.syncing = true }
         derive()
-        if snapshot.usesSpaces && !previouslySpaces { await spaces.externalResync(loadSidebar: true) }
+        if snapshot.usesSpaces && !previouslySpaces { try await resyncSidebar(generation, loadSidebar: true) }
     }
 
     public func setProjectsHidden(_ hidden: Bool) async throws {

@@ -3,7 +3,7 @@ import HappyLayout
 import UIKit
 
 /// A conversation's title in the navigation bar (`navigationItem.titleView`):
-/// its name, with the agent's status in grey under it while it works. A
+/// its name, with the connection or agent's activity always under it. A
 /// tap anywhere on it opens the conversation's detail. Frames are
 /// `ChatHeaderLayout`'s.
 @MainActor
@@ -14,12 +14,11 @@ final class ChatHeaderView: UIView {
         didSet { titleView.onOpen = onOpen }
     }
 
-    /// What the agent is doing, under its name; nil for nothing.
-    var status: String? {
+    /// The connection or what the agent is doing, always under its name.
+    var status: String = Strings.HeaderStatus.text(.connecting) {
         didSet {
             guard status != oldValue else { return }
-            statusLabel.text = status
-            resize()
+            HeaderStatusTransition.apply(to: statusLabel) { [self] in statusLabel.text = status }
         }
     }
 
@@ -42,7 +41,7 @@ final class ChatHeaderView: UIView {
         statusLabel.textColor = UIColor(Palette.textSecondary)
         statusLabel.textAlignment = .center
         statusLabel.lineBreakMode = .byTruncatingTail
-        statusLabel.isHidden = true
+        statusLabel.text = status
         statusLabel.accessibilityIdentifier = "chat-status"
         addSubview(statusLabel)
         accessibilityIdentifier = "chat-capsule"
@@ -54,10 +53,14 @@ final class ChatHeaderView: UIView {
     @objc private func open() { onOpen?() }
 
     private var layout: ChatHeaderLayout {
-        // While the name is being typed it has the bar to itself.
-        let statusWidth = status == nil || titleView.isEditing ? nil : statusLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 16)).width
-        return ChatHeaderLayout(titleWidth: titleView.intrinsicContentSize.width, statusWidth: statusWidth, maxWidth: maxWidth == .greatestFiniteMagnitude ? 10_000 : maxWidth)
+        // Reserve the widest status once; changing words moves no frame.
+        return ChatHeaderLayout(titleWidth: titleView.intrinsicContentSize.width, statusWidth: reservedStatusWidth,
+                                maxWidth: maxWidth == .greatestFiniteMagnitude ? 10_000 : maxWidth)
     }
+
+    private lazy var reservedStatusWidth: CGFloat = Strings.HeaderStatus.all.map {
+        ($0 as NSString).size(withAttributes: [.font: statusLabel.font!]).width
+    }.max() ?? 0
 
     override var intrinsicContentSize: CGSize { layout.size }
 
