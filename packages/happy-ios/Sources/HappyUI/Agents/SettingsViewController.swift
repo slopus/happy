@@ -285,17 +285,16 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         }
     }
 
-    /// Telegram's "Add Account", for a computer: the link sheet.
+    /// Telegram's "Add Account": the one Add flow (`AccountAdding`).
     private func connectAgent() {
         endEditingName(keep: true)
-        LinkNavigationController.present(context: context, from: self)
+        AccountAdding.begin(context: context, from: self)
     }
 
     /// Another Happy account, beside the profiles there are.
     private func addHappyAccount() {
         guard isTop else { return }
-        context.account.beginAddingAccount()
-        show(WelcomeViewController(context: context, offersPairing: false))
+        AccountAdding.begin(context: context, from: self)
     }
 
     private func watchShown() {

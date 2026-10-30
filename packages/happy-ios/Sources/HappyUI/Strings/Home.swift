@@ -19,6 +19,12 @@ extension Strings {
             }
         }
 
+        // Home's notice in place of the list (HomeNoticeViewController);
+        // not in happy-app, which showed onboarding screens instead.
+        public static let noComputerTitle = "Connect a computer"
+        public static let noComputerDescription = "Open Happy on your computer and scan the code it shows to connect it to this account."
+        public static let offlineDescription = "Happy on your computer isn't running or can't reach the server."
+
         /// `sessionsFilter.title`: the filter menu's accessibility label.
         public static var filterTitle: String { localized("sessionsFilter.title", "Filter") }
         /// `sessionsFilter.appearanceSettings`.

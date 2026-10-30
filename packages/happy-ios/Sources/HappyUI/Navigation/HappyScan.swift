@@ -25,9 +25,10 @@ enum HappyScan {
     static let log = Logger(subsystem: "engineering.happy", category: "scan")
 
     /// The camera; the first code it reads, nil when closed.
-    static func read(from controller: UIViewController) async -> String? {
+    static func read(from controller: UIViewController, otherWays: [ScannerWay] = []) async -> String? {
         await withCheckedContinuation { continuation in
             let scanner = QRScannerViewController()
+            scanner.otherWays = otherWays
             scanner.onFinish = { continuation.resume(returning: $0) }
             controller.present(scanner, animated: true)
         }
@@ -39,9 +40,10 @@ enum HappyScan {
         intent: ScanIntent,
         context: AppContext,
         on controller: UIViewController,
+        otherWays: [ScannerWay] = [],
         busy: (Bool) -> Void = { _ in }
     ) async -> Result {
-        guard let text = await read(from: controller) else {
+        guard let text = await read(from: controller, otherWays: otherWays) else {
             log.debug("scanner closed without a code")
             return .ended
         }
@@ -100,9 +102,10 @@ enum HappyScan {
         return kind == .account ? .deviceLinked : .computerConnected
     }
 
-    /// Makes an account, adds it beside the others (signIn switches to it,
-    /// and the window's screens become its home), then hands it to the
-    /// computer.
+    /// A new account for the computer, made without asking, as happy-app's
+    /// first run makes one (`AccountController.addAccount`): kept and made
+    /// active only once the computer has it, so the window's screens become
+    /// its home then; a used code or a failure keeps nothing and says so.
     private static func newAccount(
         for key: Data,
         context: AppContext,
@@ -110,29 +113,25 @@ enum HappyScan {
         on controller: UIViewController,
         busy: (Bool) -> Void
     ) async -> Result {
-        guard await Alerts.confirm(Strings.Modals.authenticateTerminal, Strings.Scan.newAccountForComputer, confirmTitle: Strings.Common.continueAction, on: controller) else {
-            PairingAnalytics.shared.log(.cancelled(method: .relay, start: start))
-            return .ended
-        }
         // The window outlives the screens signIn replaces.
         let window = controller.view.window
-        let wasAdding = context.account.isAddingAccount
-        if !wasAdding { context.account.beginAddingAccount() }
         busy(true)
+        let outcome: LegacyPairingFlow.Outcome
         do {
-            let credentials = try await context.account.authService.createAccount()
-            try await context.account.signIn(credentials)
+            outcome = try await context.account.addAccount(approvingTerminal: key) == .alreadyHandled ? .alreadyHandled : .approved
+        } catch LegacyPairingError.terminalNeedsUpdate {
+            outcome = .terminalNeedsUpdate
         } catch {
-            busy(false)
-            if !wasAdding { context.account.cancelAddingAccount() }
-            log.error("creating an account failed: \(String(describing: error), privacy: .public)")
-            Alerts.show(Strings.Common.error, Strings.Errors.authenticationFailed, on: controller)
-            return .ended
+            log.error("adding an account for a computer failed: \(String(describing: type(of: error)), privacy: .public)")
+            outcome = .failed
         }
         busy(false)
-        guard let session = context.account.session else { return .ended }
-        let presenter = window.flatMap(topmost) ?? controller
-        return await approve(.terminal(publicKey: key), session: session, start: start, on: presenter, busy: { _ in }) == .computerConnected ? .accountAdded : .ended
+        PairingAnalytics.shared.log(outcome == .approved ? .completed(method: .relay, start: start) : .failed(method: .relay, start: start))
+        guard outcome == .approved else {
+            LegacyPairingFlow.report(outcome, kind: .terminal, on: window.flatMap(topmost) ?? controller)
+            return .ended
+        }
+        return .accountAdded
     }
 
     private static func report(_ problem: ScanProblem, on controller: UIViewController) {

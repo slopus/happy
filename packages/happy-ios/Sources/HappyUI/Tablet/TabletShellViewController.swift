@@ -156,7 +156,7 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
             isAuthenticated: session != nil,
             isTablet: isTablet,
             showsInstallStep: sidebar?.state?.showsInstallStep ?? false,
-            isOnboardingRoute: detail.topViewController is OnboardingSettingsViewController
+            isOnboardingRoute: false
         )
         if showsShell != self.showsShell {
             self.showsShell = showsShell

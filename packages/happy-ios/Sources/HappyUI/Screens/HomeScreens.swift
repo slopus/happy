@@ -8,14 +8,13 @@ import UIKit
 /// Signed in: app/(app)/index.tsx and SessionsListWrapper.tsx. Home stays
 /// the navigation root for the whole session and swaps its content as the
 /// store changes (`HomeState`):
-///   - a spinner until the machines are known;
-///   - Link Your Computer while none is linked;
-///   - the offline checklist while none is reachable and nothing is listed;
+///   - until the machines are known, no computer, or none reachable with
+///     nothing listed: a notice in home (`HomeNoticeViewController`),
+///     never an onboarding screen;
 ///   - "No sessions yet" on a reachable computer with nothing on it;
 ///   - the session list otherwise.
 ///
-/// Link Your Computer keeps the onboarding header in the navigation bar.
-/// Every other state has home's bar: the account's picture at the left,
+/// Every state has home's bar: the account's picture at the left,
 /// "Sessions" with the connection under it, and the filter menu and
 /// settings at the right.
 ///
@@ -204,7 +203,7 @@ public final class LegacyHomeViewController: UIViewController {
     /// padding as safe area, as SessionsListWrapper pads them.
     private func applyInsets(_ insets: HomeContentInsets) {
         guard let content else { return }
-        let floating = state != .link
+        let floating = true
         if let list = content as? SessionListViewController {
             list.contentInsets = insets
             setAdditionalSafeArea(.zero, on: list)
@@ -226,10 +225,10 @@ public final class LegacyHomeViewController: UIViewController {
         dockView.showsScrim = state.kind == .list
         var rows = 0
         switch (previous, state) {
-        case (.offline?, .offline(let choices, let hasArchived)):
-            let checklist = content as? OfflineChecklistViewController
-            if checklist?.choices != choices { checklist?.choices = choices }
-            if checklist?.hasArchived != hasArchived { checklist?.hasArchived = hasArchived }
+        case (.loading?, .loading), (.link?, .link), (.offline?, .offline), (.loading?, .link), (.link?, .loading),
+             (.loading?, .offline), (.offline?, .loading), (.link?, .offline), (.offline?, .link):
+            // One notice in place, its words changed.
+            (content as? HomeNoticeViewController)?.kind = Self.notice(state)
         case (.list?, .list(let model)):
             rows = (content as? SessionListViewController)?.apply(model, changeset: update.changeset, animated: view.window != nil) ?? 0
         default:
@@ -242,16 +241,21 @@ public final class LegacyHomeViewController: UIViewController {
 
     private func makeContent(for update: HomeUpdate) -> UIViewController {
         switch update.content {
-        case .loading:
-            LoadingViewController()
-        case .link:
-            LinkComputerViewController(context: context, session: session)
-        case .offline(let choices, let hasArchived):
-            OfflineChecklistViewController(context: context, session: session, choices: choices, hasArchived: hasArchived)
+        case .loading, .link, .offline:
+            HomeNoticeViewController(context: context, session: session, kind: Self.notice(update.content))
         case .noSessions:
             NoSessionsViewController(context: context, session: session)
         case .list(let model):
             makeList(model, changeset: update.changeset)
+        }
+    }
+
+    /// What home says in place of the list, under its own bar.
+    private static func notice(_ content: HomeContent) -> HomeNoticeViewController.Kind {
+        switch content {
+        case .link: .noComputer
+        case .offline(let choices, let hasArchived): .offline(choices, hasArchived: hasArchived)
+        default: .connecting
         }
     }
 
@@ -295,12 +299,10 @@ public final class LegacyHomeViewController: UIViewController {
         view.setNeedsLayout()
     }
 
-    /// The link screen has happy-app's onboarding header: no title, the
-    /// custom server under it, and a gear to the onboarding settings. Every
-    /// other state has home's own title and buttons in the bar.
+    /// Home's own title and buttons in the bar, whatever it shows.
     private func updateNavigation(animated: Bool) {
         guard let state else { return }
-        let floating = state != .link
+        let floating = true
         // Tablet (HappyUI/Tablet): beside the sidebar the index route draws
         // nothing, nor its header and dock (MainView.tsx `isTablet`).
         let blank = floating && traitCollection.isTabletLayout
@@ -310,10 +312,6 @@ public final class LegacyHomeViewController: UIViewController {
             titleView.title = blank ? nil : Strings.Home.sessionsTitle
             titleView.subtitle = blank || !HomeConnectionStatus.shows(status) ? nil : Strings.Home.connectionStatus(status)
             navigationItem.rightBarButtonItems = blank ? nil : [settingsItem, filterItem]
-        } else {
-            titleView.title = nil
-            titleView.subtitle = context.customServerHost
-            navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openOnboardingSettings))
         }
         // Not `sizeToFit`, which would hold a longer server to the width of
         // the one before it.
@@ -374,263 +372,8 @@ public final class LegacyHomeViewController: UIViewController {
         return item
     }()
 
-    @objc private func openOnboardingSettings() {
-        navigationController?.pushViewController(OnboardingSettingsViewController(context: context), animated: true)
-    }
-
     private func openSettings() {
         push(.settings, context: context)
-    }
-}
-
-final class LoadingViewController: UIViewController {
-    override func loadView() {
-        view = LoadingView()
-    }
-}
-
-/// OnboardingLinkComputer from components/onboarding/LinkComputer.tsx.
-/// Scanning opens once both boxes are ticked, and the ticks are kept until
-/// logout. A link that went through keeps the button busy until the
-/// computer arrives and home swaps this screen out, or for ten seconds if
-/// it never does. A failed one says so on the line above the button. The
-/// only way back is the gear's "Log out and start over".
-final class LinkComputerViewController: UIViewController {
-    static let machineArrivalTimeout: Duration = .seconds(10)
-
-    /// A link that went through, where this screen is a step of adding a
-    /// computer rather than the account's home (the link sheet).
-    var onLinked: (() -> Void)?
-    private let context: AppContext
-    private let session: AccountSession
-    private let content = LinkComputerContentView()
-    private lazy var screen = OnboardingScreenView(
-        content: content,
-        primary: RoundButton(title: Strings.Onboarding.scanButton),
-        secondary: RoundButton(title: Strings.Onboarding.pasteLink, size: .normal, display: .inverted)
-    )
-    /// The approval request is in flight.
-    private var linking = false
-    /// Approved; waiting for the computer to sync in.
-    private var approved = false
-    private var approvalTimeout: Task<Void, Never>?
-
-    init(context: AppContext, session: AccountSession) {
-        self.context = context
-        self.session = session
-        super.init(nibName: nil, bundle: nil)
-        followsTextSize()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    override func loadView() {
-        view = screen
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        screen.primary.loadingTitle = Strings.Onboarding.linking
-        screen.primary.onTap = { [weak self] in self?.scan() }
-        screen.secondary.onTap = { [weak self] in self?.paste() }
-        screen.help.onTap = { [weak self] in
-            guard let self else { return }
-            Alerts.help(on: self)
-        }
-        content.onOpenWebsite = {
-            UIApplication.shared.open(Strings.Onboarding.desktopURL)
-        }
-        let saved = context.account.localSettings.linkComputerChecklist
-        content.ticked = Set(LinkComputerContentView.Step.allCases.filter {
-            $0 == .install ? saved.install : saved.open
-        })
-        content.onToggle = { [weak self] ticked in
-            self?.context.account.localSettings.linkComputerChecklist = LinkChecklist(
-                install: ticked.contains(.install),
-                open: ticked.contains(.open)
-            )
-            self?.update()
-        }
-        update()
-    }
-
-    private var busy: Bool {
-        linking || approved
-    }
-
-    private func update() {
-        let ready = content.ticked == Set(LinkComputerContentView.Step.allCases)
-        screen.primary.isLoading = busy
-        screen.primary.isEnabled = !busy && ready
-        screen.secondary.isEnabled = !busy
-        content.isEnabled = !busy
-    }
-
-    private func scan() {
-        content.error = nil
-        Task { @MainActor in
-            guard let text = await HappyScan.read(from: self) else {
-                return PairingAnalytics.shared.log(.cancelled(method: .relay, start: .scan))
-            }
-            await link(text, start: .scan)
-        }
-    }
-
-    private func paste() {
-        content.error = nil
-        Task { @MainActor in
-            let text = await Alerts.prompt(
-                Strings.Onboarding.pasteLinkTitle,
-                Strings.Onboarding.pasteLinkMessage,
-                placeholder: "happy://terminal?...",
-                confirmTitle: Strings.Onboarding.pasteLinkConfirm,
-                on: self
-            )
-            guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-                return PairingAnalytics.shared.log(.cancelled(method: .relay, start: .pasteLink))
-            }
-            await link(text, start: .pasteLink)
-        }
-    }
-
-    private func link(_ text: String, start: PairingStart) async {
-        guard !busy else { return }
-        // Any code but a computer's goes where HappyScan sends it, and says so.
-        guard case .terminal = HappyCode(text) else {
-            await HappyScan.open(text, intent: .connect, context: context, on: self, start: start)
-            return
-        }
-        linking = true
-        update()
-        let outcome = await LegacyPairingFlow.approve(text, expecting: .terminal, session: session)
-        linking = false
-        if case .approved = outcome {
-            PairingAnalytics.shared.log(.completed(method: .relay, start: start))
-        } else {
-            PairingAnalytics.shared.log(.failed(method: .relay, start: start))
-        }
-        switch outcome {
-        case .approved:
-            LegacyPairingFlow.report(outcome, kind: .terminal, on: self)
-            if let onLinked { return onLinked() }
-            approved = true
-            approvalTimeout?.cancel()
-            approvalTimeout = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: Self.machineArrivalTimeout)
-                guard !Task.isCancelled, let self else { return }
-                approved = false
-                update()
-            }
-        case .failed:
-            content.error = Strings.Onboarding.linkFailed
-            UIAccessibility.post(notification: .announcement, argument: Strings.Onboarding.linkFailed)
-        case .invalidLink, .terminalNeedsUpdate, .alreadyHandled:
-            // These need more than one line, and scanning again won't help.
-            LegacyPairingFlow.report(outcome, kind: .terminal, on: self)
-        }
-        update()
-    }
-}
-
-/// LinkComputerChecklist from components/onboarding/LinkComputer.tsx:
-/// computers are linked but none is reachable. The install box is already
-/// ticked; the job now is to get Happy running again.
-final class OfflineChecklistViewController: UIViewController {
-    var choices: [MachineChoice] {
-        didSet { applyChoices() }
-    }
-
-    /// Offers "Show archived", which turns the archive on and so lists it.
-    var hasArchived: Bool {
-        didSet { applyChoices() }
-    }
-
-    private let context: AppContext
-    private let session: AccountSession
-    private let checklist = OfflineChecklistView()
-    private var linking = false
-    private var approved = false
-    private var approvalTimeout: Task<Void, Never>?
-
-    init(context: AppContext, session: AccountSession, choices: [MachineChoice], hasArchived: Bool = false) {
-        self.context = context
-        self.session = session
-        self.choices = choices
-        self.hasArchived = hasArchived
-        super.init(nibName: nil, bundle: nil)
-        followsTextSize()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    override func loadView() {
-        view = checklist
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        checklist.troubleshoot.onTap = { [weak self] in
-            guard let self else { return }
-            navigationController?.pushViewController(TroubleshootViewController(context: context, session: session), animated: true)
-        }
-        checklist.linkAnother.onTap = { [weak self] in self?.scan() }
-        checklist.showArchived.onTap = { [weak self] in
-            self?.session.updateSettings(["hideInactiveSessions": .bool(false)])
-        }
-        applyChoices()
-        update()
-    }
-
-    private func applyChoices() {
-        guard isViewLoaded else { return }
-        checklist.showsArchivedButton = hasArchived
-        if choices.count == 1 {
-            checklist.title = Strings.Onboarding.offlineTitleOne(name: choices[0].name)
-            checklist.linkedTitle = Strings.Onboarding.offlineLinkedStep(name: choices[0].name)
-        } else {
-            checklist.title = Strings.Onboarding.offlineTitleMany
-            checklist.linkedTitle = Strings.Onboarding.offlineLinkedStepMany(count: choices.count)
-        }
-    }
-
-    private func update() {
-        checklist.linkAnother.isLoading = linking || approved
-        checklist.linkAnother.title = approved ? Strings.Onboarding.linking : Strings.Onboarding.linkAnother
-    }
-
-    private func scan() {
-        Task { @MainActor in
-            guard let text = await HappyScan.read(from: self), !linking, !approved else { return }
-            guard case .terminal = HappyCode(text) else {
-                await HappyScan.open(text, intent: .connect, context: context, on: self, start: .scan)
-                return
-            }
-            linking = true
-            update()
-            let outcome = await LegacyPairingFlow.approve(text, expecting: .terminal, session: session)
-            linking = false
-            // No inline error line here: failures are alerts, as in happy-app.
-            LegacyPairingFlow.report(outcome, kind: .terminal, on: self)
-            if outcome == .approved { startWaitingForComputer() }
-            update()
-        }
-    }
-
-    private func startWaitingForComputer() {
-        approved = true
-        approvalTimeout?.cancel()
-        approvalTimeout = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: LinkComputerViewController.machineArrivalTimeout)
-            guard !Task.isCancelled, let self else { return }
-            approved = false
-            update()
-        }
     }
 }
 

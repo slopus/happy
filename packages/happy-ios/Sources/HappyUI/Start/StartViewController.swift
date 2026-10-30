@@ -7,8 +7,8 @@ import UIKit
 /// agent connection; Android's (ui/start). No bar: Grain Gradient fills
 /// the window behind the status bar, the logotype centred above Start,
 /// Start (48 above the bottom, as wide as its label) scans a code of any kind (`HappyScan` routes it), and ⋯ at the
-/// top right has the other ways in: enter a link, restore, create an
-/// account, the server, and help. `StartLayout` places it all.
+/// top right has the other ways in: enter a link, restore, the server, and
+/// help. There is no Create account: a computer's code makes one. `StartLayout` places it all.
 ///
 /// The palette is Android's: deep blue and violet over near-black in dark
 /// mode, their pale tints over lavender white in light; every colour behind
@@ -106,19 +106,16 @@ final class StartViewController: UIViewController {
         logo.image = UIImage.happy(traitCollection.userInterfaceStyle == .dark ? "logotype-light" : "logotype-dark")
     }
 
+    /// The ways in besides scanning (`AccountAdding`), and help.
     private func menuItems() -> [UIMenuElement] {
         let enabled: UIMenuElement.Attributes = busy ? .disabled : []
-        let server = UIAction(title: Strings.Onboarding.settingsServer, image: UIImage(systemName: "server.rack"), attributes: enabled) { [weak self] _ in self?.openServer() }
-        server.subtitle = context.customServerHost ?? Strings.Onboarding.settingsServerDefault
+        let ways = AccountAdding.otherWays(context: context, from: self) { [weak self] in self?.busy = $0 }.map { way in
+            let action = UIAction(title: way.title, image: UIImage(systemName: way.symbol), attributes: enabled) { _ in way.run() }
+            if way.symbol == "server.rack" { action.subtitle = context.customServerHost ?? Strings.Onboarding.settingsServerDefault }
+            return action
+        }
         return [
-            UIMenu(options: .displayInline, children: [
-                UIAction(title: Strings.Start.enterLink, image: UIImage(systemName: "link"), attributes: enabled) { [weak self] _ in self?.enterLink() },
-            ]),
-            UIMenu(options: .displayInline, children: [
-                UIAction(title: Strings.Onboarding.restoreExisting, image: UIImage(systemName: "key"), attributes: enabled) { [weak self] _ in self?.openRestore() },
-                UIAction(title: Strings.Onboarding.createAccount, image: UIImage(systemName: "person.badge.plus"), attributes: enabled) { [weak self] _ in self?.createAccount() },
-                server,
-            ]),
+            UIMenu(options: .displayInline, children: ways),
             UIMenu(options: .displayInline, children: [
                 UIAction(title: Strings.Onboarding.getHelp, image: UIImage(systemName: "questionmark.circle")) { [weak self] _ in
                     guard let self else { return }
@@ -128,47 +125,10 @@ final class StartViewController: UIViewController {
         ]
     }
 
-    // MARK: Actions
-
+    /// The scanner; whatever it reads, `HappyScan` routes.
     private func scan() {
         guard !busy else { return }
-        Task { [weak self] in
-            guard let self else { return }
-            await HappyScan.scan(intent: .connect, context: context, on: self) { [weak self] in self?.busy = $0 }
-        }
-    }
-
-    private func enterLink() {
-        guard !busy else { return }
-        Task { [weak self] in
-            guard let self else { return }
-            let text = await Alerts.prompt(Strings.Start.enterLinkTitle, Strings.Start.enterLinkMessage, placeholder: "happy://…", confirmTitle: Strings.Common.continueAction, on: self)
-            guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
-            await HappyScan.open(text, intent: .connect, context: context, on: self, start: .pasteLink) { [weak self] in self?.busy = $0 }
-        }
-    }
-
-    private func createAccount() {
-        guard !busy else { return }
-        busy = true
-        Task { [weak self] in
-            guard let self else { return }
-            defer { busy = false }
-            do {
-                let credentials = try await context.account.authService.createAccount()
-                try await context.account.signIn(credentials)
-            } catch {
-                Alerts.show(Strings.Common.error, Strings.Errors.authenticationFailed, on: self)
-            }
-        }
-    }
-
-    private func openRestore() {
-        navigationController?.pushViewController(RestoreQRViewController(context: context), animated: true)
-    }
-
-    private func openServer() {
-        navigationController?.pushViewController(ServerConfigViewController(context: context), animated: true)
+        AccountAdding.begin(context: context, from: self) { [weak self] in self?.busy = $0 }
     }
 }
 #endif

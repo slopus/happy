@@ -155,7 +155,7 @@ final class HomeViewController: UIViewController {
         stories.list = sidebar
         empty.onPair = { [weak self] in
             guard let self else { return }
-            PairingFlow.scan(context: context, on: self)
+            AccountAdding.begin(context: context, from: self)
         }
         accountsObservation = context.account.observeAccounts { [weak self] _ in self?.attach() }
         attach()
@@ -423,7 +423,7 @@ final class HomeViewController: UIViewController {
             },
             QuickAction(id: "connect-agent", title: Strings.connectAgent, glyph: "laptop-outline") { [weak self] in
                 guard let self else { return }
-                LinkNavigationController.present(context: context, from: self)
+                AccountAdding.begin(context: context, from: self)
             },
             QuickAction(id: "scan", title: Strings.scanQRCode, glyph: "qr-code-outline") { [weak self] in
                 guard let self else { return }

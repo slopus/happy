@@ -104,12 +104,11 @@ final class CombinedAccountsViewController: UIViewController {
             rows.append(remove)
         }
         let scan = ItemRowView(title: "Connect Agent", subtitle: "Scan an agent’s or a terminal’s code", icon: ItemIcon(.ionicons("qr-code-outline"), tint: Palette.iconBlue)) { [weak self] in
-            guard let self else { return }; PairingFlow.scan(context: context, on: self)
+            guard let self else { return }; AccountAdding.begin(context: context, from: self)
         }
         let add = ItemRowView(title: "Add Happy account", icon: ItemIcon(.ionicons("add-circle-outline"), tint: Palette.iconBlue)) { [weak self] in
             guard let self else { return }
-            context.account.beginAddingAccount()
-            navigationController?.pushViewController(WelcomeViewController(context: context), animated: true)
+            AccountAdding.begin(context: context, from: self)
         }
         list.sections = [ItemGroupView(rows: rows), ItemGroupView(rows: [scan, add])]
     }

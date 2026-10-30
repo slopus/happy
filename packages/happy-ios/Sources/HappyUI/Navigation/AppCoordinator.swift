@@ -19,7 +19,8 @@ public final class AppCoordinator {
     private var shownSession: ObjectIdentifier??
     private var shownServerConfirmationID: AccountSummary.ID?
     private var shownAgentConnectionID: String?
-    private var pendingAgentPairingLink: String?
+    /// A link from outside, waiting for the stored accounts.
+    private var pendingLink: String?
     /// The session a tapped notification named, until a signed-in home can
     /// open it.
     private var notificationSessionID: String?
@@ -55,7 +56,7 @@ public final class AppCoordinator {
         // Where a computer is a home of its own, the profile chosen last
         // opens; with none, a paired computer rather than Welcome.
         let v2 = Preference(variant: context.variant)
-        context.account.fallsBackToAgentConnection = v2.isAvailable
+        context.account.fallsBackToAgentConnection = true
         PairingAnalytics.shared.variant = context.variant
         Task { @MainActor [weak self] in
             guard let account = self?.context.account else { return }
@@ -64,7 +65,7 @@ public final class AppCoordinator {
             await account.restore(openingAgentConnection: v2.takeFilterChoice(), preferred: v2.agentConnectionID)
             self?.show(account.state)
             self?.accountRestored = true
-            self?.openPendingAgentPairingLink()
+            self?.openPendingLink()
             self?.openNotificationSession()
         }
     }
@@ -159,38 +160,39 @@ public final class AppCoordinator {
         Task { await session.sendAppState(active ? "active" : "background") }
     }
 
-    /// Opens a pairing link from outside the app. Asks first: a link can
-    /// come from anywhere, and approving it hands a terminal the account.
+    /// Opens a Happy link from outside the app, routed as a scanned code
+    /// is (`HappyScan`). One that arrives before the stored accounts are
+    /// read waits for them. A relay link asks first: a link can come from
+    /// anywhere, and answering it hands a computer an account; an agent's
+    /// link asks through its pairing screen.
     @discardableResult
     public func open(_ url: URL) -> Bool {
         let text = url.absoluteString
-        if PairingLink.isAgentConnection(text) {
-            if accountRestored, let top = linkHost {
-                return PairingFlow.openIfAgentPairing(text, context: context, on: top)
-            }
-            pendingAgentPairingLink = text
-            return true
-        }
-        guard let link = LegacyPairingLink(text) else { return false }
-        let top = presenter
-        guard context.account.session != nil else {
-            Alerts.show(Strings.Common.error, Strings.Modals.failedToConnectTerminal, on: top)
-            return true
-        }
-        let kind: LegacyPairingFlow.Kind
-        if case .terminal = link { kind = .terminal } else { kind = .account }
-        Task { @MainActor in
-            let confirmed = await Alerts.confirm(
-                kind == .terminal ? Strings.Modals.authenticateTerminal : Strings.SettingsAccount.linkNewDevice,
-                nil,
-                confirmTitle: Strings.Common.continueAction,
-                on: top
-            )
-            guard confirmed, let session = context.account.session else { return }
-            let outcome = await LegacyPairingFlow.approve(text, expecting: kind, session: session)
-            LegacyPairingFlow.report(outcome, kind: kind, on: top)
-        }
+        guard HappyCode(text) != .notHappy else { return false }
+        pendingLink = text
+        openPendingLink()
         return true
+    }
+
+    private func openPendingLink() {
+        guard accountRestored, let text = pendingLink, let top = linkHost else { return }
+        pendingLink = nil
+        let route = ScanRoute.route(HappyCode(text), intent: .connect, hasAccount: context.account.session != nil)
+        Task { @MainActor in
+            switch route {
+            case .connectComputer, .newAccountForComputer, .linkDevice:
+                let terminal = if case .linkDevice = route { false } else { true }
+                guard await Alerts.confirm(
+                    terminal ? Strings.Modals.authenticateTerminal : Strings.SettingsAccount.linkNewDevice,
+                    nil,
+                    confirmTitle: Strings.Common.continueAction,
+                    on: top
+                ) else { return }
+            case .connectAgent, .problem:
+                break
+            }
+            await HappyScan.open(text, intent: .connect, context: context, on: top, start: .openedLink)
+        }
     }
 
     /// Swaps the root only when the account changes. While signed in, home
@@ -277,12 +279,9 @@ public final class AppCoordinator {
         } else if let session {
             root = LegacyHomeViewController(context: context, session: session)
         } else {
-            // Nothing paired or signed in: where a computer can be a home,
-            // the first screen, whose Start scans any code; Welcome in
-            // production.
-            root = Preference(variant: context.variant).isAvailable
-                ? StartViewController(context: context)
-                : WelcomeViewController(context: context)
+            // Nothing paired or signed in: the first screen, whose Start
+            // scans any code.
+            root = StartViewController(context: context)
         }
         // V2' settings stays on top while the profile it chose
         // takes over underneath. Anything presented goes with the old root,
@@ -297,35 +296,16 @@ public final class AppCoordinator {
         navigation.presentedViewController?.dismiss(animated: false)
         navigation.setViewControllers([root] + [kept].compactMap { $0 }, animated: animated && kept == nil)
         shell.rootDidChange() // Tablet: the sidebar follows the account.
-        openPendingAgentPairingLink()
+        openPendingLink()
         openNotificationSession()
     }
 
-    /// Where a computer's link opens: in the link sheet when it is up,
-    /// else on top of the window's stack, with anything over it (a QR
-    /// sheet, a scanner, an alert) put away so the pairing pushed there
-    /// shows.
+    /// Where a link from outside opens: on top of the window's stack, with
+    /// anything over it (a QR sheet, a scanner, an alert) put away so the
+    /// pairing pushed there shows.
     private var linkHost: UIViewController? {
-        if let sheet = navigation.presentedViewController as? LinkNavigationController, !sheet.isBeingDismissed {
-            sheet.presentedViewController?.dismiss(animated: false)
-            return sheet.topViewController
-        }
         navigation.presentedViewController?.dismiss(animated: false)
         return navigation.topViewController
-    }
-
-    /// What an alert about a link shows over: the topmost screen presented,
-    /// not one going or an alert already up.
-    private var presenter: UIViewController {
-        var top: UIViewController = navigation
-        while let next = top.presentedViewController, !next.isBeingDismissed, !(next is UIAlertController) { top = next }
-        return top
-    }
-
-    private func openPendingAgentPairingLink() {
-        guard accountRestored, let text = pendingAgentPairingLink, let top = linkHost else { return }
-        pendingAgentPairingLink = nil
-        _ = PairingFlow.openIfAgentPairing(text, context: context, on: top)
     }
 
     /// The title of happy-app's UIKit headers (react-native-screens 4.22.0

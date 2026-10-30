@@ -339,21 +339,11 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         }
     }
 
-    /// The sign-in screens in a sheet, over an account that stays signed in.
-    /// A sign-in there adds the account and makes it active, and the
-    /// coordinator swaps the whole stack (closing this sheet) to its home.
+    /// The one Add flow (`AccountAdding`): an account added there becomes
+    /// the active one and the coordinator swaps the stack to its home.
     private func addAccount() {
         guard presentedViewController == nil else { return }
-        context.account.beginAddingAccount()
-        let welcome = WelcomeViewController(context: context)
-        welcome.navigationItem.leftBarButtonItem = UIBarButtonItem(
-            title: Strings.Common.cancel,
-            primaryAction: UIAction { [weak self] _ in self?.cancelAddingAccount() }
-        )
-        let navigation = UINavigationController(rootViewController: welcome)
-        AppCoordinator.applyAppearance(to: navigation.navigationBar)
-        navigation.presentationController?.delegate = self
-        present(navigation, animated: true)
+        AccountAdding.begin(context: context, from: self)
     }
 
     private func cancelAddingAccount() {

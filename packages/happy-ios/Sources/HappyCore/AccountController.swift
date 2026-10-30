@@ -364,6 +364,27 @@ public final class AccountController {
         try await activate(next, registry: updated)
     }
 
+    /// A new Happy account for a computer's code, as happy-app's first run
+    /// makes one: the account is made on the server chosen, handed to the
+    /// computer, and only once the computer has it kept here and made the
+    /// active one (`signIn`). Anything short of that, a code already used
+    /// included, keeps nothing: the accounts here and the active one stay
+    /// as they were.
+    public func addAccount(approvingTerminal publicKey: Data) async throws -> PairingOutcome {
+        let wasAdding = isAddingAccount
+        isAddingAccount = true
+        var kept = false
+        defer { if !kept { isAddingAccount = wasAdding } }
+        let credentials = try await authService.createAccount()
+        guard let secret = credentials.secretData else { throw CryptoError.invalidInput("credentials secret") }
+        let api = HappyAPI(serverURL: serverConfig.serverURL, clientID: clientID, transport: transport, token: credentials.token)
+        let outcome = try await LegacyPairingService(api: api, keys: AccountKeys(secret: secret)).approve(.terminal(publicKey: publicKey))
+        guard outcome == .terminalConnected else { return outcome }
+        try await signIn(credentials)
+        kept = true
+        return outcome
+    }
+
     /// Signs out the active account only. The next account by added order
     /// becomes active. Failures leave credentials and the active UI intact.
     public func signOut() async {

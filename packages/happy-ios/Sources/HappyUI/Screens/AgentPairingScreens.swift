@@ -61,13 +61,6 @@ enum PairingFlow {
         return true
     }
 
-    /// Pair computer: any Happy code, where `HappyScan` sends it. While an
-    /// account is being added, a computer's code gets a new account.
-    static func scan(context: AppContext, on controller: UIViewController) {
-        Task { @MainActor in
-            await HappyScan.scan(intent: context.account.isAddingAccount ? .addAccount : .connect, context: context, on: controller)
-        }
-    }
 }
 
 final class AgentPairingViewController: UIViewController {
@@ -179,53 +172,4 @@ final class AgentPairingViewController: UIViewController {
     }
 }
 
-final class LegacyAgentHomeViewController: UIViewController {
-    private let context: AppContext
-    private let id: String
-    private let identity = AgentIdentityView()
-    private lazy var screen = OnboardingScreenView(content: identity, primary: RoundButton(title: "Manage accounts"), secondary: RoundButton(title: "Disconnect", size: .normal, display: .inverted))
-    private var observation: AccountsObservation?
-    private var accountHeader: HomeAccountControl?
-    private var imageJob: Task<Void, Never>?
-    private var imageData: Data?
-
-    init(context: AppContext, id: String) {
-        self.context = context; self.id = id
-        super.init(nibName: nil, bundle: nil); followsTextSize()
-    }
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-    override func loadView() { view = screen }
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        title = "Computer"
-        accountHeader = HomeAccountControl(context: context, controller: self)
-        screen.primary.onTap = { [weak self] in self?.manage() }
-        screen.secondary.action = { [weak self] in await self?.disconnect() }
-        observation = context.account.observeAccounts { [weak self] _ in self?.update() }
-    }
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated); navigationController?.setNavigationBarHidden(false, animated: animated)
-    }
-    private func update() {
-        guard let account = context.account.agentConnections.accounts.first(where: { $0.id == id }) else { return }
-        identity.heading.string = account.name
-        identity.body.string = account.status == .revoked ? PairingError.revoked.localizedDescription : "\(account.status.title)\nSessions and messages are coming soon."
-        if imageData != account.avatar {
-            imageData = account.avatar; imageJob?.cancel()
-            let bytes = account.avatar
-            imageJob = Task { [weak self] in
-                let image = await Task.detached { bytes.flatMap { AccountPictureImages.decode($0)?.picture as? UIImage } }.value
-                guard !Task.isCancelled, let self else { return }
-                identity.image.image = image ?? UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
-            }
-        }
-        view.setNeedsLayout()
-    }
-    private func manage() { navigationController?.pushViewController(CombinedAccountsViewController(context: context), animated: true) }
-    private func disconnect() async {
-        guard await Alerts.confirm("Disconnect agent?", "This removes the connection and its credentials from this phone.", confirmTitle: "Disconnect", destructive: true, on: self) else { return }
-        do { try await context.account.signOut(accountID: id) }
-        catch { Alerts.show("Could not disconnect", error.localizedDescription, on: self) }
-    }
-}
 #endif

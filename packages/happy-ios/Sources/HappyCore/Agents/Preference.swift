@@ -1,9 +1,8 @@
 import Foundation
 
-/// Whether a paired computer is a home of its own, V2, beside the
-/// Happy account's session list: the profile chosen decides which shows.
-/// Only in development and preview builds: a production build cannot reach
-/// it, whatever is stored.
+/// The agent connection chosen last, kept on this phone and opened at
+/// launch, in every build. `isAvailable` still keeps production off the
+/// few relay screens that hand over to agent settings.
 public struct Preference: Sendable {
     /// The filter's old V2 choice, read once to carry it over.
     public static let enabledKey = "home.filter"
@@ -30,13 +29,10 @@ public struct Preference: Sendable {
         return storage.bool(forKey: Self.enabledKey)
     }
 
-    /// The paired computer V2 shows when a Happy account is the
-    /// active one: the last one chosen.
+    /// The agent connection shown when a Happy account is the active one:
+    /// the last one chosen.
     public var agentConnectionID: String? {
-        get { isAvailable ? storage.string(forKey: Self.agentConnectionKey) : nil }
-        nonmutating set {
-            guard isAvailable else { return }
-            storage.set(newValue, forKey: Self.agentConnectionKey)
-        }
+        get { storage.string(forKey: Self.agentConnectionKey) }
+        nonmutating set { storage.set(newValue, forKey: Self.agentConnectionKey) }
     }
 }
