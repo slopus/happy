@@ -94,7 +94,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "agent",
            let socket = arguments.firstIndex(of: "-agentSocket").map({ arguments[$0 + 1] }),
-           let token = arguments.firstIndex(of: "-agentToken").map({ arguments[$0 + 1] }) {
+           let token = arguments.firstIndex(of: "-agentToken").map({ arguments[$0 + 1] }) ?? ProcessInfo.processInfo.environment["HAPPY_AGENT_FIXTURE_TOKEN"] {
             agent = AgentHarness(window: window, socket: socket, token: token)
             return
         }

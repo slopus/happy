@@ -86,17 +86,34 @@ final class ComposerKeyboardProbe: NSObject {
         let keyboardIntersection = window.bounds.intersection(keyboard)
         let keyboardVisible = !keyboardIntersection.isNull && keyboardIntersection.height > 1
         let responder = views.first(where: \.isFirstResponder)
-        let panelIDs: Set<String> = ["attach-sheet", "picker-models", "picker-efforts", "picker-accounts", "composer-options-panel", "composer-chip-panel"]
+        let panelIDs: Set<String> = ["attach-sheet", "picker-models", "picker-efforts", "picker-accounts", "composer-options-panel", "composer-chip-panel", "chat-menu", "chat-permissions"]
         let panels: [[String: Any]] = views.compactMap { view in
             guard let id = view.accessibilityIdentifier, panelIDs.contains(id), !view.isHidden, view.alpha > 0.01 else { return nil }
-            let scrolls = descendants(view).compactMap { $0 as? UIScrollView }.map { scroll in
+            var visibleFrame = view.convert(view.bounds, to: window).intersection(window.bounds)
+            var ancestor = view.superview
+            var enclosingScrolls: [UIScrollView] = []
+            while let parent = ancestor {
+                if parent.clipsToBounds { visibleFrame = visibleFrame.intersection(parent.convert(parent.bounds, to: window)) }
+                if let scroll = parent as? UIScrollView { enclosingScrolls.append(scroll) }
+                ancestor = parent.superview
+            }
+            guard !visibleFrame.isNull, !visibleFrame.isEmpty else { return nil }
+            let scrolls = (enclosingScrolls + descendants(view).compactMap { $0 as? UIScrollView }).map { scroll in
                 ["frame": rect(scroll.convert(scroll.bounds, to: window)), "contentSize": [Double(scroll.contentSize.width), Double(scroll.contentSize.height)], "scrollEnabled": scroll.isScrollEnabled] as [String: Any]
             }
-            return ["id": id, "frame": rect(view.convert(view.bounds, to: window)), "scrolls": scrolls]
+            return ["id": id, "frame": rect(view.convert(view.bounds, to: window)), "visibleFrame": rect(visibleFrame), "scrolls": scrolls]
         }
+        let chips: [[String: Any]] = card.map { card in
+            [card.configuration.permission.map { (AgentInputChip.permission, $0) }, card.configuration.model.map { (AgentInputChip.model, $0) }, card.configuration.effort.map { (AgentInputChip.effort, $0) }].compactMap { $0 }.compactMap { chip, configuration in
+                card.chipFrame(chip, in: window).map { ["kind": String(describing: chip), "label": configuration.accessibilityLabel, "frame": rect($0)] }
+            }
+        } ?? []
         let marked = editor.markedTextRange.map { range in
             [editor.offset(from: editor.beginningOfDocument, to: range.start), editor.offset(from: range.start, to: range.end)]
         }
+        let navigation = views.compactMap { $0 as? UINavigationBar }.first { !$0.isHidden }
+        let title = navigation?.topItem?.titleView
+        let titleContent = title.flatMap { descendants($0).first { String(describing: type(of: $0)) == "ChatTitleView" } } ?? title
         return [
             "ready": true, "time": CACurrentMediaTime(), "editorID": identity(editor),
             "responderID": identity(responder), "firstResponder": editor.isFirstResponder,
@@ -107,6 +124,8 @@ final class ComposerKeyboardProbe: NSObject {
             "cardFrame": card.map { rect($0.convert($0.bounds, to: window)) } ?? [],
             "keyboardFrame": rect(keyboard), "keyboardGuide": rect(window.keyboardLayoutGuide.layoutFrame),
             "keyboardVisible": keyboardVisible, "panels": panels,
+            "chips": chips, "compact": card?.configuration.compact ?? false,
+            "headerTitleFrame": titleContent.map { rect($0.convert($0.bounds, to: window)) } ?? [],
             "keyboardHides": keyboardHides, "editingEnds": editingEnds,
             "lostResponderFrames": lostResponderFrames, "missingKeyboardFrames": missingKeyboardFrames
         ]
