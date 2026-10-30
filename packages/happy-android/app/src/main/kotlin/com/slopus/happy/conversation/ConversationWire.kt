@@ -107,7 +107,8 @@ sealed interface Block {
     data class Reasoning(val text: String) : Block
     /** `data` is base64; history may leave a large picture's bytes out, and then it is [Unknown]. */
     data class Image(val mimeType: String, val data: String) : Block
-    data class ToolCall(val id: String?, val name: String, val status: String, val presentation: Presentation?) : Block
+    /** [arguments] are the raw input, sent only where no presentation stands for it. */
+    data class ToolCall(val id: String?, val name: String, val status: String, val presentation: Presentation?, val arguments: JsonElement? = null) : Block
     /** One context compaction, inside a service message: `running`, then `completed` or `failed`. */
     data class Compaction(val status: String) : Block
     data class Unknown(val type: String) : Block
@@ -128,6 +129,7 @@ sealed interface Block {
                     name = o["name"].str.orEmpty(),
                     status = o["status"].str ?: "running",
                     presentation = Presentation.parse(o["presentation"]),
+                    arguments = o["arguments"]?.takeIf { it is JsonObject },
                 )
                 "compaction" -> Compaction(o["status"].str ?: "running")
                 else -> Unknown(type)

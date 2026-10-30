@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlin.coroutines.CoroutineContext
 
@@ -491,10 +492,14 @@ class Conversation(
         }
     }
 
-    /** Answers the open question; first answer wins across devices. */
-    fun answer(questionId: String, answers: Map<String, List<String>>) {
-        scope.launch(lane) {
-            if (snapshot.answering) return@launch
+    /**
+     * Answers the open question; first answer wins across devices. Throws
+     * when it was not taken, so the form keeps its picks; one answered
+     * elsewhere meanwhile just closes.
+     */
+    suspend fun answer(questionId: String, answers: Map<String, List<String>>) {
+        withContext(lane) {
+            if (snapshot.answering) return@withContext
             publish { it.copy(answering = true) }
             try {
                 api.answer(agentId, questionId, answers)
@@ -503,10 +508,12 @@ class Conversation(
                 throw e
             } catch (e: ConversationApiException) {
                 // Answered elsewhere or no longer asked: what stands now is read again.
-                publish { it.copy(answering = false, alert = if (e.status == 409) null else describe(e)) }
-                if (e.status == 409) readQuestion()
+                publish { it.copy(answering = false) }
+                if (e.status != 409) throw e
+                readQuestion()
             } catch (e: Exception) {
-                publish { it.copy(answering = false, alert = describe(e)) }
+                publish { it.copy(answering = false) }
+                throw e
             }
         }
     }

@@ -6,6 +6,8 @@ import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /** Where a message this phone sent stands. */
 @Immutable
@@ -48,8 +50,12 @@ sealed interface ConversationRow {
     /** The model's thinking summary: folded under one line until opened. */
     data class Reasoning(override val key: String, val text: String, val streaming: Boolean) : ConversationRow
 
-    /** [detail] is the presentation's line: the command, the file read, the query. */
-    data class Tool(override val key: String, val name: String, val status: String, val detail: String?) : ConversationRow
+    /**
+     * A tool call as the chat's tool row shows it: [input] is what its
+     * presentation says (the command, the file, the query) in the input
+     * shape the legacy tool titles read, or the raw arguments where none.
+     */
+    data class Tool(override val key: String, val callId: String?, val name: String, val status: String, val detail: String?, val input: JsonObject?, val createdAt: Long) : ConversationRow
 
     /** A picture inline in a message. */
     data class Picture(override val key: String, val image: Block.Image) : ConversationRow
@@ -132,24 +138,30 @@ class ConversationRowBuilder {
                         rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex)
                     }
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
-                    is Block.ToolCall -> rows += toolRows(key, block)
+                    is Block.ToolCall -> rows += toolRows(key, block, message.createdAt)
                     is Block.Compaction, is Block.Unknown -> Unit
                 }
             }
             return rows
         }
 
-        private fun toolRows(key: String, call: Block.ToolCall): List<ConversationRow> = when (val p = call.presentation) {
-            is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
-                listOf(ConversationRow.Tool(key, call.name, call.status, null))
-            } else {
-                listOf(ConversationRow.Media(key, p.items.mapIndexed { index, item -> MediaRef(call.id, index, item) }))
+        private fun toolRows(key: String, call: Block.ToolCall, createdAt: Long): List<ConversationRow> {
+            fun tool(detail: String?, input: JsonObject?) =
+                listOf(ConversationRow.Tool(key, call.id, call.name, call.status, detail, input ?: call.arguments as? JsonObject, createdAt))
+            return when (val p = call.presentation) {
+                is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
+                    tool(null, null)
+                } else {
+                    listOf(ConversationRow.Media(key, p.items.mapIndexed { index, item -> MediaRef(call.id, index, item) }))
+                }
+                is Presentation.Artifact -> listOf(ConversationRow.Artifact(key, p.artifactId, p.title.orEmpty(), p.artifactType))
+                is Presentation.Command -> tool(p.command, buildJsonObject { put("command", p.command); put("cmd", p.command) })
+                is Presentation.Exploration -> p.operations.joinToString(", ").ifEmpty { null }.let { detail ->
+                    tool(detail, detail?.let { buildJsonObject { put("file_path", it); put("path", it); put("pattern", it) } })
+                }
+                is Presentation.Search -> tool(p.query, buildJsonObject { put("query", p.query) })
+                null -> tool(null, null)
             }
-            is Presentation.Artifact -> listOf(ConversationRow.Artifact(key, p.artifactId, p.title.orEmpty(), p.artifactType))
-            is Presentation.Command -> listOf(ConversationRow.Tool(key, call.name, call.status, p.command))
-            is Presentation.Exploration -> listOf(ConversationRow.Tool(key, call.name, call.status, p.operations.joinToString(", ").ifEmpty { null }))
-            is Presentation.Search -> listOf(ConversationRow.Tool(key, call.name, call.status, p.query))
-            null -> listOf(ConversationRow.Tool(key, call.name, call.status, null))
         }
 
         /** What another agent said, without the addressing line the daemon puts ahead of it. */
