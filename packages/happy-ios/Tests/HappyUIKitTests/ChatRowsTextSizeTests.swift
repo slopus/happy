@@ -445,23 +445,46 @@ final class ChatRowsTextSizeTests: XCTestCase {
         return nil
     }
 
-    private func cells(_ list: ChatListView) -> [ChatRowCell] {
-        list.collectionView.visibleCells.compactMap { $0 as? ChatRowCell }.filter { $0.plan != nil }
+    /// A row on screen and the box it was given, whichever renderer drew
+    /// it: a cell of the collection, or a loaded UltraList row.
+    private struct ShownRow {
+        let plan: ChatRowPlan
+        let height: CGFloat
     }
 
-    /// Every font the cells on screen draw.
+    private func shownRows(_ list: ChatListView) -> [ShownRow] {
+        if let ultra = list.ultra {
+            return ultra.list.loadedItemViews.compactMap { view in
+                (view as? ChatUltraRowView).map { ShownRow(plan: $0.row.plan, height: $0.bounds.height) }
+            }
+        }
+        return list.collectionView.visibleCells.compactMap { $0 as? ChatRowCell }.compactMap { cell in
+            cell.plan.map { ShownRow(plan: $0, height: cell.bounds.height) }
+        }
+    }
+
+    /// Every font the rows on screen draw.
     private func shownFonts(_ list: ChatListView) -> [CGFloat] {
-        cells(list).flatMap { cell in
-            cell.plan.map { drawn($0).texts.flatMap { fonts($0.layout.string).map(\.pointSize) } } ?? []
+        shownRows(list).flatMap { row in
+            drawn(row.plan).texts.flatMap { fonts($0.layout.string).map(\.pointSize) }
         }
     }
 
     /// The fixture chat in a window: only its list follows the text size,
-    /// and a new size plans every row on screen again at it, each cell as
-    /// tall as its new plan.
+    /// and a new size plans every row on screen again at it, each row as
+    /// tall as its new plan. Both renderers, since a chat opens on
+    /// UltraList and can still be read on the collection.
     func testANewTextSizePlansTheChatsRowsAgain() async throws {
         let account = try await signedIn()
+        for renderer in ChatListRenderer.allCases {
+            try await newTextSizePlansRowsAgain(account, renderer: renderer)
+        }
+        await account.signOut()
+    }
+
+    private func newTextSizePlansRowsAgain(_ account: AccountController, renderer: ChatListRenderer) async throws {
         let session = try XCTUnwrap(account.session)
+        account.localSettings.chatListRenderer = renderer
         let context = AppContext(account: account, variant: .development, version: "test")
         let chat = LegacyChatViewController(context: context, session: session, sessionId: FixtureScenarios.prefix + FixtureScenario.markdown.rawValue)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
@@ -474,11 +497,12 @@ final class ChatRowsTextSizeTests: XCTestCase {
         let constructed = try await until { chat.contentInstalled }
         XCTAssertTrue(constructed)
         let list = try XCTUnwrap(find(ChatListView.self, in: chat.view))
+        XCTAssertEqual(list.renderer, renderer, "the chat opens on the renderer the account picked")
         XCTAssertEqual(list.traitCollection.textEnvironment, environment(.large))
         XCTAssertNil(chat.view.traitCollection.textEnvironment, "the rest of the screen keeps its own size")
 
-        let shown = try await until { !self.cells(list).isEmpty }
-        XCTAssertTrue(shown, "no rows")
+        let shown = try await until { !self.shownRows(list).isEmpty }
+        XCTAssertTrue(shown, "no rows on \(renderer.rawValue)")
         let designed = shownFonts(list)
         let smallest = try XCTUnwrap(designed.min())
         let scale = multiplier(.accessibilityExtraExtraExtraLarge)
@@ -491,13 +515,11 @@ final class ChatRowsTextSizeTests: XCTestCase {
             let fonts = self.shownFonts(list)
             return !fonts.isEmpty && fonts.allSatisfy { $0 >= smallest * scale - 0.001 }
         }
-        XCTAssertTrue(replanned, "the rows on screen are at the new size: \(shownFonts(list))")
+        XCTAssertTrue(replanned, "the rows on screen are at the new size on \(renderer.rawValue): \(shownFonts(list))")
         list.layoutIfNeeded()
-        for cell in cells(list) {
-            let plan = try XCTUnwrap(cell.plan)
-            XCTAssertEqual(cell.bounds.height, plan.size.height, accuracy: 0.5, plan.id)
+        for row in shownRows(list) {
+            XCTAssertEqual(row.height, row.plan.size.height, accuracy: 0.5, "\(renderer.rawValue) \(row.plan.id)")
         }
-        await account.signOut()
     }
     #endif
 }
