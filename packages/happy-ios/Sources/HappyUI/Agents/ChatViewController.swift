@@ -1489,6 +1489,12 @@ final class ChatViewController: UIViewController, ComposeHosting {
         )
     }
 
+    /// A send follows the transcript the person is actually reading.
+    var sendFollowsNewest: Bool {
+        let distance = ultra?.distanceFromNewest ?? (newestOffset - scrollView.contentOffset.y)
+        return SendFollow.Send(following: followsNewest, distanceFromEnd: distance).follows
+    }
+
     private func send() {
         guard !acceptingSend else { return }
         let text = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1500,8 +1506,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         // A reader at or near the end follows it there; one reading further
         // up stays where they are. The transcript is never lifted.
         let id = ClientID.make()
-        let lands = SendFollow.Send(following: followsNewest, distanceFromEnd: newestOffset - scrollView.contentOffset.y)
-        if lands.follows {
+        if sendFollowsNewest {
             followsNewest = true
             ultra?.follow()
         }

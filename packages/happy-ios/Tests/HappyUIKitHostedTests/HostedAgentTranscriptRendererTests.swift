@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import HappyCore
+import HappyLayout
 import HappyStore
 import HappyWire
 @testable import HappyUI
@@ -90,6 +91,43 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         XCTAssertNil(find(UltraListView.self, in: chat.view))
         let scroll = try XCTUnwrap(find(UIScrollView.self, in: chat.view))
         XCTAssertEqual(scroll.accessibilityIdentifier, "transcript")
+    }
+
+    func testASendReadsTheUltraListDistanceInHistoryAndNearTheEnd() async throws {
+        let (_, session) = try await self.session()
+        let chat = self.chat(session)
+        let scene = try await hostedActiveScene()
+        let window = hostedKeyWindow(in: scene, root: UINavigationController(rootViewController: chat))
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        // Let the offline conversation and its empty initial plan arrive.
+        try await Task.sleep(for: .milliseconds(250))
+        let transcript = try XCTUnwrap(find(AgentChatUltraList.self, in: chat.view))
+        let plans = (0..<40).map { ChatRowPlan(id: "row-\($0)", size: CGSize(width: chat.view.bounds.width, height: 80), items: []) }
+        transcript.apply(plans)
+        try await until { transcript.list.loadedItemView(at: 0) != nil }
+        XCTAssertTrue(chat.sendFollowsNewest)
+
+        transcript.list.scrollTo(.init(index: 15), transition: .none)
+        try await until { transcript.distanceFromNewest > 200 }
+        XCTAssertFalse(chat.sendFollowsNewest, "a send in history read the unused scroll view's offset")
+
+        transcript.list.scrollTo(.init(index: 0, pointOffset: -50), transition: .none)
+        try await until { (30...80).contains(transcript.distanceFromNewest) }
+        XCTAssertFalse(transcript.followsNewest, "the 24pt reading threshold differs from the 80pt send threshold")
+        XCTAssertTrue(chat.sendFollowsNewest, "a send near the end should follow it")
+        transcript.scrollToNewest(animated: false)
+        try await until { abs(transcript.distanceFromNewest) < 1 }
+        XCTAssertTrue(chat.sendFollowsNewest)
+    }
+
+    private func until(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTFail("transcript did not reach its requested position", file: file, line: line)
     }
 
     /// A preview keeps the scroll view whatever the setting says: its fade
