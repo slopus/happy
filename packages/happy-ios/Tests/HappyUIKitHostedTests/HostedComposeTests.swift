@@ -229,6 +229,12 @@ final class HostedComposeTests: XCTestCase {
         navigation.popViewController(animated: true)
         try await settle(navigation)
         XCTAssertTrue(navigation.topViewController === home, "Back leads home")
+        // Home is as it was: no input, and no room kept at its foot for
+        // one. This is what the dock that used to fade in there left
+        // behind (HostedHomeDockFadeTests, which went with it).
+        home.view.layoutIfNeeded()
+        XCTAssertNil(Self.subview(HomeDockView.self, in: home.view), "home grew a dock on the way back")
+        XCTAssertNil(Self.subview(AgentInputCardView.self, in: home.view), "home grew an input on the way back")
     }
 
     // MARK: Main
