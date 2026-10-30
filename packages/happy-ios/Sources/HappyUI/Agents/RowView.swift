@@ -23,7 +23,6 @@ final class RowView: UIView {
     private let label = ShimmerLabel()
     private let trailing = UIImageView()
     private let chevron = UIImageView()
-    private let add = UIImageView()
     private let rule = UIView()
     private let ring = StoryRingView()
     private let subtitle = TopLabel()
@@ -84,7 +83,6 @@ final class RowView: UIView {
         picture.layer.cornerCurve = .continuous
         trailing.contentMode = .center
         chevron.contentMode = .center
-        add.contentMode = .center
         rule.backgroundColor = UIColor(Palette.divider)
         subtitle.numberOfLines = StoryRowMetrics.statusLines
         subtitle.lineBreakMode = .byTruncatingTail
@@ -97,7 +95,7 @@ final class RowView: UIView {
         time.isHidden = true
         draft.isHidden = true
         empty.isHidden = true
-        for view in [fill, ring, seedling, picture, label, subtitle, draft, empty, time, trailing, chevron, add, rule, corner] { addSubview(view) }
+        for view in [fill, ring, seedling, picture, label, subtitle, draft, empty, time, trailing, chevron, rule, corner] { addSubview(view) }
         isAccessibilityElement = true
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in self.textSizeChanged() }
     }
@@ -259,9 +257,6 @@ final class RowView: UIView {
             let closed = row.collapsed == true || row.hasHiddenSessions
             chevron.image = Glyphs.image(closed ? "chevron-right" : "chevron-down", size: row.amongStories ? StoryRowMetrics.headingGlyph : Metrics.chevronGlyph)
         }
-        if row.kind == .section {
-            add.image = Glyphs.image("add", size: row.amongStories ? StoryRowMetrics.headingGlyph : Metrics.addGlyph)
-        }
         // A story row's corner says all of this instead.
         guard row.story == nil else { return }
         switch row.status {
@@ -288,7 +283,6 @@ final class RowView: UIView {
         label.ground = UIColor(selected ? Palette.rowSelected : Palette.surface)
         picture.tintColor = picture.contentMode == .center ? ink : nil
         chevron.tintColor = UIColor(Palette.rowText)
-        add.tintColor = UIColor(Palette.rowText)
         if let row, row.kind != .section, row.kind != .separator { applyText(row) }
         let carryable = row?.kind != .section && row?.kind != .separator
         // A story card is never tinted as new: its corner dot says so.
@@ -336,8 +330,6 @@ final class RowView: UIView {
         field?.frame = label.frame
         trailing.frame = frames.trailing.map(local) ?? .zero
         chevron.frame = frames.chevronGlyph.map(local) ?? .zero
-        add.frame = frames.add.map(local) ?? .zero
-        add.isHidden = frames.add == nil
         rule.frame = frames.rule.map(local) ?? .zero
     }
 

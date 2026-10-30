@@ -21,8 +21,6 @@ final class SidebarView: UIScrollView {
     /// A finger came down on a row that opens: it may be opened next.
     var onIntent: ((Row) -> Void)?
     var onFold: ((Row) -> Void)?
-    /// A section's "+": new work in that section. The control is always shown.
-    var onAdd: ((Row) -> Void)?
     /// What a hold on the row offers, in groups; nil for a row that has nothing.
     var menu: ((Row) -> [[MenuItem]]?)?
     /// What a hold shows of the row over its menu: its conversation, read
@@ -225,12 +223,6 @@ final class SidebarView: UIScrollView {
                     return true
                 })
             }
-            if row.kind == .section, let onAdd {
-                actions.append(UIAccessibilityCustomAction(name: Strings.newWorkIn(row.label), image: Glyphs.image("add")) { _ in
-                    onAdd(row)
-                    return true
-                })
-            }
             return actions + (menu?(row) ?? []).joined().map { item in
                 UIAccessibilityCustomAction(name: item.title, image: Glyphs.image(item.icon)) { _ in
                     item.run()
@@ -263,12 +255,8 @@ final class SidebarView: UIScrollView {
             // Search's heading: nothing folds under it.
             break
         case .section:
-            // Its "+", with a finger's room around it, makes new work in it.
-            if let add = view.frames?.add, let onAdd, point.x >= add.minX - 7, point.x < add.maxX + Metrics.trailingGap / 2 {
-                onAdd(row)
-            } else {
-                onFold?(row)
-            }
+            // A heading is a fold and nothing else: anywhere along it.
+            onFold?(row)
         case .separator: break
         default:
             // A ring with stories in it opens them, with a finger's room around it.
@@ -346,7 +334,7 @@ final class SidebarView: UIScrollView {
             let story = row.story.map { _ in
                 SidebarLayout.StoryRow(corner: corner, timeWidth: StoryRowText.timeWidth(row, scale: textScale), last: StoryRowText.lastLine(row), text: StoryRowText.text(textScale))
             }
-            return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, hasAdd: row.kind == .section && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story, amongStories: row.amongStories)
+            return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story, amongStories: row.amongStories)
         }
     }
 

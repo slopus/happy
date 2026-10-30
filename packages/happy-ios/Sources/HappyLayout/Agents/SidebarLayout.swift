@@ -24,7 +24,6 @@ public enum SidebarLayout {
         public var hasFold: Bool
         /// A section heading's "+", which makes new work in it: one square
         /// before its fold, always shown.
-        public var hasAdd: Bool
         /// The fold points right ("›"), not down ("⌄"): its ink weighs elsewhere.
         public var foldClosed: Bool
         /// Drawn as a story row (Stories on): the card, the disc in its
@@ -34,14 +33,13 @@ public enum SidebarLayout {
         /// own size, as the rows are.
         public var amongStories: Bool
 
-        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, hasAdd: Bool = false, foldClosed: Bool = false, story: StoryRow? = nil, amongStories: Bool = false) {
+        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, foldClosed: Bool = false, story: StoryRow? = nil, amongStories: Bool = false) {
             self.kind = kind
             self.depth = depth
             self.hasMark = hasMark
             self.hasTrailing = hasTrailing
             self.hasWorkingSignal = hasWorkingSignal
             self.hasFold = hasFold
-            self.hasAdd = hasAdd
             self.foldClosed = foldClosed
             self.story = story
             self.amongStories = amongStories
@@ -145,7 +143,6 @@ public enum SidebarLayout {
         /// on the row's middle. On whole pixels at `scale`.
         public var chevronGlyph: CGRect?
         /// A section's "+", one square before its fold.
-        public var add: CGRect?
         /// A separator's hairline, across the row box's whole width.
         public var rule: CGRect?
         /// A story row's ring box, around its disc, kept with no ring too.
@@ -163,14 +160,13 @@ public enum SidebarLayout {
         /// A story row's empty mark, on its last line, on whole pixels.
         public var empty: CGRect?
 
-        public init(box: CGRect, mark: CGRect? = nil, label: CGRect = .zero, trailing: CGRect? = nil, chevron: CGRect? = nil, chevronGlyph: CGRect? = nil, add: CGRect? = nil, rule: CGRect? = nil, ring: CGRect? = nil, subtitle: CGRect? = nil, corner: CGRect? = nil, signalLane: CGRect? = nil, time: CGRect? = nil, draft: CGRect? = nil, empty: CGRect? = nil) {
+        public init(box: CGRect, mark: CGRect? = nil, label: CGRect = .zero, trailing: CGRect? = nil, chevron: CGRect? = nil, chevronGlyph: CGRect? = nil, rule: CGRect? = nil, ring: CGRect? = nil, subtitle: CGRect? = nil, corner: CGRect? = nil, signalLane: CGRect? = nil, time: CGRect? = nil, draft: CGRect? = nil, empty: CGRect? = nil) {
             self.box = box
             self.mark = mark
             self.label = label
             self.trailing = trailing
             self.chevron = chevron
             self.chevronGlyph = chevronGlyph
-            self.add = add
             self.rule = rule
             self.ring = ring
             self.subtitle = subtitle
@@ -270,12 +266,7 @@ public enum SidebarLayout {
                 // clear of the fold's lane (`padding-right: row padding + 22`),
                 // so showing the fold moves nothing.
                 let x = boxX + M.sectionTitleInset
-                var end = trailingRect.minX
-                if row.hasAdd {
-                    let add = trailingRect.offsetBy(dx: -(M.trailing + M.trailingGap), dy: 0)
-                    frame.add = add
-                    end = add.minX
-                }
+                let end = trailingRect.minX
                 frame.label = CGRect(x: x, y: y, width: max(0, end - sectionFoldGap - x), height: height)
                 frame.chevron = trailingRect
                 frame.chevronGlyph = fold()
@@ -395,12 +386,7 @@ public enum SidebarLayout {
         let shrink = S.headingGlyph / M.chevronGlyph
         frame.chevron = fold
         frame.chevronGlyph = CGRect(x: pixel(fold.midX - S.headingGlyph / 2 - ink.dx * shrink), y: pixel(fold.midY - S.headingGlyph / 2 - ink.dy * shrink), width: S.headingGlyph, height: S.headingGlyph)
-        var end = fold.minX
-        if row.hasAdd {
-            let add = fold.offsetBy(dx: -S.headingStep, dy: 0)
-            frame.add = add
-            end = add.minX
-        }
+        let end = fold.minX
         let clear = S.headingStep - S.headingBox
         frame.label = CGRect(x: S.headingInset, y: y, width: max(0, end - clear - S.headingInset), height: box.height)
         return frame

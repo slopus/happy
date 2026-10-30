@@ -58,7 +58,6 @@ extension Strings {
     public static let agentMessageOpenHint = "Shows the message"
     public static let agentMessageCloseHint = "Hides the message"
     /// A section's "+", for VoiceOver.
-    public static func newWorkIn(_ section: String) -> String { "New work in \(section)" }
     /// Said once a row is lifted from its menu.
     public static let reorderHint = "Lifted. Drag to move it, or tap to put it back."
     /// The blurred screen behind a held row's menu, for VoiceOver.

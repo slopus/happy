@@ -110,7 +110,6 @@ final class HomeViewController: UIViewController {
             self?.session?.warm.intent(agentId)
         }
         sidebar.onFold = { [weak self] row in self?.fold(row) }
-        sidebar.onAdd = { [weak self] row in self?.makeNewWork(in: self?.usesSpaces == true ? row.nodeId : nil) }
         sidebar.menu = { [weak self] row in self?.menu(for: row) }
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }

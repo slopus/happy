@@ -114,26 +114,23 @@ final class StoryRowLayoutTests: XCTestCase {
     func testHeadingsAndSeparatorsAmongStoryRowsAreDesktopsOwnSize() {
         XCTAssertEqual([S.headingHeight, S.headingSize, S.headingInset, S.rowInset, S.headingFoldInset, S.headingBox, S.headingStep, S.headingGlyph, S.headingsGap, S.separatorHeight, S.ruleInset], [22, 11, 10, 6, 7, 18, 22, 12, 2, 17, 6])
         let result = L.layout([
-            .init(kind: .section, hasMark: false, hasAdd: true, amongStories: true),
+            .init(kind: .section, hasMark: false, amongStories: true),
             .init(kind: .row, story: .init()),
-            .init(kind: .section, hasMark: false, hasAdd: true, foldClosed: true, amongStories: true),
+            .init(kind: .section, hasMark: false, foldClosed: true, amongStories: true),
             .init(kind: .section, hasMark: false, amongStories: true),
         ], width: 390, scale: 3)
         let frames = result.frames
         // 22 tall in a row box 6 in from the list.
         XCTAssertEqual(frames[0].box, CGRect(x: 6, y: 9, width: 378, height: 22))
-        // The title on the discs' left edge, 4 clear of the "+".
-        XCTAssertEqual(frames[0].label, CGRect(x: 10, y: 9, width: 323, height: 22))
+        // The title on the discs' left edge, 4 clear of the fold.
+        XCTAssertEqual(frames[0].label, CGRect(x: 10, y: 9, width: 345, height: 22))
         XCTAssertEqual(frames[0].label.minX, frames[1].mark!.minX)
-        // The fold's 18 box 7 in from the row box, the 12 glyph in it by its ink;
-        // the "+" one 22 step before it.
+        // The fold's 18 box 7 in from the row box, the 12 glyph in it by its ink.
         XCTAssertEqual(frames[0].chevron, CGRect(x: 359, y: 11, width: 18, height: 18))
         XCTAssertEqual(frames[0].chevronGlyph, CGRect(x: 362, y: 43.0 / 3, width: 12, height: 12))
-        XCTAssertEqual(frames[0].add, CGRect(x: 337, y: 11, width: 18, height: 18))
         // Folded: the "›"'s ink is within a pixel of its middle at this size.
         XCTAssertEqual(frames[2].chevronGlyph!.offsetBy(dx: 0, dy: -frames[2].box.minY), CGRect(x: 362, y: 5, width: 12, height: 12))
-        // Without a "+" the title runs to 4 short of the fold.
-        XCTAssertNil(frames[3].add)
+        // The title runs to 4 short of the fold.
         XCTAssertEqual(frames[3].label.maxX, 355)
         // 6.5 down to the card it heads, 12.5 from a card down to the next
         // heading, 2 between two headings.

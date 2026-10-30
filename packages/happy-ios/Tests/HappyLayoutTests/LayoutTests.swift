@@ -45,17 +45,6 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.contentHeight, 233 + 9)
     }
 
-    func testASectionsPlusStandsBeforeItsFold() {
-        let frames = SidebarLayout.layout([.init(kind: .section, hasMark: false, hasAdd: true), .init(kind: .section, hasMark: false)], width: 390).frames
-        XCTAssertEqual(frames[0].chevron, CGRect(x: 344 + 2 * third, y: 16 + 2 * third, width: 27, height: 27))
-        // One square and its gap before the fold; the title keeps clear of it.
-        XCTAssertEqual(frames[0].add, CGRect(x: 305 + 2 * third, y: 16 + 2 * third, width: 27, height: 27))
-        XCTAssertEqual(frames[0].label, CGRect(x: 23, y: 9, width: 276 + 2 * third, height: 42))
-        // Without one, nothing changes.
-        XCTAssertNil(frames[1].add)
-        XCTAssertEqual(frames[1].label.width, 315 + 2 * third)
-    }
-
     func testTheSidebarIsDesktopsHalfAgain() {
         typealias M = Metrics
         XCTAssertEqual(M.phone, 1.5)
@@ -76,7 +65,7 @@ final class LayoutTests: XCTestCase {
             let frames = SidebarLayout.layout([
                 .init(kind: .row, hasFold: true),
                 .init(kind: .row, hasFold: true, foldClosed: true),
-                .init(kind: .section, hasMark: false, hasAdd: true),
+                .init(kind: .section, hasMark: false),
                 .init(kind: .row, depth: 1, hasTrailing: true),
             ], width: width).frames
             for (index, frame) in frames.prefix(2).enumerated() {
@@ -99,10 +88,9 @@ final class LayoutTests: XCTestCase {
                 XCTAssertEqual(frame.label.minX - frame.mark!.maxX, 12)
                 XCTAssertEqual(frame.label.midY, box.midY - M.titleLift)
             }
-            // A section's fold, its "+" and a status mark stand on the same column.
+            // A section's fold and a status mark stand on the same column.
             XCTAssertEqual(frames[2].chevron!.midX, frames[0].chevron!.midX)
             XCTAssertEqual(frames[3].trailing!.midX, frames[0].chevron!.midX)
-            XCTAssertLessThan(frames[2].add!.maxX, frames[2].chevron!.minX)
             // A section's title starts where a top-level glyph's ink does.
             XCTAssertEqual(frames[2].label.minX, frames[2].box.minX + 15)
         }
