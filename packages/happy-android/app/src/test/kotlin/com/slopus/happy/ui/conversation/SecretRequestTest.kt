@@ -9,6 +9,13 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasImeAction
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -18,16 +25,21 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.input.ImeAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.conversation.Activity
+import com.slopus.happy.conversation.AgentInfo
 import com.slopus.happy.conversation.ConversationApiException
+import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Question
 import com.slopus.happy.conversation.SecretSummary
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertActionsLabelled
+import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.spoken
@@ -105,9 +117,12 @@ class SecretRequestTest {
         }
     }
 
-    // The question card caps itself at 360dp and scrolls inside, so a form this
-    // tall reaches its buttons the way a person does: by scrolling to them.
+    // The question card caps itself at 360dp and the form's fields scroll inside,
+    // so a field this far down is reached the way a person does: by scrolling to it.
     private fun at(tag: String): SemanticsNodeInteraction = rule.node(tag).performScrollTo()
+
+    // Cancel, Save and what went wrong stay below the fields: on screen with no scrolling.
+    private fun pinned(tag: String): SemanticsNodeInteraction = rule.node(tag).assertIsDisplayed()
 
     private fun fields() = rule.onAllNodesWithTag(SecretRequestTags.VALUE, useUnmergedTree = true)
 
@@ -143,7 +158,7 @@ class SecretRequestTest {
         val recorder = Recorder()
         show(recorder)
         fill()
-        at(SecretRequestTags.SUBMIT).performClick()
+        pinned(SecretRequestTags.SUBMIT).performClick()
         rule.waitForIdle()
         val (id, description, values) = recorder.created.single()
         assertEquals("deploy-api", id)
@@ -158,9 +173,9 @@ class SecretRequestTest {
         recorder.conflict = true
         show(recorder)
         fill()
-        at(SecretRequestTags.SUBMIT).performClick()
+        pinned(SecretRequestTags.SUBMIT).performClick()
         rule.waitForIdle()
-        at(SecretRequestTags.PROBLEM).assertIsDisplayed()
+        pinned(SecretRequestTags.PROBLEM)
         rule.onNodeWithText("That name is taken. Choose another.").assertIsDisplayed()
         assertTrue(recorder.answered.isEmpty())
         // The message never carries what the daemon said, in case a value was in it.
@@ -173,14 +188,14 @@ class SecretRequestTest {
         recorder.conflict = true
         show(recorder)
         fill()
-        at(SecretRequestTags.SUBMIT).performClick()
+        pinned(SecretRequestTags.SUBMIT).performClick()
         rule.waitForIdle()
-        at(SecretRequestTags.PROBLEM).assertIsDisplayed()
+        pinned(SecretRequestTags.PROBLEM)
         recorder.conflict = false
         at(SecretRequestTags.NAME).performTextClearance()
         at(SecretRequestTags.NAME).performTextInput("deploy-api-staging")
         rule.node(SecretRequestTags.PROBLEM).assertDoesNotExist()
-        at(SecretRequestTags.SUBMIT).performClick()
+        pinned(SecretRequestTags.SUBMIT).performClick()
         rule.waitForIdle()
         // One secret, under the new name, out of the values typed before.
         val (id, _, values) = recorder.created.single()
@@ -194,10 +209,10 @@ class SecretRequestTest {
         recorder.answerFails = true
         show(recorder)
         fill()
-        at(SecretRequestTags.SUBMIT).performClick()
+        pinned(SecretRequestTags.SUBMIT).performClick()
         rule.waitForIdle()
         assertEquals(1, recorder.created.size)
-        at(SecretRequestTags.PROBLEM).assertIsDisplayed()
+        pinned(SecretRequestTags.PROBLEM)
         rule.onNodeWithText("The secret was saved, but the answer didn't get through. Try again.").assertIsDisplayed()
         // The secret exists now, so the form says so and asks for nothing again.
         at(SecretRequestTags.KEPT).assertIsDisplayed()
@@ -206,7 +221,7 @@ class SecretRequestTest {
         shot("secret-answer-failed")
         // Trying again answers with the id already returned: no second secret.
         recorder.answerFails = false
-        at(SecretRequestTags.SUBMIT).performClick()
+        pinned(SecretRequestTags.SUBMIT).performClick()
         rule.waitForIdle()
         assertEquals(1, recorder.created.size)
         assertEquals(listOf(mapOf("secret" to listOf("made-deploy-api"))), recorder.answered)
@@ -216,11 +231,11 @@ class SecretRequestTest {
         val recorder = Recorder()
         show(recorder)
         fill()
-        at(SecretRequestTags.CANCEL).performClick()
+        pinned(SecretRequestTags.CANCEL).performClick()
         rule.waitForIdle()
         // Both fields are empty again, so there is nothing left to save.
         fields().fetchSemanticsNodes().forEach { assertFalse(it.spoken, it.spoken.contains("•")) }
-        at(SecretRequestTags.SUBMIT).performClick()
+        pinned(SecretRequestTags.SUBMIT).performClick()
         rule.waitForIdle()
         assertTrue(recorder.created.isEmpty())
         assertTrue(recorder.answered.isEmpty())
@@ -290,11 +305,97 @@ class SecretRequestTest {
         fields().onFirst().assert(hasImeAction(ImeAction.Next))
     }
 
+    @Test fun `only the last field's key is Done, and Done keeps the value and sends nothing`() {
+        val recorder = Recorder()
+        show(recorder)
+        fields()[0].assert(hasImeAction(ImeAction.Next))
+        fields()[1].assert(hasImeAction(ImeAction.Done))
+        fill()
+        fields()[1].performScrollTo().performImeAction()
+        rule.waitForIdle()
+        // Still there, still dots, and nothing went anywhere.
+        val said = fields()[1].fetchSemanticsNode().spoken
+        assertTrue(said, said.contains("••••"))
+        assertFalse(said, said.contains("acme"))
+        assertTrue(recorder.created.isEmpty())
+        assertTrue(recorder.answered.isEmpty())
+        // Save is right there for the person to choose.
+        pinned(SecretRequestTags.SUBMIT).assertIsEnabled().performClick()
+        rule.waitForIdle()
+        assertEquals(mapOf("DEPLOY_API_TOKEN" to "token-synthetic", "DEPLOY_ORGANIZATION" to "acme"), recorder.created.single().third)
+    }
+
+    private val agent = AgentInfo("a1", "w1", null, "Deploy staging", "idle", null, null, 1_755_300_000_000, 1_755_400_000_000, 0, 2)
+
+    /** The whole chat screen, so the card gets the room it really has over the composer. */
+    private fun showScreen(recorder: Recorder) {
+        rule.setHappyContent {
+            ConversationScreen(
+                ConversationState(created = true, loaded = true, agent = agent, question = question(), activity = Activity.AwaitingAnswer),
+                null,
+                ConversationScreenActions(
+                    secrets = SecretRequestActions(secrets = { recorder.catalog }, create = { id, _, _ -> "made-$id" }),
+                ),
+            )
+        }
+    }
+
+    /** Save on screen at rest, inside the card, while the fields above it are cut by the cap. */
+    private fun assertButtonsBelowCutFields(name: String) {
+        val card = rule.node(ConversationQuestionTags.CARD).bounds
+        val save = pinned(SecretRequestTags.SUBMIT).bounds
+        pinned(SecretRequestTags.CANCEL)
+        assertTrue("save $save inside card $card", save.top >= card.top && save.bottom <= card.bottom)
+        // The form is taller than the card: the last of it is out of view until scrolled to.
+        rule.node(SecretRequestTags.EXISTING).assertIsNotDisplayed()
+        shot("$name-at-rest")
+        at(SecretRequestTags.EXISTING).assertIsDisplayed()
+        pinned(SecretRequestTags.SUBMIT)
+        shot("$name-scrolled")
+    }
+
+    @Test fun `with no room over the keyboard the field keeps it, and the buttons come back with the room`() {
+        val recorder = Recorder()
+        // What a short screen leaves the card with the keyboard up, then down.
+        var room by mutableStateOf(60.dp)
+        rule.setHappyContent {
+            Box(Modifier.height(room)) {
+                ConversationQuestionCard(
+                    question = question(),
+                    onAnswer = { recorder.answered += it },
+                    secrets = SecretRequestActions(secrets = { recorder.catalog }, create = { id, _, _ -> "made-$id" }),
+                )
+            }
+        }
+        fields()[0].performScrollTo().performClick().performTextInput("token-synthetic")
+        fields()[0].assertIsDisplayed().assertIsFocused()
+        rule.node(SecretRequestTags.SUBMIT).assertIsNotDisplayed()
+        room = 360.dp
+        rule.waitForIdle()
+        pinned(SecretRequestTags.SUBMIT)
+        // The same field, never recomposed elsewhere: still focused, still holding what was typed.
+        fields()[0].assertIsFocused()
+        assertTrue(fields()[0].fetchSemanticsNode().spoken.contains("••••"))
+        assertTrue(recorder.created.isEmpty())
+    }
+
+    @Config(qualifiers = "w411dp-h731dp-xxhdpi")
+    @Test fun `on a 731dp phone Save is on screen without scrolling`() {
+        showScreen(Recorder())
+        assertButtonsBelowCutFields("secret-buttons-731")
+    }
+
+    @Config(qualifiers = "w731dp-h411dp-xxhdpi")
+    @Test fun `on a 411dp-tall screen Save is on screen without scrolling`() {
+        showScreen(Recorder())
+        assertButtonsBelowCutFields("secret-buttons-411")
+    }
+
     @Test fun `a half-filled form sends nothing`() {
         val recorder = Recorder()
         show(recorder)
         fields()[0].performScrollTo().performTextInput("token-synthetic")
-        at(SecretRequestTags.SUBMIT).performClick()
+        pinned(SecretRequestTags.SUBMIT).performClick()
         rule.waitForIdle()
         assertTrue(recorder.created.isEmpty())
         assertTrue(recorder.answered.isEmpty())
@@ -317,7 +418,7 @@ class SecretRequestTest {
             }
         }
         fill()
-        at(SecretRequestTags.SUBMIT).performClick()
+        pinned(SecretRequestTags.SUBMIT).performClick()
         rule.waitForIdle()
         // The form goes away mid-save: its scope is cancelled, so an id that
         // arrives late is never answered with and nothing is left on screen.

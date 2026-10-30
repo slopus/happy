@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.autofill.ContentDataType
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -35,6 +38,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.conversation.ConversationApiException
@@ -86,22 +91,36 @@ private val Question.SecretRequest.isBroken: Boolean
  *  - when the secret was made but the answer didn't get through, saving
  *    again answers with the id already returned rather than making a
  *    second secret, and asks for nothing again.
+ *
+ * The form fills the card itself: [header] (the card's title and context)
+ * and the fields scroll, and Cancel and Save stay below them, so the
+ * card's 360 cap cuts the fields and never the buttons. Only when there is
+ * no room left for a field over them — a short screen with the keyboard
+ * up — do the buttons step aside for the field being typed in; the last
+ * field's Done puts the keyboard away and brings them back.
  */
 @Composable
 internal fun SecretRequestForm(
     request: Question.SecretRequest,
     actions: SecretRequestActions,
+    header: @Composable () -> Unit = {},
     onAnswer: suspend (secretId: String) -> Unit,
 ) {
     val colors = HappyTheme.colors
     val scope = rememberCoroutineScope()
     if (request.isBroken) {
-        Text(
-            stringResource(R.string.conversation_secret_malformed),
-            style = ConversationQuestionSpec.field,
-            color = colors.textSecondary,
-            modifier = Modifier.testTag(SecretRequestTags.MALFORMED),
-        )
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(ConversationQuestionSpec.padding),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            header()
+            Text(
+                stringResource(R.string.conversation_secret_malformed),
+                style = ConversationQuestionSpec.field,
+                color = colors.textSecondary,
+                modifier = Modifier.testTag(SecretRequestTags.MALFORMED),
+            )
+        }
         return
     }
     // Deliberately not rememberSaveable: a typed value never reaches saved state.
@@ -119,135 +138,181 @@ internal fun SecretRequestForm(
     val failed = stringResource(R.string.conversation_secret_failed)
     val answerFailed = stringResource(R.string.conversation_secret_answer_failed)
 
-    Column(Modifier.fillMaxWidth().testTag(SecretRequestTags.FORM), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        request.description?.let { Text(it, style = ConversationQuestionSpec.question, color = colors.text) }
-        if (kept) {
-            Text(
-                stringResource(R.string.conversation_secret_kept, made.orEmpty()),
-                style = ConversationQuestionSpec.question,
-                color = colors.text,
-                modifier = Modifier.testTag(SecretRequestTags.KEPT),
-            )
-        } else {
-            Text(stringResource(R.string.conversation_secret_name), style = ConversationQuestionSpec.title, color = colors.textSecondary)
-            HappyTextField(
-                value = name,
-                onValueChange = { name = it; problem = null },
-                placeholder = stringResource(R.string.conversation_secret_name_placeholder),
-                textStyle = ConversationQuestionSpec.field,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                minHeight = 44.dp,
-                cornerRadius = 8.dp,
-                enabled = !sending,
-                modifier = Modifier.testTag(SecretRequestTags.NAME),
-            )
-            request.variables.forEach { variable ->
-                SecretValueField(
-                    variable = variable,
-                    value = values[variable.name].orEmpty(),
-                    enabled = !sending,
-                    onValueChange = { values = values + (variable.name to it); problem = null },
-                )
-            }
-        }
-        problem?.let {
-            Text(it, style = ConversationQuestionSpec.title, color = colors.textDestructive, modifier = Modifier.testTag(SecretRequestTags.PROBLEM))
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-            if (!kept) {
-                // Only while nothing is in flight: a half-sent create whose id we
-                // threw away would leave a secret behind that nothing points at.
-                FormButton(
-                    label = stringResource(R.string.conversation_secret_cancel),
-                    tag = SecretRequestTags.CANCEL,
-                    enabled = !sending,
-                    background = colors.surfaceHigh,
-                ) {
-                    values = request.variables.associate { it.name to "" }
-                    name = request.suggestedId.orEmpty()
-                    existing = emptyList()
-                    problem = null
-                }
-            }
-            FormButton(
-                label = stringResource(if (kept) R.string.conversation_secret_answer else R.string.conversation_secret_save),
-                tag = SecretRequestTags.SUBMIT,
-                enabled = ready,
-                background = colors.surfaceHighest,
-            ) {
-                sending = true
-                problem = null
-                scope.launch {
-                    try {
-                        val id = made ?: actions.create(name.takeIf { it.isNotBlank() }, request.description, values).also {
-                            made = it
-                            // Saved on the computer; there is no reason to hold them here any longer.
-                            values = request.variables.associate { variable -> variable.name to "" }
-                        }
-                        // Only the returned id is ever answered with.
-                        onAnswer(id)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // Never the daemon's body, which a careless client could echo a value into.
-                        problem = when {
-                            made != null -> answerFailed
-                            e is ConversationApiException && e.status == 409 -> conflict
-                            else -> failed
-                        }
-                    } finally {
-                        sending = false
-                    }
-                }
-            }
-        }
-        if (!kept) {
-            Text(
-                stringResource(R.string.conversation_secret_use_existing),
-                style = ConversationQuestionSpec.title,
-                color = colors.textLink,
-                modifier = Modifier
-                    .testTag(SecretRequestTags.EXISTING)
-                    .clickable(enabled = !sending, role = Role.Button) {
-                        scope.launch {
-                            existing = try {
-                                // Only ones the agents may read, and only ones that carry every variable.
-                                actions.secrets().filter { it.availableToAgents && it.covers(request) }
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (_: Exception) {
-                                problem = failed
-                                emptyList()
-                            }
-                        }
-                    }
-                    .padding(vertical = 6.dp),
-            )
-            existing.forEach { secret ->
+    // The header and the fields scroll; what the person acts with stays below them.
+    val body: @Composable () -> Unit = {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = ConversationQuestionSpec.padding, top = ConversationQuestionSpec.padding, end = ConversationQuestionSpec.padding, bottom = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            header()
+            request.description?.let { Text(it, style = ConversationQuestionSpec.question, color = colors.text) }
+            if (kept) {
                 Text(
-                    secret.description?.takeIf { it.isNotBlank() }?.let { "${secret.id} — $it" } ?: secret.id,
-                    style = ConversationQuestionSpec.field,
+                    stringResource(R.string.conversation_secret_kept, made.orEmpty()),
+                    style = ConversationQuestionSpec.question,
                     color = colors.text,
+                    modifier = Modifier.testTag(SecretRequestTags.KEPT),
+                )
+            } else {
+                Text(stringResource(R.string.conversation_secret_name), style = ConversationQuestionSpec.title, color = colors.textSecondary)
+                HappyTextField(
+                    value = name,
+                    onValueChange = { name = it; problem = null },
+                    placeholder = stringResource(R.string.conversation_secret_name_placeholder),
+                    textStyle = ConversationQuestionSpec.field,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    minHeight = 44.dp,
+                    cornerRadius = 8.dp,
+                    enabled = !sending,
+                    modifier = Modifier.testTag(SecretRequestTags.NAME),
+                )
+                request.variables.forEachIndexed { index, variable ->
+                    SecretValueField(
+                        variable = variable,
+                        value = values[variable.name].orEmpty(),
+                        enabled = !sending,
+                        last = index == request.variables.lastIndex,
+                        onValueChange = { values = values + (variable.name to it); problem = null },
+                    )
+                }
+                Text(
+                    stringResource(R.string.conversation_secret_use_existing),
+                    style = ConversationQuestionSpec.title,
+                    color = colors.textLink,
                     modifier = Modifier
-                        .testTag(SecretRequestTags.PICK)
-                        .fillMaxWidth()
+                        .testTag(SecretRequestTags.EXISTING)
                         .clickable(enabled = !sending, role = Role.Button) {
-                            sending = true
                             scope.launch {
-                                try {
-                                    onAnswer(secret.id)
+                                existing = try {
+                                    // Only ones the agents may read, and only ones that carry every variable.
+                                    actions.secrets().filter { it.availableToAgents && it.covers(request) }
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (_: Exception) {
                                     problem = failed
-                                } finally {
-                                    sending = false
+                                    emptyList()
                                 }
                             }
                         }
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 6.dp),
                 )
+                existing.forEach { secret ->
+                    Text(
+                        secret.description?.takeIf { it.isNotBlank() }?.let { "${secret.id} — $it" } ?: secret.id,
+                        style = ConversationQuestionSpec.field,
+                        color = colors.text,
+                        modifier = Modifier
+                            .testTag(SecretRequestTags.PICK)
+                            .fillMaxWidth()
+                            .clickable(enabled = !sending, role = Role.Button) {
+                                sending = true
+                                scope.launch {
+                                    try {
+                                        onAnswer(secret.id)
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (_: Exception) {
+                                        problem = failed
+                                    } finally {
+                                        sending = false
+                                    }
+                                }
+                            }
+                            .padding(vertical = 8.dp),
+                    )
+                }
             }
+        }
+    }
+    val buttons: @Composable () -> Unit = {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = ConversationQuestionSpec.padding, top = 4.dp, end = ConversationQuestionSpec.padding, bottom = ConversationQuestionSpec.padding),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            problem?.let {
+                Text(it, style = ConversationQuestionSpec.title, color = colors.textDestructive, modifier = Modifier.testTag(SecretRequestTags.PROBLEM))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                if (!kept) {
+                    // Only while nothing is in flight: a half-sent create whose id we
+                    // threw away would leave a secret behind that nothing points at.
+                    FormButton(
+                        label = stringResource(R.string.conversation_secret_cancel),
+                        tag = SecretRequestTags.CANCEL,
+                        enabled = !sending,
+                        background = colors.surfaceHigh,
+                    ) {
+                        values = request.variables.associate { it.name to "" }
+                        name = request.suggestedId.orEmpty()
+                        existing = emptyList()
+                        problem = null
+                    }
+                }
+                FormButton(
+                    label = stringResource(if (kept) R.string.conversation_secret_answer else R.string.conversation_secret_save),
+                    tag = SecretRequestTags.SUBMIT,
+                    enabled = ready,
+                    background = colors.surfaceHighest,
+                ) {
+                    sending = true
+                    problem = null
+                    scope.launch {
+                        try {
+                            val id = made ?: actions.create(name.takeIf { it.isNotBlank() }, request.description, values).also {
+                                made = it
+                                // Saved on the computer; there is no reason to hold them here any longer.
+                                values = request.variables.associate { variable -> variable.name to "" }
+                            }
+                            // Only the returned id is ever answered with.
+                            onAnswer(id)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            // Never the daemon's body, which a careless client could echo a value into.
+                            problem = when {
+                                made != null -> answerFailed
+                                e is ConversationApiException && e.status == 409 -> conflict
+                                else -> failed
+                            }
+                        } finally {
+                            sending = false
+                        }
+                    }
+                }
+            }
+        }
+    }
+    ButtonsBelow(body, buttons, Modifier.fillMaxWidth().testTag(SecretRequestTags.FORM))
+}
+
+/** The least room the fields keep while the buttons are below them: a variable's name and one field. */
+private val FieldsAtLeast = 96.dp
+
+/**
+ * [body] over [buttons], the body taking what the buttons leave. When that
+ * would be less than [FieldsAtLeast] — the keyboard up on a short screen —
+ * the buttons are left out and the body has it all, so the field being
+ * typed in stays in view; they are back as soon as the keyboard is down.
+ * Neither is ever recomposed elsewhere, so a focused field keeps its focus.
+ */
+@Composable
+private fun ButtonsBelow(body: @Composable () -> Unit, buttons: @Composable () -> Unit, modifier: Modifier = Modifier) {
+    Layout(contents = listOf(body, buttons), modifier = modifier) { (bodies, buttonRows), constraints ->
+        val loose = constraints.copy(minHeight = 0)
+        val below = buttonRows.single().measure(loose)
+        val room = constraints.maxHeight - below.height
+        val withButtons = !constraints.hasBoundedHeight || room >= FieldsAtLeast.roundToPx()
+        val above = bodies.single().measure(if (withButtons && constraints.hasBoundedHeight) loose.copy(maxHeight = room) else loose)
+        val width = constraints.constrainWidth(maxOf(above.width, below.width))
+        val height = constraints.constrainHeight(above.height + if (withButtons) below.height else 0)
+        layout(width, height) {
+            above.place(0, 0)
+            if (withButtons) below.place(0, above.height)
         }
     }
 }
@@ -281,6 +346,8 @@ private fun SecretValueField(
     variable: Question.SecretVariable,
     value: String,
     enabled: Boolean,
+    /** The last field's key is Done, which only puts the keyboard away: nothing is saved from the keyboard. */
+    last: Boolean,
     onValueChange: (String) -> Unit,
 ) {
     val colors = HappyTheme.colors
@@ -302,7 +369,8 @@ private fun SecretValueField(
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Password,
-                imeAction = ImeAction.Next,
+                // With no handler, Done's default is to hide the keyboard, and Next moves on.
+                imeAction = if (last) ImeAction.Done else ImeAction.Next,
                 autoCorrectEnabled = false,
             ),
             singleLine = true,

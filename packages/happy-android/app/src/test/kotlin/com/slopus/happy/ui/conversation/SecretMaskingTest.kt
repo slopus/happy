@@ -11,7 +11,7 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasAnyChild
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -156,10 +156,11 @@ class SecretMaskingTest {
         rule.setHappyContent { SecretRequestForm(request, actions) {} }
         // Compose's delegate drops a content description for an editable node —
         // Material's own TextField(label = …) lands the same way — so the label
-        // is a node directly before the field, inside one traversal group.
+        // is a node directly before the field, inside one traversal group: the
+        // field's own, not the scrolling fields around it, which is one too.
         val group = rule.onNode(
             SemanticsMatcher.expectValue(SemanticsProperties.IsTraversalGroup, true) and
-                hasAnyDescendant(hasTestTag(SecretRequestTags.VALUE)),
+                hasAnyChild(hasTestTag(SecretRequestTags.VALUE)),
             useUnmergedTree = true,
         ).fetchSemanticsNode()
         val said = StringBuilder()
