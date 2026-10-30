@@ -40,7 +40,7 @@ final class CombinedAccountsViewController: UIViewController {
             remove.showsChevron = false
             rows.append(remove)
         }
-        let add = ItemRowView(title: Strings.AccountSwitcher.addAccount, icon: ItemIcon(.ionicons("add-circle-outline"), tint: Palette.iconBlue)) { [weak self] in
+        let add = ItemRowView(title: Strings.AccountSwitcher.add, icon: ItemIcon(.ionicons("add-circle-outline"), tint: Palette.iconBlue)) { [weak self] in
             guard let self else { return }
             AccountAdding.begin(context: context, from: self)
         }

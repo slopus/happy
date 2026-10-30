@@ -642,7 +642,10 @@ actor StoriesHarnessTransport: AgentTransport {
 @MainActor
 final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
     private(set) lazy var stories = StoriesHomeController(host: self)
-    private let header = HomeHeaderView()
+    /// The floating home header this was built around went with b8732c8ec:
+    /// the stories' band and a title of its own stand in.
+    private let header = StoriesBandView()
+    private let titleLabel = StyledLabel(style: TextStyles.headerTitle, color: Palette.headerTint, lines: 1, alignment: .center)
     private let list = UIScrollView()
     private var rows: [UILabel] = []
     private let session: StoriesSession
@@ -662,7 +665,7 @@ final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     /// Where the header's title starts, rounded, for the probe.
-    var titleX: String { String(format: "%.0f", header.titleLabel.frame.minX) }
+    var titleX: String { String(format: "%.0f", titleLabel.frame.minX) }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -680,10 +683,9 @@ final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
             rows.append(row)
             list.addSubview(row)
         }
-        header.titleLabel.string = "Harness"
-        header.status = .connected
-        header.actions = true
+        titleLabel.string = "Harness"
         view.addSubview(header)
+        view.addSubview(titleLabel)
         stories.onInsetChange = { [weak self] change in self?.moved(change) }
         stories.list = list
         stories.attach(session, images: session.images)
@@ -726,6 +728,8 @@ final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
         super.viewDidLayoutSubviews()
         let layout = HomeScreenLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), dock: 0)
         header.frame = layout.header
+        let title = titleLabel.sizeThatFits(view.bounds.size)
+        titleLabel.frame = CGRect(x: (view.bounds.width - title.width) / 2, y: view.safeAreaInsets.top + 12, width: title.width, height: title.height)
         list.frame = view.bounds
         editDraft.frame = CGRect(x: 0, y: view.bounds.height - 60, width: 44, height: 44)
         newStory.frame = CGRect(x: view.bounds.width - 44, y: view.bounds.height - 60, width: 44, height: 44)

@@ -7,7 +7,7 @@ import UIKit
 /// picture and name, with the connection under it while it isn't live,
 /// and a chevron. A tap opens the native menu: every account and agent
 /// connection (the active one ticked; another switches to it), then Add
-/// Account (`AccountAdding`) and Manage Accounts. Adding or a failed
+/// (`AccountAdding`) and Manage Accounts. Adding or a failed
 /// switch leaves the active account as it was.
 @MainActor
 final class AccountSwitcher: NSObject {
@@ -99,7 +99,7 @@ final class AccountSwitcher: NSObject {
             action.accessibilityIdentifier = "account-\(account.id)"
             return action
         }
-        let add = UIAction(title: Strings.AccountSwitcher.addAccount, image: UIImage(systemName: "plus")) { [weak self] _ in
+        let add = UIAction(title: Strings.AccountSwitcher.add, image: UIImage(systemName: "plus")) { [weak self] _ in
             guard let self, let controller else { return }
             AccountAdding.begin(context: context, from: controller)
         }

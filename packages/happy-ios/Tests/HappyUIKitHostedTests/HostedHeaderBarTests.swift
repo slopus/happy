@@ -180,23 +180,32 @@ final class HostedHeaderBarTests: XCTestCase {
     }
 
     func testChatAndSettingsHaveTheClearBar() async throws {
-        let (window, navigation, home, sidebar) = try await agentHome(style: .light)
-        defer { window.isHidden = true }
-        let row = try XCTUnwrap(sidebar.subviews.compactMap { $0 as? RowView }.first { $0.row?.id == "space:1" })
-        sidebar.tap(row, at: CGPoint(x: row.frame.midX, y: row.frame.midY))
-        try await settle(navigation)
-        let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
-        XCTAssertNil(chat.navigationItem.standardAppearance, "the bar's own, shared look")
-        Self.assertClear(navigation.navigationBar)
-        keep(window, "chat-light")
-        navigation.popViewController(animated: false)
-        SettingsViewController.open(context: try XCTUnwrap(Mirror(reflecting: home).descendant("context") as? AppContext), computer: nil, from: home)
-        try await settle(navigation)
-        try await Task.sleep(for: .milliseconds(400))
-        let settings = try XCTUnwrap(navigation.topViewController as? SettingsViewController)
-        XCTAssertNil(settings.navigationItem.standardAppearance)
-        Self.assertClear(navigation.navigationBar)
-        keep(window, "settings-light")
+        for (style, name) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
+            let (window, navigation, home, sidebar) = try await agentHome(style: style)
+            defer { window.isHidden = true }
+            let row = try XCTUnwrap(sidebar.subviews.compactMap { $0 as? RowView }.first { $0.row?.id == "space:1" })
+            sidebar.tap(row, at: CGPoint(x: row.frame.midX, y: row.frame.midY))
+            try await settle(navigation)
+            let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
+            XCTAssertNil(chat.navigationItem.standardAppearance, "the bar's own, shared look")
+            Self.assertClear(navigation.navigationBar)
+            keep(window, "chat-\(name)")
+            navigation.popViewController(animated: false)
+            try await settle(navigation)
+            SettingsViewController.open(context: try XCTUnwrap(Mirror(reflecting: home).descendant("context") as? AppContext), computer: nil, from: home)
+            try await until { navigation.topViewController is SettingsViewController && navigation.transitionCoordinator == nil }
+            try await Task.sleep(for: .milliseconds(500))
+            let settings = try XCTUnwrap(navigation.topViewController as? SettingsViewController)
+            XCTAssertNil(settings.navigationItem.standardAppearance)
+            XCTAssertEqual(settings.view.window, window)
+            Self.assertClear(navigation.navigationBar)
+            keep(window, "settings-\(name)")
+        }
+    }
+
+    private func until(_ condition: () -> Bool) async throws {
+        for _ in 0..<300 where !condition() { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(condition())
     }
 
     func testLegacyHomeHasTheSwitcherAndTheClearBar() async throws {
