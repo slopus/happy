@@ -427,6 +427,21 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     // MARK: Keyboard
 
+    /// Both transcript renderers follow the layout guide while the finger
+    /// can move the keyboard, until its next frame notification takes over.
+    private func beginKeyboardDrag() {
+        fingerOnKeyboard = true
+        jumping = false
+        tellReadsNewest(moving: true)
+    }
+
+    private func endKeyboardDrag() {
+        // A drag that never moved the keyboard receives no frame notification.
+        if !card.textView.isFirstResponder || abs(keyboardTracker.frame.minY - min(keyboardTop, view.bounds.maxY)) < 1 {
+            fingerOnKeyboard = false
+        }
+    }
+
     /// The composer goes with the keyboard: to the same place, in the same
     /// time, on the same curve.
     @objc private func keyboardWillChange(_ note: Notification) {
@@ -1918,9 +1933,7 @@ private extension ChatDrawItem {
 
 extension ChatViewController: UIScrollViewDelegate {
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-        fingerOnKeyboard = true
-        jumping = false
-        tellReadsNewest(moving: true)
+        beginKeyboardDrag()
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
@@ -1930,8 +1943,7 @@ extension ChatViewController: UIScrollViewDelegate {
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        // No keyboard up, or one the finger never moved: nothing will say where it went.
-        if !card.textView.isFirstResponder || abs(keyboardTracker.frame.minY - min(keyboardTop, view.bounds.maxY)) < 1 { fingerOnKeyboard = false }
+        endKeyboardDrag()
         // Let go to glide or bounce, what is held waits until it is back
         // inside its ends (`scrollViewDidScroll`) or at rest.
         #if DEBUG
@@ -1988,6 +2000,8 @@ extension ChatViewController {
         private var stretchedFrames = 0
         private var backwards = 0
         private var heldWrites = 0
+        private var keyboardFrames = 0
+        private var keyboardGap: CGFloat = 0
         private let started = CACurrentMediaTime()
 
         @MainActor init(_ screen: ChatViewController, relayout: Bool) {
@@ -2004,6 +2018,13 @@ extension ChatViewController {
                 screen.view.setNeedsLayout()
                 screen.view.layoutIfNeeded()
             }
+            let top = screen.keyboardTracker.frame.minY
+            if screen.card.textView.isFirstResponder,
+               top > screen.keyboardTop + 20, top < screen.view.bounds.maxY - 30 {
+                keyboardFrames += 1
+                keyboardGap = max(keyboardGap, abs(top - screen.card.frame.maxY - 8))
+            }
+            report()
             watch()
         }
 
@@ -2037,7 +2058,8 @@ extension ChatViewController {
         @MainActor func report() {
             guard let screen else { return }
             let scroll = screen.scrollView
-            screen.scrollView.accessibilityValue = "\(screen.timing) stretched=\(stretchedFrames) backwards=\(backwards) held=\(heldWrites) top=\(Int(scroll.contentInset.top)) bottom=\(Int(scroll.contentInset.bottom))"
+            let bottom = screen.ultra.map { CGFloat($0.list.contentInsets.top) } ?? scroll.contentInset.bottom
+            (screen.ultra?.list ?? scroll).accessibilityValue = "\(screen.timing) stretched=\(stretchedFrames) backwards=\(backwards) held=\(heldWrites) top=\(Int(scroll.contentInset.top)) bottom=\(bottom) keyboardFrames=\(keyboardFrames) keyboardGap=\(keyboardGap) guide=\(screen.keyboardTracker.frame.minY) cardBottom=\(screen.card.frame.maxY)"
         }
     }
 }
@@ -2096,6 +2118,14 @@ extension ChatViewController: AgentChatTranscriptHost {
         updateHeaderEdge()
         updateJump()
         tellReadsNewest(moving: ultra.list.isTracking || ultra.list.isDecelerating)
+    }
+
+    func transcriptWillBeginDragging() {
+        beginKeyboardDrag()
+    }
+
+    func transcriptDidEndDragging() {
+        endKeyboardDrag()
     }
 
     private func updateHeaderEdge() {

@@ -14,6 +14,8 @@ protocol AgentChatTranscriptHost: AnyObject {
     /// VoiceOver reads of them, is to be placed again.
     func placedChunks(of plan: ChatRowPlan, in view: ChatPlanView)
     func transcriptScrolled()
+    func transcriptWillBeginDragging()
+    func transcriptDidEndDragging()
     func transcriptTapped(_ action: ChatRowAction)
     func transcriptOpened(_ url: String)
     func transcriptHeld(_ action: ChatRowAction, in view: UIView, frame: CGRect, at point: CGPoint)
@@ -59,6 +61,8 @@ final class AgentChatUltraList: UIView {
         list.accessibilityIdentifier = "transcript"
         list.onScroll = { [weak self] _ in self?.scrolled() }
         list.onVisibleWindowChanged = { [weak self] in self?.scrolled() }
+        list.willBeginDragging = { [weak self] in self?.host?.transcriptWillBeginDragging() }
+        list.didEndDragging = { [weak self] in self?.host?.transcriptDidEndDragging() }
         // Upside down, the oldest row is at the list's far end.
         list.onLoadedEdgeReached = { [weak self] edge in
             guard let self, isActive, edge == .bottom else { return }
@@ -179,6 +183,8 @@ final class AgentChatUltraList: UIView {
         host = nil
         list.onScroll = nil
         list.onVisibleWindowChanged = nil
+        list.willBeginDragging = nil
+        list.didEndDragging = nil
         list.applyChanges(items: [], transition: .none)
         rows.removeAll()
         removeFromSuperview()

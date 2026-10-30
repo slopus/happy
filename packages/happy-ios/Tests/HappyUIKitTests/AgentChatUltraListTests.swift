@@ -21,6 +21,8 @@ final class AgentChatUltraListTests: XCTestCase {
         func show(_ plan: ChatRowPlan, in view: ChatPlanView) { shown.append((plan.id, view)) }
         func placedChunks(of plan: ChatRowPlan, in view: ChatPlanView) { chunked.append(plan.id) }
         func transcriptScrolled() { scrolls += 1 }
+        func transcriptWillBeginDragging() {}
+        func transcriptDidEndDragging() {}
         func transcriptTapped(_ action: ChatRowAction) { tapped.append(action) }
         func transcriptOpened(_ url: String) { opened.append(url) }
         func transcriptHeld(_ action: ChatRowAction, in view: UIView, frame: CGRect, at point: CGPoint) { held.append(action) }

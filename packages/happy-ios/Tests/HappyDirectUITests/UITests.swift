@@ -1372,6 +1372,32 @@ final class UITests: XCTestCase {
         while Date() < deadline, working.exists { pause(1) }
     }
 
+    /// Uses the same paired synthetic conversation as the streaming checks.
+    func checkComposerTracksHeldKeyboardDrag() {
+        XCUIDevice.shared.orientation = .portrait
+        let composer = openStreamLab(probe: "watch")
+        composer.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        pause(1.5)
+        let input = app.descendants(matching: .any)["input"]
+        let keyboard = app.keyboards.firstMatch.frame
+        print("HAPPY_KEYBOARD before input=\(input.frame) keyboard=\(keyboard) probe=\(transcriptElement.value ?? "")")
+        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.midX, dy: input.frame.minY - 40))
+        let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.midX, dy: keyboard.minY + 110))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: 160, thenHoldForDuration: 2)
+        pause(1)
+        let value = transcriptElement.value as? String ?? ""
+        print("HAPPY_KEYBOARD after \(value)")
+        capture("keyboard-held-drag")
+        let fields = Dictionary(uniqueKeysWithValues: value.split(separator: " ").compactMap { item -> (String, Double)? in
+            let pair = item.split(separator: "=")
+            guard pair.count == 2, let number = Double(pair[1]) else { return nil }
+            return (String(pair[0]), number)
+        })
+        XCTAssertGreaterThan(fields["keyboardFrames"] ?? 0, 20, "the keyboard was never held partially dismissed")
+        XCTAssertLessThan(fields["keyboardGap"] ?? 999, 2, "the composer left the keyboard while the finger held it")
+    }
+
     /// A send against a streaming reply, step by step: a send by a reader
     /// at the end lands at the foot, over the composer, and nothing is
     /// held under it; the turns above it move up by what the send is tall
