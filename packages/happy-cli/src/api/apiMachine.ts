@@ -12,6 +12,7 @@ import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from 
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { registerReadAloudHandler } from '@/voice/registerReadAloudHandler';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import {
@@ -171,6 +172,7 @@ export class ApiMachineClient {
         // null = unrestricted: the daemon serves the whole machine, and its
         // process.cwd() is an accident of where it was started, not a workspace.
         registerCommonHandlers(this.rpcHandlerManager, null);
+        registerReadAloudHandler(this.rpcHandlerManager);
     }
 
     setRPCHandlers({
