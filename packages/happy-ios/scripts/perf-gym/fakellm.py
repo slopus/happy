@@ -107,6 +107,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
         try:
+            wait = re.search(r"\bwait (\d+)", text)
+            if wait:
+                time.sleep(int(wait.group(1)) / 1000)
             self.chunk({"role": "assistant", "content": ""})
             for word in re.findall(r"\S+\s*", reply):
                 self.chunk({"content": word})

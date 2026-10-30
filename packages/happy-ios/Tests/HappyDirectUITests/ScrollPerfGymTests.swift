@@ -54,6 +54,28 @@ final class ScrollPerfGymTests: XCTestCase {
 
     // MARK: Workloads
 
+    /// Rendered evidence of the actual agent transcript's header, at the
+    /// oldest loaded row and with content under it, then with the keyboard.
+    func testAgentHeaderEdges() {
+        app.launchEnvironment["HAPPY_GYM_SCRIPT"] = "top wait*3"
+        launch()
+        open(chat)
+        runScript("top wait*3")
+        func keep(_ name: String) {
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        keep("agent-header-top")
+        transcriptElement.swipeUp(velocity: .slow)
+        pause(1)
+        keep("agent-header-scrolled")
+        app.textViews["composer"].tap()
+        pause(1)
+        keep("agent-header-keyboard")
+    }
+
     /// Not a workload: reads the gym's conversations back to their first
     /// message, as someone who has read their long chats has them, so every
     /// workload after it starts from the whole history on the phone.
@@ -305,6 +327,8 @@ final class ScrollPerfGymTests: XCTestCase {
         launch()
         open(title)
         runScript(whole)
+        XCTAssertGreaterThan(reading("frames"), 0, "the script measured no scrolling frames")
+        XCTAssertGreaterThan(reading("scriptPoints"), 100, "the script moved no transcript rows")
         report(workload)
     }
 

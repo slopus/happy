@@ -1075,6 +1075,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// row's chunks near the screen included. Its cards stay over its chunks.
     private func reads(_ row: ChatPlanView, _ plan: ChatRowPlan) {
         let id = plan.id
+        #if DEBUG || HAPPY_FIXTURES
+        let evidence = ProcessInfo.processInfo.environment["HAPPY_CHAT_PROBE"] == nil ? nil : "id=\(id),alpha=\(plan.alpha)"
+        row.accessibilityValue = evidence
+        #endif
         let toggles = plan.toggles.map { name in
             [UIAccessibilityCustomAction(name: name) { [weak self] _ in self?.toggle(id); return true }]
         }
@@ -1101,6 +1105,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
             let message = UIAccessibilityElement(accessibilityContainer: row)
             message.accessibilityLabel = label
             message.accessibilityIdentifier = "message"
+            #if DEBUG || HAPPY_FIXTURES
+            message.accessibilityValue = evidence
+            #endif
             message.accessibilityCustomActions = toggles
             message.accessibilityFrameInContainerSpace = plan.items.reduce(CGRect.null) { frame, item in
                 item.wordsFrame.map { frame.union($0) } ?? frame

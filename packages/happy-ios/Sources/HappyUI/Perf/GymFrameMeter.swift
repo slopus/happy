@@ -2,6 +2,7 @@
 import Darwin
 import QuartzCore
 import UIKit
+import UltraView
 
 /// The iOS performance gym's meter (`V2_GYM_METER=1`, never in the shipped
 /// app): every display frame's interval and the main thread's busy time
@@ -49,6 +50,7 @@ public final class GymFrameMeter: NSObject {
     private var longestBusy: Double = 0
     private var started = CACurrentMediaTime()
     private var peakFootprint: Double = 0
+    private var scriptPoints: Double = 0
 
     private init(window: UIWindow) {
         super.init()
@@ -170,7 +172,8 @@ public final class GymFrameMeter: NSObject {
     /// without XCUITest reading the screen between them.
     @objc private func runScript() {
         reset()
-        guard let window = button.window, let scroll = Self.find("transcript", in: window) as? UIScrollView else {
+        guard let window = button.window, let scroll = Self.find("transcript", in: window),
+              scroll is UIScrollView || scroll is UltraListView else {
             NSLog("GYM_SCRIPT no transcript")
             return
         }
@@ -203,6 +206,7 @@ public final class GymFrameMeter: NSObject {
         longestBusy = 0
         started = CACurrentMediaTime()
         peakFootprint = Self.footprint()
+        scriptPoints = 0
     }
 
     /// `key=value` pairs, milliseconds unless named otherwise.
@@ -232,6 +236,7 @@ public final class GymFrameMeter: NSObject {
         }
         let pairs: [(String, String)] = [
             ("frames", "\(intervals.count)"),
+            ("scriptPoints", String(format: "%.1f", scriptPoints)),
             ("seconds", String(format: "%.2f", elapsed)),
             ("budget", String(format: "%.2f", budget * 1000)),
             ("late", "\(late)"),
@@ -286,6 +291,8 @@ public final class GymFrameMeter: NSObject {
     /// `x*N` repeats. Every step ends with a quarter second still.
     private final class GymScroll {
         private weak var scroll: UIScrollView?
+        private weak var ultra: UltraListView?
+        private var translation: Double = 0
         private var steps: [String]
         private var velocity: CGFloat = 0
         private var remaining: CFTimeInterval = 0
@@ -295,8 +302,9 @@ public final class GymFrameMeter: NSObject {
         private let mark: () -> Void
         var moving: Bool { velocity != 0 }
 
-        init(_ scroll: UIScrollView, _ text: String, mark: @escaping () -> Void) {
-            self.scroll = scroll
+        init(_ scroll: UIView, _ text: String, mark: @escaping () -> Void) {
+            self.scroll = scroll as? UIScrollView
+            ultra = scroll as? UltraListView
             self.mark = mark
             steps = text.split(separator: " ").flatMap { token -> [String] in
                 let parts = token.split(separator: "*")
@@ -307,7 +315,7 @@ public final class GymFrameMeter: NSObject {
 
         /// One frame; false once the script is over.
         @MainActor func step(_ link: CADisplayLink) -> Bool {
-            guard let scroll else { return false }
+            guard scroll != nil || ultra != nil else { return false }
             // By the clock, as UIScrollView glides: a late frame moves further.
             let dt = min(0.25, last.map { link.timestamp - $0 } ?? link.targetTimestamp - link.timestamp)
             last = link.timestamp
@@ -326,16 +334,52 @@ public final class GymFrameMeter: NSObject {
                 case "mark": mark(); return true
                 default: still = 0.5; return true
                 }
+                translation = 0
+                ultra?.receiveScrollInput(.init(time: link.timestamp, phase: .began))
             }
+            if let ultra {
+                // The list owns a measured window, not a contentSize. Its
+                // public input seam moves that window and reports real
+                // scrolls to the meter, including newly loaded history.
+                let inverted = ultra.contentView.transform.d < 0
+                let index = ultra.loadedIndexRange.lowerBound + ultra.loadedIndexRange.count / 2
+                let before = ultra.settledFrame(at: index)
+                translation += Double(velocity) * dt * (inverted ? 1 : -1)
+                GymFrameMeter.scrolling = true
+                ultra.receiveScrollInput(.init(time: link.timestamp, phase: .changed,
+                                               translation: .init(x: 0, y: translation)))
+                if let before, let after = ultra.settledFrame(at: index) {
+                    GymFrameMeter.shared?.scriptPoints += abs(after.minY - before.minY)
+                }
+                let older = velocity < 0
+                let hit = inverted ? (older ? ultra.reachedBottom : ultra.reachedTop)
+                                   : (older ? ultra.reachedTop : ultra.reachedBottom)
+                if drag {
+                    remaining -= dt
+                    if remaining <= 0 || hit { velocity = 0 }
+                } else {
+                    velocity *= pow(0.998, CGFloat(dt * 1000))
+                    if abs(velocity) < 20 || hit { velocity = 0 }
+                }
+                if velocity == 0 {
+                    ultra.receiveScrollInput(.init(time: link.timestamp, phase: .ended))
+                    still = 0.25
+                    GymFrameMeter.scrolling = false
+                }
+                return true
+            }
+            guard let scroll else { return false }
             let top = -scroll.adjustedContentInset.top
             let bottom = max(top, scroll.contentSize.height + scroll.adjustedContentInset.bottom - scroll.bounds.height)
-            var y = scroll.contentOffset.y + velocity * CGFloat(dt)
+            let previousY = scroll.contentOffset.y
+            var y = previousY + velocity * CGFloat(dt)
             let hit = y <= top || y >= bottom
             y = min(max(y, top), bottom)
             // Gliding from its first frame: a run that meets the top at once
             // still asks for the page before, as a glide there does.
             GymFrameMeter.scrolling = true
             scroll.contentOffset.y = y
+            GymFrameMeter.shared?.scriptPoints += abs(Double(scroll.contentOffset.y - previousY))
             if drag {
                 remaining -= dt
                 if remaining <= 0 || hit { velocity = 0 }
