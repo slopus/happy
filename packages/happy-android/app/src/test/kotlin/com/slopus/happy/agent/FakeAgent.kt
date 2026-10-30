@@ -17,6 +17,7 @@ object Wire {
         id: String, workspaceId: String = "w$id", version: String = "01", title: String? = null, status: String = "idle",
         unread: Boolean = false, question: Boolean = false, subtask: Boolean = false, parent: String? = null,
         subtasks: List<JsonObject> = emptyList(), archivedAt: Long? = null, orderKey: String? = null, visible: Boolean = true,
+        updatedAt: Long = 2L,
     ) = buildJsonObject {
         put("id", id); put("workspaceId", workspaceId); put("version", version); put("status", status)
         put("parentAgentId", parent); put("subtask", subtask); put("userVisible", visible)
@@ -24,7 +25,7 @@ object Wire {
         put("pendingQuestionId", if (question) "q$id" else null)
         put("unread", if (unread) buildJsonObject { put("reason", "turn_finished"); put("since", 5L) } else kotlinx.serialization.json.JsonNull)
         put("subtasks", JsonArray(subtasks)); put("orderKey", orderKey); put("archivedAt", archivedAt)
-        put("createdAt", 1L); put("updatedAt", 2L)
+        put("createdAt", 1L); put("updatedAt", updatedAt)
     }
 
     fun bot(id: String, name: String, agent: JsonObject, orderKey: String = "1", version: String = "01", archived: Boolean = false) = buildJsonObject {

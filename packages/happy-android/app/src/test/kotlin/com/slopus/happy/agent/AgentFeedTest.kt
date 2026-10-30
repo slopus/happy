@@ -45,9 +45,9 @@ class AgentFeedTest {
         assertTrue(rows.getValue("at2").unread)
         assertTrue(rows.getValue("aw1").blocked)
         assertEquals("fix-login", rows.getValue("aw1").detail)
-        // The last conversation before a heading has no divider.
-        assertFalse(rows.getValue("ab2").showDivider)
-        assertTrue(rows.getValue("ab1").showDivider)
+        assertEquals(2, rows.getValue("ab1").childCount)
+        assertEquals(1, rows.getValue("as1").childCount)
+        assertEquals("as1", rows.getValue("as2").parentId)
     }
 
     @Test

@@ -31,7 +31,10 @@ sealed interface AgentFeedRow {
         /** A question waits for the person. */
         val blocked: Boolean = false,
         val activityAt: Long = 0,
-        val showDivider: Boolean = true,
+        /** The conversation this subtask is under; null at the top. */
+        val parentId: String? = null,
+        /** How many subtask rows follow under this one, at any depth. */
+        val childCount: Int = 0,
     ) : AgentFeedRow {
         override val key get() = "agent-$agentId"
     }
@@ -81,10 +84,14 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             fun active(resource: JsonObject) = resource["archivedAt"].isNullish() &&
                 (resource.string("status") ?: "active") == "active"
 
-            fun agentRows(agentId: String, title: String?, kind: ConversationKind, detail: String?, avatarId: String, thumbhash: String?, depth: Int) {
+            fun agentRows(
+                agentId: String, title: String?, kind: ConversationKind, detail: String?, avatarId: String, thumbhash: String?, depth: Int,
+                parentId: String? = null,
+            ) {
                 val agent = catalog.agents[agentId] ?: return
                 val wire = AgentCatalog.decodeAgent(agent) ?: return
                 if (wire.archivedAt != null || !wire.visible || !shown.add(agentId)) return
+                val at = rows.size
                 rows += AgentFeedRow.Conversation(
                     agentId = agentId,
                     title = title?.takeIf { it.isNotBlank() } ?: wire.title?.takeIf { it.isNotBlank() },
@@ -97,12 +104,15 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     unread = wire.unread != null,
                     blocked = wire.pendingQuestionId != null,
                     activityAt = wire.unread?.since ?: wire.updatedAt,
+                    parentId = parentId,
                 )
                 if (depth >= 2) return
                 for (child in (agent["subtasks"] as? JsonArray).orEmpty()) {
                     val childId = (child as? JsonObject)?.string("id") ?: continue
-                    agentRows(childId, null, ConversationKind.Subtask, null, childId, null, depth + 1)
+                    agentRows(childId, null, ConversationKind.Subtask, null, childId, null, depth + 1, agentId)
                 }
+                val children = rows.size - at - 1
+                if (children > 0) rows[at] = (rows[at] as AgentFeedRow.Conversation).copy(childCount = children)
             }
 
             fun section(section: AgentFeedSection, body: () -> Unit) {
@@ -146,12 +156,6 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                         .sortedWith(byOrderKey)
                         .forEach { workspace -> series(workspace, workspace.string("name")) }
                 }
-            }
-            // The divider runs under every conversation but the last before a heading or the end.
-            for (index in rows.indices) {
-                val row = rows[index] as? AgentFeedRow.Conversation ?: continue
-                val last = rows.getOrNull(index + 1) !is AgentFeedRow.Conversation
-                if (last) rows[index] = row.copy(showDivider = false)
             }
             return AgentFeed(loaded = true, rows = rows)
         }

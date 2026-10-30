@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  An agent connection's home, search and settings (ui/connection). Not in
+  happy-app's catalogs; English only, as iOS's are.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="agent_home_bots">Bots</string>
+    <string name="agent_home_tasks">Tasks</string>
+    <string name="agent_home_kind_bot">Bot</string>
+    <string name="agent_home_kind_task">Task</string>
+    <string name="agent_home_kind_project">Main</string>
+    <string name="agent_home_kind_subtask">Subtask</string>
+    <string name="agent_home_thinking">Thinking…</string>
+    <string name="agent_home_working">Working…</string>
+    <string name="agent_home_waiting">Waiting for your answer</string>
+    <string name="agent_home_show_subtasks">Show subtasks</string>
+    <string name="agent_home_hide_subtasks">Hide subtasks</string>
+    <string name="agent_home_empty_title">No conversations yet</string>
+    <string name="agent_home_empty_body">Start a chat with this agent and it shows here.</string>
+    <string name="agent_home_offline_title">Can\'t reach %1$s</string>
+    <string name="agent_home_offline_body">Check that the agent is running and online. Happy reconnects by itself.</string>
+    <string name="agent_home_revoked">This phone was removed in Happy Agent. Connect the agent again to use it.</string>
+    <string name="agent_home_update_required">This agent needs a newer Happy. Update the app to use it.</string>
+    <string name="agent_home_status_offline">offline</string>
+    <string name="agent_home_status_revoked">removed</string>
+    <string name="agent_home_status_update">update required</string>
+
+    <string name="agent_search_open">Search</string>
+    <string name="agent_search_placeholder">Search conversations and settings</string>
+    <string name="agent_search_clear">Clear</string>
+    <string name="agent_search_conversations">Conversations</string>
+    <string name="agent_search_actions">Quick actions</string>
+    <string name="agent_search_settings">Settings</string>
+    <string name="agent_search_no_results">No results for “%1$s”</string>
+    <string name="agent_search_new_chat">New chat</string>
+    <string name="agent_search_add">Add account or agent</string>
+    <string name="agent_search_open_settings">Open settings</string>
+
+    <string name="agent_settings_status">Status</string>
+    <string name="agent_settings_connected">Connected</string>
+    <string name="agent_settings_connecting">Connecting</string>
+    <string name="agent_settings_offline">Offline</string>
+    <string name="agent_settings_revoked">Removed from Happy Agent</string>
+    <string name="agent_settings_update">Update required</string>
+    <string name="agent_settings_remove">Remove connection</string>
+    <string name="agent_settings_remove_title">Remove %1$s?</string>
+    <string name="agent_settings_remove_message">Happy forgets this agent on this phone. Happy Agent keeps listing the phone until you remove it there too.</string>
+    <string name="agent_settings_remove_footer">Happy Agent keeps listing this phone until you remove it there.</string>
+</resources>
