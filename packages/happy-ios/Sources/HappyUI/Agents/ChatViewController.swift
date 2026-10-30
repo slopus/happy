@@ -647,6 +647,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
     }
 
     private func presentChatMenu() {
+        card.closeMenus()
+        if attachPanel != nil { attachSheet?.close() }
         picker?.close(animated: false)
         chatMenu?.close()
         let menu = ComposerMenuPresenter(card: card, chips: chatMenuChips)
