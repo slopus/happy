@@ -171,16 +171,12 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
 
     // MARK: Bar
 
-    /// The system's back, the title, the QR button, and the bar's own
-    /// search, which grows into a field in the bar.
+    /// The system's back, the title, and the bar's own search, which grows
+    /// into a field in the bar. No QR button: scanning is Add's.
     private func setUpBar() {
         title = Strings.Settings.title
         navigationItem.largeTitleDisplayMode = .never
         HeaderBar.edge(scroll, in: self)
-        let qr = UIBarButtonItem(image: Glyphs.image("qr-code-outline", size: 22), primaryAction: UIAction { [weak self] _ in self?.showQR() })
-        qr.accessibilityLabel = Strings.showQR
-        qr.accessibilityIdentifier = "settings-qr"
-        navigationItem.rightBarButtonItem = qr
         searchController.searchResultsUpdater = self
         searchController.delegate = self
         searchController.obscuresBackgroundDuringPresentation = false
@@ -722,21 +718,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
             guard let text else { return }
             await SettingsConnections.approveTerminal(text, context: context, on: self)
         }
-    }
-
-    private func showQR() {
-        guard let profile = shown else { return }
-        endEditingName(keep: true)
-        let sheet = QRSheetViewController(name: profile.name, image: images[profile.id], isAgentConnection: profile.isAgentConnection)
-        sheet.onScan = { [weak self] in
-            guard let self else { return }
-            Scan.scan(context: context, on: self)
-        }
-        sheet.onEnterLink = { [weak self] in
-            guard let self else { return }
-            Scan.enterLink(context: context, on: self)
-        }
-        present(sheet, animated: true)
     }
 
     private func remove(_ id: String, direct: Bool) {

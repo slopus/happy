@@ -197,6 +197,7 @@ final class HostedHeaderBarTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(500))
             let settings = try XCTUnwrap(navigation.topViewController as? SettingsViewController)
             XCTAssertNil(settings.navigationItem.standardAppearance)
+            XCTAssertFalse((settings.navigationItem.rightBarButtonItems ?? []).contains { $0.accessibilityIdentifier == "settings-qr" }, "no QR in settings' bar")
             XCTAssertEqual(settings.view.window, window)
             Self.assertClear(navigation.navigationBar)
             keep(window, "settings-\(name)")

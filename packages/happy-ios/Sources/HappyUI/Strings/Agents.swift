@@ -216,7 +216,6 @@ extension Strings {
     public static let edit = "Edit"
     public static let done = "Done"
     public static let searchSettings = "Search settings"
-    public static let showQR = "QR code"
     public static let connectAgentTile = "Connect Agent"
     public static let more = "More"
     public static let status = "Status"
