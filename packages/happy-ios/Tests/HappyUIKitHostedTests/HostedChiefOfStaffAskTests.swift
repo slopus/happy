@@ -35,6 +35,14 @@ final class HostedChiefOfStaffAskTests: XCTestCase {
     private static let agentId = "chief-of-staff-ask"
 
     func testTheAskIsTypedInFocusedAndUnsentWithoutWritingTheDraft() async throws {
+        try await checkAsk(existing: nil)
+    }
+
+    func testTheAskWaitsForTheKeptDraftWithoutReplacingIt() async throws {
+        try await checkAsk(existing: Draft(text: "Ask about the invoice", updatedAt: 42, synced: true))
+    }
+
+    private func checkAsk(existing: Draft?) async throws {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -53,7 +61,14 @@ final class HostedChiefOfStaffAskTests: XCTestCase {
         }
         let context = AppContext(account: controller, variant: .preview, version: "test")
         let session = try XCTUnwrap(Session.session(for: computer.id, context: context))
+        await session.drafts.keep(Self.agentId, existing)
+        // A conversation read ahead can deliver its first snapshot during
+        // view loading, before the screen asks for the phone's kept draft.
+        let warm = session.warm.hold(Self.agentId)
+        defer { session.warm.release(warm.chat, token: warm.token, opened: false) }
+        try await until { warm.chat.snapshot.loaded }
         let ask = ChatPrefill.connectionName
+        let expected = ask.applied(to: existing?.text ?? "").text
         let chat = ChatViewController(session: session, agentId: Self.agentId, title: "Happy", spaceId: nil, seedling: nil, prefill: ask)
         let navigation = UINavigationController(rootViewController: chat)
         let scene = try await hostedActiveScene()
@@ -63,7 +78,7 @@ final class HostedChiefOfStaffAskTests: XCTestCase {
         window.layoutIfNeeded()
 
         let card = try XCTUnwrap(Self.subview(AgentInputCardView.self, in: chat.view))
-        try await until { card.textView.text == ask.prefix }
+        try await until { card.textView.text == expected }
         XCTAssertEqual(card.textView.selectedRange, NSRange(location: (ask.prefix as NSString).length, length: 0),
                        "the caret is after the ask, ready for the name")
         try await until { card.textView.isFirstResponder }
@@ -72,16 +87,22 @@ final class HostedChiefOfStaffAskTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(600))
         let drafts = session.drafts
         var kept = await drafts.draft(Self.agentId)
-        XCTAssertNil(kept, "opening wrote a draft: \(kept?.text ?? "")")
-        XCTAssertEqual(card.textView.text, ask.prefix, "the ask is still there, unsent")
+        XCTAssertEqual(kept, existing, "opening changed the stored draft")
+        XCTAssertEqual(card.textView.text, expected, "the ask and existing words are still there, unsent")
+        chat.view.frame.size = CGSize(width: 852, height: 393)
+        chat.view.setNeedsLayout()
+        chat.view.layoutIfNeeded()
+        XCTAssertEqual(card.textView.text, expected, "another layout prefixed the draft again")
+        XCTAssertEqual(card.textView.selectedRange.location, (ask.prefix as NSString).length)
 
         // Typing is what saves it, as anywhere else. The caret is where
         // the ask left it, so what is typed reads on from the words.
         card.textView.insertText("Steve's laptop")
-        XCTAssertEqual(card.textView.text, ask.prefix + "Steve's laptop")
+        let typed = ask.prefix + "Steve's laptop" + (existing.map { "\n\n" + $0.text } ?? "")
+        XCTAssertEqual(card.textView.text, typed)
         try await until {
             kept = await drafts.draft(Self.agentId)
-            return kept?.text == ask.prefix + "Steve's laptop"
+            return kept?.text == typed
         }
     }
 

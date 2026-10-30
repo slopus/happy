@@ -625,8 +625,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
             draftArrivals = snapshot.draftArrivals
             // Typed here since, on its way to the conversation: that stands.
             if snapshot.draftUpdatedAt >= lastDraftEdit { showDraft(snapshot.draft) }
-            showPrefill()
         }
+        if snapshot.localDraftLoaded { showPrefill() }
         proposals.want(snapshot.items.flatMap(\.proposalIds))
         updateHeaderStatus()
         if wasSettled != settled(snapshot), let intro { introView.configure(intro, settled: settled(snapshot)) }
