@@ -236,9 +236,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
         scrollView.addSubview(working)
         introView.accessibilityIdentifier = "intro"
         HeaderBar.edge(scrollView, in: self)
-        if let host = self as UIViewController as? ComposeHosting {
-            navigationItem.rightBarButtonItems = HeaderBar.trailing([.compose: HeaderBar.composeItem { [weak host] in host?.compose() }])
-        }
+        navigationItem.rightBarButtonItems = HeaderBar.trailing([
+            .compose: HeaderBar.composeItem { [weak self] in self?.compose() },
+            .more: HeaderBar.chatMenuItem { [weak self] in self?.presentChatMenu() },
+        ])
         // New work asks what it is; a conversation already going asks for the next message.
         if case .seedling = intro { card.configuration.placeholder = Strings.composerPlaceholder }
         card.configuration.showsAdd = true
@@ -351,6 +352,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         // Leaving keeps a name being typed, as a tap away does.
         titleView.finishEditing()
         picker?.close(animated: false)
+        chatMenu?.close()
         giveBarBack(animated: animated)
         // Left holding something, new work isn't offered again as empty.
         if isMovingFromParent, !previewing, let spaceId {
@@ -629,12 +631,45 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private weak var attachSheet: AttachSheetViewController?
     /// The model or effort list while it is open.
     private var picker: PickerPresenter?
+    /// The header's overflow and permission choices, without changing focus.
+    private var chatMenu: ComposerMenuPresenter?
+
+    private var chatMenuChips: [(AgentInputChip, AgentInputChipConfiguration)] {
+        let permission = menus.map(ModelPickers.permissionMenu)
+        return [(.permission, .init(
+            content: .label(permissionName),
+            accessibilityLabel: Strings.ChatActions.permissionMode,
+            menu: permission
+        ))]
+    }
+
+    private func presentChatMenu() {
+        picker?.close(animated: false)
+        chatMenu?.close()
+        let menu = ComposerMenuPresenter(card: card, chips: chatMenuChips)
+        menu.title = Strings.ChatActions.more
+        menu.rootID = "chat-menu"
+        menu.pageID = "chat-permissions"
+        menu.anchor = { [weak self] in self.map { HeaderBar.menuAnchor(in: $0) } ?? .zero }
+        menu.opensBelowAnchor = true
+        menu.top = { [weak self] in self?.view.safeAreaInsets.top ?? 0 }
+        menu.bottom = { [weak self] in self?.card.frame.minY ?? 0 }
+        menu.onSelect = { [weak self] key, _ in self?.choose(key) }
+        menu.onMenu = { [weak self] _ in
+            guard let self else { return }
+            ModelPickers.opened(session.models, mode: mode)
+        }
+        chatMenu = menu
+        menu.show(in: view)
+        session.models.load()
+    }
 
     private var menus: ModelMenus? {
         session.models.catalog.flatMap { catalog in mode.map { ModelMenus(catalog: catalog, selection: $0) } }
     }
 
     private func updateChips() {
+        chatMenu?.update(chips: chatMenuChips)
         if reading(chat), picked == nil {
             card.configuration.model = nil
             card.configuration.effort = nil
@@ -1132,6 +1167,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         ) { [card] width in card.height(fitting: width) }
         card.setLayoutFrame(screen.card)
         picker?.follow()
+        chatMenu?.follow()
         let foot = ChatFootLayout(size: view.bounds.size, card: screen.card)
         composerScrim.setLayoutFrame(foot.scrim)
         jump.setLayoutFrame(foot.jump)

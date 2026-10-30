@@ -731,6 +731,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        composer.closeChatMenu()
         if contentInstalled { keepStripOffset() }
         if ultraKeyboard?.isDriving == true { ultraKeyboard?.dismissImmediately() }
         // Screens pushed from here, and the one under it, have their bar.
@@ -748,6 +749,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         updateUltraKeyboard()
         ultraKeyboard?.prepareLayout(guideTop: keyboardTracker.frame.minY)
         layoutScreen()
+        composer.followChatMenu()
         ultraKeyboard?.refresh()
         updatePermissionListMaxHeight()
         if list.bounds.width != sentRowsView.width || list.traitCollection.textEnvironment != sentRowsView.text.environment {
@@ -983,7 +985,12 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         if sessionApplied { navigationItem.titleView = tablet ? plainTitleView : titleView }
         if tablet, switcher == nil { switcher = AccountSwitcher(context: context, controller: self) }
         navigationItem.leftBarButtonItem = tablet ? switcher?.barItem : nil
-        var items = tablet ? [] : [avatarItem]
+        var items = [HeaderBar.chatMenuItem { [weak self] in
+            guard let self else { return }
+            composer.presentChatMenu(in: view, anchor: { [weak self] in
+                self.map { HeaderBar.menuAnchor(in: $0) } ?? .zero
+            }, onInfo: { [weak self] in self?.openInfo() })
+        }]
         if let host = self as UIViewController as? ComposeHosting {
             items.append(HeaderBar.composeItem { [weak host] in host?.compose() })
         }

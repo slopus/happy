@@ -14,7 +14,7 @@ enum HeaderBar {
     /// is a one-line change. A legacy home has its filter menu where an
     /// agent connection's home has search.
     enum Trailing: CaseIterable {
-        case filter, search, compose, settings
+        case filter, search, compose, more, settings
     }
 
     /// Every bar's look, set once on the navigation bar
@@ -70,6 +70,19 @@ enum HeaderBar {
         item.accessibilityLabel = Strings.openSettings
         item.accessibilityIdentifier = "settings"
         return item
+    }
+
+    static func chatMenuItem(_ action: @escaping () -> Void) -> UIBarButtonItem {
+        let item = UIBarButtonItem(image: .icon(.ionicons("ellipsis-horizontal"), size: 22), primaryAction: UIAction { _ in action() })
+        item.accessibilityLabel = Strings.ChatActions.more
+        item.accessibilityIdentifier = "chat-more"
+        return item
+    }
+
+    /// The public navigation bar's bounds, in the menu's host view.
+    static func menuAnchor(in controller: UIViewController) -> CGRect {
+        guard let bar = controller.navigationController?.navigationBar else { return .zero }
+        return bar.convert(bar.bounds, to: controller.view)
     }
 }
 

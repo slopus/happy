@@ -187,6 +187,7 @@ final class HostedHeaderBarTests: XCTestCase {
             sidebar.tap(row, at: CGPoint(x: row.frame.midX, y: row.frame.midY))
             try await settle(navigation)
             let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
+            XCTAssertEqual(chat.navigationItem.rightBarButtonItems?.map(\.accessibilityIdentifier), ["chat-more", "compose"])
             XCTAssertNil(chat.navigationItem.standardAppearance, "the bar's own, shared look")
             Self.assertClear(navigation.navigationBar)
             keep(window, "chat-\(name)")
@@ -271,6 +272,7 @@ final class HostedHeaderBarTests: XCTestCase {
         try await until { navigation.topViewController === chat && navigation.transitionCoordinator == nil }
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertTrue(chat.navigationItem.hidesBackButton, "a tablet's chat has no back button")
+        XCTAssertTrue(chat.navigationItem.rightBarButtonItems?.contains { $0.accessibilityIdentifier == "chat-more" } == true, "legacy permissions and details remain reachable from the header")
         XCTAssertEqual(chat.navigationItem.leftBarButtonItem?.customView?.accessibilityIdentifier, "account-switcher", "with a chat open the accounts are still reachable")
         keep(window, "tablet-chat")
 
