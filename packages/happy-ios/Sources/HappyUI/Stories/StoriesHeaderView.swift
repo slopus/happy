@@ -408,20 +408,23 @@ final class StoriesCircleView: UIControl {
         let geometry = StoriesRowLayout.item
         let center = CGPoint(x: geometry.ring.width / 2, y: geometry.ring.height / 2)
         let radius = StoriesRowLayout.Metrics.ringRadius - StoriesRowLayout.Metrics.ringUnseenWidth / 2
+        (seenRing.path, unseenRing.path) = Self.ring(single ? min(item.segments, 1) : item.segments, new: single ? min(item.unseen, 1) : item.unseen, center: center, radius: radius)
+    }
+
+    /// `count` arcs round `center`, the last `new` unseen: a circle's, or a rich task's disc's.
+    static func ring(_ count: Int, new: Int, center: CGPoint, radius: CGFloat) -> (seen: CGPath, unseen: CGPath) {
         let seen = CGMutablePath()
         let unseen = CGMutablePath()
-        let count = single ? 1 : item.segments
         let segments = StoriesRowLayout.segments(count: count, radius: radius)
-        let firstUnseen = single ? (item.unseen > 0 ? 0 : 1) : segments.count - min(item.unseen, segments.count)
-        if item.segments > 0 {
+        let firstUnseen = segments.count - min(new, segments.count)
+        if count > 0 {
             for (index, segment) in segments.enumerated() {
                 let path = index >= firstUnseen ? unseen : seen
                 path.move(to: CGPoint(x: center.x + cos(segment.start) * radius, y: center.y + sin(segment.start) * radius))
                 path.addArc(center: center, radius: radius, startAngle: segment.start, endAngle: segment.end, clockwise: false)
             }
         }
-        seenRing.path = seen
-        unseenRing.path = unseen
+        return (seen, unseen)
     }
 
     private func loadPhoto(_ item: StoriesRowItem, images: Images?) {
@@ -435,6 +438,8 @@ final class StoriesCircleView: UIControl {
         let showPlaceholder = { [weak self] in
             self?.placeholder.show(seed: item.placeholderSeed, side: StoriesRowLayout.Metrics.avatar) { self?.avatar.image = $0 }
         }
+        // A rich task's clay icon (`StoriesRow.clayPhoto`), drawn as it stands.
+        if let clay = item.photo.flatMap(StoriesRow.claySlug).flatMap(ClayIconImages.image) { return avatar.image = clay }
         guard let path = item.photo, let images else {
             // Its thumbhash meanwhile, when it has a photo to wait for.
             let thumbhash = item.photo == nil ? nil : ThumbHashImages.image(item.thumbhash)

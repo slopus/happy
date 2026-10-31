@@ -20,8 +20,12 @@ final class TaskListView: UIView {
     var images: Images?
     /// A face's or a mark's picture at hand, by user id or path (the Harness's).
     var picture: ((String) -> UIImage?)?
-    /// Tasks whose disc wears a story's ring; Stories fill it in.
-    var rings: Set<String> = [] { didSet { if rings != oldValue { refresh() } } }
+    /// The story rings cards' discs wear, by agent; Stories fill it in.
+    var rings: [String: StoryRing] = [:] { didSet { if rings != oldValue { refresh() } } }
+    /// A ringed disc was tapped: the card, and the ring to grow the viewer out of.
+    var onOpenStory: ((TaskList.Card, UIView) -> Void)?
+    /// Who the cards' faces are (`HomeSnapshot.people`).
+    var people: [String: Person] = [:] { didSet { if people != oldValue { refresh() } } }
     /// What faces are ringed in: the ground under the list.
     var ground = UIColor(Palette.groupedCard) { didSet { views.values.forEach { $0.ground = ground } } }
     var selectedId: String? { didSet { for (id, view) in views { view.selected = id == selectedId } } }
@@ -66,8 +70,9 @@ final class TaskListView: UIView {
         let anchor = viewport.flatMap { rect in zip(items, old.frames).first { $0.1.box.maxY > rect.minY } }.map { (id: $0.0.id, y: $0.1.box.minY) }
         let previous = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         items = (model.map { TaskList.items($0, expanded: expanded, folded: folded) } ?? []).map { item in
-            guard case .card(var card) = item, rings.contains(card.taskId) else { return item }
-            card.story = true
+            guard case .card(var card) = item else { return item }
+            card.people = card.faces.map { people[$0] }
+            if let ring = rings[card.agentId] { (card.story, card.ring) = (true, ring) }
             return .card(card)
         }
         for item in items {
@@ -156,6 +161,9 @@ final class TaskListView: UIView {
             // The corner's "+N more", with a finger's room around it.
             if card.more != nil, let more = result.frames[index].more, more.insetBy(dx: -8, dy: -8).contains(point) {
                 toggle(card.taskId)
+            } else if card.story, let ring = result.frames[index].ring, ring.insetBy(dx: -4, dy: -4).contains(point), let view = views[item.id] {
+                // The ring is its stories; the rest of the card, its chat.
+                onOpenStory?(card, view.ringView)
             } else {
                 onOpen?(item)
             }
@@ -195,6 +203,10 @@ final class TaskRowView: UIView {
     private let highlight = UIView()
     private let label = UILabel()
     private lazy var ring = add(UIView())
+    /// The story ring round the disc, which the viewer grows out of.
+    var ringView: UIView { ring }
+    /// The ring's arcs, seen and new, drawn as the stories row's.
+    private let seenArc = CAShapeLayer(), newArc = CAShapeLayer()
     private lazy var disc = add(UIView())
     private lazy var icon = add(UIImageView())
     private lazy var time = add(UILabel())
@@ -214,6 +226,7 @@ final class TaskRowView: UIView {
         highlight.isUserInteractionEnabled = false
         addSubview(highlight)
         addSubview(label)
+        for arc in [seenArc, newArc] { (arc.fillColor, arc.lineWidth) = (nil, M.storyRing) }
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyColors() }
     }
 
@@ -242,7 +255,7 @@ final class TaskRowView: UIView {
             icon.contentMode = clay == nil ? .center : .scaleAspectFit
             icon.tintColor = muted
             ring.isHidden = !card.story
-            ring.layer.borderWidth = M.storyRing
+            if seenArc.superlayer == nil { [seenArc, newArc].forEach(ring.layer.addSublayer) }
             time.font = TaskListText.timeFont
             time.textColor = muted
             time.textAlignment = .right
@@ -254,7 +267,7 @@ final class TaskRowView: UIView {
             let ids = Array(card.faces.prefix(M.faces))
             while faces.count > ids.count { faces.removeLast().removeFromSuperview() }
             while faces.count < ids.count { faces.append(add(FaceView())) }
-            for (face, id) in zip(faces, ids) { face.show(id, picture: picture?(id), images: images) }
+            for (index, (face, id)) in zip(faces, ids).enumerated() { face.show(id, person: card.people[index], picture: picture?(id), images: images) }
             signal(card.signal)
         case .subRow(let row):
             let text = NSMutableAttributedString(string: row.title, attributes: [.font: TaskListText.rowFont, .foregroundColor: ink])
@@ -327,7 +340,8 @@ final class TaskRowView: UIView {
         switch item {
         case .card:
             disc.backgroundColor = ink.withAlphaComponent(M.discInk)
-            ring.layer.borderColor = accent.cgColor
+            newArc.strokeColor = accent.cgColor
+            seenArc.strokeColor = UIColor(Palette.storiesSeen).resolvedColor(with: traitCollection).cgColor
             let around = selected ? TaskListText.blend(accent, M.selectedAlpha, over: ground.resolvedColor(with: traitCollection)) : ground
             for face in faces {
                 face.ringColor = around
@@ -362,6 +376,10 @@ final class TaskRowView: UIView {
                 view.frame = rect.map(local) ?? .zero
                 view.layer.cornerRadius = view.bounds.width / 2
             }
+            if case .card(let card) = item {
+                let arcs = StoriesCircleView.ring(card.ring?.storyIds.count ?? 0, new: card.ring?.unseenCount ?? 0, center: CGPoint(x: ring.bounds.midX, y: ring.bounds.midY), radius: (ring.bounds.width - M.storyRing) / 2)
+                (seenArc.path, newArc.path) = (arcs.seen, arcs.unseen)
+            }
             icon.frame = f.icon.map(local) ?? .zero
             time.frame = f.time.map(local) ?? .zero
             status.frame = f.status.map(local) ?? .zero
@@ -387,8 +405,6 @@ final class TaskRowView: UIView {
 /// person's picture (`/v0/users/:id/photo`, as their stories show them), a
 /// plain disc until it comes or when they have none.
 final class FaceView: UIView {
-    /// People with no picture, not asked again.
-    private static var missing = Set<String>()
     private let ring = CALayer()
     private let image = UIImageView()
     private var job: Task<Void, Never>?
@@ -406,16 +422,16 @@ final class FaceView: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    /// `userId`'s face: `picture` when at hand, else theirs as read.
-    func show(_ userId: String, picture: UIImage?, images: Images?) {
+    /// `userId`'s face: `picture` when at hand, else theirs as read, its thumbhash first.
+    func show(_ userId: String, person: Person?, picture: UIImage?, images: Images?) {
         job?.cancel()
-        let path = "/v0/users/\(userId)/photo", pixels = Int(TaskListMetrics.chip * 3)
-        image.image = picture ?? images?.cachedPicture(path, thumbhash: nil, pixels: pixels)
-        guard image.image == nil, let images, !Self.missing.contains(userId) else { return }
+        let path = Person.photoPath(userId), pixels = Int(TaskListMetrics.chip * 3), thumbhash = person?.thumbhash
+        let cached = picture ?? images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels)
+        image.image = cached ?? ThumbHashImages.image(thumbhash)
+        guard cached == nil, person?.hasPhoto == true, let images else { return }
         job = Task { [weak self] in
-            let read = await images.picture(path, thumbhash: nil, pixels: pixels)
-            guard !Task.isCancelled else { return }
-            if read == nil { Self.missing.insert(userId) }
+            let read = await images.picture(path, thumbhash: thumbhash, pixels: pixels)
+            guard !Task.isCancelled, let read else { return }
             self?.image.image = read
         }
     }

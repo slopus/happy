@@ -58,6 +58,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var agent: AgentHarness?
     private var storyRows: StoryRowsHarness?
     private var taskList: TaskListHarness?
+    private var storyArtifacts: StoryArtifactsHarness?
     private var agentList: AgentListScrollHarness?
     private var composerKeyboardProbe: ComposerKeyboardProbe?
     private var realArchive: RealArchiveHarness?
@@ -144,6 +145,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "richTasks" {
             taskList = TaskListHarness(window: window, arguments: arguments)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "storyArtifacts" {
+            storyArtifacts = StoryArtifactsHarness(window: window, arguments: arguments)
             return
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "storyRows" {

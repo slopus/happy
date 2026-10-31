@@ -41,8 +41,10 @@ public enum StoryAsset: Equatable, Hashable, Sendable, Codable {
     /// An artifact itself, shown live (an `artifact` frame); no version
     /// always shows its latest.
     case artifact(artifactId: String, version: Int?)
+    /// A story artifact's media: a file of an artifact's version, or its `own` (`type=story`).
+    case storyFile(artifactId: String, version: Int, path: String, own: Bool)
 
-    enum CodingKeys: String, CodingKey { case type, agentId, toolCallId, index, artifactId, version, path }
+    enum CodingKeys: String, CodingKey { case type, agentId, toolCallId, index, artifactId, version, path, own }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -53,6 +55,9 @@ public enum StoryAsset: Equatable, Hashable, Sendable, Codable {
             self = .artifactFile(artifactId: try c.decode(String.self, forKey: .artifactId), version: try c.decode(Int.self, forKey: .version), path: try c.decode(String.self, forKey: .path))
         case "artifact":
             self = .artifact(artifactId: try c.decode(String.self, forKey: .artifactId), version: try c.decodeIfPresent(Int.self, forKey: .version))
+        case "story_file":
+            self = .storyFile(artifactId: try c.decode(String.self, forKey: .artifactId), version: try c.decode(Int.self, forKey: .version),
+                              path: try c.decode(String.self, forKey: .path), own: try c.decode(Bool.self, forKey: .own))
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown asset")
         }
@@ -70,6 +75,9 @@ public enum StoryAsset: Equatable, Hashable, Sendable, Codable {
         case .artifact(let artifactId, let version):
             try c.encode("artifact", forKey: .type); try c.encode(artifactId, forKey: .artifactId)
             try c.encodeIfPresent(version, forKey: .version)
+        case .storyFile(let artifactId, let version, let path, let own):
+            try c.encode("story_file", forKey: .type); try c.encode(artifactId, forKey: .artifactId)
+            try c.encode(version, forKey: .version); try c.encode(path, forKey: .path); try c.encode(own, forKey: .own)
         }
     }
 }

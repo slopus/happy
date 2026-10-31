@@ -201,6 +201,9 @@ final class StoryRoundVideoOverlayView: StoryOverlayView {
         let player: AVPlayer?
         if let local {
             player = AVPlayer(url: local)
+        } else if let media, case .roundVideo(_, .file(let asset), _, _, _) = overlay, case .storyFile = asset {
+            // A story artifact's own file.
+            player = media.player(asset)
         } else if let media, let storyId, let id = overlay.id {
             player = media.roundVideoPlayer(storyId: storyId, overlayId: id)
         } else {

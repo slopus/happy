@@ -59,6 +59,20 @@ final class AgentStoryLayoutTests: XCTestCase {
         XCTAssertEqual(lifted.repost.minY, 468)
     }
 
+    func testAStoryArtifactsReplyBarIsTheFieldAloneCanvasWide() {
+        let canvas = CGRect(x: 0, y: 59, width: 393, height: 699), under = CGRect(x: 0, y: 758, width: 393, height: 60)
+        let bar = AgentStoryLayout.bar(canvas: canvas, bar: under, barHeight: 52, replyOnly: true)
+        XCTAssertEqual(bar.field, CGRect(x: 10, y: 766, width: 373, height: 36))
+        // Over a keyboard it rises onto the frame, where only its solid fill keeps it readable.
+        let lifted = AgentStoryLayout.bar(canvas: canvas, bar: under, barHeight: 52, lift: 300, replyOnly: true)
+        XCTAssertEqual(lifted.field, CGRect(x: 10, y: 466, width: 373, height: 36))
+        XCTAssertEqual([Palette.storiesReplyFill.light.alpha, Palette.storiesReplyFill.dark.alpha], [1, 1])
+        // Its caption and replies sit under its picture, scrolling past 45% of the canvas.
+        let short = AgentStoryLayout.panel(canvas: canvas, text: 100), long = AgentStoryLayout.panel(canvas: canvas, text: 600)
+        XCTAssertEqual([short.media, short.box, short.text, CGRect(x: 0, y: 0, width: long.box.height, height: long.content)], [CGRect(x: 0, y: 59, width: 393, height: 567),
+                       CGRect(x: 0, y: 626, width: 393, height: 132), CGRect(x: 16, y: 16, width: 361, height: 100), CGRect(x: 0, y: 0, width: 314, height: 632)])
+    }
+
     func testTheEditorMakesRoomForTheRoundVideoButton() {
         let plain = StoryEditorLayout(bounds: CGRect(x: 0, y: 0, width: 393, height: 852), statusBar: 59, homeIndicator: 34, postContent: 60)
         let round = StoryEditorLayout(bounds: CGRect(x: 0, y: 0, width: 393, height: 852), statusBar: 59, homeIndicator: 34, postContent: 60, roundVideo: true)

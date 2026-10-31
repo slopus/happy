@@ -37,6 +37,13 @@ final class StoryViewerPageView: UIView {
     private var chrome: [UIView] { [strip, avatar, nameLabel, timeLabel, closeButton, moreButton, soundButton, heartButton, viewsButton, feedbackField, repostButton] }
     /// The story shown is an agent's.
     private(set) var isAgents = false
+    /// A story artifact: its bar is the reply field alone, solid, and its
+    /// caption and replies sit under the picture (`AgentStoryLayout.panel`).
+    private var replyOnly = false
+    private let panel = UIScrollView()
+    private let panelText = UILabel()
+    private var caption: String?
+    private var shownStory: String?
 
     private(set) var author: StoryFeedAuthor?
     private var photoKey: String?
@@ -115,6 +122,10 @@ final class StoryViewerPageView: UIView {
         repostButton.accessibilityIdentifier = "story-repost"
         repostButton.isHidden = true
         addSubview(repostButton)
+        panelText.numberOfLines = 0
+        panel.addSubview(panelText)
+        panel.isHidden = true
+        addSubview(panel)
         shade.backgroundColor = .black
         shade.alpha = 0
         shade.isUserInteractionEnabled = false
@@ -146,13 +157,25 @@ final class StoryViewerPageView: UIView {
         for (index, segment) in segments.enumerated() { segment.progress = index < position ? 1 : 0 }
         guard frames.indices.contains(position) else { return }
         let (story, frame) = frames[position]
-        canvas.show(story, frame: frame, media: media)
+        replyOnly = story.isArtifact
+        var drawn = story
+        if replyOnly { drawn.caption = nil }
+        canvas.show(drawn, frame: frame, media: media)
         timeLabel.text = story.postedAt.map { Strings.Stories.ago(now - $0) }
         isAgents = story.isAgents
-        heartButton.isHidden = author.isSelf
-        viewsButton.isHidden = !author.isSelf
-        feedbackField.isHidden = !isAgents
-        repostButton.isHidden = !isAgents
+        nameLabel.font = .systemFont(ofSize: replyOnly ? 17 : 14, weight: .semibold)
+        panel.isHidden = !replyOnly
+        caption = replyOnly ? story.caption : nil
+        if shownStory != story.id { showReplies([], person: { _ in nil }) }
+        shownStory = story.id
+        heartButton.isHidden = author.isSelf || replyOnly
+        viewsButton.isHidden = !author.isSelf || replyOnly
+        // Anything with somewhere for replies to go takes one: an agent's story, or a repost of one.
+        feedbackField.isHidden = !(isAgents || replyOnly && story.source != nil)
+        repostButton.isHidden = !isAgents || replyOnly
+        // Solid on a story artifact, so it reads over any frame.
+        feedbackField.backgroundColor = replyOnly ? UIColor(Palette.storiesReplyFill) : nil
+        feedbackField.layer.borderWidth = replyOnly ? 0 : 1
         // Others' stories offer only their conversation, when there is one.
         moreButton.isHidden = !author.isSelf && story.source == nil
         setHeart(story.myReaction)
@@ -202,6 +225,24 @@ final class StoryViewerPageView: UIView {
         heartButton.accessibilityValue = reaction
     }
 
+    /// A story artifact's caption, then its replies newest first: each the
+    /// person's name, the words and the time.
+    func showReplies(_ list: [StoryReply], person: (String) -> Person?) {
+        let text = NSMutableAttributedString(string: caption ?? "", attributes: [.font: UIFont.systemFont(ofSize: 17), .foregroundColor: UIColor.white])
+        let now = Int64(Date().timeIntervalSince1970 * 1000), white = UIColor.white
+        for reply in list {
+            let name = (text.length > 0 ? "\n" : "") + (reply.userId.flatMap(person)?.name ?? Strings.Stories.someone) + "  "
+            text.append(NSAttributedString(string: name, attributes: [.font: UIFont.systemFont(ofSize: 16, weight: .semibold), .foregroundColor: white]))
+            text.append(NSAttributedString(string: reply.text + "  ", attributes: [.font: UIFont.systemFont(ofSize: 16), .foregroundColor: white]))
+            text.append(NSAttributedString(string: Strings.Stories.ago(now - reply.createdAt), attributes: [.font: UIFont.systemFont(ofSize: 13), .foregroundColor: white.withAlphaComponent(0.5)]))
+        }
+        let spaced = NSMutableParagraphStyle()
+        spaced.paragraphSpacing = 12
+        text.addAttribute(.paragraphStyle, value: spaced, range: NSRange(location: 0, length: text.length))
+        panelText.attributedText = text
+        setNeedsLayout()
+    }
+
     static func emojiImage(_ emoji: String, size: CGFloat) -> UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).image { _ in
             StoryEmojiOverlayView.drawEmoji(emoji, in: CGRect(x: 0, y: 0, width: size, height: size))
@@ -219,7 +260,7 @@ final class StoryViewerPageView: UIView {
     }
 
     private func loadPhoto(_ author: StoryFeedAuthor, images: Images?) {
-        if author.ringAgentId != nil, let authorImage {
+        if author.ringAgentId != nil, let authorImage = authorImage ?? author.photo.flatMap(StoriesRow.claySlug).flatMap(ClayIconImages.image) {
             // An agent wears its row's icon.
             photoKey = nil
             loading?.cancel()
@@ -263,7 +304,16 @@ final class StoryViewerPageView: UIView {
         layout = StoryViewerLayout(size: bounds.size, safeArea: LayoutInsets(top: safe.top, left: 0, bottom: safe.bottom, right: 0))
         // Placed by bounds and centre: opening and closing move them by
         // their transforms.
-        place(canvas, layout.canvas)
+        if replyOnly {
+            let width = layout.canvas.width - 2 * AgentStoryLayout.panelInset
+            let text = panelText.text?.isEmpty == false ? ceil(panelText.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height) : 0
+            let drawn = AgentStoryLayout.panel(canvas: layout.canvas, text: text)
+            place(canvas, drawn.media)
+            (panel.frame, panelText.frame) = (drawn.box, drawn.text)
+            panel.contentSize = CGSize(width: drawn.box.width, height: drawn.content)
+        } else {
+            place(canvas, layout.canvas)
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         topFade.frame = CGRect(x: 0, y: 0, width: layout.canvas.width, height: 96)
@@ -271,7 +321,7 @@ final class StoryViewerPageView: UIView {
         strip.frame = bounds
         for (segment, frame) in zip(segments, StoryViewerLayout.segments(segments.count, in: layout.strip)) { segment.frame = frame }
         place(avatar, layout.avatar)
-        let lineHeight: CGFloat = 17
+        let lineHeight: CGFloat = replyOnly ? 21 : 17
         // Without a more button the sound button takes its place.
         let titleWidth = layout.titleWidth(withSound: !soundButton.isHidden && !moreButton.isHidden)
         nameLabel.frame = CGRect(x: layout.titleOrigin.x, y: layout.titleOrigin.y, width: titleWidth, height: lineHeight)
@@ -279,8 +329,8 @@ final class StoryViewerPageView: UIView {
         closeButton.frame = layout.close
         moreButton.frame = layout.more
         soundButton.frame = moreButton.isHidden ? layout.more : layout.sound
-        if isAgents {
-            let bar = AgentStoryLayout.bar(canvas: layout.canvas, bar: layout.bar, barHeight: StoryViewerLayout.Metrics.bar, lift: keyboardLift)
+        if isAgents || replyOnly {
+            let bar = AgentStoryLayout.bar(canvas: layout.canvas, bar: layout.bar, barHeight: StoryViewerLayout.Metrics.bar, lift: keyboardLift, replyOnly: replyOnly)
             place(heartButton, bar.heart)
             place(repostButton, bar.repost)
             place(feedbackField, bar.field)

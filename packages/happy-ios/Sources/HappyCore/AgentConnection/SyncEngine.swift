@@ -12,6 +12,12 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var settings: [String: JSONValue] = [:]
     /// The tasks as rich cards, for the tasks part of `rows`; nil shows the classic rows.
     public var richTasks: RichTasks?
+    /// The people cards and stories name, by ID, read only while rich tasks are on.
+    public var people: [String: Person] = [:]
+    /// Verified story artifacts and `tasks.rich` on: Stories read `/v0/stories`.
+    public var storyArtifacts = false
+    /// The person this connection belongs to; nil on a standalone daemon.
+    public var userId: String?
     public var error: String?
     public init() {}
 }
@@ -33,6 +39,8 @@ public actor SyncEngine {
     private var checked = false
     private var capabilityRead: Task<Void, Never>?
     private var keptCapabilities: AgentWire.Health.Capabilities?
+    /// People asked of `GET /v0/users`, read or being read.
+    private var asked = Set<String>()
     private var snapshot = HomeSnapshot()
     private var listeners: [UUID: AsyncStream<HomeSnapshot>.Continuation] = [:]
     private var runner: Task<Void, Never>?
@@ -191,7 +199,12 @@ public actor SyncEngine {
                     guard let event = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8)) else { continue }
                     await spaces.externalEvent(event)
                     guard current(generation) else { return }
-                    if event["type"] == .string("profile.updated") { profileChanged() }
+                    if event["type"] == .string("profile.updated") {
+                        profileChanged()
+                        let known = asked
+                        (asked, snapshot.people) = ([], [:])
+                        wantPeople(Array(known))
+                    }
                     if event["type"] == .string("user_settings.updated"), let value = event["payload"]?["setting"],
                        let setting = try? JSONDecoder().decode(UserSetting.self, from: JSONEncoder().encode(value)) {
                         try await database().receiveSetting(setting.key, value: setting.value, version: setting.version)
@@ -415,8 +428,33 @@ public actor SyncEngine {
             snapshot.allRows = SidebarRows.make(desktop, settings: snapshot.settings)
             snapshot.rows = Rows.visible(snapshot.allRows)
             snapshot.richTasks = RichTasks.make(desktop, capabilities: capabilities, settings: snapshot.settings)
+            snapshot.userId = desktop.profile?.userId
+            snapshot.storyArtifacts = checked && capabilities?.storyArtifacts == true && snapshot.settings[RichTasks.richKey] == .bool(true)
+            if let rich = snapshot.richTasks {
+                wantPeople((rich.unsectioned + rich.sections.flatMap(\.cards)).flatMap(\.faces) + (desktop.surfaces ?? []).flatMap { $0.members.compactMap(\.userId) })
+            }
         }
         publish()
+    }
+
+    /// Names and pictures for these people, those not read or being read,
+    /// only while this connection's verified health has rich tasks on.
+    public func wantPeople(_ ids: [String]) {
+        let wanted = Set(ids).subtracting(asked)
+        guard checked, snapshot.richTasks != nil, !wanted.isEmpty else { return }
+        asked.formUnion(wanted)
+        let generation = generation
+        Task {
+            let found = try? await client.people(wanted.sorted())
+            guard let found, current(generation) else {
+                // Failed, or from before a pause: asked again once connected.
+                asked.subtract(wanted)
+                if !current(generation), runner != nil { wantPeople(Array(wanted)) }
+                return
+            }
+            snapshot.people.merge(found) { $1 }
+            publish()
+        }
     }
 
     private func publish() { for listener in listeners.values { listener.yield(snapshot) } }

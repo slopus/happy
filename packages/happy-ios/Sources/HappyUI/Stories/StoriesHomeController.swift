@@ -170,8 +170,22 @@ final class StoriesHomeController {
         draw(next)
     }
 
+    /// Names and pictures a story artifact's circle (`StoryArtifacts.feed`).
+    var poster: ((StoryFeedAuthor) -> StoryFeedAuthor)?
+
+    /// What names the circles changed: drawn again, or once the viewer closes.
+    func postersChanged() {
+        guard let session, session.snapshot.artifacts else { return }
+        if viewerUp { held = session.snapshot } else { draw(session.snapshot) }
+    }
+
     private func draw(_ next: StoriesSnapshot) {
         let hadUnseen = StoriesRow.hasUnseen(items)
+        var next = next
+        if let poster, next.artifacts, var feed = next.feed {
+            feed.authors = feed.authors.map(poster)
+            next.feed = feed
+        }
         snapshot = next
         let rings = next.isOn ? StoriesRow.rings(next.feed) : nil
         if rings != self.rings {
@@ -455,7 +469,7 @@ final class StoriesHomeController {
             }
             return
         }
-        let author = StoriesRow.ringAuthor(stories, name: name)
+        let author = (poster ?? { $0 })(StoriesRow.ringAuthor(stories, name: name))
         var feed = StoryFeed(authors: [author], stories: session.snapshot.stories, cursor: "")
         feed.stories.merge(snapshot.feed?.stories ?? [:]) { held, _ in held }
         if !stories.storyIds.contains(where: { feed.stories[$0] != nil }) {

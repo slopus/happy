@@ -27,8 +27,11 @@ public enum TaskList {
         public var signal: Row.Corner
         /// The people who wrote to its agent since it was read, newest first.
         public var faces: [String]
-        /// A story on its disc (stories come later; the ring is drawn already).
+        /// A story on its disc: one segment per live story, the new ones coloured.
         public var story = false
+        public var ring: StoryRing?
+        /// Who its faces are, as read; nil for one not read yet.
+        public var people: [Person?] = []
         /// "+N more" in the corner: every child hidden, the card not opened out.
         public var more: Int?
     }

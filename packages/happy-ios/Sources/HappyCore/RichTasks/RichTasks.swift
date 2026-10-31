@@ -34,6 +34,11 @@ public struct RichTasks: Equatable, Sendable {
         public var rows: [TaskList.SubRow] = []
     }
 
+    /// The card whose agent `agentId` is: its stories are the card's ring.
+    public func card(holding agentId: String) -> Card? {
+        (unsectioned + sections.flatMap(\.cards)).first { $0.agent.id == agentId }
+    }
+
     /// What a sub-row draws for its ref: its name, and the kind of thing it is.
     public struct Child: Equatable, Sendable {
         public var title: String

@@ -108,6 +108,10 @@ public enum StoriesRow {
 
     static let ringPrefix = "ring:"
 
+    /// A circle's photo that is a clay icon of the app's own, not a path.
+    public static func clayPhoto(_ slug: String) -> String { "clay:" + slug }
+    public static func claySlug(_ photo: String) -> String? { photo.hasPrefix("clay:") ? String(photo.dropFirst(5)) : nil }
+
     /// Where the viewer opens on an author: their first unseen story, or
     /// their first when all are seen.
     public static func start(_ author: StoryFeedAuthor, stories: [String: Story]) -> Int {

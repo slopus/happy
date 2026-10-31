@@ -72,6 +72,12 @@ final class StoriesSession {
         })
     }
 
+    /// Who people are (`HomeSnapshot.people`): the viewer's repliers.
+    var people: [String: Person] = [:]
+
+    /// Story artifacts as the connection verified them (`HomeSnapshot.storyArtifacts`).
+    func gate(_ on: Bool, me: String?) { Task { [store] in await store.gate(on, me: me) } }
+
     /// Calls `watch` with every snapshot from now on, starting with the current one.
     func watch(_ watch: @escaping (StoriesSnapshot) -> Void) -> Watch {
         let id = UUID()

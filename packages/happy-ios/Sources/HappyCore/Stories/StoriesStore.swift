@@ -24,6 +24,8 @@ public struct StoriesSnapshot: Equatable, Sendable {
     public var live = false
     /// The computer serves agents' stories: rings, round videos, reposts.
     public var agentStories = false
+    /// Read from `/v0/stories` (`StoryArtifacts`): rich tasks' stories.
+    public var artifacts = false
 
     public init() {}
 
@@ -78,6 +80,13 @@ public actor StoriesStore {
     private var reactedMeanwhile: Set<String> = []
     /// Whether `stories.json` exists for this computer.
     private var keptOnDisk = false
+    /// Verified story artifacts and `tasks.rich` (`gate`): only `/v0/stories` is asked; off, only main's routes.
+    private var gated = false
+    private var artifacts: Bool { snapshot.artifacts }
+    /// Whose `seenBy` greys a ring: the person, nil on a standalone daemon.
+    private var me: String?
+    /// Each read of the feed; an answer to an older one is dropped.
+    private var feedRevision = 0
 
     public init(client: AgentClient, events: @escaping Events, offline: OfflineFile?, now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }, firstReadDelay: Duration = .seconds(1)) {
         self.client = client
@@ -170,7 +179,10 @@ public actor StoriesStore {
 
     private func read() async {
         // Out of reach, what was kept stays on screen.
+        feedRevision += 1
+        if gated { return await readArtifacts() }
         guard let health = try? await client.health() else { return }
+        if snapshot.artifacts { turnedOff(.unknown) }
         guard health.capabilities?.stories == true else { return turnedOff(.unsupported) }
         snapshot.agentStories = health.capabilities?.agentStories == true
         let setting: JSONValue?
@@ -196,7 +208,34 @@ public actor StoriesStore {
         } catch {}
     }
 
+    /// `me`: the person the connection belongs to.
+    public func gate(_ on: Bool, me: String?) {
+        self.me = me
+        guard on != gated else { return }
+        gated = on
+        startLoad()
+    }
+
+    private func readArtifacts() async {
+        let revision = feedRevision
+        guard let feed = try? await artifactFeed(), gated, revision == feedRevision else { return }
+        if !snapshot.artifacts { turnedOff(.unknown) }
+        (snapshot.artifacts, snapshot.availability, snapshot.live) = (true, .on, true)
+        // The viewer is open: its stories change, the row waits.
+        if holds > 0, snapshot.feed != nil {
+            for (id, story) in feed.stories { adopt(story, id: id) }
+            reloadWanted = true
+        } else { adoptFeed(feed) }
+    }
+
+    private func artifactFeed() async throws -> StoryFeed {
+        let read = try await client.storyArtifacts()
+        return StoryArtifacts.feed(read.stories, me: me, cursor: read.cursor)
+    }
+
     private func turnedOff(_ availability: StoriesSnapshot.Availability) {
+        feedRevision += 1
+        snapshot.artifacts = false
         snapshot.availability = availability
         snapshot.feed = nil
         snapshot.stories = [:]
@@ -211,9 +250,12 @@ public actor StoriesStore {
     private func reloadFeedSoon() {
         guard holds == 0 else { reloadWanted = true; return }
         reloading?.cancel()
+        feedRevision += 1
+        let revision = feedRevision, artifacts = artifacts
         reloading = Task {
             try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled, let feed = try? await client.storyFeed() else { return }
+            guard !Task.isCancelled, let feed = try? await (artifacts ? artifactFeed() : client.storyFeed()) else { return }
+            guard !Task.isCancelled, revision == feedRevision, artifacts == self.artifacts else { return }
             adoptReloaded(feed)
         }
     }
@@ -290,6 +332,14 @@ public actor StoriesStore {
         guard let type = event["type"]?.stringValue else { return }
         let payload = event["payload"] ?? .null
         switch type {
+        case "story.changed":
+            // Shown at once, even taken down under an open viewer; the order is the feed's, read after.
+            guard artifacts, let wire = payload["story"].flatMap({ Self.decode(StoryArtifact.self, $0) }) else { return }
+            let story = StoryArtifacts.story(wire, me: me)
+            adopt(story)
+            if story.status == .posted { place(story) } else { removed(story.id, version: nil) }
+            if story.seen { markSeen(through: story.id) }
+            reloadFeedSoon()
         case "user_settings.updated":
             guard payload["setting"]?["key"]?.stringValue == AgentClient.storiesSettingKey else { return }
             let on = payload["setting"]?["value"] == .bool(true)
@@ -403,7 +453,8 @@ public actor StoriesStore {
             if let ring = story.ringAgentId { return other.ringAgentId == ring }
             return other.ringAgentId == nil && !other.isAgents && other.authorUserId == story.authorUserId
         }
-        for (id, other) in snapshot.stories where together(other) && other.status == .posted && !other.seen && (other.postedAt ?? .max) <= mark {
+        // A story artifact is seen on its own.
+        for (id, other) in snapshot.stories where together(other) && other.status == .posted && !other.seen && (artifacts ? id == storyId : (other.postedAt ?? .max) <= mark) {
             snapshot.stories[id]?.seen = true
         }
         if var feed = snapshot.feed {
@@ -533,7 +584,7 @@ public actor StoriesStore {
     /// Reads a story the screens need and the store doesn't hold (a
     /// conversation's draft), once at a time.
     public func want(_ storyId: String) {
-        guard snapshot.stories[storyId] == nil, !snapshot.gone.contains(storyId), reading[storyId] == nil else { return }
+        guard !artifacts, snapshot.stories[storyId] == nil, !snapshot.gone.contains(storyId), reading[storyId] == nil else { return }
         reading[storyId] = Task {
             let story: Story?
             do { story = try await client.story(storyId) }
@@ -545,6 +596,7 @@ public actor StoriesStore {
 
     /// Reads it again: the author's view count moves without an event.
     public func refresh(_ storyId: String) {
+        guard !artifacts else { return }
         Task {
             do { read(storyId, try await client.story(storyId)) }
             catch AgentClientError.status(404, _, _) { gone(storyId) }
@@ -578,6 +630,10 @@ public actor StoriesStore {
         markSeen(through: storyId)
         publish()
         keepSoon()
+        if artifacts {
+            Task { try? await client.markStoryArtifactSeen(storyId) }
+            return
+        }
         Task {
             if let story = try? await client.markStorySeen(storyId) { adoptAndPublish(story) }
         }
@@ -653,6 +709,12 @@ public actor StoriesStore {
 
     public func delete(_ storyId: String) async throws {
         guard let story = snapshot.stories[storyId] else { return }
+        if artifacts {
+            try await client.takeDownStory(storyId)
+            removed(storyId, version: nil)
+            publish()
+            return reloadFeedSoon()
+        }
         let deleted = try await client.deleteStory(storyId, version: story.version)
         removed(storyId, version: deleted.version)
         publish()
@@ -669,6 +731,9 @@ public actor StoriesStore {
 
     /// Sends what the person typed to the agent that posted the story.
     public func feedback(_ storyId: String, frameId: String?, text: String) async throws {
+        if artifacts, let agentId = snapshot.stories[storyId]?.source?.agentId {
+            return try await client.replyToStory(storyId, agentId: agentId, text: text, id: ClientID.make())
+        }
         try await client.storyFeedback(storyId, frameId: frameId, text: text, id: ClientID.make())
     }
 

@@ -46,6 +46,8 @@ extension AgentClient {
             "/v0/agents/\(escape(agentId))/tool-calls/\(escape(toolCallId))/media/\(index)"
         case .artifactFile(let artifactId, let version, let path):
             "/v0/artifacts/\(escape(artifactId))/versions/\(version)/files/" + path.split(separator: "/").map { escape(String($0)) }.joined(separator: "/")
+        case .storyFile(let artifactId, let version, let file, let own):
+            path(.artifactFile(artifactId: artifactId, version: version, path: file)) + (own ? "?type=story" : "")
         case .artifact(let artifactId, let version):
             // A live page has no bytes of its own: its version, read as an artifact is.
             "/v0/artifacts/\(escape(artifactId))" + (version.map { "/versions/\($0)" } ?? "")

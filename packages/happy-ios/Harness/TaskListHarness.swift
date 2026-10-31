@@ -25,7 +25,7 @@ final class TaskListHarness {
             guard let directory, let file = pictures[key] else { return nil }
             return UIImage(contentsOfFile: "\(directory)/\(file)")
         }
-        list.rings = ["onboarding"]
+        list.rings = ["onboarding-agent": StoryRing(agentId: "onboarding-agent", storyIds: ["a", "b"], unseenCount: 1, latestPostedAt: nil)]
         list.apply(Self.model())
         list.selectedId = "task:onboarding/agent:install"
         list.pressedId = "task:onboarding/workspace:round13"

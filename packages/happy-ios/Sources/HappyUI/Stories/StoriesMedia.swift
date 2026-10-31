@@ -68,7 +68,7 @@ final class StoriesMedia {
             }
         } else {
             task = Task.detached(priority: .userInitiated) {
-                guard let response = try? await client.storyFrame(storyId, frameId: frame.id) else { return nil }
+                guard let response = try? await Self.bytes(client, storyId, frame) else { return nil }
                 return Images.decode(response.body, maxPixels: pixels)
             }
         }
@@ -116,12 +116,18 @@ final class StoriesMedia {
         return AVPlayer(playerItem: AVPlayerItem(asset: stream.asset()))
     }
 
+    /// A frame's bytes: a story artifact's from its file, any other from its story's frame route.
+    private nonisolated static func bytes(_ client: AgentClient, _ storyId: String, _ frame: StoryFrame, range: ClosedRange<Int>? = nil) async throws -> HTTP1Response {
+        if case .storyFile = frame.asset { return try await client.asset(frame.asset, range: range) }
+        return try await client.storyFrame(storyId, frameId: frame.id, range: range)
+    }
+
     private func stream(_ storyId: String, _ frame: StoryFrame) -> StoriesByteStream {
         let key = Self.key(storyId, frame.id)
         if let stream = streams[key] { return stream }
         let client = client
         let stream = StoriesByteStream(name: frame.id, mimeType: "video/mp4") { range in
-            try await client.storyFrame(storyId, frameId: frame.id, range: range)
+            try await Self.bytes(client, storyId, frame, range: range)
         }
         streams[key] = stream
         return stream

@@ -88,13 +88,27 @@ public enum AgentStoryLayout {
     }
 
     /// `bar` is the viewer's bar under the canvas; `lift` raises it over a keyboard.
-    public static func bar(canvas: CGRect, bar: CGRect, barHeight: CGFloat, lift: CGFloat = 0) -> Bar {
+    /// `replyOnly` (a story artifact): the field alone, the canvas's width.
+    public static func bar(canvas: CGRect, bar: CGRect, barHeight: CGFloat, lift: CGFloat = 0, replyOnly: Bool = false) -> Bar {
         typealias M = BarMetrics
         let midY = bar.minY + min(bar.height, barHeight) / 2 - lift
         let repost = CGRect(x: canvas.maxX - M.inset - M.button, y: midY - M.button / 2, width: M.button, height: M.button)
         let heart = repost.offsetBy(dx: -(M.button + M.gap), dy: 0)
         let fieldX = canvas.minX + M.inset
-        let field = CGRect(x: fieldX, y: midY - M.field / 2, width: max(0, heart.minX - M.gap - fieldX), height: M.field)
+        let fieldEnd = replyOnly ? canvas.maxX - M.inset : heart.minX - M.gap
+        let field = CGRect(x: fieldX, y: midY - M.field / 2, width: max(0, fieldEnd - fieldX), height: M.field)
         return Bar(field: field, heart: heart, repost: repost)
+    }
+
+    public static let panelInset: CGFloat = 16, panelShare: CGFloat = 0.45
+
+    /// A story artifact's caption and replies, `text` tall across the canvas
+    /// less `panelInset` a side, under its picture (task_174's mock `.story`):
+    /// up to `panelShare` of the canvas, scrolling in it; `text` in its space.
+    public static func panel(canvas: CGRect, text: CGFloat) -> (media: CGRect, box: CGRect, text: CGRect, content: CGFloat) {
+        let content = text > 0 ? text + 2 * panelInset : 0, height = min(content, floor(canvas.height * panelShare))
+        let media = CGRect(x: canvas.minX, y: canvas.minY, width: canvas.width, height: canvas.height - height)
+        return (media, CGRect(x: canvas.minX, y: media.maxY, width: canvas.width, height: height),
+                CGRect(x: panelInset, y: panelInset, width: max(0, canvas.width - 2 * panelInset), height: text), content)
     }
 }

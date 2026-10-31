@@ -216,6 +216,20 @@ final class RichTasksTests: XCTestCase {
         }
     }
 
+    func testPeopleAreReadInHundredsAndAgainAfterAPause() async throws {
+        let transport = RichFixture(health: Self.health34, bootstrap: Self.bootstrap(.v34, settings: Self.settingsOn))
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && $0.people.count == 2 }
+        await engine.wantPeople((0..<150).map { "p\($0)" })
+        await engine.pause()
+        await engine.start()
+        _ = try await wait(engine) { $0.people.count == 152 && $0.people["jordan"] == Person(name: "jordan", thumbhash: nil, hasPhoto: false) }
+        let batches = await transport.requested.filter { $0.hasPrefix("/v0/users?ids=") }.map { $0.split(separator: ",").count }
+        XCTAssertEqual(batches, [2, 100, 50, 100, 50])
+        await engine.stop()
+    }
+
     /// Home once the connection is up and every read it sets off has settled.
     private func settle(_ transport: RichFixture, directory: URL?) async throws -> (HomeSnapshot, [String]) {
         let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
@@ -267,6 +281,11 @@ private actor RichFixture: AgentTransport {
             guard let health else { throw URLError(.timedOut) }
             return .init(status: 200, body: Data(health.utf8))
         case "/v0/bootstrap/desktop": return .init(status: 200, body: Data(bootstrap.utf8))
+        case let users where users.hasPrefix("/v0/users?ids="):
+            // Slow enough to be out when the connection pauses.
+            try await Task.sleep(for: .milliseconds(300))
+            let ids = users.dropFirst("/v0/users?ids=".count).split(separator: ",")
+            return .init(status: 200, body: Data(#"{"users":[\#(ids.map { #"{"id":"\#($0)","name":"\#($0)","photo":null}"# }.joined(separator: ","))]}"#.utf8))
         case "/v0/tasks?scope=joined" where !tasksFail:
             return .init(status: 200, body: Data(#"{"tasks":[],"memberships":[],"sections":[{"id":"s1","name":"Priorities","orderKey":"c","collapsed":false},{"id":"s2","name":"Later","orderKey":"e","collapsed":true}]}"#.utf8))
         default: return .init(status: 500, body: Data("{}".utf8))

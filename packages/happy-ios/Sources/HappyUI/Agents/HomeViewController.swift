@@ -122,11 +122,16 @@ final class HomeViewController: UIViewController {
         tasks.onOpen = { [weak self] item in self?.open(item) }
         stories.onInsetChange = { [weak self] change in self?.storiesMoved(change) }
         // Agent stories turn the conversations' rows into story rows.
-        stories.onRings = { [weak self] _ in self?.showRows() }
+        stories.onRings = { [weak self] _ in
+            self?.showRows()
+            self?.ringCards()
+        }
         sidebar.onOpenStory = { [weak self] row, ring in
             guard let agentId = row.agentId else { return }
             self?.stories.openRing(agentId: agentId, name: row.label, from: ring)
         }
+        tasks.onOpenStory = { [weak self] card, ring in self?.stories.openRing(agentId: card.agentId, name: card.title, from: ring) }
+        stories.poster = { [weak self] author in self?.poster(author) ?? author }
         stories.list = sidebar
         empty.onPair = { [weak self] in
             guard let self else { return }
@@ -195,8 +200,14 @@ final class HomeViewController: UIViewController {
     /// arrival never changes the rows' inset or screen positions.
     func applyConnection(_ home: HomeSnapshot) {
         let rich = agentHome.richTasks != nil
+        let named = (agentHome.richTasks, agentHome.people) != (home.richTasks, home.people)
         agentHome = home
         tasks.apply(home.richTasks)
+        tasks.people = home.people
+        stories.session?.people = home.people
+        stories.session?.gate(home.storyArtifacts, me: home.userId)
+        ringCards()
+        if named { stories.postersChanged() }
         let previous = snapshot.rows
         snapshot = Snapshot()
         snapshot.availability = agentHome.loaded ? .available : .loading
@@ -267,6 +278,25 @@ final class HomeViewController: UIViewController {
             gone()
         }
         onSearchEnded?()
+    }
+
+    /// The cards whose agent has a live story wear its ring.
+    private func ringCards() {
+        tasks.rings = stories.rings ?? [:]
+    }
+
+    /// A circle of the stories row: an agent's as its card is, a person's as
+    /// `GET /v0/users` has them; a name the daemon sent (`poster.name`) stays.
+    private func poster(_ author: StoryFeedAuthor) -> StoryFeedAuthor {
+        var author = author
+        if let agentId = author.ringAgentId, let card = agentHome.richTasks?.card(holding: agentId) {
+            (author.name, author.photo) = (author.name.isEmpty ? card.name : author.name, card.iconSlug.map(StoriesRow.clayPhoto))
+        } else if let id = author.userId, let person = agentHome.people[id] {
+            (author.name, author.photo, author.thumbhash) = (author.name.isEmpty ? person.name : author.name, person.hasPhoto ? Person.photoPath(id) : nil, person.thumbhash)
+        } else if author.ringAgentId == nil, let id = author.userId, let engine = session?.engine {
+            Task { await engine.wantPeople([id]) }
+        }
+        return author
     }
 
     /// Home's own rows, with the stories' rings.

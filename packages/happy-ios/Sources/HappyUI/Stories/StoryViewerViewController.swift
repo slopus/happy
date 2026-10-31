@@ -292,7 +292,21 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         guard !frames.isEmpty else { return }
         position = min(max(0, position), frames.count - 1)
         page.show(author: author, frames: frames, position: position, media: session.media, images: session.images, now: now)
+        readReplies(frames[position].story)
         began()
+    }
+
+    private var readingReplies: Task<Void, Never>?
+
+    /// A story artifact's replies under its caption, as `GET /v0/stories/:id/replies` has them.
+    private func readReplies(_ story: Story) {
+        readingReplies?.cancel()
+        guard story.isArtifact else { return }
+        let session = session
+        readingReplies = Task { [weak self] in
+            guard let read = try? await session.client.storyReplies(story.id), !Task.isCancelled, let self, current?.story.id == story.id else { return }
+            page.showReplies(read, person: { session.people[$0] })
+        }
     }
 
     /// The page now shows `position`: its time starts, it is seen, and the
@@ -418,6 +432,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
             for (index, author) in authors.enumerated() {
                 guard let fresh = feed.authors.first(where: { $0.key == author.key }) else { continue }
                 var merged = fresh
+                // A circle the feed leaves unnamed keeps the name it opened with.
+                if fresh.name.isEmpty || fresh.photo == nil { (merged.name, merged.photo, merged.thumbhash) = (fresh.name.isEmpty ? author.name : fresh.name, author.photo, author.thumbhash) }
                 // The story opened stays, even one that left the feed.
                 merged.storyIds = author.storyIds.filter { fresh.storyIds.contains($0) || $0 == opened } + fresh.storyIds.filter { !author.storyIds.contains($0) }
                 authors[index] = merged
@@ -803,7 +819,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     private func sendFeedback() {
         let field = page.feedbackField
         let text = (field.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !sendingFeedback, let (story, frame) = current, story.isAgents else { return }
+        guard !text.isEmpty, !sendingFeedback, let (story, frame) = current, story.isAgents || (story.isArtifact && story.source != nil) else { return }
         sendingFeedback = true
         field.isEnabled = false
         note("feedback")
@@ -819,6 +835,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
                 StoriesHaptics.play(.post)
                 note("feedback:sent")
                 flashPlaceholder(Strings.Stories.feedbackSent)
+                readReplies(story)
             } catch {
                 guard let self else { return }
                 sendingFeedback = false
@@ -899,7 +916,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     /// the heart), as Telegram's reaction effect does.
     private func react(_ emoji: String, from source: UIView? = nil) {
         note("react")
-        guard let (story, _) = current else { return }
+        guard let (story, _) = current, !story.isArtifact else { return }
         let next = story.myReaction == emoji ? nil : emoji
         page.setHeart(next)
         StoriesHaptics.play(.react)
