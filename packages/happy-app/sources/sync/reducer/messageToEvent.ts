@@ -28,6 +28,13 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
 
     // Check for agent messages that should become events
     if (msg.role === 'agent') {
+        // Check if the message has meaningful text content alongside tool calls.
+        // If so, do NOT convert to event — let the text display normally.
+        const hasText = msg.content.some(
+            c => c.type === 'text' && c.text.trim().length > 0
+                && !c.text.match(/^Claude AI usage limit reached\|\d+$/)
+        );
+
         for (const content of msg.content) {
             // Check for Claude AI usage limit messages
             if (content.type === 'text') {
@@ -41,9 +48,14 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
                         } as AgentEvent;
                     }
                 }
-                
+
             }
-            
+
+            // Only convert tool-call-only messages to events.
+            // When the message also contains text, let it go through normal
+            // processing so the text is displayed to the user.
+            if (hasText) continue;
+
             // Check for mcp__happy__change_title tool calls
             if (content.type === 'tool-call' && content.name === 'mcp__happy__change_title') {
                 const title = content.input?.title;
