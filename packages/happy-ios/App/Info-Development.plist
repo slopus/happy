@@ -42,6 +42,8 @@
 	<string>Allow Happy to show your photos and videos so you can share them in stories and chats.</string>
 	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
 	<true/>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Allow Happy to save pictures and videos your agents made to your library.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow Happy v2 (dev) to access your camera to scan QR codes and share photos with AI.</string>
 	<key>NSLocalNetworkUsageDescription</key>

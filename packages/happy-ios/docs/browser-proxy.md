@@ -81,6 +81,31 @@ without that allowance failed with -1022. The exception applies only to WebKit,
 not the production native API client; it permits HTTP dev servers and public
 HTTP URLs while those bytes still travel through the agent tunnel.
 
+## Native artifact viewer
+
+Markdown, image, image series and video artifacts are drawn natively
+(`ArtifactViewController`), not in WebKit. Their own files are read through
+`GET /v0/artifacts/:id/versions/:n/files/*path` (`AgentClient.artifactFile`),
+a 4 MiB range at a time. A recording streams through `MediaStream`, an
+`AVAssetResourceLoader` whose every request becomes a `Range` request on the
+same route; the daemon answers `206`, so the player seeks without reading the
+whole file.
+
+A Markdown document resolves each picture and link against its own path
+(`ArtifactMarkdown.resolve`), as a browser resolves them against the entry's
+URL: `./`, `../` and percent-encoding are honoured, a leading `/` starts at the
+version's root, and a path that would leave the version, or that decodes to a
+separator, backslash or control byte, is refused. Links to other files of the
+version open in the same viewer.
+
+An absolute http(s) picture in a document goes through `BrowserFetcher`, never
+the phone's network. `https` uses a URLSession whose only proxy is a
+`BrowserProxy` on loopback (`.workspace` scope, the artifact's source
+workspace), so TLS stays end to end. Plain `http` is one GET over a CONNECT
+tunnel, because App Transport Security refuses plain-HTTP URLSession loads
+before any proxy sees them (production allows arbitrary loads only in web
+content). Nothing but the request is sent, with no cookies or cache.
+
 ## Contract gaps and limits
 
 The inspected current happy-agent API and artifact schema no longer contain a

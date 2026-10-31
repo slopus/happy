@@ -27,7 +27,7 @@ protocol ChatMediaSource: AnyObject {
 /// picture that failed keeps its placeholder under a quiet glyph and is
 /// asked for again when the computer is back (`MediaLoader.retry`).
 final class ChatMediaView: UIView {
-    static let radius: CGFloat = 8
+    nonisolated static let radius: CGFloat = 8
     static let playIconSize: CGFloat = 22
 
     private let placeholder = UIImageView()
@@ -47,6 +47,8 @@ final class ChatMediaView: UIView {
     /// The thumbhash shown under the picture, for tests.
     var placeholderImage: UIImage? { placeholder.image }
     var pictureImage: UIImage? { picture.image }
+    /// What it shows, for tests.
+    var item: ChatMedia? { media }
 
     override init(frame: CGRect) {
         super.init(frame: frame)

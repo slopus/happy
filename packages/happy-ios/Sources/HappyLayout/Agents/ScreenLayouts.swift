@@ -258,13 +258,17 @@ public struct ChatTitleLayout: Equatable, Sendable {
 }
 
 /// A picture opened whole: fitted inside the safe area on black, never
-/// enlarged past its own size, with its close button at the top right.
+/// enlarged past its own size, with its close button at the top right and
+/// its share button at the top left. A recording's player takes the safe
+/// area under the two, so its own controls never sit beneath them.
 public struct PictureViewerLayout: Equatable, Sendable {
     public static let closeSize: CGFloat = 44
     public static let closeInset: CGFloat = 8
 
     public var picture: CGRect
     public var close: CGRect
+    public var share: CGRect
+    public var player: CGRect
 
     /// `picture` is its size in points; zero before it is known.
     public init(size: CGSize, safeArea: LayoutInsets, picture natural: CGSize) {
@@ -277,5 +281,8 @@ public struct PictureViewerLayout: Equatable, Sendable {
             picture = area
         }
         close = CGRect(x: size.width - safeArea.right - Self.closeInset - Self.closeSize, y: safeArea.top + Self.closeInset, width: Self.closeSize, height: Self.closeSize)
+        share = CGRect(x: safeArea.left + Self.closeInset, y: close.minY, width: Self.closeSize, height: Self.closeSize)
+        let top = close.maxY + Self.closeInset
+        player = CGRect(x: area.minX, y: top, width: area.width, height: max(0, area.maxY - top))
     }
 }

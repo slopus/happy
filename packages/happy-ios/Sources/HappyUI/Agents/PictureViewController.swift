@@ -1,8 +1,22 @@
 #if canImport(UIKit)
+import AVKit
 import HappyCore
 import HappyIcons
 import HappyLayout
 import UIKit
+
+/// A source whose recordings the viewer plays where they are paged.
+@MainActor
+protocol ChatMediaPlaying: ChatMediaSource {
+    func player(_ key: String) -> AVPlayer?
+}
+
+/// A source that hands an item to the share sheet as a file, which offers
+/// Save Image and Save Video with the rest.
+@MainActor
+protocol ChatMediaSharing: ChatMediaSource {
+    func shareable(_ key: String) async -> URL?
+}
 
 /// One picture of a conversation's, as the viewer pages them.
 struct Picture: Equatable {
@@ -11,12 +25,15 @@ struct Picture: Equatable {
     let label: String
     /// Its pixels as stated, so its placeholder takes the picture's place.
     var size: CGSize?
+    /// A recording, played in its page by a source that plays them.
+    var isVideo = false
 
-    init(key: String, thumbhash: String?, label: String, size: CGSize? = nil) {
+    init(key: String, thumbhash: String?, label: String, size: CGSize? = nil, isVideo: Bool = false) {
         self.key = key
         self.thumbhash = thumbhash
         self.label = label
         self.size = size
+        self.isVideo = isVideo
     }
 
     /// A picture an agent presented.
@@ -56,14 +73,18 @@ struct Picture: Equatable {
 /// conversation's pictures whole on black, swiped between in its order,
 /// each pinched or double-tapped to zoom; dragged up or down it follows
 /// the finger as the black fades, and goes; its button or a tap closes it.
+/// A recording plays in its page with the system's controls, from a
+/// source that plays them; one that shares adds a share button.
 final class PictureViewController: UIViewController, UIScrollViewDelegate, UIGestureRecognizerDelegate {
     private let source: ChatMediaSource
     private let pictures: [Picture]
     private(set) var index: Int
     private let pager = UIScrollView()
     /// The page in view and the ones either side of it.
-    private var pages: [Int: PicturePage] = [:]
+    private var pages: [Int: any ViewerPage] = [:]
     private let closeButton = UIButton(type: .system)
+    private let shareButton = UIButton(type: .system)
+    private let sharing = UIActivityIndicatorView(style: .medium)
     private let drag = UIPanGestureRecognizer()
     /// Set while the pager is placed for a new size, so its offset moving
     /// doesn't turn the page.
@@ -99,6 +120,17 @@ final class PictureViewController: UIViewController, UIScrollViewDelegate, UIGes
         closeButton.accessibilityLabel = Strings.close
         closeButton.addTarget(self, action: #selector(close), for: .touchUpInside)
         view.addSubview(closeButton)
+        if source is ChatMediaSharing {
+            shareButton.setImage(.icon(.ionicons("share-outline"), size: 24), for: .normal)
+            shareButton.tintColor = UIColor(Palette.viewerControl)
+            shareButton.accessibilityLabel = Strings.ArtifactMedia.share
+            shareButton.accessibilityIdentifier = "picture-share"
+            shareButton.addTarget(self, action: #selector(share), for: .touchUpInside)
+            view.addSubview(shareButton)
+            sharing.color = UIColor(Palette.viewerControl)
+            sharing.hidesWhenStopped = true
+            view.addSubview(sharing)
+        }
         drag.addTarget(self, action: #selector(dragged(_:)))
         drag.delegate = self
         view.addGestureRecognizer(drag)
@@ -110,6 +142,8 @@ final class PictureViewController: UIViewController, UIScrollViewDelegate, UIGes
         super.viewDidLayoutSubviews()
         let layout = PictureViewerLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), picture: .zero)
         closeButton.setLayoutFrame(layout.close)
+        shareButton.setLayoutFrame(layout.share)
+        sharing.setLayoutFrame(layout.share)
         let pagerLayout = PicturePagerLayout(size: view.bounds.size, count: pictures.count)
         for page in pages.values { page.safeArea = LayoutInsets(view.safeAreaInsets) }
         guard pager.frame != pagerLayout.pager || pager.contentSize != pagerLayout.contentSize else { return }
@@ -135,17 +169,27 @@ final class PictureViewController: UIViewController, UIScrollViewDelegate, UIGes
         let layout = PicturePagerLayout(size: view.bounds.size, count: pictures.count)
         let wanted = Set(max(0, index - 1)...min(pictures.count - 1, index + 1))
         for (number, page) in pages where !wanted.contains(number) {
+            if let page = page as? VideoPage { release(page) }
             page.removeFromSuperview()
             pages[number] = nil
         }
         for number in wanted where pages[number] == nil {
-            let page = PicturePage(source: source, picture: pictures[number])
+            let picture = pictures[number]
+            let page: any ViewerPage
+            if picture.isVideo, let player = (source as? ChatMediaPlaying)?.player(picture.key) {
+                let video = VideoPage(player: player, label: picture.label)
+                addChild(video.playback)
+                page = video
+            } else {
+                page = PicturePage(source: source, picture: picture)
+            }
             page.frame = layout.page(number)
             page.safeArea = LayoutInsets(view.safeAreaInsets)
             page.onTap = { [weak self] in self?.close() }
             page.panGestureRecognizer.require(toFail: drag)
             pager.addSubview(page)
             pages[number] = page
+            if let video = page as? VideoPage { video.playback.didMove(toParent: self) }
         }
         for (number, page) in pages {
             page.isCurrent = number == index
@@ -179,7 +223,7 @@ final class PictureViewController: UIViewController, UIScrollViewDelegate, UIGes
 
     // MARK: Closing
 
-    private var current: PicturePage? { pages[index] }
+    private var current: (any ViewerPage)? { pages[index] }
 
     func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
         guard recognizer === drag, let current else { return true }
@@ -234,6 +278,99 @@ final class PictureViewController: UIViewController, UIScrollViewDelegate, UIGes
 
     @objc private func close() {
         dismiss(animated: true)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        for case let page as VideoPage in pages.values { page.player.pause() }
+    }
+
+    /// A recording's page leaves: its player stops and its controller goes.
+    private func release(_ page: VideoPage) {
+        page.player.pause()
+        page.playback.willMove(toParent: nil)
+        page.playback.removeFromParent()
+    }
+
+    // MARK: Sharing
+
+    /// The item in view as a file, in the share sheet; the button waits
+    /// while its bytes come.
+    @objc private func share() {
+        guard let source = source as? ChatMediaSharing, pictures.indices.contains(index) else { return }
+        let key = pictures[index].key
+        shareButton.isHidden = true
+        sharing.startAnimating()
+        Task { [weak self] in
+            let url = await source.shareable(key)
+            guard let self else { return }
+            self.sharing.stopAnimating()
+            self.shareButton.isHidden = false
+            guard let url, self.presentedViewController == nil else { return }
+            let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+            sheet.popoverPresentationController?.sourceView = self.shareButton
+            self.present(sheet, animated: true)
+        }
+    }
+}
+
+/// A page of the viewer: a picture, or a recording.
+@MainActor
+protocol ViewerPage: UIScrollView {
+    var safeArea: LayoutInsets { get set }
+    var isCurrent: Bool { get set }
+    var position: String? { get set }
+    var onTap: (() -> Void)? { get set }
+}
+
+extension PicturePage: ViewerPage {}
+
+/// A recording in the viewer, played by the system's player with its own
+/// controls (scrubbing, full screen, picture in picture) in the safe area
+/// under the viewer's buttons. It plays while it is the page in view.
+final class VideoPage: UIScrollView, ViewerPage {
+    let player: AVPlayer
+    let playback = AVPlayerViewController()
+    var onTap: (() -> Void)?
+    var safeArea = LayoutInsets() {
+        didSet { if safeArea != oldValue { setNeedsLayout() } }
+    }
+
+    var isCurrent = false {
+        didSet {
+            guard isCurrent != oldValue else { return }
+            playback.view.accessibilityElementsHidden = !isCurrent
+            if isCurrent { player.play() } else { player.pause() }
+        }
+    }
+
+    var position: String? {
+        get { playback.view.accessibilityValue }
+        set { playback.view.accessibilityValue = newValue }
+    }
+
+    init(player: AVPlayer, label: String) {
+        self.player = player
+        super.init(frame: .zero)
+        // Turned and dragged by the viewer, never scrolled or zoomed itself.
+        isScrollEnabled = false
+        minimumZoomScale = 1
+        maximumZoomScale = 1
+        contentInsetAdjustmentBehavior = .never
+        playback.player = player
+        playback.view.backgroundColor = .clear
+        playback.view.accessibilityIdentifier = "video-viewer"
+        playback.view.accessibilityLabel = label
+        playback.entersFullScreenWhenPlaybackBegins = false
+        addSubview(playback.view)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        contentSize = bounds.size
+        playback.view.frame = PictureViewerLayout(size: bounds.size, safeArea: safeArea, picture: .zero).player
     }
 }
 

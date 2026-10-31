@@ -14,6 +14,7 @@ import CoreGraphics
 ///     options   8 ┬ buttons, 8 apart ┬ 8
 ///     table     8 ┬ bordered grid ┬ 8                (scrolls sideways)
 ///     image     8 ┬ 240 picture, 8, caption ┬ 8
+///     picture   8 ┬ picture in its own shape, 8, caption ┬ 8
 ///     mermaid   8 ┬ diagram, 200 to 600 ┬ 8        (scrolls inside)
 ///
 /// Frames are relative to the markdown view's origin.
@@ -104,6 +105,10 @@ public struct MarkdownLayout: Equatable, Sendable {
         case options([Measurable])
         case table(Table)
         case image(caption: Measurable?)
+        /// A picture a document holds, as a browser draws it: one point a
+        /// pixel (`size`), no wider than the column, in its own shape; 4:3
+        /// across the column until its size is known. Placed as `.image`.
+        case picture(caption: Measurable?, size: CGSize?)
         /// A diagram, and the height its page reported, if it has yet.
         case mermaid(reported: CGFloat?)
     }
@@ -291,6 +296,20 @@ public struct MarkdownLayout: Equatable, Sendable {
                 y += height
                 close(M.blockMargin)
 
+            case .picture(let caption, let size):
+                open(M.blockMargin)
+                let picture = Self.picture(size: size, width: width)
+                var height = picture.height
+                var captionFrame: CGRect?
+                if let caption {
+                    let captionHeight = caption.height(fitting: picture.width)
+                    captionFrame = CGRect(x: 0, y: height + M.imageCaptionGap, width: picture.width, height: captionHeight)
+                    height += M.imageCaptionGap + captionHeight
+                }
+                placed.append(.image(frame: CGRect(x: 0, y: y, width: picture.width, height: height), picture: picture, caption: captionFrame))
+                y += height
+                close(M.blockMargin)
+
             case .mermaid(let reported):
                 open(M.blockMargin)
                 let height = Self.mermaidHeight(reported: reported)
@@ -331,6 +350,8 @@ public struct MarkdownLayout: Equatable, Sendable {
                 width = table.columnWidths.reduce(0, +) + 2 * M.tableBorder
             case .image:
                 width = M.imageMaxWidth
+            case .picture(_, let size):
+                width = size?.width ?? available
             case .mermaid:
                 // `width: '100%'`.
                 width = available
@@ -338,6 +359,17 @@ public struct MarkdownLayout: Equatable, Sendable {
             widest = max(widest, width)
         }
         return min(widest, available)
+    }
+
+    /// A document's picture at `width`: its size in points, no wider than
+    /// the column and in its own shape; 4:3 across the column while its
+    /// size is unknown. Whole points.
+    public static func picture(size: CGSize?, width: CGFloat) -> CGRect {
+        guard let size, size.width > 0, size.height > 0 else {
+            return CGRect(x: 0, y: 0, width: width, height: (width * 3 / 4).rounded())
+        }
+        let shown = min(width, size.width)
+        return CGRect(x: 0, y: 0, width: shown, height: max(1, (shown * size.height / size.width).rounded()))
     }
 
     /// MermaidRenderer's box: 200 until the page reports, then the most it

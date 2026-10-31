@@ -102,9 +102,10 @@ extension ChatTextStyle {
 /// Markdown spans as one attributed paragraph in a block's style: bold and
 /// italic swap the face, inline code takes the mono style, links are
 /// underlined and carry their URL (`RenderSpans`). In an `environment`,
-/// every face is at its text size.
+/// every face is at its text size. `everyLink` makes any address a link,
+/// for a document whose screen resolves its relative ones.
 enum ChatSpans {
-    static func string(_ spans: [MarkdownSpan], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?) -> NSAttributedString {
+    static func string(_ spans: [MarkdownSpan], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?, everyLink: Bool = false) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let uiColor = UIColor(color)
         for span in spans {
@@ -127,7 +128,7 @@ enum ChatSpans {
             }
             var attributes = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
             // An http(s) link, or a reference this phone wrote (never one an agent typed).
-            if let url = span.url, LegacyMarkdown.isHTTPLink(url) || HappyReferences.reference(link: url) != nil {
+            if let url = span.url, (everyLink && !url.isEmpty) || LegacyMarkdown.isHTTPLink(url) || HappyReferences.reference(link: url) != nil {
                 attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
                 attributes[.chatLink] = url
             }

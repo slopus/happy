@@ -310,6 +310,18 @@ enum ChatRowRenderer {
 
 // MARK: Markdown
 
+/// What a document's Markdown shows of its own files (an artifact's):
+/// each picture by its address as written, and its size in points once
+/// known. Every link answers a tap; the screen resolves it.
+struct MarkdownDocument: Sendable {
+    struct Picture: Equatable, Sendable {
+        var media: ChatMedia
+        var size: CGSize?
+    }
+
+    var pictures: [String: Picture]
+}
+
 /// A markdown text measured block by block: the blocks for a pure layout,
 /// and once that layout has placed them, what to draw where.
 struct MarkdownPiece {
@@ -333,9 +345,12 @@ struct MarkdownPiece {
     /// the tables' estimated columns, the images' and the diagrams' boxes
     /// keep theirs, as RN's do. `body` sets paragraphs and lists, `header`
     /// headings (V2 passes desktop's).
+    /// `document`: the pictures and links of a document that has files of
+    /// its own (an artifact); nil reads them as a conversation does.
     init(
         _ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights, syntax: CodeSyntaxService, in environment: TextEnvironment?,
-        body: ChatTextStyle = ChatTextStyles.markdownText, header: (Int) -> ChatTextStyle = ChatTextStyles.markdownHeader
+        body: ChatTextStyle = ChatTextStyles.markdownText, header: (Int) -> ChatTextStyle = ChatTextStyles.markdownHeader,
+        document: MarkdownDocument? = nil
     ) {
         var blocks: [MarkdownLayout.Block] = []
         var drawers: [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])] = []
@@ -355,12 +370,12 @@ struct MarkdownPiece {
         for block in LegacyMarkdown.parse(markdown) {
             switch block {
             case .text(let spans):
-                let measured = MeasuredText(ChatSpans.string(spans, style: body, color: color, in: environment))
+                let measured = MeasuredText(ChatSpans.string(spans, style: body, color: color, in: environment, everyLink: document != nil))
                 blocks.append(.text(measured.measurable))
                 drawers.append(text(measured))
 
             case .header(let level, let spans):
-                let measured = MeasuredText(ChatSpans.string(spans, style: header(level), color: color, in: environment))
+                let measured = MeasuredText(ChatSpans.string(spans, style: header(level), color: color, in: environment, everyLink: document != nil))
                 blocks.append(.header(level: level, measured.measurable))
                 drawers.append(text(measured))
 
@@ -373,7 +388,7 @@ struct MarkdownPiece {
             case .list(let items):
                 let rows = items.map { item in
                     (MeasuredText(body.string(Self.bullet(depth: item.depth), color: color, in: environment)),
-                     MeasuredText(ChatSpans.string(item.spans, style: body, color: color, in: environment)), item.depth)
+                     MeasuredText(ChatSpans.string(item.spans, style: body, color: color, in: environment, everyLink: document != nil)), item.depth)
                 }
                 blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))
                 drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1) }, hold: hold))
@@ -381,7 +396,7 @@ struct MarkdownPiece {
             case .numberedList(let items):
                 let rows = items.map { item in
                     (MeasuredText(body.string("\(item.number).", color: color, in: environment)),
-                     MeasuredText(ChatSpans.string(item.spans, style: body, color: color, in: environment)), item.depth)
+                     MeasuredText(ChatSpans.string(item.spans, style: body, color: color, in: environment, everyLink: document != nil)), item.depth)
                 }
                 blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))
                 drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1) }, hold: hold))
@@ -418,7 +433,7 @@ struct MarkdownPiece {
             case .table(let headers, let rows):
                 let all = [headers] + rows
                 let measured = all.enumerated().map { rowIndex, row in
-                    row.map { MeasuredText(ChatSpans.string($0, style: rowIndex == 0 ? ChatTextStyles.tableHeader : ChatTextStyles.tableCell, color: color, in: environment)) }
+                    row.map { MeasuredText(ChatSpans.string($0, style: rowIndex == 0 ? ChatTextStyles.tableHeader : ChatTextStyles.tableCell, color: color, in: environment, everyLink: document != nil)) }
                 }
                 let lengths = all.map { row in row.map { $0.reduce(0) { $0 + $1.text.utf16.count } } }
                 blocks.append(.table(.init(columnWidths: MarkdownLayout.columnWidths(lengths: lengths), rows: measured.map { $0.map(\.measurable) })))
@@ -449,6 +464,31 @@ struct MarkdownPiece {
                             radius: MarkdownLayout.Metrics.tableRadius - MarkdownLayout.Metrics.tableBorder
                         ),
                     ], [])
+                }
+
+            case .image(let alt, let url) where document != nil:
+                // A document's own picture: in its own shape, loaded by the
+                // screen's media source, and opened in the viewer on a tap.
+                let caption = alt.isEmpty ? nil : MeasuredText(ChatTextStyles.imageCaption.string(alt, color: Palette.textSecondary, in: environment))
+                let picture = document?.pictures[url]
+                blocks.append(.picture(caption: caption?.measurable, size: picture?.size))
+                drawers.append { placed, origin in
+                    guard case .image(let frame, let box, let captionFrame) = placed else { return ([], []) }
+                    let shifted = frame.offsetBy(dx: origin.x, dy: origin.y)
+                    let pictureFrame = box.offsetBy(dx: shifted.minX, dy: shifted.minY)
+                    var items: [ChatDrawItem] = []
+                    var hits: [ChatHit] = []
+                    if let picture {
+                        items.append(.media(picture.media, frame: pictureFrame))
+                        hits.append(ChatHit(frame: pictureFrame, action: .openMedia(picture.media.key)))
+                    } else {
+                        // Nothing here can load it: the box alone, as a picture that failed.
+                        items.append(.box(ChatBox(frame: pictureFrame, fill: Palette.surfacePressed, border: Palette.divider, borderWidth: 1, radius: ChatMediaView.radius)))
+                    }
+                    if let caption, let captionFrame {
+                        items.append(.text(caption.layout(for: captionFrame), captionFrame.offsetBy(dx: shifted.minX, dy: shifted.minY)))
+                    }
+                    return (items, hits)
                 }
 
             case .image(let alt, let url):
