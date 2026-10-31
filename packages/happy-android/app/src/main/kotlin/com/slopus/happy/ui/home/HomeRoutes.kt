@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.home
 
 import com.slopus.happy.ui.page
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -96,6 +97,8 @@ fun LegacyHome(graph: AppGraph, nav: NavHostController, onOpenSession: (sessionI
         Box(Modifier.fillMaxSize().background(HappyTheme.colors.grouped.background).testTag(HomeTags.TABLET_BLANK))
     } else {
         HomeListHost(graph, remember(nav) { HomeNavigation.of(graph, nav, onOpenSession, onTroubleshoot) }, phone = true) { host ->
+            // Fully drawn (cold start's timeToFullDisplay, research/cold-start.md): the rows are read from disk.
+            ReportDrawnWhen { host.state != null }
             HomeScreen(
                 state = host.state,
                 connectionStatus = host.connectionStatus,

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The bench build only (research/cold-start.md): the fixture account the cold-start benchmark seeds. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name=".bench.BenchFixture"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="com.slopus.happy.bench.SEED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

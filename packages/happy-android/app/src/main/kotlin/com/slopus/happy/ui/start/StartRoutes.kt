@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.start
 
+import androidx.activity.compose.ReportDrawn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -19,6 +20,8 @@ import com.slopus.happy.ui.connect.ConnectFlow
 fun Start(graph: AppGraph, nav: NavHostController, add: ConnectFlow) {
     val serverUrl by graph.serverConfig.url.collectAsStateWithLifecycle()
     val customServerLabel = remember(serverUrl) { graph.serverConfig.customHostLabel }
+    // Nothing to read from disk: the first frame is the whole screen.
+    ReportDrawn()
 
     StartScreen(
         connecting = add.isLoading,

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The fixture account is seeded with `am broadcast`, and the app's process found, by package. -->
+    <queries>
+        <package android:name="com.slopus.happy.bench" />
+    </queries>
+</manifest>

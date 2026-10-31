@@ -2,6 +2,7 @@ package com.slopus.happy
 
 import android.app.Application
 import com.slopus.happy.data.DiskThread
+import com.slopus.happy.diagnostics.traced
 import com.slopus.happy.push.PushServices
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
@@ -10,11 +11,13 @@ import kotlin.concurrent.thread
 class HappyApplication : Application() {
     /** Built on first use. The main thread never asks for it: it waits for [graphReady]. */
     val graph: AppGraph by lazy {
-        AppGraph(
-            context = this,
-            clientId = "android/${BuildConfig.VERSION_NAME}",
-            defaultServerUrl = BuildConfig.DEFAULT_SERVER_URL,
-        ).also { PushServices.unregisterOnLogout(this, it) }
+        traced("AppGraph") {
+            AppGraph(
+                context = this,
+                clientId = "android/${BuildConfig.VERSION_NAME}",
+                defaultServerUrl = BuildConfig.DEFAULT_SERVER_URL,
+            ).also { PushServices.unregisterOnLogout(this, it) }
+        }
     }
 
     /**
@@ -27,8 +30,10 @@ class HappyApplication : Application() {
         thread(name = "app-graph") {
             try {
                 built.complete(graph)
+                // Home's rows from disk while the window composes (research/cold-start.md).
+                traced("warmHome") { graph.warmHome() }
                 // What the first screens would otherwise read on the main thread: the push preferences, the glass switch.
-                PushServices.get(this)
+                traced("PushServices") { PushServices.get(this) }
                 com.slopus.happy.ui.components.glassBlurEnabled(this)
             } catch (e: Throwable) {
                 built.completeExceptionally(e)

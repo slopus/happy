@@ -7,6 +7,7 @@ import com.slopus.happy.connection.TailcatTransport
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.data.DiskThread
+import com.slopus.happy.diagnostics.traced
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -230,7 +231,7 @@ class AgentSession internal constructor(
     init {
         scope.launch {
             // The kept catalog first: home draws it, and the link resumes from its cursor.
-            readCache()?.let { cached -> catalogLock.withLock { catalogState.update { if (it.loaded) it else cached } } }
+            traced("AgentSession.readCache") { readCache() }?.let { cached -> catalogLock.withLock { catalogState.update { if (it.loaded) it else cached } } }
             active.distinctUntilChanged().collectLatest { on -> if (on) live() }
         }
         scope.launch {

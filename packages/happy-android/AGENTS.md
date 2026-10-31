@@ -273,6 +273,8 @@ app/
   model/    typed views of the stored JSON: Settings (sync/settings.ts);
             settings/ has agentDefaults.ts, local settings, SettingsRepository
   text/     Resources.plural / pluralResource, PluralExactNumbers (generated)
+benchmark/  on a device, against the bench build: StartupBenchmark (cold start) and the
+          Baseline Profile generator (research/cold-start.md)
 tools/testvectors/   generates crypto and send vectors by running happy-app's TypeScript
 tools/translations/  generates the string resources from happy-app's catalogs
 ```
@@ -411,7 +413,11 @@ kept resources and conversations, pictures); tests turn on
 `DiskThread.strict` (`OfflineFirstJourneyTest`), debug builds log
 StrictMode's disk detection. The graph is built off the main thread
 (`HappyApplication.graphReady`); MainActivity holds its first frame until
-then. An agent connection keeps, beside its catalog, each opened
+then, which costs nothing measured, since the graph is done before the
+first traversal. That thread then starts reading the open home from disk
+(`AppGraph.warmHome`), so on a release build the kept rows are in the
+first frame (research/cold-start.md, `ColdStartTest`). An agent
+connection keeps, beside its catalog, each opened
 conversation's newest 100 runs (`KeptConversation`, iOS's
 `conversation:<agentId>`), its Surfaces' last read, and bots' and
 projects' pictures; a chat shows its kept runs, then asks only
@@ -623,7 +629,25 @@ cd packages/happy-android
 
 Build types map to happy-app's variants and application ids: `debug` →
 `com.slopus.happy.dev`, `preview` → `com.slopus.happy.preview`, `release` →
-`com.ex3ndr.happy`.
+`com.ex3ndr.happy`. One more never ships: `bench` → `com.slopus.happy.bench`,
+the release code debug-signed beside the others, with a fixture account
+(`src/bench`). Cold start is measured on it (research/cold-start.md).
+
+**Cold start.** The system doesn't compile a debuggable app on install, so
+after `adb install` of the dev build run
+`adb shell cmd package compile -m verify -f com.slopus.happy.dev` (cold
+start 516 → 302 ms on the Fold). A new content provider or androidx.startup
+initializer runs before the first frame and fails `ColdStartTest` until it
+is listed there; prefer starting it where it is first needed. Keep
+`HappyApplication.onCreate` to the debug StrictMode it has. The Baseline and
+startup profiles (`app/src/main/generated/baselineProfiles`) come from
+`benchmark/`'s generator; regenerate them after large UI changes, with only
+the target device's serial:
+
+```
+ANDROID_SERIAL=<device> ./gradlew :app:generateBaselineProfile
+ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest   # StartupBenchmark
+```
 
 ### Versions and signing
 

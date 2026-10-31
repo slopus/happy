@@ -2,6 +2,7 @@ package com.slopus.happy.ui.connection
 
 import com.slopus.happy.ui.rememberHomeAccountSwitch
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -528,6 +529,8 @@ fun AgentHome(
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val feed by session.feed.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
+    // Fully drawn (cold start's timeToFullDisplay, research/cold-start.md): home past its loader.
+    ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
     val add = LocalAddFlow.current
     val switchAccount = rememberHomeAccountSwitch(graph)
     val actions = remember(graph, session, onOpenConversation, onCompose, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, add, switchAccount) {

@@ -36,6 +36,7 @@ import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.TailcatTransport
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
+import com.slopus.happy.ui.home.HomeServices
 import com.slopus.happy.ui.home.NewSessionDraftStore
 import com.slopus.happy.ui.home.PrefsReviewStamps
 import com.slopus.happy.voice.ElevenLabsTransport
@@ -403,6 +404,21 @@ class AppGraph(
         openId = openAgentId,
         foreground = isForeground,
     )
+
+    /**
+     * Starts reading the open account's home from disk: the agent
+     * connection's kept catalog, or the Happy account's stored sessions.
+     * The app graph's thread calls it as soon as the graph is built, while
+     * the window is still composing; home asks for the same once composed,
+     * 100 to 150 ms later on the Fold, and finds it read or on its way.
+     */
+    fun warmHome() {
+        when (val open = openAccount.value) {
+            is OpenAccount.Agent -> agentSessions.session(open.id)
+            is OpenAccount.Happy -> HomeServices.of(this)
+            OpenAccount.None -> Unit
+        }
+    }
 
     private val logoutHooks = CopyOnWriteArrayList<suspend (authToken: String) -> Unit>()
 
