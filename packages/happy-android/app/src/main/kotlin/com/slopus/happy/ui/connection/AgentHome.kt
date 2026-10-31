@@ -27,6 +27,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarColors
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -173,12 +174,13 @@ fun AgentHomeScreen(
         agentSearchResults(feed, query, untitled, headings, searchEntries.first, searchEntries.second)
     }
 
-    // One surface under the bar and the page, the chat's own (surface), light and dark.
-    Column(modifier = Modifier.fillMaxSize().background(colors.surface)) {
+    // One ground under the bar and the page: the grouped background the section cards sit on.
+    val ground = colors.grouped.background
+    Column(modifier = Modifier.fillMaxSize().background(ground)) {
         if (searching) {
             AgentTopBar(
                 tag = AgentHomeTags.BAR,
-                container = colors.surface,
+                container = ground,
                 navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), closeSearch) },
                 title = { AgentSearchField(query, { query = it }) },
                 actions = {
@@ -190,7 +192,7 @@ fun AgentHomeScreen(
         } else {
             AgentTopBar(
                 tag = AgentHomeTags.BAR,
-                container = colors.surface,
+                container = ground,
                 navigationIcon = {
                     Box(Modifier.padding(horizontal = 4.dp)) { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) }
                 },
@@ -395,13 +397,15 @@ fun AgentHome(
             onAdd = { add?.scan() },
         )
     }
-    AgentHomeScreen(
-        name = agents.firstOrNull { it.id == id }?.name.orEmpty(),
-        feed = feed,
-        status = status,
-        accounts = rememberAccountMenu(graph),
-        actions = actions,
-        now = now,
-        syncing = syncing,
-    )
+    CompositionLocalProvider(LocalAgentPictures provides session.pictures) {
+        AgentHomeScreen(
+            name = agents.firstOrNull { it.id == id }?.name.orEmpty(),
+            feed = feed,
+            status = status,
+            accounts = rememberAccountMenu(graph),
+            actions = actions,
+            now = now,
+            syncing = syncing,
+        )
+    }
 }

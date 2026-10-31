@@ -6,13 +6,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="agent_home_bots">Bots</string>
     <string name="agent_home_tasks">Tasks</string>
-    <string name="agent_home_kind_bot">Bot</string>
-    <string name="agent_home_kind_task">Task</string>
-    <string name="agent_home_kind_project">Main</string>
-    <string name="agent_home_kind_subtask">Subtask</string>
     <string name="agent_home_thinking">Thinking…</string>
     <string name="agent_home_working">Working…</string>
-    <string name="agent_home_waiting">Waiting for your answer</string>
     <string name="agent_home_show_subtasks">Show subtasks</string>
     <string name="agent_home_hide_subtasks">Hide subtasks</string>
     <string name="agent_home_connecting">Connecting to %1$s…</string>

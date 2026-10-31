@@ -39,8 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentFeed
-import com.slopus.happy.agent.ConversationKind
-import com.slopus.happy.ui.components.Avatar
+import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.layout.LocalWindowLayout
@@ -101,7 +100,9 @@ sealed interface AgentSearchResult {
         override val key get() = "heading-$title"
     }
 
-    data class Conversation(val agentId: String, val title: String, val avatarId: String, val bot: Boolean, val thumbhash: String?) : AgentSearchResult {
+    /** [row] as home has it, for its mark; [title] its name or the untitled label. */
+    data class Conversation(val row: AgentFeedRow.Conversation, val title: String) : AgentSearchResult {
+        val agentId get() = row.agentId
         override val key get() = "agent-$agentId"
     }
 
@@ -124,7 +125,7 @@ fun agentSearchResults(
     val conversations = AgentSearch.ranked(feed.conversations, query) { it.title ?: untitled }
     if (conversations.isNotEmpty()) {
         out += AgentSearchResult.Heading(headings.first)
-        conversations.forEach { out += AgentSearchResult.Conversation(it.agentId, it.title ?: untitled, it.avatarId, it.kind == ConversationKind.Bot, it.thumbhash) }
+        conversations.forEach { out += AgentSearchResult.Conversation(it, it.title ?: untitled) }
     }
     AgentSearch.ranked(actions, query, AgentSearch.SECTION_LIMIT) { it.title }.takeIf { it.isNotEmpty() }?.let { found ->
         out += AgentSearchResult.Heading(headings.second)
@@ -228,9 +229,13 @@ fun AgentSearchResults(
                             .padding(start = AgentSearchSpec.rowPadding, end = AgentSearchSpec.rowPadding, top = 16.dp, bottom = 6.dp)
                             .semantics { heading() },
                     )
-                    is AgentSearchResult.Conversation -> ResultRow(result.key, result.title, { onOpenConversation(result.agentId) }) {
-                        Avatar(id = result.avatarId, size = AgentSearchSpec.icon, bot = result.bot, thumbhash = result.thumbhash)
-                    }
+                    is AgentSearchResult.Conversation -> ResultRow(
+                        result.key,
+                        result.title,
+                        { onOpenConversation(result.agentId) },
+                        // As on home: a task wears no mark, its title where one would be.
+                        AgentHomeSpec.markSize(result.row.kind)?.let { { ConversationMark(result.row, AgentSearchSpec.icon) } },
+                    )
                     is AgentSearchResult.Entry -> ResultRow(result.key, result.entry.title, result.entry.run) {
                         Icon(result.entry.icon, 22.dp, colors.text)
                     }
@@ -242,7 +247,7 @@ fun AgentSearchResults(
 }
 
 @Composable
-private fun ResultRow(key: String, title: String, onClick: () -> Unit, icon: @Composable () -> Unit) {
+private fun ResultRow(key: String, title: String, onClick: () -> Unit, icon: (@Composable () -> Unit)?) {
     val colors = HappyTheme.colors
     // Material's one-line list item: 56, more when the font is larger.
     val height = with(LocalDensity.current) { maxOf(56.dp, 22.dp + AgentSearchSpec.ROW_LINE.sp.toDp()) }
@@ -255,14 +260,14 @@ private fun ResultRow(key: String, title: String, onClick: () -> Unit, icon: @Co
             .padding(horizontal = AgentSearchSpec.rowPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(AgentSearchSpec.icon), contentAlignment = Alignment.Center) { icon() }
+        if (icon != null) Box(Modifier.size(AgentSearchSpec.icon), contentAlignment = Alignment.Center) { icon() }
         Text(
             title,
             style = AgentSearchSpec.rowTitle,
             color = colors.text,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 12.dp),
+            modifier = Modifier.padding(start = if (icon != null) 12.dp else 0.dp),
         )
     }
 }

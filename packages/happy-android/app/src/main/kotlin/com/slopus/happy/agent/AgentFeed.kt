@@ -23,8 +23,8 @@ sealed interface AgentFeedRow {
         /** Where it runs: the workspace, for an agent in a project's child workspace. */
         val detail: String?,
         val depth: Int,
-        /** What the avatar is drawn from, and a bot's ThumbHash. */
-        val avatarId: String,
+        /** A bot's picture as the agent serves it (`/v0/bots/:id/avatar`) and its ThumbHash; null where it has none. */
+        val picture: String? = null,
         val thumbhash: String? = null,
         val working: Boolean = false,
         val unread: Boolean = false,
@@ -90,8 +90,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 (resource.string("status") ?: "active") == "active"
 
             fun agentRows(
-                agentId: String, title: String?, kind: ConversationKind, detail: String?, avatarId: String, thumbhash: String?, depth: Int,
-                parentId: String? = null,
+                agentId: String, title: String?, kind: ConversationKind, detail: String?, depth: Int,
+                picture: String? = null, thumbhash: String? = null, parentId: String? = null,
             ) {
                 val agent = catalog.agents[agentId] ?: return
                 val wire = AgentCatalog.decodeAgent(agent) ?: return
@@ -103,7 +103,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     kind = kind,
                     detail = detail,
                     depth = depth,
-                    avatarId = avatarId,
+                    picture = picture,
                     thumbhash = thumbhash,
                     working = wire.working,
                     unread = wire.unread != null,
@@ -114,7 +114,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 if (depth >= 2) return
                 for (child in (agent["subtasks"] as? JsonArray).orEmpty()) {
                     val childId = (child as? JsonObject)?.string("id") ?: continue
-                    agentRows(childId, null, ConversationKind.Subtask, null, childId, null, depth + 1, agentId)
+                    agentRows(childId, null, ConversationKind.Subtask, null, depth + 1, parentId = agentId)
                 }
                 val children = rows.size - at - 1
                 if (children > 0) rows[at] = (rows[at] as AgentFeedRow.Conversation).copy(childCount = children)
@@ -131,15 +131,16 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 catalog.bots.values.filter(::active).sortedWith(byOrderKey).forEach { bot ->
                     val agentId = (bot["agent"] as? JsonObject)?.string("id") ?: return@forEach
                     val id = bot.string("id") ?: return@forEach
-                    val thumbhash = (bot["avatar"] as? JsonObject)?.string("thumbhash")
-                    agentRows(agentId, bot.string("name"), ConversationKind.Bot, null, id, thumbhash, 0)
+                    val avatar = bot["avatar"] as? JsonObject
+                    val picture = avatar?.let { "/v0/bots/${AgentClient.escape(id)}/avatar" }
+                    agentRows(agentId, bot.string("name"), ConversationKind.Bot, null, 0, picture, avatar?.string("thumbhash"))
                 }
             }
             section(AgentFeedSection.Tasks) {
                 catalog.memberships.values.sortedWith(byOrderKey).forEach { membership ->
                     val task = membership.string("taskId")?.let(catalog.tasks::get)?.takeIf(::active) ?: return@forEach
                     val agentId = (task["agent"] as? JsonObject)?.string("id") ?: return@forEach
-                    agentRows(agentId, task.string("name"), ConversationKind.Task, null, agentId, null, 0)
+                    agentRows(agentId, task.string("name"), ConversationKind.Task, null, 0)
                 }
             }
             catalog.projects.values.filter(::active).sortedWith(byOrderKey).forEach { project ->
@@ -152,7 +153,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                             val agentId = (embedded as? JsonObject)?.string("id") ?: return@forEach
                             // A workspace-bound subtask shows under the work that made it.
                             if (catalog.agents[agentId]?.get("subtask")?.toString() == "true") return@forEach
-                            agentRows(agentId, null, ConversationKind.Project, detail, agentId, null, 0)
+                            agentRows(agentId, null, ConversationKind.Project, detail, 0)
                         }
                     }
                     series(project, null)

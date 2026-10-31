@@ -28,10 +28,12 @@ object Wire {
         put("createdAt", 1L); put("updatedAt", updatedAt)
     }
 
-    fun bot(id: String, name: String, agent: JsonObject, orderKey: String = "1", version: String = "01", archived: Boolean = false) = buildJsonObject {
+    fun bot(id: String, name: String, agent: JsonObject, orderKey: String = "1", version: String = "01", archived: Boolean = false, thumbhash: String? = null) = buildJsonObject {
         put("id", id); put("name", name); put("version", version); put("orderKey", orderKey)
         put("status", if (archived) "archived" else "active"); put("archivedAt", if (archived) 9L else null)
         put("agent", agent)
+        // A bot with a picture: the agent serves it at /v0/bots/:id/avatar.
+        if (thumbhash != null) put("avatar", buildJsonObject { put("kind", "image"); put("thumbhash", thumbhash) })
     }
 
     fun task(id: String, name: String, agent: JsonObject, version: String = "01", archived: Boolean = false) = buildJsonObject {

@@ -139,7 +139,7 @@ class ScrollFlingTest {
         fun conversation(id: String, kind: ConversationKind, depth: Int, parent: String?, children: Int): AgentFeedRow.Conversation {
             return AgentFeedRow.Conversation(
                 agentId = id, title = "Synthetic conversation $id about the login flow",
-                kind = kind, detail = if (id.hashCode() % 5 == 0) "workspace-$id" else null, depth = depth, avatarId = id,
+                kind = kind, detail = if (id.hashCode() % 5 == 0) "workspace-$id" else null, depth = depth,
                 working = random.nextInt(6) == 0, unread = random.nextInt(5) == 0, blocked = random.nextInt(17) == 0,
                 activityAt = now - random.nextLong(3_600_000L * 48), parentId = parent, childCount = children,
             )

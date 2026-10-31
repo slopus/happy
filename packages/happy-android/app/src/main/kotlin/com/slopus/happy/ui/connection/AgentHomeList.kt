@@ -4,8 +4,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -21,13 +21,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -47,14 +52,17 @@ import com.slopus.happy.R
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.AgentFeedSection
+import com.slopus.happy.agent.AgentPictures
 import com.slopus.happy.agent.ConversationKind
-import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.ItemGroupSpec
+import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.components.rememberReduceMotion
+import com.slopus.happy.ui.components.rememberThumbHash
 import com.slopus.happy.ui.home.BlockedDotColor
 import com.slopus.happy.ui.home.UnreadDotColor
 import com.slopus.happy.ui.home.formatSessionListTimestamp
@@ -62,6 +70,8 @@ import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlinx.coroutines.CancellationException
+import kotlin.math.roundToInt
 
 object AgentHomeTags {
     const val LIST = "agentHome.list"
@@ -78,48 +88,105 @@ object AgentHomeTags {
     fun row(key: String) = "agentHome.row.$key"
     fun toggle(agentId: String) = "agentHome.toggle.$agentId"
     const val ROW_TITLE = "agentHome.rowTitle"
-    const val ROW_AVATAR = "agentHome.rowAvatar"
+    const val ROW_MARK = "agentHome.rowMark"
     const val ROW_DIVIDER = "agentHome.rowDivider"
 }
 
 /**
- * An agent connection's home list. Every row has a fixed height for its
- * kind at the font scale ([conversationHeight], [sectionHeight]): nothing an
- * idle update changes (status, unread, time) can move a row. Text is sp and
- * overflows its line rather than growing it, as Home's timestamp slot does.
+ * An agent connection's home list, grouped as Gmail's lists are: each
+ * section (bots, tasks, each project) a heading over one rounded card of
+ * single-line rows, on the grouped background. Every row has a fixed height
+ * for its kind at the font scale ([conversationHeight], [sectionHeight]):
+ * nothing an idle update changes (status, unread, time) can move a row.
+ * Text is sp and overflows its line rather than growing it, as Home's
+ * timestamp slot does.
  */
 object AgentHomeSpec {
+    /** The cards' inset from the window's sides: ItemGroup's 4 and 12. */
+    val cardInset = ItemGroupSpec.paddingHorizontal + ItemGroupSpec.cardMarginHorizontal
+    val cardRadius = ItemGroupSpec.cardRadius
     val paddingHorizontal = 16.dp
-    val paddingVertical = 10.dp
-    val avatar = 44.dp
-    val subtaskAvatar = 32.dp
+    val paddingVertical = 13.dp
+    val mark = 28.dp
     /** Each subtask level moves its row in by this much. */
     val indent = 28.dp
-    val avatarGap = 12.dp
+    val markGap = 16.dp
     val toggleWidth = 48.dp
     val toggleIcon = 16.dp
-    val dot = 12.dp
+    val dot = 10.dp
     val cornerMinWidth = 48.dp
     const val TITLE_LINE = 22
-    const val SUBTITLE_LINE = 18
-    val title = happyTextStyle(fontSize = 17, lineHeight = TITLE_LINE, weight = FontWeight.SemiBold)
-    val subtitle = happyTextStyle(fontSize = 14, lineHeight = SUBTITLE_LINE)
+    val title = happyTextStyle(fontSize = 16, lineHeight = TITLE_LINE, weight = FontWeight.Medium)
     val timestamp = happyTextStyle(fontSize = 13, lineHeight = TITLE_LINE).copy(fontFeatureSettings = "tnum")
-    val count = happyTextStyle(fontSize = 13, lineHeight = SUBTITLE_LINE, weight = FontWeight.Medium).copy(fontFeatureSettings = "tnum")
-    const val SECTION_LINE = 18
-    val section = happyTextStyle(fontSize = 14, lineHeight = SECTION_LINE, letterSpacing = 0.1f, weight = FontWeight.SemiBold)
-    val sectionPaddingTop = 20.dp
-    val sectionPaddingBottom = 8.dp
+    val count = happyTextStyle(fontSize = 13, lineHeight = TITLE_LINE, weight = FontWeight.Medium).copy(fontFeatureSettings = "tnum")
+    const val SECTION_LINE = 20
+    val section = ItemGroupSpec.header
+    /** The heading starts where ItemGroup's does. */
+    val sectionPaddingStart = ItemGroupSpec.paddingHorizontal + ItemGroupSpec.headerPaddingHorizontal
+    val sectionPaddingTop = ItemGroupSpec.headerPaddingTop
+    val sectionPaddingBottom = ItemGroupSpec.headerPaddingBottom
 
-    /** 10 + a 22 title line + an 18 subtitle line + 10: 60 at the default font scale. */
+    /** 13 + a 22 line + 13: 48 at the default font scale. */
     @Composable
-    fun conversationHeight(): Dp = with(LocalDensity.current) { paddingVertical * 2 + TITLE_LINE.sp.toDp() + SUBTITLE_LINE.sp.toDp() }
+    fun conversationHeight(): Dp = with(LocalDensity.current) { paddingVertical * 2 + TITLE_LINE.sp.toDp() }
 
-    /** 20 + an 18 line + 8: 46 at the default font scale. */
+    /** 16 + a 20 line + 8: 44 at the default font scale. */
     @Composable
     fun sectionHeight(): Dp = with(LocalDensity.current) { sectionPaddingTop + SECTION_LINE.sp.toDp() + sectionPaddingBottom }
 
-    fun avatarSize(depth: Int) = if (depth == 0) avatar else subtaskAvatar
+    /**
+     * The side of the mark before a row's title, or null for none: a bot
+     * wears its picture and a subtask the checkbox, as on iOS
+     * (SidebarRows.swift); a task and a project's conversation wear
+     * nothing, their title starting where a mark would.
+     */
+    fun markSize(kind: ConversationKind): Dp? = when (kind) {
+        ConversationKind.Bot, ConversationKind.Subtask -> mark
+        ConversationKind.Task, ConversationKind.Project -> null
+    }
+}
+
+/** Reads bots' pictures for the rows; null where nothing serves them (tests, fixtures). */
+val LocalAgentPictures = staticCompositionLocalOf<AgentPictures?> { null }
+
+/**
+ * A row's mark at [size]: a bot's picture over its ThumbHash, or iOS's
+ * person glyph for a bot without one; the checkbox for a subtask.
+ */
+@Composable
+internal fun ConversationMark(row: AgentFeedRow.Conversation, size: Dp) {
+    val picture = row.picture
+    if (picture != null) {
+        BotPicture(picture, row.thumbhash, size)
+        return
+    }
+    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+        val glyph = if (row.kind == ConversationKind.Bot) Ionicon.PersonCircleOutline else Ionicon.CheckboxOutline
+        Icon(glyph, (size.value * 0.8f).roundToInt().dp, HappyTheme.colors.text)
+    }
+}
+
+@Composable
+private fun BotPicture(path: String, thumbhash: String?, size: Dp) {
+    val pictures = LocalAgentPictures.current
+    val bytes by produceState(pictures?.kept(path, thumbhash), pictures, path, thumbhash) {
+        value = pictures?.kept(path, thumbhash) ?: try {
+            pictures?.read(path, thumbhash)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // The ThumbHash stays in its place.
+            null
+        }
+    }
+    RemoteImage(
+        model = bytes,
+        contentDescription = null,
+        modifier = Modifier.size(size).clip(CircleShape),
+        background = HappyTheme.colors.surfaceHigh,
+        cacheKey = pictures?.key(path, thumbhash),
+        placeholder = rememberThumbHash(thumbhash),
+    )
 }
 
 /** A row as home draws it: the feed's row with what showing it needs. */
@@ -138,7 +205,9 @@ sealed interface AgentHomeItem {
         /** A hidden subtask is unread or waits for the person. */
         val hiddenUnread: Boolean,
         val hiddenBlocked: Boolean,
-        val showDivider: Boolean,
+        /** It opens its section's card, and closes it; between, a hairline under it. */
+        val first: Boolean,
+        val last: Boolean,
     ) : AgentHomeItem {
         override val key get() = row.key
     }
@@ -146,8 +215,8 @@ sealed interface AgentHomeItem {
 
 /**
  * The feed's rows with the subtasks of collapsed conversations left out
- * (a collapsed parent carries their unread and waiting marks), and a
- * divider under every conversation but the last before a heading or the end.
+ * (a collapsed parent carries their unread and waiting marks), each knowing
+ * where it stands in its section's card.
  */
 fun agentHomeItems(feed: AgentFeed, expanded: Set<String>): List<AgentHomeItem> {
     val out = ArrayList<AgentHomeItem>(feed.rows.size)
@@ -169,14 +238,15 @@ fun agentHomeItems(feed: AgentFeed, expanded: Set<String>): List<AgentHomeItem> 
                     expanded = open,
                     hiddenUnread = children.any { it.unread },
                     hiddenBlocked = children.any { it.blocked },
-                    showDivider = true,
+                    first = out.lastOrNull() !is AgentHomeItem.Conversation,
+                    last = false,
                 )
             }
         }
     }
     for (index in out.indices) {
         val item = out[index] as? AgentHomeItem.Conversation ?: continue
-        if (out.getOrNull(index + 1) !is AgentHomeItem.Conversation) out[index] = item.copy(showDivider = false)
+        if (out.getOrNull(index + 1) !is AgentHomeItem.Conversation) out[index] = item.copy(last = true)
     }
     return out
 }
@@ -215,8 +285,7 @@ private fun SectionRow(section: AgentFeedSection, modifier: Modifier) {
             .contentMaxWidth(LocalWindowLayout.current)
             .height(AgentHomeSpec.sectionHeight())
             .testTag(AgentHomeTags.row("section-${section.key}"))
-            .background(colors.surface)
-            .padding(start = AgentHomeSpec.paddingHorizontal, end = AgentHomeSpec.paddingHorizontal, top = AgentHomeSpec.sectionPaddingTop),
+            .padding(start = AgentHomeSpec.sectionPaddingStart, end = AgentHomeSpec.sectionPaddingStart, top = AgentHomeSpec.sectionPaddingTop),
     ) {
         Text(
             title,
@@ -230,11 +299,14 @@ private fun SectionRow(section: AgentFeedSection, modifier: Modifier) {
 }
 
 /**
- * One conversation: avatar (44, a subtask's 32, indented 28 a level), the
- * title 17/22 semibold (shimmering while it works) with the time or a 12
- * dot in a 48-minimum corner, then one 14/18 line of what it is doing or
- * what it is. A conversation with subtasks has a 48 toggle at the end
- * that shows or hides them. A hairline runs from the text to the edge.
+ * One conversation, on one line, as its part of its section's card (the
+ * first rounds the card's top, the last its bottom): its mark
+ * ([AgentHomeSpec.markSize]: 28 for a bot or a subtask, the subtask
+ * indented 28 a level; none for a task), the title 16/22 (shimmering while
+ * it works), and the time or a 10 dot in a 48-minimum corner. A
+ * conversation with subtasks has a 48 toggle at the end that shows or
+ * hides them. A hairline runs from the text to the card's edge under every
+ * row but the card's last.
  */
 @Composable
 private fun ConversationRow(
@@ -247,82 +319,77 @@ private fun ConversationRow(
 ) {
     val colors = HappyTheme.colors
     val row = item.row
-    val avatarSize = AgentHomeSpec.avatarSize(row.depth)
+    val markSize = AgentHomeSpec.markSize(row.kind)
     val start = AgentHomeSpec.paddingHorizontal + AgentHomeSpec.indent * row.depth
+    val textStart = if (markSize == null) 0.dp else markSize + AgentHomeSpec.markGap
     val title = row.title ?: stringResource(R.string.session_new_chat)
-    val subtitle = when {
-        row.blocked -> stringResource(R.string.agent_home_waiting)
-        row.working -> stringResource(R.string.agent_home_working)
-        row.detail != null -> row.detail
-        else -> stringResource(
-            when (row.kind) {
-                ConversationKind.Bot -> R.string.agent_home_kind_bot
-                ConversationKind.Task -> R.string.agent_home_kind_task
-                ConversationKind.Project -> R.string.agent_home_kind_project
-                ConversationKind.Subtask -> R.string.agent_home_kind_subtask
-            },
-        )
-    }
+    val working = stringResource(R.string.agent_home_working)
     val blocked = row.blocked || item.hiddenBlocked
     val unread = row.unread || item.hiddenUnread
+    val radius = AgentHomeSpec.cardRadius
+    val shape = RoundedCornerShape(
+        topStart = if (item.first) radius else 0.dp,
+        topEnd = if (item.first) radius else 0.dp,
+        bottomStart = if (item.last) radius else 0.dp,
+        bottomEnd = if (item.last) radius else 0.dp,
+    )
     Box(
         modifier = modifier
             .contentMaxWidth(LocalWindowLayout.current)
             .height(AgentHomeSpec.conversationHeight())
             .testTag(AgentHomeTags.row(row.key))
-            .background(colors.surface)
-            .clickable(role = Role.Button) { onOpen(row.agentId) },
+            .padding(horizontal = AgentHomeSpec.cardInset),
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(start = start),
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(shape)
+                .background(colors.surface)
+                .clickable(role = Role.Button) { onOpen(row.agentId) }
+                .then(if (row.working) Modifier.semantics { stateDescription = working } else Modifier),
         ) {
-            Box(modifier = Modifier.size(avatarSize).testTag(AgentHomeTags.ROW_AVATAR)) {
-                Avatar(id = row.avatarId, size = avatarSize, bot = row.kind == ConversationKind.Bot, thumbhash = row.thumbhash)
-            }
-            Column(
-                modifier = Modifier
-                    .padding(start = AgentHomeSpec.avatarGap, end = if (row.childCount > 0) 0.dp else AgentHomeSpec.paddingHorizontal)
-                    .weight(1f),
+            Row(
+                modifier = Modifier.fillMaxSize().padding(start = start),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.weight(1f).testTag(AgentHomeTags.ROW_TITLE)) {
-                        if (row.working && !reduceMotion) {
-                            ShimmerText(text = title, style = AgentHomeSpec.title, baseColor = colors.textSecondary, highlightColor = colors.text)
-                        } else {
-                            Text(
-                                title,
-                                style = AgentHomeSpec.title,
-                                color = colors.text,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.wrapContentHeight(unbounded = true),
-                            )
-                        }
+                if (markSize != null) {
+                    Box(modifier = Modifier.size(markSize).testTag(AgentHomeTags.ROW_MARK)) { ConversationMark(row, markSize) }
+                }
+                Box(
+                    modifier = Modifier
+                        .padding(start = if (markSize == null) 0.dp else AgentHomeSpec.markGap)
+                        .weight(1f)
+                        .testTag(AgentHomeTags.ROW_TITLE),
+                ) {
+                    if (row.working && !reduceMotion) {
+                        ShimmerText(text = title, style = AgentHomeSpec.title, baseColor = colors.textSecondary, highlightColor = colors.text)
+                    } else {
+                        Text(
+                            title,
+                            style = AgentHomeSpec.title,
+                            color = colors.text,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.wrapContentHeight(unbounded = true),
+                        )
                     }
+                }
+                Box(Modifier.padding(end = if (row.childCount > 0) 0.dp else AgentHomeSpec.paddingHorizontal)) {
                     Corner(row.activityAt, now, blocked, unread)
                 }
-                Text(
-                    subtitle,
-                    style = AgentHomeSpec.subtitle,
-                    color = if (row.blocked) BlockedDotColor else colors.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.wrapContentHeight(unbounded = true),
+                if (row.childCount > 0) SubtaskToggle(row.agentId, row.childCount, item.expanded, reduceMotion, onToggle)
+            }
+            if (!item.last) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = start + textStart)
+                        .fillMaxWidth()
+                        .height(hairline())
+                        .testTag(AgentHomeTags.ROW_DIVIDER)
+                        .background(colors.divider),
                 )
             }
-            if (row.childCount > 0) SubtaskToggle(row.agentId, row.childCount, item.expanded, reduceMotion, onToggle)
-        }
-        if (item.showDivider) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = start + avatarSize + AgentHomeSpec.avatarGap)
-                    .fillMaxWidth()
-                    .height(hairline())
-                    .testTag(AgentHomeTags.ROW_DIVIDER)
-                    .background(colors.divider),
-            )
         }
     }
 }
@@ -365,15 +432,15 @@ private fun SubtaskToggle(agentId: String, count: Int, expanded: Boolean, reduce
     val colors = HappyTheme.colors
     val turn by animateFloatAsState(if (expanded) 180f else 0f, if (reduceMotion) tween(0) else tween(220), label = "subtaskChevron")
     val action = stringResource(if (expanded) R.string.agent_home_hide_subtasks else R.string.agent_home_show_subtasks)
-    Column(
+    Row(
         modifier = Modifier
             .width(AgentHomeSpec.toggleWidth)
             .fillMaxHeight()
             .testTag(AgentHomeTags.toggle(agentId))
             .clickable(role = Role.Button, onClickLabel = action) { onToggle(agentId) }
             .semantics { stateDescription = action; contentDescription = "$count" },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("$count", style = AgentHomeSpec.count, color = colors.textSecondary, maxLines = 1, modifier = Modifier.wrapContentHeight(unbounded = true))
         Icon(Ionicon.ChevronDown, AgentHomeSpec.toggleIcon, colors.textSecondary, Modifier.rotate(turn))
@@ -396,7 +463,7 @@ fun AgentHomeList(
     val reduceMotion = rememberReduceMotion()
     LazyColumn(
         state = state,
-        modifier = modifier.fillMaxSize().background(HappyTheme.colors.surface).testTag(AgentHomeTags.LIST),
+        modifier = modifier.fillMaxSize().background(HappyTheme.colors.grouped.background).testTag(AgentHomeTags.LIST),
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)

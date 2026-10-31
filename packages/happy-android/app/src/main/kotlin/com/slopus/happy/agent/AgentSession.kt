@@ -111,6 +111,9 @@ class AgentSession internal constructor(
         .flowOn(Dispatchers.Default)
         .stateIn(scope, SharingStarted.Eagerly, AgentFeed.derive(catalogState.value))
 
+    /** Bots' pictures, as home's rows draw them. */
+    val pictures = AgentPictures(connectionId) { path -> client.send("GET", path).body }
+
     /** One conversation as the catalog knows it, live; null while unknown. */
     fun agent(agentId: String): Flow<WireAgent?> = catalogState
         .map { it.agents[agentId] }

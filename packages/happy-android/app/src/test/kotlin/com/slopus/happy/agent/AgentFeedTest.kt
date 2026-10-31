@@ -15,7 +15,7 @@ class AgentFeedTest {
 
     private val sample = Wire.bootstrap(
         bots = listOf(
-            Wire.bot("b2", "Second", Wire.agent("ab2"), orderKey = "2"),
+            Wire.bot("b2", "Second", Wire.agent("ab2"), orderKey = "2", thumbhash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"),
             Wire.bot("b1", "Happy", Wire.agent("ab1", subtasks = listOf(Wire.agent("as1", title = "Sub", subtask = true, parent = "ab1",
                 subtasks = listOf(Wire.agent("as2", title = "Grandchild", subtask = true, parent = "as1"))))), orderKey = "1"),
             Wire.bot("b3", "Gone", Wire.agent("ab3"), archived = true),
@@ -48,6 +48,14 @@ class AgentFeedTest {
         assertEquals(2, rows.getValue("ab1").childCount)
         assertEquals(1, rows.getValue("as1").childCount)
         assertEquals("as1", rows.getValue("as2").parentId)
+    }
+
+    @Test
+    fun onlyABotWithAPictureHasOne() {
+        val rows = AgentFeed.derive(catalog(sample)).conversations.associateBy { it.agentId }
+        assertEquals("/v0/bots/b2/avatar", rows.getValue("ab2").picture)
+        assertEquals("1QcSHQRnh493V4dIh4eXh1h4kJUI", rows.getValue("ab2").thumbhash)
+        for (id in listOf("ab1", "as1", "at1", "ap1", "aw1")) assertEquals(id, null, rows.getValue(id).picture)
     }
 
     @Test
