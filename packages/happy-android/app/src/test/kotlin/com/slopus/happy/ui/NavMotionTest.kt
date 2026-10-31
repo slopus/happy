@@ -1,35 +1,38 @@
 package com.slopus.happy.ui
 
 import android.provider.Settings
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.test.core.app.ApplicationProvider
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.navigationevent.NavigationEvent
-import androidx.navigationevent.NavigationEventDispatcher
-import androidx.navigationevent.NavigationEventInput
-import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigationevent.NavigationEvent
+import androidx.navigationevent.NavigationEventDispatcher
+import androidx.navigationevent.NavigationEventInput
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.AppGraph
 import com.slopus.happy.crypto.Base64Variant
 import com.slopus.happy.crypto.SecretKeyBackup
@@ -54,11 +57,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Telegram's ordinary motion (NavMotion): 150 ms, 48 dp of foreground
- * travel and concurrent alpha; the underlying page stays in place.
- * System completion and predictive gestures use that same reverse path,
- * including cancellation and RTL from the other edge. The tablet sidebar
- * stays fixed and reduced motion is instant.
+ * One UI Settings' page motion (NavMotion): 450 ms on cubic-bezier(0.22,
+ * 0.4, 0, 1), the new page across the whole pane over the old one, which
+ * moves 26% the other way and dims. Toolbar Back, system Back and a
+ * predictive gesture's commit run the same pop; the gesture holds the pages
+ * at its progress, linearly, and finishes or cancels on the curve from there.
+ * RTL mirrors it, the tablet sidebar stays put, animations off is instant.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -106,42 +110,74 @@ class NavMotionTest {
         rule.mainClock.advanceTimeByFrame()
     }
 
-    private fun halfway() = rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 2L)
-
     private fun settle() {
         rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS * 2L)
         rule.mainClock.autoAdvance = true
         rule.waitForIdle()
     }
 
+    private val width: Dp get() = rule.onRoot().bounds.right - rule.onRoot().bounds.left
+
     private fun left(tag: String): Dp = rule.node(tag).bounds.left
 
-    private fun assertTravelling(what: String, offset: Dp, towardsEnd: Boolean) {
-        val max = 48.dp + TOLERANCE
-        if (towardsEnd) {
-            assertTrue("$what travels from the end side: $offset", offset > 1.dp)
-        } else {
-            assertTrue("$what travels from the start side: $offset", offset < (-1).dp)
-        }
-        assertTrue("$what stays within Telegram's 48 dp travel: $offset", offset.value in -max.value..max.value)
+    private fun shown(tag: String) = rule.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+
+    private fun curve(time: Float) = NavMotion.easing.transform(time.coerceIn(0f, 1f))
+
+    /** The motion's progress 0..1 at [elapsed] ms, allowing up to three frames for the start to land. */
+    private fun assertOnCurve(what: String, progress: Float, elapsed: Long, duration: Float = NavMotion.DURATION_MILLIS.toFloat()) {
+        val low = curve((elapsed - 48f) / duration) - 0.01f
+        val high = curve(elapsed / duration) + 0.01f
+        assertTrue("$what at $elapsed ms is on Settings' curve: $progress in $low..$high", progress in low..high)
+    }
+
+    /** The page beneath sits at 26% of the pane times what is left of the motion. */
+    private fun assertParallax(what: String, beneath: Dp, top: Dp) {
+        val expected = -(width - top) * NavMotion.PARALLAX
+        assertDp("$what: the page beneath moves 26% of the pane with the page on top", expected, beneath)
     }
 
     @Test
-    fun aPushSlidesTheNewScreenOverTheStationaryOldPage() {
+    fun aPushSlidesTheNewPageAcrossThePaneOverTheOldOne() {
         show()
         val startAtRest = left(StartTags.CONTENT)
         pushServer()
-        halfway()
+        rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 2L)
         val incoming = left(ServerTags.FORM)
         val outgoing = left(StartTags.CONTENT) - startAtRest
         settle()
-        assertTravelling("the new screen", incoming - left(ServerTags.FORM), towardsEnd = true)
-        assertEquals("the old page stays in place beneath the foreground", 0.dp, outgoing)
+        val top = incoming - left(ServerTags.FORM)
+        assertOnCurve("the new page", 1f - top / width, NavMotion.DURATION_MILLIS / 2L)
+        assertParallax("push", outgoing, top)
         rule.node(StartTags.CONTENT).assertDoesNotExist()
     }
 
     @Test
-    fun theUnderlyingPageStaysOpaqueThroughTheEntirePushAndPop() {
+    fun aLongFirstFrameDoesNotSkipTheStart() {
+        val spec = FromFirstFrame(tween<Float>(NavMotion.DURATION_MILLIS, easing = NavMotion.easing)).vectorize(Float.VectorConverter)
+        val from = AnimationVector1D(0f)
+        val to = AnimationVector1D(1f)
+        fun at(ms: Float) = spec.getValueFromNanos((ms * 1_000_000).toLong(), from, to, from).value
+        assertEquals(0f, at(0f), 0f)
+        // The frame after the page's first, drawn 60 ms later, shows one frame's progress (120 Hz).
+        assertEquals(curve(8.333f / NavMotion.DURATION_MILLIS), at(60f), 0.002f)
+        assertEquals(curve(108.333f / NavMotion.DURATION_MILLIS), at(160f), 0.002f)
+        assertEquals(1f, at(NavMotion.DURATION_MILLIS + 150f), 0f)
+    }
+
+    @Test
+    fun aPushStartsFromTheFarEdge() {
+        show()
+        pushServer()
+        // The first frame the new page is drawn in, it rests just inside the end edge.
+        while (!shown(ServerTags.FORM)) rule.mainClock.advanceTimeByFrame()
+        val first = left(ServerTags.FORM)
+        settle()
+        assertTrue("the new page starts beyond 90% of the pane: ${first - left(ServerTags.FORM)}", first - left(ServerTags.FORM) > width * 0.9f)
+    }
+
+    @Test
+    fun theDimIsTheBackdropThroughThePageBeneathNeverTheWindow() {
         lateinit var nav: NavHostController
         rule.setContent {
             nav = rememberNavController()
@@ -150,6 +186,7 @@ class NavMotionTest {
                 NavHost(
                     navController = nav,
                     startDestination = "first",
+                    modifier = Modifier.backdrop(nav),
                     enterTransition = motion.enter,
                     exitTransition = motion.exit,
                     popEnterTransition = motion.popEnter,
@@ -160,25 +197,34 @@ class NavMotionTest {
                 }
             }
         }
-        fun opaque(at: String) {
+        fun check(at: String) {
             rule.waitForIdle()
             val pixels = rule.onRoot().captureToImage().toPixelMap()
-            assertEquals("no window background shows through either page at $at", 0f, pixels[pixels.width / 2, pixels.height / 2].green, 0.01f)
+            val row = pixels.height / 2
+            for (x in 0 until pixels.width step 8) {
+                assertEquals("no window shows through at $at, x=$x", 0f, pixels[x, row].green, 0.02f)
+            }
+            // How far the blue page has come gives the motion's progress; the red one dims with it.
+            val edge = (0 until pixels.width).firstOrNull { pixels[it, row].blue > 0.5f } ?: pixels.width
+            val covered = 1f - edge.toFloat() / pixels.width
+            if (edge > 4) {
+                assertEquals("the page beneath at $at dims by 20% of the progress", 1f - NavMotion.DIM * covered, pixels[1, row].red, 0.04f)
+            }
         }
         rule.mainClock.autoAdvance = false
         rule.runOnUiThread { nav.navigate("second") }
         rule.mainClock.advanceTimeByFrame()
-        repeat(4) { rule.mainClock.advanceTimeBy(32); opaque("push frame $it") }
+        repeat(6) { rule.mainClock.advanceTimeBy(48); check("push frame $it") }
         settle()
         rule.mainClock.autoAdvance = false
         rule.runOnUiThread { nav.popBackStack() }
         rule.mainClock.advanceTimeByFrame()
-        repeat(4) { rule.mainClock.advanceTimeBy(32); opaque("pop frame $it") }
+        repeat(6) { rule.mainClock.advanceTimeBy(48); check("pop frame $it") }
         settle()
     }
 
     @Test
-    fun backIsTheMirror() {
+    fun toolbarBackPopsOnTheSameCurve() {
         show()
         val startAtRest = left(StartTags.CONTENT)
         pushServer()
@@ -188,37 +234,51 @@ class NavMotionTest {
         rule.mainClock.autoAdvance = false
         rule.onNodeWithContentDescription("Back").performClick()
         rule.mainClock.advanceTimeByFrame()
-        halfway()
+        rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 2L)
         val incoming = left(StartTags.CONTENT) - startAtRest
         val outgoing = left(ServerTags.FORM) - serverAtRest
         settle()
-        assertEquals("Back reveals a destination already in place", 0.dp, incoming)
-        assertTravelling("the screen Back leaves", outgoing, towardsEnd = true)
+        assertOnCurve("the page Back leaves", outgoing / width, NavMotion.DURATION_MILLIS / 2L)
+        assertParallax("pop", incoming, outgoing)
         assertEquals(startAtRest, left(StartTags.CONTENT))
     }
 
-    @Test
-    fun aSystemBackWithoutGestureProgressUsesTheSameReverseSlide() {
-        show()
+    /** Every frame of a pop from [back], from its first moving frame: (page leaving, page returning) offsets. */
+    private fun popFrames(back: () -> Unit): List<Pair<Float, Float>> {
         val startAtRest = left(StartTags.CONTENT)
         pushServer()
         settle()
         val serverAtRest = left(ServerTags.FORM)
-        val input = backInput()
         rule.mainClock.autoAdvance = false
-        rule.runOnUiThread { input.complete() }
-        rule.mainClock.advanceTimeByFrame()
-        halfway()
-        val incoming = left(StartTags.CONTENT) - startAtRest
-        val outgoing = left(ServerTags.FORM) - serverAtRest
+        back()
+        val frames = mutableListOf<Pair<Float, Float>>()
+        repeat(40) {
+            rule.mainClock.advanceTimeByFrame()
+            rule.waitForIdle()
+            val leaving = if (shown(ServerTags.FORM)) left(ServerTags.FORM).value - serverAtRest.value else Float.NaN
+            val returning = if (shown(StartTags.CONTENT)) left(StartTags.CONTENT).value - startAtRest.value else Float.NaN
+            frames += leaving to returning
+        }
         settle()
-        assertEquals("system Back reveals a destination already in place", 0.dp, incoming)
-        assertTravelling("system Back leaves", outgoing, towardsEnd = true)
-        rule.node(ServerTags.FORM).assertDoesNotExist()
+        return frames.dropWhile { it.first == 0f || it.second.isNaN() }.takeWhile { !it.first.isNaN() }
     }
 
     @Test
-    fun predictiveBackScrubsTheReverseSlideAndCanCancelThenComplete() =
+    fun toolbarBackAndSystemBackDrawTheSameFrames() {
+        show()
+        val toolbar = popFrames { rule.onNodeWithContentDescription("Back").performClick() }
+        val input = backInput()
+        val system = popFrames { rule.runOnUiThread { input.complete() } }
+        assertTrue("the pop has frames to compare: $toolbar", toolbar.size > 10)
+        assertEquals("toolbar Back and system Back are one animation", toolbar.size, system.size)
+        toolbar.zip(system).forEachIndexed { i, (a, b) ->
+            assertEquals("frame $i, the page leaving", a.first, b.first, 0.5f)
+            assertEquals("frame $i, the page returning", a.second, b.second, 0.5f)
+        }
+    }
+
+    @Test
+    fun predictiveBackHoldsThePagesAtTheGesturesProgressThenCancelsAndCommitsOnTheCurve() =
         predictiveBack(LayoutDirection.Ltr, NavigationEvent.EDGE_LEFT)
 
     @Test
@@ -227,52 +287,74 @@ class NavMotionTest {
 
     private fun predictiveBack(direction: LayoutDirection, edge: Int) {
         show(direction)
+        val sign = if (direction == LayoutDirection.Ltr) 1 else -1
         val startAtRest = left(StartTags.CONTENT)
         pushServer()
         settle()
         val serverAtRest = left(ServerTags.FORM)
         val serverBounds = rule.node(ServerTags.FORM).bounds
         val input = backInput()
-        rule.mainClock.autoAdvance = false
-        rule.runOnUiThread { input.start(edge) }
-        rule.mainClock.advanceTimeByFrame()
-        rule.waitForIdle()
-        rule.runOnUiThread { input.progress(0.5f, edge) }
-        repeat(3) { rule.mainClock.advanceTimeByFrame() }
-        rule.waitForIdle()
-        val sign = if (direction == LayoutDirection.Ltr) 1 else -1
-        assertEquals("gesture reveals the stationary destination", startAtRest, left(StartTags.CONTENT))
-        // Halfway through decelerate(1.5): 48 * (1 - .5^3) = 42 dp.
-        assertDp("Telegram foreground at half gesture progress", 42.dp, (left(ServerTags.FORM) - serverAtRest) * sign)
-        val during = rule.node(ServerTags.FORM).bounds
-        assertEquals("the gesture never scales the outgoing page", serverBounds.right - serverBounds.left, during.right - during.left)
-        rule.runOnUiThread { input.cancel() }
-        settle()
-        assertEquals("cancel restores the outgoing page", serverAtRest, left(ServerTags.FORM))
-        rule.node(StartTags.CONTENT).assertDoesNotExist()
+        fun drag(progress: Float) {
+            rule.runOnUiThread { input.progress(progress, edge) }
+            repeat(3) { rule.mainClock.advanceTimeByFrame() }
+            rule.waitForIdle()
+        }
+        fun top() = (left(ServerTags.FORM) - serverAtRest) * sign
+        fun beneath() = (left(StartTags.CONTENT) - startAtRest) * sign
 
         rule.mainClock.autoAdvance = false
         rule.runOnUiThread { input.start(edge) }
         rule.mainClock.advanceTimeByFrame()
-        rule.waitForIdle()
-        rule.runOnUiThread { input.progress(0.5f, edge) }
-        repeat(3) { rule.mainClock.advanceTimeByFrame() }
-        rule.waitForIdle()
-        rule.runOnUiThread { input.complete() }
+        drag(0f)
+        assertDp("at progress 0 the page is where it was", 0.dp, top())
+        assertParallax("progress 0", beneath(), top())
+        for (progress in listOf(0.5f, 1f, 0.5f)) {
+            drag(progress)
+            assertDp("at progress $progress the page is that share of the pane across", width * progress, top())
+            assertParallax("progress $progress", beneath(), top())
+        }
+        val during = rule.node(ServerTags.FORM).bounds
+        assertEquals("the gesture never scales the page", serverBounds.right - serverBounds.left, during.right - during.left)
+
+        // Cancel: back to rest from half way, on the curve, over half of 450 ms.
+        rule.runOnUiThread { input.cancel() }
+        rule.mainClock.advanceTimeByFrame()
+        rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 4L)
+        val cancelling = top() / width
         settle()
+        assertTrue("cancel starts from where the finger left: $cancelling", cancelling < 0.5f)
+        assertOnCurve("cancel", 1f - cancelling / 0.5f, NavMotion.DURATION_MILLIS / 4L + 16, NavMotion.DURATION_MILLIS / 2f)
+        assertEquals("cancel restores the page", serverAtRest, left(ServerTags.FORM))
+        rule.node(StartTags.CONTENT).assertDoesNotExist()
+
+        // Commit: from half way to the end, on the curve.
+        rule.mainClock.autoAdvance = false
+        rule.runOnUiThread { input.start(edge) }
+        rule.mainClock.advanceTimeByFrame()
+        drag(0.5f)
+        rule.runOnUiThread { input.complete() }
+        rule.mainClock.advanceTimeByFrame()
+        rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 4L)
+        val committing = top() / width
+        val returning = beneath()
+        val leaving = top()
+        settle()
+        assertOnCurve("commit", (committing - 0.5f) / 0.5f, NavMotion.DURATION_MILLIS / 4L + 16, NavMotion.DURATION_MILLIS / 2f)
+        assertParallax("commit", returning, leaving)
         rule.node(ServerTags.FORM).assertDoesNotExist()
-        assertEquals("complete returns to the previous page", startAtRest, left(StartTags.CONTENT))
+        assertEquals("commit returns to the previous page", startAtRest, left(StartTags.CONTENT))
     }
 
     @Test
     fun rightToLeftMirrorsThePush() {
         show(LayoutDirection.Rtl)
         pushServer()
-        halfway()
+        rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 2L)
         val incoming = left(ServerTags.FORM)
         settle()
         // The end side is the left in a right-to-left layout.
-        assertTravelling("the new screen", -(incoming - left(ServerTags.FORM)), towardsEnd = true)
+        val top = -(incoming - left(ServerTags.FORM))
+        assertOnCurve("the new page", 1f - top / width, NavMotion.DURATION_MILLIS / 2L)
     }
 
     @Test
@@ -313,11 +395,14 @@ class NavMotionTest {
         rule.mainClock.autoAdvance = false
         rule.node(FlatRowTags.ROW).performClick()
         rule.mainClock.advanceTimeByFrame()
-        halfway()
+        rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 2L)
         assertEquals("the sidebar doesn't move with the detail", sidebar, rule.node(TabletSidebarTags.SIDEBAR).bounds)
         val chat = left(ChatScreenTags.SCREEN)
         settle()
-        assertTravelling("the chat", chat - left(ChatScreenTags.SCREEN), towardsEnd = true)
+        val pane = width - sidebar.right
+        val travelled = chat - left(ChatScreenTags.SCREEN)
+        assertTrue("the chat comes in from the detail pane's end: $travelled", travelled > 1.dp)
+        assertOnCurve("the chat", 1f - travelled / pane, NavMotion.DURATION_MILLIS / 2L)
         assertEquals(sidebar, rule.node(TabletSidebarTags.SIDEBAR).bounds)
         graph.account.value?.let { runBlocking { it.stop() } }
     }

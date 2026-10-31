@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -122,12 +123,13 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                     NavHost(
                         navController = nav,
                         startDestination = start,
+                        modifier = Modifier.backdrop(nav),
                         enterTransition = motion.enter,
                         exitTransition = motion.exit,
                         popEnterTransition = motion.popEnter,
                         popExitTransition = motion.popExit,
-                        predictivePopEnterTransition = { _ -> motion.popEnter.invoke(this) },
-                        predictivePopExitTransition = { _ -> motion.popExit.invoke(this) },
+                        predictivePopEnterTransition = motion.predictivePopEnter,
+                        predictivePopExitTransition = motion.predictivePopExit,
                     ) {
                         composable<StartRoute> { Start(graph, nav, add) }
                         composable<AgentHomeRoute> {

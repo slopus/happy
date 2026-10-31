@@ -102,12 +102,18 @@ architectures comparable (local store, delta sync, crypto layer).
    `HeaderBackButton` renders nothing. Tablet tests use
    `w1280dp-h800dp-xhdpi`; without `ProvideWindowLayout` a composable lays
    out as an unlimited phone.
-   **Moving between screens:** the one NavHost takes `ui/NavMotion`'s four
-   transitions, Material's shared X axis (300 ms, 30 dp whatever the pane's
-   width, mirrored by Back and by right-to-left, none with animations off).
-   Never leave a NavHost on navigation-compose's defaults: those are a 700 ms
-   crossfade. The back gesture keeps the library's predictive animation. An
-   account or agent switch remounts the stack at once; it is not a push.
+   **Moving between screens:** one motion, measured from One UI Settings on
+   the Fold7 (`research/navigation-motion.md`). The one NavHost takes all six
+   of `ui/NavMotion`'s transitions and `Modifier.backdrop(nav)`: the new page
+   slides across the whole pane over the old one in 450 ms on
+   cubic-bezier(0.22, 0.4, 0, 1), the old one moves 26% the other way and
+   dims 20%, nothing fades. Toolbar back, system back and a gesture's commit
+   run the same pop. The predictive gesture is that pop held at the finger's
+   progress, and it finishes or cancels on the curve from there. Mirrored in
+   right-to-left; with animations off, none. Never leave a NavHost on
+   navigation-compose's defaults (a 700 ms crossfade, and a scale on the
+   gesture), and never give a destination its own transitions. An account or
+   agent switch remounts the stack at once; it is not a push.
 4. **The local store is SQLite through the framework API**
    (`SQLiteOpenHelper`, WAL, hand-written SQL in `data/`). Why not a library:
    the schema is a handful of tables whose rows are mostly JSON documents
