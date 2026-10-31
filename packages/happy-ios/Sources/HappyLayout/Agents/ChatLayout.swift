@@ -40,12 +40,6 @@ public struct ChatScreenLayout: Equatable, Sendable {
         public static let paddingBottom: CGFloat = 8
         /// Room between the newest row and the card.
         public static let listGap: CGFloat = 8
-        /// How far the header's scrim runs past the bar's foot.
-        public static let headerOverhang: CGFloat = 10
-        /// Its feather, shorter than home's 36 so the bar stays whole.
-        public static let headerRamp: CGFloat = 24
-        /// Its fade where it holds: the ground itself.
-        public static let headerPeak: Double = 1
     }
 
     public var card: CGRect
@@ -60,10 +54,9 @@ public struct ChatScreenLayout: Equatable, Sendable {
     public var viewport: CGFloat
 
     /// `keyboardTop` is the keyboard guide's top in the screen. The
-    /// header's scrim is the screen's ground from the top down past the
-    /// bar, `headerOverhang` under its foot, feathering out over its last
-    /// `headerRamp`: messages never read through the name's capsule, and
-    /// fade in only as they pass its foot.
+    /// header's scrim is the header's own edge (`HeaderScrim`): from the
+    /// top of the screen, easing out through the bar's foot and gone
+    /// `HeaderScrim.barOverhang` under it.
     ///
     /// With a `meter`, its row takes the 8 under the card and 12 more, so
     /// the card stands 20 above the keyboard and the bar 8 under the card.
@@ -80,7 +73,7 @@ public struct ChatScreenLayout: Equatable, Sendable {
             width: ContextMeterLayout.Metrics.width,
             height: ContextMeterLayout.Metrics.height
         ) : nil
-        headerScrim = CGRect(x: 0, y: 0, width: size.width, height: max(0, safeArea.top) + M.headerOverhang)
+        headerScrim = HeaderScrim.frame(width: size.width, barFoot: safeArea.top)
         listTop = safeArea.top
         listBottom = max(0, size.height - card.minY + M.listGap)
         viewport = max(0, size.height - listTop - listBottom)

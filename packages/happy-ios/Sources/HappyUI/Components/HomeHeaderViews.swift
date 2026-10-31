@@ -187,10 +187,11 @@ final class EdgeBlurView: UIVisualEffectView {
 
 /// An edge where content scrolls under chrome, as Telegram treats its
 /// two (`HeaderScrim`): a fade into the screen's own `ground`, so with
-/// nothing under it the edge is that ground. The header's (`.top`) runs
-/// down from the top, nearly whole with a light blur, and feathers out
-/// over its last 36pt; the dock's and the composer's (`.bottom`) are a
-/// light fade at the screen's foot and no blur.
+/// nothing under it the edge is that ground. The header's (`.top`) is the
+/// header itself, strongest at the top of the screen and easing out
+/// through the bar's foot, with a point of blur; the dock's and the
+/// composer's (`.bottom`) are a light fade at the screen's foot and no
+/// blur.
 final class HeaderScrimView: UIView {
     enum Edge {
         case top
@@ -202,11 +203,7 @@ final class HeaderScrimView: UIView {
     var ground: UIColor = UIColor(Palette.surface) {
         didSet { setNeedsLayout() }
     }
-    /// The top edge's feather, over its last points, and how much of the
-    /// ground it is where it holds: home's unless a screen says otherwise.
-    var ramp: CGFloat = HeaderScrim.rampPoints {
-        didSet { setNeedsLayout() }
-    }
+    /// How much of the ground the top edge is where it holds.
     var peak: Double = HeaderScrim.topPeak {
         didSet { setNeedsLayout() }
     }
@@ -264,7 +261,7 @@ final class HeaderScrimView: UIView {
         let stops: [HeaderScrim.Stop]
         switch edge {
         case .top:
-            stops = HeaderScrim.stops(height: bounds.height, ramp: ramp)
+            stops = HeaderScrim.stops(height: bounds.height)
             fade.colors = stops.map { ground.withAlphaComponent($0.alpha * peak).cgColor }
         case .bottom:
             stops = HeaderScrim.footStops()

@@ -615,8 +615,8 @@ final class ChatScreenLayoutTests: XCTestCase {
         XCTAssertEqual(layout.oldestEdgeInset, 171)
         assertFrame(layout.list, rect(0, 0, 393, 852))
         assertFrame(layout.placeholder, rect(0, 159, 393, 529))
-        // The scrim stays the header's own.
-        assertFrame(layout.headerScrim, rect(0, 0, 393, 111))
+        // The scrim stays the header's own: 34 past the bar, not the strip.
+        assertFrame(layout.headerScrim, rect(0, 0, 393, 137))
     }
 
     func testOnATabletTheListStartsUnderTheStrip() {
@@ -805,8 +805,9 @@ final class LegacyChatHeaderLayoutTests: XCTestCase {
 
     func testTheHeaderScrimAndTheEmptyChatsPlace() {
         let layout = LegacyChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [.inset(block(height: 60))], composerHeight: 70))
-        // The bar and 8 past it; the placeholder between the bar and the dock.
-        assertFrame(layout.headerScrim, rect(0, 0, 393, 111))
+        // The header's edge, to 34 past the bar; the placeholder between
+        // the bar and the dock.
+        assertFrame(layout.headerScrim, rect(0, 0, 393, 137))
         assertFrame(layout.placeholder, rect(0, 103, 393, 585))
         let typing = LegacyChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: 500, composerHeight: 70))
         assertFrame(typing.placeholder, rect(0, 103, 393, 327))

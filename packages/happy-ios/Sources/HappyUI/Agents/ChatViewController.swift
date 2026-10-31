@@ -286,10 +286,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
             scrollView.topEdgeEffect.isHidden = true
         }
         if !previewing {
-            // The ground behind the bar and a short feather under it: the
-            // name's capsule never has words to read through it.
-            transcriptHeaderScrim.ramp = ChatScreenLayout.Metrics.headerRamp
-            transcriptHeaderScrim.peak = ChatScreenLayout.Metrics.headerPeak
+            // The header's own edge: the ground at the top, easing out
+            // through the bar's foot (`HeaderScrim`).
             transcriptHeaderScrim.presence = 0
             view.addSubview(transcriptHeaderScrim)
         }

@@ -132,14 +132,16 @@ final class HomeHeaderLayoutTests: XCTestCase {
         XCTAssertEqual(layout.insets.contentTop, 123)
     }
 
-    func testTheScrimHoldsItsPeakThenFeathersOverTheLastThirtySixPoints() {
+    func testTheScrimHoldsItsPeakThenEasesOutOverTheLastEightyPoints() {
         let stops = HeaderScrim.stops(height: 119)
-        XCTAssertEqual(stops.count, 25)
+        // The hold, then 25 samples through the fade.
+        XCTAssertEqual(stops.count, 26)
         XCTAssertEqual(stops[0].alpha, 1)
-        XCTAssertEqual(stops[18].alpha, 0.9463, accuracy: 0.0001)
-        XCTAssertEqual(stops[20].alpha, 0.7374, accuracy: 0.0001)
-        XCTAssertEqual(stops[24].alpha, 0)
-        XCTAssertEqual(stops[24].location, 1)
+        XCTAssertEqual(stops[1].location, 39.0 / 119, accuracy: 0.0001)
+        XCTAssertEqual(stops[1].alpha, 1)
+        XCTAssertEqual(stops[13].alpha, HeaderScrim.curve(0.5), accuracy: 0.0001)
+        XCTAssertEqual(stops[25].alpha, 0)
+        XCTAssertEqual(stops[25].location, 1)
     }
 
     /// The foot's fade: Telegram's light one at the screen's foot, none at

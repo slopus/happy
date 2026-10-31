@@ -21,8 +21,10 @@ import CoreGraphics
 ///     centred (SessionView's scrollButtonInset). The bars above the card fade
 ///     out but keep their space while the reader is scrolled back, so the
 ///     button floats over an empty band;
-///   - the header's scrim covers the bar and 8 past it (ChatHeaderView's
-///     headerBackdrop), and an empty chat's placeholder is centred between
+///   - the header's scrim is the header's own edge (`HeaderScrim`): the
+///     ground at the top, easing out through the bar's foot to
+///     `HeaderScrim.barOverhang` under it, and an empty chat's placeholder is
+///     centred between
 ///     the bar and the dock (AgentContentView).
 ///
 /// On a tablet (`docked`) nothing floats: the list starts under the bar and
@@ -65,8 +67,6 @@ public struct LegacyChatScreenLayout: Equatable, Sendable {
         public static let dockedScrollButtonGap: CGFloat = 4
         /// Docked: OlderEnd's `headerHeight + safeArea.top + 32`.
         public static let dockedOlderEdgeExtra: CGFloat = 32
-        /// The header's scrim runs 8 past the bar (headerBackdrop bottom -8).
-        public static let headerScrimOverhang: CGFloat = 8
         /// Without the header: `chatListTopContentInset`'s 12.
         public static let headerlessOlderEdgeExtra: CGFloat = 12
         /// The floating back button that stands in for the header.
@@ -200,7 +200,7 @@ public struct LegacyChatScreenLayout: Equatable, Sendable {
             height: M.scrollButtonSize
         )
         scrim = CGRect(x: 0, y: dock.minY - M.scrimExtra, width: width, height: max(0, height - dock.minY + M.scrimExtra))
-        headerScrim = CGRect(x: 0, y: 0, width: width, height: max(0, input.safeArea.top) + M.headerScrimOverhang)
+        headerScrim = HeaderScrim.frame(width: width, barFoot: input.safeArea.top)
         placeholder = CGRect(x: 0, y: headerBottom, width: width, height: max(0, dock.minY - headerBottom))
 
         backButton = nil

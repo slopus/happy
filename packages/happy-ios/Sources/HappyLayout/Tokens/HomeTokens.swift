@@ -35,25 +35,39 @@ public enum HeaderGlassShadow {
     public static let materialFraction: CGFloat = 0.44
 }
 
-/// Where content scrolls under chrome, as Telegram's chats list treats
-/// its two edges (measured from its screen, iOS 26). Both fade to the
-/// screen's own ground, never another colour, so with nothing under them
-/// they are that ground.
+/// Where content scrolls under chrome, as Telegram's chat treats its two
+/// edges (its `EdgeEffectView`, iOS 26). Both fade to the screen's own
+/// ground, never another colour, so with nothing under them they are that
+/// ground.
 ///
-/// The header's edge: content goes almost wholly into the ground under the
-/// status bar and the controls (0.94), with a light blur, and comes back
-/// over the last 36pt (Telegram: 0.88 at 27 from the end, 0.45 at 10).
+/// The header's edge is the header itself, not a shade under it: strongest
+/// at the top of the screen, 0.85 of the ground behind the status bar and
+/// the bar's upper half (Telegram's over a plain wallpaper), easing out over
+/// `fade` points along Telegram's curve (`curve`), a third of the way at the
+/// bar's foot and gone `barOverhang` under it, so a message reads almost up
+/// to the glass. A blur of a point at most, as Telegram's.
 /// The foot's: no blur, content legible behind the composer's glass, and
 /// only a light fade into the ground at the screen's foot (Telegram: 0.5
 /// at its last 20pt).
 public enum HeaderScrim {
     public static let featherSteps = 24
-    public static let rampPoints: CGFloat = 36
-    public static let fallbackFeatherStart: CGFloat = 0.60
+    /// How long the header's edge takes to ease out (Telegram's 80).
+    public static let fade: CGFloat = 80
+    /// How far past the bar's foot the header's edge reaches (Telegram's 34).
+    public static let barOverhang: CGFloat = 34
     /// The header's fade where it holds.
-    public static let topPeak: Double = 0.94
+    public static let topPeak: Double = 0.85
     /// The header's blur radius where it holds: softens, never smears.
-    public static let topBlurRadius: CGFloat = 2
+    public static let topBlurRadius: CGFloat = 1
+
+    /// The header's edge from the bar down: what is left of the ground `t`
+    /// of the way through `fade`, 1 to 0. Fitted to Telegram's sampled
+    /// gradient (within 0.03 everywhere): it holds near whole for the first
+    /// fifth, is half gone by the middle, and has a long faint tail.
+    public static func curve(_ t: Double) -> Double {
+        let t = min(1, max(0, t))
+        return pow(1 - pow(t, 2.7), 4.3)
+    }
     /// The foot's fade at the screen's foot, from none at the scrim's top.
     public static let footPeak: Double = 0.55
     /// How the foot's fade grows towards the foot: `t^footCurve`.
@@ -77,19 +91,27 @@ public enum HeaderScrim {
         min(1, max(0, scrolledUnder / presenceRamp))
     }
 
-    /// The feather: 25 samples of `1 - p^1.67` after a flat
-    /// hold, where `hold` puts the ramp's start `rampPoints` above the
-    /// bottom of a scrim `height` tall (or `ramp` above it, where a screen
-    /// feathers its own edge shorter).
-    public static func stops(height: CGFloat, ramp: CGFloat = rampPoints) -> [Stop] {
-        let hold = height > ramp ? Double(1 - ramp / height) : Double(fallbackFeatherStart)
-        return (0...featherSteps).map { step in
-            let t = Double(step) / Double(featherSteps)
-            let p = t <= hold ? 0 : (t - hold) / (1 - hold)
-            let falloff = 1 - pow(p, 1.67)
-            // RN writes `toFixed(4)` into the rgba string.
-            return Stop(location: t, alpha: (falloff * 10_000).rounded() / 10_000)
+    /// The header's edge, `height` tall from the top of the screen: whole
+    /// down to `fade` above its foot, then `curve` to none at it, sampled
+    /// densest through the fade. Shorter than `fade` (a phone on its side),
+    /// it is the curve's last `height` points.
+    public static func stops(height: CGFloat, fade: CGFloat = fade) -> [Stop] {
+        guard height > 0 else { return [Stop(location: 0, alpha: 1), Stop(location: 1, alpha: 0)] }
+        let hold = max(0, Double(height - fade) / Double(height))
+        // Through the fade, how far `t` (of the scrim) is.
+        func through(_ t: Double) -> Double { 1 - (1 - t) * Double(height) / Double(fade) }
+        var stops: [Stop] = hold > 0 ? [Stop(location: 0, alpha: 1)] : []
+        for step in 0...featherSteps {
+            let t = hold + (1 - hold) * Double(step) / Double(featherSteps)
+            let alpha = curve(through(t))
+            stops.append(Stop(location: t, alpha: (alpha * 10_000).rounded() / 10_000))
         }
+        return stops
+    }
+
+    /// The header's edge over a screen whose bar ends at `barFoot`.
+    public static func frame(width: CGFloat, barFoot: CGFloat) -> CGRect {
+        CGRect(x: 0, y: 0, width: width, height: max(0, barFoot) + barOverhang)
     }
 
     /// The foot's fade, from the screen's foot (location 0, `footPeak`)

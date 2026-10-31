@@ -196,7 +196,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(down.listTop, 103)
         XCTAssertEqual(down.listBottom, 110)
         XCTAssertEqual(down.viewport, 631)
-        XCTAssertEqual(down.headerScrim, CGRect(x: 0, y: 0, width: 390, height: 113))
+        XCTAssertEqual(down.headerScrim, CGRect(x: 0, y: 0, width: 390, height: 137))
         // Keyboard up: the card sits 8 above it.
         let up = ChatScreenLayout(size: size, safeArea: safe, keyboardTop: 508) { width in width == 374 ? 92 : 0 }
         XCTAssertEqual(up.card, CGRect(x: 8, y: 408, width: 374, height: 92))
@@ -207,27 +207,62 @@ final class LayoutTests: XCTestCase {
 
     /// Under the glass header (iPhone 17 Pro: the bar's 54 under a 62
     /// status bar, its buttons and the name's capsule 62 to 106) the scrim
-    /// is the ground down past the bar, 10 under its foot, and feathers
-    /// over its last 24: whole behind the name, clear by 126.
-    func testTheHeaderScrimCoversTheBarAndFeathersShortUnderIt() {
+    /// is the header's own edge, Telegram's: from the top of the screen to
+    /// 34 under the bar's foot, whole down to 80 above its end.
+    func testTheHeaderScrimIsTheHeadersOwnEdge() {
         let size = CGSize(width: 402, height: 874)
         let safe = LayoutInsets(top: 116, left: 0, bottom: 34, right: 0)
         let layout = ChatScreenLayout(size: size, safeArea: safe, keyboardTop: 840) { _ in 60 }
-        XCTAssertEqual(layout.headerScrim, CGRect(x: 0, y: 0, width: 402, height: 126))
+        XCTAssertEqual(layout.headerScrim, CGRect(x: 0, y: 0, width: 402, height: 150))
         XCTAssertEqual(layout.listTop, 116, "the transcript still starts under the bar")
-        let height = layout.headerScrim.height
-        let stops = HeaderScrim.stops(height: height, ramp: ChatScreenLayout.Metrics.headerRamp)
-        for stop in stops where stop.location * Double(height) <= Double(height - ChatScreenLayout.Metrics.headerRamp) {
-            XCTAssertEqual(stop.alpha, 1, "the ground thins at \(stop.location * Double(height))pt, above the feather")
-        }
-        // The name's capsule ends at 106: still nearly the ground there.
-        let underCapsule = stops.last { $0.location * Double(height) <= 106 }
-        XCTAssertGreaterThan(underCapsule?.alpha ?? 0, 0.9)
-        XCTAssertEqual(stops.last?.alpha, 0)
-        XCTAssertEqual(ChatScreenLayout.Metrics.headerPeak, 1)
         // Sideways, with no status bar, the bar alone and the same overhang.
         let sideways = ChatScreenLayout(size: CGSize(width: 874, height: 402), safeArea: LayoutInsets(top: 32, left: 62, bottom: 21, right: 62), keyboardTop: 402) { _ in 60 }
-        XCTAssertEqual(sideways.headerScrim, CGRect(x: 0, y: 0, width: 874, height: 42))
+        XCTAssertEqual(sideways.headerScrim, CGRect(x: 0, y: 0, width: 874, height: 66))
+    }
+
+    /// The edge over that header, 150 tall: whole behind the status bar and
+    /// the bar's top half, a third left at the bar's foot (116), a tenth 12
+    /// under it, none at its end. Messages read almost up to the glass.
+    func testTheHeaderEdgeEasesOutThroughTheBarsFoot() {
+        let stops = HeaderScrim.stops(height: 150)
+        func alpha(at y: CGFloat) -> Double {
+            let t = Double(y / 150)
+            let after = stops.firstIndex { $0.location >= t } ?? stops.count - 1
+            guard after > 0 else { return stops[0].alpha }
+            let a = stops[after - 1], b = stops[after]
+            return a.alpha + (b.alpha - a.alpha) * (t - a.location) / (b.location - a.location)
+        }
+        XCTAssertEqual(stops.first?.location, 0)
+        XCTAssertEqual(stops.first?.alpha, 1)
+        XCTAssertEqual(stops.last?.location, 1)
+        XCTAssertEqual(stops.last?.alpha, 0)
+        XCTAssertEqual(zip(stops, stops.dropFirst()).filter { $0.1.alpha > $0.0.alpha }.count, 0, "it only ever eases out")
+        XCTAssertEqual(alpha(at: 30), 1, "the status bar is the ground")
+        XCTAssertEqual(alpha(at: 70), 1, accuracy: 0.01, "the bar's top is the ground")
+        XCTAssertEqual(alpha(at: 116), 0.33, accuracy: 0.03, "a third at the bar's foot")
+        XCTAssertLessThan(alpha(at: 128), 0.12, "nearly gone 12 under the foot")
+        XCTAssertEqual(HeaderScrim.topPeak, 0.85, "Telegram's over a plain ground")
+        XCTAssertEqual(HeaderScrim.topBlurRadius, 1)
+    }
+
+    /// Telegram's curve, fitted: near whole for its first fifth, half gone
+    /// by the middle, a long faint tail.
+    func testTheEdgesCurveIsTelegrams() {
+        XCTAssertEqual(HeaderScrim.curve(0), 1)
+        XCTAssertEqual(HeaderScrim.curve(0.2), 0.941, accuracy: 0.03)
+        XCTAssertEqual(HeaderScrim.curve(0.5), 0.483, accuracy: 0.03)
+        XCTAssertEqual(HeaderScrim.curve(0.7), 0.136, accuracy: 0.03)
+        XCTAssertEqual(HeaderScrim.curve(1), 0)
+    }
+
+    /// A header shorter than the fade (a phone on its side) is the curve's
+    /// end: what is left at its foot is none, and at its top what the
+    /// curve has there.
+    func testAShortHeaderEdgeIsTheCurvesEnd() {
+        let stops = HeaderScrim.stops(height: 66)
+        XCTAssertEqual(stops.first?.location, 0)
+        XCTAssertEqual(stops.first?.alpha ?? 0, HeaderScrim.curve(14.0 / 80), accuracy: 0.001)
+        XCTAssertEqual(stops.last?.alpha, 0)
     }
 
     func testShortConversationsRestOnTheComposer() {
