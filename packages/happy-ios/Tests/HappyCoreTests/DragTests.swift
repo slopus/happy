@@ -176,6 +176,42 @@ final class DragTests: XCTestCase {
         XCTAssertNil(Drag(holding: "happy-search", drawn: drawn, all: all, document: document))
     }
 
+    /// What the list shows while the hand is over a slot is exactly what the
+    /// edited document draws once the drop lands, for every row that can be
+    /// carried and every slot `allows`, with stories off and on: the rows
+    /// never move again when the daemon confirms. Slots it refuses are
+    /// never offered.
+    func testEveryDropDrawsTheOrderItsGapShowed() throws {
+        let document = try SpaceSidebar.parse(html)
+        func drawn(_ document: SpaceSidebarDocument, stories: Bool) -> [Row] {
+            let shown = Rows.visible(rows(document)).filter { !Drop.isHidden($0) }
+            return stories ? Rows.withStories(shown, rings: [:]) : shown
+        }
+        for stories in [false, true] {
+            let shown = drawn(document, stories: stories)
+            var carried = 0
+            for row in shown {
+                guard let drag = Drag(holding: row.id, drawn: shown, all: rows(document), document: document) else { continue }
+                carried += 1
+                XCTAssertEqual(drag.order(to: drag.from), shown, "\(row.id) as drawn")
+                for to in drag.units.indices {
+                    XCTAssertEqual(drag.allows(to), to == drag.from || !drag.blocked[to])
+                    guard drag.allows(to) else {
+                        XCTAssertNotEqual(drag.target(deltaY: 0, heights: drag.units.map { _ in 40 }), to)
+                        continue
+                    }
+                    var landed = document
+                    if case .some(let after) = drag.after(to: to) {
+                        landed = try XCTUnwrap(SidebarDocumentEdits.move(document, drag.moving, after: after), "\(row.id) to \(to)")
+                    }
+                    XCTAssertEqual(drawn(landed, stories: stories).map(\.id), drag.order(to: to).map(\.id), "\(row.id) to \(to), stories \(stories)")
+                }
+            }
+            // a, b, c, d, a1, the two sections and the separator; with stories a1 is not drawn.
+            XCTAssertEqual(carried, stories ? 7 : 7)
+        }
+    }
+
     /// A nested row folds as a top-level one does: one `set` of its own `expanded`.
     func testANestedRowFoldsByItself() throws {
         let document = try SpaceSidebar.parse(#"<nav><happy-search/><happy-create/><happy-space id="t" expanded="true"><happy-space id="s1"><happy-space id="g1"/></happy-space><happy-space id="s2"/></happy-space></nav>"#)

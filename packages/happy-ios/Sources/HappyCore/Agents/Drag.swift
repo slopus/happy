@@ -145,8 +145,16 @@ public struct Drag: Equatable, Sendable {
             index -= 1
         }
         let step = index > from ? -1 : 1
-        while index != from, blocked[index] { index += step }
+        while !allows(index) { index += step }
         return index
+    }
+
+    /// May the carried rows be set down in slot `to`? Every rule about
+    /// where rows may go is asked here, and only here: the slot the hand
+    /// is over walks back to the nearest one this allows, and a drop takes
+    /// no other.
+    public func allows(_ to: Int) -> Bool {
+        to == from || !blocked[to]
     }
 
     /// The drawn rows in the order a drop in slot `to` leaves them.
