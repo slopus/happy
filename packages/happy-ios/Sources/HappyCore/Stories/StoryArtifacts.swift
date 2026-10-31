@@ -116,6 +116,12 @@ extension AgentClient {
         return (response.stories, response.cursor ?? "")
     }
 
+    /// One story by ID, in any state.
+    public func storyArtifact(_ artifactId: String) async throws -> StoryArtifact {
+        struct Response: Decodable { let story: StoryArtifact }
+        return try await decode(Response.self, "GET", "/v0/stories/\(Self.escape(artifactId))").story
+    }
+
     public func markStoryArtifactSeen(_ artifactId: String) async throws {
         _ = try await send("POST", "/v0/stories/\(Self.escape(artifactId))/seen", json: .object(["mutationId": .string(ClientID.make())]))
     }

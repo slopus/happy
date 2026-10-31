@@ -144,14 +144,16 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         }
         if action.targetFrame?.isMainFrame != false, let page,
            BrowserPolicy.Authority(url: url) != BrowserPolicy.Authority(url: page.url),
-           artifactID != nil, action.navigationType == .linkActivated {
+           artifactID != nil, !page.live, action.navigationType == .linkActivated {
             openBrowser(url, session: session, agentID: agentID)
             return .cancel
         }
         return .allow
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if action.targetFrame == nil, let url = action.request.url { openBrowser(url, session: session, agentID: agentID) }
+        // A live artifact's new window loads here, on its artifact's proxy.
+        if action.targetFrame == nil, page?.live == true { webView.load(action.request) }
+        else if action.targetFrame == nil, let url = action.request.url { openBrowser(url, session: session, agentID: agentID) }
         return nil
     }
 }

@@ -150,6 +150,22 @@ final class HappyReferencesTests: XCTestCase {
         XCTAssertNil(HappyReferences.reference(link: "happy-reference:agent/a1"), "a hand-written link passed for a reference")
     }
 
+    /// Happy links as agents write them; a malformed one is no reference. Linked live pages are embeddable.
+    func testHappyLinksNameTheirEntityAndLivePagesEmbed() throws {
+        XCTAssertEqual(HappyReferences.reference(url: "happy://artifacts/r7k2?version=3"), .init(kind: "artifact", id: "r7k2", version: 3))
+        XCTAssertEqual(HappyReferences.reference(url: "happy://agents/a1"), .init(kind: "agent", id: "a1"))
+        for bad in ["happy://artifacts/r7k2/", "happy://artifact/r7k2", "happy://agents/a1?version=2", "happy://artifacts/r7k2?version=01", "https://artifacts/x", "happy://artifacts/a#b"] {
+            XCTAssertNil(HappyReferences.reference(url: bad), bad)
+        }
+        let text = "Quote [this](happy://artifacts/tweet1) with [the video](<happy://artifacts/story1?version=2>), again [it](happy://artifacts/tweet1), [as was](happy://artifacts/tweet1?version=1), not happy://artifacts/bare"
+        XCTAssertEqual(HappyReferences.linkedArtifacts(text), [.init(kind: "artifact", id: "tweet1"), .init(kind: "artifact", id: "story1", version: 2), .init(kind: "artifact", id: "tweet1", version: 1)])
+        func object(_ json: String) throws -> JSONValue { try JSONValue.decode(Data(json.utf8)) }
+        XCTAssertEqual(References.embed(try object(#"{"type":"html","live":{"url":"https://platform.x.com/embed/Tweet.html?id=1","networkId":"n"}}"#))?.host, "platform.x.com")
+        XCTAssertNil(References.embed(try object(#"{"type":"html","status":"deleted","live":{"url":"https://x.com"}}"#)))
+        XCTAssertNil(References.embed(try object(#"{"type":"html","live":null,"entry":{"path":"index.html"}}"#)))
+        XCTAssertNil(References.embed(try object(#"{"type":"html","live":{"url":"file:///etc/passwd"}}"#)))
+    }
+
     func testStreamingHoldsBackATagStillArriving() {
         XCTAssertEqual(HappyReferences.droppingPartialTag("Started <happy-agent id=\"a"), "Started ")
         XCTAssertEqual(HappyReferences.droppingPartialTag("1 < 2"), "1 < 2")

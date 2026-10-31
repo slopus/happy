@@ -458,8 +458,9 @@ public final class AgentClient: Sendable {
     // MARK: Artifacts
 
     /// An artifact object, a deleted one's too (`GET /v0/artifacts/:artifactId`).
-    public func artifact(_ artifactId: String) async throws -> JSONValue {
-        guard let artifact = try await decode(JSONValue.self, "GET", "/v0/artifacts/\(Self.escape(artifactId))")["artifact"] else { throw AgentClientError.invalidResponse }
+    /// `story`: with `type=story`, which serves a story artifact and hides nothing else.
+    public func artifact(_ artifactId: String, story: Bool = false) async throws -> JSONValue {
+        guard let artifact = try await decode(JSONValue.self, "GET", "/v0/artifacts/\(Self.escape(artifactId))" + (story ? "?type=story" : ""))["artifact"] else { throw AgentClientError.invalidResponse }
         return artifact
     }
 

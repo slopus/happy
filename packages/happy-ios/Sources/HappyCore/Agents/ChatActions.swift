@@ -23,7 +23,7 @@ public struct ChoiceBlock: Equatable, Sendable {
 public enum ChatActions {
     /// Only a `reply` is pressed here; any other action is drawn, inert.
     public struct Button: Equatable, Sendable {
-        public var label: String, actionId: String? = nil, params: [String: String] = [:], emphasized = false
+        public var label: String, actionId: String? = nil, params: [String: String] = [:]
         /// The words a press sends: `data-text`, else the label.
         public var text: String { params["text"] ?? label }
     }
@@ -63,8 +63,7 @@ public enum ChatActions {
                 .split(whereSeparator: \.isWhitespace).joined(separator: " ")
             guard !label.isEmpty else { return nil }
             buttons.append(Button(label: label, actionId: values["data-action"],
-                params: Dictionary(uniqueKeysWithValues: values.filter { $0.key.hasPrefix("data-") && !presentation.contains($0.key) }.map { (String($0.key.dropFirst(5)), $0.value) }),
-                emphasized: values["data-emphasis"] != nil && !buttons.contains(where: \.emphasized)))
+                params: Dictionary(uniqueKeysWithValues: values.filter { $0.key.hasPrefix("data-") && !presentation.contains($0.key) }.map { (String($0.key.dropFirst(5)), $0.value) })))
             rest = rest[match.range.upperBound...]
         }
         return rest.allSatisfy(\.isWhitespace) && !buttons.isEmpty ? buttons : nil
@@ -97,7 +96,7 @@ public enum ChatActions {
         let chosen: [Int]? = choice.map { $0["kind"] == .string("button") ? ($0["index"]?.numberValue).map { [Int($0)] } ?? [] : [] } ?? pressed.map { [$0] }
         return ChoiceBlock(source: .menu(messageId: messageId, blockIndex: blockIndex, buttons: buttons),
             options: buttons.map { .init(label: $0.label, pressable: $0.actionId == "reply") },
-            chosen: chosen, emphasized: buttons.firstIndex(where: \.emphasized))
+            chosen: chosen, emphasized: buttons.isEmpty ? nil : 0)  // the first is primary, as on desktop
     }
 
     /// The press's one `action` block, for `POST /v0/agents/:id/send`.

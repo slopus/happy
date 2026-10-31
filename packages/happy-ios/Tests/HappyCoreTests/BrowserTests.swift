@@ -90,6 +90,18 @@ final class BrowserTests: XCTestCase {
         XCTAssertFalse(written[1].contains("native-token"))
     }
 
+    /// A live-URL artifact's tunnel is its own proxy, never the workspace's.
+    func testLiveArtifactTunnelsThroughItsOwnProxy() async throws {
+        let bytes = Bytes([Data("HTTP/1.1 200 OK\r\n\r\n".utf8), Data("HTTP/1.1 200 OK\r\n\r\n".utf8)])
+        let client = AgentClient(transport: Transport(bytes), token: "native-token")
+        let stream = try await client.browserTunnel(artifactID: "tweet1", target: BrowserPolicy.Authority(url: URL(string: "https://platform.x.com")!)!)
+        await stream.close()
+        let written = await bytes.writes.map { String(decoding: $0, as: UTF8.self) }
+        XCTAssertTrue(written[0].hasPrefix("CONNECT /v0/artifacts/tweet1/proxy HTTP/1.1"))
+        XCTAssertTrue(written[1].hasPrefix("CONNECT platform.x.com:443"))
+        XCTAssertFalse(written[1].contains("native-token"))
+    }
+
     func testConnectErrorClosesStream() async throws {
         let bytes = Bytes([Data("HTTP/1.1 403 Forbidden\r\n\r\n".utf8)])
         let client = AgentClient(transport: Transport(bytes), token: "token")

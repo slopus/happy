@@ -134,6 +134,26 @@ final class InlinePagePlanTests: XCTestCase {
         let pinned = ChatItem(id: "m2", role: .agent, pieces: [.artifact(Artifact(id: "art1", version: 1, type: "html", title: "", followsLatest: false))], delivery: .sent)
         XCTAssertTrue(pages(ChatPlanner.plan(pinned, key: key, copied: false, syntax: CodeSyntaxService())).isEmpty)
     }
+
+    /// An agent's happy:// link opens once its artifact is read here (with rich tasks), and is only
+    /// words before: another person's story, which the plain read can't find, opens too.
+    func testAnAgentsArtifactLinkReadHereIsALink() throws {
+        let item = ChatItem(id: "m1", role: .agent, pieces: [.text("Video to attach: [Launch video](happy://artifacts/k1) now.")], delivery: .sent)
+        var key = ChatPlanner.Key(width: 393, maxContentWidth: 10_000, environment: nil)
+        func links() -> [String] {
+            ChatPlanner.plan(item, key: key, copied: false, syntax: CodeSyntaxService()).items.flatMap { item -> [String] in
+                guard case .text(let layout, _) = item else { return [] }
+                var found: [String] = []
+                layout.string.enumerateAttribute(.chatLink, in: NSRange(location: 0, length: layout.string.length)) { value, _, _ in (value as? String).map { found.append($0) } }
+                return found
+            }
+        }
+        XCTAssertEqual(links(), [])
+        for read in [References.Artifact.missing, .active(title: "Launch video", type: "html", latestVersion: 1)] {
+            key.references.artifacts["k1"] = read
+            XCTAssertEqual(links().compactMap(HappyReferences.reference(link:)), [HappyReferences.Reference(kind: "artifact", id: "k1")])
+        }
+    }
 }
 
 /// One message's text on the chat's ground, as the conversation draws it.

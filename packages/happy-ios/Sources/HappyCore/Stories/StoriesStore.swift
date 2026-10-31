@@ -608,8 +608,7 @@ public actor StoriesStore {
         reading[storyId] = Task {
             let story: Story?
             // Story artifacts: by ID in any state, so a quoted one gone from the feed still shows.
-            do { story = !artifacts ? try await client.story(storyId) : try await client.decode(JSONValue.self, "GET", "/v0/stories/\(AgentClient.escape(storyId))")["story"]
-                .flatMap { Self.decode(StoryArtifact.self, $0) }.map { StoryArtifacts.story($0, me: me) } }
+            do { story = !artifacts ? try await client.story(storyId) : StoryArtifacts.story(try await client.storyArtifact(storyId), me: me) }
             catch AgentClientError.status(404, _, _) { notFound(storyId); return }
             catch { story = nil }
             if let story { await readEntries([story]) }

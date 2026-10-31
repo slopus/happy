@@ -10,6 +10,8 @@ public actor BrowserProxy {
         case artifact(id: String, version: Int, authority: BrowserPolicy.Authority, workspaceID: String?)
         case workspace(id: String)
         case liveArtifact(id: String, workspaceID: String, authority: BrowserPolicy.Authority)
+        /// A live-URL artifact's page: every connection through `CONNECT /v0/artifacts/:id/proxy`.
+        case live(artifactID: String)
     }
     public nonisolated let username = UUID().uuidString
     public nonisolated let password = UUID().uuidString
@@ -139,10 +141,12 @@ public actor BrowserProxy {
                     workspaceID = workspace
                 case .liveArtifact(_, let workspace, _): workspaceID = workspace
                 case .workspace(let workspace): workspaceID = workspace
+                case .live: workspaceID = ""
                 }
                 // Even public CDNs, redirects and WebSockets are resolved and
                 // connected by the computer. There is no phone-network fallback.
-                let remote = try await client.browserTunnel(workspaceID: workspaceID, target: authority)
+                let remote = if case .live(let id) = scope { try await client.browserTunnel(artifactID: id, target: authority) }
+                    else { try await client.browserTunnel(workspaceID: workspaceID, target: authority) }
                 do {
                     try await local.write(Data("HTTP/1.1 200 Connection Established\r\n\r\n".utf8))
                     opaqueTunnel = true

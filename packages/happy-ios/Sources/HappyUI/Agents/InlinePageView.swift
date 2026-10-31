@@ -31,9 +31,12 @@ final class InlinePageView: UIView, WKNavigationDelegate {
     private weak var host: PageHosting?
     private var browserPage: BrowserPage?
     private var loading: Task<Void, Never>?
+    /// A live page is only read here: a tap opens it whole.
+    private lazy var tap = UITapGestureRecognizer(target: self, action: #selector(openLive))
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        addGestureRecognizer(tap)
         backgroundColor = .clear
         isAccessibilityElement = true
         accessibilityIdentifier = "artifact-inline"
@@ -44,6 +47,7 @@ final class InlinePageView: UIView, WKNavigationDelegate {
 
     func apply(_ page: InlinePage?) {
         self.page = page
+        tap.isEnabled = page?.live != nil
         accessibilityLabel = page.map { $0.title.isEmpty ? Strings.untitledArtifact : $0.title }
         backgroundColor = page?.page.background.flatMap { RGBA(hex: $0) }.map { UIColor(ColorToken(light: $0, dark: $0)) } ?? .clear
         load()
@@ -74,7 +78,7 @@ final class InlinePageView: UIView, WKNavigationDelegate {
         }
         guard window != nil, let host = host ?? findHost() else { return }
         self.host = host
-        let target = (page.artifactId, page.page.version, page.page.entry)
+        let target = (page.artifactId, page.page.version, page.live?.absoluteString ?? page.page.entry)
         if let loaded, loaded == target { return }
         loaded = target
         accessibilityValue = nil
@@ -82,7 +86,8 @@ final class InlinePageView: UIView, WKNavigationDelegate {
         let client = host.pageClient
         loading = Task { [weak self] in
             do {
-                let browserPage = try await BrowserPage.artifact(client: client, id: page.artifactId, version: page.page.version, entry: page.page.entry)
+                let browserPage = if let url = page.live { try await BrowserPage.live(client: client, url: url, artifactID: page.artifactId) }
+                    else { try await BrowserPage.artifact(client: client, id: page.artifactId, version: page.page.version, entry: page.page.entry) }
                 guard let self, !Task.isCancelled, let loaded = self.loaded, loaded == target else { return }
                 self.browserPage = browserPage
                 self.makeWeb(browserPage)
@@ -100,6 +105,7 @@ final class InlinePageView: UIView, WKNavigationDelegate {
         web.backgroundColor = .clear
         web.scrollView.backgroundColor = .clear
         web.scrollView.isScrollEnabled = false
+        web.isUserInteractionEnabled = self.page?.live == nil
         web.scrollView.bounces = false
         web.scrollView.contentInsetAdjustmentBehavior = .never
         addSubview(web)
@@ -137,11 +143,17 @@ final class InlinePageView: UIView, WKNavigationDelegate {
     // MARK: Navigation
 
     /// The page stays on its own files: nothing it does leaves for the network.
+    /// A live one goes where it goes, every connection through its artifact's proxy.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
         guard let url = action.request.url else { return .cancel }
-        if url.host == browserPage?.url.host { return .allow }
+        if url.host == browserPage?.url.host || page?.live != nil { return .allow }
         if action.navigationType == .linkActivated { host?.page(open: url) }
         return .cancel
+    }
+
+    @objc private func openLive() {
+        guard let page, let url = page.live, let browserPage else { return }
+        (host as? UIViewController)?.navigationController?.pushViewController(BrowserViewController(url: url, artifactID: page.artifactId, page: browserPage), animated: true)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

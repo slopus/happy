@@ -23,10 +23,19 @@ extension TailcatHTTPTransport {
 extension AgentClient {
     /// Authentication is injected here and never returned to the web process.
     public func browserTunnel(workspaceID: String, target: BrowserPolicy.Authority) async throws -> any BrowserStream {
-        guard BrowserPolicy.validID(workspaceID) else { throw BrowserError.forbidden }
+        try await browserTunnel(id: workspaceID, route: "/v0/workspaces/\(workspaceID)/proxy", target: target)
+    }
+
+    /// A live-URL artifact's own tunnel: the daemon holds every destination to its recorded network and policy.
+    public func browserTunnel(artifactID: String, target: BrowserPolicy.Authority) async throws -> any BrowserStream {
+        try await browserTunnel(id: artifactID, route: "/v0/artifacts/\(artifactID)/proxy", target: target)
+    }
+
+    private func browserTunnel(id: String, route: String, target: BrowserPolicy.Authority) async throws -> any BrowserStream {
+        guard BrowserPolicy.validID(id) else { throw BrowserError.forbidden }
         let stream = try await transport.browserConnection()
         do {
-            try await Self.connect(stream, target: "/v0/workspaces/\(workspaceID)/proxy", credential: token)
+            try await Self.connect(stream, target: route, credential: token)
             try await Self.connect(stream, target: target.text, credential: nil)
             return stream
         } catch {

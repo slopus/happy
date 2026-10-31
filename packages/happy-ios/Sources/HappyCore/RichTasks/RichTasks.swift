@@ -92,7 +92,8 @@ public struct RichTasks: Equatable, Sendable {
         // The memberships come in the person's order, the same keys as the headers'.
         for membership in desktop.taskMemberships ?? [] where membership.hidden != true {
             guard let task = tasksByID[membership.taskId], task.status != "archived", let agent = task.agent, agent.archivedAt == nil else { continue }
-            let card = self.card(task, agent: agent, workspaces: desktop.workspaces, artifacts: desktop.taskArtifacts ?? [])
+            var card = self.card(task, agent: agent, workspaces: desktop.workspaces, artifacts: desktop.taskArtifacts ?? [])
+            card.faces.removeAll { $0 == desktop.profile?.userId }  // never the viewer's own face
             if let key = membership.orderKey, let index = headers.lastIndex(where: { $0.orderKey < key }) {
                 model.sections[index].cards.append(card)
             } else {

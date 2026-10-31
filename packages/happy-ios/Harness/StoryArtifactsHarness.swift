@@ -222,6 +222,8 @@ actor StoryArtifactsHarnessTransport: AgentTransport {
             return ok(#"{"story":\#(wall.replacingOccurrences(of: #""state":"live","endedAt":null"#, with: #""state":"ended","endedAt":\#(now)"#))}"#)
         default: break
         }
+        // A feed story by ID, as a chat link opens it.
+        if method == "GET", let entry = Self.entries.first(where: { path == "/v0/stories/\($0.id)" }) { return ok(#"{"story":\#(story(entry))}"#) }
         if method == "GET", path.hasPrefix("/v0/stories/s-onboarding") || path.hasPrefix("/v0/stories/s-kirill"), path.hasSuffix("/replies") {
             func reply(_ userId: String, _ minutesAgo: Int64, _ text: String) -> String {
                 #"{"id":"r\#(minutesAgo)","metadata":{"userId":"\#(userId)"},"createdAt":\#(now - minutesAgo * 60_000),"content":[{"type":"text","text":"\#(text)"}]}"#

@@ -204,8 +204,9 @@ final class HomeViewController: UIViewController {
     func applyConnection(_ home: HomeSnapshot) {
         let shown = shownRows
         let named = (agentHome.richTasks, agentHome.people) != (home.richTasks, home.people)
+        if agentHome.people != home.people { stories.session?.unnamed = [] }  // a profile changed: asked again
         agentHome = home
-        stories.session?.people = home.people
+        stories.session?.people.merge(home.people) { $1 }
         stories.session?.gate(home.storyArtifacts, me: home.userId)
         feedTasks()
         if named { stories.postersChanged() }
@@ -607,7 +608,9 @@ extension HomeViewController: UIScrollViewDelegate {
         guard let session, !snapshot.allRows.isEmpty else { return }
         sidebar.layoutIfNeeded()
         let shown = sidebar.shownRows
-        session.warm.update(rows: shown.isEmpty ? snapshot.rows : shown, visible: shown.isEmpty ? nil : sidebar.visibleRange, references: snapshot.references)
+        var references = snapshot.references
+        if agentHome.richTasks == nil { references.embeds = [:] }  // as a chat plans them
+        session.warm.update(rows: shown.isEmpty ? snapshot.rows : shown, visible: shown.isEmpty ? nil : sidebar.visibleRange, references: references)
     }
 }
 

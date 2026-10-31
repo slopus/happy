@@ -106,6 +106,7 @@ public actor Store {
     /// Artifact titles references asked for, as read; and those being read.
     private var artifactTitles: [String: References.Artifact] = [:]
     private var artifactPages: [String: References.Page] = [:]
+    private var artifactEmbeds: [HappyReferences.Reference: URL] = [:]
     private var artifactReads: Set<String> = []
     /// People messages mention, as named, and those being read; the person reading.
     private var userNames: [String: String] = [:]
@@ -333,7 +334,7 @@ public actor Store {
             heldEvents = nil
             // What changed while away is read again when next asked for.
             artifactTitles = [:]
-            artifactPages = [:]
+            (artifactPages, artifactEmbeds) = ([:], [:])
             for event in pending { receive(event) }
             publish()
             keeping?.cancel()
@@ -397,6 +398,16 @@ public actor Store {
         read(artifacts: ids.filter { artifactTitles[$0] == nil })
     }
 
+    /// A live page a link pins to a version: that version's `live.url`, read once.
+    public func readEmbed(_ reference: HappyReferences.Reference) {
+        guard let version = reference.version, artifactEmbeds[reference] == nil, artifactReads.insert("\(reference.id)/\(version)").inserted else { return }
+        Task {
+            guard let url = References.live((try? await client.artifactVersion(reference.id, version: version))?.live?.url) else { return }
+            artifactEmbeds[reference] = url
+            publish()
+        }
+    }
+
     /// Reads artifacts whether or not they were read before, one read at a time each.
     private func read(artifacts ids: [String]) {
         let wanted = ids.filter { !artifactReads.contains($0) }
@@ -406,26 +417,27 @@ public actor Store {
         Task {
             for id in wanted {
                 let read: References.Artifact?
-                var page: References.Page?
+                var (page, embed): (References.Page?, URL?)
                 do {
                     let object = try await client.artifact(id)
                     read = References.artifact(object)
                     page = References.page(object)
+                    embed = References.embed(object)
                 } catch AgentClientError.status(404, _, _) {
                     read = .missing
                 } catch {
                     read = nil
                 }
-                await artifactRead(id, read, page: page)
+                await artifactRead(id, read, page: page, embed: embed)
             }
         }
     }
 
-    private func artifactRead(_ id: String, _ read: References.Artifact?, page: References.Page?) {
+    private func artifactRead(_ id: String, _ read: References.Artifact?, page: References.Page?, embed: URL?) {
         artifactReads.remove(id)
         guard let read else { return }
         artifactTitles[id] = read
-        artifactPages[id] = page
+        (artifactPages[id], artifactEmbeds[.init(kind: "artifact", id: id)]) = (page, embed)
         publish()
     }
 
@@ -603,7 +615,7 @@ public actor Store {
                 artifactTitles[id] = .active(title: changes["title"]?.stringValue ?? title, type: kind, latestVersion: changes["latestVersion"]?.numberValue.map { Int($0) } ?? latest)
             }
             if type == "artifact.deleted" || changes["status"]?.stringValue == "deleted" {
-                artifactPages[id] = nil
+                (artifactPages[id], artifactEmbeds) = (nil, artifactEmbeds.filter { $0.key.id != id })
             } else if case .active(_, "html", _) = held {
                 // A page shown inline follows its latest version, entry and display.
                 read(artifacts: [id])
@@ -705,7 +717,7 @@ public actor Store {
         snapshot.happyAgentId = places.chiefOfStaffAgentId
         var references = References.entities(owners: composedOwners)
         references.artifacts = artifactTitles
-        references.pages = artifactPages
+        (references.pages, references.embeds) = (artifactPages, artifactEmbeds)
         references.users = userNames
         references.me = me
         references.missingUsers = usersMissing

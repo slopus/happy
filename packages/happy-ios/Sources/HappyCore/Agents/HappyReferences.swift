@@ -116,6 +116,22 @@ public enum HappyReferences {
         return reference
     }
 
+    /// A Happy link as an agent writes it (API.md "Happy links"): `happy://<kind>s/<id>`, an artifact's `?version=N`.
+    public static func reference(url: String) -> Reference? {
+        guard let url = URLComponents(string: url), url.scheme == "happy", let host = url.host, host.hasSuffix("s"), url.fragment == nil,
+              url.path.hasPrefix("/"), isID(String(url.path.dropFirst())) else { return nil }
+        let version = url.query.map { host == "artifacts" && $0.hasPrefix("version=") ? String($0.dropFirst(8)) : "" }
+        guard version.map(isVersion) ?? true else { return nil }
+        return Reference(kind: String(host.dropLast()), id: String(url.path.dropFirst()), version: version.flatMap { Int($0) })
+    }
+
+    /// The artifacts `markdown`'s Happy links name, at their pinned versions, once each, in order.
+    public static func linkedArtifacts(_ markdown: String) -> [Reference] {
+        guard References.holds(markdown, "happy://artifacts/") else { return [] }
+        return markdown.matches(of: /\]\(<?(happy:\/\/artifacts\/[A-Za-z0-9_-]+(?:\?version=[0-9]+)?)/).compactMap { reference(url: String($0.1)) }
+            .reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
+    }
+
     /// The Markdown a message is drawn from (desktop's
     /// `messageReferencesResolve`): a reference that opens is a link with
     /// its name, any other its words; a kind this build doesn't know is

@@ -44,6 +44,8 @@ extension Strings {
         public static let noViewers = "No views yet"
         public static func views(_ count: Int) -> String { count == 1 ? "1 view" : "\(count) views" }
         public static let someone = "Someone"
+        public static let download = "Download"
+        public static let downloadFailed = "Couldn't download this"
         /// A story artifact's replies: the drawer's heading, and the peek's way into it.
         public static func replies(_ count: Int, to name: String) -> String { "\(count) \(count == 1 ? "REPLY" : "REPLIES") · SENT TO \(name.uppercased())" }
         public static func viewAllReplies(_ count: Int) -> String { "View all \(count) replies" }

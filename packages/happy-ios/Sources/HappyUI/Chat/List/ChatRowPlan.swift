@@ -109,6 +109,8 @@ struct InlinePage: Equatable, Sendable {
     var artifactId: String
     var title: String
     var page: References.Page
+    /// A live-URL artifact's address, loaded through its own proxy instead of the page's files.
+    var live: URL?
 }
 
 /// A diagram in a row: `index` is its place among the row's diagrams, so

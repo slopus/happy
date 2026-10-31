@@ -28,6 +28,8 @@ actor ChatPlanner {
 
     /// An inline page's height until it has measured itself.
     static let pageHeight: CGFloat = 120
+    /// The tallest a live page embedded under a link grows.
+    static let embedCap: CGFloat = 600
 
     private let syntax: CodeSyntaxService
     private var cache: [String: (item: ChatItem, key: Key, copied: Bool, opened: Bool, proposals: [ProposalShown?], plan: ChatRowPlan)] = [:]
@@ -76,7 +78,8 @@ actor ChatPlanner {
         guard !item.pieces.isEmpty else { return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: []) }
         typealias M = MessageLayout.Metrics
         let text = HappyReferences.plain(item.text, view: key.references.view)
-        switch item.role {
+        // A manager's message with a menu is drawn where buttons are: the agent's lane.
+        switch item.role == .user && item.pieces.contains(where: { if case .choices = $0 { true } else { false } }) ? .agent : item.role {
         case .agent:
             // Desktop's agent text: Figtree 16/24 markdown, soft breaks as spaces, blocks 8
             // apart, no copy button (a long press selects instead); its
@@ -99,10 +102,18 @@ actor ChatPlanner {
             for piece in item.pieces {
                 switch piece {
                 case .text(let text):
+                    // An agent's artifact link, once read here (rich tasks), opens as one this phone wrote; another person's story, which only `type=story` serves, too.
+                    let text = text.replacing(/\]\(<?happy:\/\/artifacts\/([A-Za-z0-9_-]+)[^)\s>]*>?/) { key.references.artifacts[String($0.1)] == nil ? String($0.0) : "](" + HappyReferences.link(.init(kind: "artifact", id: String($0.1))) }
                     let resolved = HappyReferences.markdown(text, view: key.references.view)
                     let markdown = MarkdownPiece(Markdown.joiningSoftBreaks(resolved), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.text, header: ChatTextStyles.header)
                     drafts.append(.markdown(markdown))
                     parts.append(.markdown(markdown.blocks))
+                    // A live page a link names, read with rich tasks on, under the words at its height up to a cap.
+                    for link in HappyReferences.linkedArtifacts(text) {
+                        guard let url = key.references.embeds[link] else { continue }
+                        drafts.append(.page(InlinePage(artifactId: link.id, title: "", page: References.Page(version: 0, entry: ""), live: url)))
+                        parts.append(.page(height: min(key.pageHeights[link.id] ?? Self.pageHeight, Self.embedCap)))
+                    }
                 case .gallery(let media, let columns):
                     drafts.append(.gallery(media))
                     parts.append(.media(media.map(Self.layoutItem), columns: columns))

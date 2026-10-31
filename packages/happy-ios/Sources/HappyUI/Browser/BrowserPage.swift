@@ -45,6 +45,16 @@ final class BrowserPage {
         catch { await proxy.stop(); throw error }
     }
 
+    /// A live-URL artifact's page, as desktop opens one: through the artifact's own proxy, never another.
+    static func live(client: AgentClient, url: URL, artifactID: String) async throws -> BrowserPage {
+        let proxy = BrowserProxy(client: client, scope: .live(artifactID: artifactID))
+        do { let page = BrowserPage(url: url, proxy: proxy, port: try await proxy.start()); page.live = true; return page }
+        catch { await proxy.stop(); throw error }
+    }
+
+    /// Through a live-URL artifact's proxy: what it opens stays on it, never the workspace's.
+    private(set) var live = false
+
     deinit { let proxy = proxy; Task { await proxy.stop() } }
 }
 #endif

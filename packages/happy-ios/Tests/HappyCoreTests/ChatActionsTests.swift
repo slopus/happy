@@ -25,10 +25,12 @@ final class ChatActionsTests: XCTestCase {
         XCTAssertEqual(ChatActions.split("Ready?\n\n<menu>\n  <button data-action=\"reply\">Go", streaming: true), [.text("Ready?")])
     }
 
-    /// Beyond the vectors: no handlers, style or stray text; comments go, `<br>` is a space, the first emphasis counts.
+    /// Beyond the vectors: no handlers, style or stray text; comments go, `<br>` is a space, the first button is primary whatever `data-emphasis` says.
     func testTheGrammarIsClosed() {
         for html in [#"<menu><button onclick="x">A</button></menu>"#, #"<menu><button style="x">A</button></menu>"#, "<menu>stray<button>A</button></menu>"] { XCTAssertNil(ChatActions.menu(html), html) }
-        XCTAssertEqual(ChatActions.menu("<menu><!-- c --><button data-emphasis>One<br>two</button><BUTTON data-emphasis>X</BUTTON></menu>"), [.init(label: "One two", emphasized: true), .init(label: "X")])
+        let buttons = ChatActions.menu("<menu><!-- c --><button>One<br>two</button><BUTTON data-emphasis>X</BUTTON></menu>")
+        XCTAssertEqual(buttons, [.init(label: "One two"), .init(label: "X")])
+        XCTAssertEqual(ChatActions.choices(buttons ?? [], messageId: "m", blockIndex: 0, choice: nil, pressed: nil).emphasized, 0)
         XCTAssertEqual(ChatActions.press(.init(label: "Shorter", actionId: "reply", params: ["tone": "short"]), messageId: "m", blockIndex: 1, controlIndex: 2), json(
             #"{"type":"action","messageId":"m","blockIndex":1,"controlIndex":2,"actionId":"reply","params":{"tone":"short"}}"#))
     }
@@ -62,7 +64,8 @@ final class ChatActionsTests: XCTestCase {
         await conversation.setActions(true)
         let on = await Self.next(&updates) { $0.items.last?.pieces.count == 2 }
         XCTAssertEqual(on?.items.first?.storyReply, "s1")
-        guard let first = menu(on, 1)?.source, let second = menu(on, 2)?.source else { return XCTFail() }
+        // The second is the manager's (`boss`): its lane stays, its menu presses as block 0.
+        guard let first = menu(on, 1)?.source, let second = menu(on, 2)?.source, on?.items[2].role == .user else { return XCTFail() }
         await server.answering(400); await conversation.choose(second, 1)
         let refused = await Self.next(&updates) { $0.error != nil }
         XCTAssertTrue(refused?.items.count == 3 && menu(refused, 2)?.chosen == nil)
@@ -75,6 +78,21 @@ final class ChatActionsTests: XCTestCase {
         await engine.spaces.externalEvent(json(#"{"type":"message.updated","payload":{"agentId":"a","message":\#(ActionServer.message("m2", "agent", Self.example, choice: 1))}}"#))
         let landed = await Self.next(&updates) { $0.items.last?.id == id && $0.items.last?.delivery == .sent && menu($0, 2)?.chosen == [1] }
         XCTAssertEqual(landed?.items.filter { $0.text == "Not yet" }.map(\.role), [.user])
+        await conversation.stop()
+    }
+
+    /// Menus count as the daemon counts them, over the text as stored: one inside a media layout is
+    /// no block, and a manager's 4-space-indented one after its sender line stays words.
+    func testMenusCountOverTheStoredText() async {
+        let layout = "<div><img src=\"a.png\">\n<menu><button data-action=\"reply\">In</button></menu>\n</div>\n\n" + Self.example
+        let server = ActionServer(extra: [ActionServer.message("m3", "agent", layout), ActionServer.message("m2b", "agent", "Message from agent boss:\n    <menu><button data-action=\"reply\">Go</button></menu>")])
+        let (conversation, _) = open(server)
+        var updates = conversation.updates.makeAsyncIterator()
+        await conversation.start(); await conversation.setVisible(true); await conversation.setActions(true)
+        let on = await Self.next(&updates) { $0.items.count == 5 && $0.items[3].pieces.contains { if case .choices = $0 { true } else { false } } }
+        let blocks = on?.items[3].pieces.compactMap { if case .choices(let block) = $0, case .menu(_, let index, _) = block.source { index } else { nil } }
+        XCTAssertEqual(blocks, [0])
+        XCTAssertFalse(on?.items[4].pieces.contains { if case .choices = $0 { true } else { false } } ?? true)
         await conversation.stop()
     }
 
@@ -107,18 +125,18 @@ private func json(_ text: String) -> JSONValue { try! JSONDecoder().decode(JSONV
 /// A press answers `status`; a 409 is another's choice of the first menu's first button.
 private actor ActionServer: AgentTransport {
     var paths: [String] = [], sent: JSONValue?, status = 200, taken = false
-    let question: Bool; init(question: Bool = false) { self.question = question }
+    let question: Bool, extra: [String]; init(question: Bool = false, extra: [String] = []) { (self.question, self.extra) = (question, extra) }
     func answering(_ status: Int) { self.status = status }
     static func message(_ id: String, _ role: String, _ text: String, choice: Int? = nil) -> String {
-        #"{"id":"\#(id)","role":"\#(role)","createdAt":1,"metadata":{},"content":[{"type":"text","text":\#(String(decoding: try! JSONEncoder().encode(text), as: UTF8.self))}],"replyTo":{"kind":"story","artifactId":"s1"}\#(choice.map { #","actionChoices":{"0":{"kind":"button","index":\#($0)}}"# } ?? "")}"#
+        #"{"id":"\#(id)","role":"\#(role)","createdAt":1,"metadata":\#(id.hasPrefix("m2") ? #"{"senderAgentId":"boss"}"# : "{}"),"content":[{"type":"text","text":\#(String(decoding: try! JSONEncoder().encode(text), as: UTF8.self))}],"replyTo":{"kind":"story","artifactId":"s1"}\#(choice.map { #","actionChoices":{"0":{"kind":"button","index":\#($0)}}"# } ?? "")}"#
     }
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
         paths.append(path)
         var value = "{}"
         if path.contains("/messages?") {
-            value = #"{"hasMore":false,"runs":[{"id":"r","status":"completed","startedAt":0,"messages":[\#(Self.message("u", "user", "Love it")),\#(Self.message("m", "agent", ChatActionsTests.example, choice: taken ? 0 : nil)),\#(Self.message("m2", "agent", ChatActionsTests.example))]}]}"#
+            value = #"{"hasMore":false,"runs":[{"id":"r","status":"completed","startedAt":0,"messages":[\#(Self.message("u", "user", "Love it")),\#(Self.message("m", "agent", ChatActionsTests.example, choice: taken ? 0 : nil)),\#(([Self.message("m2", "agent", ChatActionsTests.example)] + extra).joined(separator: ","))]}]}"#
         } else if path.contains("/bootstrap") {
-            value = #"{"agent":{"id":"a","workspaceId":"w","status":"idle"\#(question ? #","pendingQuestionId":"q1""# : "")},"pending":[]}"#
+            value = #"{"agent":{"id":"a","workspaceId":"w","parentAgentId":"boss","status":"idle"\#(question ? #","pendingQuestionId":"q1""# : "")},"pending":[]}"#
         } else if path.hasSuffix("/question") {
             value = #"{"question":{"id":"q1","context":"For the launch","questions":[{"id":"p1","header":"Day","question":"Which day?","options":[]}]}}"#
         } else if path.hasSuffix("/send"), let body {

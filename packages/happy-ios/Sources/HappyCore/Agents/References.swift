@@ -59,6 +59,8 @@ public struct References: Equatable, Sendable {
     public var artifacts: [String: Artifact] = [:]
     /// The artifacts read so far that want to be shown inline, by ID.
     public var pages: [String: Page] = [:]
+    /// The live-URL HTML artifacts read so far, by the link naming them (a version, or the latest).
+    public var embeds: [HappyReferences.Reference: URL] = [:]
     /// The conversation's own subagents, by ID, as titled ("" untitled):
     /// a hidden one reads as its title, and opens nothing.
     public var subagents: [String: String] = [:]
@@ -127,6 +129,15 @@ public struct References: Equatable, Sendable {
         }
         return Page(version: Int(version), entry: entry, background: background)
     }
+
+    /// A live-URL HTML artifact's address (`live.url`); nil for anything else.
+    public static func embed(_ object: JSONValue) -> URL? {
+        guard object["status"]?.stringValue != "deleted", object["type"]?.stringValue == "html" else { return nil }
+        return live(object["live"]?["url"]?.stringValue)
+    }
+
+    /// An `http` or `https` live URL; nil for anything else.
+    public static func live(_ url: String?) -> URL? { url.flatMap(URL.init(string:)).flatMap { ["http", "https"].contains($0.scheme) ? $0 : nil } }
 
     /// The artifacts `text` names whose titles haven't been read.
     public func unread(in text: String) -> [String] {

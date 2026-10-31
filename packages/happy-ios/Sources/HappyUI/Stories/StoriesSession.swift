@@ -74,6 +74,8 @@ final class StoriesSession {
 
     /// Who people are (`HomeSnapshot.people`): the viewer's repliers.
     var people: [String: Person] = [:]
+    /// Repliers the daemon didn't name, not asked for again until people change.
+    var unnamed: Set<String> = []
 
     /// Story artifacts as the connection verified them (`HomeSnapshot.storyArtifacts`).
     func gate(_ on: Bool, me: String?) { Task { [store] in await store.gate(on, me: me) } }

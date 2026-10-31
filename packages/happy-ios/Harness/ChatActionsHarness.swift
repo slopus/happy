@@ -2,6 +2,7 @@
 import Foundation
 @testable import HappyCore
 import HappyLayout
+import Network
 @testable import HappyUI
 import UIKit
 
@@ -12,16 +13,43 @@ private struct ChatActionsSockets: WebSocketConnector {
     func connect(to url: URL) async throws -> WebSocketConnection { throw URLError(.notConnectedToInternet) }
 }
 
+/// The daemon's side of `CONNECT /v0/artifacts/:id/proxy` then `CONNECT host:port`: both answered,
+/// then the bytes go to that host from here. It logs the outer route (`E5_TUNNEL`), so a run shows which proxy a page took.
+private actor ArtifactProxyFake: BrowserStream {
+    private var head = Data(), answers: [Data] = [], upstream: NetworkBrowserStream?
+    func write(_ data: Data) async throws {
+        if let upstream { return try await upstream.write(data) }
+        head += data
+        while let end = head.range(of: Data("\r\n\r\n".utf8)) {
+            let line = String(decoding: head[..<end.lowerBound], as: UTF8.self).split(separator: "\r\n").first ?? ""
+            head = Data(head[end.upperBound...])
+            let target = line.split(separator: " ").dropFirst().first.map(String.init) ?? ""
+            answers.append(Data("HTTP/1.1 200 Connection Established\r\n\r\n".utf8))
+            if target.hasPrefix("/") { print("E5_TUNNEL \(target)"); continue }
+            let parts = target.split(separator: ":").map(String.init)
+            let port = NWEndpoint.Port(parts.count > 1 ? parts[1] : "443") ?? .https
+            let connection = NWConnection(host: NWEndpoint.Host(parts[0]), port: port, using: .tcp)
+            connection.start(queue: DispatchQueue.global())
+            upstream = NetworkBrowserStream(connection)
+        }
+    }
+    func read(maximumBytes: Int) async throws -> Data {
+        if !answers.isEmpty { return answers.removeFirst() }
+        return try await upstream?.read(maximumBytes: maximumBytes) ?? Data()
+    }
+    func close() async { await upstream?.close() }
+}
+
 /// A protocol-34 daemon with inline actions and rich tasks on (`-off`: neither,
 /// as main meets it), one task's conversation: a reply to a story, the launch
 /// post's draft with its `<menu>`, and, with `-question single|multi`, a
 /// question pending. `-pressed`: the menu was answered "Use this draft".
 private actor ChatActionsTransport: AgentTransport {
-    let off: Bool, pressed: Bool, question: String?, quoted: String
+    let off: Bool, pressed: Bool, question: String?, quoted: String, social: Bool
     let stories: StoryArtifactsHarnessTransport
     private(set) var sent: [String] = []
-    init(off: Bool, pressed: Bool, question: String?, quoted: String, pictures: String?) {
-        (self.off, self.pressed, self.question, self.quoted) = (off, pressed, question, quoted)
+    init(off: Bool, pressed: Bool, question: String?, quoted: String, pictures: String?, social: Bool) {
+        (self.off, self.pressed, self.question, self.quoted, self.social) = (off, pressed, question, quoted, social)
         stories = StoryArtifactsHarnessTransport(directory: pictures, seen: [], me: "kirill")
     }
 
@@ -43,17 +71,29 @@ private actor ChatActionsTransport: AgentTransport {
                     extra: pressed ? ["actionChoices": ["0": ["kind": "button", "index": 0]]] : [:]),
         ]
         if pressed { said.append(message("p", "user", "Use this draft", ago: 18)) }
+        // Social Growth's three parts (demo scene 7): the tweet, the video to attach, a drafted quote.
+        if social { said.append(message("s", "agent", "Best place to share it: [swyx's post on threads as a kanban](happy://artifacts/tweet1), live and 2 days old, and Steve knows him.\n\nAttach [Kirill's repost of the Onboarding v2 recording](happy://artifacts/s-kirill).\n\n> One thread pings back when it's done. Happy turns that into the board.\n\nRunner-ups: Jerry Liu's Slack of agents, Adib Mohsin's multiplayer remote control." + Self.menu, ago: 2)) }
         return [["id": "r", "status": "completed", "startedAt": Self.now - 100 * 60_000, "messages": said]]
     }
 
+    func browserConnection() async throws -> any BrowserStream { ArtifactProxyFake() }
+
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let route = path.split(separator: "?").first.map(String.init) ?? path
+        // `-social`: the tweet is a live-URL page, Kirill's repost a story (`type=story` reads it).
+        if social, route == "/v0/artifacts/tweet1" {
+            let live = #"{"url":"https://platform.x.com/embed/Tweet.html?id=2085253030417461661&theme=dark","networkId":"n1"}"#
+            return .init(status: 200, body: Data(#"{"artifact":{"id":"tweet1","type":"html","title":"swyx on X","status":"active","latestVersion":1,"live":\#(live)}}"#.utf8))
+        }
+        if social, route == "/v0/artifacts/s-kirill", path.hasSuffix("type=story") {
+            return .init(status: 200, body: Data(#"{"artifact":{"id":"s-kirill","type":"story","title":"Story","status":"active","latestVersion":1}}"#.utf8))
+        }
         if route.hasPrefix("/v0/stories") || route.hasPrefix("/v0/artifacts/") || route.hasPrefix("/v0/users/") { return try await stories.request(method: method, path: path, credential: credential, body: body, headers: headers) }
         let agent: [String: Any] = ["id": "launch-agent", "workspaceId": "w", "status": "idle"].merging(question == nil ? [:] : ["pendingQuestionId": "q1"]) { $1 }
         let object: [String: Any]
         switch (method, route) {
         case ("GET", "/v0/health"): object = ["ready": true, "version": ["protocol": 34], "capabilities": ["sidebarOperations": true, "taskSections": true, "storyArtifacts": true, "chatActions": !off]]
-        case ("GET", "/v0/users"): object = ["users": [["id": "kirill", "name": "Kirill", "photo": NSNull()]]]
+        case ("GET", "/v0/users"): object = ["users": StoryArtifactsHarnessTransport.people.map { ["id": $0.key, "name": $0.value.name, "photo": $0.value.hasPhoto ? ["url": "/v0/users/\($0.key)/photo"] as Any : NSNull()] }]
         case ("GET", "/v0/config"): object = ["config": [
             "defaults": ["providerId": "claude", "modelId": "anthropic/opus-5", "permissionMode": "auto"],
             "models": ["anthropic/opus-5": ["name": "Opus 5", "efforts": ["medium", "high"], "defaultEffort": "medium"]],
@@ -105,11 +145,11 @@ final class ChatActionsHarness {
         let question = arguments.firstIndex(of: "-question").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
         let pictures = arguments.firstIndex(of: "-mockImages").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
         let transport = ChatActionsTransport(off: arguments.contains("-off"), pressed: arguments.contains("-pressed"), question: question,
-            quoted: arguments.firstIndex(of: "-quote").map { arguments[$0 + 1] } ?? "s-onboarding-2", pictures: pictures)
-        Task { await open(window: window, transport: transport, top: arguments.contains("-top"), open: arguments.contains("-openQuote")) }
+            quoted: arguments.firstIndex(of: "-quote").map { arguments[$0 + 1] } ?? "s-onboarding-2", pictures: pictures, social: arguments.contains("-social"))
+        Task { await open(window: window, transport: transport, top: arguments.contains("-top"), open: arguments.contains("-openQuote"), storyLink: arguments.contains("-openStoryLink")) }
     }
 
-    private func open(window: UIWindow, transport: ChatActionsTransport, top: Bool, open: Bool) async {
+    private func open(window: UIWindow, transport: ChatActionsTransport, top: Bool, open: Bool, storyLink: Bool = false) async {
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/chat-actions",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -131,6 +171,13 @@ final class ChatActionsHarness {
             if open {
                 try await Task.sleep(for: .seconds(5))
                 navigation.topViewController?.view.firstSubview(of: StoryInlineView.self)?.perform(Selector(("canvasTapped")))
+            }
+            // `-openStoryLink`: the message's link to Kirill's repost tapped, then the viewer's "…".
+            if storyLink {
+                try await Task.sleep(for: .seconds(5))
+                (navigation.topViewController as? ChatViewController)?.open(link: "happy://artifacts/s-kirill")
+                try await Task.sleep(for: .seconds(3))
+                navigation.topViewController?.presentedViewController?.perform(Selector(("moreTapped")))
             }
             guard top else { return }
             try await Task.sleep(for: .seconds(2.5))

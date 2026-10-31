@@ -29,14 +29,14 @@ public enum SidebarRows {
             rows.append(Row(id: id, nodeId: id, kind: .space, depth: depth, label: title, mark: mark, targetKind: kind))
         }
         func status(_ agent: AgentWire.Agent) -> Row.Status { Rows.activity(agent) }
-        func agentRow(_ agent: AgentWire.Agent, depth: Int, label: String? = nil, owner: DesktopSnapshot.Owner? = nil, kind: String? = nil, muted: Bool = false) {
+        func agentRow(_ agent: AgentWire.Agent, depth: Int, label: String? = nil, owner: DesktopSnapshot.Owner? = nil, kind: String? = nil, muted: Bool = false, marked: Bool = false) {
             guard agent.archivedAt == nil else { return }
             let id = owner.map { "\(kind ?? "agent"):\($0.id)" } ?? "session:\(agent.id)"
             let children = (agent.subtasks ?? []).filter { $0.archivedAt == nil }
             // A subtask or a project's session has no mark, as on desktop.
             var row = Row(id: id, nodeId: id, kind: owner == nil ? .session : .space, depth: depth,
                 label: label ?? agent.title ?? "Untitled", mark: owner == nil ? .none : owner?.systemKey == "chief_of_staff" ? .happy : .placeholder(seed: owner?.id ?? agent.id),
-                status: muted ? .none : status(agent), unread: !muted && agent.unread != nil,
+                status: muted ? .none : status(agent), unread: !muted && (agent.unread != nil || marked),
                 isHappy: owner?.systemKey == "chief_of_staff", agentId: agent.id, workspaceId: agent.workspaceId, targetKind: kind)
             row.targetId = owner?.id
             row.canArchive = owner?.canArchive ?? false
@@ -64,11 +64,13 @@ public enum SidebarRows {
             rows.append(row)
         }
         separator("direct:bots")
+        // With rich tasks, a bot this person has hidden leaves its place, and comes back with its mark.
+        let rich = settings[RichTasks.richKey] == .bool(true)
         for bot in bots {
-            guard let agent = bot.agent else { continue }
+            guard let agent = bot.agent, !(rich && bot.hidden == true) else { continue }
             let attention = settings["happy-desktop.bot.\(bot.id)"]
             guard attention?["hidden"] != .bool(true) else { continue }
-            agentRow(agent, depth: 0, label: bot.name, owner: bot, kind: "bot", muted: attention?["muted"] == .bool(true))
+            agentRow(agent, depth: 0, label: bot.name, owner: bot, kind: "bot", muted: attention?["muted"] == .bool(true), marked: rich && bot.unread != nil)
         }
         if desktop.tasks != nil {
             separator("direct:tasks")

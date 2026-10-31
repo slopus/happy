@@ -64,6 +64,9 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
         /// A task's picture and the choices about what shows under it (protocol 34).
         @Lenient public var icon: TaskIcon?
         @LenientList public var children: [TaskChild]?
+        /// A bot as this person has it: put away (by Focus), or marked for them until read.
+        @Lenient public var hidden: Bool?
+        @Lenient public var unread: AgentWire.TaskUnread?
     }
     public struct Membership: Codable, Equatable, Sendable {
         public var taskId: String

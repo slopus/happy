@@ -39,6 +39,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     private var page = StoryViewerPageView()
     private var neighbor = StoryViewerPageView()
     private var watch: Watch?
+    /// A frame's file being downloaded to share, in a folder of its own.
+    private var downloading: (task: Task<Void, Error>, folder: URL)?
     private var link: CADisplayLink?
     private var lastTick: CFTimeInterval = 0
     private var elapsedMs: Double = 0
@@ -193,6 +195,7 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     }
 
     private func finish() {
+        endDownload()
         link?.invalidate(); link = nil
         volume?.invalidate(); volume = nil
         holdTimer?.invalidate(); holdTimer = nil
@@ -310,6 +313,12 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         let session = session
         readingReplies = Task { [weak self] in
             guard let read = try? await session.client.storyReplies(story.id), !Task.isCancelled else { return }
+            // Repliers home hasn't named (opened from a chat quote, or the reader themself).
+            let unknown = Set(read.compactMap(\.userId)).filter { session.people[$0] == nil }.subtracting(session.unnamed)
+            if !unknown.isEmpty, let found = try? await session.client.people(unknown.sorted()) {
+                session.people.merge(found) { $1 }
+                session.unnamed.formUnion(unknown.subtracting(found.keys))
+            }
             for id in Set(read.compactMap(\.userId)) where session.people[id]?.hasPhoto == true {
                 _ = await session.images.picture(Person.photoPath(id), thumbhash: session.people[id]?.thumbhash, pixels: StoryReplyRow.pixels)
             }
@@ -1051,6 +1060,9 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
                 dismiss(animated: true) { open?(source) }
             })
         }
+        if story.isArtifact, let frame = story.frames.first, frame.kind != .artifact {
+            sheet.addAction(UIAlertAction(title: Strings.Stories.download, style: .default) { [weak self] _ in self?.download(frame) })
+        }
         // An agent's story is the person's to delete too.
         if authors.indices.contains(authorIndex), authors[authorIndex].isSelf || story.isAgents {
             sheet.addAction(UIAlertAction(title: Strings.Stories.delete, style: .destructive) { [weak self] _ in self?.confirmDelete(story) })
@@ -1059,6 +1071,45 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         sheet.popoverPresentationController?.sourceView = page.moreButton
         sheet.popoverPresentationController?.sourceRect = page.moreButton.bounds
         present(sheet, animated: true)
+    }
+
+    /// A story artifact's picture or recording as a file, in the share sheet (Save Image, Save Video), as an artifact's is.
+    private func download(_ frame: StoryFrame) {
+        let (client, asset) = (session.client, frame.asset)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("StoryShare/\(UUID().uuidString)", isDirectory: true)
+        let file = folder.appendingPathComponent(URL(string: "file://" + AgentClient.path(asset))?.lastPathComponent ?? "story")
+        let task = Task.detached(priority: .userInitiated) {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            guard FileManager.default.createFile(atPath: file.path, contents: nil) else { throw CocoaError(.fileWriteUnknown) }
+            let handle = try FileHandle(forWritingTo: file)
+            defer { try? handle.close() }
+            try await AgentClient.read({ try await client.asset(asset, range: $0) }, each: { piece, _, _ in try handle.write(contentsOf: piece) })
+        }
+        downloading = (task, folder)
+        Task { [weak self] in
+            let written = (try? await task.value) != nil && !task.isCancelled
+            if !written { try? FileManager.default.removeItem(at: folder) }
+            // Closed meanwhile, the viewer let it go.
+            guard let self, downloading?.folder == folder else { return }
+            guard written else {
+                endDownload()
+                let alert = UIAlertController(title: Strings.Stories.downloadFailed, message: nil, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: Strings.Stories.done, style: .default) { [weak self] _ in self?.pause(.sheet, false) })
+                return present(alert, animated: true)
+            }
+            let share = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+            share.completionWithItemsHandler = { [weak self] _, _, _, _ in self?.endDownload(); self?.pause(.sheet, false) }
+            share.popoverPresentationController?.sourceView = page.moreButton
+            present(share, animated: true)
+        }
+    }
+
+    /// A download stopped and its file gone: shared, cancelled, failed or the viewer closed.
+    private func endDownload() {
+        guard let (task, folder) = downloading else { return }
+        downloading = nil
+        task.cancel()
+        try? FileManager.default.removeItem(at: folder)
     }
 
     private func confirmDelete(_ story: Story) {

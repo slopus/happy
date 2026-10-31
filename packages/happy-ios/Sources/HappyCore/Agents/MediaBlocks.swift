@@ -151,7 +151,9 @@ public enum MediaBlocks {
         let marker = line[start]
         let length = runLength(line, start, marker)
         guard length >= 3 else { return nil }
-        let info = line[(start + length)...]
+        // A CRLF line's one trailing CR is no part of the info string.
+        var info = line[(start + length)...]
+        if info.last == cr { info = info.dropLast() }
         if info.contains(where: { $0 == cr || $0 == 0x2028 || $0 == 0x2029 }) { return nil }
         if marker == backtick, info.contains(backtick) { return nil }
         return Fence(marker: marker, length: length)

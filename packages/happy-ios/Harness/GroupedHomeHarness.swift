@@ -76,7 +76,7 @@ private actor GroupedHomeTransport: AgentTransport {
         [
             "cursor": "c1", "profile": ["userId": NSNull()],
             "userSettings": rich ? [["key": "tasks.rich", "value": true, "version": "1"], ["key": "tasks.sections", "value": true, "version": "2"]] : [],
-            "bots": bots, "tasks": rich ? tasks.map(Self.enriched) : tasks,
+            "bots": bots + (radarHidden.map { [Self.radar(hidden: $0)] } ?? []), "tasks": rich ? tasks.map(Self.enriched) : tasks,
             "taskMemberships": tasks.map { ["taskId": $0["id"]!, "orderKey": Self.richOrder[$0["id"] as! String] ?? "a"] },
             "taskSections": rich ? [["id": "now", "name": "Now", "orderKey": "m", "collapsed": false], ["id": "later", "name": "Later", "orderKey": "t", "collapsed": true]] : [],
             "taskArtifacts": rich ? [["artifactId": "a1", "taskId": "crash", "title": "Crash report", "type": "markdown"]] : [],
@@ -93,6 +93,20 @@ private actor GroupedHomeTransport: AgentTransport {
 
     private var tasks: [[String: Any]] { made + Self.tasks }
     private var bots: [[String: Any]] { madeBots + Self.bots }
+
+    /// With `-hiddenBot`: Social Growth, hidden for this person until `surfaceRadar()`, which loops
+    /// them in as the daemon does: one `bot.updated` whose version doesn't move, carrying both fields.
+    var radarHidden: Bool?
+    static func radar(hidden: Bool) -> [String: Any] {
+        var bot: [String: Any] = ["id": "radar", "name": "Social Growth", "status": "active", "version": "7", "hidden": hidden, "agent": agent("radar-agent", "Social Growth", line: "Found a thread for the launch", ago: 1)]
+        if !hidden { bot["unread"] = ["reason": "looped_in", "since": now, "note": "A quote post for Steve"] }
+        return bot
+    }
+    func hideRadar() { radarHidden = true }
+    func surfaceRadar() {
+        radarHidden = false
+        tell("bot.updated", ["botId": "radar", "previousVersion": "7", "version": "7", "changes": ["hidden": false, "unread": ["reason": "looped_in", "since": Self.now]]])
+    }
 
     /// With `-rich`: where each task stands among the sections, its icon, and who wrote to it.
     static let richOrder = ["crash": "n", "report": "p", "onboarding": "u"]
@@ -217,7 +231,7 @@ final class GroupedHomeHarness {
         UserDefaults.standard.set(true, forKey: StoriesHomeController.tooltipShownKey)
         UserDefaults.standard.removeObject(forKey: StoriesHomeController.putAwayKey)
         Task {
-            await open(window: window, rich: rich, pictures: pictures)
+            await open(window: window, rich: rich, pictures: pictures, hiddenBot: arguments.contains("-hiddenBot"))
             // With `-search`, search open over it, the header kept.
             if arguments.contains("-search") {
                 try? await Task.sleep(for: .seconds(1.5))
@@ -244,8 +258,13 @@ final class GroupedHomeHarness {
         }
     }
 
-    private func open(window: UIWindow, rich: Bool, pictures: String?) async {
+    private func open(window: UIWindow, rich: Bool, pictures: String?, hiddenBot: Bool) async {
         let transport = GroupedHomeTransport(avatar: Self.repoPicture(), rich: rich, pictures: pictures)
+        if hiddenBot {
+            await transport.hideRadar()
+            // Six seconds in, the bot loops this person in and comes back.
+            Task { try? await Task.sleep(for: .seconds(6)); await transport.surfaceRadar() }
+        }
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/grouped-home",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,

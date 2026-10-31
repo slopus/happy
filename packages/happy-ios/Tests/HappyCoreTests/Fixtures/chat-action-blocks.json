@@ -84,6 +84,12 @@
         "stripped": "```html\n<menu><button data-action=\"reply\">No</button></menu>\n```\n\n`<menu>` is a tag.\n\n    <menu><button data-action=\"reply\">No</button></menu>\n"
     },
     {
+        "name": "fences with CRLF line endings still hide a menu",
+        "markdown": "~~~\r\n<menu><button data-action=\"reply\">No</button></menu>\r\n~~~\r\n",
+        "blocks": [],
+        "stripped": "~~~\r\n<menu><button data-action=\"reply\">No</button></menu>\r\n~~~\r\n"
+    },
+    {
         "name": "a menu still streaming is held back and not numbered",
         "markdown": "Pick one:\n\n<menu>\n  <button data-action=\"reply\">A</button>\n",
         "blocks": [],

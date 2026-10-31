@@ -150,6 +150,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private var subagentReferences: References {
         var known = references
         known.subagents = chat.subagentTitles
+        if !rich { known.embeds = [:] }  // live pages embed with rich tasks only
         return known
     }
     private var watch: Watch?
@@ -338,7 +339,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
             homeWatch = Task { [weak self, engine = session.engine, conversation] in
                 for await home in await engine.snapshots() {
                     guard let self, !Task.isCancelled else { return }
-                    if rich != (home.richTasks != nil) { rich.toggle(); view.setNeedsLayout() }
+                    if rich != (home.richTasks != nil) { rich.toggle(); scanned.texts = [:]; replan(); view.setNeedsLayout() }
                     await conversation.setActions(home.chatActions)
                 }
             }
@@ -987,11 +988,13 @@ final class ChatViewController: UIViewController, ComposeHosting {
         if scanned.references != references { scanned = (references, [:]) }
         let fresh = items.filter { scanned.texts[$0.id] != $0.text }
         for item in fresh { scanned.texts[item.id] = item.text }
-        // Artifacts the messages name are read for their titles, once each.
-        let unread = fresh.flatMap { references.unread(in: $0.text) }
-        if !unread.isEmpty {
+        // Artifacts the messages name are read for their titles, once each; with
+        // rich tasks those their links name too, so a live page is embedded.
+        let linked = rich ? fresh.flatMap { HappyReferences.linkedArtifacts($0.text) } : []
+        let unread = fresh.flatMap { references.unread(in: $0.text) } + linked.map(\.id).filter { references.artifacts[$0] == nil }
+        if !unread.isEmpty || !linked.isEmpty {
             let store = session.store
-            Task { await store.readArtifacts(unread) }
+            Task { await store.readArtifacts(unread); for link in linked { await store.readEmbed(link) } }
         }
         // An HTML artifact a call shows is read for whether it wants to be inline.
         let pages = items.flatMap(\.pieces).compactMap { piece -> String? in
@@ -1739,7 +1742,18 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     /// What a message names, opened over this one: a conversation, or an
     /// artifact at the version the reference pinned.
-    private func open(_ reference: HappyReferences.Reference) {
+    private func open(_ reference: HappyReferences.Reference, read: Bool = false) {
+        // With story artifacts it is read with `type=story` (which hides nothing else) first: a story opens in the viewer.
+        if reference.kind == "artifact", !read, session.connectionSnapshot.storyArtifacts {
+            Task { [weak self, session] in
+                var story: StoryArtifact?
+                if (try? await session.client.artifact(reference.id, story: true))?["type"] == .string("story") { story = try? await session.client.storyArtifact(reference.id) }
+                guard let self else { return }
+                guard let story else { return open(reference, read: true) }
+                StoriesViewerPresenter.present(session: StoriesSession.session(for: session), story: StoryArtifacts.story(story, me: session.connectionSnapshot.userId), from: self, origin: nil, quoting: story.poster.name ?? "")
+            }
+            return
+        }
         if reference.kind == "artifact" {
             // Still being read, the viewer reads it itself.
             var known: (title: String, type: String, latest: Int) = ("", "", 1)
@@ -1782,8 +1796,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
     }
 
     /// A link in a row: the reference it names, else the web.
-    private func open(link: String) {
+    func open(link: String) {
         if let reference = HappyReferences.reference(link: link) { open(reference) }
+        // With story artifacts a Happy link opens what it names, and is never handed to the system.
+        else if session.connectionSnapshot.storyArtifacts, link.hasPrefix("happy") { HappyReferences.reference(url: link).map { open($0) } }
         else if let url = URL(string: link) { openBrowser(url, session: session, agentID: media.agentId) }
     }
 

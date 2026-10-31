@@ -252,6 +252,26 @@ final class HostedBrowserTests: XCTestCase {
         XCTAssertTrue(requests.contains { $0.hasPrefix("CONNECT /v0/workspaces/runner1/proxy") })
     }
 
+    func testALiveArtifactsPopupStaysOnItsProxy() async throws {
+        let daemon = BrowserDaemon()
+        let page = try await BrowserPage.live(client: AgentClient(transport: daemon, token: "native-secret"), url: URL(string: "http://live.example.invalid")!, artifactID: "tweet1")
+        let browser = BrowserViewController(url: page.url, artifactID: "tweet1", page: page)
+        let navigation = UINavigationController(rootViewController: browser)
+        let window = hostedKeyWindow(in: try await hostedActiveScene(), root: navigation)
+        defer { window.isHidden = true }
+        let web = try await waitForWeb(browser)
+        try await waitForText("ws-live", web: web)
+        _ = try await web.evaluateJavaScript("window.open('http://other.example.invalid/next'); void 0;")
+        var requests: [String] = []
+        for _ in 0..<100 where !requests.contains(where: { $0.hasPrefix("CONNECT other.example.invalid:80") }) {
+            try await Task.sleep(for: .milliseconds(100))
+            requests = await daemon.requests
+        }
+        XCTAssertTrue(requests.contains { $0.hasPrefix("CONNECT other.example.invalid:80") }, "\(requests)")
+        XCTAssertTrue(requests.filter { $0.hasPrefix("CONNECT /") }.allSatisfy { $0.hasPrefix("CONNECT /v0/artifacts/tweet1/proxy") }, "\(requests)")
+        XCTAssertEqual(navigation.viewControllers, [browser], "a popup never opens a workspace browser")
+    }
+
     private func waitForWeb(_ browser: BrowserViewController) async throws -> WKWebView {
         for _ in 0..<150 {
             if let web = browser.view.subviews.compactMap({ $0 as? WKWebView }).first { return web }

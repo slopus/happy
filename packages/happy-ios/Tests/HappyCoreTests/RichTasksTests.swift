@@ -136,6 +136,8 @@ final class RichTasksTests: XCTestCase {
         let one = model.unsectioned[0]
         XCTAssertEqual(one.iconSlug, "rocket")
         XCTAssertEqual(one.faces, ["steve", "jordan"])
+        let mine = try desktop(Self.bootstrap(.v34).replacingOccurrences(of: #""userId":"me""#, with: #""userId":"steve""#))
+        XCTAssertEqual(RichTasks.make(mine, capabilities: try capabilities(Self.health34), settings: Self.richOn)?.unsectioned[0].faces, ["jordan"], "the viewer's own face is left out")
         XCTAssertEqual(one.subRows, [
             .init(ref: .init(kind: "agent", id: "t1-asking"), reason: .question),
             .init(ref: .init(kind: "agent", id: "t1-working"), reason: .working),
@@ -233,6 +235,24 @@ final class RichTasksTests: XCTestCase {
         await engine.stop()
     }
 
+    /// Hidden for this person, a bot leaves the Bots section (rich tasks only); a `bot.updated`
+    /// whose version didn't move brings it back already marked, in one snapshot.
+    func testAHiddenBotComesBackWithItsDotInOneUpdate() async throws {
+        let bots = #""bots":[{"id":"b1","name":"Radar","status":"active","version":"7","hidden":true,"agent":{"id":"b1-agent","workspaceId":"b1-work","status":"idle"}}]"#
+        let json = Self.bootstrap(.v34, settings: Self.settingsOn).replacingOccurrences(of: #""bots":[]"#, with: bots)
+        XCTAssertNotNil(SidebarRows.make(try desktop(json), settings: [:]).first { $0.id == "bot:b1" })
+        let transport = RichFixture(health: Self.health34, bootstrap: json)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        let hidden = try await wait(engine) { $0.live && $0.loaded && !$0.syncing && $0.richTasks != nil }
+        XCTAssertNil(hidden.rows.first { $0.id == "bot:b1" })
+        // Read 200 ms after the event: the first snapshot holding the row is the only one.
+        await transport.replace(#""hidden":true"#, with: #""hidden":false,"unread":{"reason":"looped_in","since":9,"note":"A post for Steve"}"#, emitting: "bot.updated")
+        let row = try await wait(engine) { $0.rows.contains { $0.id == "bot:b1" } }.rows.first { $0.id == "bot:b1" }
+        XCTAssertEqual(row?.unread, true)
+        await engine.stop()
+    }
+
     /// Home once the connection is up and every read it sets off has settled.
     private func settle(_ transport: RichFixture, directory: URL?) async throws -> (HomeSnapshot, [String]) {
         let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
@@ -284,6 +304,10 @@ private actor RichFixture: AgentTransport {
         tasksFail = true
         bootstrap = bootstrap.replacingOccurrences(of: #""name":"One""#, with: #""name":"\#(name)""#)
         emit("task.updated")
+    }
+    func replace(_ old: String, with new: String, emitting type: String) {
+        bootstrap = bootstrap.replacingOccurrences(of: old, with: new)
+        emit(type)
     }
     func emit(_ type: String) {
         continuations.forEach { $0.yield(Data(#"event: message\#ndata: {"type":"\#(type)","payload":{"taskId":"t1"}}\#n\#n"#.utf8)) }

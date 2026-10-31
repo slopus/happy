@@ -1515,16 +1515,20 @@ public actor Conversation {
         for (index, block) in message.content.enumerated() {
             switch block {
             case .text(let text):
-                let trimmed = (manager.map { Self.inboundText(text, agentId: $0) } ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { continue }
                 let streams = streaming || message.status == "streaming"
-                guard role == .agent else { pieces.append(.text(trimmed)); continue }
-                for piece in Self.pieces(trimmed, shown: shown, streaming: streams) {
-                    guard actions, case .text(let markdown) = piece else { pieces.append(piece); continue }
-                    // `blockIndex` counts the message's menus, broken ones too, after media layouts, from 0.
+                // A manager's words keep their lane, without media layouts; trimmed of the daemon's line.
+                func say(_ text: String) {
+                    let said = (manager.map { Self.inboundText(text, agentId: $0) } ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !said.isEmpty { pieces += role == .agent ? Self.pieces(said, shown: shown, streaming: streams) : [.text(said)] }
+                }
+                guard actions, message.role == "agent" else { say(text); continue }
+                // `blockIndex` counts the message's menus, broken ones too, as the daemon does: over
+                // the text as stored, media layouts split off first, from 0. Any agent's press, a manager's too.
+                for part in MediaBlocks.split(streams ? HappyReferences.droppingPartialTag(text) : text) {
+                    guard case .markdown(let markdown) = part else { if case .layout(let layout) = part { say(layout.raw) }; continue }
                     for segment in ChatActions.split(markdown, streaming: streams) {
                         switch segment {
-                        case .text(let text): pieces.append(.text(text))
+                        case .text(let text): say(text)
                         case .broken(let text): pieces.append(.text(text)); blockIndex += 1
                         case .menu(let buttons):
                             pieces.append(.choices(ChatActions.choices(buttons, messageId: message.id, blockIndex: blockIndex, choice: message.actionChoices?[String(blockIndex)], pressed: pressed["\(message.id)/\(blockIndex)"])))
