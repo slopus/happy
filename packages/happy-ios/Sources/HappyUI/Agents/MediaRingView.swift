@@ -10,7 +10,7 @@ import UIKit
 /// arc that turns while it fills, a cross to stop it. Waiting its turn, a
 /// short arc turns; failed, a retry arrow. A file not here yet shows the
 /// download arrow; a video, the play glyph, with the arc round it while
-/// it downloads.
+/// it downloads, and a small spinner from a tap on it until it can play.
 final class MediaRingView: UIView {
     enum State: Equatable {
         case waiting
@@ -24,6 +24,9 @@ final class MediaRingView: UIView {
         /// A video while it downloads: the play glyph inside the arc (nil:
         /// its size isn't known yet, so the short arc turns).
         case playing(Double?)
+        /// A video asked to play, while its first playable range comes: a
+        /// small arc turning on its own, inside where the play glyph was.
+        case starting
     }
 
     /// The disc and what is drawn on it.
@@ -36,6 +39,8 @@ final class MediaRingView: UIView {
 
     private let disc = UIView()
     private let arc = CAShapeLayer()
+    /// The small spinner of a video starting to play.
+    private let spinner = CAShapeLayer()
     private let cross = CAShapeLayer()
     private let arrow = CAShapeLayer()
     private let retry = UIImageView()
@@ -54,7 +59,7 @@ final class MediaRingView: UIView {
         isUserInteractionEnabled = false
         disc.isUserInteractionEnabled = false
         addSubview(disc)
-        for shape in [arc, cross, arrow] {
+        for shape in [arc, cross, arrow, spinner] {
             shape.fillColor = nil
             shape.lineCap = .round
             shape.lineJoin = .round
@@ -64,6 +69,9 @@ final class MediaRingView: UIView {
         // It starts out waiting, so the short arc, not a whole ring.
         arc.strokeEnd = UploadRingLayout.waitingShare
         arrow.isHidden = true
+        spinner.isHidden = true
+        spinner.strokeStart = 0
+        spinner.strokeEnd = 0.7
         for glyph in [retry, play] {
             glyph.contentMode = .center
             glyph.isHidden = true
@@ -84,6 +92,7 @@ final class MediaRingView: UIView {
         arc.strokeColor = ink
         cross.strokeColor = ink
         arrow.strokeColor = ink
+        spinner.strokeColor = ink
         retry.tintColor = UIColor(colors.ink)
         play.tintColor = UIColor(colors.ink)
     }
@@ -120,6 +129,9 @@ final class MediaRingView: UIView {
         arrowPath.addLine(to: points.head[1])
         arrowPath.addLine(to: points.head[2])
         arrow.path = arrowPath.cgPath
+        spinner.frame = disc.bounds
+        spinner.lineWidth = arc.lineWidth
+        spinner.path = UIBezierPath(arcCenter: center, radius: MediaStatusLayout.spinnerRadius(side: side), startAngle: -.pi / 2, endAngle: 1.5 * .pi, clockwise: true).cgPath
         retry.frame = disc.bounds
         retry.image = .icon(.ionicons("refresh"), size: (side * 0.48).rounded())
         // The play glyph's triangle sits a little right of the middle, as it looks centred.
@@ -166,6 +178,8 @@ final class MediaRingView: UIView {
             show(glyph: arrow, arc: false)
         case .play:
             show(glyph: play, arc: false)
+        case .starting:
+            show(glyph: spinner, arc: false)
         case .done:
             stroke(to: 1, animated: animated)
             guard animated else { isHidden = true; return }
@@ -191,6 +205,7 @@ final class MediaRingView: UIView {
         arc.isHidden = !showsArc
         cross.isHidden = glyph !== cross
         arrow.isHidden = glyph !== arrow
+        spinner.isHidden = glyph !== spinner
         retry.isHidden = glyph !== retry
         play.isHidden = glyph !== play
     }
@@ -219,24 +234,31 @@ final class MediaRingView: UIView {
         case .waiting, .progress, .playing: window != nil
         default: false
         }
+        spin(arc, turning, duration: 1.5)
+        // The spinner quicker, as a system spinner turns.
+        spin(spinner, state == .starting && window != nil, duration: 0.8)
+    }
+
+    private func spin(_ shape: CAShapeLayer, _ turning: Bool, duration: CFTimeInterval) {
         if !turning {
-            arc.removeAnimation(forKey: "turn")
-        } else if arc.animation(forKey: "turn") == nil {
+            shape.removeAnimation(forKey: "turn")
+        } else if shape.animation(forKey: "turn") == nil {
             let spin = CABasicAnimation(keyPath: "transform.rotation.z")
             spin.fromValue = 0
             spin.toValue = 2 * Double.pi
-            spin.duration = 1.5
+            spin.duration = duration
             spin.repeatCount = .infinity
             spin.isRemovedOnCompletion = false
             spin.timingFunction = CAMediaTimingFunction(name: .linear)
-            arc.add(spin, forKey: "turn")
+            shape.add(spin, forKey: "turn")
         }
     }
 
     /// The ring for a download in `phase`: a picture's or file's, or a
-    /// video's play button.
-    static func state(_ phase: DownloadPhase?, video: Bool) -> State {
+    /// video's play button (its spinner while it is `starting`).
+    static func state(_ phase: DownloadPhase?, video: Bool, starting: Bool = false) -> State {
         if video {
+            if starting { return .starting }
             guard case .downloading = phase else { return .play }
             return .playing(phase?.share)
         }
@@ -329,6 +351,12 @@ final class UploadRings {
 @MainActor
 protocol DownloadShowing: AnyObject {
     func setDownload(_ phase: DownloadPhase?, animated: Bool)
+    /// Its video was asked to play and waits for its first range.
+    func setStarting(_ starting: Bool)
+}
+
+extension DownloadShowing {
+    func setStarting(_ starting: Bool) {}
 }
 
 /// The views showing each download, by its board key, and the one drain
@@ -354,6 +382,20 @@ final class DownloadRings {
     }
 
     func phase(_ key: String) -> DownloadPhase? { board.phase(key) }
+
+    /// Videos asked to play that can't yet, by board key (`VideoOpening`).
+    private(set) var starting: Set<String> = []
+
+    func isStarting(_ key: String) -> Bool { starting.contains(key) }
+
+    /// Tells every view of `key` whether its video is starting.
+    func setStarting(_ key: String, _ value: Bool) {
+        guard starting.contains(key) != value else { return }
+        if value { starting.insert(key) } else { starting.remove(key) }
+        for case let view as DownloadShowing in views[key]?.allObjects ?? [] {
+            view.setStarting(value)
+        }
+    }
 
     func show(_ view: DownloadShowing, key: String) {
         let table = views[key] ?? NSHashTable<AnyObject>.weakObjects()

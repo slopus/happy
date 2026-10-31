@@ -87,7 +87,8 @@ public actor MediaDownloads {
         let done = plain(partial?.downloaded ?? 0) ?? 0
         if let job = jobs[id] {
             if job.failures >= Self.attempts { return .failed(done: done, total: total) }
-            if job.full || !job.readers.isEmpty { return .downloading(done: done, total: total) }
+            // A player's reads alone (a video's first frame) aren't a download.
+            if job.full { return .downloading(done: done, total: total) }
         }
         return done > 0 ? .paused(done: done, total: total) : .remote(total: total)
     }

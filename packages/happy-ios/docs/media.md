@@ -109,11 +109,12 @@ One component for uploads and downloads, after Telegram's
 | `.download` | download arrow | not here, or paused |
 | `.play` | play glyph | a video, ready to play |
 | `.playing(share?)` | play glyph inside the arc | a video downloading |
+| `.starting` | small turning arc | a video tapped, until its first range is here |
 | `.done` | fades and shrinks away | finished |
 
 `MediaRingView.Colors` is `.overMedia` (dark glass, white ink) on a tile
 and `.onCard` (accent disc) on a file card's chip.
-`MediaRingView.state(_ phase: DownloadPhase?, video:)` maps a download.
+`MediaRingView.state(_ phase: DownloadPhase?, video:, starting:)` maps a download.
 Layout is `UploadRingLayout` (disc, arc, cross) and `MediaStatusLayout`
 (badge, arrow, play glyph), with exact-frame tests.
 
@@ -126,7 +127,39 @@ Where it shows:
   that, and the play button plays.
 - `ChatFileStatusView` (file cards): the ring on the chip, the size or
   progress after the kind.
-- `ChatAttachmentView` (legacy pictures): the ring and the size badge.
+- `ChatAttachmentView` (legacy pictures and recordings): the ring and the
+  size badge; a recording's first frame under the play button, its length
+  in the badge.
+
+## Playing a video
+
+Telegram's way: a tap on the play button plays at once from what is on
+the phone plus range fetches, never after the whole file.
+
+- `MediaStream` is the `AVAssetResourceLoaderDelegate` behind a private
+  `happy-media://` URL. Each loading request is answered from
+  `MediaDownloads`: what is held goes at once, in pieces of up to 512 KiB;
+  what isn't is a `read`, fetched first (256 KiB ahead of the hole). A seek
+  is just a request at another offset, so it fetches only its own range.
+  A legacy file is opened range by range on the way (above).
+- `VideoOpening` runs the tap: it makes the player (which also starts the
+  whole-file read at user priority, so a played video is kept), turns the
+  tile's play glyph into a small spinner (`DownloadRings.setStarting`,
+  ring state `.starting`) until the item is `readyToPlay`, which for a
+  fast-start MP4 is its first range, then brings up `AVPlayerViewController`
+  playing. A second tap while it spins gives up; a failure shows "file
+  unavailable". It is used by the agent chat, the session's shared media
+  and the legacy chat. Artifact videos play in the picture viewer's
+  `VideoPage` from the same stream.
+- The first frame and length are read through the same stream
+  (`AVAssetImageGenerator`, `load(.duration)`): a few ranges, kept for when
+  it plays. A player's reads alone don't count as downloading on the
+  board, so the tile keeps its play button until a whole-file read runs.
+- A legacy recording is told by the file event's `mimeType` when it has a
+  video or picture type, else by its name (`mp4`, `m4v`, `mov`, `3gp`):
+  happy-app sends recordings with neither a type nor a picture's shape.
+  Its tile hits `.playAttachment` (the play button) and `.toggleDownload`
+  (the badge).
 
 ## Automatic download
 

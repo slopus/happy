@@ -184,6 +184,11 @@ struct ChatAttachment: Equatable, Sendable {
     var upload: ChatUpload? = nil
     /// The plaintext's size, as the file event says it.
     var size: Int? = nil
+    /// A recording: its first frame under the play button, streamed when tapped.
+    var isVideo = false
+    /// Its name and type, for the player to know what it plays.
+    var name = ""
+    var mimeType: String? = nil
 }
 
 /// What a tap on part of a row does.
@@ -216,6 +221,8 @@ enum ChatRowAction: Equatable, Sendable {
     /// start or resume it; one already here opens instead. By its
     /// `ChatMedia.key`, or a legacy attachment's ref.
     case toggleDownload(String)
+    /// A legacy chat's recording, played streaming.
+    case playAttachment(ChatAttachment)
     /// A V2 artifact's card.
     case openArtifact(Artifact)
     /// A finished V2 turn's "View traces" / "Hide traces", by its run.

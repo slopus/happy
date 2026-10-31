@@ -46,4 +46,9 @@ final class MediaStatusLayoutTests: XCTestCase {
         XCTAssertEqual(MediaStatusLayout.playGlyph(side: 50), 22)
         XCTAssertEqual(MediaStatusLayout.playGlyph(side: 32), 14)
     }
+
+    func testTheStartingSpinnerIsAboutThePlayGlyphsSize() {
+        XCTAssertEqual(MediaStatusLayout.spinnerRadius(side: 50), 10)
+        XCTAssertEqual(MediaStatusLayout.spinnerRadius(side: 32), 6)
+    }
 }

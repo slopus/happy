@@ -1880,6 +1880,14 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             break
         case .toggleDownload(let ref):
             chatAttachments?.toggle(ref)
+        case .playAttachment(let attachment):
+            // Plays as soon as its first range is here, streaming.
+            guard let images = chatAttachments else { return }
+            VideoOpening.shared.open(boardKey: images.download(attachment.ref)?.boardKey, from: self, failed: { [weak self] in
+                let alert = UIAlertController(title: nil, message: Strings.fileUnavailable, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
+                self?.present(alert, animated: true)
+            }) { images.player(attachment) }
         }
     }
 

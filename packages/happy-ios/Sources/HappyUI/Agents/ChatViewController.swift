@@ -1657,12 +1657,11 @@ final class ChatViewController: UIViewController, ComposeHosting {
             }
             return
         }
-        if let player = media.player(key) {
-            let playback = AVPlayerViewController()
-            playback.player = player
-            present(playback, animated: true) { player.play() }
-            return
+        // A recording plays as soon as its first range is here, streaming.
+        let opened = VideoOpening.shared.open(boardKey: media.download(key)?.boardKey, from: self, failed: { [weak self] in self?.showFileUnavailable() }) {
+            media.player(key)
         }
+        if opened { return }
         // Every picture of the conversation, swiped between in its order.
         var pictures = Picture.all(in: chat.items)
         if !pictures.contains(where: { $0.key == key }) {

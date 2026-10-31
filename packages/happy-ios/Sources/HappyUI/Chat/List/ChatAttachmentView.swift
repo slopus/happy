@@ -36,6 +36,9 @@ final class ChatAttachmentImages: NSObject {
     /// Pictures a person tapped, read whatever the rules say.
     private var requested: Set<String> = []
     private var rules = MediaAutoDownload.load()
+    /// Recordings' streams and lengths, by ref.
+    private var streams: [String: MediaStream] = [:]
+    private var durations: [String: Double] = [:]
 
     /// Whole pictures from `load`, with no library: tests and fixtures.
     init(
@@ -82,7 +85,7 @@ final class ChatAttachmentImages: NSObject {
 
     /// The download behind an attachment, where the library keeps it.
     func download(_ ref: String) -> ChatDownload? {
-        library.map { ChatDownload(boardKey: $0.key(ref), duration: nil) }
+        library.map { ChatDownload(boardKey: $0.key(ref), duration: durations[ref]) }
     }
 
     private func mediaSource(_ ref: String, size: Int?) async -> MediaSource? {
@@ -135,6 +138,56 @@ final class ChatAttachmentImages: NSObject {
 
     private func key(_ ref: String) -> AttachmentPictures.Key {
         AttachmentPictures.Key(sessionId: sessionId, ref: ref)
+    }
+
+    // MARK: Recordings
+
+    /// A recording's stream: what is here, and the rest a range at a time,
+    /// opened on the way (`MediaSeal`).
+    private func stream(_ attachment: ChatAttachment, library: MediaLibrary) -> MediaStream {
+        if let stream = streams[attachment.ref] { return stream }
+        let (ref, size) = (attachment.ref, attachment.size)
+        let made = MediaStream(downloads: library.downloads, id: ref, name: attachment.name, mimeType: attachment.mimeType ?? "") { [weak self] in
+            guard let source = await self?.mediaSource(ref, size: size) else { throw MediaError.stopped }
+            return source
+        }
+        streams[ref] = made
+        return made
+    }
+
+    /// A player for a recording, streaming as it plays; the rest of the
+    /// file reads on behind it, so it is kept once played. Nil with no
+    /// library to keep it in.
+    func player(_ attachment: ChatAttachment) -> AVPlayer? {
+        guard attachment.isVideo, let library else { return nil }
+        let ref = attachment.ref
+        requested.insert(ref)
+        let stream = stream(attachment, library: library)
+        Task {
+            guard let source = await mediaSource(ref, size: attachment.size) else { return }
+            await library.downloads.download(ref, source: source, priority: .user)
+        }
+        return AVPlayer(playerItem: AVPlayerItem(asset: stream.asset()))
+    }
+
+    /// A recording's first frame and length, read through its stream: the
+    /// few ranges they take, kept for when it plays.
+    func poster(_ attachment: ChatAttachment) async -> UIImage? {
+        guard let library else { return nil }
+        let ref = attachment.ref
+        let asset = stream(attachment, library: library).asset()
+        let picture = await pictures.picture(key(ref)) {
+            let frames = AVAssetImageGenerator(asset: asset)
+            frames.appliesPreferredTrackTransform = true
+            frames.maximumSize = CGSize(width: 3 * FileViewLayout.Metrics.maxImageWidth, height: 3 * FileViewLayout.Metrics.maxImageHeight)
+            guard let (frame, _) = try? await frames.image(at: .zero) else { return nil }
+            let image = UIImage(cgImage: frame)
+            return (picture: image as AttachmentPictures.Picture, cost: ChatAttachmentImages.cost(image))
+        }
+        if durations[ref] == nil, let duration = (try? await asset.load(.duration)).map(CMTimeGetSeconds), duration.isFinite, duration > 0 {
+            durations[ref] = duration
+        }
+        return picture as? UIImage
     }
 
     // MARK: Outbox
@@ -374,6 +427,7 @@ final class ChatAttachmentView: UIView, UploadRingTile, DownloadShowing {
         guard let found, let attachment else {
             downloadPhase = nil
             sizeBadge?.setLines([])
+            refreshRing(animated: false)
             return
         }
         DownloadRings.shared.show(self, key: found.boardKey)
@@ -383,27 +437,52 @@ final class ChatAttachmentView: UIView, UploadRingTile, DownloadShowing {
     }
 
     func setDownload(_ phase: DownloadPhase?, animated: Bool) {
-        guard attachment?.upload == nil else { return }
+        guard let attachment, attachment.upload == nil else { return }
         let was = downloadPhase
         downloadPhase = phase
-        let state = boardKey == nil ? MediaRingView.State.done : MediaRingView.state(phase, video: false)
-        if state == .done { ring?.set(.done, animated: animated) } else { makeRing().set(state, animated: animated) }
-        let size = phase.flatMap { $0.isComplete ? nil : MediaSizeText.text($0) }
-        if size != nil, sizeBadge == nil {
-            let made = MediaBadgeView()
-            addSubview(made)
-            sizeBadge = made
-        }
-        sizeBadge?.setLines(size.map { [$0] } ?? [])
+        refreshRing(animated: animated)
         if phase.map({ !$0.isComplete }) == true { badge.isHidden = true }
-        setNeedsLayout()
         // Here now: the picture it waited for.
-        if phase?.isComplete == true, was?.isComplete != true, picture.image == nil {
+        if phase?.isComplete == true, was?.isComplete != true, picture.image == nil, !attachment.isVideo {
             task?.cancel()
             task = nil
             badge.isHidden = true
             loadIfNeeded()
         }
+    }
+
+    /// Its recording was tapped and waits for its first range: the spinner.
+    func setStarting(_ starting: Bool) {
+        refreshRing(animated: false)
+    }
+
+    /// The ring and badge for a sent attachment: a picture's download, a
+    /// recording's play button with its length and size.
+    private func refreshRing(animated: Bool) {
+        guard let attachment, attachment.upload == nil else { return }
+        let video = attachment.isVideo && attachment.local == nil
+        let state: MediaRingView.State
+        if let boardKey {
+            state = MediaRingView.state(downloadPhase, video: video, starting: DownloadRings.shared.isStarting(boardKey))
+        } else {
+            state = video ? .play : .done
+        }
+        if state == .done { ring?.set(.done, animated: animated) } else { makeRing().set(state, animated: animated) }
+        var lines: [String] = []
+        if video, let duration = duration { lines.append(MediaSizeText.duration(duration)) }
+        if let phase = downloadPhase, !phase.isComplete || (video && lines.isEmpty), let size = MediaSizeText.text(phase) { lines.append(size) }
+        if !lines.isEmpty, sizeBadge == nil {
+            let made = MediaBadgeView()
+            addSubview(made)
+            sizeBadge = made
+        }
+        sizeBadge?.setLines(lines)
+        setNeedsLayout()
+    }
+
+    /// A recording's length, once its first frame was read.
+    private var duration: Double? {
+        attachment.flatMap { source()?.download($0.ref)?.duration }
     }
 
     override func didMoveToWindow() {
@@ -449,9 +528,12 @@ final class ChatAttachmentView: UIView, UploadRingTile, DownloadShowing {
             return
         }
         task = Task { @MainActor [weak self] in
-            let image = await images.image(attachment.ref, size: attachment.size)
+            // A recording's first frame, read through its stream.
+            let image = attachment.isVideo ? await images.poster(attachment) : await images.image(attachment.ref, size: attachment.size)
             guard !Task.isCancelled, let self, self.attachment == attachment else { return }
             self.task = nil
+            // Its length is known with its first frame.
+            if attachment.isVideo { self.refreshRing(animated: false) }
             guard let image else {
                 // Waiting for a tap, or saying how its download went: the
                 // ring does. Otherwise `error && !uri`.

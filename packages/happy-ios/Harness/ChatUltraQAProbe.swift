@@ -1066,6 +1066,7 @@ final class ChatUltraQAProbe: NSObject {
         case .mermaidHeight(let row, let index, _): "mermaidHeight:\(row):\(index)"
         case .openMedia(let id): "media:\(id)"
         case .toggleDownload(let id): "download:\(id)"
+        case .playAttachment(let attachment): "play:\(attachment.ref)"
         case .cancelUpload(let messageId, let piece): "cancelUpload:\(messageId):\(piece)"
         case .openArtifact(let artifact): "artifact:\(artifact.id)"
         case .toggleTurn(let turn): "turn:\(turn)"

@@ -67,4 +67,10 @@ public enum MediaStatusLayout {
     public static func playGlyph(side: CGFloat) -> CGFloat {
         (side * 0.44).rounded()
     }
+
+    /// The radius of the spinner a video shows while its first range
+    /// comes, in a disc `side` across: about the play glyph's size.
+    public static func spinnerRadius(side: CGFloat) -> CGFloat {
+        (side * 0.2).rounded()
+    }
 }

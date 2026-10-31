@@ -245,6 +245,11 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
         }
     }
 
+    /// Its video was tapped and waits for its first range: the spinner.
+    func setStarting(_ starting: Bool) {
+        refreshRing(animated: false)
+    }
+
     /// The ring and badge for what it shows now, when it isn't uploading.
     private func refreshRing(animated: Bool) {
         guard let media, media.upload == nil else { return }
@@ -254,7 +259,8 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
             badge?.setLines([])
             return
         }
-        let state = MediaRingView.state(downloadPhase, video: video)
+        let starting = download.map { DownloadRings.shared.isStarting($0.boardKey) } ?? false
+        let state = MediaRingView.state(downloadPhase, video: video, starting: starting)
         if state == .done { ring?.set(.done, animated: animated) } else { makeRing().set(state, animated: animated) }
         var lines: [String] = []
         if video, let duration = download?.duration { lines.append(MediaSizeText.duration(duration)) }

@@ -455,4 +455,18 @@ final class ToolFileInputTests: XCTestCase {
         XCTAssertNil(ToolFileInput(["ref": "r1", "name": "a.png", "image": ["width": 1]]), "an image without its height")
         XCTAssertNil(ToolFileInput(["ref": "r1", "name": "a.png", "image": .null]))
     }
+
+    /// The app sends a recording with neither a type nor a shape, so its
+    /// name says it; a video or picture type, where given, wins.
+    func testARecordingIsKnownByItsTypeOrElseItsName() {
+        XCTAssertEqual(ToolFileInput(["ref": "r1", "name": "clip.mp4", "mimeType": "video/mp4"])?.mimeType, "video/mp4")
+        XCTAssertEqual(ToolFileInput(["ref": "r1", "name": "clip", "mimeType": "video/mp4"])?.isVideo, true)
+        XCTAssertEqual(ToolFileInput(["ref": "r1", "name": "Clip.MOV"])?.isVideo, true)
+        XCTAssertEqual(ToolFileInput(["ref": "r1", "name": "clip.m4v"])?.isVideo, true)
+        XCTAssertEqual(ToolFileInput(["ref": "r1", "name": "clip.webm"])?.isVideo, false, "not one AVFoundation plays")
+        XCTAssertEqual(ToolFileInput(["ref": "r1", "name": "clip.mp4", "mimeType": "application/octet-stream"])?.isVideo, true, "a vague type: the name says")
+        XCTAssertEqual(ToolFileInput(["ref": "r1", "name": "clip.mp4", "mimeType": "image/gif"])?.isVideo, false)
+        XCTAssertEqual(ToolFileInput(["ref": "r1", "name": "photo.png"])?.isVideo, false)
+        XCTAssertEqual(ToolFileInput(["ref": "r1", "name": "frame.mp4", "image": ["width": 4, "height": 3]])?.isVideo, false, "a picture by its shape")
+    }
 }

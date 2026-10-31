@@ -305,7 +305,9 @@ final class MediaStream: NSObject, AVAssetResourceLoaderDelegate, @unchecked Sen
 
     private let downloads: MediaDownloads
     private let id: String
-    private let source: MediaSource
+    /// Where its bytes come from, found once (a legacy file's needs the
+    /// session's key, read off the main thread).
+    private let resolve: @Sendable () async throws -> MediaSource
     private let name: String
     private let mimeType: String
     private let queue = DispatchQueue(label: "engineering.happy.media-stream")
@@ -318,7 +320,16 @@ final class MediaStream: NSObject, AVAssetResourceLoaderDelegate, @unchecked Sen
     init(downloads: MediaDownloads, id: String, source: MediaSource, name: String, mimeType: String) {
         self.downloads = downloads
         self.id = id
-        self.source = source
+        resolve = { source }
+        self.name = name
+        self.mimeType = mimeType
+    }
+
+    /// A stream whose source is found when it is first read.
+    init(downloads: MediaDownloads, id: String, name: String, mimeType: String, source: @escaping @Sendable () async throws -> MediaSource) {
+        self.downloads = downloads
+        self.id = id
+        resolve = source
         self.name = name
         self.mimeType = mimeType
     }
@@ -359,8 +370,9 @@ final class MediaStream: NSObject, AVAssetResourceLoaderDelegate, @unchecked Sen
     /// AVFoundation cancels it.
     private func serve(_ box: Request) async {
         do {
+            let source = try await resolve()
             let total = try await downloads.length(id, source: source)
-            let type = UTType(mimeType: mimeType)?.identifier ?? UTType.mpeg4Movie.identifier
+            let type = (UTType(mimeType: mimeType) ?? UTType(filenameExtension: (name as NSString).pathExtension))?.identifier ?? UTType.mpeg4Movie.identifier
             let span = await onQueue { () -> Range<Int>? in
                 let request = box.request
                 guard !request.isCancelled else { return nil }

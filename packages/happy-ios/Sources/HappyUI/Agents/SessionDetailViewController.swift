@@ -602,12 +602,8 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
             }
             return
         }
-        if let player = loader.player(one.key) {
-            let playback = AVPlayerViewController()
-            playback.player = player
-            present(playback, animated: true) { player.play() }
-            return
-        }
+        let loader = loader
+        if VideoOpening.shared.open(boardKey: loader.download(one.key)?.boardKey, from: self, player: { loader.player(one.key) }) { return }
         let pictures = shared.media.filter(\.isPicture).map { picture -> Picture in
             switch picture {
             case .picture: Picture(key: picture.key, thumbhash: nil, label: Strings.picture)

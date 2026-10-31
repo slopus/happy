@@ -143,10 +143,12 @@ public enum ChatNormalizer {
                 record.body = .agent([
                     .result(id: call, value: result.map(JSONValue.string) ?? .null, error: error ?? false)
                 ])
-            case .file(let ref, let name, let size, _, let image):
+            case .file(let ref, let name, let size, let mimeType, let image):
                 var input: [String: JSONValue] = [
                     "ref": .string(ref), "name": .string(name), "size": .number(size),
                 ]
+                // So a recording plays rather than reads as a picture.
+                if let mimeType { input["mimeType"] = .string(mimeType) }
                 var description = "Attached file: \(name)"
                 if let image {
                     input["image"] = envelopeRaw["ev"]?["image"]

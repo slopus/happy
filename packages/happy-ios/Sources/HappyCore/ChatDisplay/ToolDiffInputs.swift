@@ -113,6 +113,20 @@ public struct ToolFileInput: Equatable, Sendable {
     public var thumbhash: String?
     /// The plaintext's bytes, when the sender said.
     public var size: Double?
+    /// The file's type, when the sender said; the app sends none.
+    public var mimeType: String?
+
+    /// A recording, by its type or else its name: the app sends
+    /// recordings with neither a type nor a picture's shape.
+    public var isVideo: Bool {
+        if let mimeType, mimeType.hasPrefix("video/") { return true }
+        if let mimeType, mimeType.hasPrefix("image/") || mimeType.hasPrefix("audio/") { return false }
+        guard imageWidth == nil, let dot = name.lastIndex(of: ".") else { return false }
+        return Self.videoExtensions.contains(name[name.index(after: dot)...].lowercased())
+    }
+
+    /// What AVFoundation plays.
+    static let videoExtensions: Set<String> = ["mp4", "m4v", "mov", "3gp"]
 
     public init?(_ input: JSONValue) {
         guard let ref = input["ref"]?.stringValue, let name = input["name"]?.stringValue else { return nil }
@@ -140,5 +154,6 @@ public struct ToolFileInput: Equatable, Sendable {
         imageWidth = width
         imageHeight = height
         self.thumbhash = thumbhash
+        mimeType = input["mimeType"]?.stringValue
     }
 }
