@@ -250,7 +250,7 @@ final class HostedComposeTests: XCTestCase {
         await controller.agentConnections.setForeground(false)
         let computer = try await controller.agentConnections.add(
             JSONDecoder().decode(AgentConnectionCredentials.self, from: Data(#"{"address":"compose-test","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"token"}"#.utf8)),
-            name: "Mac"
+            name: "Personal MacBook Pro"
         )
         addTeardownBlock { @MainActor in
             Session.forget(computer.id)
@@ -274,6 +274,11 @@ final class HostedComposeTests: XCTestCase {
         let field = home.search.bar.searchTextField
         let toolbarFrame = field.convert(field.bounds, to: window)
         XCTAssertGreaterThan(toolbarFrame.minY, window.bounds.midY)
+        let selector = try XCTUnwrap(home.navigationItem.leftBarButtonItem?.customView as? AccountSwitcherButton)
+        let name = try XCTUnwrap(Self.subview(StyledLabel.self, in: selector))
+        XCTAssertEqual(name.string, "Personal MacBook Pro")
+        XCTAssertEqual(name.numberOfLines, 1)
+        XCTAssertGreaterThanOrEqual(name.bounds.width, name.sizeThatFits(CGSize(width: 1_000, height: 100)).width)
         XCTAssertGreaterThan(home.view.safeAreaInsets.bottom, 40, "the list reserves room for the bottom toolbar")
         keep(window, "main-home")
 

@@ -78,6 +78,9 @@ final class HomeViewController: UIViewController {
     var contentInsets = HomeContentInsets(safeArea: .zero, dock: 0) {
         didSet { if contentInsets != oldValue { view.setNeedsLayout() } }
     }
+    var searchContentInsets: HomeContentInsets? {
+        didSet { if searchContentInsets != oldValue { view.setNeedsLayout() } }
+    }
 
     init(context: AppContext, computer: String? = nil) {
         self.context = context
@@ -99,6 +102,7 @@ final class HomeViewController: UIViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         resultsView.isHidden = true
         resultsView.list.onSelect = { [weak self] row in self?.open(row) }
+        resultsView.onDismiss = { [weak self] in self?.endSearch() }
         resultsView.list.onIntent = { [weak self] row in
             guard let agentId = row.agentId, row.targetKind != "surface" else { return }
             self?.session?.warm.intent(agentId)
@@ -390,7 +394,8 @@ final class HomeViewController: UIViewController {
         // middle; a phone is as wide as it ever was.
         let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset, maxWidth: ContentWidth.maxWidth, bannerOverlaysList: !usesSpaces)
         resultsView.frame = layout.content
-        resultsView.insets = UIEdgeInsets(top: contentInsets.contentTop, left: 0, bottom: view.safeAreaInsets.bottom, right: 0)
+        let searchInsets = searchContentInsets ?? contentInsets
+        resultsView.insets = UIEdgeInsets(top: searchInsets.contentTop, left: 0, bottom: searchInsets.listBottom, right: 0)
         banner.frame = layout.banner
         storiesBand.frame = CGRect(x: layout.content.minX, y: contentInsets.chromeTop, width: layout.content.width, height: max(0, bounds.height - contentInsets.chromeTop))
         sidebar.frame = layout.content

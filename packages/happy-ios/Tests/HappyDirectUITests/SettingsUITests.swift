@@ -223,12 +223,11 @@ final class SettingsUITests: XCTestCase {
         capture("settings-row-add-account")
         goBack("Welcome")
 
-        // About is a page.
-        row("about").tap()
-        XCTAssertTrue(row("version").waitForExistence(timeout: 3), "About has no version row")
+        // About's rows live directly in Settings.
+        XCTAssertFalse(element("settings:about").exists)
+        XCTAssertTrue(row("version").waitForExistence(timeout: 3), "Settings has no version row")
         assertPushes("whats-new", "What's new")
         for link in ["github-repo", "report-issue", "privacy", "terms", "eula"] { assertOpensLink(link) }
-        goBack("About")
         XCTAssertTrue(row("disconnect").exists, "no Disconnect")
         scrollToTop()
 

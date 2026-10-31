@@ -3,16 +3,7 @@ import Foundation
 import CoreGraphics
 #endif
 
-/// Home's account switcher, alone at the bar's left: the active account's
-/// picture, its name with the connection under it while it isn't live,
-/// and a chevron that says it opens a menu. The name shortens before the
-/// switcher grows past `maxWidth`, so the right's buttons always fit.
-/// The name's place never depends on the connection: the line under it
-/// is kept whether or not it says anything (`subtitleHeight`), so a
-/// connection that comes and goes moves nothing.
-///
-///     |◉| Steve ⌄
-///     |◉| connecting
+/// A single line for the account picture, name and menu chevron.
 public struct AccountSwitcherLayout: Equatable, Sendable {
     public enum Metrics {
         public static let height: CGFloat = 36
@@ -22,32 +13,28 @@ public struct AccountSwitcherLayout: Equatable, Sendable {
         public static let picture: CGFloat = 28
         public static let pictureGap: CGFloat = 8
         public static let chevronGap: CGFloat = 4
-        /// The widest it gets: about half a phone's bar.
-        public static let maxWidth: CGFloat = 200
     }
 
     public var size: CGSize
     public var picture: CGRect
     public var title: CGRect
-    public var subtitle: CGRect?
     public var chevron: CGRect
 
-    /// `title`, `subtitle` and `chevron` as measured on one line each;
-    /// `subtitleHeight` is the subtitle's line, kept when there is none.
-    public init(title: CGSize, subtitle: CGSize?, subtitleHeight: CGFloat, chevron: CGSize, maxWidth: CGFloat = Metrics.maxWidth, reservedSubtitleWidth: CGFloat = 0) {
+    /// Space left after the navigation bar's margins and trailing actions.
+    public static func availableWidth(barWidth: CGFloat, safeArea: LayoutInsets, trailingItems: Int) -> CGFloat {
+        max(0, barWidth - safeArea.left - safeArea.right - 32 - CGFloat(trailingItems) * 48 - 8)
+    }
+
+    public init(title: CGSize, chevron: CGSize, maxWidth: CGFloat = .greatestFiniteMagnitude) {
         typealias M = Metrics
         let textX = M.leading + M.picture + M.pictureGap
         let fixed = textX + M.chevronGap + chevron.width + M.trailing
-        let room = max(0, min(maxWidth, M.maxWidth) - fixed)
+        let room = max(0, maxWidth - fixed)
         let titleWidth = min(title.width, room)
-        let subtitleWidth = min(max(subtitle?.width ?? 0, reservedSubtitleWidth), room)
-        let textWidth = max(titleWidth + M.chevronGap + chevron.width, subtitleWidth)
-        size = CGSize(width: (textX + textWidth + M.trailing).rounded(.up), height: M.height)
+        size = CGSize(width: (fixed + titleWidth).rounded(.up), height: M.height)
         picture = CGRect(x: M.leading, y: (M.height - M.picture) / 2, width: M.picture, height: M.picture)
-        let textHeight = title.height + max(subtitleHeight, subtitle?.height ?? 0)
-        let top = ((M.height - textHeight) / 2).rounded()
+        let top = ((M.height - title.height) / 2).rounded()
         self.title = CGRect(x: textX, y: top, width: titleWidth, height: title.height)
-        self.subtitle = subtitle.map { CGRect(x: textX, y: top + title.height, width: subtitleWidth, height: $0.height) }
         self.chevron = CGRect(x: textX + titleWidth + M.chevronGap, y: (top + (title.height - chevron.height) / 2).rounded(), width: chevron.width, height: chevron.height)
     }
 }

@@ -260,7 +260,7 @@ final class ProfileCarouselView: UIView, UIScrollViewDelegate {
 
 /// A row in a settings card: what it says and does.
 struct SettingsRow {
-    enum Tile { case orange, gray, blue, purple, green, red, teal, indigo }
+    enum Tile { case orange, gray, blue, purple, green, red, teal, indigo, action }
     var id: String
     var title: String
     var icon: (glyph: String, tile: Tile)?
@@ -329,6 +329,7 @@ final class SettingsCardView: UIView {
             super.init(frame: frame)
             tile.layer.cornerRadius = SettingsLayout.Metrics.tileRadius
             tile.layer.cornerCurve = .continuous
+            tile.clipsToBounds = true
             glyph.tintColor = UIColor(Palette.settingsGlyph)
             glyph.contentMode = .center
             tile.addSubview(glyph)
@@ -369,8 +370,9 @@ final class SettingsCardView: UIView {
                     glyph.clipsToBounds = true
                     glyph.frame = tile.bounds
                 } else if let icon = row.icon {
-                    tile.backgroundColor = UIColor(Self.color(icon.tile))
+                    tile.backgroundColor = icon.tile == .action ? .clear : UIColor(Self.color(icon.tile))
                     tile.layer.cornerRadius = SettingsLayout.Metrics.tileRadius
+                    glyph.tintColor = UIColor(icon.tile == .action ? Palette.textLink : Palette.settingsGlyph)
                     glyph.image = Glyphs.image(icon.glyph, size: SettingsLayout.Metrics.glyph)
                     glyph.contentMode = .center
                     glyph.clipsToBounds = false
@@ -378,7 +380,7 @@ final class SettingsCardView: UIView {
                 }
             }
             title.text = row.title
-            title.textColor = UIColor(row.destructive ? Palette.settingsDestructive : Palette.settingsText)
+            title.textColor = UIColor(row.destructive ? Palette.settingsDestructive : row.icon?.tile == .action ? Palette.textLink : Palette.settingsText)
             title.frame = local(frames.title)
             value.isHidden = frames.value == nil
             value.text = row.value
@@ -412,6 +414,7 @@ final class SettingsCardView: UIView {
             case .red: Palette.settingsTileRed
             case .teal: Palette.settingsTileTeal
             case .indigo: Palette.settingsTileIndigo
+            case .action: Palette.textLink
             }
         }
 

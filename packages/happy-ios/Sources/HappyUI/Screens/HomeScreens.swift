@@ -148,6 +148,7 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        switcher?.layout()
         applyInsets(HomeContentInsets(underBar: LayoutInsets(view.safeAreaInsets), dock: 0))
     }
 

@@ -120,6 +120,12 @@ final class HostedSettingsAccountsTests: XCTestCase {
         XCTAssertEqual(accounts.last, SettingsIndex.connectAgent.id, "Connect Agent sits under them")
         XCTAssertFalse(cards.joined().contains(SettingsIndex.addAccount.id), "a second Add is still on the page")
         XCTAssertEqual(cards.joined().filter { $0 == SettingsIndex.connectAgent.id }.count, 1, "Connect Agent appears twice")
+        XCTAssertEqual(SettingsIndex.connectAgent.title, "Add Agent")
+        XCTAssertEqual(SettingsIndex.connectAgent.glyph, "add-outline")
+        XCTAssertFalse(cards.joined().contains("about"), "About must not require opening another page")
+        for row in SettingsIndex.aboutRows {
+            XCTAssertTrue(cards.joined().contains(row.id), "About row \(row.id) is missing from Settings")
+        }
 
         // Exactly one tick, on the account actually being shown. A
         // signed-in Happy account and an open agent connection both call

@@ -374,7 +374,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
                     Row(Index.status, value: profile.subtitle, accessory: .none),
                 ],
                 [Row(Index.appearance, action: { [weak self] in self?.open(.appearance) })],
-                [Row(Index.about, action: { [weak self] in self?.open(.about) })],
+                aboutRows(),
                 [Row(id: "disconnect", title: Strings.disconnect, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) })],
             ]
         }
@@ -397,27 +397,25 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
                 Row(id: "enter-terminal", title: Strings.enterTerminalURL, icon: ("link-outline", .indigo), accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: false) }),
             ],
             [Row(id: "support-us", title: Strings.SupportUs.title, icon: ("heart-outline", .red), action: { [weak self] in self?.show(SupportUsViewController()) })],
-            [Row(SettingsIndex.about, action: { [weak self] in self?.open(.about) })],
+            aboutRows(),
             [Row(id: "sign-out", title: Strings.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: false) })],
         ]
     }
 
     /// The pages a row opens.
     enum Page: CaseIterable {
-        case appearance, about
+        case appearance
     }
 
     private func title(_ page: Page) -> String {
         switch page {
         case .appearance: SettingsIndex.appearance.title
-        case .about: SettingsIndex.about.title
         }
     }
 
     private func rows(_ page: Page) -> [[SettingsRow]] {
         switch page {
         case .appearance: appearanceRows()
-        case .about: [aboutRows()]
         }
     }
 

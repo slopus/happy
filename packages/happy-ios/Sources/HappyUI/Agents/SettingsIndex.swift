@@ -19,7 +19,7 @@ enum SettingsIndex {
     static var hideProjects: Entry { Entry(id: "hide-projects", title: "Hide projects", glyph: "folder-outline", tile: .orange) }
     static var appearance: Entry { Entry(id: "appearance", title: Strings.Settings.appearance, glyph: "color-palette-outline", tile: .purple) }
     static var about: Entry { Entry(id: "about", title: Strings.Settings.about, glyph: "information-circle-outline", tile: .gray) }
-    static var connectAgent: Entry { Entry(id: "connect-agent", title: Strings.connectAgent, glyph: "laptop-outline", tile: .blue) }
+    static var connectAgent: Entry { Entry(id: "connect-agent", title: Strings.SettingsActions.addAgent, glyph: "add-outline", tile: .action) }
     static var addAccount: Entry { Entry(id: "add-account", title: Strings.addHappyAccount, glyph: "person-add-outline", tile: .gray) }
     static var whatsNew: Entry { Entry(id: "whats-new", title: Strings.Settings.whatsNew, glyph: "sparkles-outline", tile: .orange) }
     static var githubRepo: Entry { Entry(id: "github-repo", title: Strings.Settings.github, glyph: "logo-github", tile: .gray) }
@@ -33,7 +33,7 @@ enum SettingsIndex {
     /// order. Disconnect is left out: a search doesn't offer to take the
     /// computer away.
     static var computer: [Entry] {
-        [editName, status, appearance, hideProjects, connectAgent, addAccount, about] + aboutRows
+        [editName, status, appearance, hideProjects, connectAgent, addAccount] + aboutRows
     }
 
     /// The About page's rows.

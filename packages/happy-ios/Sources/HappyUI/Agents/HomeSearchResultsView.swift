@@ -3,16 +3,18 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// Search's results, a component of their own over home: home's list stays
-/// as it was under them, its rows, scroll and insets untouched. Nothing
-/// shows while nothing is typed; once something answers, its own list
-/// covers home under the bar; when nothing does, a small capsule says so
-/// over home, and home still takes touches around it.
+/// Search owns the whole content surface, including an empty query. Its
+/// scrolling and interactive dismissal never move the home list underneath.
 final class HomeSearchResultsView: UIView {
     /// The results, on their own ground: never home's list.
     let list = SidebarView()
     private let pill = UIVisualEffectView(effect: UIGlassEffect())
     private let nothingFound = UILabel()
+    private let backdrop = UIView()
+    private let surface = UIView()
+    private var pulling = false
+    private var pull: CGFloat = 0
+    var onDismiss: (() -> Void)?
 
     /// Where the results start (the bar's foot) and the room under them.
     var insets = UIEdgeInsets.zero {
@@ -23,16 +25,19 @@ final class HomeSearchResultsView: UIView {
     }
 
     /// Something answers, so the results cover home.
-    var showsResults: Bool { !list.isHidden }
+    var showsResults: Bool { !isHidden }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         accessibilityIdentifier = "search-results"
-        list.backgroundColor = UIColor(Palette.surface)
-        list.keyboardDismissMode = .onDrag
+        backdrop.backgroundColor = .black
+        addSubview(backdrop)
+        surface.backgroundColor = UIColor(Palette.surface)
+        addSubview(surface)
+        list.keyboardDismissMode = .interactive
+        list.panGestureRecognizer.addTarget(self, action: #selector(panned(_:)))
         list.accessibilityIdentifier = "search-results-list"
-        list.isHidden = true
-        addSubview(list)
+        surface.addSubview(list)
         nothingFound.text = Strings.nothingFound
         nothingFound.font = Fonts.ui(.regular, size: 15)
         nothingFound.textColor = UIColor(Palette.rowText)
@@ -43,7 +48,7 @@ final class HomeSearchResultsView: UIView {
         pill.isUserInteractionEnabled = false
         pill.clipsToBounds = true
         pill.contentView.addSubview(nothingFound)
-        addSubview(pill)
+        surface.addSubview(pill)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -53,11 +58,10 @@ final class HomeSearchResultsView: UIView {
     func show(_ rows: [Row], query: String) {
         let typed = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let found = typed && !rows.isEmpty
-        let wasShown = !list.isHidden
-        list.isHidden = !found
+        let previous = list.rows.map(\.id)
         pill.isHidden = !typed || found
         list.apply(found ? rows : [])
-        if found, !wasShown || list.rows.map(\.id) != rows.map(\.id) {
+        if found, previous != rows.map(\.id) {
             list.layoutIfNeeded()
             list.contentOffset.y = -list.contentInset.top
         }
@@ -65,11 +69,17 @@ final class HomeSearchResultsView: UIView {
     }
 
     func clear() {
+        pulling = false
+        pull = 0
         show([], query: "")
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        let presentation = HomeSearchPresentationLayout(size: bounds.size, pull: pull)
+        backdrop.frame = bounds
+        backdrop.alpha = presentation.backdropAlpha
+        surface.frame = presentation.surface
         let layout = SearchLayout(size: bounds.size, contentTop: insets.top, safeBottom: insets.bottom, keyboardTop: keyboardTop ?? bounds.height, nothingFound: nothingFound.measurable)
         list.frame = bounds
         let listInsets = UIEdgeInsets(top: insets.top, left: 0, bottom: layout.listBottom, right: 0)
@@ -82,10 +92,31 @@ final class HomeSearchResultsView: UIView {
         nothingFound.setLayoutFrame(layout.nothingFound.offsetBy(dx: -layout.nothingFoundPill.minX, dy: -layout.nothingFoundPill.minY))
     }
 
-    /// Touches off the results and the capsule reach home.
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        let hit = super.hitTest(point, with: event)
-        return hit === self ? nil : hit
+    @objc private func panned(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            pulling = list.contentOffset.y <= -list.adjustedContentInset.top + 1 && gesture.velocity(in: self).y > 0
+        case .changed where pulling:
+            pull = max(0, gesture.translation(in: self).y)
+            if pull > 0 { list.contentOffset.y = -list.adjustedContentInset.top }
+            setNeedsLayout()
+            layoutIfNeeded()
+        case .ended, .cancelled, .failed:
+            let dismiss = gesture.state == .ended && pulling && HomeSearchPresentationLayout.shouldDismiss(distance: pull, velocity: gesture.velocity(in: self).y)
+            pulling = false
+            if dismiss {
+                pull = bounds.height
+                window?.endEditing(true)
+                setNeedsLayout()
+                UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) { self.layoutIfNeeded() } completion: { [weak self] _ in self?.onDismiss?() }
+            }
+            else {
+                pull = 0
+                setNeedsLayout()
+                UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) { self.layoutIfNeeded() }
+            }
+        default: break
+        }
     }
 }
 #endif

@@ -72,6 +72,11 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     /// Account and settings stay in the header while search lives below.
     private func updateBar() {
         guard let switcher else { return }
+        if search.isActive {
+            navigationItem.leftBarButtonItems = nil
+            navigationItem.rightBarButtonItems = nil
+            return
+        }
         navigationItem.leftBarButtonItem = switcher.barItem
         navigationItem.rightBarButtonItems = HeaderBar.trailing([
             .settings: HeaderBar.settingsItem { [weak self] in self?.openSettings() },
@@ -96,7 +101,14 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        v2.contentInsets = HomeContentInsets(underBar: LayoutInsets(view.safeAreaInsets), dock: 0)
+        switcher?.layout()
+        let field = search.bar.searchTextField
+        let control = field.window == view.window && field.bounds.height > 0 ? field.convert(field.bounds, to: view) : nil
+        let bottom = HomeBottomBarLayout(height: view.bounds.height, safeBottom: view.safeAreaInsets.bottom, control: control).bottomInset
+        var insets = HomeContentInsets(underBar: LayoutInsets(view.safeAreaInsets), dock: 0)
+        insets.listBottom = bottom
+        if !search.isActive { v2.contentInsets = insets }
+        v2.searchContentInsets = insets
     }
 
     /// The bar's compose: new work, over home.

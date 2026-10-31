@@ -1,5 +1,6 @@
 import XCTest
 
+@MainActor
 final class HomeBottomActionsUITests: XCTestCase {
     override func setUp() {
         super.setUp()
@@ -26,7 +27,8 @@ final class HomeBottomActionsUITests: XCTestCase {
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
         field.typeText("Conversation 12")
         XCTAssertLessThanOrEqual(field.frame.maxY, keyboard.frame.minY + 1)
-        XCTAssertGreaterThan(field.frame.minY, app.navigationBars.firstMatch.frame.maxY + 40)
+        XCTAssertGreaterThan(field.frame.minY, window.frame.midY)
+        XCTAssertFalse(app.buttons["account-switcher"].isHittable)
         print("HOME_BOTTOM_ACTIONS search=\(field.frame) keyboard=\(keyboard.frame)")
         capture("home-bottom-search-keyboard")
 
@@ -41,6 +43,63 @@ final class HomeBottomActionsUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         XCTAssertTrue(compose.exists)
         capture("home-bottom-actions-restored")
+    }
+
+    func testLastRowClearsSearchAndTheAccountMenuUsesOneLine() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-fullHomeScroll", "-homeActionsOnly"]
+        app.launch()
+        defer { app.terminate() }
+        let field = app.searchFields["search-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        let selector = app.buttons["account-switcher"]
+        XCTAssertTrue(selector.exists)
+        selector.tap()
+        let choice = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Personal MacBook Pro")).firstMatch
+        XCTAssertTrue(choice.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(choice.frame.height, 52, "the native account menu row must stay on one line")
+        capture("home-account-single-line")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.45)).tap()
+
+        let last = app.buttons["Conversation 119"]
+        for _ in 0..<24 {
+            if last.exists, last.frame.maxY <= field.frame.minY - 8 { break }
+            app.swipeUp(velocity: .fast)
+        }
+        XCTAssertTrue(last.exists)
+        XCTAssertLessThanOrEqual(last.frame.maxY, field.frame.minY - 8, "the entire last row must clear the floating search bar")
+        capture("home-last-row-clearance")
+    }
+
+    func testSearchCoversHomeAndSupportsCancelledAndCompletedPulls() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-fullHomeScroll", "-homeActionsOnly"]
+        app.launch()
+        defer { app.terminate() }
+        let field = app.searchFields["search-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        let first = app.buttons["Conversation 0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        let original = first.frame
+        field.tap()
+        let layer = app.scrollViews["search-results-list"]
+        XCTAssertTrue(layer.waitForExistence(timeout: 5))
+        XCTAssertFalse(first.isHittable, "empty search must cover the home list")
+        XCTAssertFalse(app.buttons["account-switcher"].isHittable)
+        capture("home-search-empty-overlay")
+
+        let start = layer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+        start.press(forDuration: 0.05, thenDragTo: layer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(layer.exists, "a short pull should return search to its open position")
+        capture("home-search-pull-cancelled")
+        start.press(forDuration: 0.05, thenDragTo: layer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.58)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(app.buttons["account-switcher"].waitForExistence(timeout: 5))
+        XCTAssertTrue(layer.waitForNonExistence(timeout: 5), "a complete pull should dismiss search")
+        let restored = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in first.exists && first.frame == original }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 5), .completed)
+        XCTAssertTrue(first.isHittable)
+        XCTAssertEqual(first.frame, original, "dismissal must restore the original list position")
+        capture("home-search-pull-dismissed")
     }
 
     private func capture(_ name: String) {

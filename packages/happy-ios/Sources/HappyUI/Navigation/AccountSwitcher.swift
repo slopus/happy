@@ -4,8 +4,7 @@ import HappyLayout
 import UIKit
 
 /// Home's left bar item, alone there on both homes: the active account's
-/// picture and name, with the connection always under it,
-/// and a chevron. A tap opens the native menu: every account and agent
+/// picture and name on one line, and a chevron. A tap opens the native menu: every account and agent
 /// connection (the active one ticked; another switches to it), then Add
 /// (`AccountAdding`) and Manage Accounts. Adding or a failed
 /// switch leaves the active account as it was.
@@ -21,7 +20,7 @@ final class AccountSwitcher: NSObject {
     private var jobs: [String: Task<Void, Never>] = [:]
     private var switching = false
 
-    /// Under the name: the connection's current state, never empty.
+    /// Connection state is available to VoiceOver without a second visual line.
     var subtitle: String = Strings.HeaderStatus.text(.connecting) {
         didSet { if subtitle != oldValue { show() } }
     }
@@ -64,12 +63,21 @@ final class AccountSwitcher: NSObject {
         accounts.forEach(loadImage)
         guard let active = current(in: accounts) else { return }
         button.title = name(active)
-        button.subtitle = subtitle
         button.picture = images[active.id] ?? Self.fallback(active)
         button.accessibilityLabel = Strings.AccountSwitcher.switcher
         button.accessibilityValue = [name(active), subtitle].joined(separator: ", ")
         button.frame.size = button.sizeThatFits(.zero)
         item.customView = button
+        layout()
+    }
+
+    func layout() {
+        guard let controller, let navigation = controller.navigationController else { return }
+        button.maximumWidth = AccountSwitcherLayout.availableWidth(
+            barWidth: navigation.navigationBar.bounds.width,
+            safeArea: LayoutInsets(navigation.navigationBar.safeAreaInsets),
+            trailingItems: controller.navigationItem.rightBarButtonItems?.count ?? 0
+        )
     }
 
     private static func fallback(_ account: AccountSummary) -> UIImage? {
@@ -105,10 +113,11 @@ final class AccountSwitcher: NSObject {
         let accounts = context.account.accounts
         let current = current(in: accounts)?.id
         let choices: [UIMenuElement] = accounts.map { account in
-            let action = UIAction(title: name(account), image: images[account.id] ?? Self.fallback(account), state: account.id == current ? .on : .off) { [weak self] _ in
+            let fullName = name(account)
+            let action = UIAction(title: Self.menuTitle(fullName), image: images[account.id] ?? Self.fallback(account), state: account.id == current ? .on : .off) { [weak self] _ in
                 self?.choose(account, current: current)
             }
-            action.subtitle = account.isAgentConnection ? (account.connectionStatus ?? Strings.agentConnection) : account.username.map { "@\($0)" } ?? account.serverURL.host
+            action.accessibilityLabel = fullName
             action.accessibilityIdentifier = "account-\(account.id)"
             return action
         }
@@ -126,6 +135,18 @@ final class AccountSwitcher: NSObject {
             UIMenu(options: .displayInline, children: choices),
             UIMenu(options: .displayInline, children: [add, manage]),
         ]
+    }
+
+    /// UIKit's compact menu reserves a fixed lane for the check and picture.
+    /// UIAction offers no line-count setting, so fit its title on one line.
+    private static func menuTitle(_ name: String) -> String {
+        let font = UIFont.preferredFont(forTextStyle: .body)
+        func width(_ text: String) -> CGFloat { (text as NSString).size(withAttributes: [.font: font]).width }
+        let limit: CGFloat = 140
+        guard width(name) > limit else { return name }
+        var title = name
+        while !title.isEmpty, width(title + "…") > limit { title.removeLast() }
+        return title.trimmingCharacters(in: .whitespaces) + "…"
     }
 
     /// `current` is the ticked one, not every account that calls itself
@@ -147,22 +168,22 @@ final class AccountSwitcher: NSObject {
     }
 }
 
-/// The switcher's face: picture, name and chevron, the connection under the
-/// name. `AccountSwitcherLayout` places them.
+/// The switcher's single-line face, placed by `AccountSwitcherLayout`.
 final class AccountSwitcherButton: UIButton {
     private let pictureView = UIImageView()
     private let titleText = StyledLabel(style: TextStyles.headerTitle, color: Palette.headerTint, lines: 1)
-    private let subtitleText = StyledLabel(style: TextStyles.headerSubtitle, color: Palette.textSecondary, lines: 1)
     private let chevron = UIImageView(image: UIImage(systemName: "chevron.down", withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold)))
 
     var title = "" {
-        didSet { titleText.string = title; setNeedsLayout() }
+        didSet { titleText.string = title; invalidateIntrinsicContentSize(); setNeedsLayout() }
     }
 
-    var subtitle: String = Strings.HeaderStatus.text(.connecting) {
+    var maximumWidth: CGFloat = .greatestFiniteMagnitude {
         didSet {
-            guard subtitle != oldValue else { return }
-            HeaderStatusTransition.apply(to: subtitleText) { [self] in subtitleText.string = subtitle }
+            guard maximumWidth != oldValue else { return }
+            invalidateIntrinsicContentSize()
+            frame.size = sizeThatFits(.zero)
+            setNeedsLayout()
         }
     }
 
@@ -177,10 +198,8 @@ final class AccountSwitcherButton: UIButton {
         pictureView.layer.cornerRadius = AccountSwitcherLayout.Metrics.picture / 2
         chevron.tintColor = UIColor(Palette.textSecondary)
         titleText.lineBreakMode = .byTruncatingTail
-        subtitleText.lineBreakMode = .byTruncatingTail
-        subtitleText.string = subtitle
-        subtitleText.accessibilityIdentifier = "account-status"
-        for view in [pictureView, titleText, subtitleText, chevron] as [UIView] {
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        for view in [pictureView, titleText, chevron] as [UIView] {
             view.isUserInteractionEnabled = false
             addSubview(view)
         }
@@ -188,34 +207,23 @@ final class AccountSwitcherButton: UIButton {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    private func measured() -> AccountSwitcherLayout {
+    private func measured(maxWidth: CGFloat? = nil) -> AccountSwitcherLayout {
         let unbounded = CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
         return AccountSwitcherLayout(
             title: titleText.sizeThatFits(unbounded),
-            subtitle: subtitleText.sizeThatFits(unbounded),
-            subtitleHeight: subtitleText.lineHeight,
             chevron: chevron.image?.size ?? .zero,
-            reservedSubtitleWidth: reservedSubtitleWidth
+            maxWidth: maxWidth ?? maximumWidth
         )
     }
-
-    private lazy var reservedSubtitleWidth: CGFloat = {
-        let measure = StyledLabel(style: TextStyles.headerSubtitle, color: Palette.textSecondary, lines: 1)
-        return Strings.HeaderStatus.State.allCases.map {
-            measure.string = Strings.HeaderStatus.text($0)
-            return measure.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)).width
-        }.max() ?? 0
-    }()
 
     override func sizeThatFits(_ size: CGSize) -> CGSize { measured().size }
     override var intrinsicContentSize: CGSize { measured().size }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = measured()
+        let layout = measured(maxWidth: bounds.width)
         pictureView.setLayoutFrame(layout.picture)
         titleText.setLayoutFrame(layout.title)
-        if let frame = layout.subtitle { subtitleText.setLayoutFrame(frame) }
         chevron.setLayoutFrame(layout.chevron)
     }
 }

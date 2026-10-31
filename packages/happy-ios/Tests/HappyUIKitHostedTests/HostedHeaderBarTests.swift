@@ -97,7 +97,7 @@ final class HostedHeaderBarTests: XCTestCase {
         let (window, _, home, _) = try await agentHome(style: .light)
         defer { window.isHidden = true }
         let item = home.navigationItem
-        XCTAssertNil(item.searchController, "search is the bar's own field, not a search controller")
+        XCTAssertTrue(item.searchController === home.search.controller)
         XCTAssertEqual(item.leftBarButtonItems?.count, 1)
         XCTAssertEqual(item.leftBarButtonItem?.customView?.accessibilityIdentifier, "account-switcher")
         let switcher = try XCTUnwrap(item.leftBarButtonItem?.customView)
@@ -105,11 +105,9 @@ final class HostedHeaderBarTests: XCTestCase {
         for child in switcher.subviews where !child.isHidden {
             XCTAssertTrue(switcher.bounds.contains(child.frame), "\(child) is cut by the bar")
         }
-        // rightBarButtonItems run from the outermost in: settings, (compose), search.
         let right = item.rightBarButtonItems?.map(\.accessibilityIdentifier) ?? []
-        XCTAssertEqual(right.first, "settings")
-        XCTAssertEqual(right.last, "search")
-        XCTAssertEqual(right.filter { $0 != "compose" }, ["settings", "search"])
+        XCTAssertEqual(right, ["settings"])
+        XCTAssertTrue(home.toolbarItems?.contains { $0.accessibilityIdentifier == "compose" } == true)
         let bar = try XCTUnwrap(home.navigationController?.navigationBar)
         Self.assertClear(bar)
     }
@@ -129,33 +127,33 @@ final class HostedHeaderBarTests: XCTestCase {
             home.search.begin()
             try await Task.sleep(for: .milliseconds(600))
             XCTAssertTrue(home.search.isActive)
-            XCTAssertTrue(home.navigationItem.titleView === home.search.bar)
+            XCTAssertNil(home.navigationItem.leftBarButtonItems)
             XCTAssertNil(home.navigationItem.rightBarButtonItems)
             XCTAssertEqual(state(sidebar), before, "opening search moved home")
             let results = try XCTUnwrap(Self.subview(HomeSearchResultsView.self, in: home.view))
-            XCTAssertFalse(results.showsResults, "nothing typed, nothing over home")
+            XCTAssertTrue(results.showsResults, "empty search also covers home")
             keep(window, "search-open-\(name)")
 
-            type("settings", into: home.search.bar)
+            type("settings", into: home.search)
             try await Task.sleep(for: .milliseconds(300))
             XCTAssertTrue(results.showsResults)
             XCTAssertTrue(results.list.rows.contains { $0.kind == .result }, "the settings quick action answers")
             XCTAssertEqual(state(sidebar), before, "results replaced or moved home")
             keep(window, "search-results-\(name)")
 
-            type("zzzz-nothing", into: home.search.bar)
+            type("zzzz-nothing", into: home.search)
             try await Task.sleep(for: .milliseconds(300))
-            XCTAssertFalse(results.showsResults)
+            XCTAssertTrue(results.showsResults)
             XCTAssertEqual(state(sidebar), before)
             keep(window, "search-nothing-\(name)")
 
-            type("", into: home.search.bar)
+            type("", into: home.search)
             try await Task.sleep(for: .milliseconds(200))
-            XCTAssertFalse(results.showsResults)
+            XCTAssertTrue(results.showsResults)
             XCTAssertEqual(state(sidebar), before)
 
             // A result opens its screen; back, the search is still there.
-            type("settings", into: home.search.bar)
+            type("settings", into: home.search)
             try await Task.sleep(for: .milliseconds(200))
             let open = try XCTUnwrap(results.list.rows.first { $0.id == "search:actions:settings" })
             let row = try XCTUnwrap(results.list.subviews.compactMap { $0 as? RowView }.first { $0.row?.id == open.id })
@@ -346,9 +344,9 @@ final class HostedHeaderBarTests: XCTestCase {
         XCTAssertEqual(bar.standardAppearance, bar.scrollEdgeAppearance, "no change between the edge and scrolled", file: file, line: line)
     }
 
-    private func type(_ text: String, into bar: UISearchBar) {
-        bar.text = text
-        bar.delegate?.searchBar?(bar, textDidChange: text)
+    private func type(_ text: String, into search: BarSearch) {
+        search.bar.text = text
+        search.updateSearchResults(for: search.controller)
     }
 
     private func settle(_ navigation: UINavigationController) async throws {

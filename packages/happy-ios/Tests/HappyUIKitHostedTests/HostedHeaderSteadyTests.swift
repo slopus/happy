@@ -134,7 +134,7 @@ final class HostedHeaderSteadyTests: XCTestCase {
             let seen = try now()
             if index < 2 { capture(window, "\(index + 2)-legacy-home-\(status)") }
             XCTAssertEqual(seen.bar, live.bar, "the bar moved at \(status)")
-            XCTAssertFalse(switcher.subtitle.isEmpty)
+            XCTAssertEqual(Self.subviews(StyledLabel.self, in: switcher).count, 1)
             XCTAssertEqual(seen.switcher, live.switcher, "the switcher moved at \(status)")
             XCTAssertEqual(seen.name.origin, live.name.origin, "the account's name moved at \(status)")
             XCTAssertEqual(seen.list, live.list, "the list moved at \(status)")
@@ -253,8 +253,7 @@ final class HostedHeaderSteadyTests: XCTestCase {
             snapshot.error = state == .offline ? "The computer is offline" : nil
             content.applyConnection(snapshot)
             try await Task.sleep(for: .milliseconds(80))
-            XCTAssertEqual(switcher.subtitle, Strings.HeaderStatus.text(state))
-            XCTAssertFalse(switcher.subtitle.isEmpty)
+            XCTAssertEqual(Self.subviews(StyledLabel.self, in: switcher).count, 1)
             XCTAssertEqual(frames(), original, "mid-fade at \(state)")
             XCTAssertEqual(sidebar.contentInset, inset)
             XCTAssertEqual(sidebar.contentOffset, offset)

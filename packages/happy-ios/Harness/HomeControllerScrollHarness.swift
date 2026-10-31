@@ -59,7 +59,7 @@ private actor ScrollTraceTransport: AgentTransport {
         case "/v0/health":
             if bootstrapDelay { try await Task.sleep(for: .milliseconds(450)) }
             object = ["ready": true, "version": ["protocol": 27], "capabilities": ["sidebarOperations": true]]
-        case "/v0/config": object = ["config": ["node": ["name": "Trace Mac"]]]
+        case "/v0/config": object = ["config": ["node": ["name": "Personal MacBook Pro"]]]
         case "/v0/bootstrap/desktop":
             if bootstrapDelay { try await Task.sleep(for: .milliseconds(450)) }
             object = ["cursor": "c1", "profile": ["userId": NSNull()], "projects": [], "workspaces": [], "userSettings": [["key": DesktopSettingKeys.v2, "value": true, "version": "1"]]]
@@ -133,7 +133,7 @@ final class HomeControllerScrollHarness: NSObject {
         )
         self.account = account
         do {
-            let connection = try await account.agentConnections.add(.init(address: "full-home-scroll", port: 1, deviceID: UUID().uuidString, deviceToken: "fixture"), name: "Trace Mac")
+            let connection = try await account.agentConnections.add(.init(address: "full-home-scroll", port: 1, deviceID: UUID().uuidString, deviceToken: "fixture"), name: "Personal MacBook Pro")
             let context = AppContext(account: account, variant: .development, version: "scroll-fixture")
             let home = AgentHomeViewController(context: context, id: connection.id)
             session = Session.session(for: connection.id, context: context)
