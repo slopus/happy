@@ -153,6 +153,12 @@ final class InlinePagePlanTests: XCTestCase {
             key.references.artifacts["k1"] = read
             XCTAssertEqual(links().compactMap(HappyReferences.reference(link:)), [HappyReferences.Reference(kind: "artifact", id: "k1")])
         }
+        // A live page it links still embeds under the words once read.
+        key.references.embeds[HappyReferences.Reference(kind: "artifact", id: "k1")] = URL(string: "https://platform.x.com/embed/Tweet.html?id=1")
+        let pages = ChatPlanner.plan(item, key: key, copied: false, syntax: CodeSyntaxService()).items.compactMap { item -> URL? in
+            if case .embed(.page(let page), _) = item { page.live } else { nil }
+        }
+        XCTAssertEqual(pages, [URL(string: "https://platform.x.com/embed/Tweet.html?id=1")!])
     }
 }
 

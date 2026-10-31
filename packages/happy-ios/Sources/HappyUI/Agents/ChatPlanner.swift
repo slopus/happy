@@ -103,13 +103,13 @@ actor ChatPlanner {
                 switch piece {
                 case .text(let text):
                     // An agent's artifact link, once read here (rich tasks), opens as one this phone wrote; another person's story, which only `type=story` serves, too.
-                    let text = text.replacing(/\]\(<?happy:\/\/artifacts\/([A-Za-z0-9_-]+)[^)\s>]*>?/) { key.references.artifacts[String($0.1)] == nil ? String($0.0) : "](" + HappyReferences.link(.init(kind: "artifact", id: String($0.1))) }
+                    let (text, links) = (text.replacing(/\]\(<?happy:\/\/artifacts\/([A-Za-z0-9_-]+)[^)\s>]*>?/) { key.references.artifacts[String($0.1)] == nil ? String($0.0) : "](" + HappyReferences.link(.init(kind: "artifact", id: String($0.1))) }, HappyReferences.linkedArtifacts(text))
                     let resolved = HappyReferences.markdown(text, view: key.references.view)
                     let markdown = MarkdownPiece(Markdown.joiningSoftBreaks(resolved), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.text, header: ChatTextStyles.header)
                     drafts.append(.markdown(markdown))
                     parts.append(.markdown(markdown.blocks))
                     // A live page a link names, read with rich tasks on, under the words at its height up to a cap.
-                    for link in HappyReferences.linkedArtifacts(text) {
+                    for link in links {
                         guard let url = key.references.embeds[link] else { continue }
                         drafts.append(.page(InlinePage(artifactId: link.id, title: "", page: References.Page(version: 0, entry: ""), live: url)))
                         parts.append(.page(height: min(key.pageHeights[link.id] ?? Self.pageHeight, Self.embedCap)))
