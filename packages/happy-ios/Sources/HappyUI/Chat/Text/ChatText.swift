@@ -385,7 +385,7 @@ final class ChatOffMainTextView: ChatTextView {
         // On screen with nothing drawn: now. Words that grew, as a reply
         // streams, keep showing the last of them (pinned top-left) until
         // the rest is drawn.
-        if layer.contents == nil, let window, convert(bounds, to: window).intersects(window.bounds) {
+        if layer.contents == nil, let window, !isInHiddenView, convert(bounds, to: window).intersects(window.bounds) {
             layer.contents = Self.draw(layout, size: size, scale: scale, traits: traits)
             drawnWidth = size.width
             return
@@ -397,6 +397,13 @@ final class ChatOffMainTextView: ChatTextView {
             self.layer.contents = image
             self.drawnWidth = size.width
         }
+    }
+
+    /// It or a view it is in is hidden, wherever it sits: UltraList builds
+    /// the next row ahead of a scroll hidden at its container's top, on
+    /// screen, and drawing its words then held a drag's frame 10 ms.
+    private var isInHiddenView: Bool {
+        sequence(first: self as UIView, next: \.superview).contains { $0.isHidden }
     }
 
     private nonisolated static func draw(_ layout: ChatTextLayout, size: CGSize, scale: CGFloat, traits: UITraitCollection) -> CGImage? {
