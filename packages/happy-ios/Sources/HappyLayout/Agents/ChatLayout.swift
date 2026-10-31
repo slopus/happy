@@ -40,7 +40,12 @@ public struct ChatScreenLayout: Equatable, Sendable {
         public static let paddingBottom: CGFloat = 8
         /// Room between the newest row and the card.
         public static let listGap: CGFloat = 8
-        public static let headerOverhang: CGFloat = 8
+        /// How far the header's scrim runs past the bar's foot.
+        public static let headerOverhang: CGFloat = 10
+        /// Its feather, shorter than home's 36 so the bar stays whole.
+        public static let headerRamp: CGFloat = 24
+        /// Its fade where it holds: the ground itself.
+        public static let headerPeak: Double = 1
     }
 
     public var card: CGRect
@@ -51,18 +56,18 @@ public struct ChatScreenLayout: Equatable, Sendable {
     /// The height between those insets, which short content rests at the foot of.
     public var viewport: CGFloat
 
-    /// `keyboardTop` is the keyboard guide's top in the screen. `barHeight`
-    /// is the navigation bar's, 0 while it is hidden: the header's scrim
-    /// covers only what is above it, the status bar, as Telegram's chat
-    /// fades only there and lets the messages run on under its glass
-    /// capsules.
-    public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, barHeight: CGFloat = 0, cardHeight: (CGFloat) -> CGFloat) {
+    /// `keyboardTop` is the keyboard guide's top in the screen. The
+    /// header's scrim is the screen's ground from the top down past the
+    /// bar, `headerOverhang` under its foot, feathering out over its last
+    /// `headerRamp`: messages never read through the name's capsule, and
+    /// fade in only as they pass its foot.
+    public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, cardHeight: (CGFloat) -> CGFloat) {
         typealias M = Metrics
         let width = max(0, size.width - 2 * M.paddingH)
         let height = cardHeight(width)
         let foot = min(keyboardTop, size.height - safeArea.bottom)
         card = CGRect(x: M.paddingH, y: foot - M.paddingBottom - height, width: width, height: height)
-        headerScrim = CGRect(x: 0, y: 0, width: size.width, height: max(0, safeArea.top - max(0, barHeight)) + M.headerOverhang)
+        headerScrim = CGRect(x: 0, y: 0, width: size.width, height: max(0, safeArea.top) + M.headerOverhang)
         listTop = safeArea.top
         listBottom = max(0, size.height - card.minY + M.listGap)
         viewport = max(0, size.height - listTop - listBottom)

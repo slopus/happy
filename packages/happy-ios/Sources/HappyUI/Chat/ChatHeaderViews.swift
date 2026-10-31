@@ -69,6 +69,7 @@ final class ChatHeaderTitleView: UIControl {
         content.addSubview(changes)
         isAccessibilityElement = true
         accessibilityTraits = [.button, .header]
+        accessibilityIdentifier = "chat-title"
         measure.onApply = { [weak self] in self?.planned() }
         registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
             self.requestPlan()

@@ -17,6 +17,7 @@ import CoreGraphics
 ///   │ Model  │ │ Effort │         last one the row's width
 ///   └────────┘ └────────┘
 ///   ┌ Today 3:41 AM ──────┐
+///   ┌ Permission mode  Ask ┐   ← the chat's controls, Settings' rows
 ///   MEDIA
 ///   ┌──┬──┬──┐                  ← what it showed, Telegram's
 ///   ├──┼──┼──┤                    grid, three to a row
@@ -131,6 +132,9 @@ public struct SessionDetailLayout: Equatable, Sendable {
     public var familyHeading: CGRect?
     public var family: CGRect?
     public var tiles: [Tile]
+    /// The chat's controls under the tiles (its permission mode), as a
+    /// Settings card; nil with none.
+    public var controls: SettingsLayout.Card?
     public var mediaHeading: CGRect?
     public var media: MediaCard?
     public var linksHeading: CGRect?
@@ -149,6 +153,7 @@ public struct SessionDetailLayout: Equatable, Sendable {
     /// count `countWidth` wide).
     public init(
         width: CGFloat, nameHeight: CGFloat, nameWidth: CGFloat? = nil, renames: Bool = false, subtitleHeight: CGFloat, tiles count: Int,
+        controls: [SettingsLayout.RowSpec] = [],
         media: Shown? = nil, links: Shown? = nil, family familyHeight: CGFloat?,
         running: Int, completed: Int, countWidth: CGFloat = 0, open: Bool
     ) {
@@ -211,6 +216,16 @@ public struct SessionDetailLayout: Equatable, Sendable {
         }
         self.tiles = tiles
         if let last = tiles.last { y = last.frame.maxY + M.cardGap }
+        if controls.isEmpty {
+            self.controls = nil
+        } else {
+            let rows = controls.enumerated().map { index, spec in
+                SettingsLayout.row(spec, y: CGFloat(index) * SettingsLayout.Metrics.row, width: cardWidth, last: index == controls.count - 1)
+            }
+            let card = SettingsLayout.Card(frame: CGRect(x: M.side, y: y, width: cardWidth, height: CGFloat(controls.count) * SettingsLayout.Metrics.row), rows: rows)
+            self.controls = card
+            y = card.frame.maxY + M.cardGap
+        }
 
         /// "Show more" at `top`, the card's last row.
         func more(_ shown: Shown, top: CGFloat) -> SettingsLayout.Row? {

@@ -976,22 +976,19 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// button is gone, so the account switcher takes the left as it does on
     /// home: with a chat open it is still the way to the accounts. A phone
     /// has its back button there and home a screen behind.
+    ///
+    /// At the right only Compose, a glass circle as Back is: the session's
+    /// permission mode and details are on its profile, which the title opens.
     private func applyHeaderBranch() {
         let tablet = isTabletLayout
         configureHeaderAppearance()
         if sessionApplied { navigationItem.titleView = tablet ? plainTitleView : titleView }
         if tablet, switcher == nil { switcher = AccountSwitcher(context: context, controller: self) }
         navigationItem.leftBarButtonItem = tablet ? switcher?.barItem : nil
-        var items = [HeaderBar.chatMenuItem { [weak self] in
-            guard let self else { return [] }
-            return composer.chatMenuElements(onInfo: { [weak self] in self?.openInfo() })
-        }]
+        var items: [UIBarButtonItem] = []
         if let host = self as UIViewController as? ComposeHosting {
             items.append(HeaderBar.composeItem { [weak host] in host?.compose() })
         }
-        #if DEBUG
-        items.append(fixturesMenu())
-        #endif
         navigationItem.rightBarButtonItems = items
         if contentInstalled { tabStrip.glass = !tablet } // TabletBranches.worktreeStripGlass
         floatingDockChanged()
@@ -1270,6 +1267,12 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     @objc private func openInfo() {
         guard session.record != nil else { return }
         push(.sessionInfo(id: chatId), context: context)
+    }
+
+    /// The permission modes its composer offers, for the session's profile
+    /// over it (`SessionInfoViewController`).
+    var permissionChoice: PermissionModeChoice? {
+        composer.permissionChoice
     }
 
     private var isPendingChat: Bool {
@@ -1962,21 +1965,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 }
 
 extension LegacyChatViewController: ChatAttachmentProviding {}
-
-#if DEBUG
-extension LegacyChatViewController {
-    /// Debug builds: open any fixture chat from any chat.
-    private func fixturesMenu() -> UIBarButtonItem {
-        let context = self.context
-        let actions = FixtureScenario.allCases.map { scenario in
-            UIAction(title: scenario.title) { [weak self] _ in
-                self?.push(.session(id: FixtureScenarios.prefix + scenario.rawValue), context: context)
-            }
-        }
-        return UIBarButtonItem(image: .icon(.ionicons("construct-outline"), size: 20), menu: UIMenu(title: "Fixture chats", children: actions))
-    }
-}
-#endif
 
 /// Cancels the feed when the screen goes away.
 private final class TaskHolder {

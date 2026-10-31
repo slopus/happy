@@ -6,12 +6,18 @@ import CoreGraphics
 /// A conversation's title in the navigation bar, as Telegram heads a chat
 /// on iOS 26: its name, and what the agent is doing in grey under it, on
 /// one glass capsule as tall as the bar's buttons. The capsule hugs the
-/// wider line with `padding` clear at each end; the lines are centred in
-/// it, the pair centred on its 44. The status's line is kept when the agent
-/// is idle, so its work starting and stopping never moves the name.
+/// wider line with `padding` clear at each end, never narrower than it is
+/// tall, and is centred on the bar. Only when that would run into the
+/// bar's items does it move, just far enough, towards the other side;
+/// with no room for it whole it fills the room and the name is cut.
+/// Right to left is the same rule: the room is simply on the other side.
 ///
-///        (   Pineapple poem   )
-///        (      Working       )
+///     (<)      ( Pineapple poem )      ( ✎  ⋯ )
+///              (     online     )
+///
+/// The status's line keeps the widest status's width, centred, so a new
+/// word never moves it; the capsule hugs the word shown, and growing or
+/// shrinking about the bar's middle moves neither line.
 public struct ChatHeaderLayout: Equatable, Sendable {
     public enum Metrics {
         /// The name's line and the status's, touching.
@@ -23,34 +29,37 @@ public struct ChatHeaderLayout: Equatable, Sendable {
         public static let padding: CGFloat = 12
     }
 
-    public var size: CGSize
     /// The glass, its ends round.
     public var capsule: CGRect
     /// The name's line.
     public var title: CGRect
     public var status: CGRect?
 
-    /// Single-line measured widths. The second line always keeps its
-    /// height; `reservedStatusWidth` also keeps its width across changes.
-    /// `maxWidth` is the widest the capsule may be. Given `bounds`, the
-    /// room the bar handed over, the capsule fits in it as well and is
-    /// centred in it.
-    public init(titleWidth: CGFloat, statusWidth: CGFloat?, maxWidth: CGFloat, reservedStatusWidth: CGFloat = 0, bounds: CGSize? = nil) {
+    /// Widths are single-line measurements: the name, the status shown, and
+    /// the widest status there is. `centerX` is the bar's middle and `room`
+    /// what the bar left between its items, both in the header's own
+    /// coordinates; `height` is the header's.
+    public init(
+        titleWidth: CGFloat, statusWidth: CGFloat?, reservedStatusWidth: CGFloat = 0,
+        centerX: CGFloat, room: ClosedRange<CGFloat>, height: CGFloat
+    ) {
         typealias M = Metrics
-        let widest = min(max(0, maxWidth), bounds.map { max(0, $0.width) } ?? .greatestFiniteMagnitude)
-        let room = max(0, widest - 2 * M.padding)
-        let titleWidth = min(max(0, titleWidth).rounded(.up), room)
-        let statusWidth = statusWidth.map { min(max(0, $0, reservedStatusWidth).rounded(.up), room) }
-        let inner = max(titleWidth, statusWidth ?? 0)
-        let width = min(inner + 2 * M.padding, max(widest, 0))
-        let height = M.height
-        let origin = bounds.map { CGPoint(x: (($0.width - width) / 2).rounded(), y: (($0.height - height) / 2).rounded()) } ?? .zero
-        size = bounds ?? CGSize(width: width, height: height)
-        capsule = CGRect(origin: origin, size: CGSize(width: width, height: height))
-        let lines = M.titleHeight + M.statusHeight
-        let top = origin.y + ((height - lines) / 2).rounded()
-        let left = origin.x + M.padding
-        title = CGRect(x: left + ((inner - titleWidth) / 2).rounded(), y: top, width: titleWidth, height: M.titleHeight)
-        status = statusWidth.map { CGRect(x: left + ((inner - $0) / 2).rounded(), y: top + M.titleHeight, width: $0, height: M.statusHeight) }
+        let roomWidth = room.upperBound - room.lowerBound
+        let titleWidth = max(0, titleWidth).rounded(.up)
+        let shown = statusWidth.map { max(0, $0).rounded(.up) }
+        let wanted = max(M.height, max(titleWidth, shown ?? 0) + 2 * M.padding)
+        let width = min(wanted, roomWidth)
+        let x = min(max((centerX - width / 2).rounded(), room.lowerBound), room.upperBound - width)
+        capsule = CGRect(x: x, y: ((height - M.height) / 2).rounded(), width: width, height: M.height)
+        let top = capsule.minY + ((M.height - M.titleHeight - M.statusHeight) / 2).rounded()
+        let inner = max(0, width - 2 * M.padding)
+        let name = min(titleWidth, inner)
+        title = CGRect(x: (capsule.midX - name / 2).rounded(), y: top, width: name, height: M.titleHeight)
+        // As wide as the widest status, cut only by the room: a crossfade
+        // between two words never stretches either.
+        status = shown.map {
+            let line = min(max($0, reservedStatusWidth.rounded(.up)), max(0, roomWidth - 2 * M.padding))
+            return CGRect(x: (capsule.midX - line / 2).rounded(), y: top + M.titleHeight, width: line, height: M.statusHeight)
+        }
     }
 }

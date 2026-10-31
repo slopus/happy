@@ -1,10 +1,11 @@
 import XCTest
 
-/// The legacy route uses the same native toolbar menu, with a local fixture
-/// so its presentation and keyboard behavior need no external connection.
+/// The legacy chat's header is Back, the name, and Compose; the name opens
+/// the session's info, where its permission mode now is. A local fixture,
+/// so it needs no external connection.
 @MainActor
 final class NativeHeaderMenuUITests: XCTestCase {
-    func testLegacyToolbarUsesTheNativePermissionMenu() throws {
+    func testLegacyHeaderIsBackTitleAndCompose() throws {
         continueAfterFailure = false
         _ = skipsQuiescence
         XCUIDevice.shared.orientation = .portrait
@@ -30,19 +31,30 @@ final class NativeHeaderMenuUITests: XCTestCase {
         print("NATIVE_LEGACY_MENU_VIDEO_BEGIN")
         Thread.sleep(forTimeInterval: 2)
 
-        app.buttons["chat-more"].tap()
-        let permissions = app.buttons["Permission mode"]
-        XCTAssertTrue(permissions.waitForExistence(timeout: 5))
-        keep("native legacy toolbar menu")
-        print("NATIVE_LEGACY_MENU_OPEN \(try state())")
-        permissions.tap()
-        let plan = app.buttons["plan"]
-        XCTAssertTrue(plan.waitForExistence(timeout: 5))
-        keep("native legacy permission choices")
-        plan.tap()
-        XCTAssertTrue(editor.exists)
+        // Back, the name, and Compose, in every build: no More, no fixtures.
+        let bar = app.navigationBars.firstMatch
+        XCTAssertTrue(app.buttons["compose"].exists)
+        XCTAssertFalse(app.buttons["chat-more"].exists)
+        XCTAssertFalse(bar.buttons["Fixture chats"].exists)
+        let title = bar.descendants(matching: .any)["chat-title"]
+        XCTAssertTrue(title.exists)
+        let back = bar.buttons.element(boundBy: 0)
+        let others = bar.buttons.allElementsBoundByIndex.filter { ![back.identifier, "compose", "chat-title"].contains($0.identifier) && $0.frame != back.frame }
+        XCTAssertEqual(others.map(\.label), [], "more than Back, the name and Compose")
+        keep("legacy header")
+
+        // The name opens the session's info, where the permission mode is
+        // (its row and picks: HostedSessionInfoTests, as this fixture's
+        // session has no stored record for the info to read); Back keeps
+        // the draft.
+        title.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["session-info-load-status"].waitForExistence(timeout: 5) || app.buttons["profile-permission-mode"].exists,
+                      "the name opened no session info")
+        keep("legacy info")
+        app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
         XCTAssertEqual(editor.value as? String, "Native toolbar keeps this draft.")
-        keep("native legacy permission selected")
+        keep("legacy back with the draft")
         print("NATIVE_LEGACY_MENU_SELECTED \(try state())")
         print("NATIVE_LEGACY_MENU_VIDEO_END")
     }

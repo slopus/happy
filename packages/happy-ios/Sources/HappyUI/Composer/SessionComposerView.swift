@@ -48,26 +48,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     var hasPermissionMenu: Bool { card.configuration.permission?.menu != nil }
 
-    func chatMenuElements(onInfo: @escaping () -> Void) -> [UIMenuElement] {
-        card.closeMenus()
-        var elements: [UIMenuElement] = []
-        if let configuration = permissionChips.first?.1, let menu = configuration.menu {
-            let permissions = UIMenu(menu) { [weak self] key in
-                guard let self else { return }
-                self.agentInputCard(self.card, didSelect: key, in: .permission)
-            }
-            elements.append(UIMenu(title: configuration.accessibilityLabel, identifier: .init("chat-permissions"), children: permissions.children))
+    /// The permission modes for the session's profile, a pick going the
+    /// card's own way (`agentInputCard(_:didSelect:in:)`).
+    var permissionChoice: PermissionModeChoice? {
+        guard let menu = card.configuration.permission?.menu else { return nil }
+        return PermissionModeChoice(menu: menu) { [weak self] key in
+            guard let self else { return }
+            self.agentInputCard(self.card, didSelect: key, in: .permission)
         }
-        let details = UIAction(title: Strings.Home.details) { _ in onInfo() }
-        details.accessibilityIdentifier = "chat-info"
-        elements.append(details)
-        return elements
-    }
-
-    private var permissionChips: [(AgentInputChip, AgentInputChipConfiguration)] {
-        guard var configuration = card.configuration.permission else { return [] }
-        configuration.accessibilityLabel = Strings.ChatActions.permissionMode
-        return [(.permission, configuration)]
     }
     private let statusDot = StatusDotView()
     private let statusLabel = UILabel()

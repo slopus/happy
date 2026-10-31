@@ -177,75 +177,47 @@ final class ComposerPanelKeyboardUITests: XCTestCase {
         _ = try preserve(baseline, phase: "attachment outside dismissal")
     }
 
-    func testNativeHeaderMenuMeasuresKeyboardAndPreservesDraft() throws {
+    func testTheDetailsPermissionModeKeepsTheDraft() throws {
         let baseline = try startAgent()
-        let more = app.buttons["chat-more"]
-        XCTAssertTrue(more.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["compose"].exists)
-        let composeFrame = app.buttons["compose"].frame
-        let moreFrame = more.frame
+        let compose = app.buttons["compose"]
+        XCTAssertTrue(compose.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["chat-more"].exists, "Back, the name, and Compose alone")
+        let composeFrame = compose.frame
         let titleFrame = try rectangle(baseline["headerTitleFrame"])
-        XCTAssertLessThanOrEqual(composeFrame.maxX, moreFrame.minX + 1, "LTR compose precedes More")
-        XCTAssertLessThanOrEqual(titleFrame.maxX, composeFrame.minX + 1, "title must fit before header actions")
-        let headerFrames = XCTAttachment(string: "title=\(titleFrame) compose=\(composeFrame) more=\(moreFrame)")
+        XCTAssertLessThanOrEqual(titleFrame.maxX, composeFrame.minX + 1, "title must fit before Compose")
+        let headerFrames = XCTAttachment(string: "title=\(titleFrame) compose=\(composeFrame)")
         headerFrames.name = "actual portrait header frames"
         headerFrames.lifetime = .keepAlways
         add(headerFrames)
-
-        // The system owns this menu's focus and presentation. Record its
-        // actual behavior without imposing the custom panel's IME contract.
-        func capture(_ phase: String) throws -> [String: Any] {
-            let state = try read()
-            XCTAssertEqual(state["draft"] as? String, baseline["draft"] as? String, phase)
-            let json = XCTAttachment(string: String(data: try JSONSerialization.data(withJSONObject: state), encoding: .utf8)!)
-            json.name = phase
-            json.lifetime = .keepAlways
-            add(json)
+        func keep(_ phase: String) {
             let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             screenshot.name = phase
             screenshot.lifetime = .keepAlways
             add(screenshot)
-            return state
         }
-        _ = try capture("native header before")
-        FileHandle.standardOutput.write(Data("NATIVE_HEADER_VIDEO_BEGIN\n".utf8))
-        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
-        more.tap()
-        let permission = app.buttons["Permission mode"]
-        XCTAssertTrue(permission.waitForExistence(timeout: 3), app.debugDescription)
-        let opened = try capture("native header open")
-        XCTAssertFalse(hasPanel("chat-menu", opened), "the native toolbar menu replaces the custom overlay")
-        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 20, dy: 300)).tap()
-        XCTAssertFalse(permission.exists)
-        let dismissed = try capture("native header dismissed")
-        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
-        FileHandle.standardOutput.write(Data("NATIVE_HEADER_VIDEO_END\n".utf8))
 
-        more.tap()
-        XCTAssertTrue(permission.waitForExistence(timeout: 3))
+        // The permission mode is on the detail the name opens.
+        app.descendants(matching: .any)["chat-title"].tap()
+        let permission = app.buttons["profile-permission-mode"]
+        XCTAssertTrue(permission.waitForExistence(timeout: 5), app.debugDescription)
+        keep("detail permission row")
         permission.tap()
         let key = "permission\tworkspace_write"
         let choice = app.buttons[key]
         XCTAssertTrue(choice.waitForExistence(timeout: 3), app.debugDescription)
         XCTAssertTrue(choice.isEnabled)
-        _ = try capture("native header permission choices")
+        keep("detail permission choices")
         choice.tap()
         XCTAssertFalse(choice.exists)
-        let selected = try capture("native header permission selected")
-        more.tap()
-        XCTAssertTrue(permission.waitForExistence(timeout: 3))
         permission.tap()
         XCTAssertTrue(app.buttons[key].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons[key].isSelected, "the chosen permission must be checked on reopening")
-        _ = try capture("native header permission checked")
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 20, dy: 300)).tap()
-        let fields = ["editorID", "responderID", "firstResponder", "selection", "keyboardVisible", "keyboardFrame", "cardFrame", "keyboardHides", "editingEnds", "lostResponderFrames", "missingKeyboardFrames"]
-        let evidence = ["before": baseline, "open": opened, "dismissed": dismissed, "selected": selected].mapValues { state in state.filter { fields.contains($0.key) } }
-        let measurement = XCTAttachment(string: String(data: try JSONSerialization.data(withJSONObject: evidence, options: .prettyPrinted), encoding: .utf8)!)
-        measurement.name = "native toolbar keyboard measurement"
-        measurement.lifetime = .keepAlways
-        add(measurement)
+        keep("detail permission checked")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)).tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
+        let back = try waitForState { $0["ready"] as? Bool == true }
+        XCTAssertEqual(back["draft"] as? String, baseline["draft"] as? String, "the detail keeps the draft")
         app.buttons["Back"].tap()
         let row = try XCTUnwrap(ProcessInfo.processInfo.environment["COMPOSER_PANEL_ROW"])
         let task = app.descendants(matching: .any).matching(identifier: "row:space:\(row)").firstMatch

@@ -252,8 +252,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
             ultra.host = self
             ultra.onReachedOldest = { [weak self] in self?.loadOlder() }
             view.addSubview(ultra)
-            transcriptHeaderScrim.presence = 0
-            view.addSubview(transcriptHeaderScrim)
         } else {
             scrollView.alwaysBounceVertical = true
             scrollView.keyboardDismissMode = .interactive
@@ -265,10 +263,21 @@ final class ChatViewController: UIViewController, ComposeHosting {
             scrollView.addSubview(introView)
             scrollView.addSubview(working)
             HeaderBar.edge(scrollView, in: self)
+            // The screen's own scrim is the edge, as over UltraList.
+            scrollView.topEdgeEffect.isHidden = true
         }
+        if !previewing {
+            // The ground behind the bar and a short feather under it: the
+            // name's capsule never has words to read through it.
+            transcriptHeaderScrim.ramp = ChatScreenLayout.Metrics.headerRamp
+            transcriptHeaderScrim.peak = ChatScreenLayout.Metrics.headerPeak
+            transcriptHeaderScrim.presence = 0
+            view.addSubview(transcriptHeaderScrim)
+        }
+        // Back, the title, and Compose alone, a glass circle as Back is:
+        // the permission mode is on the detail the title opens.
         navigationItem.rightBarButtonItems = HeaderBar.trailing([
             .compose: HeaderBar.composeItem { [weak self] in self?.compose() },
-            .more: HeaderBar.chatMenuItem { [weak self] in self?.chatMenuElements() ?? [] },
         ])
         // New work asks what it is; a conversation already going asks for the next message.
         if case .seedling = intro { card.configuration.placeholder = Strings.composerPlaceholder }
@@ -430,6 +439,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let agentId = media.agentId
         card.blur()
         let detail = SessionDetailViewController(session: session, agentId: agentId, title: title ?? "", spaceId: spaceId)
+        detail.permissionChoice = { [weak self] in self?.permissionChoice }
         navigationController?.pushViewController(detail, animated: true)
     }
 
@@ -683,16 +693,12 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private var attachPanel: ComposerPanelPresenter?
     /// The model or effort list while it is open.
     private var picker: PickerPresenter?
-    private func chatMenuElements() -> [UIMenuElement] {
-        card.closeMenus()
-        if attachPanel != nil { attachSheet?.close() }
-        picker?.close(animated: false)
-        ModelPickers.opened(session.models, mode: mode)
-        guard let menus else {
-            return [UIAction(title: Strings.ChatActions.permissionMode, attributes: .disabled) { _ in }]
-        }
-        let permission = UIMenu(ModelPickers.permissionMenu(menus)) { [weak self] key in self?.choose(key) }
-        return [UIMenu(title: Strings.ChatActions.permissionMode, identifier: .init("chat-permissions"), children: permission.children)]
+    /// The permission modes for the detail over this screen, a pick going
+    /// the way the header's More menu sent it (`choose`); nil until the
+    /// catalog is in.
+    var permissionChoice: PermissionModeChoice? {
+        guard let menus else { return nil }
+        return PermissionModeChoice(menu: ModelPickers.permissionMenu(menus)) { [weak self] key in self?.choose(key) }
     }
 
     private var menus: ModelMenus? {
@@ -1188,12 +1194,11 @@ final class ChatViewController: UIViewController, ComposeHosting {
         // From where the keyboard rests, not the finger dragging it: the
         // card keeps its shape through a drag and changes once it settles.
         card.configuration.compact = compacts
-        // The scrim shades the status bar only; the bar's glass is its own.
-        let bar = navigationController.map { $0.isNavigationBarHidden ? 0 : $0.navigationBar.frame.height } ?? 0
         let screen = ChatScreenLayout(
             size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets),
-            keyboardTop: fingerOnKeyboard ? keyboardTracker.frame.minY : keyboardTop, barHeight: bar
+            keyboardTop: fingerOnKeyboard ? keyboardTracker.frame.minY : keyboardTop
         ) { [card] width in card.height(fitting: width) }
+        transcriptHeaderScrim.setLayoutFrame(screen.headerScrim)
         card.setLayoutFrame(screen.card)
         picker?.follow()
         attachPanel?.follow()
@@ -1204,7 +1209,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let insets = UIEdgeInsets(top: view.safeAreaInsets.top, left: 0, bottom: screen.listBottom, right: 0)
         if let ultra {
             if ultra.frame != view.bounds { ultra.frame = view.bounds }
-            transcriptHeaderScrim.setLayoutFrame(screen.headerScrim)
             // The list is inverted: its top edge is the composer's edge.
             let flipped = UIEdgeInsets(top: insets.bottom, left: 0, bottom: insets.top, right: 0)
             ultra.setViewport(size: view.bounds.size, insets: flipped)
@@ -1223,6 +1227,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
             scrollView.verticalScrollIndicatorInsets = insets
         }
         layoutTranscript()
+        updateHeaderEdge()
     }
 
     // MARK: Preview
@@ -1978,6 +1983,7 @@ extension ChatViewController: UIScrollViewDelegate {
         #endif
         mountRows()
         updateJump()
+        updateHeaderEdge()
         #if DEBUG
         probe?.watch()
         #endif
@@ -2188,9 +2194,12 @@ extension ChatViewController: AgentChatTranscriptHost {
         endKeyboardDrag()
     }
 
+    /// The header's scrim, none with nothing under the bar: either
+    /// renderer's distance past its oldest row.
     private func updateHeaderEdge() {
-        guard let ultra else { return }
-        transcriptHeaderScrim.presence = HeaderScrim.presence(scrolledUnder: ultra.distanceFromOldest)
+        guard !previewing else { return }
+        let under = ultra?.distanceFromOldest ?? scrollView.contentOffset.y + scrollView.contentInset.top
+        transcriptHeaderScrim.presence = HeaderScrim.presence(scrolledUnder: under)
     }
 
     func transcriptTapped(_ action: ChatRowAction) {

@@ -42,6 +42,23 @@ final class SessionDetailLayoutTests: XCTestCase {
         XCTAssertEqual(layout(nameWidth: nil, renames: false).name, CGRect(x: 24, y: 114, width: 354, height: 34))
     }
 
+    /// The chat's permission mode, once its header's More menu, is a
+    /// Settings row under the tiles; what follows moves down by its card.
+    func testThePermissionModeRowIsUnderTheTiles() throws {
+        let spec = SettingsLayout.RowSpec(hasIcon: true, valueWidth: 60, accessory: .none)
+        let detail = Layout(width: 402, nameHeight: 34, nameWidth: 180, renames: true, subtitleHeight: 22, tiles: 3, controls: [spec],
+                            media: .init(count: 5, more: true), links: .init(count: 2, more: false), family: 100,
+                            running: 2, completed: 3, countWidth: 10, open: false)
+        let card = try XCTUnwrap(detail.controls)
+        XCTAssertEqual(card.frame, CGRect(x: 16, y: 540, width: 370, height: 52))
+        XCTAssertEqual(card.rows.count, 1)
+        XCTAssertEqual(card.rows[0].box, CGRect(x: 0, y: 0, width: 370, height: 52))
+        XCTAssertNil(card.rows[0].separator, "one row, no hairline")
+        XCTAssertNotNil(card.rows[0].icon)
+        XCTAssertEqual(detail.mediaHeading, CGRect(x: 32, y: 616, width: 338, height: 18))
+        XCTAssertNil(layout().controls)
+    }
+
     /// The family first, right under the name; then Model and Effort side
     /// by side, Started under them the row's width.
     func testTheFamilyThenTheTiles() {

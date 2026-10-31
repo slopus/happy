@@ -186,21 +186,10 @@ final class HostedHeaderBarTests: XCTestCase {
             sidebar.tap(row, at: CGPoint(x: row.frame.midX, y: row.frame.midY))
             try await settle(navigation)
             let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
-            XCTAssertEqual(chat.navigationItem.rightBarButtonItems?.map(\.accessibilityIdentifier), ["chat-more", "compose"])
-            XCTAssertNil(chat.navigationItem.rightBarButtonItems?.first?.primaryAction, "UIKit owns the toolbar menu presentation")
-            XCTAssertNotNil(chat.navigationItem.rightBarButtonItems?.first?.menu)
-            let more = try XCTUnwrap(chat.navigationItem.rightBarButtonItems?.first?.image)
-            var pixels = [UInt8](repeating: 0, count: 32 * 32 * 4)
-            let drawn = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32)).image { _ in
-                more.withTintColor(.black, renderingMode: .alwaysOriginal).draw(in: CGRect(x: 0, y: 0, width: 32, height: 32))
-            }
-            let visible = try pixels.withUnsafeMutableBytes { bytes in
-                let context = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: 32, height: 32, bitsPerComponent: 8, bytesPerRow: 32 * 4,
-                                                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
-                context.draw(try XCTUnwrap(drawn.cgImage), in: CGRect(x: 0, y: 0, width: 32, height: 32))
-                return stride(from: 3, to: bytes.count, by: 4).contains { bytes[$0] > 0 }
-            }
-            XCTAssertTrue(visible, "the More glyph must draw visible pixels")
+            // Back, the name, and Compose alone: no More menu.
+            XCTAssertEqual(chat.navigationItem.rightBarButtonItems?.map(\.accessibilityIdentifier), ["compose"])
+            XCTAssertNil(chat.navigationItem.leftBarButtonItems, "Back alone at the left")
+            XCTAssertNotNil(chat.navigationItem.rightBarButtonItems?.first?.primaryAction, "Compose composes at a tap")
             // The name and status sit on one capsule of the system's glass,
             // the bar's 44 tall, inside the room the bar gave the title.
             let header = try XCTUnwrap(chat.navigationItem.titleView as? ChatHeaderView)
@@ -212,6 +201,9 @@ final class HostedHeaderBarTests: XCTestCase {
             XCTAssertEqual(capsule.midY, header.convert(header.bounds, to: navigation.navigationBar).midY, accuracy: 1, "the capsule is off the title's line")
             XCTAssertTrue(navigation.navigationBar.bounds.contains(capsule), "the capsule leaves the bar")
             XCTAssertGreaterThan(capsule.minX, 16 + 44, "the capsule runs under Back")
+            // "Work item 1" is short: the capsule hugs it, on the bar's middle.
+            XCTAssertEqual(capsule.midX, navigation.navigationBar.bounds.midX, accuracy: 1, "a short title is off the bar's middle")
+            XCTAssertLessThan(capsule.width, 160, "the capsule is wider than its words")
             XCTAssertNotNil(Self.subview(UILabel.self, in: header.capsule.contentView) { $0.accessibilityIdentifier == "chat-status" }, "the status is on the glass")
             XCTAssertNil(chat.navigationItem.standardAppearance, "the bar's own, shared look")
             Self.assertClear(navigation.navigationBar)
@@ -297,7 +289,9 @@ final class HostedHeaderBarTests: XCTestCase {
         try await until { navigation.topViewController === chat && navigation.transitionCoordinator == nil }
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertTrue(chat.navigationItem.hidesBackButton, "a tablet's chat has no back button")
-        XCTAssertTrue(chat.navigationItem.rightBarButtonItems?.contains { $0.accessibilityIdentifier == "chat-more" } == true, "legacy permissions and details remain reachable from the header")
+        // Compose alone at the right, in every build: the permission mode is
+        // on the session's info, and no debug fixtures sit in the bar.
+        XCTAssertEqual(chat.navigationItem.rightBarButtonItems?.map(\.accessibilityIdentifier), ["compose"])
         XCTAssertEqual(chat.navigationItem.leftBarButtonItem?.customView?.accessibilityIdentifier, "account-switcher", "with a chat open the accounts are still reachable")
         keep(window, "tablet-chat")
 

@@ -59,6 +59,12 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
     private var nameField: RenameField?
     private let subtitle = UILabel()
     private let tiles = (0..<3).map { _ in DetailTileView() }
+    /// The chat's permission mode, which its header's More menu used to
+    /// pick, asked of the chat under this screen each layout; nil opened
+    /// from anywhere else. Its modes open as a pull-down from the row.
+    var permissionChoice: (() -> PermissionModeChoice?)?
+    private let controls = SettingsCardView()
+    private let permissionButton = MenuRowButton()
     private let mediaHeading = DetailTileView.heading()
     private let mediaCard = DetailMediaCardView()
     private let linksHeading = DetailTileView.heading()
@@ -123,6 +129,15 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
             tile.accessibilityIdentifier = "detail-tile:\(id)"
             scroll.addSubview(tile)
         }
+        permissionButton.accessibilityIdentifier = "profile-permission-mode"
+        permissionButton.accessibilityLabel = Strings.ChatActions.permissionMode
+        permissionButton.menuFor = { [weak self] in
+            self?.permissionChoice?()?.uiMenu { [weak self] in self?.view.setNeedsLayout() }
+        }
+        controls.accessibilityElements = [permissionButton]
+        controls.addSubview(permissionButton)
+        controls.isHidden = true
+        scroll.addSubview(controls)
         mediaHeading.text = Strings.media.uppercased()
         scroll.addSubview(mediaHeading)
         mediaCard.source = loader
@@ -403,10 +418,15 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         ).contentHeight
         let workCount = (detail?.running.count ?? 0) + (detail?.terminals.count ?? 0)
         let settled = detail?.completed.count ?? 0
+        let permission = permissionChoice?().map {
+            SettingsRow(id: "permission-mode", title: Strings.ChatActions.permissionMode, icon: ("shield-checkmark-outline", .blue), value: $0.current, accessory: .none)
+        }
+        let controlRows = permission.map { [$0] } ?? []
         let layout = SessionDetailLayout(
             width: width, nameHeight: ceil(name.font.lineHeight),
             nameWidth: name.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: name.font.lineHeight)).width,
             renames: canRename, subtitleHeight: ceil(subtitle.font.lineHeight), tiles: tiles.count,
+            controls: controlRows.map { SettingsLayout.RowSpec(hasIcon: true, valueWidth: SettingsCardView.valueWidth($0.value), accessory: $0.accessory) },
             media: .init(count: shownMedia.count, more: hasMore(shared.media.count, limit: mediaLimit)),
             links: .init(count: shownLinks.count, more: hasMore(shared.links.count, limit: linksLimit)),
             family: familyHeight, running: workCount, completed: settled,
@@ -419,6 +439,14 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         if let frame = layout.pencilTouch { pencil.frame = frame }
         subtitle.frame = layout.subtitle
         for (tile, frame) in zip(tiles, layout.tiles) { tile.place(frame) }
+        controls.isHidden = layout.controls == nil
+        if let card = layout.controls {
+            controls.frame = card.frame
+            controls.show(controlRows, layout: card)
+            permissionButton.frame = controls.bounds
+            permissionButton.accessibilityValue = permission?.value
+            controls.bringSubviewToFront(permissionButton)
+        }
         mediaHeading.isHidden = layout.media == nil
         mediaCard.isHidden = layout.media == nil
         if let frame = layout.mediaHeading { mediaHeading.frame = frame }

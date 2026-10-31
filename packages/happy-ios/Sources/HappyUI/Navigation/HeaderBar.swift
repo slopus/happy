@@ -11,7 +11,7 @@ import UIKit
 enum HeaderBar {
     /// The right group as it reads from the left, shared across screens.
     enum Trailing: CaseIterable {
-        case filter, search, compose, more, settings
+        case filter, search, compose, settings
     }
 
     /// Every bar's look, set once on the navigation bar
@@ -68,16 +68,6 @@ enum HeaderBar {
         item.accessibilityIdentifier = "settings"
         return item
     }
-
-    static func chatMenuItem(_ elements: @escaping @MainActor () -> [UIMenuElement]) -> UIBarButtonItem {
-        let image = UIImage(systemName: "ellipsis", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22))
-        let deferred = UIDeferredMenuElement.uncached { completion in completion(elements()) }
-        let item = UIBarButtonItem(image: image, primaryAction: nil, menu: UIMenu(children: [deferred]))
-        item.accessibilityLabel = Strings.ChatActions.more
-        item.accessibilityIdentifier = "chat-more"
-        return item
-    }
-
 }
 
 #endif

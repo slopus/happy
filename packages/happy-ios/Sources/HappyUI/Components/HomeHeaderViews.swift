@@ -202,6 +202,14 @@ final class HeaderScrimView: UIView {
     var ground: UIColor = UIColor(Palette.surface) {
         didSet { setNeedsLayout() }
     }
+    /// The top edge's feather, over its last points, and how much of the
+    /// ground it is where it holds: home's unless a screen says otherwise.
+    var ramp: CGFloat = HeaderScrim.rampPoints {
+        didSet { setNeedsLayout() }
+    }
+    var peak: Double = HeaderScrim.topPeak {
+        didSet { setNeedsLayout() }
+    }
 
     private let blur: EdgeBlurView?
     private let feather = HeaderScrimFeatherView()
@@ -256,8 +264,8 @@ final class HeaderScrimView: UIView {
         let stops: [HeaderScrim.Stop]
         switch edge {
         case .top:
-            stops = HeaderScrim.stops(height: bounds.height)
-            fade.colors = stops.map { ground.withAlphaComponent($0.alpha * HeaderScrim.topPeak).cgColor }
+            stops = HeaderScrim.stops(height: bounds.height, ramp: ramp)
+            fade.colors = stops.map { ground.withAlphaComponent($0.alpha * peak).cgColor }
         case .bottom:
             stops = HeaderScrim.footStops()
             fade.colors = stops.map { ground.withAlphaComponent($0.alpha).cgColor }

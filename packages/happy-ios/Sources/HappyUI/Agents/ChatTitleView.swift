@@ -21,6 +21,9 @@ final class ChatTitleView: UIView {
         didSet { updateAccessibility() }
     }
 
+    /// Its width changed: the header that holds it places it again.
+    var onResize: (() -> Void)?
+
     /// In the header: what activating it does instead of renaming.
     var onOpen: (() -> Void)? {
         didSet { updateAccessibility() }
@@ -86,8 +89,8 @@ final class ChatTitleView: UIView {
         setNeedsLayout()
         // The header places the name and its capsule, editing or not.
         superview?.setNeedsLayout()
-        guard frame.size != size else { return }
-        frame.size = size
+        if frame.size != size { frame.size = size }
+        onResize?()
     }
 
     private func updateAccessibility() {

@@ -117,7 +117,7 @@ final class ComposerRestoreTests: XCTestCase {
         XCTAssertEqual(screen.restores, [0], "once")
     }
 
-    func testLegacyHeaderKeepsEveryPermissionModeAndPersistsActualMenuPicks() async throws {
+    func testLegacyProfileKeepsEveryPermissionModeAndPersistsActualMenuPicks() async throws {
         let account = try account(drafts: ["s": "kept draft"])
         let composer = measuredComposer("s", account)
         composer.update(ChatComposerState(session: ChatSessionState(record: session("s"), settings: AccountSettings())))
@@ -134,16 +134,14 @@ final class ComposerRestoreTests: XCTestCase {
         let keys = try XCTUnwrap(card.configuration.permission?.menu).sections.flatMap(\.options).map(\.key)
         XCTAssertEqual(Set(keys), ["auto", "acceptEdits", "plan", "bypassPermissions", "default"])
 
-        var details = 0
-        func elements() -> [UIMenuElement] {
-            composer.chatMenuElements(onInfo: { details += 1 })
-        }
+        var picks = 0
         func permissions() throws -> [UIAction] {
-            let menu = try XCTUnwrap(elements().compactMap { $0 as? UIMenu }.first { $0.identifier.rawValue == "chat-permissions" })
+            let menu = try XCTUnwrap(composer.permissionChoice).uiMenu { picks += 1 }
+            XCTAssertEqual(menu.identifier.rawValue, "chat-permissions")
             return menu.children.compactMap { $0 as? UIAction }
         }
         // Dispatch the actual native menu UIAction through a public control
-        // event. Native toolbar presentation is verified by the UI tests.
+        // event. The profile row's presentation is verified by the UI tests.
         func activate(_ action: UIAction) {
             let button = UIButton(type: .system)
             button.addAction(action, for: .touchUpInside)
@@ -160,15 +158,14 @@ final class ComposerRestoreTests: XCTestCase {
                 stored = try await Task.detached { try account.store.composerState(sessionId: "s").values["permissionMode"]?.stringValue }.value
                 if stored != key { try await Task.sleep(for: .milliseconds(10)) }
             }
-            XCTAssertEqual(stored, key, "header selection uses the existing session mode writer")
+            XCTAssertEqual(stored, key, "the profile's pick uses the existing session mode writer")
             let selected = try permissions().filter { $0.state == .on }.compactMap(\.accessibilityIdentifier)
             XCTAssertEqual(selected, [key], "the deferred native menu gets fresh selection state")
+            XCTAssertEqual(composer.permissionChoice?.current, actions.first { $0.accessibilityIdentifier == key }?.title, "the profile row shows the pick")
             XCTAssertEqual(card.text, "kept draft")
             XCTAssertEqual(card.selectedRange, NSRange(location: 2, length: 4))
         }
-        let info = try XCTUnwrap(elements().compactMap { $0 as? UIAction }.first { $0.accessibilityIdentifier == "chat-info" })
-        activate(info)
-        XCTAssertEqual(details, 1, "the former avatar's Details action remains reachable")
+        XCTAssertEqual(picks, keys.count)
     }
 
     func testARestoreHeldAcrossARetargetIsTheNewChats() async throws {

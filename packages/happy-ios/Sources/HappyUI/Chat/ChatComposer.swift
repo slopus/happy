@@ -128,16 +128,13 @@ public protocol ChatComposerView: UIView {
     func focus()
     func blur()
     var hasPermissionMenu: Bool { get }
-    func chatMenuElements(onInfo: @escaping () -> Void) -> [UIMenuElement]
+    /// The permission modes the session's profile offers; nil for none.
+    var permissionChoice: PermissionModeChoice? { get }
 }
 
 extension ChatComposerView {
     public var hasPermissionMenu: Bool { false }
-    public func chatMenuElements(onInfo: @escaping () -> Void) -> [UIMenuElement] {
-        let details = UIAction(title: Strings.Home.details) { _ in onInfo() }
-        details.accessibilityIdentifier = "chat-info"
-        return [details]
-    }
+    public var permissionChoice: PermissionModeChoice? { nil }
 }
 
 @MainActor

@@ -83,16 +83,21 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
     }
 
     /// The collection renderer, still in Appearance, keeps the scroll view
-    /// the screen fills itself, with the same identifier on it.
+    /// the screen fills itself, with the same identifier on it, and the
+    /// same header scrim as UltraList's instead of the system's soft edge.
     func testThePickedCollectionRendererKeepsTheScrollView() async throws {
         let (_, session) = try await self.session()
         session.localSettings.chatListRenderer = .collectionView
         addTeardownBlock { @MainActor in session.localSettings.chatListRenderer = .ultraList }
         let chat = self.chat(session)
         XCTAssertNil(find(UltraListView.self, in: chat.view))
-        XCTAssertFalse(chat.view.subviews.compactMap { $0 as? HeaderScrimView }.contains { $0.edge == .top })
+        let scrim = try XCTUnwrap(chat.view.subviews.compactMap { $0 as? HeaderScrimView }.first { $0.edge == .top })
+        XCTAssertEqual(scrim.ramp, ChatScreenLayout.Metrics.headerRamp)
+        XCTAssertEqual(scrim.peak, ChatScreenLayout.Metrics.headerPeak)
+        XCTAssertEqual(scrim.frame.height, chat.view.safeAreaInsets.top + ChatScreenLayout.Metrics.headerOverhang)
         let scroll = try XCTUnwrap(find(UIScrollView.self, in: chat.view))
         XCTAssertEqual(scroll.accessibilityIdentifier, "transcript")
+        XCTAssertTrue(scroll.topEdgeEffect.isHidden, "the system's soft edge under the screen's own scrim")
     }
 
     func testASendReadsTheUltraListDistanceInHistoryAndNearTheEnd() async throws {

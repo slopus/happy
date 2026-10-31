@@ -133,7 +133,7 @@ final class HostedSessionInfoTests: XCTestCase {
     }
 
     func testTheTitleOpensSessionInfoWithItsGroupsOnScreen() async throws {
-        let (controller, _) = try await signedIn(agentState: .object(["controlledByUser": .bool(false)]))
+        let (controller, account) = try await signedIn(agentState: .object(["controlledByUser": .bool(false)]))
         let context = AppContext(account: controller, variant: .development, version: "test")
         let (window, navigation, root) = try await hosted()
         root.push(.session(id: Self.sessionId), context: context)
@@ -147,6 +147,15 @@ final class HostedSessionInfoTests: XCTestCase {
         var title: ChatHeaderTitleView? { chat.navigationItem.titleView as? ChatHeaderTitleView }
         let shown = try await until { chat.transitionCoordinator == nil && title.map { $0.isEnabled && $0.window != nil } == true }
         XCTAssertTrue(shown, "the title never showed")
+        // Back, the name, and Compose: no More, no debug fixtures.
+        XCTAssertEqual(chat.navigationItem.rightBarButtonItems?.map(\.accessibilityIdentifier), ["compose"])
+        XCTAssertNil(chat.navigationItem.leftBarButtonItems)
+        for (style, name) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
+            window.overrideUserInterfaceStyle = style
+            try await Task.sleep(for: .seconds(1))
+            keep(window, "hosted-legacy-chat-header-\(name)")
+        }
+        window.overrideUserInterfaceStyle = .unspecified
         try XCTUnwrap(title).sendActions(for: .touchUpInside)
         let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
         let opened = try await until { !self.shownGroups(info, in: window).isEmpty }
@@ -169,7 +178,62 @@ final class HostedSessionInfoTests: XCTestCase {
         XCTAssertTrue(screen.contains(firstFrame.origin), "\(firstFrame)")
         XCTAssertGreaterThanOrEqual(firstFrame.minY, navigation.navigationBar.frame.maxY - 1)
         XCTAssertEqual(info.title, "Session info screen")
+
+        // The chat's permission mode, once in its header's More menu, is a
+        // row here: the current mode as its value, a native menu of all of
+        // them, and a pick kept as the composer keeps one.
+        func permissionRow() -> MenuRowButton? {
+            subviews(MenuRowButton.self, in: info.view).first { $0.accessibilityIdentifier == "profile-permission-mode" }
+        }
+        let rowShown = try await until { permissionRow() != nil }
+        XCTAssertTrue(rowShown, "no permission mode on the session's info")
+        let row = try XCTUnwrap(permissionRow())
+        XCTAssertTrue(row.showsMenuAsPrimaryAction)
+        XCTAssertGreaterThan(row.bounds.height, 40)
+        XCTAssertGreaterThan(row.bounds.width, 300)
+        for (style, name) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
+            window.overrideUserInterfaceStyle = style
+            try await Task.sleep(for: .seconds(1))
+            keep(window, "legacy-info-permission-\(name)")
+        }
+        window.overrideUserInterfaceStyle = .unspecified
+        let menu = try XCTUnwrap(row.menuFor?())
+        XCTAssertEqual(menu.identifier.rawValue, "chat-permissions")
+        let actions = menu.children.compactMap { $0 as? UIAction }
+        // Every mode the chat's composer offers, none dropped.
+        let offered = try XCTUnwrap(chat.permissionChoice).menu.sections.flatMap(\.options).map(\.key)
+        XCTAssertEqual(actions.compactMap(\.accessibilityIdentifier), offered)
+        XCTAssertTrue(offered.contains("plan"))
+        let plan = try XCTUnwrap(actions.first { $0.accessibilityIdentifier == "plan" })
+        XCTAssertEqual(plan.state, .off)
+        let button = UIButton(type: .system)
+        button.addAction(plan, for: .touchUpInside)
+        button.sendActions(for: .touchUpInside)
+        let store = account.store
+        let sessionId = Self.sessionId
+        var stored: String?
+        for _ in 0..<300 where stored != "plan" {
+            stored = try await Task.detached { try store.composerState(sessionId: sessionId).values["permissionMode"]?.stringValue }.value
+            if stored != "plan" { try await Task.sleep(for: .milliseconds(10)) }
+        }
+        XCTAssertEqual(stored, "plan", "the pick isn't kept as the composer's")
+        let ticked = try XCTUnwrap(row.menuFor?()).children.compactMap { $0 as? UIAction }.filter { $0.state == .on }.compactMap(\.accessibilityIdentifier)
+        XCTAssertEqual(ticked, ["plan"])
+        XCTAssertEqual(row.accessibilityValue, plan.title, "the row shows the pick")
         await controller.signOut()
+    }
+
+    private func keep(_ window: UIWindow, _ name: String) {
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if let directory = ProcessInfo.processInfo.environment["HAPPY_PREVIEW_DIR"] {
+            try? image.pngData()?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(name).png"))
+        }
     }
 
     /// Sync may keep changing visible metadata while the first groups are

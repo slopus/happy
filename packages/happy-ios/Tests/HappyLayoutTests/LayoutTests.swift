@@ -196,7 +196,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(down.listTop, 103)
         XCTAssertEqual(down.listBottom, 110)
         XCTAssertEqual(down.viewport, 631)
-        XCTAssertEqual(down.headerScrim, CGRect(x: 0, y: 0, width: 390, height: 111))
+        XCTAssertEqual(down.headerScrim, CGRect(x: 0, y: 0, width: 390, height: 113))
         // Keyboard up: the card sits 8 above it.
         let up = ChatScreenLayout(size: size, safeArea: safe, keyboardTop: 508) { width in width == 374 ? 92 : 0 }
         XCTAssertEqual(up.card, CGRect(x: 8, y: 408, width: 374, height: 92))
@@ -205,20 +205,29 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(up.headerScrim, down.headerScrim)
     }
 
-    /// Under the glass header the scrim is the status bar's alone, 8 past
-    /// it, as Telegram's: the messages run on under the capsules. With the
-    /// bar hidden it is the same, all the safe area there is.
-    func testTheHeaderScrimCoversOnlyTheStatusBarAboveTheGlass() {
+    /// Under the glass header (iPhone 17 Pro: the bar's 54 under a 62
+    /// status bar, its buttons and the name's capsule 62 to 106) the scrim
+    /// is the ground down past the bar, 10 under its foot, and feathers
+    /// over its last 24: whole behind the name, clear by 126.
+    func testTheHeaderScrimCoversTheBarAndFeathersShortUnderIt() {
         let size = CGSize(width: 402, height: 874)
         let safe = LayoutInsets(top: 116, left: 0, bottom: 34, right: 0)
-        let shown = ChatScreenLayout(size: size, safeArea: safe, keyboardTop: 840, barHeight: 54) { _ in 60 }
-        XCTAssertEqual(shown.headerScrim, CGRect(x: 0, y: 0, width: 402, height: 70))
-        XCTAssertEqual(shown.listTop, 116, "the transcript still starts under the bar")
-        let hidden = ChatScreenLayout(size: size, safeArea: LayoutInsets(top: 62, left: 0, bottom: 34, right: 0), keyboardTop: 840, barHeight: 0) { _ in 60 }
-        XCTAssertEqual(hidden.headerScrim, shown.headerScrim)
-        // Sideways a phone has no status bar: only the overhang.
-        let sideways = ChatScreenLayout(size: CGSize(width: 874, height: 402), safeArea: LayoutInsets(top: 32, left: 62, bottom: 21, right: 62), keyboardTop: 402, barHeight: 32) { _ in 60 }
-        XCTAssertEqual(sideways.headerScrim, CGRect(x: 0, y: 0, width: 874, height: 8))
+        let layout = ChatScreenLayout(size: size, safeArea: safe, keyboardTop: 840) { _ in 60 }
+        XCTAssertEqual(layout.headerScrim, CGRect(x: 0, y: 0, width: 402, height: 126))
+        XCTAssertEqual(layout.listTop, 116, "the transcript still starts under the bar")
+        let height = layout.headerScrim.height
+        let stops = HeaderScrim.stops(height: height, ramp: ChatScreenLayout.Metrics.headerRamp)
+        for stop in stops where stop.location * Double(height) <= Double(height - ChatScreenLayout.Metrics.headerRamp) {
+            XCTAssertEqual(stop.alpha, 1, "the ground thins at \(stop.location * Double(height))pt, above the feather")
+        }
+        // The name's capsule ends at 106: still nearly the ground there.
+        let underCapsule = stops.last { $0.location * Double(height) <= 106 }
+        XCTAssertGreaterThan(underCapsule?.alpha ?? 0, 0.9)
+        XCTAssertEqual(stops.last?.alpha, 0)
+        XCTAssertEqual(ChatScreenLayout.Metrics.headerPeak, 1)
+        // Sideways, with no status bar, the bar alone and the same overhang.
+        let sideways = ChatScreenLayout(size: CGSize(width: 874, height: 402), safeArea: LayoutInsets(top: 32, left: 62, bottom: 21, right: 62), keyboardTop: 402) { _ in 60 }
+        XCTAssertEqual(sideways.headerScrim, CGRect(x: 0, y: 0, width: 874, height: 42))
     }
 
     func testShortConversationsRestOnTheComposer() {

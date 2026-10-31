@@ -79,9 +79,10 @@ public enum HeaderScrim {
 
     /// The feather: 25 samples of `1 - p^1.67` after a flat
     /// hold, where `hold` puts the ramp's start `rampPoints` above the
-    /// bottom of a scrim `height` tall.
-    public static func stops(height: CGFloat) -> [Stop] {
-        let hold = height > rampPoints ? Double(1 - rampPoints / height) : Double(fallbackFeatherStart)
+    /// bottom of a scrim `height` tall (or `ramp` above it, where a screen
+    /// feathers its own edge shorter).
+    public static func stops(height: CGFloat, ramp: CGFloat = rampPoints) -> [Stop] {
+        let hold = height > ramp ? Double(1 - ramp / height) : Double(fallbackFeatherStart)
         return (0...featherSteps).map { step in
             let t = Double(step) / Double(featherSteps)
             let p = t <= hold ? 0 : (t - hold) / (1 - hold)

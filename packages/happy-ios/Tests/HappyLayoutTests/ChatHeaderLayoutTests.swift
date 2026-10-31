@@ -2,76 +2,91 @@ import CoreGraphics
 import HappyLayout
 import XCTest
 
-/// A conversation's title in the navigation bar: the name over its
-/// status, both centred on one glass capsule as tall as the bar's buttons,
-/// the name on the same line with or without a status.
+/// A conversation's title in the navigation bar, on an iPhone Pro Max's
+/// 430-wide bar: Back ends at 60 and the compose and More capsule starts
+/// at 314, so the bar leaves 68 to 306 for the title. The capsule hugs the
+/// name and status, centred on the bar's 215, and moves only as far as an
+/// item makes it. Widths: "hey" 26, "online" 40, the widest status 150.
 final class ChatHeaderLayoutTests: XCTestCase {
-    func testStatusTextWidthsDoNotMoveEitherLineWhenTheirRoomIsReserved() {
-        let baseline = ChatHeaderLayout(titleWidth: 40, statusWidth: 30, maxWidth: 274, reservedStatusWidth: 180)
-        XCTAssertEqual(baseline.size, CGSize(width: 204, height: 44))
-        XCTAssertEqual(baseline.capsule, CGRect(x: 0, y: 0, width: 204, height: 44))
-        XCTAssertEqual(baseline.title, CGRect(x: 82, y: 3, width: 40, height: 22))
-        XCTAssertEqual(baseline.status, CGRect(x: 12, y: 25, width: 180, height: 16))
-        for width: CGFloat in [20, 55, 100, 180] {
-            XCTAssertEqual(ChatHeaderLayout(titleWidth: 40, statusWidth: width, maxWidth: 274, reservedStatusWidth: 180), baseline)
-        }
+    private let room: ClosedRange<CGFloat> = 68...306
+    /// The same bar right to left: Back at the right, the group at the left.
+    private let mirrored: ClosedRange<CGFloat> = 124...362
+
+    private func layout(_ title: CGFloat, _ status: CGFloat? = 40, room: ClosedRange<CGFloat>? = nil, height: CGFloat = 44) -> ChatHeaderLayout {
+        ChatHeaderLayout(titleWidth: title, statusWidth: status, reservedStatusWidth: 150, centerX: 215, room: room ?? self.room, height: height)
     }
 
-    func testTheNameKeepsItsLineWithNoStatus() {
-        let layout = ChatHeaderLayout(titleWidth: 140.3, statusWidth: nil, maxWidth: 274)
-        XCTAssertEqual(layout.size, CGSize(width: 165, height: 44))
-        XCTAssertEqual(layout.capsule, CGRect(x: 0, y: 0, width: 165, height: 44))
-        XCTAssertEqual(layout.title, CGRect(x: 12, y: 3, width: 141, height: 22))
-        XCTAssertNil(layout.status)
+    func testAShortTitleHugsItsTextCentredOnTheBar() {
+        let short = layout(26)
+        XCTAssertEqual(short.capsule, CGRect(x: 183, y: 0, width: 64, height: 44))
+        XCTAssertEqual(short.title, CGRect(x: 202, y: 3, width: 26, height: 22))
+        XCTAssertEqual(short.status, CGRect(x: 140, y: 25, width: 150, height: 16))
     }
 
-    func testTheStatusComingAndGoingMovesTheNameNot() {
-        let idle = ChatHeaderLayout(titleWidth: 60, statusWidth: nil, maxWidth: 274)
-        let working = ChatHeaderLayout(titleWidth: 60, statusWidth: 40, maxWidth: 274)
-        XCTAssertEqual(idle.title, working.title)
-        XCTAssertEqual(idle.capsule, working.capsule)
-        XCTAssertEqual(idle.size, working.size)
+    func testAMediumTitleStaysCentred() {
+        let medium = layout(150)
+        XCTAssertEqual(medium.capsule, CGRect(x: 128, y: 0, width: 174, height: 44))
+        XCTAssertEqual(medium.title, CGRect(x: 140, y: 3, width: 150, height: 22))
+        XCTAssertEqual(medium.capsule.midX, 215)
     }
 
-    func testTheStatusSitsUnderTheNameAndTheWiderLineSetsTheCapsule() {
-        let layout = ChatHeaderLayout(titleWidth: 60, statusWidth: 100, maxWidth: 274)
-        XCTAssertEqual(layout.size, CGSize(width: 124, height: 44))
-        XCTAssertEqual(layout.title, CGRect(x: 32, y: 3, width: 60, height: 22))
-        XCTAssertEqual(layout.status, CGRect(x: 12, y: 25, width: 100, height: 16))
+    /// Centred it would end at 327, past the group's 306: it moves left
+    /// just enough, and nothing is cut.
+    func testALongTitleMovesLeftOnlyAsFarAsTheGroupMakesIt() {
+        let long = layout(200)
+        XCTAssertEqual(long.capsule, CGRect(x: 82, y: 0, width: 224, height: 44))
+        XCTAssertEqual(long.title, CGRect(x: 94, y: 3, width: 200, height: 22))
+        XCTAssertEqual(long.status, CGRect(x: 119, y: 25, width: 150, height: 16))
     }
 
-    func testALongNameIsCutInsideTheWidestCapsuleTheBarAllows() {
-        let layout = ChatHeaderLayout(titleWidth: 900, statusWidth: 52, maxWidth: 274)
-        XCTAssertEqual(layout.size.width, 274)
-        XCTAssertEqual(layout.capsule, CGRect(x: 0, y: 0, width: 274, height: 44))
-        XCTAssertEqual(layout.title, CGRect(x: 12, y: 3, width: 250, height: 22))
-        XCTAssertEqual(layout.status, CGRect(x: 111, y: 25, width: 52, height: 16))
+    func testAVeryLongTitleFillsTheRoomAndIsCut() {
+        let veryLong = layout(400)
+        XCTAssertEqual(veryLong.capsule, CGRect(x: 68, y: 0, width: 238, height: 44))
+        XCTAssertEqual(veryLong.title, CGRect(x: 80, y: 3, width: 214, height: 22))
+        XCTAssertEqual(veryLong.status, CGRect(x: 112, y: 25, width: 150, height: 16))
     }
 
-    /// The bar hands the title more room than it asked for, as it does
-    /// while it centres it: the capsule stays its own size, centred.
-    func testTheCapsuleIsCentredInMoreRoomThanItWants() {
-        let layout = ChatHeaderLayout(titleWidth: 60, statusWidth: 100, maxWidth: 274, bounds: CGSize(width: 200, height: 44))
-        XCTAssertEqual(layout.size, CGSize(width: 200, height: 44))
-        XCTAssertEqual(layout.capsule, CGRect(x: 38, y: 0, width: 124, height: 44))
-        XCTAssertEqual(layout.title, CGRect(x: 70, y: 3, width: 60, height: 22))
-        XCTAssertEqual(layout.status, CGRect(x: 50, y: 25, width: 100, height: 16))
+    /// Right to left the group is at the left: a long title moves right,
+    /// the mirror image of the left-to-right frames.
+    func testRightToLeftMirrors() {
+        let long = layout(200, room: mirrored)
+        XCTAssertEqual(long.capsule, CGRect(x: 124, y: 0, width: 224, height: 44))
+        XCTAssertEqual(long.title, CGRect(x: 136, y: 3, width: 200, height: 22))
+        XCTAssertEqual(long.capsule.minX, 430 - layout(200).capsule.maxX)
+        XCTAssertEqual(layout(26, room: mirrored), layout(26), "a short title is centred either way")
+        XCTAssertEqual(layout(400, room: mirrored).capsule, CGRect(x: 124, y: 0, width: 238, height: 44))
     }
 
-    /// Between a back button and two trailing buttons the bar may give
-    /// less than the capsule asked for: it fits that, never past it, and
-    /// the name is cut inside its ends.
-    func testTheCapsuleFitsLessRoomThanItWanted() {
-        let layout = ChatHeaderLayout(titleWidth: 400, statusWidth: 150, maxWidth: 265, bounds: CGSize(width: 213, height: 44))
-        XCTAssertEqual(layout.capsule, CGRect(x: 0, y: 0, width: 213, height: 44))
-        XCTAssertEqual(layout.title, CGRect(x: 12, y: 3, width: 189, height: 22))
-        XCTAssertEqual(layout.status, CGRect(x: 32, y: 25, width: 150, height: 16))
+    /// "online" to "Waiting for your answer" and back: the capsule grows
+    /// and shrinks about the bar's middle; neither line moves.
+    func testAStatusChangeMovesNeitherLine() {
+        let online = layout(26, 40)
+        let waiting = layout(26, 150)
+        XCTAssertEqual(waiting.capsule, CGRect(x: 128, y: 0, width: 174, height: 44))
+        XCTAssertEqual(online.capsule.midX, waiting.capsule.midX)
+        XCTAssertEqual(online.title, waiting.title)
+        XCTAssertEqual(online.status, waiting.status)
+    }
+
+    func testTheCapsuleIsNeverNarrowerThanItIsTall() {
+        let tiny = layout(10, nil)
+        XCTAssertEqual(tiny.capsule, CGRect(x: 193, y: 0, width: 44, height: 44))
+        XCTAssertEqual(tiny.title, CGRect(x: 210, y: 3, width: 10, height: 22))
+        XCTAssertNil(tiny.status)
+    }
+
+    /// In the header's own coordinates (the bar hands it 68 to 306) the
+    /// frames are the same, shifted.
+    func testTheHeadersOwnCoordinatesGiveTheSameFrames() {
+        let local = ChatHeaderLayout(titleWidth: 200, statusWidth: 40, reservedStatusWidth: 150, centerX: 147, room: 0...238, height: 44)
+        XCTAssertEqual(local.capsule, layout(200).capsule.offsetBy(dx: -68, dy: 0))
+        XCTAssertEqual(local.title, layout(200).title.offsetBy(dx: -68, dy: 0))
     }
 
     /// A taller bar (a wide window's) centres the capsule on its height.
     func testTheCapsuleIsCentredOnATallerBar() {
-        let layout = ChatHeaderLayout(titleWidth: 60, statusWidth: nil, maxWidth: 274, bounds: CGSize(width: 84, height: 50))
-        XCTAssertEqual(layout.capsule, CGRect(x: 0, y: 3, width: 84, height: 44))
-        XCTAssertEqual(layout.title, CGRect(x: 12, y: 6, width: 60, height: 22))
+        let tall = layout(26, height: 50)
+        XCTAssertEqual(tall.capsule, CGRect(x: 183, y: 3, width: 64, height: 44))
+        XCTAssertEqual(tall.title, CGRect(x: 202, y: 6, width: 26, height: 22))
     }
 }
