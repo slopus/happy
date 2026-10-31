@@ -2,6 +2,8 @@ package com.slopus.happy.ui.components
 
 import android.content.Context
 import android.os.Build
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ProvidableCompositionLocal
@@ -18,6 +20,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.toRect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
@@ -25,14 +28,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.addOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -44,6 +50,7 @@ import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
@@ -85,9 +92,29 @@ object GlassSpec {
     const val ALPHA_DARK = 0.85f
     const val FALLBACK_ALPHA = 0.94f
     val hairline = 0.55.dp
-    /** A bar's ground over the blur, light and dark: Telegram's chat list bar. */
+    /** A bar's ground over the blur at its foot, light and dark: Telegram's chat list bar. */
     const val BAR_ALPHA = 216f / 255f
     const val BAR_ALPHA_DARK = 178f / 255f
+    /**
+     * A bar's ground over the status bar, nearly opaque: the screen's edge,
+     * where content enters under the glass with the least blurred round it,
+     * is the ground and not glass, as iOS 26's scroll edge and our iOS
+     * header scrim (0.94) are. Below it [barAlpha] eases to the foot's.
+     */
+    const val BAR_EDGE_ALPHA = 0.96f
+
+    /**
+     * A bar's ground at [y] of its [height]: [BAR_EDGE_ALPHA] down to [edge]
+     * (the status bar's foot), then smoothstep to [foot] at the bar's foot.
+     * Flat at both ends of the ramp, so neither the status bar's foot nor the
+     * bar's reads as a line; the title sits where it is still mostly ground,
+     * the bar's lower part is clearly glass.
+     */
+    fun barAlpha(y: Float, edge: Float, height: Float, foot: Float): Float {
+        if (height <= edge) return BAR_EDGE_ALPHA
+        val t = ((y - edge) / (height - edge)).coerceIn(0f, 1f)
+        return BAR_EDGE_ALPHA + (foot - BAR_EDGE_ALPHA) * t * t * (3 - 2 * t)
+    }
     /**
      * How far down from the top of what it backs the fade ramps in. It starts
      * at that top, not above it, so content resting above a dock is never
@@ -242,23 +269,66 @@ fun Modifier.glassFade(source: GlassSource?, tint: Color, blurs: Boolean): Modif
 
 /**
  * A top bar's glass ([GlassBarLayout]): the content under it blurred, then
- * [ground] over the blur, [GlassSpec.BAR_ALPHA] of it on a light ground and
- * [GlassSpec.BAR_ALPHA_DARK] on a dark one (nearly opaque where nothing
- * blurs). No edge, as Telegram's chat list bar has none: at rest the
- * content's own ground is all that is under the bar, so bar and page are one
- * surface.
+ * [ground] over the blur, progressively: nearly opaque over the status bar
+ * ([GlassSpec.BAR_EDGE_ALPHA]), easing to [GlassSpec.BAR_ALPHA] on a light
+ * ground and [GlassSpec.BAR_ALPHA_DARK] on a dark one at the bar's foot
+ * ([GlassSpec.barAlpha]); nearly opaque throughout where nothing blurs. No
+ * edge, as Telegram's chat list bar has none: at rest the content's own
+ * ground is all that is under the bar, so bar and page are one surface.
+ *
+ * A [backdrop] takes the ground's place: drawn opaque at the bar's size over
+ * the blur, it is given the ground's alphas, so it is as see-through as the
+ * ground would be wherever it is.
  */
-fun Modifier.glassBar(source: GlassSource?, ground: Color, blurs: Boolean): Modifier = composed {
+fun Modifier.glassBar(
+    source: GlassSource?,
+    ground: Color,
+    blurs: Boolean,
+    backdrop: (DrawScope.() -> Unit)? = null,
+): Modifier = composed {
     val layers = rememberGlassLayers()
     var origin by remember { mutableStateOf(Offset.Zero) }
+    val statusBar = WindowInsets.statusBars.getTop(LocalDensity.current)
     onGloballyPositioned { origin = it.positionInRoot() }
-        .drawBehind {
-            // The blur spreads past the layer's edge: keep it to the bar.
-            if (source != null) clipRect { drawSource(layers, source, origin, blurs) }
-            val alpha = if (ground.luminance() < DARK_LUMINANCE) GlassSpec.BAR_ALPHA_DARK else GlassSpec.BAR_ALPHA
-            drawRect(ground.copy(alpha = if (blurs) alpha else GlassSpec.FALLBACK_ALPHA))
+        .drawWithCache {
+            // Where the status bar ends inside the bar; a bar lower on the screen has none.
+            val edge = (statusBar - origin.y).coerceIn(0f, size.height)
+            val foot = if (ground.luminance() < DARK_LUMINANCE) GlassSpec.BAR_ALPHA_DARK else GlassSpec.BAR_ALPHA
+            fun ramp(color: Color) = if (blurs) barRamp(color, edge, size.height, foot) else SolidColor(color.copy(alpha = GlassSpec.FALLBACK_ALPHA))
+            val tint = ramp(ground)
+            val mask = ramp(Color.Black)
+            onDrawBehind {
+                // The blur spreads past the layer's edge: keep it to the bar.
+                if (source != null) clipRect { drawSource(layers, source, origin, blurs) }
+                if (backdrop == null) {
+                    drawRect(tint)
+                } else {
+                    drawIntoCanvas { it.saveLayer(size.toRect(), Paint()) }
+                    backdrop()
+                    drawRect(mask, blendMode = BlendMode.DstIn)
+                    drawIntoCanvas { it.restore() }
+                }
+            }
         }
 }
+
+/**
+ * [GlassSpec.barAlpha] of [color] as a gradient: a stop at the bar's top and
+ * at [edge], and the smoothstep sampled finely enough below it that the
+ * straight pieces between stops don't show.
+ */
+private fun barRamp(color: Color, edge: Float, height: Float, foot: Float): Brush {
+    val stops = buildList {
+        add(0f to color.copy(alpha = GlassSpec.BAR_EDGE_ALPHA))
+        for (i in 0..BAR_RAMP_STEPS) {
+            val y = edge + (height - edge) * i / BAR_RAMP_STEPS
+            add(y / height to color.copy(alpha = GlassSpec.barAlpha(y, edge, height, foot)))
+        }
+    }
+    return Brush.verticalGradient(*stops.toTypedArray(), startY = 0f, endY = height)
+}
+
+private const val BAR_RAMP_STEPS = 16
 
 /** Below this a ground is dark (Telegram's perceived-brightness 0.721, as relative luminance). */
 private const val DARK_LUMINANCE = 0.48f

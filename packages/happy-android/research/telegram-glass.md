@@ -186,6 +186,85 @@ message always rested under the ramp. Telegram's fade zone is the input zone its
 (`ConversationScreen`). `ConversationComposerGlassTest` checks that the newest row ends
 above the fade at rest, with the card open, and with a 20-line draft.
 
+## The progressive top edge (2026-10-31)
+
+Steve, on the Fold: "Should we make it progressive, say almost non-transparent at the very
+top, since that is an edge and it's still unstable there?" The status-bar band was the least
+steady part of the bar even after the prefilter. Content enters the glass there with nothing
+blurred above it (the capture stops at the window's top), so the blur has the least to
+average.
+
+**What the references do.**
+
+- **Telegram (13.1.1)** has no ramp of its own over the bar's blur. The action bar's frosted
+  rect (`ActionBar.dispatchDraw`, `contentView.drawBlurRect`) and the chat list's
+  (`DialogsActivity.drawBlurRect`) are one flat tint from the top of the status bar to the
+  bar's foot. The status bar gets no solid strip either: `actionModeTop`, a status-bar-high
+  view in `key_actionBarActionModeDefaultTop`, exists only in action mode, and its
+  non-action-mode use is commented out for blurred bars. Its gradients are under the bar,
+  not in it: in a chat, `ChatActivityFadeView`'s top zone (the bar plus its panels,
+  `checkUi_topFade`) is the blurred wallpaper masked by a `DST_IN` ramp that holds
+  0.81 (`0xE8` of 285) from the top and clears over the zone's last 48 dp
+  (`setFadeHeightTop(dp(48))`, a negative height in `BlurredBackgroundWithFadeDrawable`,
+  which puts the ramp at the zone's bottom). On the
+  chat list, `DialogsActivityTopBubblesFadeView` is a colour gradient (`E8, C0, 90, 00`)
+  of at most 40 dp under the filter tabs. So Telegram's top edge is calmed the same way:
+  a fade that is densest at the top and clears toward the content.
+- **iOS (`packages/happy-ios`)**: `HeaderScrimView` (`HomeHeaderViews.swift`, tokens in
+  `HomeTokens.HeaderScrim`) is a progressive edge. It fades into the screen's own ground,
+  holds at 0.94 under the status bar and the controls with a 2 pt blur, and feathers to clear
+  over its last 36 pt (`1 - p^1.67`). The agent chat holds at 1.0 (the ground itself) and
+  feathers over 24 pt, ending 10 pt past the bar's foot (`ChatScreenLayout.Metrics.headerPeak`,
+  `headerRamp`, `headerOverhang`; since 779a1683c it covers only the status bar band under the
+  Liquid Glass capsule). Elsewhere `HeaderBar.edge` turns on iOS 26's own
+  `topEdgeEffect.style = .soft`, the system scroll edge effect: opaque at the screen's edge,
+  fading to the content.
+
+**What we do.** `glassBar` draws the bar's ground as a vertical gradient instead of one flat
+alpha (`GlassSpec.barAlpha`):
+
+- From the top of the bar to the status bar's foot (`WindowInsets.statusBars`, measured from
+  the bar's own top), the ground is at `BAR_EDGE_ALPHA` = 0.96. That is iOS's 0.94 and the
+  scroll edge's near-opaque edge.
+- From there to the bar's foot, it eases to the foot's tint (216/255 light, 178/255 dark,
+  as before) along a smoothstep, `3t² − 2t³`. It is flat where it starts and where it ends, so
+  neither the status bar's foot nor the bar's reads as a line. The gradient samples the curve at
+  17 stops.
+- On the Fold (status bar 84 px, bar 255 px) the title's middle sits at about 0.85 in dark
+  and 0.91 in light, a calm ground. Over the bar's lowest quarter the tint is within 0.04
+  of the old one, so that part is still glass.
+- The blur itself is unchanged. A stronger blur toward the top would mean a second capture
+  and blur per bar. Under 0.96 of ground there is nothing left to see, so it would cost a
+  layer for no visible gain.
+- Without blur (below API 31, or `glass-off`) the bar is `FALLBACK_ALPHA` throughout, as before.
+
+**The dock needs no mirror.** `glassFade` already goes opaque below its 48 dp ramp (see "What
+changed to match"), so toward the navigation bar the dock is the ground. Its ramp begins at
+the dock's top, so the newest message still rests clear above it.
+
+**A backdrop for the bar.** `GlassBarLayout(backdrop = …)` / `glassBar(…, backdrop)` draw a
+picture (the chat's avatar shader) in the ground's place: opaque at the bar's size, over the
+blur, in a layer masked `DstIn` by the same ramp, so it has the ground's alphas wherever it is.
+`GlassBarEdgeTest` checks the ramp and the backdrop's alphas.
+
+**Measured on the Fold**, the same way as above (agent chat, 40 steps of 1 px, the bar's bands
+at x 500–1500 to leave out the status icons). D is the mean change per step. "Range" is each
+pixel's max − min over the run, averaged: how much the content under the band shows at all.
+
+| per 1 px step | before: D mean / max / range | after: D mean / max / range |
+|---|---|---|
+| dark, status-bar band (y 0–84) | 0.077 / 0.182 / 1.91 | 0.014 / 0.038 / 0.44 |
+| dark, title band (84–170) | 0.101 / 0.194 / 2.02 | 0.025 / 0.056 / 0.59 |
+| dark, bottom band (170–255) | 0.048 / 0.134 / 1.76 | 0.041 / 0.109 / 1.45 |
+| light, status-bar band | 0.019 / 0.053 / 0.72 | 0.004 / 0.019 / 0.11 |
+| light, title band | 0.034 / 0.070 / 0.92 | 0.015 / 0.030 / 0.45 |
+| light, bottom band | 0.031 / 0.059 / 0.88 | 0.028 / 0.052 / 0.85 |
+
+The status-bar band moves about 5× less in dark and light. The title band moves 2–4× less.
+The bottom band is the same glass as before. The content itself moved 2.3–2.4 per step in
+every run. Screenshots taken while the transcript is held mid-drag under the bar are in
+`.context/shots/device/` (`before-chat-*`, `after-chat-*`; not committed).
+
 ## Ours before this change (`ui/components/Glass.kt`)
 
 | | ours (before) | Telegram |

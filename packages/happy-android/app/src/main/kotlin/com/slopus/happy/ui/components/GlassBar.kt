@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.offset
@@ -71,6 +72,8 @@ fun barInsetTop(): Dp {
  * its top, a list as its top content padding. The content is recorded for
  * the glass here, unless the screen records its own [source] (where another
  * glass, a dock's, reads the same recording; it must not record itself).
+ * A [backdrop] is drawn in the ground's place, with the ground's alphas
+ * ([Modifier.glassBar]).
  */
 @Composable
 fun GlassBarLayout(
@@ -78,6 +81,7 @@ fun GlassBarLayout(
     ground: Color,
     modifier: Modifier = Modifier,
     source: GlassSource? = null,
+    backdrop: (DrawScope.() -> Unit)? = null,
     content: @Composable (top: Dp) -> Unit,
 ) {
     val own = rememberGlassSource(ground)
@@ -86,7 +90,7 @@ fun GlassBarLayout(
     SubcomposeLayout(modifier) { constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
         val barPlaceables = subcompose("bar") {
-            Box(Modifier.glassBar(glass, ground, blurs).testTag(GlassBarTags.BAR)) {
+            Box(Modifier.glassBar(glass, ground, blurs, backdrop).testTag(GlassBarTags.BAR)) {
                 CompositionLocalProvider(LocalBarOnGlass provides true, content = bar)
             }
         }.map { it.measure(loose.copy(maxHeight = Constraints.Infinity)) }
