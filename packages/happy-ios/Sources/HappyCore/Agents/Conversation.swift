@@ -2,9 +2,8 @@ import Foundation
 import HappyWire
 
 /// One entry in a V2 conversation as the phone shows it: what a
-/// person wrote, or what the agent said. Reasoning, tool calls and the
-/// daemon's housekeeping are never shown; a tool call is kept only for the
-/// pictures and videos it presented.
+/// person wrote, what the agent said, and the steps of its turns.
+/// Reasoning and the daemon's housekeeping are never shown.
 public struct ChatItem: Equatable, Sendable, Identifiable {
     public enum Role: Equatable, Sendable {
         case user, agent
@@ -15,7 +14,8 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         /// A turn that failed: desktop's failure card, its reason the item's
         /// text, with Retry or a switch to the composer's model.
         case failure(Failure)
-        /// One tool call of the agent's turn (`Turns.swift`).
+        /// One tool call of the agent's turn (`Turns.swift`); what it showed
+        /// the person (pictures, files, an artifact) is its pieces.
         case tool(Tool)
         /// How a finished turn ended: "Completed in 12s".
         case turnEnd(TurnEnd)
@@ -1594,11 +1594,17 @@ public actor Conversation {
                 if let bytes = pictures[key] { pieces.append(.picture(id: key, mimeType: mimeType, data: bytes)) }
             case .toolCall(let id, let name, let status, let presentation, let arguments, let output):
                 if let shows = presentation.flatMap({ Self.shows($0, toolCallId: id, shown: &shown) }) {
-                    for piece in shows {
-                        // One proposal card across every version: a revision redraws its rows.
-                        if case .sidebarProposal(let artifactId) = piece, !proposed.insert(artifactId).inserted { continue }
-                        pieces.append(piece)
+                    // One proposal card across every version: a revision redraws its rows.
+                    let showing = shows.filter { piece in
+                        if case .sidebarProposal(let artifactId) = piece { return proposed.insert(artifactId).inserted }
+                        return true
                     }
+                    guard role == .agent else { pieces += showing; continue }
+                    // Desktop's media and artifact rows: the call's line with
+                    // what it showed under it, a row of its own, so it stays
+                    // when the turn folds.
+                    flush(next: "\(message.id)/\(index + 1)")
+                    items.append(ChatItem(id: id, role: .tool(ChatItem.Tool(name: name, status: status, presentation: presentation)), pieces: showing, delivery: .sent))
                     continue
                 }
                 guard role == .agent else { continue }

@@ -47,6 +47,28 @@ public struct ToolRowLayout: Equatable, Sendable {
     }
 }
 
+/// A call whose result is something to look at, desktop's media and
+/// artifact rows (`agent-activity-row.css`, `toolResultHeight`): its line,
+/// then what it showed 8 under it in the row's own flow, laid out as an
+/// agent message's parts are, and the line's padding under the last.
+public struct ToolResultLayout: Equatable, Sendable {
+    public enum Metrics {
+        /// Between the line and what it showed (`TOOL_MEDIA_GAP`).
+        public static let gap: CGFloat = 8
+    }
+
+    public var size: CGSize
+    public var line: ToolRowLayout
+    public var body: MessageLayout
+
+    public init(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, line: ToolRowLayout, parts: [MessageLayout.Part]) {
+        let padding = ToolRowLayout.Metrics.paddingV
+        self.line = line
+        body = MessageLayout.agent(width: width, maxContentWidth: maxContentWidth, parts: parts, top: line.size.height - padding + Metrics.gap, bottom: padding)
+        size = body.size
+    }
+}
+
 /// How a finished turn ended, desktop's `TurnSummary` (`turn-summary.css`):
 /// one 24 line of 16 type in a row 32 tall, 36 with 4 above it when it
 /// follows a step of the turn. The copy button leads it, a 20 square 2 out

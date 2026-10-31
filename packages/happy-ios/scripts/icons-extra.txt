@@ -38,3 +38,5 @@ Octicons code
 Octicons alert
 Ionicons funnel-outline
 Ionicons checkmark-outline
+# Presented recordings (AgentActivityRow.tsx toolGlyph's film-outline).
+Ionicons film-outline

@@ -40,6 +40,18 @@ final class TurnLayoutsTests: XCTestCase {
         XCTAssertEqual(row.text.maxX, 834)
     }
 
+    /// Desktop's `ConversationMedia` under a media call's line: 8 below the
+    /// line's text, in the line's column, the row's own 6 under it.
+    func testWhatACallShowedSitsUnderItsLine() {
+        let line = ToolRowLayout(width: 390, verbWidth: 30, textWidth: 80)
+        let screenshot = MediaLayout.Item(isVideo: false, image: MediaFlow.Image(width: 1228, height: 550, scale: nil))
+        let result = ToolResultLayout(width: 390, line: line, parts: [.media([screenshot, screenshot], columns: 2)])
+        XCTAssertEqual(result.line, line)
+        guard result.body.parts.count == 1, case .media(let frames) = result.body.parts[0] else { return XCTFail("one grid") }
+        XCTAssertEqual(frames, [rect(16, 34, 175, 78.5), rect(199, 34, 175, 78.5)])
+        XCTAssertEqual(result.size, CGSize(width: 390, height: 34 + 78.5 + 6))
+    }
+
     // MARK: How a turn ended
 
     func testTheStatusLeadsWithItsCopyButton() {

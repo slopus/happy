@@ -424,13 +424,14 @@ public struct MessageLayout: Equatable, Sendable {
         agent(width: width, maxContentWidth: maxContentWidth, parts: [.markdown(blocks)])
     }
 
-    /// The runs one under another, 8 apart, in the reading column.
-    public static func agent(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, parts: [Part]) -> MessageLayout {
+    /// The runs one under another, 8 apart, in the reading column, from
+    /// `top` down, `bottom` left under the last.
+    public static func agent(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, parts: [Part], top: CGFloat = Metrics.marginV, bottom: CGFloat = Metrics.marginV) -> MessageLayout {
         typealias M = Metrics
         let column = ChatColumn(rowWidth: width, maxContentWidth: maxContentWidth)
         let inner = max(0, column.width - 2 * M.marginH)
         let left = column.x + M.marginH
-        var y = M.marginV
+        var y = top
         var placed: [Placed] = []
         for part in parts {
             if !placed.isEmpty { y += M.blockGap }
@@ -463,7 +464,7 @@ public struct MessageLayout: Equatable, Sendable {
                 y += proposal.size.height
             }
         }
-        return MessageLayout(size: CGSize(width: max(0, width), height: y + M.marginV), parts: placed, bubble: nil, text: nil, pictures: [], status: nil)
+        return MessageLayout(size: CGSize(width: max(0, width), height: y + bottom), parts: placed, bubble: nil, text: nil, pictures: [], status: nil)
     }
 
     /// A person's message that may be longer than `previewLines`.

@@ -32,6 +32,14 @@ struct ToolWords: Equatable {
         case "search":
             verb = Self.verb(name, status: status, presentation: presentation)
             subject = presentation?.query ?? ""
+        case "media":
+            let items = presentation?.items ?? []
+            // A read that turned out to be a picture still says it read it.
+            verb = Self.matches("(read|view)", lower) ? W.read : W.mediaNoun(items.map(\.kind))
+            subject = items.map(\.name).joined(separator: ", ")
+        case "artifact":
+            verb = Self.verb(name, status: status, presentation: presentation)
+            subject = presentation?.shows == "latest" ? presentation?.title ?? W.artifact : W.artifact
         case "exploration":
             verb = Self.verb(name, status: status, presentation: presentation)
             subject = Self.exploration(presentation?.operations ?? [])
@@ -82,6 +90,13 @@ struct ToolWords: Equatable {
         case "exploration": return active ? W.exploring : W.explored
         default: break
         }
+        // An artifact's tools say what they did to it in their own words.
+        if presentation?.type == "artifact" || matches("^(create_artifact|edit_artifact_files|update_artifact)$", lower) {
+            if status == "failed" { return W.failedCall }
+            if lower == "edit_artifact_files" { return active ? W.opening : W.opened }
+            if lower == "create_artifact" { return active ? W.creating : W.created }
+            return active ? W.updating : W.updated
+        }
         if presentation?.type == "background_terminal_interaction" || matches("stdin|terminal_?input|taskinput", lower) { return active ? W.typing : W.typed }
         if lower == "wait_agent" { return active ? W.waiting : W.waited }
         if presentation?.type == "exec_command" || matches("(bash|exec|shell|command|run)", lower) {
@@ -103,6 +118,10 @@ struct ToolWords: Equatable {
         case "search": return .ionicons("globe-outline")
         case "exploration": return .ionicons("search-outline")
         case "file_diff": return .ionicons("document-outline")
+        case "artifact": return .ionicons("cube-outline")
+        case "media":
+            let kinds = (presentation?.items ?? []).map(\.kind)
+            return .ionicons(kinds.contains("image") ? "image-outline" : kinds.contains("video") ? "film-outline" : "document-outline")
         default: break
         }
         let lower = name.lowercased()
@@ -184,23 +203,36 @@ private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
 
-extension ChatPlanner {
-    /// One tool call's line (`ToolRowLayout`): its mark, or a spinner while
-    /// it runs, the verb, and its subject; a failed call says so in its ink.
-    static func tool(_ tool: ChatItem.Tool, id: String, key: Key) -> ChatRowPlan {
-        let environment = key.environment
-        let words = ToolWords(tool)
-        let ink = tool.failed ? Palette.activityFailedLine : Palette.textSecondary
-        let verb = ChatTextStyles.activityVerb.string(words.verb, color: ink, lineBreakMode: .byTruncatingTail, in: environment)
+/// A tool call's line drawn: its words in their inks, measured.
+struct ToolLine {
+    var tool: ChatItem.Tool
+    var words: ToolWords
+    var ink: ColorToken
+    var verb: NSAttributedString
+    var subject: NSAttributedString
+    var added: NSAttributedString?
+    var deleted: NSAttributedString?
+
+    init(_ tool: ChatItem.Tool, environment: TextEnvironment?) {
+        self.tool = tool
+        words = ToolWords(tool)
+        ink = tool.failed ? Palette.activityFailedLine : Palette.textSecondary
+        verb = ChatTextStyles.activityVerb.string(words.verb, color: ink, lineBreakMode: .byTruncatingTail, in: environment)
         let subjectStyle = words.mono ? ChatTextStyles.toolSubjectMono : ChatTextStyles.activityText
-        let subject = subjectStyle.string(words.subject, color: tool.failed ? Palette.activityFailedLine : Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment)
-        let added = words.added.map { ChatTextStyles.toolCount.string("+\(ToolWords.compact($0))", color: Palette.gitAddedText, in: environment) }
-        let deleted = words.deleted.map { ChatTextStyles.toolCount.string("\u{2212}\(ToolWords.compact($0))", color: Palette.gitRemovedText, in: environment) }
-        let layout = ToolRowLayout(
+        subject = subjectStyle.string(words.subject, color: ink, lineBreakMode: .byTruncatingTail, in: environment)
+        added = words.added.map { ChatTextStyles.toolCount.string("+\(ToolWords.compact($0))", color: Palette.gitAddedText, in: environment) }
+        deleted = words.deleted.map { ChatTextStyles.toolCount.string("\u{2212}\(ToolWords.compact($0))", color: Palette.gitRemovedText, in: environment) }
+    }
+
+    func layout(_ key: ChatPlanner.Key) -> ToolRowLayout {
+        ToolRowLayout(
             width: key.width, maxContentWidth: key.maxContentWidth,
             verbWidth: ChatTextLayout(unwrapped: verb).size.width, textWidth: ChatTextLayout(unwrapped: subject).size.width,
             addedWidth: added.map { ChatTextLayout(unwrapped: $0).size.width }, deletedWidth: deleted.map { ChatTextLayout(unwrapped: $0).size.width }
         )
+    }
+
+    func draw(_ layout: ToolRowLayout) -> [ChatDrawItem] {
         var items: [ChatDrawItem] = []
         if tool.running {
             // Desktop's 12 circle spinner in the glyph's lane.
@@ -212,10 +244,41 @@ extension ChatPlanner {
         items.append(.text(ChatTextLayout(subject, width: layout.text.width, maxLines: 1), layout.text))
         if let added, let frame = layout.added { items.append(.text(ChatTextLayout(added, width: frame.width, maxLines: 1), frame)) }
         if let deleted, let frame = layout.deleted { items.append(.text(ChatTextLayout(deleted, width: frame.width, maxLines: 1), frame)) }
-        // A long press copies what scrolled out of the line.
-        let hits = words.subject.isEmpty ? [] : [ChatHit(frame: CGRect(origin: .zero, size: layout.size), action: .copyMenu(words.subject), hold: true)]
-        let spoken = tool.running ? Strings.Turns.isRunning(ToolWords.humanize(tool.name)) + ", " + words.subject : "\(words.verb) \(words.subject)"
-        return ChatRowPlan(id: id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken)
+        return items
+    }
+
+    /// A long press copies what scrolled out of the line.
+    func hits(_ layout: ToolRowLayout) -> [ChatHit] {
+        words.subject.isEmpty ? [] : [ChatHit(frame: CGRect(origin: .zero, size: layout.size), action: .copyMenu(words.subject), hold: true)]
+    }
+
+    var spoken: String {
+        tool.running ? Strings.Turns.isRunning(ToolWords.humanize(tool.name)) + ", " + words.subject : "\(words.verb) \(words.subject)"
+    }
+}
+
+extension ChatPlanner {
+    /// One tool call's line (`ToolRowLayout`): its mark, or a spinner while
+    /// it runs, the verb, and its subject; a failed call says so in its ink.
+    static func tool(_ tool: ChatItem.Tool, id: String, key: Key) -> ChatRowPlan {
+        let line = ToolLine(tool, environment: key.environment)
+        let layout = line.layout(key)
+        return ChatRowPlan(id: id, size: layout.size, items: line.draw(layout), hits: line.hits(layout), accessibilityLabel: line.spoken)
+    }
+
+    /// A call that showed the person something (desktop's media and
+    /// artifact rows, `ToolResultLayout`): its line, and under it the
+    /// pictures, recordings, files or card it showed.
+    static func toolResult(_ tool: ChatItem.Tool, item: ChatItem, key: Key, syntax: CodeSyntaxService, proposals: [String: ProposalShown]) -> ChatRowPlan {
+        let line = ToolLine(tool, environment: key.environment)
+        var row = line.layout(key)
+        let body = Self.body(item, key: key, syntax: syntax, proposals: proposals) { parts in
+            let result = ToolResultLayout(width: key.width, maxContentWidth: key.maxContentWidth, line: row, parts: parts)
+            row = result.line
+            return result.body
+        }
+        let spoken = [line.spoken, body.accessibilityLabel ?? ""].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        return ChatRowPlan(id: item.id, size: body.size, items: line.draw(row) + body.items, hits: body.hits + line.hits(row), accessibilityLabel: spoken, proposals: body.proposals)
     }
 
     /// The words desktop's `TurnSummary` ends a turn with, by its reason.

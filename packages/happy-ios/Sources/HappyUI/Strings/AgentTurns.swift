@@ -65,6 +65,27 @@ extension Strings {
             "write_stdin": "Terminal input",
         ]
         public static func isRunning(_ tool: String) -> String { "\(tool) is running" }
+        public static let creating = "Creating"
+        public static let created = "Created"
+        public static let updating = "Updating"
+        public static let updated = "Updated"
+        public static let opening = "Opening"
+        public static let opened = "Opened"
+        public static let failedCall = "Failed"
+        public static let artifact = "artifact"
+        /// `mediaNoun`: what one call showed, by its items' kinds (an
+        /// unknown kind is a file, as `mediaKindProject` reads it).
+        public static func mediaNoun(_ kinds: [String]) -> String {
+            let known = kinds.map { ["image", "video", "document"].contains($0) ? $0 : "file" }
+            let plural = known.count > 1
+            guard Set(known).count == 1 else { return "Files" }
+            switch known[0] {
+            case "image": return plural ? "Images" : "Image"
+            case "video": return plural ? "Videos" : "Video"
+            case "document": return plural ? "Documents" : "Document"
+            default: return plural ? "Files" : "File"
+            }
+        }
 
         // HappyAgentUserInputPrompt.tsx
         public static let question = "Question"

@@ -21,8 +21,9 @@ extension ChatItem {
 
         public var running: Bool { status == "running" }
         public var failed: Bool { status == "failed" }
-        /// A file edit is a result the reader can open: it stays when the turn folds.
-        public var editsFiles: Bool { presentation?.type == "file_diff" }
+        /// A file edit, presented media or a published artifact is a result
+        /// the reader can open: it stays when the turn folds.
+        public var isResult: Bool { ["file_diff", "media", "artifact"].contains(presentation?.type) }
     }
 
     /// How a turn ended (desktop's `turnStatus` row, `TurnSummary`).
@@ -136,10 +137,12 @@ extension ChatItem {
 
 /// Folds each finished turn as desktop does (`happyAgentConnectGroupProject`):
 /// closed, a turn keeps the person's words, its final answer (else its last
-/// step), what other agents said, file edits, failures and how it ended,
+/// step), what other agents said, file edits, the media and artifacts its
+/// calls showed, failures and how it ended,
 /// and its "View traces" control rides the answer. Open, every step shows
 /// and the control rides the turn's first step. A turn still running, or
-/// with nothing to hide, is left as it is.
+/// with nothing to hide, is left as it is. Then calls showing pictures one
+/// after another are one grid (`MediaRuns`).
 public enum TurnFold {
     public static func fold(_ items: [ChatItem], expanded: Set<String>) -> [ChatItem] {
         var result: [ChatItem] = []
@@ -162,7 +165,7 @@ public enum TurnFold {
             ended.afterStep = isStep(result[index - 1])
             result[index].role = .turnEnd(ended)
         }
-        return result
+        return MediaRuns.join(result)
     }
 
     static func fold(turn: String, _ group: [ChatItem], open: Bool) -> [ChatItem] {
@@ -174,7 +177,7 @@ public enum TurnFold {
             if index == anchor { return true }
             switch group[index].role {
             case .turnEnd, .user, .collaborator, .failure, .trace: return true
-            case .tool(let tool): return tool.editsFiles
+            case .tool(let tool): return tool.isResult
             case .question(let ask): return ask.phase != .answered
             case .agent: return false
             }
@@ -209,6 +212,60 @@ public enum TurnFold {
         case .agent, .tool, .collaborator: true
         default: false
         }
+    }
+}
+
+/// Consecutive calls that each show only pictures in the same column grid
+/// (several screenshots read one after another, a batch of generated
+/// images) are one grid, as desktop draws them (`conversationMediaRuns`):
+/// every picture of the run, in order, under the run's last call; the calls
+/// before it keep only their line. An exploration between two of them is
+/// part of the work and the run goes on across it; anything else ends it,
+/// as does a call with another column count. A run of one is no run.
+public enum MediaRuns {
+    public static func join(_ items: [ChatItem]) -> [ChatItem] {
+        var result = items
+        var members: [Int] = []
+        var columns: Int?
+        func close() {
+            if members.count >= 2, let columns, let last = members.last {
+                var media: [Media] = []
+                for index in members {
+                    guard case .gallery(let shown, _)? = result[index].pieces.first else { continue }
+                    media += shown
+                }
+                for index in members.dropLast() { result[index].pieces = [] }
+                result[last].pieces = [.gallery(media, columns: columns)]
+            }
+            members = []
+            columns = nil
+        }
+        for index in items.indices {
+            guard let grid = Self.columns(items[index]) else {
+                if !Self.passesOver(items[index]) { close() }
+                continue
+            }
+            if grid != columns { close() }
+            columns = grid
+            members.append(index)
+        }
+        close()
+        return result
+    }
+
+    /// The column count of a call that can join a run: it showed only
+    /// pictures, in the columns the producer asked for.
+    static func columns(_ item: ChatItem) -> Int? {
+        guard case .tool(let tool) = item.role, tool.presentation?.type == "media", item.pieces.count == 1,
+              case .gallery(let media, let columns) = item.pieces[0], columns == 1 || columns == 2,
+              !media.isEmpty, media.allSatisfy({ $0.item.kind == "image" }) else { return nil }
+        return columns
+    }
+
+    /// A row a run goes on across: an exploration.
+    static func passesOver(_ item: ChatItem) -> Bool {
+        guard case .tool(let tool) = item.role else { return false }
+        return tool.presentation?.type == "exploration"
     }
 }
 

@@ -72,7 +72,8 @@ actor ChatPlanner {
         }
         switch item.role {
         case .failure(let failure): return Self.failure(failure, id: item.id, key: key, syntax: syntax)
-        case .tool(let tool): return Self.tool(tool, id: item.id, key: key)
+        case .tool(let tool):
+            return item.pieces.isEmpty ? Self.tool(tool, id: item.id, key: key) : Self.toolResult(tool, item: item, key: key, syntax: syntax, proposals: proposals)
         case .turnEnd(let ended): return Self.turnEnd(ended, id: item.id, key: key, copied: copied)
         case .trace(let trace): return Self.trace(trace, id: item.id, key: key)
         case .question(let ask): return Self.question(ask, id: item.id, key: key)
@@ -83,123 +84,9 @@ actor ChatPlanner {
         let text = HappyReferences.plain(item.text, view: key.references.view)
         switch item.role {
         case .agent:
-            // Desktop's agent text: Figtree 16/24 markdown, soft breaks as spaces, blocks 8
-            // apart, no copy button (a long press selects instead); its
-            // pictures and recordings where they were presented.
-            var parts: [MessageLayout.Part] = []
-            enum Draft {
-                case markdown(MarkdownPiece)
-                case gallery([Media])
-                case tree(ChatMediaPlan.Tree)
-                case card(ChatMediaPlan.Card)
-                case story(String)
-                case page(InlinePage)
-                case proposal(String)
-                /// Words the planner writes, read but not selectable.
-                case line(MarkdownPiece)
+            return Self.body(item, key: key, syntax: syntax, proposals: proposals) {
+                MessageLayout.agent(width: width, maxContentWidth: key.maxContentWidth, parts: $0)
             }
-            var drafts: [Draft] = []
-            var spoken: [String] = text.isEmpty ? [] : [text]
-            for piece in item.pieces {
-                switch piece {
-                case .text(let text):
-                    let resolved = HappyReferences.markdown(text, view: key.references.view)
-                    let markdown = MarkdownPiece(Markdown.joiningSoftBreaks(resolved), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.text, header: ChatTextStyles.header)
-                    drafts.append(.markdown(markdown))
-                    parts.append(.markdown(markdown.blocks))
-                case .gallery(let media, let columns):
-                    drafts.append(.gallery(media))
-                    parts.append(.media(media.map(Self.layoutItem), columns: columns))
-                case .tree(let media, let tree):
-                    let planned = ChatMediaPlan.tree(media, tree, environment: environment)
-                    drafts.append(.tree(planned))
-                    parts.append(.tree(planned.boxes))
-                case .file(let media):
-                    drafts.append(.card(ChatMediaPlan.card(file: media)))
-                    parts.append(.card)
-                case .story(let id):
-                    drafts.append(.story(id))
-                    parts.append(.story)
-                case .artifact(let artifact):
-                    drafts.append(.card(ChatMediaPlan.card(artifact: artifact)))
-                    parts.append(.card)
-                    // Desktop's inline page, under its card: only where the call follows the latest version.
-                    if artifact.followsLatest, let page = key.references.pages[artifact.id] {
-                        drafts.append(.page(InlinePage(artifactId: artifact.id, title: artifact.title, page: page)))
-                        parts.append(.page(height: key.pageHeights[artifact.id] ?? Self.pageHeight))
-                    }
-                case .sidebarProposal(let artifactId):
-                    // Drawn by the sidebar's own rows once it is read.
-                    if let shown = proposals[artifactId], shown.status != .loading, shown.status != .missing {
-                        drafts.append(.proposal(artifactId))
-                        parts.append(.proposal(shown.input))
-                    } else {
-                        let line = proposals[artifactId]?.status == .missing ? Strings.proposalMissing : Strings.proposalLoading
-                        let markdown = MarkdownPiece(line, color: Palette.cardDetail, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.text, header: ChatTextStyles.header)
-                        drafts.append(.line(markdown))
-                        parts.append(.markdown(markdown.blocks))
-                        spoken.append(line)
-                    }
-                case .picture, .sentFile:
-                    break
-                }
-            }
-            let layout = MessageLayout.agent(width: width, maxContentWidth: key.maxContentWidth, parts: parts)
-            var items: [ChatDrawItem] = []
-            var hits: [ChatHit] = []
-            var proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = []
-            func media(_ media: Media, _ frame: CGRect) {
-                items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.media(isVideo: media.isVideo, name: media.item.name)), frame: frame))
-                hits.insert(ChatHit(frame: frame, action: .openMedia(media.key)), at: 0)
-                // Telegram's ring pauses or resumes the download; a video's
-                // play button plays, so its badge does that instead.
-                let ring = media.isVideo ? MediaStatusLayout.badgeHit(in: frame) : ChatUpload.ring(in: frame).insetBy(dx: -8, dy: -8)
-                hits.insert(ChatHit(frame: ring, action: .toggleDownload(media.key)), at: 0)
-            }
-            func card(_ card: ChatMediaPlan.Card, _ frame: CGRect) {
-                let drawn = ChatMediaPlan.draw(card, in: frame, environment: environment)
-                items += drawn.items
-                hits.insert(drawn.hit, at: 0)
-                if let file = card.file {
-                    let chip = ResultCardLayout(frame: frame, opens: true).chip
-                    hits.insert(ChatHit(frame: chip.insetBy(dx: -8, dy: -8), action: .toggleDownload(file.key)), at: 0)
-                }
-            }
-            for (placed, draft) in zip(layout.parts, drafts) {
-                switch (placed, draft) {
-                case (.markdown(let placed, let origin), .markdown(let markdown)):
-                    let drawn = markdown.draw(placed, origin: origin)
-                    items += drawn.items
-                    hits += drawn.hits
-                case (.media(let frames), .gallery(let gallery)):
-                    for (one, frame) in zip(gallery, frames) { media(one, frame) }
-                case (.tree(let tree, let origin), .tree(let planned)):
-                    for (index, frame) in tree.items.sorted(by: { $0.key < $1.key }) where planned.media.indices.contains(index) {
-                        let one = planned.media[index]
-                        let placed = frame.offsetBy(dx: origin.x, dy: origin.y)
-                        if one.isVisual { media(one, placed) } else { card(ChatMediaPlan.card(file: one), placed) }
-                    }
-                    for (id, frame) in tree.texts.sorted(by: { $0.key < $1.key }) {
-                        guard let text = planned.texts[id] else { continue }
-                        let placed = frame.offsetBy(dx: origin.x, dy: origin.y)
-                        items.append(.text(text.layout(for: placed), placed))
-                    }
-                case (.card(let frame), .card(let drafted)):
-                    card(drafted, frame)
-                case (.story(let frame), .story(let id)):
-                    items.append(.embed(.story(id), frame: frame))
-                case (.page(let frame), .page(let page)):
-                    items.append(.embed(.page(page), frame: frame))
-                case (.markdown(let placed, let origin), .line(let markdown)):
-                    items += markdown.draw(placed, origin: origin).items
-                case (.proposal(let layout, let frame), .proposal(let artifactId)):
-                    proposals.append((artifactId, layout, frame))
-                default:
-                    break
-                }
-            }
-            // Each picture and recording reads as itself (`ChatMediaView`).
-            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"), proposals: proposals)
         case .user:
             // Desktop's own message: the text as written (Figtree 16/24), lines and all, in
             // the accent bubble at the right, its photos under it. Past ten
@@ -273,6 +160,129 @@ actor ChatPlanner {
             // Planned above.
             return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])
         }
+    }
+
+    /// An agent message's pieces in the parts `layout` places: desktop's
+    /// agent text (Figtree 16/24 markdown, soft breaks as spaces, blocks 8
+    /// apart, no copy button: a long press selects instead) and the
+    /// pictures, recordings, files and artifacts where they were presented.
+    static func body(_ item: ChatItem, key: Key, syntax: CodeSyntaxService, proposals: [String: ProposalShown], layout: ([MessageLayout.Part]) -> MessageLayout) -> ChatRowPlan {
+        let environment = key.environment
+        let text = HappyReferences.plain(item.text, view: key.references.view)
+        var parts: [MessageLayout.Part] = []
+        enum Draft {
+            case markdown(MarkdownPiece)
+            case gallery([Media])
+            case tree(ChatMediaPlan.Tree)
+            case card(ChatMediaPlan.Card)
+            case story(String)
+            case page(InlinePage)
+            case proposal(String)
+            /// Words the planner writes, read but not selectable.
+            case line(MarkdownPiece)
+        }
+        var drafts: [Draft] = []
+        var spoken: [String] = text.isEmpty ? [] : [text]
+        for piece in item.pieces {
+            switch piece {
+            case .text(let text):
+                let resolved = HappyReferences.markdown(text, view: key.references.view)
+                let markdown = MarkdownPiece(Markdown.joiningSoftBreaks(resolved), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.text, header: ChatTextStyles.header)
+                drafts.append(.markdown(markdown))
+                parts.append(.markdown(markdown.blocks))
+            case .gallery(let media, let columns):
+                drafts.append(.gallery(media))
+                parts.append(.media(media.map(Self.layoutItem), columns: columns))
+            case .tree(let media, let tree):
+                let planned = ChatMediaPlan.tree(media, tree, environment: environment)
+                drafts.append(.tree(planned))
+                parts.append(.tree(planned.boxes))
+            case .file(let media):
+                drafts.append(.card(ChatMediaPlan.card(file: media)))
+                parts.append(.card)
+            case .story(let id):
+                drafts.append(.story(id))
+                parts.append(.story)
+            case .artifact(let artifact):
+                drafts.append(.card(ChatMediaPlan.card(artifact: artifact)))
+                parts.append(.card)
+                // Desktop's inline page, under its card: only where the call follows the latest version.
+                if artifact.followsLatest, let page = key.references.pages[artifact.id] {
+                    drafts.append(.page(InlinePage(artifactId: artifact.id, title: artifact.title, page: page)))
+                    parts.append(.page(height: key.pageHeights[artifact.id] ?? Self.pageHeight))
+                }
+            case .sidebarProposal(let artifactId):
+                // Drawn by the sidebar's own rows once it is read.
+                if let shown = proposals[artifactId], shown.status != .loading, shown.status != .missing {
+                    drafts.append(.proposal(artifactId))
+                    parts.append(.proposal(shown.input))
+                } else {
+                    let line = proposals[artifactId]?.status == .missing ? Strings.proposalMissing : Strings.proposalLoading
+                    let markdown = MarkdownPiece(line, color: Palette.cardDetail, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.text, header: ChatTextStyles.header)
+                    drafts.append(.line(markdown))
+                    parts.append(.markdown(markdown.blocks))
+                    spoken.append(line)
+                }
+            case .picture, .sentFile:
+                break
+            }
+        }
+        let layout = layout(parts)
+        var items: [ChatDrawItem] = []
+        var hits: [ChatHit] = []
+        var proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = []
+        func media(_ media: Media, _ frame: CGRect) {
+            items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.media(isVideo: media.isVideo, name: media.item.name)), frame: frame))
+            hits.insert(ChatHit(frame: frame, action: .openMedia(media.key)), at: 0)
+            // Telegram's ring pauses or resumes the download; a video's
+            // play button plays, so its badge does that instead.
+            let ring = media.isVideo ? MediaStatusLayout.badgeHit(in: frame) : ChatUpload.ring(in: frame).insetBy(dx: -8, dy: -8)
+            hits.insert(ChatHit(frame: ring, action: .toggleDownload(media.key)), at: 0)
+        }
+        func card(_ card: ChatMediaPlan.Card, _ frame: CGRect) {
+            let drawn = ChatMediaPlan.draw(card, in: frame, environment: environment)
+            items += drawn.items
+            hits.insert(drawn.hit, at: 0)
+            if let file = card.file {
+                let chip = ResultCardLayout(frame: frame, opens: true).chip
+                hits.insert(ChatHit(frame: chip.insetBy(dx: -8, dy: -8), action: .toggleDownload(file.key)), at: 0)
+            }
+        }
+        for (placed, draft) in zip(layout.parts, drafts) {
+            switch (placed, draft) {
+            case (.markdown(let placed, let origin), .markdown(let markdown)):
+                let drawn = markdown.draw(placed, origin: origin)
+                items += drawn.items
+                hits += drawn.hits
+            case (.media(let frames), .gallery(let gallery)):
+                for (one, frame) in zip(gallery, frames) { media(one, frame) }
+            case (.tree(let tree, let origin), .tree(let planned)):
+                for (index, frame) in tree.items.sorted(by: { $0.key < $1.key }) where planned.media.indices.contains(index) {
+                    let one = planned.media[index]
+                    let placed = frame.offsetBy(dx: origin.x, dy: origin.y)
+                    if one.isVisual { media(one, placed) } else { card(ChatMediaPlan.card(file: one), placed) }
+                }
+                for (id, frame) in tree.texts.sorted(by: { $0.key < $1.key }) {
+                    guard let text = planned.texts[id] else { continue }
+                    let placed = frame.offsetBy(dx: origin.x, dy: origin.y)
+                    items.append(.text(text.layout(for: placed), placed))
+                }
+            case (.card(let frame), .card(let drafted)):
+                card(drafted, frame)
+            case (.story(let frame), .story(let id)):
+                items.append(.embed(.story(id), frame: frame))
+            case (.page(let frame), .page(let page)):
+                items.append(.embed(.page(page), frame: frame))
+            case (.markdown(let placed, let origin), .line(let markdown)):
+                items += markdown.draw(placed, origin: origin).items
+            case (.proposal(let layout, let frame), .proposal(let artifactId)):
+                proposals.append((artifactId, layout, frame))
+            default:
+                break
+            }
+        }
+        // Each picture and recording reads as itself (`ChatMediaView`).
+        return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"), proposals: proposals)
     }
 
     /// What a failure card's action does, as desktop's card offers it:
