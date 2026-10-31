@@ -6,7 +6,8 @@ import UIKit
 /// Search owns the whole content surface, including an empty query, which
 /// shows the conversations last active. Its scrolling and dismissal never
 /// move the home list underneath: pulled down from its top, the list
-/// bounces as any list does, and let go far enough, search closes.
+/// bounces as any list does, the keyboard goes, and let go far enough,
+/// search closes.
 final class HomeSearchResultsView: UIView {
     /// The results, on their own ground: never home's list.
     let list = SidebarView()
@@ -66,7 +67,7 @@ final class HomeSearchResultsView: UIView {
     }
 
     func clear() {
-        pulling = false
+        endPull()
         show([], query: "")
     }
 
@@ -84,20 +85,33 @@ final class HomeSearchResultsView: UIView {
         nothingFound.setLayoutFrame(layout.nothingFound.offsetBy(dx: -layout.nothingFoundPill.minX, dy: -layout.nothingFoundPill.minY))
     }
 
+    /// A pull from the top closes search, so the keyboard goes as it starts.
+    /// Left to follow the finger, the keyboard takes the touch once the
+    /// finger reaches it, and UIKit springs the pulled list back to its top
+    /// under the finger.
     @objc private func panned(_ gesture: UIPanGestureRecognizer) {
         switch gesture.state {
         case .began:
             pulling = list.contentOffset.y <= -list.adjustedContentInset.top + 1 && gesture.velocity(in: self).y > 0
+            if pulling {
+                list.keyboardDismissMode = .none
+                window?.endEditing(true)
+            }
         case .ended:
             let distance = gesture.translation(in: self).y
             let dismiss = pulling && HomeSearchPresentationLayout.shouldDismiss(distance: distance, velocity: gesture.velocity(in: self).y)
-            pulling = false
+            endPull()
             if dismiss { onDismiss?() }
         case .cancelled, .failed:
-            pulling = false
+            endPull()
         default:
             break
         }
+    }
+
+    private func endPull() {
+        pulling = false
+        list.keyboardDismissMode = .interactive
     }
 }
 #endif

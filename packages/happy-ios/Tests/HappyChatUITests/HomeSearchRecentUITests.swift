@@ -26,7 +26,8 @@ final class HomeSearchRecentUITests: XCTestCase {
         let results = app.scrollViews["search-results-list"]
         XCTAssertTrue(results.waitForExistence(timeout: 5))
         func row(_ kind: String, _ label: String) -> XCUIElement { results.descendants(matching: .any)["row:\(kind):\(label)"] }
-        XCTAssertTrue(row("section", "Recent").waitForExistence(timeout: 5), "an empty search shows nothing")
+        XCTAssertTrue(row("space", "Fix login crash").waitForExistence(timeout: 5), "an empty search shows nothing")
+        XCTAssertEqual(results.descendants(matching: .any).matching(identifier: "row:section:Recent").count, 0, "the recent have a title")
         // Bots and tasks, newest first; a subtask's work counts for its own.
         let order = ["Fix login crash", "Research Assistant", "Landing page copy", "Happy", "Release Bot"]
         let frames = order.map { label -> CGRect in
@@ -35,6 +36,9 @@ final class HomeSearchRecentUITests: XCTestCase {
             return element.frame
         }
         XCTAssertEqual(frames.map(\.minY), frames.map(\.minY).sorted(), "the recent aren't newest first")
+        // The first card stands the grouped list's 8 under the bar.
+        let bar = app.navigationBars.firstMatch.frame
+        XCTAssertEqual(frames[0].minY - bar.maxY, 8, accuracy: 1, "the results start \(frames[0].minY - bar.maxY) under the bar")
         XCTAssertFalse(row("session", "Write the regression test").exists, "a subtask stands alone among the recent")
         XCTAssertTrue(switcher.isHittable, "the header went with search")
         XCTAssertEqual(switcher.frame, header, "the header moved")
@@ -42,7 +46,6 @@ final class HomeSearchRecentUITests: XCTestCase {
 
         field.typeText("release")
         XCTAssertTrue(row("space", "Release Bot").waitForExistence(timeout: 5))
-        XCTAssertFalse(row("section", "Recent").exists)
         capture("search-typed")
 
         app.buttons["close"].tap()
@@ -54,12 +57,42 @@ final class HomeSearchRecentUITests: XCTestCase {
         // Again, closed by a pull from the top this time.
         field.tap()
         XCTAssertTrue(results.waitForExistence(timeout: 5))
-        XCTAssertTrue(row("section", "Recent").waitForExistence(timeout: 5))
+        XCTAssertTrue(row("space", "Fix login crash").waitForExistence(timeout: 5))
         let start = results.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
         start.press(forDuration: 0.05, thenDragTo: results.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)), withVelocity: .slow, thenHoldForDuration: 0.1)
         XCTAssertTrue(results.waitForNonExistence(timeout: 5), "a full pull didn't close search")
         XCTAssertEqual(switcher.frame, header)
         capture("search-pulled-closed")
+    }
+
+    /// A pull from the top takes the keyboard down as it starts, so a pull
+    /// that runs on into the keyboard never hands it the finger (UIKit
+    /// would spring the list back to its top under it); let go short of
+    /// closing, search stays.
+    func testAPullTakesTheKeyboardDown() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-screen", "groupedHome"]
+        app.launch()
+        defer { app.terminate() }
+        let field = app.searchFields["search-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        field.tap()
+        let results = app.scrollViews["search-results-list"]
+        XCTAssertTrue(results.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        func point(_ y: CGFloat) -> XCUICoordinate { results.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y)) }
+
+        // A short pull: the keyboard goes, search stays.
+        point(0.2).press(forDuration: 0.05, thenDragTo: point(0.26), withVelocity: .slow, thenHoldForDuration: 0.4)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "a pull left the keyboard up")
+        XCTAssertTrue(results.exists, "a short pull closed search")
+        capture("search-pull-short")
+
+        // Into the keyboard and on, held there, then let go: search closes.
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        point(0.2).press(forDuration: 0.05, thenDragTo: point(0.95), withVelocity: 150, thenHoldForDuration: 1)
+        XCTAssertTrue(results.waitForNonExistence(timeout: 5), "a pull into the keyboard didn't close search")
     }
 
     private func capture(_ name: String) {

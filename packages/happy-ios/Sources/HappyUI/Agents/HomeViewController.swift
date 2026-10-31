@@ -280,9 +280,7 @@ final class HomeViewController: UIViewController {
         guard !query.isEmpty else {
             search.results = [:]
             self.search = search
-            let recent = HappyCore.Search.recent(snapshot.allRows)
-            let heading = Row(id: "search:recent", nodeId: "search:recent", kind: .section, label: Strings.recent)
-            resultsView.show(recent.isEmpty ? [] : [heading] + recent, query: "")
+            resultsView.show(HappyCore.Search.recent(snapshot.allRows), query: "")
             return
         }
         let found = results(for: query)
@@ -375,8 +373,9 @@ final class HomeViewController: UIViewController {
         // middle; a phone is as wide as it ever was.
         let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset, maxWidth: ContentWidth.maxWidth, bannerOverlaysList: true)
         resultsView.frame = layout.content
+        // The results start right at the bar's foot, with no gap of home's.
         let searchInsets = searchContentInsets ?? contentInsets
-        resultsView.insets = UIEdgeInsets(top: searchInsets.contentTop, left: 0, bottom: searchInsets.listBottom, right: 0)
+        resultsView.insets = UIEdgeInsets(top: searchInsets.chromeTop, left: 0, bottom: searchInsets.listBottom, right: 0)
         banner.frame = layout.banner
         storiesBand.frame = CGRect(x: layout.content.minX, y: contentInsets.chromeTop, width: layout.content.width, height: max(0, bounds.height - contentInsets.chromeTop))
         sidebar.frame = layout.content

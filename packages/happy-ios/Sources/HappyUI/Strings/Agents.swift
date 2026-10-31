@@ -229,8 +229,6 @@ extension Strings {
     public static let couldNotSwitch = "Could not switch"
     public static let couldNotRemove = "Could not remove"
     public static let nothingFound = "Nothing found"
-    /// Over what an empty search shows: the conversations last active.
-    public static let recent = "Recent"
     // The QR sheet: nothing is shared, so Scan comes first.
     public static let qrCode = "QR Code"
     public static let qrText = "Scan an agent’s pairing code, or a code from the terminal or another device."
