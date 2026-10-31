@@ -3,7 +3,8 @@ import XCTest
 /// A conversation's header as Telegram's on iOS 26 (`-screen chatHeader`):
 /// a glass circle for Back, the name and its status on one capsule, and a
 /// glass circle for Compose, nothing else, in light and dark, at the top and
-/// with the transcript under it. A short name sits on the screen's middle;
+/// with the transcript under it. A short name sits on the screen's middle
+/// on a capsule of Telegram's minimum width, a medium one on a wider one;
 /// a long one moves aside only as far as Compose makes it. A tap on the
 /// name opens the detail, where the permission mode the header's More menu
 /// once had is a row of its own. With `HAPPY_PREVIEW_DIR` set
@@ -13,6 +14,7 @@ import XCTest
 final class ChatGlassHeaderUITests: XCTestCase {
     private static let names = [
         ("short", "hey"),
+        ("medium", "Pineapple poem for the team"),
         ("long", "Liquid Glass chat header for the iPhone"),
     ]
 
@@ -60,8 +62,18 @@ final class ChatGlassHeaderUITests: XCTestCase {
         // past their frames.
         XCTAssertLessThan(back.frame.maxX, title.frame.minX - 12)
         XCTAssertLessThan(title.frame.maxX + 12, compose.frame.minX)
+        let capsule = app.descendants(matching: .any)["chat-capsule"]
+        XCTAssertTrue(capsule.exists, "no capsule in \(label)")
+        if kind != "long" {
+            XCTAssertEqual(title.frame.midX, app.frame.midX, accuracy: 1, "a \(kind) name is off the screen's middle in \(label)")
+            XCTAssertEqual(capsule.frame.midX, app.frame.midX, accuracy: 1, "a \(kind) capsule is off the screen's middle in \(label)")
+        }
         if kind == "short" {
-            XCTAssertEqual(title.frame.midX, app.frame.midX, accuracy: 1, "a short name is off the screen's middle in \(label)")
+            // Telegram's minimum: 150 inside and 14 at each end.
+            XCTAssertEqual(capsule.frame.width, 178, accuracy: 1, "a short name's capsule isn't the minimum in \(label)")
+        } else if kind == "medium" {
+            XCTAssertGreaterThan(capsule.frame.width, 179, "a medium name's capsule didn't grow in \(label)")
+            XCTAssertEqual(capsule.frame.width, title.frame.width + 28, accuracy: 1, "a medium capsule isn't its name and 14 each side in \(label)")
         } else {
             // Back and Compose are circles alike: a long name fills the room
             // between them, as far from each, never past the middle's right.

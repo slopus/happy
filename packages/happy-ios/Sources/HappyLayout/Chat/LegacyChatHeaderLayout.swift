@@ -4,7 +4,8 @@ import CoreGraphics
 #endif
 
 /// ChatHeaderView's title on a phone: a glass capsule as tall as the
-/// controls beside it, hugging its text up to `maxWidth`, the text centred.
+/// controls beside it, hugging its text up to `maxWidth`, never under
+/// Telegram's 150 inside (as much as `maxWidth` has), the text centred.
 ///
 ///     ┌ 14 ─────── title (one line) ─────── 14 ┐  44
 ///     │       subtitle  4  [≈ +12 -3]          │
@@ -61,7 +62,9 @@ public struct ChatHeaderTitleLayout: Equatable, Sendable {
             }
         }
 
-        let contentWidth = max(titleWidth, rowWidth)
+        // Never a bubble round a short name: Telegram's 150 at the least,
+        // as much of it as `maxWidth` has (ChatHeaderLayout's minimum).
+        let contentWidth = max(titleWidth, rowWidth, min(ChatHeaderLayout.Metrics.minContent, inner))
         let contentHeight = titleSize.height + rowHeight
         size = CGSize(width: contentWidth + 2 * M.paddingH, height: M.height)
         let top = (M.height - contentHeight) / 2

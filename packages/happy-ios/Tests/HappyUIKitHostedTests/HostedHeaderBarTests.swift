@@ -201,9 +201,10 @@ final class HostedHeaderBarTests: XCTestCase {
             XCTAssertEqual(capsule.midY, header.convert(header.bounds, to: navigation.navigationBar).midY, accuracy: 1, "the capsule is off the title's line")
             XCTAssertTrue(navigation.navigationBar.bounds.contains(capsule), "the capsule leaves the bar")
             XCTAssertGreaterThan(capsule.minX, 16 + 44, "the capsule runs under Back")
-            // "Work item 1" is short: the capsule hugs it, on the bar's middle.
+            // "Work item 1" is short: the capsule is Telegram's minimum, on
+            // the bar's middle.
             XCTAssertEqual(capsule.midX, navigation.navigationBar.bounds.midX, accuracy: 1, "a short title is off the bar's middle")
-            XCTAssertLessThan(capsule.width, 160, "the capsule is wider than its words")
+            XCTAssertEqual(capsule.width, ChatHeaderLayout.Metrics.minContent + 2 * ChatHeaderLayout.Metrics.padding, "a short title's capsule isn't the minimum")
             XCTAssertNotNil(Self.subview(UILabel.self, in: header.capsule.contentView) { $0.accessibilityIdentifier == "chat-status" }, "the status is on the glass")
             XCTAssertNil(chat.navigationItem.standardAppearance, "the bar's own, shared look")
             Self.assertClear(navigation.navigationBar)

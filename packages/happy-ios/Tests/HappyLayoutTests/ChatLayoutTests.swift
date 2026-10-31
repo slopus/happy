@@ -768,20 +768,25 @@ final class QuestionSheetLayoutTests: XCTestCase {
 }
 
 final class LegacyChatHeaderLayoutTests: XCTestCase {
-    func testTheCapsuleHugsATitleAlone() {
+    /// A short title's capsule is Telegram's minimum, 150 inside, the
+    /// title centred in it.
+    func testAShortTitleIsTheMinimumCapsule() {
         let layout = ChatHeaderTitleLayout(maxWidth: 245, title: text("Fix the login", lineHeight: 20, maxLines: 1), subtitle: nil, changes: nil)
-        assertSize(layout.size, CGSize(width: 132, height: 44))
-        assertFrame(layout.title, rect(14, 12, 104, 20))
+        assertSize(layout.size, CGSize(width: 178, height: 44))
+        assertFrame(layout.title, rect(37, 12, 104, 20))
         XCTAssertNil(layout.subtitle)
         XCTAssertNil(layout.changes)
+        // Less room than the minimum: the room.
+        let squeezed = ChatHeaderTitleLayout(maxWidth: 120, title: text("Fix", lineHeight: 20, maxLines: 1), subtitle: nil, changes: nil)
+        assertSize(squeezed.size, CGSize(width: 120, height: 44))
     }
 
     func testTheBranchAndLineChangesShareARowUnderTheTitle() {
         let layout = ChatHeaderTitleLayout(maxWidth: 245, title: text("Chat", lineHeight: 20, maxLines: 1), subtitle: text("main", lineHeight: 14, maxLines: 1), changes: CGSize(width: 40, height: 13))
-        assertSize(layout.size, CGSize(width: 104, height: 44))
-        assertFrame(layout.title, rect(36, 5, 32, 20))
-        assertFrame(layout.subtitle!, rect(14, 25, 32, 14))
-        assertFrame(layout.changes!, rect(50, 25.5, 40, 13))
+        assertSize(layout.size, CGSize(width: 178, height: 44))
+        assertFrame(layout.title, rect(73, 5, 32, 20))
+        assertFrame(layout.subtitle!, rect(51, 25, 32, 14))
+        assertFrame(layout.changes!, rect(87, 25.5, 40, 13))
     }
 
     func testALongTitleStopsAtTheInsetAndTheBranchGivesWayToTheCounts() {

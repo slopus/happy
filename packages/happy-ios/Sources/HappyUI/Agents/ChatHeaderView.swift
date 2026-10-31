@@ -9,8 +9,8 @@ import UIKit
 /// detail.
 ///
 /// The view takes all the room the bar leaves between its items, and
-/// places the capsule in it itself (`ChatHeaderLayout`): hugging its text,
-/// centred on the bar, moved aside only as far as an item makes it. UIKit
+/// places the capsule in it itself (`ChatHeaderLayout`): Telegram's minimum
+/// width, wider for a longer name, centred on the bar, moved aside only as far as an item makes it. UIKit
 /// would centre a title view in whatever room is left, which a wide group
 /// at the right pushes off the bar's middle.
 @MainActor
@@ -22,7 +22,8 @@ final class ChatHeaderView: UIView {
     }
 
     /// The connection or what the agent is doing, always under its name.
-    /// The capsule follows the word's width, about the bar's middle.
+    /// Every status fits the capsule as it stands, so only the words
+    /// crossfade.
     var status: String = Strings.HeaderStatus.text(.connecting) {
         didSet {
             guard status != oldValue else { return }
