@@ -52,6 +52,7 @@ import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.components.HomeCardTags
 import com.slopus.happy.ui.connection.AgentHomeSpec
@@ -244,7 +245,7 @@ class HomeLayoutTest {
         val rows = rule.onAllNodesWithTag(FlatRowTags.ROW, useUnmergedTree = true)
         rows.assertCountEquals(2)
         val row = rows[0].bounds
-        assertBox("first row, in its card", row, 16.dp, barBottom + 8.dp, (PHONE_WIDTH - 32).dp, 81.dp)
+        assertBox("first row, in its card", row, 16.dp, barBottom + GlassSpec.feather + 8.dp, (PHONE_WIDTH - 32).dp, 81.dp)
         val avatar = rule.onAllNodesWithTag(FlatRowTags.AVATAR, useUnmergedTree = true)[0].bounds
         assertBox("avatar", avatar, 32.dp, row.top + 20.5.dp, 40.dp, 40.dp)
         val title = rule.onAllNodesWithTag(FlatRowTags.TITLE, useUnmergedTree = true)[0].bounds
@@ -473,7 +474,7 @@ class HomeLayoutTest {
         rule.onAllNodesWithTag(ProjectListTags.MACHINE, useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithTag(ProjectListTags.SECTION, useUnmergedTree = true).assertCountEquals(0)
         val project = rule.node(ProjectListTags.PROJECT).bounds
-        assertBox("project row, in its card", project, 16.dp, barBottom + 8.dp, (PHONE_WIDTH - 32).dp, 52.dp)
+        assertBox("project row, in its card", project, 16.dp, barBottom + GlassSpec.feather + 8.dp, (PHONE_WIDTH - 32).dp, 52.dp)
         val worktree = rule.node(ProjectListTags.WORKTREE).bounds
         assertBox("worktree, in the same card", worktree, 16.dp, project.bottom, (PHONE_WIDTH - 32).dp, 48.dp)
         val stem = rule.node(ProjectListTags.TREE_STEM).bounds

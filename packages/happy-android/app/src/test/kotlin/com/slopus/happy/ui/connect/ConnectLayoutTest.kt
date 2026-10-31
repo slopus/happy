@@ -12,6 +12,7 @@ import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
@@ -41,7 +42,7 @@ class ConnectLayoutTest {
         }
         // First group: no title, so a 16 spacer under the 64 header; cards are inset 16.
         val heroCard = rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true)[0].bounds
-        assertBox("hero card", heroCard, 16.dp, (64 + 16).dp, (PHONE_WIDTH - 32).dp, heroCard.bottom - heroCard.top)
+        assertBox("hero card", heroCard, 16.dp, (64 + 16).dp + GlassSpec.feather, (PHONE_WIDTH - 32).dp, heroCard.bottom - heroCard.top)
         val icon = rule.node(TerminalScreenTags.HERO_ICON).bounds
         assertBox("terminal icon", icon, ((PHONE_WIDTH - 48) / 2f).dp, heroCard.top + hairline + 24.dp, 48.dp, 48.dp)
 

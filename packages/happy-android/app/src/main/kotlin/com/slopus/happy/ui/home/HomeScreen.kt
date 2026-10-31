@@ -44,6 +44,7 @@ import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.text.pluralResource
 import com.slopus.happy.ui.components.GlassBarLayout
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.HomeCardRow
 import com.slopus.happy.ui.components.HomeCardSpec
 import com.slopus.happy.ui.components.Ionicon
@@ -147,10 +148,14 @@ fun HomeScreen(
     syncing: Boolean = false,
 ) {
     val colors = HappyTheme.colors
+    val listed = state != null && state.emptyState != HomeEmptyState.Link && state.emptyState != HomeEmptyState.Offline &&
+        state.emptyState != HomeEmptyState.NoSessions
     // The bar is glass over the page, as agent home's: the cards scroll on under it, softened.
     GlassBarLayout(
         modifier = modifier.fillMaxSize().background(colors.surface),
         ground = colors.surface,
+        // Only the list runs under the bar; the other states are held below its foot, with no feather over them.
+        feathered = listed,
         bar = {
             Column {
                 HomeHeader(connectionStatus, accounts, actions, syncing || state == null)
@@ -160,8 +165,8 @@ fun HomeScreen(
     ) { top ->
         Box(modifier = Modifier.fillMaxSize()) {
             val showArchived = { callbacks.onSetArchiveHidden(false) }
-            // Everything but the list is held below the bar; the list starts under it.
-            val below = Modifier.padding(top = top)
+            // Everything but the list is held below the bar; the list starts under it, clear of its feather.
+            val below = Modifier.padding(top = top - GlassSpec.feather)
             when {
                 state == null -> LoadingIndicator(below.testTag(HomeTags.LOADING))
                 // No computer linked and nothing to show: say so where home is, with the way to

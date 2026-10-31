@@ -5,27 +5,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.width
-import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentFeed
-import com.slopus.happy.artifacts.ArtifactRef
-import com.slopus.happy.conversation.Todo
-import com.slopus.happy.ui.artifacts.ArtifactListState
-import com.slopus.happy.ui.artifacts.ArtifactsScreen
-import com.slopus.happy.ui.artifacts.ArtifactsTags
-import com.slopus.happy.ui.connection.AgentPlacesTags
-import com.slopus.happy.ui.connection.PlaceRead
-import com.slopus.happy.ui.connection.SurfaceBody
-import com.slopus.happy.ui.connection.SurfaceScreen
 import com.slopus.happy.agent.AgentLinkStatus
+import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatReduction
 import com.slopus.happy.chat.ChatSessionInfo
@@ -38,6 +36,7 @@ import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Message
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.conversation.Presentation
+import com.slopus.happy.conversation.Todo
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.HomeModelFixtures.machine
 import com.slopus.happy.model.HomeModelFixtures.machineMetadata
@@ -45,13 +44,19 @@ import com.slopus.happy.model.HomeModelFixtures.metadata
 import com.slopus.happy.model.HomeModelFixtures.session
 import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.net.ConnectionStatus
+import com.slopus.happy.ui.artifacts.ArtifactListState
+import com.slopus.happy.ui.artifacts.ArtifactsScreen
+import com.slopus.happy.ui.artifacts.ArtifactsTags
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.chat.ChatListTags
 import com.slopus.happy.ui.chat.ChatScreen
 import com.slopus.happy.ui.chat.ChatScreenActions
 import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.chat.ComposerTags
 import com.slopus.happy.ui.chat.MessageTags
+import com.slopus.happy.ui.components.GlassBarTags
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.components.HomeCardSpec
 import com.slopus.happy.ui.components.ItemGroupTags
@@ -59,6 +64,10 @@ import com.slopus.happy.ui.connection.AgentHomeActions
 import com.slopus.happy.ui.connection.AgentHomeLayoutTest
 import com.slopus.happy.ui.connection.AgentHomeScreen
 import com.slopus.happy.ui.connection.AgentHomeTags
+import com.slopus.happy.ui.connection.AgentPlacesTags
+import com.slopus.happy.ui.connection.PlaceRead
+import com.slopus.happy.ui.connection.SurfaceBody
+import com.slopus.happy.ui.connection.SurfaceScreen
 import com.slopus.happy.ui.conversation.ConversationComposerTags
 import com.slopus.happy.ui.conversation.ConversationScreen
 import com.slopus.happy.ui.conversation.ConversationScreenActions
@@ -79,17 +88,18 @@ import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.settings.AboutInfo
 import com.slopus.happy.ui.settings.SettingsFixtures
 import com.slopus.happy.ui.settings.SettingsScreen
+import java.io.File
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import java.io.File
-import java.time.LocalDate
-import java.time.ZoneOffset
 
 /**
  * The layout tokens ([ContentTokens]) as the screens lay them out, at a
@@ -162,6 +172,49 @@ abstract class FoldableLayoutTest(
         assertDp("$what: the last action's glyph ends where the rows' content does", rowEnd, trailing.right)
     }
 
+    /**
+     * At rest, at the top of its list, nothing of the content lies in the
+     * bar's feather ([GlassSpec.feather], under the bar's foot): the first
+     * row is wholly below it, and only what scrolls up goes soft. [held] is
+     * for a screen whose content is held below the bar instead and so has no
+     * feather: its content stays below the bar's foot, as before.
+     */
+    private fun assertRestsBelowFeather(what: String, held: Boolean = false) {
+        val bar = rule.node(GlassBarTags.BAR).fetchSemanticsNode()
+        val inBar = HashSet<Int>()
+        fun walk(node: SemanticsNode) {
+            inBar += node.id
+            node.children.forEach(::walk)
+        }
+        walk(bar)
+        val visible = SemanticsMatcher("shows something") {
+            SemanticsProperties.Text in it.config || SemanticsProperties.ContentDescription in it.config || SemanticsProperties.TestTag in it.config
+        }
+        val density = rule.density.density
+        val window = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        val content = rule.onAllNodes(visible.or(hasClickAction()), useUnmergedTree = true).fetchSemanticsNodes()
+            .filter { it.id !in inBar && it.boundsInRoot.height > 0f && it.boundsInRoot.height < window.height / 2 }
+        val top = content.minOf { it.boundsInRoot.top } / density
+        val foot = bar.boundsInRoot.bottom / density
+        if (held) {
+            assertTrue("$what: the content (at $top) is held below the bar's foot ($foot)", top >= foot - 0.34f)
+        } else {
+            val first = content.minBy { it.boundsInRoot.top }
+            assertTrue(
+                "$what: the first row (${first.config}) starts at $top, inside the feather ($foot to ${foot + GlassSpec.feather.value})",
+                top >= foot + GlassSpec.feather.value - 0.34f,
+            )
+        }
+    }
+
+    /** A reversed transcript scrolled back to its oldest row, at rest. */
+    private fun scrollToOldest(list: String) {
+        // From the middle, not the list's top edge, which is under the bar.
+        repeat(8) { rule.node(list).performTouchInput { swipeDown(startY = centerY, endY = bottom) } }
+        rule.mainClock.advanceTimeBy(2_000)
+        rule.waitForIdle()
+    }
+
     @Test
     fun theTokensGiveThisKeyline() {
         assertDp("keyline", keyline, tokens.keyline(window))
@@ -190,6 +243,7 @@ abstract class FoldableLayoutTest(
         val dot = first(AgentHomeTags.ROW_DOT)
         assertOnRowContent("agent home", glyph(AccountMenuTags.BUTTON, 32.dp), glyph(AgentHomeTags.SETTINGS, 24.dp), mark.left, dot.right)
         assertDp("agent home: search sits 48 before settings", glyph(AgentHomeTags.SETTINGS, 24.dp).right - 48.dp, glyph(AgentHomeTags.SEARCH, 24.dp).right)
+        assertRestsBelowFeather("agent home")
         shot("agent-home")
     }
 
@@ -230,15 +284,17 @@ abstract class FoldableLayoutTest(
         val avatar = first(FlatRowTags.AVATAR)
         val end = first(FlatRowTags.TOP_RIGHT)
         assertOnRowContent("legacy home", glyph(AccountMenuTags.BUTTON, 32.dp), glyph(HomeTags.SETTINGS, 24.dp), avatar.left, end.right)
+        assertRestsBelowFeather("legacy home")
         shot("legacy-home")
     }
 
     @Test
     fun agentChat() {
-        val rows = listOf(
-            Message("m1", "user", 1, listOf(Block.Text("The login page loops back to itself after sign-in. Can you find out why?"))),
+        val rows = (0 until 6).flatMap { i ->
+          listOf(
+            Message("u$i", "user", 2L * i + 1, listOf(Block.Text("The login page loops back to itself after sign-in. Can you find out why?"))),
             Message(
-                "m2", "agent", 2,
+                "a$i", "agent", 2L * i + 2,
                 listOf(
                     Block.ToolCall("c1", "Bash", "completed", Presentation.Command("grep -rn redirect sources/auth", "...")),
                     Block.Text(
@@ -247,7 +303,8 @@ abstract class FoldableLayoutTest(
                     ),
                 ),
             ),
-        ).flatMap { ConversationRowBuilder.build(it, "a1", null, false) }.asReversed()
+          )
+        }.flatMap { ConversationRowBuilder.build(it, "a1", null, false) }.asReversed()
         val state = ConversationState(
             created = true, loaded = true, rows = rows,
             agent = AgentInfo("a1", "w1", null, "Fix the login redirect", "idle", null, null, 1_755_300_000_000, 1_755_400_000_000, 0, 2),
@@ -261,6 +318,8 @@ abstract class FoldableLayoutTest(
         assertDp("the composer is the column", window - (keyline - ContentTokens.inset) * 2, composer.width)
         assertDp("and centred", keyline - ContentTokens.inset, composer.left)
         shot("agent-chat")
+        scrollToOldest(ConversationScreenTags.LIST)
+        assertRestsBelowFeather("agent chat")
     }
 
     @Test
@@ -272,7 +331,7 @@ abstract class FoldableLayoutTest(
                 1, null, 1, "", null,
             ),
         )
-        val transcript = (0 until 4).flatMap { i ->
+        val transcript = (0 until 8).flatMap { i ->
             listOf(
                 ChatReduction.buildRow(
                     ChatMessage.AgentText(
@@ -299,6 +358,8 @@ abstract class FoldableLayoutTest(
         assertDp("the composer starts 8 inside the column", keyline - ContentTokens.inset + 8.dp, panel.left)
         assertDp("and ends 8 inside it", window - keyline + ContentTokens.inset - 8.dp, panel.right)
         shot("legacy-chat")
+        scrollToOldest(ChatListTags.LIST)
+        assertRestsBelowFeather("legacy chat")
     }
 
     @Test
@@ -313,6 +374,7 @@ abstract class FoldableLayoutTest(
         val row = first(ArtifactsTags.ROW)
         val title = DpRect(row.left + ContentTokens.inset, row.top, row.right - ContentTokens.inset, row.bottom)
         assertOnKeylines("artifacts", glyph(ConversationScreenTags.BACK, 24.dp), null, title)
+        assertRestsBelowFeather("artifacts", held = true)
         shot("artifacts")
     }
 
@@ -322,6 +384,7 @@ abstract class FoldableLayoutTest(
             SurfaceScreen("Groceries", PlaceRead.Ready(SurfaceBody.Todos(listOf(Todo("t1", "Eggs", false), Todo("t2", "Milk", true)))), {}, {}, {})
         }
         assertOnKeylines("surface", glyph(ConversationScreenTags.BACK, 24.dp), null, first(AgentPlacesTags.TODO))
+        assertRestsBelowFeather("surface", held = true)
         shot("surface")
     }
 
@@ -336,6 +399,7 @@ abstract class FoldableLayoutTest(
         }
         val card = first(ItemGroupTags.CARD)
         assertOnKeylines("settings", glyph(HeaderTags.LEFT, 24.dp), null, card)
+        assertRestsBelowFeather("settings")
         shot("settings")
     }
 }

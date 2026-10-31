@@ -26,6 +26,7 @@ import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuEntry
@@ -90,7 +91,7 @@ class AgentConnectionSettingsTest {
     fun theAgentsPictureHeadsThePageWithAPencilBadge() {
         show()
         val picture = rule.node(SettingsPageTags.PICTURE).bounds
-        assertBox("picture", picture, ((PHONE_WIDTH - 100) / 2f).dp, (64 + 8).dp, 100.dp, 100.dp)
+        assertBox("picture", picture, ((PHONE_WIDTH - 100) / 2f).dp, (64 + 8).dp + GlassSpec.feather, 100.dp, 100.dp)
         assertBox("badge in its corner", rule.node(SettingsPageTags.EDIT).bounds, picture.right - 32.dp, picture.bottom - 32.dp, 32.dp, 32.dp)
         rule.onNode(hasText("Studio") and hasTestTag(SettingsPageTags.NAME), useUnmergedTree = true).assertExists()
         rule.onNodeWithText("Connected").assertIsDisplayed()
@@ -192,7 +193,7 @@ class AgentConnectionSettingsTest {
             AgentProfileScreen("seed", state, photo = null, onRename = { done += "rename:$it" }, onChangePhoto = { done += "photo" }, onRemovePhoto = { done += "remove" }, onBack = {})
         }
         val picture = rule.node(AgentPagesTags.PICTURE).bounds
-        assertBox("picture", picture, ((PHONE_WIDTH - 100) / 2f).dp, (64 + 16).dp, 100.dp, 100.dp)
+        assertBox("picture", picture, ((PHONE_WIDTH - 100) / 2f).dp, (64 + 16).dp + GlassSpec.feather, 100.dp, 100.dp)
         val change = rule.node(AgentPagesTags.CHANGE_PHOTO).bounds
         assertDp("Change Photo 8 under", picture.bottom + 8.dp, change.top)
         rule.node(AgentPagesTags.CHANGE_PHOTO).performClick()

@@ -66,6 +66,7 @@ import com.slopus.happy.ui.chat.PrimaryAction
 import com.slopus.happy.ui.chat.resolvePrimaryAction
 import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.components.GlassBarLayout
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.ui.components.MaterialSymbols
@@ -221,10 +222,18 @@ fun ConversationScreen(
     val dockHeight = with(LocalDensity.current) { dock.toDp() }
     // Return in new work's name: on to the composer.
     var nameReturns by remember { mutableIntStateOf(0) }
+    val phase = when {
+        !state.loaded -> TranscriptPhase.Loading
+        state.error != null && state.rows.isEmpty() -> TranscriptPhase.Failed
+        state.rows.isEmpty() -> TranscriptPhase.Empty
+        else -> TranscriptPhase.Rows
+    }
     GlassBarLayout(
         modifier = modifier.testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface),
         ground = colors.surface,
         source = glass,
+        // Only the transcript runs under the bar; the other states are held below the bar's foot.
+        feathered = phase == TranscriptPhase.Rows,
         bar = {
             TopAppBar(
                 title = {
@@ -311,17 +320,12 @@ fun ConversationScreen(
         },
     ) { top ->
         Box(Modifier.fillMaxSize()) {
-            val phase = when {
-                !state.loaded -> TranscriptPhase.Loading
-                state.error != null && state.rows.isEmpty() -> TranscriptPhase.Failed
-                state.rows.isEmpty() -> TranscriptPhase.Empty
-                else -> TranscriptPhase.Rows
-            }
+            val barFoot = top - GlassSpec.feather
             // The loader fades into the transcript, and every state into the next.
             Crossfade(phase, label = "transcript") { shown ->
                 when (shown) {
                     TranscriptPhase.Loading -> LoadingIndicator(
-                        Modifier.padding(top = top, bottom = dockHeight).testTag(ConversationScreenTags.LOADING),
+                        Modifier.padding(top = barFoot, bottom = dockHeight).testTag(ConversationScreenTags.LOADING),
                     )
                     TranscriptPhase.Failed -> StatePage(
                         title = stringResource(R.string.conversation_load_failed),
@@ -329,7 +333,7 @@ fun ConversationScreen(
                         icon = Ionicon.CloudOfflineOutline,
                         action = stringResource(R.string.common_retry) to actions.onRetryLoad,
                         tag = ConversationScreenTags.ERROR,
-                        modifier = Modifier.padding(top = top, bottom = dockHeight),
+                        modifier = Modifier.padding(top = barFoot, bottom = dockHeight),
                     )
                     // New work is asked in the middle instead, and the chat it becomes is about to have its first message.
                     TranscriptPhase.Empty -> if (state.created && state.taken == null) {
@@ -338,7 +342,7 @@ fun ConversationScreen(
                             body = stringResource(R.string.conversation_empty),
                             art = StateArt.Ready,
                             tag = ConversationScreenTags.EMPTY,
-                            modifier = Modifier.padding(top = top, bottom = dockHeight),
+                            modifier = Modifier.padding(top = barFoot, bottom = dockHeight),
                         )
                     } else {
                         Box(Modifier.fillMaxSize())
@@ -351,7 +355,7 @@ fun ConversationScreen(
             // As last chosen, for the fade after it is made.
             val last = remember { arrayOfNulls<NewWork>(1) }
             (state.newWork?.also { last[0] = it } ?: last[0])?.let { shown ->
-                NewWorkRoom(state.newWork != null, Modifier.padding(top = top, bottom = dockHeight)) {
+                NewWorkRoom(state.newWork != null, Modifier.padding(top = barFoot, bottom = dockHeight)) {
                     NewWorkChoicePanel(shown, onChange = actions.onChoiceChange, onReturn = { nameReturns++ })
                 }
             }

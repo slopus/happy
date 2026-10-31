@@ -23,6 +23,7 @@ import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.components.ItemTags
 import com.slopus.happy.ui.home.AccountMenu
@@ -89,7 +90,7 @@ class SettingsLayoutTest {
     fun theProfileIsABigPictureNameAndUsernameCentredUnderTheBar() {
         show()
         val picture = rule.node(SettingsPageTags.PICTURE).bounds
-        assertBox("picture", picture, ((PHONE_WIDTH - 100) / 2f).dp, (64 + 8).dp, 100.dp, 100.dp)
+        assertBox("picture", picture, ((PHONE_WIDTH - 100) / 2f).dp, (64 + 8).dp + GlassSpec.feather, 100.dp, 100.dp)
         val name = rule.node(SettingsPageTags.NAME).bounds
         assertDp("name 12 under the picture", picture.bottom + 12.dp, name.top)
         assertBox("name across the page, 24 in", name, 24.dp, name.top, (PHONE_WIDTH - 48).dp, name.bottom - name.top)

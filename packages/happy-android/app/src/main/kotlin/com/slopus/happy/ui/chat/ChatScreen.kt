@@ -45,6 +45,7 @@ import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.ui.components.GlassBarLayout
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.Header
 import com.slopus.happy.ui.components.HeaderBackButton
 import com.slopus.happy.ui.layout.LocalWindowLayout
@@ -247,12 +248,15 @@ fun ChatScreen(
 
     // The bars over a tablet's composer sit 12 in rather than 8 (`sessionInputHorizontalPadding`).
     val tablet = LocalWindowLayout.current.isTablet
+    val showsList = session != null && state.sessionLoaded && state.snapshot.rows.isNotEmpty()
     GlassBarLayout(
         modifier = modifier
             .testTag(ChatScreenTags.SCREEN)
             .fillMaxSize()
             .background(colors.surface),
         ground = colors.surface,
+        // Only the transcript runs under the bar; what stands in for it is held below the bar's foot.
+        feathered = showsList,
         bar = {
             Column {
                 Header(
@@ -280,7 +284,6 @@ fun ChatScreen(
             var listBottom by remember { mutableFloatStateOf(0f) }
             var cardTop by remember { mutableStateOf<Float?>(null) }
             val dockInset = if (docked) with(density) { dockHeight.toDp() } else 0.dp
-            val showsList = session != null && state.sessionLoaded && state.snapshot.rows.isNotEmpty()
             val inputPadding = if (tablet) ChatScreenSpec.tabletInputPaddingHorizontal else ChatScreenSpec.inputPaddingHorizontal
             val dock = @Composable { dockModifier: Modifier, composerModifier: Modifier ->
                 if (composerSession != null) {
@@ -300,7 +303,7 @@ fun ChatScreen(
                     .onGloballyPositioned { listBottom = it.boundsInRoot().bottom },
             ) {
                 // The list runs under the bar and the floating dock; anything else keeps to the room between them.
-                Box(Modifier.fillMaxSize().padding(top = if (showsList) 0.dp else top, bottom = if (showsList) 0.dp else dockInset)) {
+                Box(Modifier.fillMaxSize().padding(top = if (showsList) 0.dp else top - GlassSpec.feather, bottom = if (showsList) 0.dp else dockInset)) {
                     when {
                         session == null && pending != null -> pending.placeholder()
                         !state.sessionLoaded -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))

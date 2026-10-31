@@ -265,6 +265,82 @@ The bottom band is the same glass as before. The content itself moved 2.3–2.4 
 every run. Screenshots taken while the transcript is held mid-drag under the bar are in
 `.context/shots/device/` (`before-chat-*`, `after-chat-*`; not committed).
 
+## Soft bottom edge (2026-10-31)
+
+Steve: "This header should be progressively transparent at the bottom as well, so it isn't a
+hard cut but a soft edge." The glass ended at the bar's foot: blurred and tinted above, sharp
+below, so anything scrolling up was sliced along one horizontal line. (The bar had no hairline
+of its own; the cut was the line.)
+
+**What the references do.**
+
+- **iOS (`packages/happy-ios`)**, `HeaderScrimView` and `HeaderScrim` in `HomeTokens.swift`:
+  one gradient, used twice. It is the ground's colour (alpha × peak) over a 2 pt blur, and the
+  same stops are a mask on the blur view. So the blur and the fade clear together. On home it
+  holds 0.94 and feathers over its last 36 pt as `1 - p^1.67` (25 stops). The scrim is the
+  header plus 8 pt (`backdropOverhang`), so 28 pt of the feather lie inside the 52 pt row and
+  8 pt below it. The list starts 12 pt below the header, 4 pt clear of the feather. In the agent
+  chat (`ChatLayout.Metrics`) it holds 1.0 and feathers over 24 pt (`headerRamp`), ending
+  10 pt below the bar (`headerOverhang`). It also has a presence ramp: no scrim at all at rest,
+  and the whole scrim once the list has gone 8 pt under it.
+- **Telegram (3de37c8cf)**, `ChatActivityFadeView`: a `BlurredBackgroundWithFadeDrawable` over
+  the top zone (`setFadeZoneTop`, from the window's top to the bar and its panels). It is the
+  blurred source masked `DST_IN` with alphas 0, 0x60, 0xB0, 0xE8 of 285 (0, 0.34, 0.62,
+  0.81). It holds 0.81 and clears over the zone's last 48 dp (`setFadeHeightTop(dp(48))`; the
+  default is 30). As at the dock, Telegram's ramp is part of the zone the list keeps clear.
+- **iOS 26's soft scroll edge** (`topEdgeEffect.style = .soft`, used by our `HeaderBar`):
+  the system's own progressive blur and dimming under a bar. It is strongest at the screen's
+  edge and dissolves into the content just below the bar, with no line. Apple publishes no
+  numbers for it.
+
+All three fade the blur and the tint **together, through one mask**, rather than shrinking a
+blur radius. That is what we do too.
+
+**What we do.** `glassBar` draws the glass `GlassSpec.feather` = **24 dp** past the bar's
+foot. Everything (ground, blurred content, tint, or a backdrop) is drawn in one layer, and that
+layer is masked `DstIn` by `GlassSpec.featherAlpha(t) = 1 − smoothstep(t)`: 1 at the bar's
+foot, 0.5 halfway, 0 at the end. Like the top ramp, it is flat at both ends, so neither the bar's
+foot nor the feather's end reads as a line. Inside the bar nothing changed: 0.96 over the status
+bar, the smoothstep to 216/255 (light) or 178/255 (dark) at the foot (57e08ae9e), and the same
+prefiltered 1/8 capture (0927c5f14). Below the foot the tint holds the foot's alpha and the mask
+fades it out.
+
+- **Why 24 dp:** it is iOS's chat ramp. Each dp of feather below the bar is a dp of list padding
+  at rest, so the short end of the 24–48 range costs least. With a smoothstep, 24 already reads
+  as a soft edge on the device.
+- **Why below the bar, not inside it.** Both were tried on the emulator
+  (`.context/shots/pairs/tri-*`). With the feather in the bar's lowest 24 dp, content shows
+  half-sharp from 12 dp above the foot. In the agent chat a transcript line ran straight
+  through the "online" status under the title. Below the bar, the title, status and icons keep
+  the whole bar's ground, as before, and the softening happens where there are no controls.
+- **Nothing rests under it.** `GlassBarLayout` gives its content `top` = bar + 24 dp, so every
+  list that runs under the bar (`ItemList`, `barInsetTop()`, home's and agent home's lists, both
+  transcripts) starts 24 dp lower and its first row rests below the feather. Only what scrolls up
+  goes soft: Telegram's rule, and the lesson of the dock's "shadow".
+- **Only over a list.** Content held below the bar (any `GlassBarScreen` whose content claims
+  nothing, such as artifacts and Surfaces; home's, agent home's and the chats'
+  loading, empty and offline states; agent home's search results) stays at the bar's foot,
+  and the bar is drawn without the feather (`feathered = false`). Nothing ever passes under
+  those bars, so a feather could only lie over content at rest. The room stays in `top` either
+  way, so nothing moves when a list arrives.
+- **No line.** At rest the band under the bar is the ground over the ground. On the emulator its
+  rows differ by at most 1 level of 255. Scrolling, the Settings avatar crossing the bar's foot
+  went from an 80-level step between two rows (the cut) to at most 5.
+
+**Tests.** `GlassBarEdgeTest`: the curve (1, 0.5, 0 at 0, ½, 1; monotonic; flat ends). The
+window's pixels under a red backdrop down the bar and through the feather: the foot's tint at the
+foot, half of it halfway, nothing past the end, never rising and no row-to-row step over 0.03,
+so no hairline and no hard foot. Unfeathered, the glass stops at the foot and the room stays.
+A `GlassBarScreen` feathers only once a list claims its room. `FoldableLayoutTest` (411, 750, 832,
+1280): on agent home, legacy home, both chats (scrolled back to the oldest row) and Settings,
+nothing of the content rests in the feather; artifacts and Surfaces stay at the bar's foot.
+
+**Screenshots** (API 35 emulator, real RenderEffect blur; 411 dp, and 750 dp via
+`wm size 1968x2184` at 420 dpi): `.context/shots/emu/{before,after}-<screen>-{rest,held}-{light,dark}-{411,750}dp.png`
+and side-by-side crops of the top in `.context/shots/pairs/` (not committed), taken by the
+`GlassEdgeShots` instrumentation test (`-e shots <prefix>`), which holds a finger mid-drag so
+content stays under the bar's foot.
+
 ## Ours before this change (`ui/components/Glass.kt`)
 
 | | ours (before) | Telegram |

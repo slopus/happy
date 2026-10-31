@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.auth.AuthApi.ServerProbe
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.server.ServerScreen
@@ -36,7 +37,7 @@ class ScreenLayoutTest {
         }
         val card = rule.node(ItemGroupTags.CARD).bounds
         assertDp("card left", 16, card.left)
-        assertDp("card top (header + 16 spacer)", 64 + 16, card.top)
+        assertDp("card top (header, its feather, 16 spacer)", (64 + 16).dp + GlassSpec.feather, card.top)
         val form = rule.node(ServerTags.FORM).bounds
         assertDp("form inset 16 from the card", card.left + hairline() + 16.dp, form.left)
         assertDp("form top inset 12 from the card", card.top + hairline() + 12.dp, form.top)

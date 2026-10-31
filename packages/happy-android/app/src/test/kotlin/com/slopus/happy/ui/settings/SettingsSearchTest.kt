@@ -22,6 +22,7 @@ import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.components.ItemTags
 import com.slopus.happy.ui.components.ProvideRowReveal
@@ -100,7 +101,7 @@ class SettingsSearchTest {
         search("app")
         val cards = rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true)
         cards.assertCountEquals(1)
-        assertDp("card 8 under the 64 bar", 64 + 8, cards[0].bounds.top)
+        assertDp("card 8 under the 64 bar and its feather", (64 + 8).dp() + GlassSpec.feather, cards[0].bounds.top)
         assertEquals(listOf("Appearance"), resultTitles())
     }
 
@@ -110,7 +111,7 @@ class SettingsSearchTest {
         search("zzzz")
         rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true).assertCountEquals(0)
         val line = rule.node(SettingsSearchTags.NOTHING_FOUND).bounds
-        assertBox("nothing found", line, 0.dp(), (64 + 40).dp(), PHONE_WIDTH.dp(), line.bottom - line.top)
+        assertBox("nothing found", line, 0.dp(), (64 + 40).dp() + GlassSpec.feather, PHONE_WIDTH.dp(), line.bottom - line.top)
         rule.node(SettingsSearchTags.NOTHING_FOUND).assertTextEquals("Nothing found")
     }
 
@@ -195,7 +196,9 @@ class SettingsSearchTest {
         rule.waitForIdle()
         val row = rule.node(AccountTags.PUSH_REREGISTER).bounds
         // Between the 64 bar and the bottom of the 891 window.
-        assertDp("row's middle in the middle", (64 + (891 - 64) / 2f).dp(), (row.top + row.bottom) / 2)
+        // What shows clearly: below the bar and its feather.
+        val clear = 64 + GlassSpec.feather.value
+        assertDp("row's middle in the middle", (clear + (891 - clear) / 2f).dp(), (row.top + row.bottom) / 2)
     }
 
     /** What search finds of a page is what the page shows: every entry's row is there, by the same title. */

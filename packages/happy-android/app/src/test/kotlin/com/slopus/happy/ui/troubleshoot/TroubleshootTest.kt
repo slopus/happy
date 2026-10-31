@@ -14,6 +14,7 @@ import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
@@ -83,7 +84,7 @@ class TroubleshootTest {
             )
         }
         val heading = rule.node(TroubleshootTags.HEADING).bounds
-        assertBox("heading", heading, 24.dp, (64 + 20).dp, (PHONE_WIDTH - 48).dp, heading.bottom - heading.top)
+        assertBox("heading", heading, 24.dp, (64 + 20).dp + GlassSpec.feather, (PHONE_WIDTH - 48).dp, heading.bottom - heading.top)
         val intro = rule.node(TroubleshootTags.INTRO).bounds
         assertDp("intro 8 below", heading.bottom + 8.dp, intro.top)
 

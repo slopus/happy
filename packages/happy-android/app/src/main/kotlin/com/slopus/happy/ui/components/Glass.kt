@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -113,8 +114,29 @@ object GlassSpec {
     fun barAlpha(y: Float, edge: Float, height: Float, foot: Float): Float {
         if (height <= edge) return BAR_EDGE_ALPHA
         val t = ((y - edge) / (height - edge)).coerceIn(0f, 1f)
-        return BAR_EDGE_ALPHA + (foot - BAR_EDGE_ALPHA) * t * t * (3 - 2 * t)
+        return BAR_EDGE_ALPHA + (foot - BAR_EDGE_ALPHA) * smoothstep(t)
     }
+
+    /**
+     * How far a bar's glass runs on past its foot, fading out
+     * ([featherAlpha]): iOS's chat header feathers over 24 pt, its home over
+     * 36, Telegram's chat over 48 dp. Below the bar rather than in it, so the
+     * controls' lower half keeps the bar's whole ground; a list keeps it
+     * clear at rest ([GlassBarLayout]'s top), so only what scrolls up goes
+     * under it.
+     */
+    val feather = 24.dp
+
+    /**
+     * How much of a bar's glass (ground, blur and tint alike) shows [t] of
+     * the way through its [feather], from the bar's foot (0) to the
+     * feather's end (1): all of it, then none, along a smoothstep, flat at
+     * both ends so neither reads as a line.
+     */
+    fun featherAlpha(t: Float): Float = 1 - smoothstep(t.coerceIn(0f, 1f))
+
+    private fun smoothstep(t: Float): Float = t * t * (3 - 2 * t)
+
     /**
      * How far down from the top of what it backs the fade ramps in. It starts
      * at that top, not above it, so content resting above a dock is never
@@ -272,50 +294,82 @@ fun Modifier.glassFade(source: GlassSource?, tint: Color, blurs: Boolean): Modif
  * [ground] over the blur, progressively: nearly opaque over the status bar
  * ([GlassSpec.BAR_EDGE_ALPHA]), easing to [GlassSpec.BAR_ALPHA] on a light
  * ground and [GlassSpec.BAR_ALPHA_DARK] on a dark one at the bar's foot
- * ([GlassSpec.barAlpha]); nearly opaque throughout where nothing blurs. No
- * edge, as Telegram's chat list bar has none: at rest the content's own
- * ground is all that is under the bar, so bar and page are one surface.
+ * ([GlassSpec.barAlpha]); nearly opaque throughout where nothing blurs.
  *
- * A [backdrop] takes the ground's place: drawn opaque at the bar's size over
- * the blur, it is given the ground's alphas, so it is as see-through as the
- * ground would be wherever it is.
+ * [feathered], the glass runs on [GlassSpec.feather] past the bar's foot and
+ * fades out there, the blurred content and the ground over it alike, through
+ * one mask ([GlassSpec.featherAlpha]), as iOS's header scrim feathers its
+ * blur and its fade together and Telegram masks its blurred fade: what
+ * scrolls up goes soft gradually, with no edge and no hairline. At rest the
+ * content's own ground is all that is under the bar, so bar and page are one
+ * surface.
+ *
+ * A [backdrop] takes the ground's place: drawn opaque over the blur at the
+ * glass's size (its feather included), it is given the ground's alphas, so it
+ * is as see-through as the ground would be wherever it is.
  */
 fun Modifier.glassBar(
     source: GlassSource?,
     ground: Color,
     blurs: Boolean,
     backdrop: (DrawScope.() -> Unit)? = null,
+    feathered: Boolean = true,
 ): Modifier = composed {
     val layers = rememberGlassLayers()
     var origin by remember { mutableStateOf(Offset.Zero) }
     val statusBar = WindowInsets.statusBars.getTop(LocalDensity.current)
     onGloballyPositioned { origin = it.positionInRoot() }
         .drawWithCache {
+            val bar = size.height
+            // Whole pixels, as the room GlassBarLayout keeps for it is.
+            val feather = if (feathered) GlassSpec.feather.roundToPx().toFloat() else 0f
             // Where the status bar ends inside the bar; a bar lower on the screen has none.
-            val edge = (statusBar - origin.y).coerceIn(0f, size.height)
+            val edge = (statusBar - origin.y).coerceIn(0f, bar)
             val foot = if (ground.luminance() < DARK_LUMINANCE) GlassSpec.BAR_ALPHA_DARK else GlassSpec.BAR_ALPHA
-            fun ramp(color: Color) = if (blurs) barRamp(color, edge, size.height, foot) else SolidColor(color.copy(alpha = GlassSpec.FALLBACK_ALPHA))
+            fun ramp(color: Color) = if (blurs) barRamp(color, edge, bar, foot) else SolidColor(color.copy(alpha = GlassSpec.FALLBACK_ALPHA))
             val tint = ramp(ground)
             val mask = ramp(Color.Black)
+            val fade = if (feather > 0f) featherMask(bar, feather) else null
             onDrawBehind {
-                // The blur spreads past the layer's edge: keep it to the bar.
-                if (source != null) clipRect { drawSource(layers, source, origin, blurs) }
-                if (backdrop == null) {
-                    drawRect(tint)
-                } else {
-                    drawIntoCanvas { it.saveLayer(size.toRect(), Paint()) }
-                    backdrop()
-                    drawRect(mask, blendMode = BlendMode.DstIn)
-                    drawIntoCanvas { it.restore() }
+                // The glass is the bar and the feather under it.
+                inset(0f, 0f, 0f, -feather) {
+                    if (fade != null) drawIntoCanvas { it.saveLayer(size.toRect(), Paint()) }
+                    // The blur spreads past the layer's edge: keep it to the glass.
+                    if (source != null) clipRect { drawSource(layers, source, origin, blurs) }
+                    if (backdrop == null) {
+                        drawRect(tint)
+                    } else {
+                        drawIntoCanvas { it.saveLayer(size.toRect(), Paint()) }
+                        backdrop()
+                        drawRect(mask, blendMode = BlendMode.DstIn)
+                        drawIntoCanvas { it.restore() }
+                    }
+                    if (fade != null) {
+                        drawRect(fade, blendMode = BlendMode.DstIn)
+                        drawIntoCanvas { it.restore() }
+                    }
                 }
             }
         }
 }
 
 /**
+ * [GlassSpec.featherAlpha] as a mask: whole down to the bar's foot at [bar],
+ * clear [feather] below it, sampled as finely as [barRamp].
+ */
+private fun featherMask(bar: Float, feather: Float): Brush {
+    val stops = (0..BAR_RAMP_STEPS).map { i ->
+        val t = i.toFloat() / BAR_RAMP_STEPS
+        t to Color.Black.copy(alpha = GlassSpec.featherAlpha(t))
+    }
+    return Brush.verticalGradient(*stops.toTypedArray(), startY = bar, endY = bar + feather)
+}
+
+/**
  * [GlassSpec.barAlpha] of [color] as a gradient: a stop at the bar's top and
  * at [edge], and the smoothstep sampled finely enough below it that the
- * straight pieces between stops don't show.
+ * straight pieces between stops don't show. Below the bar's foot it holds the
+ * foot's alpha, for the feather to fade out.
  */
 private fun barRamp(color: Color, edge: Float, height: Float, foot: Float): Brush {
     val stops = buildList {

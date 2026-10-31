@@ -60,6 +60,7 @@ import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.GlassBarLayout
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.HomeCardSpec
 import com.slopus.happy.ui.components.Icon
@@ -209,9 +210,19 @@ fun AgentHomeScreen(
     // One ground under the bar and the page, the chat's own (surface), light and dark; the cards sit on it, as on iOS.
     // The bar is glass over the page: the cards scroll on under it, softened.
     val ground = colors.surface
+    val phase = when {
+        !feed.loaded && status == AgentLinkStatus.Connecting -> HomePhase.Loading
+        !feed.loaded -> HomePhase.Offline
+        // Artifacts alone is no home yet: the first chat is.
+        feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts } -> HomePhase.Empty
+        else -> HomePhase.List
+    }
     GlassBarLayout(
         modifier = Modifier.fillMaxSize().background(ground),
         ground = ground,
+        // Only the list runs under the bar. The other states, and search's results hanging from the bar, are held
+        // below its foot, with no feather over them.
+        feathered = phase == HomePhase.List && !searching,
         bar = {
             if (searching) {
                 AgentTopBar(
@@ -241,17 +252,11 @@ fun AgentHomeScreen(
         },
     ) { top ->
         Box(modifier = Modifier.fillMaxSize()) {
-            val phase = when {
-                !feed.loaded && status == AgentLinkStatus.Connecting -> HomePhase.Loading
-                !feed.loaded -> HomePhase.Offline
-                // Artifacts alone is no home yet: the first chat is.
-                feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts } -> HomePhase.Empty
-                else -> HomePhase.List
-            }
+            val barFoot = top - GlassSpec.feather
             // The loader fades into what comes, and every state into the next.
             Crossfade(phase, label = "agentHome") { shown ->
                 when (shown) {
-                    HomePhase.Loading -> LoadingIndicator(Modifier.padding(top = top).testTag(AgentHomeTags.SPINNER))
+                    HomePhase.Loading -> LoadingIndicator(Modifier.padding(top = barFoot).testTag(AgentHomeTags.SPINNER))
                     // Offline and removed keep a plain glyph, as desktop's errors do.
                     HomePhase.Offline -> StatePage(
                         tag = AgentHomeTags.OFFLINE,
@@ -262,7 +267,7 @@ fun AgentHomeScreen(
                             else -> stringResource(R.string.agent_home_offline_title, name)
                         },
                         body = statusMessage(status) ?: stringResource(R.string.agent_home_offline_body),
-                        modifier = Modifier.padding(top = top),
+                        modifier = Modifier.padding(top = barFoot),
                     )
                     // Desktop's wand beside the button that makes the first chat.
                     HomePhase.Empty -> StatePage(
@@ -271,7 +276,7 @@ fun AgentHomeScreen(
                         title = stringResource(R.string.agent_home_empty_title),
                         body = statusMessage(status) ?: stringResource(R.string.agent_home_empty_body),
                         action = stringResource(R.string.session_new_chat) to actions.onCompose,
-                        modifier = Modifier.padding(top = top),
+                        modifier = Modifier.padding(top = barFoot),
                     )
                     HomePhase.List -> AgentHomeList(
                         items = items,
@@ -292,11 +297,12 @@ fun AgentHomeScreen(
             }
             if (feed.loaded && !searching) ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE)
             // Home dims under the results, and a tap on it ends the search; it stays as it was underneath.
+            // Both start at the bar's own foot.
             AnimatedVisibility(
                 visible = searching && query.isNotBlank(),
                 enter = fadeIn(tween(PopupMotion.ENTER_MS)),
                 exit = fadeOut(tween(PopupMotion.EXIT_MS)),
-                modifier = Modifier.padding(top = top),
+                modifier = Modifier.padding(top = barFoot),
             ) {
                 Box(
                     Modifier
@@ -310,7 +316,7 @@ fun AgentHomeScreen(
                 visible = searching,
                 enter = fadeIn(tween(PopupMotion.ENTER_MS)),
                 exit = fadeOut(tween(PopupMotion.EXIT_MS)),
-                modifier = Modifier.padding(top = top),
+                modifier = Modifier.padding(top = barFoot),
             ) {
                 AgentSearchResults(
                     query = query,

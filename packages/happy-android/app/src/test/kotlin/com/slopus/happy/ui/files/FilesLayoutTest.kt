@@ -34,6 +34,7 @@ import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.diff.DiffTags
 import com.slopus.happy.ui.diff.LocalDiffSyntax
@@ -120,7 +121,7 @@ class FilesLayoutTest {
         rule.onAllNodesWithTag(DiffTags.LINE, useUnmergedTree = true).assertCountEquals(0)
         val header = rule.node(DiffTags.HEADER).bounds
         val bar = rule.node(HeaderTags.BAR).bounds
-        assertBox("file header under the bar", header, 0.dp, bar.bottom, PHONE_WIDTH.dp, header.height)
+        assertBox("file header under the bar and its feather", header, 0.dp, bar.bottom + GlassSpec.feather, PHONE_WIDTH.dp, header.height)
         rule.node(DiffTags.HEADER).performClick()
         rule.waitForIdle()
         rule.onAllNodesWithTag(DiffTags.LINE, useUnmergedTree = true).assertCountEquals(3)
