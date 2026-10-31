@@ -44,7 +44,7 @@ public final class SettingsAppearanceViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = Strings.Settings.appearance
-        showsBackTitle()
+        minimalBackButton()
         observation = session.store.observeSettings { [weak self] snapshot in
             let settings = AccountSettings(snapshot)
             guard let self, settings != self.settings else { return }

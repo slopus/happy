@@ -59,7 +59,7 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.groupedBackground)
-        showsBackTitle()
+        minimalBackButton()
         switcher = AccountSwitcher(context: context, controller: self)
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
             input: HomeDerivation.Input(

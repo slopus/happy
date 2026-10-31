@@ -130,11 +130,22 @@ public protocol ChatComposerView: UIView {
     var hasPermissionMenu: Bool { get }
     /// The permission modes the session's profile offers; nil for none.
     var permissionChoice: PermissionModeChoice? { get }
+    /// The session's status for the header's capsule, under its name
+    /// (online, last seen, thinking, waiting on the person); nil before
+    /// the session is known.
+    var headerStatus: ChatHeaderStatus? { get }
 }
 
 extension ChatComposerView {
     public var hasPermissionMenu: Bool { false }
     public var permissionChoice: PermissionModeChoice? { nil }
+    public var headerStatus: ChatHeaderStatus? { nil }
+}
+
+/// A session's status as its header says it: the words and their tone.
+public struct ChatHeaderStatus: Equatable {
+    public var text: String
+    public var color: UIColor
 }
 
 @MainActor
@@ -157,10 +168,14 @@ public protocol ChatComposerDelegate: AnyObject {
     /// the newest message and, as happy-app does, dismisses any question
     /// the agent was waiting on, since the message answers it.
     func composer(_ composer: any ChatComposerView, didSend localId: String)
+
+    /// `headerStatus` changed.
+    func composerDidChangeHeaderStatus(_ composer: any ChatComposerView)
 }
 
 extension ChatComposerDelegate {
     public func composerDidRestore(_ composer: any ChatComposerView, generation: Int) {}
+    public func composerDidChangeHeaderStatus(_ composer: any ChatComposerView) {}
 }
 
 /// How long the chat waits for its composer's opening draft.

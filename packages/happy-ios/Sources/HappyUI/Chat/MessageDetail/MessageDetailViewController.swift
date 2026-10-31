@@ -77,7 +77,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         super.viewDidLoad()
         followsTextSize()
         view.backgroundColor = UIColor(Palette.groupedBackground)
-        showsBackTitle()
+        minimalBackButton()
         navigationItem.largeTitleDisplayMode = .never
         // ToolHeader: one line, cut in the middle, so both ends of a long
         // path or command stay readable.

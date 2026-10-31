@@ -66,8 +66,33 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private var state: ChatComposerState?
     private var picks = ComposerPicks()
     private var modes: ComposerModes
-    private var status: ComposerStatus?
+    /// The session's status: the header's capsule says it
+    /// (`headerStatus`), not the row over the card, which says only a
+    /// voice session's.
+    private var status: ComposerStatus? {
+        didSet { if status != oldValue { composerDelegate?.composerDidChangeHeaderStatus(self) } }
+    }
     private var vibingWord = ComposerStatus.randomVibingWord()
+
+    var headerStatus: ChatHeaderStatus? { status.map(Self.headerStatus) }
+
+    static func headerStatus(_ status: ComposerStatus) -> ChatHeaderStatus {
+        ChatHeaderStatus(text: text(status.text), color: UIColor(color(status.tone)))
+    }
+
+    /// What the header says before the composer is made: from the record
+    /// home already holds, so the chat's first frame has it.
+    static func headerStatus(record: SessionRecord, now presenceNow: Int64?) -> ChatHeaderStatus {
+        headerStatus(ComposerStatus(record: record, now: presenceNow ?? now, vibingWord: ComposerStatus.randomVibingWord()))
+    }
+
+    /// Every status the header may say, for its line's width: those with
+    /// fixed words, each vibing word, and the longest "last seen"s.
+    static var headerStatuses: [String] {
+        [Strings.Composer.online, Strings.Composer.permissionRequired, Strings.Composer.inputRequired]
+            + [ComposerStatus.LastSeen.justNow, .minutes(59), .hours(23), .days(6)].map { Strings.Composer.lastSeen(lastSeen($0)) }
+            + ComposerStatus.vibingMessages.map { text(.thinking($0.lowercased() + "…")) }
+    }
     private var usage: ComposerUsage?
     private var showsPreciseContext = false
     private var detailsVisible = true
@@ -450,7 +475,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             paddingH: paddingH,
             maxContentWidth: maxContentWidth,
             screenWidth: screenWidth,
-            statusText: status == nil && voiceStatus == nil ? nil : statusSize,
+            statusText: voiceStatus == nil ? nil : statusSize,
             panel: card.panelInput(width: innerWidth),
             usageWeek: usage?.weekPercent == nil ? nil : weekSize,
             usageContext: usage?.context == nil ? nil : contextButton.labelSize
@@ -1076,15 +1101,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             statusSize = statusLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
             statusDot.backgroundColor = color
             statusDot.isPulsing = true
-        } else if let status {
-            let color = UIColor(Self.color(status.tone))
-            statusLabel.attributedText = style.attributedString(Self.text(status.text), color: color, lineBreakMode: .byTruncatingTail)
-            statusSize = statusLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
-            statusDot.backgroundColor = color
-            statusDot.isPulsing = status.isPulsing
         }
-        statusDot.isHidden = status == nil && voiceStatus == nil
-        statusLabel.isHidden = status == nil && voiceStatus == nil
+        // The session's own status is the header's (`headerStatus`).
+        statusDot.isHidden = voiceStatus == nil
+        statusLabel.isHidden = voiceStatus == nil
         statusLabel.isUserInteractionEnabled = voiceStatus != nil
         statusLabel.accessibilityTraits = voiceStatus == nil ? .staticText : .button
 

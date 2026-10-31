@@ -39,7 +39,7 @@ public final class SettingsAgentsViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = Strings.Settings.agents
-        showsBackTitle()
+        minimalBackButton()
         // The computers and every agent's fields are worked out off the
         // main thread; the screen rebuilds only the groups that changed.
         let pipeline = ApplyPipeline<AgentsPage.Input, AgentsPage.Content?, AgentsPage.Update>(

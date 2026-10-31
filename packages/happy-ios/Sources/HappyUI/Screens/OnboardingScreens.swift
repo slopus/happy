@@ -39,7 +39,7 @@ public final class RestoreQRViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = Strings.Onboarding.restoreTitle
-        showsBackTitle()
+        minimalBackButton()
         view.backgroundColor = UIColor(Palette.groupedBackground)
         scrollView.contentInsetAdjustmentBehavior = .never
         view.addSubview(scrollView)

@@ -99,10 +99,13 @@ extension UIViewController {
         return item
     }
 
-    /// happy-app's stack shows "Back" on the screens pushed from here.
-    func showsBackTitle() {
-        navigationItem.backButtonDisplayMode = .default
-        navigationItem.backButtonTitle = Strings.Common.back
+    /// The screens pushed from here go back with the chevron alone, in its
+    /// glass circle: never "Back" nor this screen's title. The shell's
+    /// stack says the same of every screen (`TabletShellViewController`);
+    /// this covers one pushed onto another stack.
+    func minimalBackButton() {
+        navigationItem.backButtonDisplayMode = .minimal
+        navigationItem.backButtonTitle = nil
     }
 }
 #endif

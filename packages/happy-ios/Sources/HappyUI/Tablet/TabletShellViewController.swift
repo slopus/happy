@@ -196,7 +196,18 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
     }
 
     public func navigationController(_ navigationController: UINavigationController, willShow viewController: UIViewController, animated: Bool) {
+        Self.minimalBackButtons(in: navigationController)
         update()
+    }
+
+    /// Every screen in the stack, legacy and agent alike, is gone back to
+    /// with the chevron alone in its glass circle: never "Back" nor the
+    /// screen's title. Said before the bar draws the screen coming in.
+    static func minimalBackButtons(in navigation: UINavigationController) {
+        for controller in navigation.viewControllers where controller.navigationItem.backButtonDisplayMode != .minimal {
+            controller.navigationItem.backButtonDisplayMode = .minimal
+            controller.navigationItem.backButtonTitle = nil
+        }
     }
 
     public func navigationController(_ navigationController: UINavigationController, didShow viewController: UIViewController, animated: Bool) {

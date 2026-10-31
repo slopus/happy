@@ -337,8 +337,9 @@ final class ChatChromeTextSizeTests: XCTestCase {
         return nil
     }
 
-    /// The fixture chat with a goal and rig counts: its header and bars
-    /// follow the text size while the screen itself doesn't, and a new
+    /// The fixture chat with a goal and rig counts: its bars
+    /// follow the text size while the screen itself doesn't (its header's
+    /// capsule keeps the bar's own words, as the agent chat's), and a new
     /// size measures them again and lays the dock out with their new
     /// heights.
     func testANewTextSizeLaysTheDockOutAgain() async throws {
@@ -358,10 +359,10 @@ final class ChatChromeTextSizeTests: XCTestCase {
         let goal = try XCTUnwrap(find(ChatGoalBarView.self, in: chat.view))
         let rig = try XCTUnwrap(find(ChatRigActivityView.self, in: chat.view))
         let dock = try XCTUnwrap(find(ChatDockView.self, in: chat.view))
-        let title = try XCTUnwrap(chat.navigationItem.titleView as? ChatHeaderTitleView)
+        // The phone's header is the agent chat's capsule, its words the bar's own size.
+        XCTAssertTrue(chat.navigationItem.titleView is ChatHeaderView)
         XCTAssertNil(chat.view.traitCollection.textEnvironment)
         XCTAssertEqual(goal.traitCollection.textEnvironment, environment(.large))
-        XCTAssertEqual(title.text, environment(.large))
 
         /// What isn't yet at `category`, or nil once all is.
         func unsettled(_ category: UIContentSizeCategory) -> String? {
@@ -370,7 +371,6 @@ final class ChatChromeTextSizeTests: XCTestCase {
             var behind: [String] = []
             if goal.measure.applied?.input.text != text { behind.append("goal plan \(String(describing: goal.measure.applied?.input.text))") }
             if rig.measure.applied?.input.text != text { behind.append("rig plan \(String(describing: rig.measure.applied?.input.text))") }
-            if title.measure.applied?.input.text != text { behind.append("title plan \(String(describing: title.measure.applied?.input.text))") }
             if let plan = goal.measure.plan, abs(goal.bounds.height - plan.layout.size.height) >= 0.5 {
                 behind.append("goal \(goal.bounds.height) of \(plan.layout.size.height)")
             }
@@ -387,11 +387,7 @@ final class ChatChromeTextSizeTests: XCTestCase {
         window.updateTraitsIfNeeded()
         let grown = try await until { unsettled(.accessibilityMedium) == nil }
         XCTAssertTrue(grown, "the bars are measured again at the new size: \(unsettled(.accessibilityMedium) ?? "")")
-        // The bar holds the title view's own size to XXL; the header is
-        // handed the screen's.
-        XCTAssertEqual(title.text, environment(.accessibilityMedium), "the screen at \(chat.traitCollection.preferredContentSizeCategory.rawValue)")
         XCTAssertGreaterThan(dock.bounds.height, designed, "and the dock takes their new heights")
-        XCTAssertEqual(title.measure.plan?.layout.size.height, 44)
         await account.signOut()
     }
     #endif

@@ -76,7 +76,7 @@ public final class ChangelogViewController: UIViewController, UIScrollViewDelega
         let titleView = ChangelogTitleView(title: Strings.SettingsTitles.whatsNew)
         setScaledTitleView(titleView)
         title = Strings.SettingsTitles.whatsNew
-        showsBackTitle()
+        minimalBackButton()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         if !changelog.latestTitle.isEmpty {
             readMarker.markViewed(changelog.latestTitle)

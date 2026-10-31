@@ -73,7 +73,7 @@ final class SessionChangesViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        showsBackTitle()
+        minimalBackButton()
         // The session's metadata from the account's shared feed, found and
         // compared off the main thread; a new message's activity stamp is
         // not something these viewers read.

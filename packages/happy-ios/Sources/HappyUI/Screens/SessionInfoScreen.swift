@@ -134,7 +134,7 @@ final class SessionInfoViewController: UIViewController {
         // Header.tsx's title and every row's Text scale; the rows are
         // measured from their labels as drawn, as Settings' are.
         followsTextSize()
-        showsBackTitle()
+        minimalBackButton()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         // The title home already shows, in the bar as the screen slides in.
         // The first frame of the session's own snapshot sets the same title,
@@ -819,6 +819,10 @@ final class SessionInfoViewController: UIViewController {
         var rows: [() -> UIView] = []
         rows.append { [unowned self] in info(S.host, subtitle: metadata.host, icon: icon("desktop-outline", purple)) }
         rows.append { [unowned self] in info(S.path, subtitle: metadata.path, icon: icon("folder-outline", purple)) }
+        // Once under the chat's name in its header, where its status is now.
+        if let branch = model.branch {
+            rows.append { [unowned self] in info(Strings.ChatActions.branch, subtitle: branch, icon: icon("git-branch-outline", purple)) }
+        }
         if let version = metadata.cliVersion {
             rows.append { [unowned self] in
                 info(S.cliVersion, subtitle: version, detail: model.cliOutdated ? "⚠️" : nil,

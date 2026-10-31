@@ -27,10 +27,31 @@ final class ChatHeaderView: UIView {
     var status: String = Strings.HeaderStatus.text(.connecting) {
         didSet {
             guard status != oldValue else { return }
-            HeaderStatusTransition.apply(to: statusLabel) { [self] in statusLabel.text = status }
-            statusWidth = width(of: status)
-            HeaderStatusTransition.relayout(self)
+            setStatus(status, color: statusColor)
         }
+    }
+
+    /// The status's colour: the quiet grey, or a legacy session's tone
+    /// (online, thinking, waiting on the person).
+    private(set) var statusColor = UIColor(Palette.textSecondary)
+
+    /// The words and their colour, crossfaded together.
+    func setStatus(_ text: String, color: UIColor) {
+        guard text != statusLabel.text || color != statusColor else { return }
+        statusColor = color
+        if status != text { status = text; return }
+        HeaderStatusTransition.apply(to: statusLabel) { [self] in
+            statusLabel.text = text
+            statusLabel.textColor = color
+        }
+        statusWidth = width(of: text)
+        HeaderStatusTransition.relayout(self)
+    }
+
+    /// Every status this header may say, the line kept as wide as the
+    /// widest: the agent's by default.
+    var statuses: [String] = Strings.HeaderStatus.all {
+        didSet { reservedStatusWidth = statuses.map { width(of: $0) }.max() ?? 0; setNeedsLayout() }
     }
 
     /// The widest the name may be in the bar it is in.
@@ -83,7 +104,7 @@ final class ChatHeaderView: UIView {
     private lazy var statusWidth: CGFloat = width(of: status)
 
     /// The status's line is this wide whatever it says.
-    private lazy var reservedStatusWidth: CGFloat = Strings.HeaderStatus.all.map { width(of: $0) }.max() ?? 0
+    private lazy var reservedStatusWidth: CGFloat = statuses.map { width(of: $0) }.max() ?? 0
 
     /// The bar's middle in this view: what the capsule centres on. Before
     /// the bar has it, this view's own.

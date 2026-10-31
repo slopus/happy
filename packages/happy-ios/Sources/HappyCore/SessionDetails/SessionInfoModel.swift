@@ -20,6 +20,10 @@ public struct SessionInfoModel: Equatable, Sendable {
 
     // Quick Actions
     public var git: SessionDetails.GitPresentation
+    /// The workspace's name, else the live branch, else the one it started
+    /// on: what the chat's header said under its name before its status
+    /// took that line (`ChatHeaderModel.subtitle`).
+    public var branch: String?
     public var machineId: String?
     public var resume: SessionDetails.ResumeAvailability
     public var canFork: Bool
@@ -86,6 +90,7 @@ public struct SessionInfoModel: Equatable, Sendable {
         canLeaveTask = session.canLeaveTask
 
         git = SessionDetails.gitPresentation(metadata, status: gitStatus)
+        branch = ChatHeaderModel.subtitle(metadata, gitStatus: gitStatus)
         machineId = SessionDetails.truthy(metadata?["machineId"])
         resume = SessionDetails.resumeAvailability(session, machine: machine)
         canFork = SessionDetails.canFork(session, machine: machine, settings: settings)

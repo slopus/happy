@@ -131,7 +131,7 @@ final class PlaceholderViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.groupedBackground)
-        showsBackTitle()
+        minimalBackButton()
     }
 }
 #endif

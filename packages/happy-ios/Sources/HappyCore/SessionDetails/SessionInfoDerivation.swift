@@ -224,7 +224,7 @@ public enum SessionInfoDerivation {
                     changes.sequence = before.seq != after.seq
                 }
             case .metadata:
-                if before.metadata != after.metadata || before.cliOutdated != after.cliOutdated {
+                if before.metadata != after.metadata || before.cliOutdated != after.cliOutdated || before.branch != after.branch {
                     changes.rebuilt.insert(section)
                 }
             case .agentState:

@@ -1,20 +1,24 @@
 import HappyCore
 
 extension Strings {
+    /// The chat's controls and facts that moved from its header to its
+    /// profile, in iOS's own words (happy-app has no keys for them).
     enum ChatActions {
-        private static let translations: [String: String] = [
-            "en": "Permission mode",
-            "ru": "Режим разрешений",
-            "pl": "Tryb uprawnień",
-            "es": "Modo de permisos",
-            "it": "Modalità autorizzazioni",
-            "pt": "Modo de permissões",
-            "ca": "Mode de permisos",
-            "zh-Hans": "权限模式",
-            "zh-Hant": "權限模式",
-            "ja": "権限モード",
+        private static let translations: [String: [String]] = [
+            "en": ["Permission mode", "Branch"],
+            "ru": ["Режим разрешений", "Ветка"],
+            "pl": ["Tryb uprawnień", "Gałąź"],
+            "es": ["Modo de permisos", "Rama"],
+            "it": ["Modalità autorizzazioni", "Branch"],
+            "pt": ["Modo de permissões", "Branch"],
+            "ca": ["Mode de permisos", "Branca"],
+            "zh-Hans": ["权限模式", "分支"],
+            "zh-Hant": ["權限模式", "分支"],
+            "ja": ["権限モード", "ブランチ"],
         ]
 
-        static var permissionMode: String { translations[AppLocalization.language] ?? translations["en"]! }
+        private static var words: [String] { translations[AppLocalization.language] ?? translations["en"]! }
+        static var permissionMode: String { words[0] }
+        static var branch: String { words[1] }
     }
 }

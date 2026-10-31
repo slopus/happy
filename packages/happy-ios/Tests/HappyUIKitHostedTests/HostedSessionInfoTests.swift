@@ -141,11 +141,10 @@ final class HostedSessionInfoTests: XCTestCase {
         let pushed = try await until { navigation.topViewController is LegacyChatViewController }
         XCTAssertTrue(pushed, "the chat was never pushed")
         let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
-        // The title capsule opens it now that More has the avatar's place
-        // (e64be983f): in the bar once the chat is loaded, enabled once its
-        // record is in.
-        var title: ChatHeaderTitleView? { chat.navigationItem.titleView as? ChatHeaderTitleView }
-        let shown = try await until { chat.transitionCoordinator == nil && title.map { $0.isEnabled && $0.window != nil } == true }
+        // The title capsule opens it: in the bar from the push, opening
+        // once the chat's record is in.
+        let title = try XCTUnwrap(chat.navigationItem.titleView as? ChatHeaderView)
+        let shown = try await until { chat.transitionCoordinator == nil && chat.contentInstalled && title.window != nil }
         XCTAssertTrue(shown, "the title never showed")
         // Back, the name, and Compose: no More, no debug fixtures.
         XCTAssertEqual(chat.navigationItem.rightBarButtonItems?.map(\.accessibilityIdentifier), ["compose"])
@@ -156,7 +155,7 @@ final class HostedSessionInfoTests: XCTestCase {
             keep(window, "hosted-legacy-chat-header-\(name)")
         }
         window.overrideUserInterfaceStyle = .unspecified
-        try XCTUnwrap(title).sendActions(for: .touchUpInside)
+        title.onOpen?()
         let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
         let opened = try await until { !self.shownGroups(info, in: window).isEmpty }
         XCTAssertTrue(opened, "session info showed no groups")
@@ -223,9 +222,105 @@ final class HostedSessionInfoTests: XCTestCase {
         await controller.signOut()
     }
 
-    private func keep(_ window: UIWindow, _ name: String) {
+    /// The legacy chat's header is the agent chat's: its name and its
+    /// session's status on one glass capsule, in the bar from the push's
+    /// first layout, nothing measured first; the status is nowhere else.
+    func testTheLegacyChatHasItsCapsuleFromThePushesFirstLayout() async throws {
+        let (controller, account) = try await signedIn(agentState: .object(["controlledByUser": .bool(false)]))
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        for (style, name) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
+            let (window, navigation, _) = try await hosted()
+            window.overrideUserInterfaceStyle = style
+            let chat = LegacyChatViewController(context: context, session: account, sessionId: Self.sessionId)
+            navigation.pushViewController(chat, animated: true)
+            window.layoutIfNeeded()
+            // The first layout pass of the push.
+            let header = try XCTUnwrap(chat.navigationItem.titleView as? ChatHeaderView, "a plain title at the push's start")
+            XCTAssertNotNil(header.window, "the capsule isn't in the bar as the push starts")
+            XCTAssertTrue(header.capsule.effect is UIGlassEffect)
+            XCTAssertGreaterThan(header.capsule.bounds.width, 100)
+            XCTAssertEqual(header.titleView.text, "Session info screen")
+            let status = try XCTUnwrap(Self.allViews(UILabel.self, in: header.capsule.contentView).first { $0.accessibilityIdentifier == "chat-status" })
+            XCTAssertEqual(status.text, Strings.Composer.online, "the status isn't the capsule's subtitle")
+            // Dynamic colours are never equal as objects: compare them resolved.
+            let traits = header.traitCollection
+            XCTAssertEqual(header.statusColor.resolvedColor(with: traits), UIColor(Palette.sessionStatusOnline).resolvedColor(with: traits))
+            // Mid-push: the capsule is already there.
+            try await Task.sleep(for: .milliseconds(150))
+            keep(window, "legacy-chat-mid-push-\(name)", afterUpdates: false)
+            let settled = try await until { chat.transitionCoordinator == nil && chat.contentInstalled }
+            XCTAssertTrue(settled)
+            XCTAssertTrue(chat.navigationItem.titleView === header, "the capsule was swapped once the chat was built")
+            try await Task.sleep(for: .milliseconds(600))
+            XCTAssertEqual(status.text, Strings.Composer.online)
+            // Not over the composer as well: the status is the header's.
+            let elsewhere = Self.allViews(UILabel.self, in: chat.view).filter {
+                !$0.isHidden && $0.alpha > 0 && $0.window != nil && $0.text == Strings.Composer.online
+            }
+            XCTAssertEqual(elsewhere, [], "the status still shows outside the capsule")
+            keep(window, "legacy-chat-header-\(name)")
+            window.isHidden = true
+        }
+        await controller.signOut()
+    }
+
+    /// Every legacy screen goes back with the chevron alone in its glass
+    /// circle: never "Back" nor the screen behind's title.
+    func testEveryLegacyScreenGoesBackWithTheChevronAlone() async throws {
+        let (controller, account) = try await signedIn(agentState: .object(["controlledByUser": .bool(false)]))
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let scene = try await hostedActiveScene()
+        let hostWindow = scene.keyWindow
+        let home = LegacyHomeViewController(context: context, session: account)
+        let navigation = UINavigationController(rootViewController: home)
+        AppCoordinator.applyAppearance(to: navigation.navigationBar)
+        let shell = TabletShellViewController(context: context, detail: navigation)
+        let window = hostedKeyWindow(in: scene, root: shell)
+        defer { window.isHidden = true; hostWindow?.makeKey() }
+        window.layoutIfNeeded()
+        let routes: [Route] = [
+            .session(id: Self.sessionId), .sessionInfo(id: Self.sessionId), .sessionChanges(id: Self.sessionId),
+            .machine(id: "test-mac"), .settings, .settingsAppearance, .settingsLanguage, .settingsVoice,
+        ]
+        for route in routes {
+            let top = try XCTUnwrap(navigation.topViewController)
+            let count = navigation.viewControllers.count
+            top.push(route, context: context, animated: false)
+            let pushed = try await until(seconds: 10) { navigation.viewControllers.count == count + 1 && navigation.transitionCoordinator == nil }
+            XCTAssertTrue(pushed, "\(route) was never pushed")
+            try await Task.sleep(for: .milliseconds(300))
+            navigation.navigationBar.layoutIfNeeded()
+            for below in navigation.viewControllers.dropLast() {
+                XCTAssertEqual(below.navigationItem.backButtonDisplayMode, .minimal, "\(type(of: below)) under \(route)")
+                XCTAssertNil(below.navigationItem.backButtonTitle, "\(type(of: below)) under \(route)")
+            }
+            // Words by the chevron, at the bar's leading edge: the top's own
+            // centred title may well be the screen behind's.
+            let behind = navigation.viewControllers.dropLast().last
+            let words = Self.allViews(UILabel.self, in: navigation.navigationBar).filter {
+                !$0.isHidden && $0.alpha > 0 && [Strings.Common.back, behind?.navigationItem.title, behind?.title].contains($0.text)
+                    && $0.text?.isEmpty == false && $0.convert($0.bounds, to: navigation.navigationBar).minX < 100
+            }
+            XCTAssertEqual(words.compactMap(\.text), [], "words by the chevron on \(route)")
+            if case .sessionInfo = route {
+                for (style, name) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
+                    window.overrideUserInterfaceStyle = style
+                    try await Task.sleep(for: .seconds(1))
+                    keep(window, "legacy-info-back-\(name)")
+                }
+                window.overrideUserInterfaceStyle = .unspecified
+            }
+        }
+        await controller.signOut()
+    }
+
+    private static func allViews<T: UIView>(_ type: T.Type, in view: UIView) -> [T] {
+        view.subviews.flatMap { child in ((child as? T).map { [$0] } ?? []) + allViews(type, in: child) }
+    }
+
+    private func keep(_ window: UIWindow, _ name: String, afterUpdates: Bool = true) {
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-            _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: afterUpdates)
         }
         let attachment = XCTAttachment(image: image)
         attachment.name = name

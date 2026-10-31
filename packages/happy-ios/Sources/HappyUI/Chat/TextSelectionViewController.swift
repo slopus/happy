@@ -25,7 +25,7 @@ final class TextSelectionViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.groupedBackground)
-        showsBackTitle()
+        minimalBackButton()
         navigationItem.largeTitleDisplayMode = .never
         let copy = UIBarButtonItem(
             image: .icon(.ionicons("copy-outline"), size: 24), style: .plain, target: self, action: #selector(copyAll)
