@@ -36,11 +36,14 @@ class AgentConnectionsTest {
     private val secretPrefs get() = context.getSharedPreferences(AgentConnections.SECRETS_PREFS, Context.MODE_PRIVATE)
     private val registryPrefs get() = context.getSharedPreferences(AgentConnections.REGISTRY_PREFS, Context.MODE_PRIVATE)
 
+    private val pictures get() = java.io.File(context.filesDir, "agent-avatars")
+
     private fun accounts() = AgentConnections(
         secrets = ExpoSecureStore(secretPrefs, keys, keychainService = AgentConnections.KEYCHAIN_SERVICE),
         registry = registryPrefs,
         makeTransport = { transport(it) },
         now = { PAIRING_NOW },
+        pictures = pictures,
     )
 
     private fun credentials(deviceId: String = "dv1") =
@@ -50,6 +53,7 @@ class AgentConnectionsTest {
     fun setUp() {
         secretPrefs.edit().clear().commit()
         registryPrefs.edit().clear().commit()
+        pictures.deleteRecursively()
     }
 
     @After
@@ -72,6 +76,55 @@ class AgentConnectionsTest {
         val stored = (secretPrefs.all.values + registryPrefs.all.values).joinToString()
         assertFalse(stored.contains(credentials().deviceToken))
         assertFalse(stored.contains("tcFixedVectorAddress"))
+    }
+
+    @Test
+    fun theAgentsOwnPictureIsKeptAsAFileAndAskedForOnlyWhenChanged() = runBlocking {
+        daemon.avatar = byteArrayOf(1, 2, 3)
+        val accounts = accounts()
+        val account = accounts.add(credentials(), "Steve's Mac")
+        val first = java.io.File(account.avatarFile!!)
+        assertTrue(first.readBytes().contentEquals(byteArrayOf(1, 2, 3)))
+        assertEquals("\"3\"", account.avatarETag)
+        val token = credentials().deviceToken
+
+        // Unchanged: a 304, and the same file.
+        val same = AgentIdentity.refresh(daemon, token, "", account.avatarETag)
+        assertEquals(NodeAvatar.Unchanged, same.avatar)
+        accounts.update(account.id, same.avatar) { it }
+        assertEquals(first.path, accounts.accounts.value.single().avatarFile)
+
+        // A new picture: a new file, the old one gone.
+        daemon.avatar = byteArrayOf(4, 5, 6, 7)
+        accounts.update(account.id, AgentIdentity.refresh(daemon, token, "", account.avatarETag).avatar) { it }
+        val second = java.io.File(accounts.accounts.value.single().avatarFile!!)
+        assertTrue(second.readBytes().contentEquals(byteArrayOf(4, 5, 6, 7)))
+        assertFalse(first.exists())
+
+        // Taken away on the agent: none kept.
+        daemon.avatar = null
+        accounts.update(account.id, AgentIdentity.refresh(daemon, token, "", "\"4\"").avatar) { it }
+        assertNull(accounts.accounts.value.single().avatarFile)
+        assertFalse(second.exists())
+
+        // Removing the agent removes its picture.
+        daemon.avatar = byteArrayOf(9)
+        accounts.update(account.id, AgentIdentity.refresh(daemon, token, "").avatar) { it }
+        val third = java.io.File(accounts.accounts.value.single().avatarFile!!)
+        accounts.remove(account.id)
+        assertFalse(third.exists())
+    }
+
+    @Test
+    fun aPictureThatIsntOneLeavesTheAgentReachable() = runBlocking {
+        transport = { object : Transport by daemon {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>) =
+                if (path == "/v0/node/avatar") TransportResponse(200, mapOf("content-type" to "text/html"), "<html>".toByteArray())
+                else daemon.request(method, path, credential, body, headers)
+        } }
+        val account = accounts().add(credentials(), "Steve's Mac")
+        assertEquals("Studio", account.name)
+        assertNull(account.avatarFile)
     }
 
     @Test

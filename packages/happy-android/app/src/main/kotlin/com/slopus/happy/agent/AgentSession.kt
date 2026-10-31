@@ -39,6 +39,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 
 /** How an agent connection's live link stands, as its home and chats show it. */
@@ -66,6 +67,7 @@ class AgentSession internal constructor(
 ) {
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO)
     private val linkLock = Mutex()
+    private val snapshotQueued = AtomicBoolean(false)
     private var link: AgentClient.Link? = null
     private val token = MutableStateFlow<String?>(null)
 
@@ -197,9 +199,9 @@ class AgentSession internal constructor(
             client.reset() // reads the credentials and makes the link
             linkLock.withLock { link }
         } ?: throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
-        val info = AgentIdentity.refresh(link.transport, link.token, known?.name.orEmpty())
-        if (known != null && (known.name != info.name || (info.thumbhash != null && known.thumbhash != info.thumbhash) || known.revoked)) {
-            connections.update(connectionId) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, revoked = false) }
+        val info = AgentIdentity.refresh(link.transport, link.token, known?.name.orEmpty(), known?.avatarFile?.let { known.avatarETag })
+        if (known != null) {
+            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, revoked = false) }
         }
     }
 
@@ -247,8 +249,25 @@ class AgentSession internal constructor(
         for (resource in stale) scope.launch { reread(resource) }
     }
 
-    /** Reads again one resource whose version chain broke. */
+    /** Reads again one resource whose version chain broke, or the snapshot (once for a burst of Surface events). */
     private suspend fun reread(stale: AgentCatalog.Stale) {
+        if (stale.kind == AgentCatalog.Stale.SNAPSHOT) {
+            if (!snapshotQueued.compareAndSet(false, true)) return
+            try {
+                delay(SNAPSHOT_COALESCE)
+            } finally {
+                // Events from here on queue the next read.
+                snapshotQueued.set(false)
+            }
+            try {
+                readSnapshot()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The next snapshot (a reconnect after a gap) catches it up.
+            }
+            return
+        }
         reads.update { it + 1 }
         val (path, key) = when (stale.kind) {
             "project" -> "/v0/projects/${AgentClient.escape(stale.id)}" to "project"
@@ -293,6 +312,8 @@ class AgentSession internal constructor(
     }
 
     private companion object {
+        /** Surface events that come together read the snapshot once. */
+        const val SNAPSHOT_COALESCE = 300L
         const val INITIAL_BACKOFF = 1_000L
         const val MAX_BACKOFF = 5_000L
         const val JITTER = 0.5

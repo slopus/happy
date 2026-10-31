@@ -18,7 +18,11 @@ import com.slopus.happy.agent.AgentFeedSection
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentPictures
 import com.slopus.happy.agent.ConversationKind
+import com.slopus.happy.conversation.Todo
 import com.slopus.happy.ui.connection.AgentHomeActions
+import com.slopus.happy.ui.connection.PlaceRead
+import com.slopus.happy.ui.connection.SurfaceBody
+import com.slopus.happy.ui.connection.SurfaceScreen
 import com.slopus.happy.ui.connection.AgentHomeScreen
 import com.slopus.happy.ui.connection.LocalAgentPictures
 import com.slopus.happy.ui.home.AccountMenu
@@ -31,7 +35,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
- * Agent home on a device with bots, tasks, a project and their subtasks,
+ * Agent home on a device with Artifacts and Surfaces, bots, tasks, a
+ * project and their subtasks, the agent's own picture on the bar,
  * captured to the test app's files under `device-evidence/` so a review
  * sees each section's card and what each row wears before its title. Every
  * row is synthetic.
@@ -56,6 +61,11 @@ class AgentHomeMarksDeviceTest {
     private val feed = AgentFeed(
         loaded = true,
         rows = listOf(
+            AgentFeedRow.Section(AgentFeedSection.Places),
+            AgentFeedRow.Artifacts,
+            AgentFeedRow.Surface("s1", "Groceries", "todo"),
+            AgentFeedRow.Surface("s2", "Launch plan", "document"),
+            AgentFeedRow.Surface("s3", "Team calendar", "calendar"),
             AgentFeedRow.Section(AgentFeedSection.Bots),
             conversation("ab1", "Happy", ConversationKind.Bot, minutes = 20, picture = "/v0/bots/b1/avatar"),
             conversation("as1", "Review the PR", ConversationKind.Subtask, depth = 1, parentId = "ab1", working = true),
@@ -77,9 +87,11 @@ class AgentHomeMarksDeviceTest {
 
     @Test fun capture() {
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
-        val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio", agent = true, active = true)))
+        // The agent's own picture, kept as a file the way a refresh keeps it, on the bar's menu button.
+        val instance = File(evidence, "instance-avatar.png").apply { writeBytes(picture(Color.rgb(88, 86, 214))) }
+        val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio", imageUrl = "file://${instance.path}", agent = true, active = true)))
         // The bot's picture, drawn here: a disc of colour with a face, as a PNG the agent would serve.
-        val pictures = AgentPictures("fx-connection") { picture() }
+        val pictures = AgentPictures("fx-connection") { picture(Color.rgb(255, 196, 61)) }
         rule.setContent {
             CompositionLocalProvider(LocalAgentPictures provides pictures) {
                 HappyTheme { AgentHomeScreen("Studio", feed, AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}), now = NOW) }
@@ -90,11 +102,21 @@ class AgentHomeMarksDeviceTest {
         device.takeScreenshot(File(evidence, "agent-home-marks.png"))
     }
 
-    private fun picture(): ByteArray {
+    /** A todo list Surface as home's Groceries row opens it. */
+    @Test fun captureSurface() {
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        val todos = listOf(Todo("t1", "Eggs", false), Todo("t2", "Sourdough loaf", false), Todo("t3", "Milk", true))
+        rule.setContent { HappyTheme { SurfaceScreen("Groceries", PlaceRead.Ready(SurfaceBody.Todos(todos)), {}, {}, {}) } }
+        rule.waitForIdle()
+        SystemClock.sleep(500)
+        device.takeScreenshot(File(evidence, "agent-surface-todo.png"))
+    }
+
+    private fun picture(ground: Int): ByteArray {
         val bitmap = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        canvas.drawColor(Color.rgb(255, 196, 61))
+        canvas.drawColor(ground)
         paint.color = Color.rgb(40, 30, 20)
         canvas.drawCircle(92f, 110f, 16f, paint)
         canvas.drawCircle(164f, 110f, 16f, paint)

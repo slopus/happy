@@ -35,6 +35,7 @@ class AgentFeedTest {
         val feed = AgentFeed.derive(catalog(sample))
         assertEquals(
             listOf(
+                "section-places", "artifacts",
                 "section-bots", "agent-ab1", "agent-as1", "agent-as2", "agent-ab2",
                 "section-tasks", "agent-at2", "agent-at1",
                 "section-projects", "folder-p1", "agent-ap1", "folder-w1", "agent-aw1",
@@ -159,6 +160,36 @@ class AgentFeedTest {
         assertFalse(AgentFeed.derive(AgentCatalog()).loaded)
         val empty = AgentFeed.derive(catalog(Wire.bootstrap()))
         assertTrue(empty.loaded)
-        assertTrue(empty.rows.isEmpty())
+        // Artifacts is always there, as on desktop; nothing else is.
+        assertEquals(listOf("section-places", "artifacts"), empty.rows.map { it.key })
+    }
+
+    @Test
+    fun theSurfacesThePersonJoinedFollowArtifactsInTheirOrder() {
+        val bootstrap = Wire.bootstrap(
+            surfaces = listOf(
+                Wire.surface("s1", "Groceries", "todo", mapOf("u2" to "0", Wire.USER to "3")),
+                Wire.surface("s2", "Launch plan", "document", mapOf(Wire.USER to "1")),
+                Wire.surface("s3", "Week", "calendar", mapOf(Wire.USER to "2")),
+                Wire.surface("s4", "Not mine", "todo", mapOf("u2" to "1")),
+                Wire.surface("s5", "Old", "todo", archived = true),
+            ),
+            bots = listOf(Wire.bot("b1", "Happy", Wire.agent("ab1"))),
+        )
+        val rows = AgentFeed.derive(catalog(bootstrap)).rows
+        assertEquals(
+            listOf("section-places", "artifacts", "surface-s2", "surface-s3", "surface-s1", "section-bots", "agent-ab1"),
+            rows.map { it.key },
+        )
+        assertEquals(AgentFeedRow.Surface("s3", "Week", "calendar"), rows[3])
+    }
+
+    @Test
+    fun aSurfaceEventReadsTheSnapshotAgain() {
+        val applied = catalog(Wire.bootstrap()).apply(Wire.event("c1", "surface.created", buildJsonObject { put("surfaceId", "s9") }))
+        assertEquals(listOf(AgentCatalog.Stale(AgentCatalog.Stale.SNAPSHOT, "")), applied.stale)
+        assertEquals("c1", applied.catalog.cursor)
+        // A todo inside a list changes nothing home shows.
+        assertTrue(catalog(Wire.bootstrap()).apply(Wire.event("c2", "todo.created", buildJsonObject { put("surfaceId", "s9") })).stale.isEmpty())
     }
 }

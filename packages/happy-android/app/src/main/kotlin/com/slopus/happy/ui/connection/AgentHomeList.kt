@@ -116,6 +116,11 @@ object AgentHomeSpec {
     val tileGlyph = 18.dp
     val dot = 10.dp
     val cornerMinWidth = 48.dp
+    /** The bar's title, the agent's name: smaller than Material's large title. */
+    val barTitle = happyTextStyle(fontSize = 18, lineHeight = 24, weight = FontWeight.SemiBold)
+    /** The compose button's margin from the window's corner, and the room under the last card to scroll it clear. */
+    val fabMargin = 16.dp
+    val fabClearance = 96.dp
     const val TITLE_LINE = 22
     val title = happyTextStyle(fontSize = 17, lineHeight = TITLE_LINE, weight = FontWeight.Medium)
     val timestamp = happyTextStyle(fontSize = 13, lineHeight = TITLE_LINE).copy(fontFeatureSettings = "tnum")
@@ -131,10 +136,46 @@ object AgentHomeSpec {
      */
     fun hasMark(kind: ConversationKind): Boolean = kind == ConversationKind.Bot || kind == ConversationKind.Task
 
-    /** A glyph tile's ink and fill, one tint per kind: iOS's indigo for a bot, orange for a task. */
-    fun tile(kind: ConversationKind, dark: Boolean): Pair<Color, Color> = when (kind) {
-        ConversationKind.Bot -> if (dark) Color(0xFF7D7AFF) to Color(0x3D5E5CE6) else Color(0xFF5856D6) to Color(0x1F5856D6)
-        else -> if (dark) Color(0xFFFF9F0A) to Color(0x33FF9F0A) else Color(0xFFF08C00) to Color(0x24FF9500)
+}
+
+/**
+ * The tint of a glyph's tile, one per kind of row (RowView.swift's
+ * `tint`): its ink and its fill, the same colour very light; iOS's system
+ * colours, light and dark.
+ */
+enum class RowTile(private val light: Pair<Long, Long>, private val dark: Pair<Long, Long>) {
+    Blue(0xFF007AFF to 0x1C007AFF, 0xFF0A84FF to 0x330A84FF),
+    Green(0xFF28A745 to 0x2434C759, 0xFF30D158 to 0x3330D158),
+    Orange(0xFFF08C00 to 0x24FF9500, 0xFFFF9F0A to 0x33FF9F0A),
+    Indigo(0xFF5856D6 to 0x1F5856D6, 0xFF7D7AFF to 0x3D5E5CE6),
+    Purple(0xFFA347D6 to 0x1FAF52DE, 0xFFBF5AF2 to 0x33BF5AF2),
+    Red(0xFFFF3B30 to 0x1CFF3B30, 0xFFFF453A to 0x33FF453A),
+    Teal(0xFF1C9FB8 to 0x2430B0C7, 0xFF40C8E0 to 0x3340C8E0);
+
+    fun ink(dark: Boolean) = Color(if (dark) this.dark.first else light.first)
+    fun fill(dark: Boolean) = Color(if (dark) this.dark.second else light.second)
+
+    companion object {
+        /** A Surface's glyph and tile by its type (`Rows.surfaceGlyph`). */
+        fun surface(type: String): Pair<Ionicon, RowTile> = when (type) {
+            "todo" -> Ionicon.CheckboxOutline to Green
+            "calendar" -> Ionicon.CalendarOutline to Red
+            "system_monitor" -> Ionicon.PulseOutline to Teal
+            "chat" -> Ionicon.PeopleOutline to Teal
+            else -> Ionicon.DocumentTextOutline to Blue
+        }
+    }
+}
+
+/** [glyph] on its softly tinted tile, the mark's square at [size]. */
+@Composable
+internal fun TileMark(glyph: Ionicon, tile: RowTile, size: Dp = AgentHomeSpec.mark) {
+    val dark = HappyTheme.colors.dark
+    Box(
+        Modifier.size(size).clip(RoundedCornerShape(AgentHomeSpec.tileRadius)).background(tile.fill(dark)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(glyph, AgentHomeSpec.tileGlyph * (size / AgentHomeSpec.mark), tile.ink(dark))
     }
 }
 
@@ -153,14 +194,7 @@ internal fun ConversationMark(row: AgentFeedRow.Conversation, size: Dp) {
         AgentPicture(picture, row.thumbhash, size)
         return
     }
-    val (ink, fill) = AgentHomeSpec.tile(row.kind, HappyTheme.colors.dark)
-    Box(
-        Modifier.size(size).clip(RoundedCornerShape(AgentHomeSpec.tileRadius)).background(fill),
-        contentAlignment = Alignment.Center,
-    ) {
-        val glyph = if (row.kind == ConversationKind.Bot) Ionicon.PersonCircleOutline else Ionicon.CheckboxOutline
-        Icon(glyph, AgentHomeSpec.tileGlyph * (size / AgentHomeSpec.mark), ink)
-    }
+    if (row.kind == ConversationKind.Bot) TileMark(Ionicon.PersonCircleOutline, RowTile.Indigo, size) else TileMark(Ionicon.CheckboxOutline, RowTile.Orange, size)
 }
 
 /** A picture the agent serves, read once ([AgentPictures]), a rounded square over its ThumbHash. */
@@ -230,6 +264,8 @@ fun LazyListScope.agentHomeRows(
     now: Long,
     reduceMotion: Boolean,
     onOpen: (String) -> Unit,
+    onOpenArtifacts: () -> Unit,
+    onOpenSurface: (AgentFeedRow.Surface) -> Unit,
 ) {
     items(items, key = { it.key }, contentType = { (it as? AgentHomeItem.Row)?.row?.let { row -> row::class } ?: it::class }) { item ->
         val motion = if (reduceMotion) Modifier else Modifier.animateItem(
@@ -248,6 +284,10 @@ fun LazyListScope.agentHomeRows(
                 when (val row = item.row) {
                     is AgentFeedRow.Conversation -> ConversationRow(row, now, reduceMotion, onOpen)
                     is AgentFeedRow.Folder -> FolderRow(row)
+                    AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.agent_home_artifacts), Ionicon.DocumentTextOutline, RowTile.Purple, onOpenArtifacts)
+                    is AgentFeedRow.Surface -> RowTile.surface(row.type).let { (glyph, tile) ->
+                        PlaceRow(row.name, glyph, tile) { onOpenSurface(row) }
+                    }
                     is AgentFeedRow.Section -> Unit
                 }
             }
@@ -300,6 +340,7 @@ private fun titleStart(row: AgentFeedRow): Dp {
     val (depth, marked) = when (row) {
         is AgentFeedRow.Conversation -> row.depth to AgentHomeSpec.hasMark(row.kind)
         is AgentFeedRow.Folder -> row.depth to (row.picture != null)
+        AgentFeedRow.Artifacts, is AgentFeedRow.Surface -> 0 to true
         is AgentFeedRow.Section -> return 0.dp
     }
     return AgentHomeSpec.markInset + AgentHomeSpec.indent * depth + if (marked) AgentHomeSpec.mark + AgentHomeSpec.markGap else 0.dp
@@ -347,6 +388,32 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, now: Long, reduceMot
             }
         }
         Corner(row.activityAt, now, row.blocked, row.unread)
+    }
+}
+
+/** Artifacts, or a Surface: its glyph on its tile, and its name. */
+@Composable
+private fun PlaceRow(name: String, glyph: Ionicon, tile: RowTile, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(start = AgentHomeSpec.markInset, end = AgentHomeSpec.paddingEnd),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.size(AgentHomeSpec.mark).testTag(AgentHomeTags.ROW_MARK)) { TileMark(glyph, tile) }
+        Text(
+            name,
+            style = AgentHomeSpec.title,
+            color = HappyTheme.colors.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .padding(start = AgentHomeSpec.markGap)
+                .weight(1f)
+                .wrapContentHeight(unbounded = true)
+                .testTag(AgentHomeTags.ROW_TITLE),
+        )
     }
 }
 
@@ -421,6 +488,8 @@ fun AgentHomeList(
     onOpen: (String) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    onOpenArtifacts: () -> Unit = {},
+    onOpenSurface: (AgentFeedRow.Surface) -> Unit = {},
     header: (LazyListScope.() -> Unit)? = null,
     bottom: @Composable () -> Unit = {},
 ) {
@@ -431,7 +500,7 @@ fun AgentHomeList(
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)
-        agentHomeRows(items, now, reduceMotion, onOpen)
+        agentHomeRows(items, now, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface)
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }

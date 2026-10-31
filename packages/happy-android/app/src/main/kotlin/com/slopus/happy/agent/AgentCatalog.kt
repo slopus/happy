@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * Everything an agent connection's home is drawn from, kept as the agent
  * sent it so the journal's `changes` merge straight in (API.md, "Event
  * types"): projects, workspaces, bots, tasks, the caller's task
- * memberships, and every conversation by id. Immutable; each change is a
+ * memberships, Surfaces, and every conversation by id. Immutable; each change is a
  * new copy. Agents embedded in their owners are also indexed in [agents],
  * where the copy with the greater `version` wins, so a delayed owner
  * snapshot never undoes a newer `agent.updated`.
@@ -24,13 +24,24 @@ data class AgentCatalog(
     /** By task id: the caller's memberships, which say which tasks are in their list and where. */
     val memberships: Map<String, JsonObject> = emptyMap(),
     val agents: Map<String, JsonObject> = emptyMap(),
+    /** Every Surface, each with its `members` (`userId`, `orderKey`); the person's own are the ones they joined. */
+    val surfaces: Map<String, JsonObject> = emptyMap(),
+    /** The person this phone is paired for (`profile.userId`). */
+    val userId: String? = null,
     /** The journal position everything here is current to. */
     val cursor: String? = null,
     /** A snapshot has been read (or the cached one restored). */
     val loaded: Boolean = false,
 ) {
-    /** The resources a broken version chain left behind, to read again. */
-    data class Stale(val kind: String, val id: String)
+    /**
+     * The resources a broken version chain left behind, to read again;
+     * [SNAPSHOT], the whole snapshot (what a Surface event changed).
+     */
+    data class Stale(val kind: String, val id: String) {
+        companion object {
+            const val SNAPSHOT = "snapshot"
+        }
+    }
 
     /** The result of applying one event: the new catalog and what must be refetched. */
     data class Applied(val catalog: AgentCatalog, val stale: List<Stale> = emptyList())
@@ -50,6 +61,8 @@ data class AgentCatalog(
             tasks = owners(bootstrap.tasks),
             memberships = bootstrap.taskMemberships.mapNotNull { m -> m.string("taskId")?.let { it to m } }.toMap(),
             agents = index,
+            surfaces = bootstrap.surfaces.orEmpty().mapNotNull { s -> s.string("id")?.let { it to s } }.toMap(),
+            userId = bootstrap.profile?.string("userId"),
             cursor = bootstrap.cursor ?: cursor,
             loaded = true,
         )
@@ -101,7 +114,8 @@ data class AgentCatalog(
                 val taskId = (data["membership"] as? JsonObject)?.string("taskId")
                 Applied(if (taskId == null) moved else moved.copy(memberships = memberships - taskId))
             }
-            else -> Applied(moved)
+            // Who is in a Surface and where it sits in their list come only whole, with the snapshot (as iOS reads them).
+            else -> if (event.type.startsWith("surface.")) Applied(moved, listOf(Stale(Stale.SNAPSHOT, ""))) else Applied(moved)
         }
     }
 

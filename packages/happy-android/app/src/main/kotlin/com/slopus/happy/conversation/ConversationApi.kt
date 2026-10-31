@@ -175,6 +175,39 @@ open class ConversationApi(private val request: AgentRequest) {
         return Artifact.parse(metadata, version)
     }
 
+    /** One page of the agent's artifacts, newest first, and the cursor of the next; null at the end. */
+    open suspend fun artifacts(pageCursor: String? = null): Pair<List<ArtifactSummary>, String?> {
+        val answer = call("GET", "/v0/artifacts" + (pageCursor?.let { "?pageCursor=${escape(it)}" } ?: ""))
+        val items = answer["artifacts"].arr.orEmpty().mapNotNull { item ->
+            val o = item.obj ?: return@mapNotNull null
+            ArtifactSummary(o["id"].str ?: return@mapNotNull null, o["title"].str?.takeIf { it.isNotBlank() })
+        }
+        return items to answer["nextPageCursor"].str
+    }
+
+    /** A todo list's active todos, then its completed ones (API.md "Surfaces"). */
+    open suspend fun todos(surfaceId: String): List<Todo> {
+        val path = "/v0/surfaces/todo/${escape(surfaceId)}"
+        fun parse(answer: JsonObject) = answer["todos"].arr.orEmpty().mapNotNull { item ->
+            val o = item.obj ?: return@mapNotNull null
+            Todo(o["id"].str ?: return@mapNotNull null, o["text"].str.orEmpty(), o["status"].str == "completed")
+        }
+        return parse(call("GET", path)) + parse(call("GET", "$path?scope=completed"))
+    }
+
+    /** A new todo at the top of the list; [id] is its retry key. */
+    open suspend fun addTodo(surfaceId: String, id: String, text: String) {
+        call("POST", "/v0/surfaces/todo/${escape(surfaceId)}", buildJsonObject {
+            put("id", id)
+            put("text", text)
+            put("mutationId", clientId())
+        })
+    }
+
+    /** A document as Markdown, its read-only projection. */
+    open suspend fun document(surfaceId: String): String =
+        call("GET", "/v0/surfaces/document/${escape(surfaceId)}")["document"].obj?.get("text").str.orEmpty()
+
     /** The bytes of one file of one version, asked for by its exact manifest path. */
     open suspend fun artifactFile(artifactId: String, number: String, path: String): ByteArray {
         val route = path.split('/').joinToString("/") { escape(it) }

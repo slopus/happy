@@ -83,6 +83,8 @@ fun rememberAccountMenu(graph: AppGraph): AccountMenu {
                 AccountMenuEntry(
                     id = agent.id,
                     name = agent.name,
+                    imageUrl = agent.avatarFile?.let { "file://$it" },
+                    thumbhash = agent.thumbhash,
                     agent = true,
                     active = registry.activeId == agent.id,
                     attention = agent.revoked,

@@ -58,6 +58,8 @@ class FakeDaemon(
     private var polls = 0
     var rejected = false
     var closed = 0
+    /** The node's picture at /v0/node/avatar; its ETag is its size. */
+    var avatar: ByteArray? = null
 
     override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
         calls += "$method $path"
@@ -123,6 +125,15 @@ class FakeDaemon(
                         }
                     }
                 })
+            }
+            "/v0/node/avatar" -> paired {
+                val picture = avatar
+                val etag = "\"${picture?.size}\""
+                when {
+                    picture == null -> TransportResponse(404)
+                    headers["If-None-Match"] == etag -> TransportResponse(304)
+                    else -> TransportResponse(200, mapOf("content-type" to "image/png", "etag" to etag), picture)
+                }
             }
             else -> error(path)
         }

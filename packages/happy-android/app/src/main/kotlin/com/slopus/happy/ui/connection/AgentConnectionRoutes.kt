@@ -15,6 +15,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.PairingState
@@ -30,6 +31,8 @@ import kotlinx.serialization.Serializable
 /** The Protocol V2 screens, signed in or out. HappyApp's NavHost calls this once. */
 fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostController) {
     composable<PairingRoute> { Pairing(graph, nav) }
+    composable<AgentArtifactsRoute> { entry -> AgentArtifacts(graph, nav, entry.toRoute()) }
+    composable<AgentSurfaceRoute> { entry -> AgentSurface(graph, nav, entry.toRoute()) }
 }
 
 /** Starts pairing [code] and shows it, over whatever screen is up. */

@@ -100,6 +100,9 @@ object RemoteImageTags {
 /** http(s) URLs load through [RemoteImage]; `data:` URIs and files have their own paths. */
 fun isRemoteImageUrl(url: String?): Boolean = url != null && (url.startsWith("https://", ignoreCase = true) || url.startsWith("http://", ignoreCase = true))
 
+/** A picture kept on this phone (`file://`), which [RemoteImage] also loads: an agent connection's own picture. */
+fun isFileImageUri(uri: String?): Boolean = uri != null && uri.startsWith("file://", ignoreCase = true)
+
 /**
  * A picture loaded by the shared loader: [model] is a URL, or decrypted
  * bytes with a [cacheKey] (an attachment ref) so they are decoded once.

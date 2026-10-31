@@ -29,7 +29,9 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.accounts.accountId
 import com.slopus.happy.ui.connect.DeepLinkEffect
+import com.slopus.happy.ui.connection.AgentArtifactsRoute
 import com.slopus.happy.ui.connection.AgentHome
+import com.slopus.happy.ui.connection.AgentSurfaceRoute
 import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.connect.LocalAgentPairing
 import com.slopus.happy.ui.connect.rememberAddFlow
@@ -127,6 +129,8 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                                     onCompose = { nav.composeConversation(id) },
                                     onSettings = { nav.navigate(AgentConnectionSettingsRoute(id)) },
                                     onAppearance = { nav.navigate(AppearanceRoute) },
+                                    onOpenArtifacts = { nav.navigate(AgentArtifactsRoute(id)) },
+                                    onOpenSurface = { nav.navigate(AgentSurfaceRoute(id, it.id, it.type, it.name)) },
                                 )
                             }
                         }

@@ -377,3 +377,9 @@ data class SecretSummary(
         }
     }
 }
+
+/** One artifact as the catalog lists it: what a row shows; null [title] reads as untitled. */
+data class ArtifactSummary(val id: String, val title: String?)
+
+/** One todo of a todo list Surface. */
+data class Todo(val id: String, val text: String, val done: Boolean)

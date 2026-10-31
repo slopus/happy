@@ -100,6 +100,8 @@ fun AgentConnectionSettingsScreen(
     status: AgentLinkStatus,
     accounts: AccountMenu,
     actions: AgentSettingsActions,
+    /** The agent's own picture, kept on this phone (`file://`); null shows the generated one. */
+    picture: String? = null,
 ) {
     val colors = HappyTheme.colors
     var confirming by remember { mutableStateOf(false) }
@@ -121,7 +123,7 @@ fun AgentConnectionSettingsScreen(
                 Item(
                     title = name,
                     subtitle = statusText(status),
-                    icon = { Avatar(connectionId, 48.dp, thumbhash = thumbhash) },
+                    icon = { Avatar(connectionId, 48.dp, imageUri = picture, thumbhash = thumbhash) },
                     showChevron = false,
                     modifier = Modifier.testTag(AgentSettingsTags.STATUS),
                 )
@@ -249,6 +251,7 @@ private fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, con
         name = agent.name,
         connectionId = connectionId,
         thumbhash = agent.thumbhash,
+        picture = agent.avatarFile?.let { "file://$it" },
         status = status,
         accounts = rememberAccountMenu(graph),
         actions = actions,

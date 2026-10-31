@@ -254,6 +254,7 @@ class AppGraph(
             keychainService = AgentConnections.KEYCHAIN_SERVICE,
         ),
         registry = context.getSharedPreferences(AgentConnections.REGISTRY_PREFS, Context.MODE_PRIVATE),
+        pictures = File(context.filesDir, "agent-avatars"),
     )
 
     /**

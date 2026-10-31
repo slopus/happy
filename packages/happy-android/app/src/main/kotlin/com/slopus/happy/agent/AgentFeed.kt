@@ -14,6 +14,19 @@ sealed interface AgentFeedRow {
         override val key get() = "section-${section.key}"
     }
 
+    /** Desktop's fixed Artifacts row, first on home: the agent's artifacts, newest first. */
+    data object Artifacts : AgentFeedRow {
+        override val key get() = "artifacts"
+    }
+
+    /**
+     * A Surface the person joined: a todo list, a document, a calendar, a
+     * system monitor or a chat ([type]). It opens on its own page.
+     */
+    data class Surface(val id: String, val name: String, val type: String) : AgentFeedRow {
+        override val key get() = "surface-$id"
+    }
+
     /**
      * A project, or one of its worktrees at [depth] 1: its conversations
      * follow, a level in. It opens nothing. [picture] is the repo's own,
@@ -47,7 +60,7 @@ sealed interface AgentFeedRow {
 
 enum class ConversationKind { Bot, Task, Project, Subtask }
 
-enum class AgentFeedSection(val key: String) { Bots("bots"), Tasks("tasks"), Projects("projects") }
+enum class AgentFeedSection(val key: String) { Places("places"), Bots("bots"), Tasks("tasks"), Projects("projects") }
 
 /** What home shows for an agent connection. [loaded] is false until a snapshot (cached or read) is in. */
 @Immutable
@@ -64,7 +77,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
 
         /**
          * iOS's home (SidebarRows.swift), in the agent's own orders, never
-         * by activity, so nothing moves while nothing is done: the bots
+         * by activity, so nothing moves while nothing is done: Artifacts and
+         * the Surfaces the person joined (in their own order), the bots
          * (catalog order), then the tasks in the person's list (their
          * order), then the projects, each a folder over its root
          * workspace's conversations, then each worktree's folder over its
@@ -129,6 +143,21 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             }
             (bots + tasks).forEach { owner -> (owner["agent"] as? JsonObject)?.string("id")?.let(::collect) }
 
+            section(AgentFeedSection.Places) {
+                rows += AgentFeedRow.Artifacts
+                catalog.surfaces.values
+                    .filter { it.string("status") != "archived" && it["archivedAt"].isNullish() }
+                    .mapNotNull { surface ->
+                        val member = (surface["members"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+                            .firstOrNull { catalog.userId != null && it.string("userId") == catalog.userId } ?: return@mapNotNull null
+                        surface to member.string("orderKey").orEmpty()
+                    }
+                    .sortedWith(compareBy({ it.second }, { it.first.string("id") }))
+                    .forEach { (surface, _) ->
+                        val id = surface.string("id") ?: return@forEach
+                        rows += AgentFeedRow.Surface(id, surface.string("name").orEmpty(), surface.string("type").orEmpty())
+                    }
+            }
             section(AgentFeedSection.Bots) {
                 bots.forEach { bot ->
                     val agentId = (bot["agent"] as? JsonObject)?.string("id") ?: return@forEach

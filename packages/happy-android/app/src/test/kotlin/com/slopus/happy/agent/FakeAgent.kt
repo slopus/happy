@@ -56,12 +56,25 @@ object Wire {
         put("orderKey", orderKey); put("status", "active"); put("agents", JsonArray(agents))
     }
 
+    /** A Surface; [members] maps each member's user id to their order key. */
+    fun surface(id: String, name: String, type: String, members: Map<String, String> = mapOf(USER to "1"), archived: Boolean = false) = buildJsonObject {
+        put("id", id); put("name", name); put("type", type)
+        put("status", if (archived) "archived" else "active"); put("archivedAt", if (archived) 9L else null)
+        put("members", JsonArray(members.map { (userId, orderKey) -> buildJsonObject { put("userId", userId); put("orderKey", orderKey) } }))
+    }
+
+    /** The person the fixtures' bootstraps are for. */
+    const val USER = "u1"
+
     fun bootstrap(
         projects: List<JsonObject> = emptyList(), workspaces: List<JsonObject> = emptyList(), bots: List<JsonObject> = emptyList(),
         tasks: List<JsonObject> = emptyList(), memberships: List<JsonObject> = emptyList(), cursor: String = "c0",
+        surfaces: List<JsonObject>? = null,
     ) = buildJsonObject {
         put("projects", JsonArray(projects)); put("workspaces", JsonArray(workspaces)); put("bots", JsonArray(bots))
         put("tasks", JsonArray(tasks)); put("taskMemberships", JsonArray(memberships)); put("cursor", cursor)
+        if (surfaces != null) put("surfaces", JsonArray(surfaces))
+        put("profile", buildJsonObject { put("userId", USER) })
     }
 
     fun event(cursor: String, type: String, payload: JsonObject) = AgentEvent(cursor, type, payload)

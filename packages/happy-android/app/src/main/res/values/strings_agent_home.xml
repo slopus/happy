@@ -4,9 +4,7 @@
   happy-app's catalogs; English only, as iOS's are.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
-    <string name="agent_home_bots">Bots</string>
-    <string name="agent_home_tasks">Tasks</string>
-    <string name="agent_home_thinking">Thinking…</string>
+    <string name="agent_home_artifacts">Artifacts</string>
     <string name="agent_home_working">Working…</string>
     <string name="agent_home_show_subtasks">Show subtasks</string>
     <string name="agent_home_hide_subtasks">Hide subtasks</string>
@@ -20,6 +18,16 @@
     <string name="agent_home_status_offline">offline</string>
     <string name="agent_home_status_revoked">removed</string>
     <string name="agent_home_status_update">update required</string>
+
+    <string name="agent_artifacts_untitled">Untitled</string>
+    <string name="agent_artifacts_empty">No artifacts yet.</string>
+    <string name="agent_artifacts_failed">Couldn\'t read the artifacts</string>
+    <string name="agent_surface_add_todo">Add a todo</string>
+    <string name="agent_surface_no_todos">Nothing here yet.</string>
+    <string name="agent_surface_todo_done">done</string>
+    <string name="agent_surface_empty_document">This document is empty.</string>
+    <string name="agent_surface_open_on_computer">Open this on your computer to use it.</string>
+    <string name="agent_surface_failed">Couldn\'t read this</string>
 
     <string name="agent_search_open">Search</string>
     <string name="agent_search_placeholder">Search conversations and settings</string>

@@ -137,6 +137,8 @@ data class WireDesktopBootstrap(
     val bots: List<JsonObject> = emptyList(),
     val tasks: List<JsonObject> = emptyList(),
     val taskMemberships: List<JsonObject> = emptyList(),
+    /** Every Surface with its members; null from a daemon that serves none. */
+    val surfaces: List<JsonObject>? = null,
     val profile: JsonObject? = null,
     val cursor: String? = null,
 )

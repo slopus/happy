@@ -131,10 +131,10 @@ fun Avatar(
     val shape = if (square) RectangleShape else CircleShape
 
     Box(modifier = modifier.size(size).testTag(AvatarTags.AVATAR)) {
-        val image = imageUri?.takeUnless(::isRemoteImageUrl)?.let { rememberDataUriImage(it) }
+        val image = imageUri?.takeUnless { isRemoteImageUrl(it) || isFileImageUri(it) }?.let { rememberDataUriImage(it) }
         val placeholder = if (imageUri != null && image == null) rememberThumbHash(thumbhash) else null
         when {
-            isRemoteImageUrl(imageUri) -> RemoteImage(imageUri, null, Modifier.size(size).clip(shape), background = colors.surfaceHigh, placeholder = placeholder)
+            isRemoteImageUrl(imageUri) || isFileImageUri(imageUri) -> RemoteImage(imageUri, null, Modifier.size(size).clip(shape), background = colors.surfaceHigh, placeholder = placeholder)
             imageUri != null && image != null -> Image(
                 bitmap = image,
                 contentDescription = null,
