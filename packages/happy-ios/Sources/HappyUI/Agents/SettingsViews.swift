@@ -353,6 +353,7 @@ final class SettingsCardView: UIView {
         @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
         func show(_ row: SettingsRow, frames: SettingsLayout.Row) {
+            let previous = self.row
             self.row = row
             frame = frames.box
             let origin = frames.box.origin
@@ -365,7 +366,8 @@ final class SettingsCardView: UIView {
                     // would have had: the rows read as the accounts they are.
                     tile.backgroundColor = .clear
                     tile.layer.cornerRadius = frame.height / 2
-                    glyph.image = picture
+                    // The picture over the thumbhash it had: dissolved in.
+                    ImageFade.show(picture, in: glyph, fade: previous?.id == row.id && previous?.image != nil)
                     glyph.contentMode = .scaleAspectFill
                     glyph.clipsToBounds = true
                     glyph.frame = tile.bounds
@@ -451,19 +453,23 @@ enum ProfilePictures {
         return direct.map { "\($0.avatarETag ?? ""):\($0.avatar?.count ?? 0):\($0.thumbhash ?? "")" } ?? account.avatarURL?.absoluteString ?? account.avatarThumbhash ?? ""
     }
 
+    /// What shows until `load` answers: the thumbhash, decoded now, so the
+    /// first frame has it.
+    static func placeholder(_ account: AccountSummary, context: AppContext) -> UIImage? {
+        let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
+        return ThumbHashImages.image(direct.map { $0.thumbhash } ?? account.avatarThumbhash)
+    }
+
     static func load(_ account: AccountSummary, context: AppContext) async -> UIImage? {
         let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
         let bytes = direct?.avatar
-        let connectionHash = direct?.thumbhash
         var image = await Task.detached { () -> UIImage? in
-            if let bytes, let image = AccountPictureImages.decode(bytes)?.picture as? UIImage { return image }
-            return connectionHash.flatMap { AccountPictureImages.placeholder($0)?.picture as? UIImage }
+            bytes.flatMap { AccountPictureImages.decode($0)?.picture as? UIImage }
         }.value
-        guard image == nil, direct == nil else { return image }
-        let pictures = context.account.pictures(for: account.id)
-        if let url = account.avatarURL { image = await pictures?.image(url) }
-        if image == nil, let hash = account.avatarThumbhash { image = await pictures?.placeholderImage(hash) }
-        return image
+        if image == nil, direct == nil, let url = account.avatarURL {
+            image = await context.account.pictures(for: account.id)?.image(url)
+        }
+        return image ?? placeholder(account, context: context)
     }
 }
 #endif

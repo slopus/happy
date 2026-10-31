@@ -14,10 +14,23 @@ public enum ThumbHash {
 
     /// Decodes the base64 form the server stores; nil when it is not one.
     public static func decode(base64: String) -> Image? {
+        bytes(base64: base64).flatMap(decode)
+    }
+
+    /// The hash's bytes from base64, padded or not, standard or URL-safe.
+    public static func bytes(base64: String) -> [UInt8]? {
         var padded = base64.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
         padded += String(repeating: "=", count: (4 - padded.count % 4) % 4)
-        guard let data = Data(base64Encoded: padded) else { return nil }
-        return decode([UInt8](data))
+        guard let data = Data(base64Encoded: padded), data.count >= 5 else { return nil }
+        return [UInt8](data)
+    }
+
+    /// The picture's width over height as the hash's header carries it; nil
+    /// when it is not a hash. A view takes its shape from this before the
+    /// picture arrives.
+    public static func aspectRatio(base64: String) -> Double? {
+        bytes(base64: base64).map(approximateAspectRatio)
     }
 
     public static func decode(_ hash: [UInt8]) -> Image? {
@@ -67,18 +80,20 @@ public enum ThumbHash {
         var rgba = [UInt8](repeating: 0, count: width * height * 4)
         let columns = max(lx, hasAlpha ? 5 : 3)
         let rows = max(ly, hasAlpha ? 5 : 3)
-        var fx = [Double](repeating: 0, count: columns)
-        var fy = [Double](repeating: 0, count: rows)
+        // The reference works these out for every pixel; they depend only on
+        // the column or the row, so here each is worked out once.
+        let fxs = (0..<width).map { x in
+            (0..<columns).map { cx in cos(Double.pi / Double(width) * (Double(x) + 0.5) * Double(cx)) }
+        }
+        let fys = (0..<height).map { y in
+            (0..<rows).map { cy in cos(Double.pi / Double(height) * (Double(y) + 0.5) * Double(cy)) }
+        }
         var i = 0
         for y in 0..<height {
+            let fy = fys[y]
             for x in 0..<width {
+                let fx = fxs[x]
                 var l = lDC, p = pDC, q = qDC, a = aDC
-                for cx in 0..<columns {
-                    fx[cx] = cos(Double.pi / Double(width) * (Double(x) + 0.5) * Double(cx))
-                }
-                for cy in 0..<rows {
-                    fy[cy] = cos(Double.pi / Double(height) * (Double(y) + 0.5) * Double(cy))
-                }
                 var j = 0
                 for cy in 0..<ly {
                     let fy2 = fy[cy] * 2

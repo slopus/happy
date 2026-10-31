@@ -248,6 +248,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         guard imageKeys[account.id] != key else { return }
         imageKeys[account.id] = key
         imageJobs[account.id]?.cancel()
+        // Its thumbhash in the first build, the picture when it comes.
+        if let placeholder = ProfilePictures.placeholder(account, context: context) { images[account.id] = placeholder }
         imageJobs[account.id] = Task { [weak self] in
             guard let self else { return }
             let image = await ProfilePictures.load(account, context: context)

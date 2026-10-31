@@ -17,18 +17,16 @@ protocol ChatMediaProviding: AnyObject {
 protocol ChatMediaSource: AnyObject {
     func cachedImage(_ key: String, pixels: Int) -> UIImage?
     func image(_ key: String, pixels: Int) async -> UIImage?
-    func placeholder(_ thumbhash: String) async -> UIImage?
 }
 
 /// Desktop's MediaImageTile and MediaVideoTile: the thumbhash in
-/// `surface-pressed`, the picture faded in over it (160 ms), a hairline
-/// over the whole tile and corners rounded 8. A recording shows its first
-/// frame under a play button; a tap plays it. A picture that failed keeps
-/// its placeholder under a quiet glyph and is asked for again when the
-/// computer is back (`MediaLoader.retry`).
+/// `surface-pressed` from the first frame, the picture faded in over it
+/// (`ImageFade`), a hairline over the whole tile and corners rounded 8. A
+/// recording shows its first frame under a play button; a tap plays it. A
+/// picture that failed keeps its placeholder under a quiet glyph and is
+/// asked for again when the computer is back (`MediaLoader.retry`).
 final class ChatMediaView: UIView {
     static let radius: CGFloat = 8
-    static let fade: TimeInterval = 0.16
     static let playIconSize: CGFloat = 22
 
     private let placeholder = UIImageView()
@@ -41,7 +39,10 @@ final class ChatMediaView: UIView {
     private var media: ChatMedia?
     private var loadedPixels = 0
     private var task: Task<Void, Never>?
-    private var placeholderTask: Task<Void, Never>?
+
+    /// The thumbhash shown under the picture, for tests.
+    var placeholderImage: UIImage? { placeholder.image }
+    var pictureImage: UIImage? { picture.image }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -91,12 +92,13 @@ final class ChatMediaView: UIView {
         guard media != self.media else { return }
         task?.cancel()
         task = nil
-        placeholderTask?.cancel()
-        placeholderTask = nil
         self.media = media
         loadedPixels = 0
         setFailed(false)
-        placeholder.image = nil
+        // Now, not once it is on screen: its first frame shows it.
+        placeholder.image = ThumbHashImages.image(media?.thumbhash)
+        picture.layer.removeAllAnimations()
+        picture.alpha = 1
         picture.image = nil
         play.isHidden = media?.isVideo != true
         accessibilityLabel = media?.label
@@ -132,13 +134,6 @@ final class ChatMediaView: UIView {
 
     private func loadIfNeeded() {
         guard window != nil, let media, bounds.width > 0, let source = source() else { return }
-        if placeholderTask == nil, placeholder.image == nil, picture.image == nil, let thumbhash = media.thumbhash {
-            placeholderTask = Task { @MainActor [weak self] in
-                let image = await source.placeholder(thumbhash)
-                guard !Task.isCancelled, let self, self.media == media, self.picture.image == nil else { return }
-                self.placeholder.image = image
-            }
-        }
         let pixels = pixels
         guard task == nil, pixels > loadedPixels else { return }
         if let image = source.cachedImage(media.key, pixels: pixels) {
@@ -182,11 +177,9 @@ final class ChatMediaView: UIView {
             placeholder.image = nil
             return
         }
-        picture.alpha = 0
-        UIView.animate(withDuration: Self.fade) {
-            self.picture.alpha = 1
-        } completion: { _ in
-            if self.picture.image != nil { self.placeholder.image = nil }
+        ImageFade.fadeIn(picture) { [weak self] in
+            guard let self, self.picture.image === image else { return }
+            self.placeholder.image = nil
         }
     }
 

@@ -18,7 +18,7 @@ final class AgentEditButton: UIButton {
 
     /// The agent's picture; nil shows the desktop glyph.
     var picture: UIImage? {
-        didSet { if picture !== oldValue { showPicture() } }
+        didSet { if picture !== oldValue { showPicture(fade: oldValue != nil) } }
     }
 
     /// What each menu item asks for.
@@ -58,9 +58,9 @@ final class AgentEditButton: UIButton {
         pencil.frame = layoutFrames.pencil
     }
 
-    private func showPicture() {
+    private func showPicture(fade: Bool = false) {
         if let picture {
-            avatar.image = picture
+            ImageFade.show(picture, in: avatar, fade: fade)
             avatar.contentMode = .scaleAspectFill
             avatar.backgroundColor = nil
         } else {

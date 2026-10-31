@@ -98,7 +98,8 @@ final class ProfileViewController: UIViewController, UITextFieldDelegate, PHPick
     private func apply() {
         let state = source.state
         if let photo = source.photo {
-            avatar.image = photo
+            // The picture over its thumbhash: dissolved in.
+            ImageFade.show(photo, in: avatar, fade: shownPhoto != nil)
             avatar.contentMode = .scaleAspectFill
             avatar.backgroundColor = nil
         } else {

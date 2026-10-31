@@ -255,10 +255,10 @@ final class RowView: UIView {
             if let cached = images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels) {
                 picture.image = cached
             } else {
-                picture.image = Images.placeholder(thumbhash)
+                picture.image = ThumbHashImages.image(thumbhash)
                 pictureJob = Task { [weak self] in
-                    guard let image = await self?.images?.picture(path, thumbhash: thumbhash, pixels: pixels), !Task.isCancelled else { return }
-                    self?.picture.image = image
+                    guard let image = await self?.images?.picture(path, thumbhash: thumbhash, pixels: pixels), !Task.isCancelled, let self else { return }
+                    ImageFade.show(image, in: picture, fade: true)
                 }
             }
         }

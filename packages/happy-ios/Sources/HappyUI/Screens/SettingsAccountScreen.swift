@@ -253,7 +253,7 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
             return ItemIcon(.ionicons("logo-github"), tint: Palette.textSecondary)
         }
         // The thumbhash until the picture arrives, as expo-image shows it.
-        let picture = image(url, of: owner) ?? placeholder(thumbhash, of: owner)
+        let picture = image(url, of: owner) ?? ThumbHashImages.image(thumbhash)
         return ItemIcon(.image(picture ?? UIImage()), round: true)
     }
 
@@ -269,17 +269,6 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         return nil
     }
 
-    /// `owner`'s thumbhash as a picture if it is decoded, else nil while it
-    /// is decoded off the main thread.
-    private func placeholder(_ thumbhash: String?, of owner: AccountSummary.ID) -> UIImage? {
-        guard let thumbhash, let pictures = context.account.pictures(for: owner) else { return nil }
-        if let image = pictures.cachedPlaceholderImage(thumbhash) { return image }
-        rebuildWhenLoaded("\(owner) #\(thumbhash)") {
-            _ = await pictures.placeholderImage(thumbhash)
-            return pictures.cachedPlaceholderImage(thumbhash) != nil
-        }
-        return nil
-    }
 
     /// Runs `load` once at a time per key, and rebuilds the page if it
     /// left something to draw.
@@ -307,7 +296,7 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         var rows: [UIView] = entries.map { entry in
             let icon: ItemIcon
             // Each account's picture from its own cache, active or not.
-            if let url = entry.avatarURL, let picture = image(url, of: entry.id) ?? placeholder(entry.avatarThumbhash, of: entry.id) {
+            if let url = entry.avatarURL, let picture = image(url, of: entry.id) ?? ThumbHashImages.image(entry.avatarThumbhash) {
                 icon = ItemIcon(.image(picture), round: true)
             } else {
                 let content = AvatarView.Content(avatar: SessionAvatar(seed: entry.id), style: settings.avatarStyle, monochrome: settings.avatarMonochrome)

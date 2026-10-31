@@ -54,10 +54,5 @@ final class Images {
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
         return UIImage(cgImage: image)
     }
-
-    static func placeholder(_ thumbhash: String?) -> UIImage? {
-        guard let thumbhash else { return nil }
-        return AccountPictureImages.placeholder(thumbhash)?.picture as? UIImage
-    }
 }
 #endif

@@ -198,6 +198,8 @@ final class StoriesCircleView: UIControl {
     private let cut = CAShapeLayer()
     private let title = UILabel()
     private var photoKey: String?
+    /// The photo or its placeholder, for tests.
+    var avatarImage: UIImage? { avatar.image }
     private var loading: Task<Void, Never>?
     private var single = false
     private var drawnScale: CGFloat = 1
@@ -429,13 +431,14 @@ final class StoriesCircleView: UIControl {
 
     private func loadPhoto(_ item: StoriesRowItem, images: Images?) {
         // Without a way to read it, the photo waits for the next configure.
-        let key = images == nil ? nil : item.photo.map { "\($0)#\(item.thumbhash ?? "")" }
+        let key = item.photo.map { "\($0)#\(item.thumbhash ?? "")\(images == nil ? "?" : "")" }
         guard key != photoKey else { return }
         photoKey = key
         loading?.cancel()
         guard let path = item.photo, let images else {
-            initials.isHidden = false
-            avatar.image = nil
+            // Its thumbhash meanwhile, when it has a photo to wait for.
+            avatar.image = item.photo == nil ? nil : ThumbHashImages.image(item.thumbhash)
+            initials.isHidden = avatar.image != nil
             return
         }
         initials.isHidden = true
@@ -444,11 +447,11 @@ final class StoriesCircleView: UIControl {
             avatar.image = cached
             return
         }
-        avatar.image = Images.placeholder(item.thumbhash)
+        avatar.image = ThumbHashImages.image(item.thumbhash)
         loading = Task { [weak self] in
             let image = await images.picture(path, thumbhash: item.thumbhash, pixels: pixels)
             guard let self, !Task.isCancelled, photoKey == key else { return }
-            if let image { avatar.image = image } else if avatar.image == nil { initials.isHidden = false }
+            if let image { ImageFade.show(image, in: avatar, fade: true) } else if avatar.image == nil { initials.isHidden = false }
         }
     }
 

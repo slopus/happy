@@ -194,15 +194,11 @@ public final class RemoteImageView: UIImageView {
             image = cached
             return
         }
-        image = thumbhash.flatMap(pictures.cachedPlaceholderImage)
+        image = ThumbHashImages.image(thumbhash)
         task = Task { @MainActor [weak self] in
-            if self?.image == nil, let thumbhash, let placeholder = await pictures.placeholderImage(thumbhash) {
-                guard !Task.isCancelled, let self, self.isShowing(url, from: pictures) else { return }
-                if self.image == nil { self.image = placeholder }
-            }
             let image = await pictures.image(url)
             guard !Task.isCancelled, let self, self.isShowing(url, from: pictures), let image else { return }
-            self.image = image
+            ImageFade.show(image, in: self, fade: true)
         }
     }
 

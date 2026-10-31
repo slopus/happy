@@ -417,17 +417,20 @@ final class StoryEditorViewController: UIViewController, UIGestureRecognizerDele
     private func thumbnail(_ frame: StoryDraft.Frame) -> UIImage? {
         if let poster = local[frame.id]?.poster { return poster }
         if let image = thumbImages[frame.id] { return image }
-        guard thumbLoads[frame.id] == nil, case .kept = frame.media else { return nil }
+        guard case .kept = frame.media else { return nil }
         let (_, shown) = draft.preview(frame)
-        let media = session.media
-        let storyId = draft.storyId
-        thumbLoads[frame.id] = Task { [weak self] in
-            let image = await media.frame(storyId, shown, pixels: 240)
-            guard let self, let image else { return }
-            thumbImages[frame.id] = image
-            renderFrames()
+        if thumbLoads[frame.id] == nil {
+            let media = session.media
+            let storyId = draft.storyId
+            thumbLoads[frame.id] = Task { [weak self] in
+                let image = await media.frame(storyId, shown, pixels: 240)
+                guard let self, let image else { return }
+                thumbImages[frame.id] = image
+                renderFrames()
+            }
         }
-        return nil
+        // Its thumbhash until then.
+        return ThumbHashImages.image(shown.thumbhash)
     }
 
     private func selectFrame(_ index: Int) {

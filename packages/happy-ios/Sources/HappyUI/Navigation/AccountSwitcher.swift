@@ -80,9 +80,13 @@ final class AccountSwitcher: NSObject {
         )
     }
 
+    /// Made once each, so showing one again is no change for the button to fade.
+    private static let fallbacks = ["desktopcomputer", "person.crop.circle.fill"].map {
+        UIImage(systemName: $0)?.withTintColor(UIColor(Palette.textSecondary), renderingMode: .alwaysOriginal)
+    }
+
     private static func fallback(_ account: AccountSummary) -> UIImage? {
-        UIImage(systemName: account.isAgentConnection ? "desktopcomputer" : "person.crop.circle.fill")?
-            .withTintColor(UIColor(Palette.textSecondary), renderingMode: .alwaysOriginal)
+        fallbacks[account.isAgentConnection ? 0 : 1]
     }
 
     private func loadImage(_ account: AccountSummary) {
@@ -90,6 +94,10 @@ final class AccountSwitcher: NSObject {
         guard imageKeys[account.id] != key else { return }
         imageKeys[account.id] = key
         jobs[account.id]?.cancel()
+        // Its thumbhash at once, the picture when it comes.
+        if let placeholder = ProfilePictures.placeholder(account, context: context) {
+            images[account.id] = Self.round(placeholder, side: 28)
+        }
         jobs[account.id] = Task { [weak self, context] in
             let image = await ProfilePictures.load(account, context: context)
             guard !Task.isCancelled, let self, imageKeys[account.id] == key else { return }
@@ -188,7 +196,7 @@ final class AccountSwitcherButton: UIButton {
     }
 
     var picture: UIImage? {
-        didSet { pictureView.image = picture }
+        didSet { if picture !== oldValue { ImageFade.show(picture, in: pictureView, fade: oldValue != nil && picture != nil) } }
     }
 
     override init(frame: CGRect) {

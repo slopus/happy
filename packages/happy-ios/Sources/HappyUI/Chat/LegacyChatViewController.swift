@@ -578,8 +578,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 
     private func makeChatAttachments() -> ChatAttachmentImages {
         ChatAttachmentImages(
-            pictures: account.attachmentPictures, placeholders: context.account.pictures(for: account.keys.anonID),
-            sessionId: chatId, load: services.attachment
+            pictures: account.attachmentPictures, sessionId: chatId, load: services.attachment
         )
     }
 

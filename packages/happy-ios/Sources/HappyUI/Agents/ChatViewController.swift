@@ -1609,7 +1609,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         var pictures = Picture.all(in: chat.items)
         if !pictures.contains(where: { $0.key == key }) {
             let presented = media.media(key)
-            pictures = [Picture(key: key, thumbhash: presented?.item.thumbhash, label: presented?.item.name ?? Strings.picture)]
+            pictures = [presented.map(Picture.init) ?? Picture(key: key, thumbhash: nil, label: Strings.picture)]
         }
         let index = pictures.firstIndex { $0.key == key } ?? 0
         present(PictureViewController(source: media, pictures: pictures, index: index), animated: true)

@@ -9,6 +9,23 @@ struct Picture: Equatable {
     let key: String
     let thumbhash: String?
     let label: String
+    /// Its pixels as stated, so its placeholder takes the picture's place.
+    var size: CGSize?
+
+    init(key: String, thumbhash: String?, label: String, size: CGSize? = nil) {
+        self.key = key
+        self.thumbhash = thumbhash
+        self.label = label
+        self.size = size
+    }
+
+    /// A picture an agent presented.
+    init(_ media: Media) {
+        let item = media.item
+        var size: CGSize?
+        if let width = item.width, let height = item.height, width > 0, height > 0 { size = CGSize(width: width, height: height) }
+        self.init(key: media.key, thumbhash: item.thumbhash, label: item.name, size: size)
+    }
 
     /// Every picture `items` show, in the conversation's order: the ones
     /// the person sent and the ones agents presented. Recordings play in
@@ -22,7 +39,7 @@ struct Picture: Equatable {
                     pictures.append(Picture(key: MediaLoader.sentKey(id), thumbhash: nil, label: Strings.picture))
                 case .gallery(let media, _), .tree(let media, _):
                     for one in media where one.isVisual && !one.isVideo {
-                        pictures.append(Picture(key: one.key, thumbhash: one.item.thumbhash, label: one.item.name))
+                        pictures.append(Picture(one))
                     }
                 case .text, .file, .artifact, .story, .sidebarProposal:
                     break
@@ -239,6 +256,10 @@ final class PicturePage: UIScrollView, UIScrollViewDelegate {
         }
     }
 
+    /// What it shows and where, for tests.
+    var shownImage: UIImage? { imageView.image }
+    var shownFrame: CGRect { imageView.frame }
+
     /// Where it is among the conversation's pictures, as VoiceOver reads it.
     var position: String? {
         get { imageView.accessibilityValue }
@@ -284,27 +305,43 @@ final class PicturePage: UIScrollView, UIScrollViewDelegate {
         let pixels = 3072
         let source = source
         let key = picture.key
-        let thumbhash = picture.thumbhash
+        // Whatever is kept, else the thumbhash, before the first frame.
+        if let cached = source.cachedImage(key, pixels: 1) {
+            show(cached, fade: false)
+        } else if let placeholder = ThumbHashImages.image(picture.thumbhash) {
+            showsPlaceholder = true
+            show(placeholder, fade: false)
+        }
         loading = Task { @MainActor [weak self] in
-            if let cached = source.cachedImage(key, pixels: 1) {
-                self?.show(cached)
-            } else if let thumbhash, let placeholder = await source.placeholder(thumbhash) {
-                self?.show(placeholder)
-            }
-            guard let image = await source.image(key, pixels: pixels), !Task.isCancelled else { return }
-            self?.show(image)
+            guard let image = await source.image(key, pixels: pixels), !Task.isCancelled, let self else { return }
+            let fade = showsPlaceholder
+            showsPlaceholder = false
+            show(image, fade: fade)
         }
     }
 
-    private func show(_ image: UIImage) {
-        imageView.image = image
+    /// The thumbhash stands in: it is drawn at the picture's size, not its own.
+    private var showsPlaceholder = false
+
+    private func show(_ image: UIImage, fade: Bool) {
+        ImageFade.show(image, in: imageView, fade: fade)
         setNeedsLayout()
+    }
+
+    /// The size the picture is laid out at: the placeholder's is the
+    /// picture's as stated, else as tall as the screen in the hash's shape.
+    private var shownSize: CGSize {
+        guard showsPlaceholder else { return imageView.image?.size ?? .zero }
+        if let size = picture.size { return size }
+        guard let ratio = ThumbHashImages.aspectRatio(picture.thumbhash), ratio > 0 else { return .zero }
+        let side = max(bounds.width, bounds.height, 1) * 4
+        return CGSize(width: side * ratio, height: side)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         guard zoomScale == 1 else { return }
-        let layout = PictureViewerLayout(size: bounds.size, safeArea: safeArea, picture: imageView.image?.size ?? .zero)
+        let layout = PictureViewerLayout(size: bounds.size, safeArea: safeArea, picture: shownSize)
         canvas.frame = CGRect(origin: .zero, size: bounds.size)
         contentSize = bounds.size
         imageView.frame = layout.picture

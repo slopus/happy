@@ -374,10 +374,17 @@ final class StoriesViewerCell: UITableViewCell {
         avatar.image = nil
         initials.isHidden = false
         guard let path = viewer.photo else { return }
+        if let cached = images.cachedPicture(path, thumbhash: viewer.thumbhash, pixels: 120) {
+            avatar.image = cached
+            initials.isHidden = true
+            return
+        }
+        avatar.image = ThumbHashImages.image(viewer.thumbhash)
+        initials.isHidden = avatar.image != nil
         loading = Task { [weak self] in
             let image = await images.picture(path, thumbhash: viewer.thumbhash, pixels: 120)
             guard let self, !Task.isCancelled, self.key == key, let image else { return }
-            avatar.image = image
+            ImageFade.show(image, in: avatar, fade: true)
             initials.isHidden = true
         }
     }

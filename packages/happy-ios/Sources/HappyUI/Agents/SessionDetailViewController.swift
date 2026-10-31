@@ -584,7 +584,7 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         let pictures = shared.media.filter(\.isPicture).map { picture -> Picture in
             switch picture {
             case .picture: Picture(key: picture.key, thumbhash: nil, label: Strings.picture)
-            case .tool(let media): Picture(key: media.key, thumbhash: media.item.thumbhash, label: media.item.name)
+            case .tool(let media): Picture(media)
             }
         }
         guard let at = pictures.firstIndex(where: { $0.key == one.key }) else { return }
@@ -959,10 +959,14 @@ final class DetailMarkView: UIView {
         case .image(let path, let thumbhash):
             picture.contentMode = .scaleAspectFill
             let pixels = Int(SessionDetailLayout.Metrics.mark * 3)
-            picture.image = images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels) ?? Images.placeholder(thumbhash)
-            job = Task { [weak self] in
-                guard let image = await self?.images?.picture(path, thumbhash: thumbhash, pixels: pixels), !Task.isCancelled else { return }
-                self?.picture.image = image
+            if let cached = images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels) {
+                picture.image = cached
+            } else {
+                picture.image = ThumbHashImages.image(thumbhash)
+                job = Task { [weak self] in
+                    guard let image = await self?.images?.picture(path, thumbhash: thumbhash, pixels: pixels), !Task.isCancelled, let self else { return }
+                    ImageFade.show(image, in: picture, fade: true)
+                }
             }
         case .glyph(let name):
             picture.contentMode = .center

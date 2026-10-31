@@ -74,9 +74,10 @@ final class ProfileSource {
             reading = nil
             if let profile {
                 let before = state
+                let shown = photo
                 state.heard(profile)
-                if state != before { publish() }
                 loadPhoto()
+                if state != before || photo !== shown { publish() }
             }
             if readAgain {
                 readAgain = false
@@ -179,20 +180,17 @@ final class ProfileSource {
         case nil: break
         }
         guard let hash = state.thumbhash else {
-            if photo != nil || photoHash != nil { showPhoto(nil, hash: nil); publish() }
+            if photo != nil || photoHash != nil { showPhoto(nil, hash: nil) }
             return
         }
         guard hash != photoHash else { return }
-        let showing = photo != nil
         photoJob?.cancel()
         photoHash = hash
+        // The blur in the same publish that brings the hash, so no frame
+        // shows the page without it.
+        if photo == nil { photo = ThumbHashImages.image(hash) }
         let client = client
         photoJob = Task { [weak self] in
-            if !showing, let blur = await Task.detached(operation: { AccountPictureImages.placeholder(hash)?.picture as? UIImage }).value {
-                guard let self, !Task.isCancelled, photoHash == hash else { return }
-                photo = blur
-                publish()
-            }
             guard let read = try? await client.profilePhoto(), !Task.isCancelled else { return }
             let image = await Task.detached(operation: { AccountPictureImages.decode(read.data)?.picture as? UIImage }).value
             guard let self, !Task.isCancelled, photoHash == hash, let image else { return }

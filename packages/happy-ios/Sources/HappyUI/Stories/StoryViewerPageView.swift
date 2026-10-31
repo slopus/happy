@@ -246,10 +246,12 @@ final class StoryViewerPageView: UIView {
             initials.isHidden = true
             return
         }
+        avatar.image = ThumbHashImages.image(author.thumbhash)
+        initials.isHidden = avatar.image != nil
         loading = Task { [weak self] in
             let image = await images.picture(path, thumbhash: author.thumbhash, pixels: pixels)
             guard let self, !Task.isCancelled, photoKey == key, let image else { return }
-            avatar.image = image
+            ImageFade.show(image, in: avatar, fade: true)
             initials.isHidden = true
         }
     }

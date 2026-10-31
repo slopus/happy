@@ -323,13 +323,13 @@ final class StoryCanvasView: UIView {
         }
         if frame.kind == .video, playsVideo { attach(media.player(storyId, frame)) }
         guard mediaView.image == nil || frame.kind == .video else { return }
+        // The thumbhash in this frame, the picture faded in over it.
+        let placeholder = mediaView.image == nil ? ThumbHashImages.image(frame.thumbhash) : nil
+        if let placeholder { mediaView.image = placeholder }
         loading = Task { [weak self] in
-            if let placeholder = await media.placeholder(frame.thumbhash), let self, !Task.isCancelled, self.mediaView.image == nil {
-                self.mediaView.image = placeholder
-            }
             let image = await media.frame(storyId, frame, pixels: pixels)
             guard let self, !Task.isCancelled, self.shownFrame?.id == frame.id else { return }
-            if let image { self.mediaView.image = image }
+            if let image { ImageFade.show(image, in: self.mediaView, fade: placeholder != nil && self.mediaView.image === placeholder) }
             if self.shownFrame?.width == nil, let image { self.measured = image.size }
             self.setNeedsLayout()
             self.markReady()

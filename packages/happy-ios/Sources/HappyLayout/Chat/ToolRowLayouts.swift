@@ -444,8 +444,6 @@ public struct FileViewLayout: Equatable, Sendable {
         public static let badgeSize: CGFloat = 24
         public static let badgeInset: CGFloat = 4
         public static let badgeIconSize: CGFloat = 20
-        /// expo-image's `transition={150}`.
-        public static let fadeIn: TimeInterval = 0.15
     }
 
     public var size: CGSize

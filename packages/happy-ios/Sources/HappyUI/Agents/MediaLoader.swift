@@ -22,7 +22,6 @@ final class MediaLoader: NSObject, ChatMediaSource {
     private let images = NSCache<NSString, Decoded>()
     /// A tool's bytes, so a larger decode doesn't fetch them again.
     private let bytes = NSCache<NSString, NSData>()
-    private let placeholders = NSCache<NSString, UIImage>()
     #if DEBUG
     /// UI tests: every picture fails until the first retry, as a dropped
     /// connection would make it (`V2_MEDIA_FAIL_UNTIL_RETRY`).
@@ -91,15 +90,6 @@ final class MediaLoader: NSObject, ChatMediaSource {
             let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
             images.setObject(Decoded(pixels: pixels, image: image), forKey: key as NSString, cost: cost)
         }
-        return image
-    }
-
-    func placeholder(_ thumbhash: String) async -> UIImage? {
-        if let kept = placeholders.object(forKey: thumbhash as NSString) { return kept }
-        let image = await Task.detached(priority: .userInitiated) {
-            AccountPictureImages.placeholder(thumbhash)?.picture as? UIImage
-        }.value
-        if let image { placeholders.setObject(image, forKey: thumbhash as NSString) }
         return image
     }
 

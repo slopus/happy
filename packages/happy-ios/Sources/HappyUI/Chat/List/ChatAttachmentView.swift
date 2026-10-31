@@ -15,23 +15,19 @@ protocol ChatAttachmentProviding: AnyObject {
 /// downloaded and decrypted by `load`, decoded off the main thread at no
 /// more than FileView draws, and kept in the account's own
 /// `AttachmentPictures`, never another account's. Their thumbhashes are
-/// decoded off the main thread too, and kept in the account's own
-/// `AccountPictures`.
+/// `ThumbHashImages`', which the view sets while it is configured.
 @MainActor
 final class ChatAttachmentImages: NSObject {
     private let pictures: AttachmentPictures
-    private let placeholders: AccountPictures?
     private let sessionId: String
     private let load: @Sendable (_ ref: String) async throws -> Data
 
     init(
         pictures: AttachmentPictures,
-        placeholders: AccountPictures? = nil,
         sessionId: String,
         load: @escaping @Sendable (_ ref: String) async throws -> Data
     ) {
         self.pictures = pictures
-        self.placeholders = placeholders
         self.sessionId = sessionId
         self.load = load
         super.init()
@@ -40,17 +36,6 @@ final class ChatAttachmentImages: NSObject {
 
     @objc private func memoryWarning() {
         pictures.removeAll()
-        placeholders?.removeAll()
-    }
-
-    /// A thumbhash already decoded, or nil.
-    func cachedPlaceholder(_ thumbhash: String) -> UIImage? {
-        placeholders?.cachedPlaceholderImage(thumbhash)
-    }
-
-    /// The thumbhash as a picture, decoded off the main thread.
-    func placeholder(_ thumbhash: String) async -> UIImage? {
-        await placeholders?.placeholderImage(thumbhash)
     }
 
     func cached(_ ref: String) -> UIImage? {
@@ -125,12 +110,12 @@ final class ChatAttachmentImages: NSObject {
     }
 }
 
-/// FileView's picture: the thumbhash, then the picture faded in over it
-/// (expo-image's `transition={150}`, `contentFit="cover"`), rounded 8. One
-/// that couldn't be loaded keeps its thumbhash under an alert badge. It
-/// loads once it is on screen, from the screen up its responder chain,
-/// which is also where it looks for a picture already kept: it holds none
-/// of its own.
+/// FileView's picture: the thumbhash from the first frame, then the picture
+/// faded in over it (expo-image's `transition`, here the app's `ImageFade`;
+/// `contentFit="cover"`), rounded 8. One that couldn't be loaded keeps its
+/// thumbhash under an alert badge. It loads once it is on screen, from the
+/// screen up its responder chain, which is also where it looks for a
+/// picture already kept: it holds none of its own.
 final class ChatAttachmentView: UIView {
     private let placeholder = UIImageView()
     private let picture = UIImageView()
@@ -138,7 +123,9 @@ final class ChatAttachmentView: UIView {
     private let badgeIcon = UIImageView()
     private var attachment: ChatAttachment?
     private var task: Task<Void, Never>?
-    private var placeholderTask: Task<Void, Never>?
+
+    /// The thumbhash under the picture, for tests.
+    var placeholderImage: UIImage? { placeholder.image }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -171,11 +158,10 @@ final class ChatAttachmentView: UIView {
         guard attachment != self.attachment else { return }
         task?.cancel()
         task = nil
-        placeholderTask?.cancel()
-        placeholderTask = nil
         self.attachment = attachment
-        // Only one already decoded; any other is decoded off the main thread.
-        placeholder.image = attachment?.thumbhash.flatMap { source()?.cachedPlaceholder($0) }
+        // Now, not once it is on screen: its first frame shows it.
+        placeholder.image = ThumbHashImages.image(attachment?.thumbhash)
+        picture.layer.removeAllAnimations()
         picture.image = nil
         picture.alpha = 1
         badge.isHidden = true
@@ -198,7 +184,6 @@ final class ChatAttachmentView: UIView {
 
     private func loadIfNeeded() {
         guard window != nil, let attachment, let images = source() else { return }
-        loadPlaceholderIfNeeded(attachment, from: images)
         guard task == nil, picture.image == nil, badge.isHidden else { return }
         // Before the first frame it is drawn in, so no fade.
         if let image = images.cached(attachment.ref) {
@@ -214,23 +199,7 @@ final class ChatAttachmentView: UIView {
                 return
             }
             self.picture.image = image
-            self.picture.alpha = 0
-            UIView.animate(withDuration: FileViewLayout.Metrics.fadeIn) { self.picture.alpha = 1 }
-        }
-    }
-
-    /// The thumbhash, under the picture and under the badge when the
-    /// picture can't be had.
-    private func loadPlaceholderIfNeeded(_ attachment: ChatAttachment, from images: ChatAttachmentImages) {
-        guard placeholderTask == nil, placeholder.image == nil, let thumbhash = attachment.thumbhash else { return }
-        if let image = images.cachedPlaceholder(thumbhash) {
-            placeholder.image = image
-            return
-        }
-        placeholderTask = Task { @MainActor [weak self] in
-            let image = await images.placeholder(thumbhash)
-            guard !Task.isCancelled, let self, self.attachment == attachment else { return }
-            self.placeholder.image = image
+            ImageFade.fadeIn(self.picture)
         }
     }
 

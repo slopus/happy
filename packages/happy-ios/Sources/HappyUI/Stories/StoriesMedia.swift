@@ -13,7 +13,6 @@ final class StoriesMedia {
     /// The computer the media comes from; live pages read their files through it too.
     let client: AgentClient
     private let images = NSCache<NSString, Decoded>()
-    private let placeholders = NSCache<NSString, UIImage>()
     private var loading: [String: Task<UIImage?, Never>] = [:]
     private var packs: [String: Task<[String: Sticker], Never>] = [:]
     private var stickerFiles: [String: Task<Data?, Never>] = [:]
@@ -126,14 +125,6 @@ final class StoriesMedia {
         }
         streams[key] = stream
         return stream
-    }
-
-    func placeholder(_ thumbhash: String?) async -> UIImage? {
-        guard let thumbhash else { return nil }
-        if let kept = placeholders.object(forKey: thumbhash as NSString) { return kept }
-        let image = await Task.detached(priority: .userInitiated) { AccountPictureImages.placeholder(thumbhash)?.picture as? UIImage }.value
-        if let image { placeholders.setObject(image, forKey: thumbhash as NSString) }
-        return image
     }
 
     /// Any picture under a key of the caller's, from bytes the caller reads.

@@ -67,7 +67,6 @@ final class SharedMediaCell: UIControl {
     private var media: Shared.Media?
     private var loadedPixels = 0
     private var task: Task<Void, Never>?
-    private var placeholderTask: Task<Void, Never>?
     /// Not asked again until the cell comes back into a window: the
     /// computer may be away.
     private var failed = false
@@ -120,12 +119,9 @@ final class SharedMediaCell: UIControl {
         guard media != self.media else { return }
         task?.cancel()
         task = nil
-        placeholderTask?.cancel()
-        placeholderTask = nil
         self.media = media
         loadedPixels = 0
         failed = false
-        placeholder.image = nil
         picture.layer.removeAllAnimations()
         picture.alpha = 1
         picture.image = nil
@@ -145,13 +141,8 @@ final class SharedMediaCell: UIControl {
         name.text = file?.item.name
         accessibilityLabel = label
         accessibilityTraits = file == nil && !video ? [.image, .button] : .button
-        if let thumbhash, let source {
-            placeholderTask = Task { [weak self] in
-                let image = await source.placeholder(thumbhash)
-                guard let self, !Task.isCancelled, self.media == media, self.picture.image == nil else { return }
-                self.placeholder.image = image
-            }
-        }
+        // Now, not once it is on screen: its first frame shows it.
+        placeholder.image = ThumbHashImages.image(thumbhash)
         setNeedsLayout()
     }
 
@@ -198,10 +189,7 @@ final class SharedMediaCell: UIControl {
             let first = self.picture.image == nil
             self.loadedPixels = pixels
             self.picture.image = image
-            if first {
-                self.picture.alpha = 0
-                UIView.animate(withDuration: ChatMediaView.fade) { self.picture.alpha = 1 }
-            }
+            if first { ImageFade.fadeIn(self.picture) }
             // Grown while it read: the larger one now.
             self.load()
         }

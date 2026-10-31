@@ -81,14 +81,16 @@ final class CombinedAccountsViewController: UIViewController {
         let key = direct.map { "\($0.avatarETag ?? ""):\($0.avatar?.count ?? 0)" } ?? account.avatarURL?.absoluteString ?? account.avatarThumbhash ?? ""
         guard imageKeys[account.id] != key else { return }
         imageKeys[account.id] = key; jobs[account.id]?.cancel()
+        // Its thumbhash at once, the picture when it comes.
+        let placeholder = ProfilePictures.placeholder(account, context: context)
+        if let placeholder { images[account.id] = placeholder }
         let pictures = context.account.pictures(for: account.id)
         jobs[account.id] = Task { [weak self] in
             var image: UIImage?
             if let bytes = direct?.avatar { image = await Task.detached { AccountPictureImages.decode(bytes)?.picture as? UIImage }.value }
             else if let url = account.avatarURL { image = await pictures?.image(url) }
-            if image == nil, let hash = account.avatarThumbhash { image = await pictures?.placeholderImage(hash) }
             guard !Task.isCancelled, let self, imageKeys[account.id] == key else { return }
-            images[account.id] = image; update()
+            images[account.id] = image ?? placeholder; update()
         }
     }
 }

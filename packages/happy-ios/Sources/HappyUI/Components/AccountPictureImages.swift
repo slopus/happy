@@ -4,8 +4,9 @@ import HappyLayout
 import ImageIO
 import UIKit
 
-/// An account's profile pictures and thumbhash placeholders as UIImages,
-/// decoded off the main thread by the account's own `AccountPictures`.
+/// An account's profile pictures as UIImages, decoded off the main thread
+/// by the account's own `AccountPictures`. Their thumbhashes are
+/// `ThumbHashImages`', decoded while a view is configured.
 extension AccountPictures {
     /// A picture already decoded, or nil.
     func cachedImage(_ url: URL) -> UIImage? {
@@ -15,16 +16,6 @@ extension AccountPictures {
     /// The picture at `url`, or nil when it can't be had.
     func image(_ url: URL) async -> UIImage? {
         await picture(url, decode: AccountPictureImages.decode) as? UIImage
-    }
-
-    /// A thumbhash already decoded, or nil.
-    func cachedPlaceholderImage(_ thumbhash: String) -> UIImage? {
-        cachedPlaceholder(thumbhash) as? UIImage
-    }
-
-    /// The thumbhash as a picture, or nil when it is not one.
-    func placeholderImage(_ thumbhash: String) async -> UIImage? {
-        await placeholder(thumbhash, make: AccountPictureImages.placeholder) as? UIImage
     }
 }
 
