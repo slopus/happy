@@ -16,8 +16,15 @@ final class ProfileSource {
     private let client: AgentClient
     private let engine: SyncEngine
     /// What the person's placeholder picture is picked by, while they have
-    /// no picture of their own.
-    let placeholderSeed: String
+    /// no picture of their own (`Session.personSeed`). A new one is decoded
+    /// and shown when someone watches.
+    var placeholderSeed: String {
+        didSet {
+            guard placeholderSeed != oldValue, placeholder != nil || placeholderJob != nil else { return }
+            placeholderJob?.cancel()
+            loadPlaceholder()
+        }
+    }
     /// That placeholder, decoded once someone watches.
     private(set) var placeholder: UIImage?
     private var placeholderJob: Task<Void, Never>?
@@ -61,7 +68,7 @@ final class ProfileSource {
         let seed = placeholderSeed
         placeholderJob = Task { [weak self] in
             let image = await AvatarPlaceholderImages.image(seed: seed, side: ProfileLayout.Metrics.avatar)
-            guard let self else { return }
+            guard let self, !Task.isCancelled, placeholderSeed == seed else { return }
             placeholder = image
             publish()
         }

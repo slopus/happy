@@ -55,8 +55,11 @@ final class StoriesSession {
         media = StoriesMedia(client: client)
         let updates = store.updates
         following = Task { [weak self] in
-            for await snapshot in updates {
+            for await var snapshot in updates {
                 guard let self else { return }
+                // The person's own circle wears their placeholder from
+                // every other surface (`PersonSeed`).
+                if let me = v2?.personSeed { snapshot.feed = snapshot.feed?.seeding(me: me) }
                 guard snapshot != self.snapshot else { continue }
                 self.snapshot = snapshot
                 for watcher in self.watchers.values { watcher(snapshot) }

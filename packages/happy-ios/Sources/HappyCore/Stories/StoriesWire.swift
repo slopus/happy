@@ -570,8 +570,12 @@ public struct StoryFeedAuthor: Equatable, Sendable, Codable {
     public var unseenCount: Int
     public var draftCount: Int?
     public var latestPostedAt: Int64?
+    /// The person's own seed (`PersonSeed`) for their own circle, when the
+    /// computer is in no team and so names no user: this phone's, never
+    /// the wire's (`StoriesSession`).
+    public var mySeed: String?
 
-    public init(userId: String?, name: String, photo: String?, thumbhash: String?, isSelf: Bool, storyIds: [String], unseenCount: Int, draftCount: Int?, latestPostedAt: Int64?) {
+    public init(userId: String?, name: String, photo: String?, thumbhash: String?, isSelf: Bool, storyIds: [String], unseenCount: Int, draftCount: Int?, latestPostedAt: Int64?, mySeed: String? = nil) {
         self.userId = userId
         self.name = name
         self.photo = photo
@@ -581,6 +585,7 @@ public struct StoryFeedAuthor: Equatable, Sendable, Codable {
         self.unseenCount = unseenCount
         self.draftCount = draftCount
         self.latestPostedAt = latestPostedAt
+        self.mySeed = mySeed
     }
 
     enum CodingKeys: String, CodingKey { case userId, name, photo, thumbhash, isSelf, storyIds, unseenCount, draftCount, latestPostedAt }
@@ -610,8 +615,12 @@ public struct StoryFeedAuthor: Equatable, Sendable, Codable {
     /// Its circle's key in the row: the user, or the one person.
     public var key: String { isSelf ? "self" : (userId ?? "self") }
     /// What the author's placeholder picture is picked by, without a photo
-    /// (`AvatarPlaceholder`): who they are, the same on every phone.
-    public var placeholderSeed: String { userId ?? name }
+    /// (`AvatarPlaceholder`): who they are, the same on every phone. The
+    /// person's own is the one their Profile page draws.
+    public var placeholderSeed: String {
+        if isSelf, let mySeed { return PersonSeed.seed(userId: userId, otherwise: mySeed) }
+        return userId ?? name
+    }
 
     /// An agent's ring played as an author (`StoriesRow.ringAuthor`): its agent.
     public var ringAgentId: String? {
@@ -666,6 +675,14 @@ public struct StoryFeed: Equatable, Sendable, Codable {
         try c.encodeIfPresent(rings, forKey: .rings)
         try c.encode(stories, forKey: .stories)
         try c.encode(cursor, forKey: .cursor)
+    }
+
+    /// The feed with the person's own circle seeded as they are on every
+    /// other surface (`StoryFeedAuthor.mySeed`).
+    public func seeding(me: String) -> StoryFeed {
+        var feed = self
+        for index in feed.authors.indices where feed.authors[index].isSelf { feed.authors[index].mySeed = me }
+        return feed
     }
 }
 

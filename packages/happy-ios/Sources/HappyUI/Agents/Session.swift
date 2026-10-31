@@ -33,8 +33,18 @@ final class Session {
     /// What this computer's placeholder picture is picked by, when it has
     /// none of its own (`AvatarPlaceholder`).
     let placeholderSeed: String
+    /// What the person's own placeholder is picked by (`PersonSeed`): their
+    /// team user once the computer says it is in a team, else this
+    /// computer's seed as theirs.
+    var personSeed: String { PersonSeed.seed(userId: home.userId, otherwise: "person:" + placeholderSeed) }
     /// The person's own name and picture on this computer.
-    private(set) lazy var profile = ProfileSource(client: client, engine: engine, placeholderSeed: "person:" + placeholderSeed)
+    var profile: ProfileSource {
+        if let madeProfile { return madeProfile }
+        let source = ProfileSource(client: client, engine: engine, placeholderSeed: personSeed)
+        madeProfile = source
+        return source
+    }
+    private var madeProfile: ProfileSource?
     private(set) var snapshot = Snapshot()
     private var watchers: [UUID: (Snapshot) -> Void] = [:]
     /// Readable, not settable, so a test can say the follow was let go of
@@ -202,6 +212,7 @@ final class Session {
     /// A snapshot from the engine (or a test standing in for it).
     func receive(home snapshot: HomeSnapshot) {
         home = snapshot
+        madeProfile?.placeholderSeed = personSeed
         updateHeaderState()
         for watch in homeWatchers.values { watch(snapshot) }
     }

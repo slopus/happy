@@ -40,7 +40,8 @@ enum StoriesViewerPresenter {
         let author = StoryFeedAuthor(
             userId: story.authorUserId, name: known?.name ?? (isSelf ? Strings.Stories.myStory : ""),
             photo: known?.photo, thumbhash: known?.thumbhash, isSelf: isSelf,
-            storyIds: [story.id], unseenCount: 0, draftCount: nil, latestPostedAt: story.postedAt
+            storyIds: [story.id], unseenCount: 0, draftCount: nil, latestPostedAt: story.postedAt,
+            mySeed: isSelf ? session.v2?.personSeed : nil
         )
         return present(session: session, feed: StoryFeed(authors: [author], stories: [story.id: story], cursor: ""), authorIndex: 0, storyId: story.id, from: host, origin: origin)
     }

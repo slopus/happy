@@ -10,6 +10,8 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var rows: [Row] = []
     public var allRows: [Row] = []
     public var settings: [String: JSONValue] = [:]
+    /// The person signed in as a team user; nil outside a team.
+    public var userId: String?
     public var error: String?
     public init() {}
 }
@@ -435,6 +437,7 @@ public actor SyncEngine {
         if let desktop {
             snapshot.allRows = SidebarRows.make(desktop, settings: snapshot.settings, users: users)
             snapshot.rows = Rows.visible(snapshot.allRows)
+            snapshot.userId = desktop.profile?.userId
         }
         publish()
     }

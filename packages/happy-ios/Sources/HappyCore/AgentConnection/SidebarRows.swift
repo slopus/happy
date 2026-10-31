@@ -129,7 +129,8 @@ public enum SidebarRows {
     /// belongs to, who made it (the signed-in person for their own tasks).
     /// Their picture over its ThumbHash; while they have none, or before
     /// they are read, their own placeholder, picked by their user ID as
-    /// stories pick it, so they look the same on every phone. Nil outside a
+    /// stories and the Profile page pick it (`PersonSeed`), so they look the
+    /// same on every phone. Nil outside a
     /// team (no signed-in team user) or for a task nobody owns: it keeps its
     /// own placeholder.
     static func authorMark(_ task: DesktopSnapshot.Owner, profile: DesktopSnapshot.Profile?, users: [String: TeamUser]) -> Row.Mark? {
