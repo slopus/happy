@@ -5,7 +5,7 @@ import CoreGraphics
 
 /// V2 home between home's header and dock: the list scrolling the whole
 /// screen, its rows (the notice first, when there is one) starting under
-/// the stories, and the empty state in the space the list would take.
+/// the header, and the empty state in the space the list would take.
 public struct HomeLayout: Equatable, Sendable {
     public var listInsets: LayoutInsets
     public var indicatorInsets: LayoutInsets
@@ -17,14 +17,12 @@ public struct HomeLayout: Equatable, Sendable {
 
     /// `contentTop` is where content starts under the header, `chromeTop`
     /// the header's own foot, `listBottom` the room the dock keeps,
-    /// `storiesHeight` the room the stories open under the header (0:
-    /// closed into the title, or not drawn), `maxWidth` how wide the
-    /// content may grow.
-    public init(size: CGSize, contentTop: CGFloat, chromeTop: CGFloat, listBottom: CGFloat, storiesHeight: CGFloat = 0, maxWidth: CGFloat = .greatestFiniteMagnitude) {
+    /// `maxWidth` how wide the content may grow.
+    public init(size: CGSize, contentTop: CGFloat, chromeTop: CGFloat, listBottom: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude) {
         let width = max(0, min(size.width, maxWidth))
         let left = ((size.width - width) / 2).rounded()
         content = CGRect(x: left, y: 0, width: width, height: size.height)
-        listInsets = LayoutInsets(top: contentTop + max(0, storiesHeight), left: 0, bottom: listBottom, right: 0)
+        listInsets = LayoutInsets(top: contentTop, left: 0, bottom: listBottom, right: 0)
         indicatorInsets = LayoutInsets(top: chromeTop, left: 0, bottom: listBottom, right: 0)
         empty = CGRect(x: left, y: contentTop, width: width, height: max(0, size.height - contentTop - listBottom))
     }

@@ -18,11 +18,7 @@ extension Palette {
     /// the dot in its trailing square.
     public static let rowNew = ColorToken("#e3f3f7", "#16343c")
     public static let rowNewDot = ColorToken("#2baccc")
-    /// A story row's unread dot (`--status-default`), and the lines its
-    /// work added and deleted (`--git-added-text`, `--git-removed-text`).
-    public static let unreadDot = ColorToken("#8e8e93")
-    public static let linesAdded = ColorToken("#22c55e", "#34c759")
-    public static let linesDeleted = ColorToken("#ef4444", "#ff453a")
+
     /// A person a message mentions ("@Steve"), and the tint behind a
     /// mention of the person reading.
     public static let mention = ColorToken("#1a7f99", "#5cc8e2")
@@ -270,102 +266,14 @@ public enum Metrics {
     public static let clockGlyph: CGFloat = 14 * phone
     /// A section's "+".
     public static let addGlyph: CGFloat = 14 * phone
+    /// The chat's braille loader, standing in the trailing square while a
+    /// row's work runs.
+    public static let workingSignal = CGSize(width: 8, height: 14)
     /// The tree's lines, at 0.28 of the row ink.
     public static let connectorAlpha: CGFloat = 0.28
     /// Room above the first row and below the last (`.happy-sidebar__body-content`).
     public static let contentTop: CGFloat = 6 * phone
     public static let contentBottom: CGFloat = 6 * phone
-}
-
-/// The v2 sidebar's conversation rows while Stories are on, as
-/// desktop's story rows (`sidebar.css` "Story rows", measured from
-/// Telegram's chat list in points): a 64 card 3 in from the list, 70.5
-/// apart, its 50 disc 7 in with the ring drawn outside it, the title, then
-/// the status in up to two lines. The time and the signal stand `corner` in
-/// from the card's right edge. Every box is fixed, so nothing a row shows,
-/// and neither selection nor a press, moves anything.
-public enum StoryRowMetrics {
-    /// The card, and its corners where it is filled.
-    public static let rowHeight: CGFloat = 64
-    public static let cardInset: CGFloat = 3
-    public static let cornerRadius: CGFloat = 14
-    /// From one card to the next (70.5 apart), and from a card down to a heading.
-    public static let rowGap: CGFloat = 6.5
-    public static let headingGap: CGFloat = 12.5
-    /// The disc, 7 into the card and centred on its height; the ring's box
-    /// keeps `ringRoom` around it on every row, ring or not.
-    public static let pad: CGFloat = 7
-    public static let disc: CGFloat = 50
-    public static let ringRoom: CGFloat = 4
-    public static let ring: CGFloat = disc + 2 * ringRoom
-    /// The ring's centre line, from the box's middle; unseen segments 2
-    /// wide, seen ones 1.5, 3 between segments when there are several.
-    public static let ringRadius: CGFloat = 27.5
-    public static let unseenWidth: CGFloat = 2
-    public static let seenWidth: CGFloat = 1.5
-    public static let segmentGap: CGFloat = 3
-    /// The disc's fill: the ink at 6%. Art and glyphs stand 32 and 26 in
-    /// its middle; a picture fills it.
-    public static let plateInk: CGFloat = 0.06
-    public static let plateArt: CGFloat = 32
-    public static let plateGlyph: CGFloat = 26
-    /// Disc to text.
-    public static let textGap: CGFloat = 10
-    /// The title: 15.5 semibold, its baseline 19.5 into the card.
-    public static let titleSize: CGFloat = 15.5
-    public static let titleBaseline: CGFloat = 19.5
-    /// The time: 12.5 in even figures, its cap top on the title's, 8 clear of it.
-    public static let timeSize: CGFloat = 12.5
-    public static let timeGap: CGFloat = 8
-    /// The digits' side bearing: the time's box ends this far past its ink.
-    public static let timeBearing: CGFloat = 0.5
-    /// The status: 14 on 16-point lines, at most two.
-    public static let statusSize: CGFloat = 14
-    public static let statusLine: CGFloat = 16
-    public static let statusLines = 2
-    /// From the title's baseline to the first status line's.
-    public static let titleToStatus: CGFloat = 16.6
-    /// One inset for the corners: the time's ink and the signal end this
-    /// far inside the card's right edge, and the last status baseline, which
-    /// the signal stands on, is this far above the card's bottom.
-    public static let corner: CGFloat = 11.9
-    /// The signal's one lane, the same for the spinner, the dot and
-    /// nothing, and the room the status keeps clear for it (the lane and 6).
-    public static let signal: CGFloat = 14
-    public static let signalRoom: CGFloat = 20
-    public static let dot: CGFloat = 10
-    public static let braille = CGSize(width: 8, height: 14)
-    /// Headings and separators among story rows stand at desktop's own
-    /// size, as the rows do: their row box 6 in from the list
-    /// (`--happy-panel-inset`).
-    public static let rowInset: CGFloat = 6
-    /// A section heading (`sidebar.css` "A heading among story rows"): 22
-    /// tall, its title in 11 bold mono starting on the discs' left edge. Its
-    /// fold's 18 box stands 7 in from the row box
-    /// (`--happy-sidebar-fold-inset`), its "+" one 22 step before it; both
-    /// glyphs 12.
-    public static let headingHeight: CGFloat = 22
-    public static let headingSize: CGFloat = 11
-    public static let headingInset: CGFloat = cardInset + pad
-    public static let headingFoldInset: CGFloat = 7
-    public static let headingBox: CGFloat = 18
-    public static let headingStep: CGFloat = 22
-    public static let headingGlyph: CGFloat = 12
-    /// A separator (`.happy-sidebar__separator`): 17 tall, its hairline 6
-    /// in from each end of the row box (`--happy-hover-radius`).
-    public static let separatorHeight: CGFloat = 17
-    public static let ruleInset: CGFloat = 6
-    /// Between headings and separators, and from either into a card: the
-    /// column's gap (`SIDEBAR_ROW_GAP`).
-    public static let headingsGap: CGFloat = 2
-    /// The lines changed: 4 between "+N" and "−M", and 4 before the status.
-    public static let countsGap: CGFloat = 4
-    /// The empty mark's scene: 49 × 22 cells, the dinosaur on the top 21,
-    /// as tall as "Ag" (cap top to descender) in the status.
-    public static let emptyColumns: CGFloat = 49
-    public static let emptyRows: CGFloat = 22
-    /// The empty mark's ink: the status's at 55%.
-    public static let emptyInk: CGFloat = 0.55
 }
 
 extension ChatTextStyles {

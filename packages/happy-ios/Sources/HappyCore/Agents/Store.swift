@@ -191,7 +191,6 @@ public actor Store {
         placesReload?.cancel(); placesReload = nil
         attentionIdle?.cancel(); attentionIdle = nil
         keeping?.cancel(); keeping = nil
-        draftPublish?.cancel(); draftPublish = nil
         continuation.finish()
         await client.close()
     }
@@ -262,7 +261,7 @@ public actor Store {
 
     private var typeListeners: [UUID: (prefixes: [String], continuation: AsyncStream<ConversationEvent>.Continuation)] = [:]
 
-    /// Every event whose type starts with one of `prefixes` (`"story."`),
+    /// Every event whose type starts with one of `prefixes` (`"artifact."`),
     /// for what no conversation or Surface key names. `resync` as above.
     public func events(matching prefixes: [String]) -> AsyncStream<ConversationEvent> {
         let id = UUID()
@@ -493,56 +492,11 @@ public actor Store {
             guard let data = try? JSONEncoder().encode(value) else { return [] }
             return (try? decoder.decode([Lossy<T>].self, from: data))?.compactMap(\.value) ?? []
         }
-        places = Places(bots: decode(composed(bots)), tasks: decode(composed(tasks)), surfaces: surfaces, drafts: draftsShown)
+        places = Places(bots: decode(composed(bots)), tasks: decode(composed(tasks)), surfaces: surfaces)
         // A subtask being archived that no bot or task holds any more is gone.
         for (id, removal) in removing where removal.subtask && places.agent(id) == nil { removing[id] = nil }
     }
 
-    // MARK: Drafts
-
-    /// The latest stamp heard for each conversation's draft, the previews
-    /// rows show, and the ones waiting for typing to pause.
-    private var draftStamps: [String: Double] = [:]
-    private var draftsShown: [String: String] = [:]
-    private var draftsWaiting: [String: String] = [:]
-    private var draftPublish: Task<Void, Never>?
-    /// How long typing pauses before a row's draft follows the composer.
-    static let draftDelay: Duration = .seconds(1)
-
-    /// A conversation's draft changed, on this phone or another device: its
-    /// row follows a second after typing pauses, or at once when the draft
-    /// empties, so typing doesn't redraw the list on every keystroke. An
-    /// older stamp than one already heard changes nothing.
-    public func noteDraft(_ agentId: String, text: String?, updatedAt: Double) {
-        if let stamp = draftStamps[agentId], updatedAt < stamp { return }
-        draftStamps[agentId] = updatedAt
-        guard let preview = Rows.draftPreview(text) else {
-            draftsWaiting.removeValue(forKey: agentId)
-            guard draftsShown.removeValue(forKey: agentId) != nil else { return }
-            places.drafts = draftsShown
-            publish()
-            return
-        }
-        guard draftsShown[agentId] != preview else {
-            draftsWaiting.removeValue(forKey: agentId)
-            return
-        }
-        draftsWaiting[agentId] = preview
-        draftPublish?.cancel()
-        draftPublish = Task { [weak self] in
-            try? await Task.sleep(for: Self.draftDelay)
-            guard !Task.isCancelled else { return }
-            await self?.showWaitingDrafts()
-        }
-    }
-
-    private func showWaitingDrafts() {
-        guard !draftsWaiting.isEmpty else { return }
-        draftsShown.merge(draftsWaiting) { _, waiting in waiting }
-        draftsWaiting = [:]
-        places.drafts = draftsShown
-        publish()
-    }
 
     // MARK: Events
 
@@ -608,10 +562,7 @@ public actor Store {
                 // A page shown inline follows its latest version, entry and display.
                 read(artifacts: [id])
             }
-        case "agent.draft.updated":
-            guard let id = payload["agentId"]?.stringValue else { return }
-            noteDraft(id, text: payload["draft"]?["value"]?["text"]?.stringValue, updatedAt: payload["draft"]?["updatedAt"]?.numberValue ?? 0)
-            return
+
         case "user_settings.updated":
             if payload["setting"]?["key"]?.stringValue == Self.settingKey {
                 snapshot.prioritizing = payload["setting"]?["value"] == .bool(true)

@@ -27,7 +27,7 @@ final class GlassView: UIView {
     }
 }
 
-/// Every paired computer and signed-in account as a strip of story
+/// Every paired computer and signed-in account as a strip of
 /// circles: the chosen one in the middle, larger and ringed. A drag scales
 /// them as they pass the middle, a stop snaps to one (a selection tick on
 /// each), a tap brings one to the middle; the "+" at the end only taps.

@@ -74,11 +74,11 @@ final class SidebarListSlotsTests: XCTestCase {
         XCTAssertEqual(heading.label, CGRect(x: 32, y: 14 + 36 - 7 - 18, width: heading.label.width, height: 18))
     }
 
-    /// Story rows keep their frames, moved by the slot's top alone.
+    /// A row keeps its frames, moved by the slot's top alone.
     func testLocalMovesEveryFrame() {
         let rows: [SidebarLayout.Row] = [
             .init(kind: .row),
-            .init(kind: .row, story: .init(corner: .braille, timeWidth: 30, last: .empty)),
+            .init(kind: .row, hasWorkingSignal: true, hasFold: true),
         ]
         let result = grouped(rows)
         let slots = SidebarLayout.slots(rows, result, width: 390)
@@ -87,12 +87,11 @@ final class SidebarListSlotsTests: XCTestCase {
         let dy = -slots[1].frame.minY
         XCTAssertEqual(local.box, content.box.offsetBy(dx: 0, dy: dy))
         XCTAssertEqual(local.mark, content.mark?.offsetBy(dx: 0, dy: dy))
-        XCTAssertEqual(local.ring, content.ring?.offsetBy(dx: 0, dy: dy))
         XCTAssertEqual(local.label, content.label.offsetBy(dx: 0, dy: dy))
-        XCTAssertEqual(local.time, content.time?.offsetBy(dx: 0, dy: dy))
-        XCTAssertEqual(local.subtitle, content.subtitle?.offsetBy(dx: 0, dy: dy))
+        XCTAssertEqual(local.chevron, content.chevron?.offsetBy(dx: 0, dy: dy))
+        XCTAssertEqual(local.chevronGlyph, content.chevronGlyph?.offsetBy(dx: 0, dy: dy))
+        XCTAssertNotNil(content.corner)
         XCTAssertEqual(local.corner, content.corner?.offsetBy(dx: 0, dy: dy))
-        XCTAssertEqual(local.empty, content.empty?.offsetBy(dx: 0, dy: dy))
         XCTAssertEqual(local.cell?.separator, nil)
         XCTAssertEqual(slots[0].box.maxY, 56)
         XCTAssertEqual(local.box.minY, 0)

@@ -55,14 +55,12 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     #if DEBUG || HAPPY_FIXTURES
     private var homeRenderer: HomeRendererHarness?
     private var agent: AgentHarness?
-    private var storyRows: StoryRowsHarness?
     private var agentList: AgentListScrollHarness?
     private var composerKeyboardProbe: ComposerKeyboardProbe?
     private var realArchive: RealArchiveHarness?
     private var qaProbe: ChatUltraQAProbe?
     private var motionScript: ChatMotionScript?
     private var qaReal: ChatUltraQAReal?
-    private var stories: StoriesHarness?
     private var homeControllerScroll: HomeControllerScrollHarness?
     private var homeScrollDiagnostic: HomeScrollDiagnosticHarness?
     private var groupedHome: GroupedHomeHarness?
@@ -94,10 +92,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
             qaReal = ChatUltraQAReal(window: window)
             return
         }
-        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "stories" {
-            stories = StoriesHarness(window: window)
-            return
-        }
+
         if arguments.contains("-real-archive") {
             realArchive = RealArchiveHarness(window: window)
             return
@@ -128,10 +123,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
             chatHeader = ChatHeaderHarness(window: window, arguments: arguments)
             return
         }
-        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "storyRows" {
-            storyRows = StoryRowsHarness(window: window)
-            return
-        }
+
         #endif
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "whatsnew" {
             whatsNew = WhatsNewProbe(window: window, arguments: arguments)

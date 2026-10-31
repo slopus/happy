@@ -7,7 +7,7 @@ import CoreGraphics
 /// the navigation bar, scrolling, the profiles as a
 /// strip of circles, the chosen one's name and line, and grouped cards.
 ///
-/// The profiles as story circles: the chosen one centred, larger and
+/// The profiles as circles: the chosen one centred, larger and
 /// ringed, the others smaller either side; each grows as it nears the
 /// middle, so a drag scales them continuously and a stop snaps to one.
 public enum ProfileCarousel {

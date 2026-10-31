@@ -64,13 +64,6 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         /// The status text, when the socket is not connected.
         public var status: Measurable?
         public var showsAccountAvatar: Bool = false
-        /// Where the title starts when something beside it places it (the
-        /// stories closed into the header); nil centres it. The status
-        /// line stays centred under it.
-        public var titleX: CGFloat?
-        /// How much deeper the scrim reaches, over what hangs under the
-        /// header (the stories' open row).
-        public var backdropExtension: CGFloat = 0
         /// The pill holds one button (a computer's home: search alone), in
         /// the first slot; the divider and second slot are empty.
         public var singleAction: Bool = false
@@ -114,7 +107,7 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         let rowHeight = M.contentHeight
 
         size = CGSize(width: width, height: top + rowHeight)
-        backdrop = CGRect(x: 0, y: 0, width: width, height: top + rowHeight + M.backdropOverhang + max(0, input.backdropExtension))
+        backdrop = CGRect(x: 0, y: 0, width: width, height: top + rowHeight + M.backdropOverhang)
 
         logoControl = CGRect(x: M.paddingHorizontal, y: top + (rowHeight - M.controlSize) / 2, width: M.controlSize, height: M.controlSize)
         let logoSize = input.showsAccountAvatar ? M.logoBox : M.logoSize
@@ -145,7 +138,7 @@ public struct HomeHeaderLayout: Equatable, Sendable {
         let slotWidth = max(0, width - 2 * M.titleInset)
         let titleSize = input.title.size(fitting: slotWidth)
         let titleY = top + (rowHeight - titleSize.height) / 2
-        let titleX = input.titleX ?? slotX + (slotWidth - titleSize.width) / 2
+        let titleX = slotX + (slotWidth - titleSize.width) / 2
         title = CGRect(x: titleX, y: titleY, width: titleSize.width, height: titleSize.height)
 
         if let status = input.status {

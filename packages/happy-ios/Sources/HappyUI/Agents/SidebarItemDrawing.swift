@@ -6,15 +6,14 @@ import UltraView
 
 /// What one row of home's list draws as a bitmap, on UltraView's display
 /// queue: the hairline under it, its title, a heading's title, the
-/// trailing question or clock, a fold's chevron, and a story row's time,
-/// status, draft and empty mark. Everything else a row shows stays a view
-/// of `SidebarItemView`: the card's fill and a finger's highlight under the
-/// bitmap, and the mark, the story ring and the working signal over it.
+/// trailing question or clock and a fold's chevron. Everything else a row
+/// shows stays a view of `SidebarItemView`: the card's fill and a finger's
+/// highlight under the bitmap, and the mark and the working signal over it.
 ///
 /// It draws what `RowView` lays out with labels, in the same faces,
 /// colours and frames, as those labels would draw it: one line centred on
-/// its box and cut at the tail, a status's lines from their box's top. It
-/// holds only values, and decides nothing about where anything goes.
+/// its box and cut at the tail. It holds only values, and decides nothing
+/// about where anything goes.
 struct SidebarItemDrawing: Drawing, Equatable {
     var row: Row
     /// The row's frames, from its slot's top-left (`SidebarLayout.local`).
@@ -23,10 +22,6 @@ struct SidebarItemDrawing: Drawing, Equatable {
     var dark: Bool
     /// The screen's pixels per point, for whole-pixel text boxes.
     var displayScale: CGFloat
-    /// The person's text size, which story rows are drawn at.
-    var textScale: CGFloat
-    /// The minute a story row's time is read at.
-    var now: Date
 
     func draw(in context: CGContext, bounds: CGRect) {
         #if DEBUG || HAPPY_FIXTURES
@@ -63,26 +58,21 @@ struct SidebarItemDrawing: Drawing, Equatable {
         }
         Self.drawLine(title, in: frame.label, scale: displayScale)
         if (row.kind == .space || row.kind == .session) && row.collapsed != nil, let glyph = frame.chevronGlyph {
-            Self.drawGlyph(chevron(row.amongStories ? StoryRowMetrics.headingGlyph : Metrics.chevronGlyph), color: UIColor(Palette.rowText), in: glyph)
+            Self.drawGlyph(chevron(Metrics.chevronGlyph), color: UIColor(Palette.rowText), in: glyph)
         }
-        if row.story == nil {
-            drawTrailing()
-        } else {
-            drawStory()
-        }
+        drawTrailing()
     }
 
     /// A row's title in its font and ink (a dynamic colour, resolved where
-    /// it is drawn). A story row's keeps one weight: unread is its corner's
-    /// to say.
+    /// it is drawn).
     var title: NSAttributedString { title(UIColor(titleInk)) }
 
     private var titleInk: ColorToken {
-        selected || row.unread || row.isNew || row.story != nil ? Palette.rowTextActive : Palette.rowText
+        selected || row.unread || row.isNew ? Palette.rowTextActive : Palette.rowText
     }
 
     private func title(_ ink: UIColor) -> NSAttributedString {
-        let font = row.story != nil ? StoryRowText.titleFont(textScale) : Fonts.ui(row.unread || row.isNew ? .bold : selected ? .semiBold : .medium, size: Metrics.labelSize)
+        let font = Fonts.ui(row.unread || row.isNew ? .bold : selected ? .semiBold : .medium, size: Metrics.labelSize)
         return NSAttributedString(string: row.label, attributes: [.font: font, .foregroundColor: ink])
     }
 
@@ -139,32 +129,6 @@ struct SidebarItemDrawing: Drawing, Equatable {
         }
     }
 
-    /// The time, the status in up to two lines or one and the draft, or the
-    /// empty mark.
-    private func drawStory() {
-        let last = StoryRowText.lastLine(row)
-        if let box = frame.time, let time = StoryRowText.time(row, now: now) {
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.alignment = .right
-            paragraph.lineBreakMode = .byTruncatingTail
-            Self.drawLine(NSAttributedString(string: time, attributes: [.font: StoryRowText.timeFont(textScale), .foregroundColor: UIColor(Palette.rowText), .paragraphStyle: paragraph]), in: box, scale: displayScale)
-        }
-        if let box = frame.subtitle {
-            Self.drawTop(StoryRowText.status(row, scale: textScale), in: box, lines: last == .status ? StoryRowMetrics.statusLines : 1, scale: displayScale)
-        }
-        if last == .draft, let box = frame.draft, let draft = row.draft {
-            Self.drawLine(StoryRowText.draft(draft, scale: textScale), in: box, scale: displayScale)
-        }
-        if last == .empty, let box = frame.empty, box.width > 0, box.height > 0 {
-            let image = EmptyMarkView.image(size: box.size, scale: displayScale)
-            let context = UIGraphicsGetCurrentContext()
-            context?.saveGState()
-            context?.interpolationQuality = .none
-            image.withTintColor(UIColor(Palette.rowText).withAlphaComponent(StoryRowMetrics.emptyInk), renderingMode: .alwaysOriginal).draw(in: CGRect(origin: box.origin, size: image.size))
-            context?.restoreGState()
-        }
-    }
-
     // MARK: As UIKit draws them
 
     /// One line as a label draws it: cut at the tail, and centred on its
@@ -181,17 +145,6 @@ struct SidebarItemDrawing: Drawing, Equatable {
         line.draw(with: CGRect(x: box.minX, y: y, width: box.width, height: height), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
     }
 
-    /// `lines` lines at most from the box's top, the last one cut at the
-    /// tail, as a `TopLabel` draws them.
-    static func drawTop(_ text: NSAttributedString, in box: CGRect, lines: Int, scale: CGFloat) {
-        guard box.width > 0, text.length > 0 else { return }
-        let block = NSMutableAttributedString(attributedString: text)
-        block.addParagraphLineBreak(lines == 1 ? .byTruncatingTail : .byWordWrapping)
-        let measured = block.boundingRect(with: CGSize(width: box.width, height: box.height), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
-        let height = min(box.height, pixelCeil(measured.height, scale))
-        block.draw(with: CGRect(x: box.minX, y: box.minY, width: box.width, height: height), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
-    }
-
     /// A template image tinted `color`, in the middle of `box` at its own
     /// size, as an image view centres it.
     static func drawGlyph(_ image: UIImage, color: UIColor, in box: CGRect) {
@@ -203,10 +156,6 @@ struct SidebarItemDrawing: Drawing, Equatable {
     private static func pixelFloor(_ value: CGFloat, _ scale: CGFloat) -> CGFloat {
         // A hair over, so a pixel's own edge stays that pixel.
         scale > 0 ? (value * scale + 0.001).rounded(.down) / scale : (value + 0.001).rounded(.down)
-    }
-
-    private static func pixelCeil(_ value: CGFloat, _ scale: CGFloat) -> CGFloat {
-        scale > 0 ? (value * scale).rounded(.up) / scale : value.rounded(.up)
     }
 }
 

@@ -585,7 +585,7 @@ def load(fixtures):
 
 
 # The sidebar's other work: short synthetic tasks, each with a status its agent set, so
-# the sidebar has story rows enough to scroll. None for the last, which shows the empty mark.
+# the sidebar has rows enough to scroll. None for the last, which never sets one.
 SIDEBAR = {
     "Release notes": "Shipped to preview",
     "Landing page copy": "Two headlines drafted; waiting on the pricing table before the hero section can be written",
@@ -610,8 +610,7 @@ def send(agent, text):
 
 
 def seed_sidebar():
-    """Stories on (story rows), and the sidebar's other tasks with their statuses."""
-    api("PUT", "/v0/user-settings/happy-desktop.experiments.stories", {"value": True})
+    """The sidebar's other tasks with their statuses."""
     tasks = {task["name"]: task for task in api("GET", "/v0/tasks")["tasks"]}
     for name, status in SIDEBAR.items():
         task = tasks.get(name) or api("POST", "/v0/tasks", {"name": name})["task"]
@@ -619,21 +618,6 @@ def seed_sidebar():
             send(task["agent"]["id"], f"status {status}")
             time.sleep(1)
 
-
-def post_story(title, log):
-    """A story posted live to the ring of the task titled `title`, as SHIP BOSS's was:
-    an html artifact the agent made, as its one frame."""
-    agent = next(task["agent"]["id"] for task in api("GET", "/v0/tasks")["tasks"] if task["name"] == title)
-    made = lambda: [a for a in api("GET", "/v0/artifacts")["artifacts"] if (a.get("createdBy") or {}).get("agentId") == agent]
-    if not made():
-        send(agent, "tool create_artifact " + json.dumps({"type": "html", "title": "Gym page"}))
-        for _ in range(40):
-            if made():
-                break
-            time.sleep(0.5)
-    artifact = made()[0]["id"]
-    send(agent, "tool post_story " + json.dumps({"caption": "A live story", "frames": [{"artifactId": artifact}]}))
-    log.write(f"GYM_DRIVER posted a story to {title}\n")
 
 
 def cmd_up(args):
@@ -771,8 +755,7 @@ def run_test(udid, dd, test, label, env, results_dir):
         log.write(line)
         if "HAPPY_PAIR_READY" in line:
             threading.Thread(target=pair, args=(udid, log), daemon=True).start()
-        elif line.startswith("GYM_POST_STORY "):
-            threading.Thread(target=post_story, args=(line.split(" ", 1)[1].strip(), log), daemon=True).start()
+
         elif "GYM_MARK start" in line:
             render, app = processes(udid)
             start = (render, app, cpu_seconds(render), cpu_seconds(app))

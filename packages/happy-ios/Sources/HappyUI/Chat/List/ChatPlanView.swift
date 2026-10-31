@@ -37,9 +37,9 @@ final class ChatPlanView: UIView {
     var onChunksPlaced: (() -> Void)?
     /// A chunk of a tall plan: touches go through it to the row's other chunks.
     private var passesTouches = false
-    /// The pictures, recordings and stories the plan shows now.
+    /// The pictures, recordings and pages the plan shows now.
     var mediaViews: [UIView] {
-        (media as [UIView] + stories as [UIView] + pages as [UIView]).filter { !$0.isHidden }
+        (media as [UIView] + pages as [UIView]).filter { !$0.isHidden }
             + chunkViews.keys.sorted().flatMap { chunkViews[$0]?.mediaViews ?? [] }
     }
     private var boxes: [UIView] = []
@@ -57,7 +57,6 @@ final class ChatPlanView: UIView {
     private var mermaids: [ChatMermaidView] = []
     private var media: [ChatMediaView] = []
     private var fileStatuses: [ChatFileStatusView] = []
-    private var stories: [StoryInlineView] = []
     private var pages: [InlinePageView] = []
 
     override init(frame: CGRect) {
@@ -158,7 +157,6 @@ final class ChatPlanView: UIView {
         var mermaidIndex = 0
         var mediaIndex = 0
         var fileStatusIndex = 0
-        var storyIndex = 0
         var pageIndex = 0
         var order: [UIView] = []
         for item in items {
@@ -275,11 +273,6 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(status)
                 order.append(view)
-            case .embed(.story(let id), let frame):
-                let view = take(&stories, &storyIndex) { StoryInlineView() }
-                view.setLayoutFrame(frame)
-                view.apply(id)
-                order.append(view)
             case .embed(.page(let page), let frame):
                 let view = take(&pages, &pageIndex) { InlinePageView() }
                 view.setLayoutFrame(frame)
@@ -329,10 +322,6 @@ final class ChatPlanView: UIView {
             view.isHidden = true
         }
         for view in fileStatuses[fileStatusIndex...] {
-            view.apply(nil)
-            view.isHidden = true
-        }
-        for view in stories[storyIndex...] {
             view.apply(nil)
             view.isHidden = true
         }

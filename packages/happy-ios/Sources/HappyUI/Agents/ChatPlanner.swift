@@ -175,7 +175,6 @@ actor ChatPlanner {
             case gallery([Media])
             case tree(ChatMediaPlan.Tree)
             case card(ChatMediaPlan.Card)
-            case story(String)
             case page(InlinePage)
             case proposal(String)
             /// Words the planner writes, read but not selectable.
@@ -200,9 +199,6 @@ actor ChatPlanner {
             case .file(let media):
                 drafts.append(.card(ChatMediaPlan.card(file: media)))
                 parts.append(.card)
-            case .story(let id):
-                drafts.append(.story(id))
-                parts.append(.story)
             case .artifact(let artifact):
                 drafts.append(.card(ChatMediaPlan.card(artifact: artifact)))
                 parts.append(.card)
@@ -269,8 +265,6 @@ actor ChatPlanner {
                 }
             case (.card(let frame), .card(let drafted)):
                 card(drafted, frame)
-            case (.story(let frame), .story(let id)):
-                items.append(.embed(.story(id), frame: frame))
             case (.page(let frame), .page(let page)):
                 items.append(.embed(.page(page), frame: frame))
             case (.markdown(let placed, let origin), .line(let markdown)):

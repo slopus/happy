@@ -39,7 +39,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow Happy to use your microphone to talk with your coding agents.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Allow Happy to show your photos and videos so you can share them in stories and chats.</string>
+	<string>Allow Happy to show your photos and videos so you can share them in chats.</string>
 	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
 	<true/>
 	<key>NSPhotoLibraryAddUsageDescription</key>

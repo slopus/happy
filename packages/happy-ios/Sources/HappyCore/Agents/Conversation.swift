@@ -52,9 +52,6 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         case file(Media)
         /// An artifact a tool made or changed, as a card that opens it.
         case artifact(Artifact)
-        /// A story a tool drafted (`draft_story`), by its ID: drawn as the
-        /// story itself, following it live.
-        case story(String)
         /// A sidebar Prioritizing proposed (a `sidebar_proposal` artifact),
         /// drawn by the sidebar's own rows and answered where it stands.
         case sidebarProposal(artifactId: String)
@@ -1631,15 +1628,16 @@ public actor Conversation {
     }
 
     /// What a call showed the person, as pieces of the message: pictures
-    /// and files, an artifact's card, a story, a sidebar proposal. Nil for
+    /// and files, an artifact's card, a sidebar proposal. Nil for
     /// a call that showed nothing, which is a tool row.
     private static func shows(_ presentation: AgentWire.Presentation, toolCallId id: String, shown: inout [String: Media]) -> [ChatItem.Piece]? {
         if presentation.type == "artifact", let artifactId = presentation.artifactId, presentation.artifactType == "sidebar_proposal" {
             return [.sidebarProposal(artifactId: artifactId)]
         }
         if presentation.type == "artifact", let artifactId = presentation.artifactId {
-            // Stories: a `story` artifact is the story, by its ID.
-            if presentation.artifactType == "story" { return [.story(artifactId)] }
+            // A `story` artifact is Stories', which this app doesn't have:
+            // its call is a tool row like any other.
+            if presentation.artifactType == "story" { return nil }
             return [.artifact(Artifact(
                 id: artifactId, version: presentation.version ?? 1, type: presentation.artifactType ?? "unknown",
                 title: presentation.title ?? "", followsLatest: presentation.shows == "latest"

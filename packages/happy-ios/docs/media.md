@@ -176,5 +176,5 @@ When the computer answers again after a gap (the store's or home's
 snapshot turns `live`), `MediaLoader.retryFailed` starts again the
 automatic downloads that gave up while it was away and asks every tile
 still without its picture to read it again, and `Images.retryFailed` does
-the same for row, profile and story pictures (`MarkPicture`), so nothing
+the same for row and profile pictures (`MarkPicture`), so nothing
 is left on its thumbhash or placeholder for good.

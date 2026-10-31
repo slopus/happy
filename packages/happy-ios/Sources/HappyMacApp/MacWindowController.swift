@@ -116,7 +116,7 @@ final class MacWindowController: NSWindowController, NSMenuItemValidation {
         alert.messageText = "Account & server"
         alert.informativeText = account.pendingServerConfirmation != nil
             ? "Confirm the server that owns this account. Credentials are never sent to a new server until you confirm it."
-            : "Server changes apply to the next sign-in, not existing accounts. Mac push, voice, stories, and direct connections are not available in this AppKit version."
+            : "Server changes apply to the next sign-in, not existing accounts. Mac push, voice, and direct connections are not available in this AppKit version."
         alert.accessoryView = server
         alert.addButton(withTitle: account.pendingServerConfirmation == nil ? "Save" : "Confirm Server")
         alert.addButton(withTitle: "Cancel")

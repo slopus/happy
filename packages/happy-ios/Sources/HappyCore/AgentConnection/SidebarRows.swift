@@ -40,10 +40,6 @@ public enum SidebarRows {
                 isHappy: owner?.systemKey == "chief_of_staff", agentId: agent.id, workspaceId: agent.workspaceId, targetKind: kind)
             row.targetId = owner?.id
             row.canArchive = owner?.canArchive ?? false
-            // What a story row says under its title, as the spaces sidebar's do.
-            row.hasAgent = true
-            row.statusLine = agent.statusLine?.text
-            row.statusTime = agent.statusLine?.updatedAt
             row.activityTime = agent.activityAt.map(Rows.minute)
             if kind == "bot", let owner, let avatar = owner.avatar {
                 row.mark = .image(path: "/v0/bots/\(AgentClient.escape(owner.id))/avatar", thumbhash: avatar.thumbhash)
@@ -129,7 +125,7 @@ public enum SidebarRows {
     /// belongs to, who made it (the signed-in person for their own tasks).
     /// Their picture over its ThumbHash; while they have none, or before
     /// they are read, their own placeholder, picked by their user ID as
-    /// stories and the Profile page pick it (`PersonSeed`), so they look the
+    /// the Profile page picks it (`PersonSeed`), so they look the
     /// same on every phone. Nil outside a
     /// team (no signed-in team user) or for a task nobody owns: it keeps its
     /// own placeholder.
@@ -147,23 +143,5 @@ public enum SidebarRows {
         let joined = Set((desktop.taskMemberships ?? []).map(\.taskId))
         let listed = (desktop.tasks ?? []).filter { joined.contains($0.id) && $0.status != "archived" }
         return Set(listed.compactMap(\.ownerUserId)).subtracting([me])
-    }
-
-    /// The rows while agent stories are on (`rings` set, keyed by agent):
-    /// each bot's and task's row a story row wearing its agent's ring, with
-    /// its status line and time, and everything nested and the projects kept
-    /// where they are. Unlike the spaces sidebar's (`Rows.withStories`) the
-    /// tree stays: this list is where projects and their sessions live.
-    public static func withStories(_ rows: [Row], rings: [String: StoryRing]?) -> [Row] {
-        guard let rings else { return rows }
-        return rows.map { row in
-            var row = row
-            if (row.kind == .section || row.kind == .separator) && row.depth == 0 { row.amongStories = true }
-            guard row.depth == 0, row.kind == .space, let agentId = row.agentId,
-                  row.targetKind == "bot" || row.targetKind == "task" else { return row }
-            let ring = rings[agentId]
-            row.story = Row.StoryRowState(segments: ring?.storyIds.count ?? 0, unseen: min(ring?.unseenCount ?? 0, ring?.storyIds.count ?? 0))
-            return row
-        }
     }
 }

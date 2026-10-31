@@ -37,18 +37,12 @@ final class ScreenLayoutTests: XCTestCase {
     }
 
     /// Half a pixel is rounded the same way every time, so a window of
-    /// an odd width doesn't blur its rows, and the stories band that
-    /// follows `content.minX` lines up with the list under it.
+    /// an odd width doesn't blur its rows.
     func testHomeRoundsAnOddWidthsMarginToAWholePoint() {
         let odd = HomeLayout(size: CGSize(width: 1001, height: 800), contentTop: 100, chromeTop: 100, listBottom: 0, maxWidth: 800)
         // 1001 less 800 is 201, half of it 100.5, rounded to 101.
         XCTAssertEqual(odd.content, rect(101, 0, 800, 800))
         XCTAssertEqual(odd.empty.minX, 101)
-        // Stories open under the header and push the list down; the
-        // band itself follows the same left edge.
-        let stories = HomeLayout(size: CGSize(width: 1001, height: 800), contentTop: 100, chromeTop: 100, listBottom: 0, storiesHeight: 60, maxWidth: 800)
-        XCTAssertEqual(stories.listInsets.top, 160)
-        XCTAssertEqual(stories.content.minX, 101)
     }
 
     /// A window narrower than the limit, or one of no width at all,

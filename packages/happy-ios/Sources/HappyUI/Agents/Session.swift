@@ -94,7 +94,6 @@ final class Session {
     static func forget(_ accountID: String) {
         MediaLibrary.forget(namespace: "agent/\(accountID)")
         OfflineFile.remove(accountID)
-        StoriesSession.forget(accountID)
         guard let session = sessions.removeValue(forKey: accountID) else { return }
         session.stop()
         // The store belongs to the engine, not to the session, so only an
@@ -137,18 +136,6 @@ final class Session {
         models = ModelState(client: client, offline: offline, store: store)
         drafts = Drafts(offline: offline)
         models.load()
-        // The rows' drafts: what this phone keeps, then every change, here
-        // or (through the store's events) on another device.
-        let drafts = drafts
-        let spaces = store
-        Task {
-            await drafts.observe { agentId, draft in
-                Task { await spaces.noteDraft(agentId, text: draft?.text, updatedAt: draft?.updatedAt ?? Date().timeIntervalSince1970 * 1000) }
-            }
-            for (agentId, draft) in await drafts.all() {
-                await spaces.noteDraft(agentId, text: draft.text, updatedAt: draft.updatedAt)
-            }
-        }
         let updates = store.updates
         following = Task { [weak self] in
             for await snapshot in updates {

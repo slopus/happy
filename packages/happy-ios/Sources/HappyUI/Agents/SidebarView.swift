@@ -18,8 +18,6 @@ import UIKit
 /// the rows.
 final class SidebarView: UIScrollView {
     var onSelect: ((Row) -> Void)?
-    /// A story row's ring was tapped: its agent's stories, not its conversation.
-    var onOpenStory: ((Row, UIView) -> Void)?
     /// A finger came down on a row that opens: it may be opened next.
     var onIntent: ((Row) -> Void)?
     var onFold: ((Row) -> Void)?
@@ -82,8 +80,6 @@ final class SidebarView: UIScrollView {
     /// A held row's preview and menu, while shown.
     private var hold: HoldOverlay?
     private var editing: (id: String, commit: (String) -> Void)?
-    /// Moves the story rows' times on, once a minute while on screen.
-    private var clock: Timer?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -103,7 +99,6 @@ final class SidebarView: UIScrollView {
         away.cancelsTouchesInView = false
         away.delegate = PressRecognizer.simultaneous
         addGestureRecognizer(away)
-        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in self.setNeedsLayout() }
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.connectors.fillColor = UIColor(Palette.rowText).withAlphaComponent(Metrics.connectorAlpha).resolvedColor(with: self.traitCollection).cgColor
         }
@@ -115,18 +110,6 @@ final class SidebarView: UIScrollView {
 
     override func willMove(toWindow newWindow: UIWindow?) {
         super.willMove(toWindow: newWindow)
-        clock?.invalidate()
-        clock = nil
-        if newWindow != nil {
-            // On the minute, so every time turns together.
-            let next = (Date().timeIntervalSince1970 / 60).rounded(.down) * 60 + 60
-            let timer = Timer(fire: Date(timeIntervalSince1970: next), interval: 60, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.tick() }
-            }
-            RunLoop.main.add(timer, forMode: .common)
-            clock = timer
-            tick()
-        }
         guard newWindow == nil else { return }
         // Leaving the screen mid-hold: nothing is left behind in the window.
         hold?.close(animated: false)
@@ -221,14 +204,7 @@ final class SidebarView: UIScrollView {
         // VoiceOver reaches the hold's menu as the row's actions.
         view.actions = { [weak self, weak view] in
             guard let self, editing == nil, let row = view?.row else { return nil }
-            var actions: [UIAccessibilityCustomAction] = []
-            if (row.story?.segments ?? 0) > 0, let onOpenStory, let ring = view?.ringView {
-                actions.append(UIAccessibilityCustomAction(name: Strings.Stories.watchStory) { _ in
-                    onOpenStory(row, ring)
-                    return true
-                })
-            }
-            return actions + (menu?(row) ?? []).joined().map { item in
+            return (menu?(row) ?? []).joined().map { item in
                 UIAccessibilityCustomAction(name: item.title, image: Glyphs.image(item.icon)) { _ in
                     item.run()
                     return true
@@ -262,12 +238,6 @@ final class SidebarView: UIScrollView {
             fold(row)
         case .separator: break
         default:
-            // A ring with stories in it opens them, with a finger's room around it.
-            if let ring = view.frames?.ring, (row.story?.segments ?? 0) > 0, let onOpenStory,
-               ring.insetBy(dx: -8, dy: -8).contains(point), let ringView = view.ringView {
-                onOpenStory(row, ringView)
-                return
-            }
             // A row's fold is its chevron, with a finger's room around it;
             // a row that opens nothing (a proposal's) folds wherever it's tapped.
             if let chevron = view.frames?.chevron, onSelect == nil || point.x >= chevron.minX - 14 {
@@ -321,9 +291,6 @@ final class SidebarView: UIScrollView {
         return zip(shown, frames).filter { $0.1.box.intersects(window) }.map(\.0)
     }
 
-    private func layoutRows(_ rows: [Row]) -> [SidebarLayout.Row] {
-        Self.layoutRows(rows, textScale: StoryRowText.scale(traitCollection))
-    }
 
     /// `input` laid out at this list's width, room and style.
     private func layout(_ input: [SidebarLayout.Row]) -> SidebarLayout.Result {
@@ -333,8 +300,8 @@ final class SidebarView: UIScrollView {
         return SidebarLayout.layout(input, width: bounds.width, top: top, bottom: bottom, scale: traitCollection.displayScale, style: style)
     }
 
-    /// The rows as the layout needs them; story rows measured at `textScale`.
-    nonisolated static func layoutRows(_ rows: [Row], textScale: CGFloat = 1) -> [SidebarLayout.Row] {
+    /// The rows as the layout needs them.
+    nonisolated static func layoutRows(_ rows: [Row]) -> [SidebarLayout.Row] {
         rows.map { row in
             let kind: SidebarLayout.Kind = switch row.kind {
             case .section: .section
@@ -342,22 +309,14 @@ final class SidebarView: UIScrollView {
             case .widget: .widget
             default: .row
             }
-            let corner: SidebarLayout.Corner = switch row.corner {
-            case .none: .none
-            case .dot: .dot
-            case .braille: .braille
-            }
-            let story = row.story.map { _ in
-                SidebarLayout.StoryRow(corner: corner, timeWidth: StoryRowText.timeWidth(row, scale: textScale), last: StoryRowText.lastLine(row), text: StoryRowText.text(textScale))
-            }
-            return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story, amongStories: row.amongStories)
+            return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions)
         }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         let shown = rows
-        let input = layoutRows(shown)
+        let input = Self.layoutRows(shown)
         let width = bounds.width
         if laidOut?.width != width || laidOut?.rows != input || layoutResult?.frames.count != shown.count {
             // A width change lays out at once even mid-fold: rotation is
@@ -373,7 +332,7 @@ final class SidebarView: UIScrollView {
 
     /// Lays `shown` out and moves each row to its place, gliding when asked.
     private func place(_ shown: [Row], animated: Bool) {
-        let input = layoutRows(shown)
+        let input = Self.layoutRows(shown)
         let result = layout(input)
         // A working indicator can change a row's internal frames without
         // changing any row's size or position. Such updates must never touch
@@ -462,7 +421,7 @@ final class SidebarView: UIScrollView {
         // view begins.
         let arriving = entering.filter { id in views[id]?.frames == nil }
         if !arriving.isEmpty {
-            let input = layoutRows(shown)
+            let input = Self.layoutRows(shown)
             let result = layout(input)
             UIView.performWithoutAnimation {
                 for (row, frame) in zip(shown, result.frames) where arriving.contains(row.id) {
@@ -531,12 +490,6 @@ final class SidebarView: UIScrollView {
 
     func view(for rowId: String) -> RowView? { views[rowId] }
 
-    /// The times as the clock reads them now; a width that changed lays the list out again.
-    private func tick() {
-        guard rows.contains(where: { $0.story != nil }) else { return }
-        for view in views.values { view.refreshTime() }
-        setNeedsLayout()
-    }
 
     private func row(at point: CGPoint) -> RowView? {
         for view in views.values where view.frame.contains(point) { return view }

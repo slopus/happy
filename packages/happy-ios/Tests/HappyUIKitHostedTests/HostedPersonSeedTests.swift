@@ -27,8 +27,8 @@ private struct SeedUnreachable: AgentTransport {
 }
 
 /// One person, one placeholder: the person without a picture wears the
-/// same one on the Profile page and its Settings row, their own story
-/// circle, the tasks they made and those tasks' profiles. In a team it is
+/// same one on the Profile page and its Settings row, the tasks they made
+/// and those tasks' profiles. In a team it is
 /// the one their team user ID picks, as other members' phones draw them;
 /// outside a team, their computer's seed as theirs.
 @MainActor
@@ -116,14 +116,6 @@ final class HostedPersonSeedTests: XCTestCase {
         return session
     }
 
-    /// The person's own circle in the stories row and the viewer.
-    private func storySeed(_ session: Session, team: Bool) -> String {
-        let me = StoryFeedAuthor(userId: team ? "u-steve" : nil, name: "Steve", photo: nil, thumbhash: nil, isSelf: true, storyIds: ["s1"], unseenCount: 0, draftCount: nil, latestPostedAt: 1)
-        let feed = StoryFeed(authors: [me], stories: [:], cursor: "").seeding(me: session.personSeed)
-        let item = StoriesRow.items(feed, myStory: "My Story").first
-        XCTAssertEqual(item?.placeholderSeed, feed.authors[0].placeholderSeed, "the row and the viewer differ")
-        return item?.placeholderSeed ?? ""
-    }
 
     func testInATeamThePersonIsTheirTeamUserEverywhere() async throws {
         LiveAvatars.isEnabled = true
@@ -144,9 +136,6 @@ final class HostedPersonSeedTests: XCTestCase {
         let pageLive = try await until { self.live(in: page.view) != nil }
         XCTAssertTrue(pageLive)
         XCTAssertEqual(live(in: page.view)?.index, person, "Profile page")
-
-        // His own story circle.
-        XCTAssertEqual(AvatarPlaceholder.index(seed: storySeed(session, team: true)), person, "stories")
 
         // The task he made, on home: its author's face.
         let row = try XCTUnwrap(session.home.allRows.first { $0.agentId == "mine-agent" })
@@ -170,12 +159,12 @@ final class HostedPersonSeedTests: XCTestCase {
     }
 
     /// Outside a team the person is their computer's seed as theirs, on
-    /// the Profile page and their story circle alike; a task keeps its own.
+    /// the Profile page; a task keeps its own.
     func testOutsideATeamThePersonIsTheirComputersSeed() async throws {
         let session = try await session(team: false)
         let seed = "person:agent:steves-mac"
+        XCTAssertEqual(session.personSeed, seed)
         XCTAssertEqual(session.profile.placeholderSeed, seed)
-        XCTAssertEqual(storySeed(session, team: false), seed, "stories")
         let row = try XCTUnwrap(session.home.allRows.first { $0.agentId == "mine-agent" })
         XCTAssertNotEqual(row.mark, .placeholder(seed: seed), "a task outside a team wears the person")
     }

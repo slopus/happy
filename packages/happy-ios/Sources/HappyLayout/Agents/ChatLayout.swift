@@ -268,8 +268,7 @@ public struct MessageLayout: Equatable, Sendable {
         case tree([MediaTreeLayout.Box])
         /// A document, file or artifact: one card across the column.
         case card
-        /// A story drawn inline (`StoryCardLayout`).
-        case story
+
         /// An HTML artifact shown inline, across the column at the height its page measured.
         case page(height: CGFloat)
         /// A sidebar Prioritizing proposed, at the column's left.
@@ -282,7 +281,6 @@ public struct MessageLayout: Equatable, Sendable {
         case media([CGRect])
         case tree(MediaTreeLayout, origin: CGPoint)
         case card(CGRect)
-        case story(CGRect)
         case page(CGRect)
         /// The card's frame; its insides are `layout`'s, from the frame's origin.
         case proposal(SidebarProposalLayout, frame: CGRect)
@@ -343,10 +341,7 @@ public struct MessageLayout: Equatable, Sendable {
             case .card:
                 placed.append(.card(CGRect(x: left, y: y, width: inner, height: ResultCardLayout.height)))
                 y += ResultCardLayout.height
-            case .story:
-                let size = StoryCardLayout.size(width: inner)
-                placed.append(.story(CGRect(origin: CGPoint(x: left, y: y), size: size)))
-                y += size.height
+
             case .page(let height):
                 placed.append(.page(CGRect(x: left, y: y, width: inner, height: height)))
                 y += height

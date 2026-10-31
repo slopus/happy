@@ -81,14 +81,8 @@ extension SidebarLayout {
                 y += height
             case .row, .widget:
                 if card == nil { card = (index, y) }
-                let box = CGRect(x: cardX, y: y, width: cardWidth, height: height(row))
-                var frame: Frame
-                if row.kind == .row, let story = row.story {
-                    frame = storyRow(story, hasMark: row.hasMark, in: box.insetBy(dx: G.storyInset, dy: 0), scale: scale)
-                    frame.box = box
-                } else {
-                    frame = cellRow(row, box: box, cardRight: cardRight, scale: scale)
-                }
+                let box = CGRect(x: cardX, y: y, width: cardWidth, height: height(row.kind))
+                var frame = cellRow(row, box: box, cardRight: cardRight, scale: scale)
                 let last = index + 1 == rows.count || !inCard(rows[index + 1])
                 let start = frame.label.minX
                 frame.cell = Cell(
@@ -135,7 +129,7 @@ extension SidebarLayout {
         // A row's title rides up to its marks' middle, as in the plain list.
         frame.label = CGRect(x: x, y: row.kind == .row ? box.minY - M.titleLift : box.minY, width: max(0, right - x), height: box.height)
         if row.hasTrailing == false, row.kind == .row, row.hasWorkingSignal {
-            let signal = StoryRowMetrics.braille
+            let signal = M.workingSignal
             frame.corner = CGRect(x: slot.midX - signal.width / 2, y: slot.midY - signal.height / 2, width: signal.width, height: signal.height)
             frame.label.size.width = max(0, slot.minX - M.trailingGap - x)
         }

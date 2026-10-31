@@ -165,29 +165,13 @@ private actor GroupedHomeTransport: AgentTransport {
 /// Home as the person sees it, grouped (`-screen groupedHome`): the real
 /// home screen over a computer serving bots, tasks and Surfaces with
 /// nested conversations, and a cloned repo wearing its
-/// picture. With `-storyRows`, the story rows' list alone, grouped as home
-/// draws it.
+/// picture.
 @MainActor
 final class GroupedHomeHarness {
     private var account: AccountController?
     private var home: AgentHomeViewController?
 
     init(window: UIWindow, arguments: [String]) {
-        if arguments.contains("-storyRows") {
-            let controller = UIViewController()
-            controller.view.backgroundColor = UIColor(Palette.groupedGround)
-            let sidebar = SidebarView(frame: .zero)
-            sidebar.style = .grouped
-            sidebar.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            controller.view.addSubview(sidebar)
-            window.rootViewController = controller
-            DispatchQueue.main.async {
-                sidebar.frame = controller.view.bounds.inset(by: UIEdgeInsets(top: controller.view.safeAreaInsets.top, left: 0, bottom: 0, right: 0))
-                sidebar.apply(StoryRowsHarness.rows())
-                sidebar.selectedRowId = "space:deploy"
-            }
-            return
-        }
         let bottom = arguments.contains("-bottom")
         Task {
             await open(window: window)

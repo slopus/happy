@@ -82,7 +82,6 @@ final class HostedHomeListPerfTests: XCTestCase {
             let status: Row.Status = index % 7 == 1 ? .working : index % 11 == 2 ? .awaitingInput : index % 13 == 3 ? .waiting : .none
             var row = Row(id: "bot:b\(index)", nodeId: "bot:b\(index)", kind: .space, label: index < names.count ? names[index] : "\(names[index % names.count]) \(index)", mark: mark, status: status, unread: index % 5 == 4, isHappy: index == 0, agentId: "agent-b\(index)", workspaceId: "w-b\(index)", targetKind: "bot")
             row.targetId = "b\(index)"
-            row.hasAgent = true
             rows.append(row)
             for child in 0..<(index % 4 == 0 ? 2 : 0) {
                 rows.append(Row(id: "session:b\(index)-\(child)", nodeId: "session:b\(index)-\(child)", kind: .session, depth: 1, label: "Subtask \(child + 1) of \(index)", status: child == 0 && index % 8 == 0 ? .working : .none, agentId: "agent-b\(index)-\(child)", workspaceId: "w-b\(index)-\(child)"))
@@ -92,7 +91,6 @@ final class HostedHomeListPerfTests: XCTestCase {
         for index in 0..<tasks {
             var row = Row(id: "task:t\(index)", nodeId: "task:t\(index)", kind: .space, label: "Task number \(index): ship the thing that was promised", mark: .placeholder(seed: "task-\(index)"), status: index % 6 == 0 ? .working : .none, unread: index % 4 == 1, agentId: "agent-t\(index)", workspaceId: "w-t\(index)", targetKind: "task")
             row.targetId = "t\(index)"
-            row.hasAgent = true
             rows.append(row)
         }
         rows.append(Row(id: "direct:projects", nodeId: "direct:projects", kind: .separator, label: ""))

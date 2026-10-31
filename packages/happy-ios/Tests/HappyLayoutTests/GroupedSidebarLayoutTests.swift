@@ -20,7 +20,7 @@ final class GroupedSidebarLayoutTests: XCTestCase {
         XCTAssertEqual([G.side, G.radius, G.cardGap], [16, 26, 24])
         XCTAssertEqual([G.markInset, G.endCenter, G.indent], [16, 31, 42])
         XCTAssertEqual([G.headingHeight, G.headingLine, G.headingBottom, G.headingSize, G.headingGlyph, G.headingGap], [36, 18, 7, 13, 14, 14])
-        XCTAssertEqual([G.contentTop, G.contentBottom, G.storyInset], [8, 24, 4])
+        XCTAssertEqual([G.contentTop, G.contentBottom], [8, 24])
     }
 
     /// Rows before the first heading are a card of their own; each heading
@@ -116,35 +116,6 @@ final class GroupedSidebarLayoutTests: XCTestCase {
             // A heading's fold and a row's stand on one column.
             XCTAssertEqual(frames[1].chevron!.midX, frames[0].chevron!.midX)
         }
-    }
-
-    /// A story row is a cell too: its own card 4 inside the cell, so its
-    /// disc and corner signal keep clear of the card's corners, and the
-    /// hairline from where its text starts. Headings among story rows are
-    /// the grouped list's, not desktop's.
-    func testStoryRowsAreCellsOfTheirCard() {
-        typealias S = StoryRowMetrics
-        let story = SidebarLayout.StoryRow(corner: .dot, timeWidth: 30)
-        let result = grouped([
-            .init(kind: .section, hasMark: false, amongStories: true),
-            .init(kind: .row, story: story),
-            .init(kind: .row, story: story),
-        ])
-        let frames = result.frames
-        XCTAssertEqual(frames[0].box, CGRect(x: 16, y: 8, width: 358, height: 36))
-        XCTAssertEqual(frames[1].box, CGRect(x: 16, y: 44, width: 358, height: 64))
-        XCTAssertEqual(frames[2].box, CGRect(x: 16, y: 108, width: 358, height: 64))
-        XCTAssertEqual(frames[1].mark, CGRect(x: 27, y: 51, width: 50, height: 50))
-        XCTAssertEqual(frames[1].label.minX, 87)
-        XCTAssertEqual(frames[1].signalLane, CGRect(x: 370 - S.corner - S.signal, y: 108 - S.corner - S.signal, width: S.signal, height: S.signal))
-        XCTAssertEqual(frames[1].cell, .init(roundsTop: true, roundsBottom: false, separator: CGRect(x: 87, y: 108 - third, width: 287, height: third)))
-        XCTAssertEqual(frames[2].cell, .init(roundsTop: false, roundsBottom: true, separator: nil))
-        XCTAssertEqual(result.groups, [.init(frame: CGRect(x: 16, y: 44, width: 358, height: 128), rows: 1..<3)])
-        // A larger text size grows the row, and the card with it.
-        let large = SidebarLayout.StoryRow(text: .standard(scale: 1.5))
-        let grown = grouped([.init(kind: .row, story: large)])
-        XCTAssertEqual(grown.frames[0].box.height, SidebarLayout.storyHeight(1.5))
-        XCTAssertEqual(grown.groups[0].frame.height, SidebarLayout.storyHeight(1.5))
     }
 
     /// Folding a section moves only what follows it, and takes its card away.

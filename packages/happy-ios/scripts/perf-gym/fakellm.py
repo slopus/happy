@@ -3,10 +3,9 @@ its throwaway daemon (`gym.py up` starts it; WORK only names whose it is).
 
 The person's last message picks the reply:
   "stream P W"  -> P markdown sections (paragraph, list, table, code), W ms a word
-  "status TEXT" -> the agent's `set_status` tool called with TEXT, so the sidebar's
-                   story row has a status to show; then one short line
+  "status TEXT" -> the agent's `set_status` tool called with TEXT; then one short line
   "tool NAME JSON" -> the agent's tool NAME called with the JSON object (for example
-                   `tool post_story {"caption": "…"}`, a story in its ring); then one line
+                   `tool create_artifact {"type": "html"}`); then one line
 anything else -> one short line at once (titles and other internal asks).
 """
 import json, re, sys, time

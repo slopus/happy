@@ -6,9 +6,8 @@ import UIKit
 import XCTest
 
 /// Home's list on UltraList (`SidebarList`) against the grouped
-/// `SidebarView` it replaced: the same rows draw the same pixels, plain
-/// rows and story rows alike, light and dark; and a finger and VoiceOver
-/// do to a row what they did.
+/// `SidebarView` it replaced: the same rows draw the same pixels, light
+/// and dark; and a finger and VoiceOver do to a row what they did.
 @MainActor
 final class HostedSidebarListTests: XCTestCase {
     override func setUp() {
@@ -18,9 +17,8 @@ final class HostedSidebarListTests: XCTestCase {
 
     /// Bots, tasks and a project as home lists them: a selected row, an
     /// unread one, a new one, every status, a fold, subtasks; then a
-    /// heading over story rows with rings, status lines and an empty one.
+    /// heading over a task's rows.
     static func rows() -> [Row] {
-        let now = Date().timeIntervalSince1970 * 1000
         var rows: [Row] = []
         var artifacts = Row(id: "direct:artifacts", nodeId: "direct:artifacts", kind: .space, label: "Artifacts", mark: .glyph("doc"), targetKind: "artifacts")
         artifacts.targetId = nil
@@ -43,23 +41,15 @@ final class HostedSidebarListTests: XCTestCase {
         rows.append(project)
         rows.append(Row(id: "session:p1", nodeId: "session:p1", kind: .session, depth: 1, label: "Session in the project", agentId: "a-p1"))
         rows.append(Row(id: "section:work", nodeId: "work", kind: .section, label: "Tasks", collapsed: false))
-        func agent(_ id: String, _ label: String, _ mark: Row.Mark, _ status: Row.Status, _ line: String?, ago minutes: Double, unread: Bool = false) -> Row {
-            var row = Row(id: "space:\(id)", nodeId: id, kind: .space, label: label, mark: mark, status: status, unread: unread, agentId: id)
-            row.hasAgent = true
-            row.statusLine = line
-            row.statusTime = now - minutes * 60_000
-            return row
+        func agent(_ id: String, _ label: String, _ mark: Row.Mark, _ status: Row.Status, unread: Bool = false) -> Row {
+            Row(id: "space:\(id)", nodeId: id, kind: .space, label: label, mark: mark, status: status, unread: unread, agentId: id)
         }
-        let stories = [
-            agent("charts", "Sales chart", .clay("deploy"), .none, "Your sales chart is live — tap a bar to see its month", ago: 4, unread: true),
-            agent("ios", "iOS V2", .glyph("tasks"), .awaitingInput, "Ready for a new test build with the story rings, the round videos and the repost chip. Send it to TestFlight?", ago: 12),
-            agent("deploy", "Deploy", .clay("navigation"), .none, "Shipped", ago: 60 * 26),
-            agent("quiet", "New task", .glyph("tasks"), .none, nil, ago: 0),
+        rows += [
+            agent("charts", "Sales chart", .clay("deploy"), .none, unread: true),
+            agent("ios", "iOS V2", .glyph("tasks"), .awaitingInput),
+            agent("deploy", "Deploy", .clay("navigation"), .none),
+            agent("quiet", "New task", .glyph("tasks"), .none),
         ]
-        rows += Rows.withStories(stories, rings: [
-            "charts": StoryRing(agentId: "charts", storyIds: ["s1"], unseenCount: 1, latestPostedAt: nil),
-            "deploy": StoryRing(agentId: "deploy", storyIds: ["s5"], unseenCount: 0, latestPostedAt: nil),
-        ])
         return rows
     }
 
@@ -185,17 +175,14 @@ final class HostedSidebarListTests: XCTestCase {
     }
 
     /// A press lights a row that opens and tells home it may open next; a
-    /// tap opens it; a tap on a story ring opens the stories instead; a
-    /// heading opens nothing.
-    func testPressTapAndRing() async throws {
+    /// tap opens it, anywhere along it; a heading opens nothing.
+    func testPressAndTap() async throws {
         let (window, root) = try await host(.light)
         let list = await list(in: root, rows: Self.rows(), frame: window.bounds)
         var opened: [String] = []
         var intents: [String] = []
-        var stories: [String] = []
         list.onSelect = { opened.append($0.id) }
         list.onIntent = { intents.append($0.id) }
-        list.onOpenStory = { row, _ in stories.append(row.id) }
         let bot = try XCTUnwrap(list.view(for: "bot:ask"))
         XCTAssertTrue(list.lightsOnPress(bot.row))
         bot.pressed = true
@@ -207,12 +194,10 @@ final class HostedSidebarListTests: XCTestCase {
         list.tap(bot, at: CGPoint(x: bot.box.midX, y: bot.box.midY))
         XCTAssertEqual(opened, ["bot:ask"])
 
-        let story = try XCTUnwrap(list.view(for: "space:charts"))
-        let ring = try XCTUnwrap(story.frames.ring)
-        list.tap(story, at: CGPoint(x: ring.midX, y: ring.midY))
-        XCTAssertEqual(stories, ["space:charts"], "the ring opens the stories")
-        list.tap(story, at: CGPoint(x: story.box.maxX - 40, y: story.box.midY))
-        XCTAssertEqual(opened, ["bot:ask", "space:charts"], "the rest of the row opens the conversation")
+        let task = try XCTUnwrap(list.view(for: "space:charts"))
+        let mark = try XCTUnwrap(task.frames.mark)
+        list.tap(task, at: CGPoint(x: mark.midX, y: mark.midY))
+        XCTAssertEqual(opened, ["bot:ask", "space:charts"], "the mark opens the conversation too")
 
         let heading = try XCTUnwrap(list.view(for: "section:work"))
         XCTAssertFalse(list.lightsOnPress(heading.row))
@@ -227,25 +212,23 @@ final class HostedSidebarListTests: XCTestCase {
     }
 
     /// A hold shows the row's menu over the blurred screen; VoiceOver has
-    /// the same menu, and the stories, as the row's actions, and reads each
-    /// row as what it is.
+    /// the same menu as the row's actions, and reads each row as what it is.
     func testHoldAndVoiceOver() async throws {
         let (window, root) = try await host(.light)
         let list = await list(in: root, rows: Self.rows(), frame: window.bounds)
         var ran: [String] = []
         list.onSelect = { _ in }
-        list.onOpenStory = { _, _ in }
         list.menu = { row in [[MenuItem(title: "Archive", icon: "archive") { ran.append(row.id) }]] }
-        let story = try XCTUnwrap(list.view(for: "space:charts"))
-        let actions = try XCTUnwrap(story.accessibilityCustomActions)
-        XCTAssertEqual(actions.map(\.name), [Strings.Stories.watchStory, "Archive"])
-        _ = actions[1].actionHandler?(actions[1])
+        let task = try XCTUnwrap(list.view(for: "space:charts"))
+        let actions = try XCTUnwrap(task.accessibilityCustomActions)
+        XCTAssertEqual(actions.map(\.name), ["Archive"])
+        _ = actions[0].actionHandler?(actions[0])
         XCTAssertEqual(ran, ["space:charts"])
 
-        XCTAssertEqual(story.accessibilityLabel, "Sales chart")
-        XCTAssertTrue(story.accessibilityTraits.contains(.button))
+        XCTAssertEqual(task.accessibilityLabel, "Sales chart")
+        XCTAssertTrue(task.accessibilityTraits.contains(.button))
         XCTAssertEqual(list.view(for: "section:work")?.accessibilityTraits, .header)
-        XCTAssertEqual(story.accessibilityFrame.height, story.box.height, accuracy: 0.5, "VoiceOver frames the row, not its slot")
+        XCTAssertEqual(task.accessibilityFrame.height, task.box.height, accuracy: 0.5, "VoiceOver frames the row, not its slot")
 
         let bot = try XCTUnwrap(list.view(for: "bot:ask"))
         list.openHold(bot)

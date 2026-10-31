@@ -28,11 +28,6 @@ final class HomeViewController: UIViewController {
     private var connectionWatch: Task<Void, Never>?
     /// A new task on its way to the screen: a second tap meanwhile opens nothing more.
     private var opening = false
-    /// Stories, in a band under the bar: open above the list, or put away.
-    /// Nothing at all while Stories are off.
-    private lazy var stories = StoriesHomeController(host: self)
-    /// How the stories last changed the list's room, while it is applied.
-    private var storiesChange: StoriesHomeController.Change?
     /// Search, in the bar, while it is open.
     private var search: Search?
     /// What search finds, over home.
@@ -54,8 +49,6 @@ final class HomeViewController: UIViewController {
         var run: () -> Void
     }
 
-    /// The stories' band, under the bar.
-    private let storiesBand = StoriesBandView()
     /// Search ended here (a quick action took the screen): the bar's
     /// search field closes too.
     var onSearchEnded: (() -> Void)?
@@ -94,8 +87,6 @@ final class HomeViewController: UIViewController {
         // grouped, a quiet card per section, Happy's own card first.
         view.backgroundColor = UIColor(Palette.groupedGround)
         view.addSubview(sidebar)
-        view.addSubview(storiesBand)
-        stories.install(in: storiesBand)
         view.addSubview(empty)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         resultsView.isHidden = true
@@ -116,17 +107,8 @@ final class HomeViewController: UIViewController {
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
         sidebar.onWillBeginDragging = { [weak self] in self?.listWillBeginDragging() }
         sidebar.onScroll = { [weak self] in self?.listDidScroll() }
-        sidebar.onWillEndDragging = { [weak self] velocity, target in self?.stories.listWillEndDragging(velocity: velocity, target: &target) }
         sidebar.onDidEndDragging = { [weak self] decelerate in self?.listDidEndDragging(decelerate: decelerate) }
         sidebar.onDidEndDecelerating = { [weak self] in self?.listDidEndDecelerating() }
-        stories.onInsetChange = { [weak self] change in self?.storiesMoved(change) }
-        // Agent stories turn the conversations' rows into story rows.
-        stories.onRings = { [weak self] _ in self?.showRows() }
-        sidebar.onOpenStory = { [weak self] row, ring in
-            guard let agentId = row.agentId else { return }
-            self?.stories.openRing(agentId: agentId, name: row.label, from: ring)
-        }
-        stories.list = sidebar
         empty.onPair = { [weak self] in
             guard let self else { return }
             AccountAdding.begin(context: context, from: self)
@@ -169,7 +151,6 @@ final class HomeViewController: UIViewController {
         endSearch(animated: false)
         connectionWatch?.cancel(); connectionWatch = nil
         session = id.flatMap { Session.session(for: $0, context: context) }
-        stories.attach(session)
         sidebar.images = session?.images
         resultsView.list.images = session?.images
         sidebar.apply([])
@@ -201,7 +182,7 @@ final class HomeViewController: UIViewController {
         snapshot.allRows = agentHome.allRows
         snapshot.error = agentHome.error
         onSnapshot?(snapshot)
-        if previous != snapshot.rows { showRows() }
+        if previous != snapshot.rows { sidebar.apply(snapshot.rows) }
         if search != nil { showResults() }
         warmUp()
         applyChrome()
@@ -213,7 +194,6 @@ final class HomeViewController: UIViewController {
         empty.message = !hasAgentConnection ? Strings.noAgentConnection : Strings.unsupported
         empty.showsPair = !hasAgentConnection
         sidebar.isHidden = !empty.isHidden
-        stories.isSuppressed = sidebar.isHidden
         let reason = { (text: String) in text.isEmpty ? Strings.unanswered : text }
         let notice = snapshot.error.map(reason)
         // Prioritizing being off is Settings' business: home says nothing of it.
@@ -268,15 +248,6 @@ final class HomeViewController: UIViewController {
         onSearchEnded?()
     }
 
-    /// Home's own rows, with the stories' rings.
-    private func showRows() {
-        sidebar.apply(shownRows)
-    }
-
-    /// The rows the list draws: the list with the stories' rings, its tree kept.
-    private var shownRows: [Row] {
-        SidebarRows.withStories(snapshot.rows, rings: stories.rings)
-    }
 
     /// What answers the query, in the results over home: the rows that
     /// answer it, then the quick actions and settings that do. Nothing
@@ -374,60 +345,28 @@ final class HomeViewController: UIViewController {
         let bounds = view.bounds
         // Search's results keep clear of the keyboard; home's list never
         // changes for them.
-        // On a wide window the list, the stories, what search finds and the
-        // empty state all hold to `ContentWidth.maxWidth` and sit in the
-        // middle; a phone is as wide as it ever was.
-        let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, storiesHeight: sidebar.isHidden ? 0 : stories.inset, maxWidth: ContentWidth.maxWidth)
+        // On a wide window the list, what search finds and the empty state
+        // all hold to `ContentWidth.maxWidth` and sit in the middle; a
+        // phone is as wide as it ever was.
+        let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, maxWidth: ContentWidth.maxWidth)
         resultsView.frame = layout.content
         // The results start right at the bar's foot, with no gap of home's.
         let searchInsets = searchContentInsets ?? contentInsets
         resultsView.insets = UIEdgeInsets(top: searchInsets.chromeTop, left: 0, bottom: searchInsets.listBottom, right: 0)
-        storiesBand.frame = CGRect(x: layout.content.minX, y: contentInsets.chromeTop, width: layout.content.width, height: max(0, bounds.height - contentInsets.chromeTop))
         sidebar.frame = layout.content
         session?.warm.layOut(width: layout.content.width, environment: traitCollection.textEnvironment)
         let insets = UIEdgeInsets(layout.listInsets)
         let indicator = UIEdgeInsets(layout.indicatorInsets)
         if sidebar.contentInsets != insets {
+            // A shrinking top leaves nothing scrolled past it.
             let atTop = sidebar.isAtTop
-            switch storiesChange {
-            case .held:
-                // The stories opened or closed under the finger: the list stays.
-                sidebar.setInsets(insets, indicator: indicator, keepsTop: false)
-            case .animated:
-                // They opened or closed on their own: the list goes to its new top.
-                sidebar.setInsets(insets, indicator: indicator, keepsTop: true)
-            case .immediate, nil:
-                // A shrinking top (Stories turned off) leaves nothing scrolled past it.
-                sidebar.setInsets(insets, indicator: indicator, keepsTop: atTop || (!sidebar.isDragging && sidebar.contentOffsetY < -insets.top))
-            }
+            sidebar.setInsets(insets, indicator: indicator, keepsTop: atTop || (!sidebar.isDragging && sidebar.contentOffsetY < -insets.top))
         } else {
             sidebar.setInsets(insets, indicator: indicator, keepsTop: false)
         }
         empty.frame = layout.empty
     }
 
-    override func didMove(toParent parent: UIViewController?) {
-        super.didMove(toParent: parent)
-        if parent == nil { stories.install(in: nil) }
-    }
-
-    /// The stories' room above the list changed: the list keeps still under
-    /// a finger, and otherwise moves to its new top, animated as Telegram's
-    /// chat list scrolls to its stories.
-    private func storiesMoved(_ change: StoriesHomeController.Change) {
-        storiesChange = change
-        defer { storiesChange = nil }
-        view.setNeedsLayout()
-        switch change {
-        case .held, .immediate:
-            view.layoutIfNeeded()
-        case .animated:
-            let animator = UIViewPropertyAnimator(duration: 0.3, controlPoint1: CGPoint(x: 0.33, y: 0.52), controlPoint2: CGPoint(x: 0.25, y: 0.99)) { [weak self] in
-                self?.view.layoutIfNeeded()
-            }
-            animator.startAnimation()
-        }
-    }
 
     // MARK: Acts
 
@@ -518,25 +457,21 @@ final class HomeViewController: UIViewController {
 
 extension HomeViewController {
     private func listWillBeginDragging() {
-        stories.listWillBeginDragging()
         // Scrolling is being in the list: Prioritizing's batches wait.
         if let store = session?.store { Task { await store.attentionInput() } }
     }
 
     private func listDidScroll() {
-        stories.listDidScroll()
         #if DEBUG || HAPPY_FIXTURES
         GymFrameMeter.noteScroll()
         #endif
     }
 
     private func listDidEndDragging(decelerate: Bool) {
-        stories.listDidEndDragging(decelerate: decelerate)
         if !decelerate { warmUp() }
     }
 
     private func listDidEndDecelerating() {
-        stories.listDidEndDecelerating()
         warmUp()
     }
 

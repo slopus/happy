@@ -321,4 +321,37 @@ final class WaitRingView: UIView {
         fill.path = path
     }
 }
+
+/// A sidebar row's working signal: the chat's own braille animation while
+/// its work runs, nothing at rest.
+final class WorkingSignalView: UIView {
+    private let loader = BrailleView()
+    private(set) var working = false
+    var animating: Bool { loader.animating }
+    var onScreen = true { didSet { loader.running = onScreen && working } }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        clipsToBounds = true
+        addSubview(loader)
+        isHidden = true
+        loader.tintColor = UIColor(Palette.rowText)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.loader.tintColor = UIColor(Palette.rowText) }
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func apply(working: Bool) {
+        guard working != self.working else { return }
+        self.working = working
+        isHidden = !working
+        loader.running = onScreen && working
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        loader.frame = bounds
+    }
+}
 #endif

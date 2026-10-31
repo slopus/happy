@@ -7,8 +7,8 @@ import UltraView
 /// One slot of home's list on screen: the row's part of its card, the
 /// bitmap UltraView drew of its text (`SidebarItemDrawing`), and the live
 /// views over it a bitmap can't be: the mark (a tinted tile, a picture
-/// fading in over its thumbhash or placeholder, clay art, a seedling), the
-/// story ring and the working signal. The slot is the list's whole width
+/// fading in over its thumbhash or placeholder, clay art, a seedling) and
+/// the working signal. The slot is the list's whole width
 /// and reaches up to the row before it; only the row's box takes a touch.
 ///
 /// It looks as `RowView` does in a grouped list: the card's quiet fill,
@@ -19,15 +19,14 @@ final class SidebarItemView: ListRowView {
     private(set) var item: SidebarItem
     private let fill = UIView()
     private var drawingView: ListRowView
-    private let ring = StoryRingView()
     private let tile = UIView()
     private let seedling = MarkView()
     private let picture = UIImageView()
-    private let corner = CornerView()
+    private let signal = WorkingSignalView()
     private let placeholder = AvatarPlaceholderSlot()
     private let markPicture = MarkPicture()
     /// The mark as last applied, so a row that only changed its title keeps its picture.
-    private var shownMark: (mark: Row.Mark, story: Bool, tint: String?)?
+    private var shownMark: (mark: Row.Mark, tint: String?)?
     /// The finger came down on a list still gliding: it stops the list, and opens nothing.
     private var stoppedGlide = false
 
@@ -42,9 +41,7 @@ final class SidebarItemView: ListRowView {
     var pressed = false {
         didSet { if pressed != oldValue { applyFill() } }
     }
-    /// The story ring, for the viewer to grow out of and close into.
-    var ringView: UIView? { ring.isHidden ? nil : ring }
-    /// What the row wears as its mark, for the viewer's avatar.
+    /// What the row wears as its mark.
     var markImage: UIImage? { picture.isHidden ? nil : picture.image }
 
     // MARK: Title
@@ -87,7 +84,7 @@ final class SidebarItemView: ListRowView {
         tile.isUserInteractionEnabled = false
         tile.layer.cornerRadius = GroupedSidebarMetrics.tileRadius
         tile.layer.cornerCurve = .continuous
-        for view in [fill, drawingView, ring, tile, seedling, picture, corner] { addSubview(view) }
+        for view in [fill, drawingView, tile, seedling, picture, signal] { addSubview(view) }
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         addGestureRecognizer(tap)
         let press = PressRecognizer(target: self, action: #selector(pressChanged(_:)))
@@ -113,18 +110,15 @@ final class SidebarItemView: ListRowView {
         selected = next.entry.drawing.selected
         let row = next.entry.row
         let tint = Self.tint(row)
-        if shownMark.map({ $0.mark != row.mark || $0.story != (row.story != nil) || $0.tint != tint?.key }) ?? true {
+        if shownMark.map({ $0.mark != row.mark || $0.tint != tint?.key }) ?? true {
             applyMark(row, tint: tint)
             if case .seedling(let seed) = previous.mark, case .clay(let slug) = row.mark, previous.id == row.id,
                let image = ClayIconImages.image(slug) { hatch(seed: seed, into: image) }
         }
         tile.backgroundColor = tint.map { UIColor($0.fill) }
         picture.tintColor = picture.contentMode == .center ? tint.map { UIColor($0.ink) } ?? UIColor(ink(row)) : nil
-        ring.isHidden = row.story == nil || row.mark == .none
-        ring.apply(row.story ?? .init())
-        ring.accessibilityIdentifier = "ring:\(row.label)"
-        corner.apply(row.story == nil && row.status != .working ? .none : row.corner)
-        corner.accessibilityIdentifier = "corner:\(row.label)"
+        signal.apply(working: row.status == .working)
+        signal.accessibilityIdentifier = "corner:\(row.label)"
         applyFill()
         applyAccessibility()
         if row.isNew, !previous.isNew || previous.id != row.id, window != nil { pulse() }
@@ -134,7 +128,7 @@ final class SidebarItemView: ListRowView {
     // MARK: Look
 
     private func ink(_ row: Row) -> ColorToken {
-        selected || row.unread || row.isNew || row.story != nil ? Palette.rowTextActive : Palette.rowText
+        selected || row.unread || row.isNew ? Palette.rowTextActive : Palette.rowText
     }
 
     /// The fill: the card's own until a finger or the open screen lights
@@ -142,7 +136,7 @@ final class SidebarItemView: ListRowView {
     private func applyFill() {
         let row = row
         let carryable = row.kind != .section && row.kind != .separator
-        let tinted = row.isNew && row.story == nil
+        let tinted = row.isNew
         let rest: UIColor = carryable ? UIColor(Palette.groupedCard) : .clear
         fill.backgroundColor = selected || pressed && carryable ? UIColor(Palette.groupedCellHighlight) : tinted ? UIColor(Palette.rowNew) : rest
         var corners: CACornerMask = []
@@ -154,13 +148,13 @@ final class SidebarItemView: ListRowView {
 
     /// A glyph's tile, by what the row opens (`RowView.tint`), with a key to tell them apart.
     private static func tint(_ row: Row) -> (key: String, ink: ColorToken, fill: ColorToken)? {
-        guard row.story == nil, let tint = RowView.tint(row) else { return nil }
+        guard let tint = RowView.tint(row) else { return nil }
         return ("\(row.targetKind ?? "")|\(row.surfaceType ?? "")", tint.ink, tint.fill)
     }
 
     /// The mark, as a grouped `RowView` wears it.
     private func applyMark(_ row: Row, tint: (key: String, ink: ColorToken, fill: ColorToken)?) {
-        shownMark = (row.mark, row.story != nil, tint?.key)
+        shownMark = (row.mark, tint?.key)
         markPicture.cancel()
         placeholder.cancel()
         seedling.seed = nil
@@ -170,8 +164,7 @@ final class SidebarItemView: ListRowView {
         picture.contentMode = .scaleAspectFit
         picture.layer.cornerRadius = 0
         tile.isHidden = tint == nil
-        let story = row.story != nil
-        let radius = story ? StoryRowMetrics.disc / 2 : GroupedSidebarMetrics.tileRadius
+        let radius = GroupedSidebarMetrics.tileRadius
         switch row.mark {
         case .none:
             break
@@ -197,13 +190,13 @@ final class SidebarItemView: ListRowView {
             picture.isHidden = false
             picture.contentMode = .scaleAspectFill
             picture.layer.cornerRadius = radius
-            placeholder.show(seed: seed, side: story ? StoryRowMetrics.disc : Metrics.mark) { [weak self] in self?.picture.image = $0 }
+            placeholder.show(seed: seed, side: Metrics.mark) { [weak self] in self?.picture.image = $0 }
         case .image(let path, let thumbhash):
-            // A picture is a rounded square; in a story ring, a circle.
+            // A picture is a rounded square.
             picture.isHidden = false
             picture.contentMode = .scaleAspectFill
             picture.layer.cornerRadius = radius
-            let pixels = Int((story ? StoryRowMetrics.disc : Metrics.mark) * 3)
+            let pixels = Int(Metrics.mark * 3)
             markPicture.load(path, thumbhash: thumbhash, pixels: pixels, images: item.owner?.images, into: picture)
         }
     }
@@ -213,22 +206,11 @@ final class SidebarItemView: ListRowView {
         drawingView.frame = bounds
         fill.frame = box
         let frames = frames
-        var mark = frames.mark ?? .zero
-        ring.frame = frames.ring ?? .zero
-        if frames.ring != nil {
-            // On the disc: art and glyphs at their own size in its middle,
-            // a picture filling it.
-            let side: CGFloat? = switch row.mark {
-            case .clay, .happy, .seedling: StoryRowMetrics.plateArt
-            case .glyph: StoryRowMetrics.plateGlyph
-            default: nil
-            }
-            if let side { mark = mark.insetBy(dx: (mark.width - side) / 2, dy: (mark.height - side) / 2) }
-        }
+        let mark = frames.mark ?? .zero
         seedling.frame = mark
         picture.frame = mark
         tile.frame = mark
-        corner.frame = frames.corner ?? .zero
+        signal.frame = frames.corner ?? .zero
         titleBand?.frame = frames.label
     }
 
@@ -240,7 +222,7 @@ final class SidebarItemView: ListRowView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        corner.onScreen = window != nil
+        signal.onScreen = window != nil
         if window == nil { pressed = false }
     }
 
@@ -291,11 +273,6 @@ final class SidebarItemView: ListRowView {
         }
         let value = [row.isNew ? Strings.newRow : nil, wears, item.entry.drawing.shimmers ? Strings.workingRow : nil].compactMap { $0 }
         accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
-        if let story = row.story {
-            let changes = row.lineChanges.flatMap { $0.isEmpty ? nil : "+\($0.added) \u{2212}\($0.deleted)" }
-            accessibilityValue = [changes, row.statusLine, row.draft.map { "Draft: \($0)" }, story.unseen > 0 ? Strings.Stories.newStories(story.unseen) : nil]
-                .compactMap { $0 }.joined(separator: ", ")
-        }
     }
 
     override var accessibilityFrame: CGRect {
@@ -351,6 +328,6 @@ final class SidebarItemView: ListRowView {
     var fillColor: UIColor? { fill.backgroundColor }
     var fillCorners: (radius: CGFloat, mask: CACornerMask) { (fill.layer.cornerRadius, fill.layer.maskedCorners) }
     var tileColor: UIColor? { tile.isHidden ? nil : tile.backgroundColor }
-    var workingSignalRunning: Bool { corner.animating }
+    var workingSignalRunning: Bool { signal.animating }
 }
 #endif

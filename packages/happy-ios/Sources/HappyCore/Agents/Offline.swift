@@ -117,7 +117,7 @@ public actor OfflineFile {
 
     // MARK: Other files
 
-    /// A file another feature keeps for this computer (`stories.json`),
+    /// A file another feature keeps for this computer (`drafts.json`),
     /// written whole through the gate, so it goes with the computer.
     public nonisolated func writeExtra(_ name: String, data: Data) {
         let url = directory.appendingPathComponent(name)

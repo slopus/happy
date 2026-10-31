@@ -87,7 +87,7 @@ final class HostedV2SelectionTests: XCTestCase {
         Row(id: "space:happy", nodeId: "happy", kind: .space, label: "Happy", mark: .happy, isHappy: true, agentId: "agent-happy", spaceId: "happy"),
         Row(id: "section:priority", nodeId: "priority", kind: .section, label: "Priority", collapsed: false),
         Row(id: "space:ios", nodeId: "ios", kind: .space, label: "iOS selection reset", mark: .glyph("tasks"), agentId: "agent-ios", spaceId: "ios"),
-        Row(id: "space:stories", nodeId: "stories", kind: .space, label: "Stories", mark: .glyph("agents"), agentId: "agent-stories", spaceId: "stories"),
+        Row(id: "space:notes", nodeId: "notes", kind: .space, label: "Notes", mark: .glyph("agents"), agentId: "agent-notes", spaceId: "notes"),
         Row(id: "space:bench", nodeId: "bench", kind: .space, label: "Agent benchmark", mark: .glyph("agents"), agentId: "agent-bench", spaceId: "bench"),
     ]
 

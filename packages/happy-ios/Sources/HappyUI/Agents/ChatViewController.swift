@@ -1659,9 +1659,6 @@ extension ChatViewController: PageHosting {
     }
 }
 
-extension ChatViewController: StoriesProviding {
-    var stories: StoriesSession? { StoriesSession.session(for: session) }
-}
 
 private extension ChatDrawItem {
     /// Where a message's words are drawn: its bubble, text and blocks, not

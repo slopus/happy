@@ -6,15 +6,11 @@ public struct Places: Equatable, Sendable {
     public var bots: [AgentWire.Bot]
     public var tasks: [AgentWire.Task]
     public var surfaces: [AgentWire.Surface]
-    /// The start of each conversation's unsent draft, by agent, as its row
-    /// shows it after "Draft:".
-    public var drafts: [String: String]
 
-    public init(bots: [AgentWire.Bot] = [], tasks: [AgentWire.Task] = [], surfaces: [AgentWire.Surface] = [], drafts: [String: String] = [:]) {
+    public init(bots: [AgentWire.Bot] = [], tasks: [AgentWire.Task] = [], surfaces: [AgentWire.Surface] = []) {
         self.bots = bots
         self.tasks = tasks
         self.surfaces = surfaces
-        self.drafts = drafts
     }
 
     /// The system key of Happy's own bot.
@@ -132,50 +128,9 @@ public struct Row: Equatable, Sendable, Identifiable {
     public var hasShownSessions = false
     /// A Surface row's type: `todo`, `document`, `calendar`, `system_monitor` or `chat`.
     public var surfaceType: String?
-    /// The agent's own line about where its work stands (`set_status`).
-    public var statusLine: String?
-    /// When the agent last set its status line (ms since 1970).
-    public var statusTime: Double?
     /// When the conversation last did something (ms since 1970, to the
-    /// minute): the time a story row shows at the end of its first line.
+    /// minute): what search's recent conversations are ordered by.
     public var activityTime: Double?
-    /// The start of the person's unsent draft, on one line.
-    public var draft: String?
-    /// The lines the work behind the row added and deleted, summed over
-    /// every workspace it owns; nil while nothing says (this phone isn't
-    /// sent Git totals yet).
-    public var lineChanges: LineChanges?
-    /// The row has an agent behind it, so a story row keeps a second line for it.
-    public var hasAgent = false
-    /// Set while agent stories are on: drawn as sidebar v2's story row.
-    public var story: StoryRowState?
-    /// A section heading or separator while agent stories are on: drawn at
-    /// desktop's own size, as the story rows around it are.
-    public var amongStories = false
-
-    /// What sidebar v2 draws of a row's stories: its ring's segments and how
-    /// many of them are new (none: no ring).
-    public struct LineChanges: Equatable, Sendable {
-        public var added: Int
-        public var deleted: Int
-
-        public init(added: Int, deleted: Int) {
-            self.added = added
-            self.deleted = deleted
-        }
-
-        public var isEmpty: Bool { added <= 0 && deleted <= 0 }
-    }
-
-    public struct StoryRowState: Equatable, Sendable {
-        public var segments: Int
-        public var unseen: Int
-
-        public init(segments: Int = 0, unseen: Int = 0) {
-            self.segments = segments
-            self.unseen = unseen
-        }
-    }
 
     public init(id: String, nodeId: String, kind: Kind, depth: Int = 0, label: String, mark: Mark = .none, status: Status = .none, unread: Bool = false, collapsed: Bool? = nil, isHappy: Bool = false, agentId: String? = nil, workspaceId: String? = nil, spaceId: String? = nil, targetKind: String? = nil, isUntouchedSeedling: Bool = false) {
         self.id = id
@@ -198,18 +153,8 @@ public struct Row: Equatable, Sendable, Identifiable {
     public var opens: Bool { kind == .space || kind == .session || kind == .search || kind == .create || kind == .result }
 
     /// Something stands in the trailing square: a question, a wait, or a new
-    /// row's dot. A story row has none: its one signal is its corner.
-    public var hasTrailingMark: Bool { story == nil && status != .working && (status == .waiting || status == .awaitingInput || isNew) }
-
-    /// A story row's corner (desktop's `storySignal`): braille dots while a
-    /// run is going, else a dot while something is unread, else nothing. A
-    /// question waiting on the person is its status line's to say.
-    public var corner: Corner {
-        if status == .working { return .braille }
-        return unread || isNew ? .dot : .none
-    }
-
-    public enum Corner: Equatable, Sendable { case none, dot, braille }
+    /// row's dot.
+    public var hasTrailingMark: Bool { status != .working && (status == .waiting || status == .awaitingInput || isNew) }
 }
 
 /// The document as the rows the sidebar draws.
@@ -288,26 +233,6 @@ public enum Rows {
         return shown
     }
 
-    /// The rows as the v2 sidebar draws them while agent stories are
-    /// on (`rings` set, keyed by agent): each conversation's row a story
-    /// row, a task's or bot's wearing its agent's ring. Stories don't nest:
-    /// only top-level rows are drawn, and none of them folds. Off (nil), as
-    /// they are.
-    public static func withStories(_ rows: [Row], rings: [String: StoryRing]?) -> [Row] {
-        guard let rings else { return rows }
-        return rows.filter { $0.depth == 0 }.map { row in
-            var row = row
-            if row.kind == .section || row.kind == .separator { row.amongStories = true }
-            guard row.kind == .space || row.kind == .session else { return row }
-            row.collapsed = nil
-            row.hasHiddenSessions = false
-            if row.mark == .none { row.mark = .placeholder(seed: row.targetId ?? row.agentId ?? row.id) }
-            // A session row shows no ring; its stories roll up into its task's.
-            let ring = row.kind == .space ? row.agentId.flatMap { rings[$0] } : nil
-            row.story = Row.StoryRowState(segments: ring?.storyIds.count ?? 0, unseen: min(ring?.unseenCount ?? 0, ring?.storyIds.count ?? 0))
-            return row
-        }
-    }
 
     static func knownTarget(_ space: AgentWire.Space) -> Bool {
         ["task", "bot", "surface", "agent"].contains(space.target.kind)
@@ -339,27 +264,14 @@ public enum Rows {
         if row.collapsed == nil, row.hasHiddenSessions { row.collapsed = true }
         row.hasShownSessions = node.children.contains { spaces[$0.id] == nil && places.agent($0.id) != nil }
         if space.target.kind == "surface" { row.surfaceType = places.surface(space.target.id)?.type }
-        row.hasAgent = conversation != nil
-        row.statusLine = conversation?.statusLine?.text
-        row.statusTime = conversation?.statusLine?.updatedAt
         row.activityTime = conversation?.activityAt.map(minute)
-        row.draft = conversation.flatMap { places.drafts[$0.id] }
         // A bot can always be archived; a task only where the daemon says so.
         row.canArchive = space.target.kind == "bot" || places.task(space.target.id)?.canArchive == true
         return [row] + children
     }
 
-    /// A moment to its minute, the finest a row's time tells, so a change
-    /// within the minute redraws nothing.
+    /// A moment to its minute, so a change within the minute redraws nothing.
     static func minute(_ ms: Double) -> Double { (ms / 60_000).rounded(.down) * 60_000 }
-
-    /// How much of a draft a row shows: the start of it, on one line
-    /// (desktop's `draftPreviewOf`); nil while it holds nothing to show.
-    public static func draftPreview(_ text: String?) -> String? {
-        guard let text else { return nil }
-        let line = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return line.isEmpty ? nil : String(line.prefix(120))
-    }
 
     static func sessionTree(_ agents: [AgentWire.Agent]) -> [SidebarDocumentEdits.SessionTree] {
         agents.filter { $0.archivedAt == nil }.map { SidebarDocumentEdits.SessionTree(id: $0.id, children: sessionTree($0.subtasks ?? [])) }
@@ -397,11 +309,7 @@ public enum Rows {
                 collapsed: children.isEmpty ? nil : !node.expanded,
                 agentId: agent.id, workspaceId: agent.workspaceId
             )
-            row.hasAgent = true
-            row.statusLine = agent.statusLine?.text
-            row.statusTime = agent.statusLine?.updatedAt
             row.activityTime = agent.activityAt.map(minute)
-            row.draft = places.drafts[agent.id]
             // A subtask's own subtasks show and hide under it as a row's do.
             row.sessions = sessionTree(agent.subtasks ?? [])
             row.hasHiddenSessions = hasMissing(row.sessions, under: node, held: held)

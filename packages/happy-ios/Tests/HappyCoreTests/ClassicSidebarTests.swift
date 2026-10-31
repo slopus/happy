@@ -56,26 +56,7 @@ final class ClassicSidebarTests: XCTestCase {
         XCTAssertTrue(rows.allSatisfy { $0.collapsed == nil }, "a row has a fold")
     }
 
-    func testRowsCarryWhatAStoryRowSays() throws {
-        let release = try XCTUnwrap(try rows().first { $0.label == "Release" })
-        XCTAssertTrue(release.hasAgent)
-        XCTAssertEqual(release.statusLine, "Signed and uploaded")
-        XCTAssertEqual(release.statusTime, 1700000000000)
+    func testATaskWearsItsGlyph() throws {
         XCTAssertEqual(try rows().first { $0.label == "Groceries" }?.mark, .glyph("tasks"))
-    }
-
-    /// Stories on: bots and tasks wear their rings, and the tree stays,
-    /// unlike the spaces sidebar's, which keeps its top level only.
-    func testStoriesKeepTheTree() throws {
-        let rows = try rows()
-        let ring = StoryRing(agentId: "release-agent", storyIds: ["s1", "s2"], unseenCount: 1, latestPostedAt: nil)
-        let shown = SidebarRows.withStories(rows, rings: ["release-agent": ring])
-        XCTAssertEqual(labels(shown), labels(rows))
-        XCTAssertEqual(shown.first { $0.label == "Release" }?.story, Row.StoryRowState(segments: 2, unseen: 1))
-        XCTAssertEqual(shown.first { $0.label == "Three" }?.story, Row.StoryRowState())
-        XCTAssertNil(shown.first { $0.label == "Sub one" }?.story)
-        XCTAssertNil(shown.first { $0.label == "App" }?.story)
-        XCTAssertTrue(shown.first { $0.id == "direct:bots" }?.amongStories == true)
-        XCTAssertEqual(SidebarRows.withStories(rows, rings: nil), rows)
     }
 }

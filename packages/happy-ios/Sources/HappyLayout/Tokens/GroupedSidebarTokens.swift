@@ -50,9 +50,7 @@ public enum GroupedSidebarMetrics {
     public static let endCenter: CGFloat = markInset + Metrics.mark / 2
     /// A nested row's mark stands under its parent's title: a mark and its gap.
     public static let indent: CGFloat = Metrics.mark + Metrics.markGap
-    /// A story row's own card, this far inside the cell on either side, so
-    /// its disc and its corner signal keep clear of the card's corners.
-    public static let storyInset: CGFloat = 4
+
     /// A section's heading over its card: its title (13 on an 18 line)
     /// stands `headingBottom` above the card, in a box `headingHeight` tall
     /// that a finger folds anywhere along.

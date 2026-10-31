@@ -49,9 +49,10 @@ let package = Package(
         // NodeRow and the custom keyframe scroller.
         .package(url: "https://github.com/slopus/ultraview.git", revision: "2c2e35147b42f4e88edde4ec1ec36e53eaf27d1c"),
         .package(url: "https://github.com/slopus/tailcat-swift.git", revision: "69a661b2c02220a3786fa7af8748df3baec3a441"),
-        // Animated (tgs) stickers in Stories. lottie-spm is Lottie's prebuilt
-        // xcframework, so it adds no source build; stickers play on its Core
-        // Animation engine, off the main thread's render loop.
+        // The state pictures (`StateSceneView`), desktop's Lottie scenes.
+        // lottie-spm is Lottie's prebuilt xcframework, so it adds no source
+        // build; scenes play on its Core Animation engine, off the main
+        // thread's render loop.
         .package(url: "https://github.com/airbnb/lottie-spm.git", exact: "4.5.2"),
     ],
     targets: [

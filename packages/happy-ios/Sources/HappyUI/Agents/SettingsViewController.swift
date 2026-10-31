@@ -7,7 +7,7 @@ import UIKit
 /// V2 settings, pushed from the picture in either home's header,
 /// laid out as Telegram's settings are (its techniques, none of its code):
 /// the navigation bar with back at the left, search (the bar's own
-/// integrated search) and the QR button at the right; every computer and account as story circles, the chosen one
+/// integrated search) and the QR button at the right; every computer and account as circles, the chosen one
 /// centred and ringed, its name and line under it; then every setting the
 /// chosen profile has, in grouped cards, with Appearance and About each a
 /// page of their own, as Happy's settings have them.

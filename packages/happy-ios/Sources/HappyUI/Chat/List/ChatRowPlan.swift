@@ -100,8 +100,6 @@ enum ChatDrawItem {
 
 /// What an embedded view shows.
 enum ChatEmbed: Equatable, Sendable {
-    /// A story, by its ID (`StoryInlineView`).
-    case story(String)
     /// An HTML artifact's page (`InlinePageView`).
     case page(InlinePage)
 }

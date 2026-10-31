@@ -126,12 +126,6 @@ final class ThumbHashPropagationTests: XCTestCase {
         XCTAssertEqual(row.mark, .image(path: "/v0/bots/research/avatar", thumbhash: Self.hash))
     }
 
-    func testAStoryCircleCarriesItsAuthorsHash() {
-        let author = StoryFeedAuthor(userId: "u2", name: "Ada Lovelace", photo: "/v0/users/u2/photo", thumbhash: Self.hash, isSelf: false, storyIds: ["s"], unseenCount: 1, draftCount: nil, latestPostedAt: nil)
-        let items = StoriesRow.items(StoryFeed(authors: [author], stories: [:], cursor: "c"), myStory: "My Story")
-        XCTAssertEqual(items.first?.thumbhash, Self.hash)
-        XCTAssertEqual(items.first?.photo, "/v0/users/u2/photo")
-    }
 
     func testAPresentedPictureCarriesItsHash() throws {
         let item = try JSONDecoder().decode(AgentWire.MediaItem.self, from: Data(#"{"kind":"image","name":"a.png","mimeType":"image/png","thumbhash":"\#(Self.hash)"}"#.utf8))
@@ -144,11 +138,5 @@ final class ThumbHashPropagationTests: XCTestCase {
     func testAnAttachedPictureCarriesItsHash() {
         let input = ToolFileInput(["ref": "r1", "name": "photo.png", "image": ["width": 640, "height": 480, "thumbhash": .string(Self.hash)]])
         XCTAssertEqual(input?.thumbhash, Self.hash)
-    }
-
-    func testAStoryFrameCarriesItsHash() throws {
-        let frame = StoryFrame(id: "f", kind: .image, width: nil, height: nil, thumbhash: Self.hash, durationMs: nil, asset: .artifactFile(artifactId: "a", version: 1, path: "p"), available: true)
-        let decoded = try JSONDecoder().decode(StoryFrame.self, from: JSONEncoder().encode(frame))
-        XCTAssertEqual(decoded.thumbhash, Self.hash)
     }
 }

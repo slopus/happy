@@ -43,7 +43,8 @@ place of its placeholder (`SidebarRows.authorMark`): the person's own from
 the profile's photo, everyone else's from `GET /v0/users?ids=`, read at
 `/v0/users/<id>/photo` with the thumbhash first. A member without a picture,
 or not read yet, wears their own placeholder, seeded by their bare user ID
-as stories seed it. A task nobody owns, bots, Surfaces and projects are
+(`PersonSeed`), as the Profile page seeds it. A task nobody owns, bots,
+Surfaces and projects are
 unchanged, and so is a standalone computer. The engine reads the authors it
 doesn't know after each bootstrap, again on reconnect and on a
 `profile.updated` naming one, and keeps them in a `users` checkpoint beside
@@ -52,7 +53,7 @@ home row's mark.
 
 The list is `SidebarList`, on UltraView: `SidebarLayout`'s grouped cards
 cut into one slot per row (`SidebarLayout.slots`), laid out and drawn off
-the main thread (`SidebarItemDrawing`), with the marks, rings, fills and
+the main thread (`SidebarItemDrawing`), with the marks, fills and working
 signals as live views over the bitmap (`SidebarItemView`); a working
 bot's, task's or subtask's title keeps `RowView.shimmers`'s sweep as a
 `ShimmerBand` over the drawn title. Rows that change above the screen keep
@@ -64,12 +65,7 @@ from the top; `HostedSearchResultsListTests`). `SidebarView` and `RowView`
 stay for a session's tree and proposals, which are drawn whole, folding,
 inside another screen's scroll. UltraList is not a scroll view, so
 the bar's soft edge and the indicator follow `SidebarList.edge`, a scroll
-view holding the list that moves with it. With agent
-stories on, every bot's and task's row is a story row (`StoryRowViews`):
-the ring with its stories, the time, the agent's status line on two lines,
-and the corner signal. `SidebarRows.withStories` keeps the tree, unlike the
-spaces sidebar's top-level-only story list, because projects and their
-sessions live here. Nested rows and folders stay plain rows.
+view holding the list that moves with it.
 
 What the computer last refused ("The computer did not answer.") is the
 list's first row (`SidebarList.notice`), never a card over it: it slides
@@ -91,12 +87,12 @@ The engine's one event stream (`/v0/events`): every `project.`,
 `workspace.`, `bot.`, `task.`, `agent.`, `surface.` and `user_settings.`
 event schedules a coalesced re-read of `/v0/bootstrap/desktop`. Status
 lines, activity, renames, new or archived work, and other devices'
-reorders all arrive this way. Rings come from the stories store.
+reorders all arrive this way.
 
 ## Tests
 
 - `ClassicSidebarTests` (HappyCoreTests): the rows and their order, no
-  titles and no folds, and story rows that keep the tree.
+  titles and no folds.
   `SyncEngineTests` checks that the old Stem Cells setting leaves home
   classic and never reads the sidebar document.
 - `ClassicSidebarUITests` (HappyDirectUITests), against a throwaway daemon

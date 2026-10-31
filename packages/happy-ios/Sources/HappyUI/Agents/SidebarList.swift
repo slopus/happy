@@ -16,9 +16,8 @@ import UltraView
 /// What a row looks like and what a finger does to it are `SidebarView`'s:
 /// the same frames, cards, hairlines, faces and marks; a press lights the
 /// row, a tap opens it, a hold shows its conversation over the blurred
-/// screen with its menu, a tap on a story ring opens its stories. The rows
-/// on screen stay where they are when rows change above them, and at the
-/// very top new rows are seen arriving.
+/// screen with its menu. The rows on screen stay where they are when rows
+/// change above them, and at the very top new rows are seen arriving.
 ///
 /// UltraList is not a scroll view, so the screen's bar shades `edge`
 /// instead: a scroll view that never scrolls under a finger and follows the
@@ -32,8 +31,6 @@ final class SidebarList: UIView {
     let edge = SidebarListEdge()
 
     var onSelect: ((Row) -> Void)?
-    /// A story row's ring was tapped: its agent's stories, not its conversation.
-    var onOpenStory: ((Row, UIView) -> Void)?
     /// A finger came down on a row that opens: it may be opened next.
     var onIntent: ((Row) -> Void)?
     /// What a hold on the row offers, in groups; nil for a row that has nothing.
@@ -52,9 +49,6 @@ final class SidebarList: UIView {
     var onDidEndDragging: ((Bool) -> Void)?
     /// A glide came to rest.
     var onDidEndDecelerating: (() -> Void)?
-    /// The finger lifts and the list would glide to `offset` (as a scroll
-    /// view's `contentOffset.y`): the screen may send it somewhere else.
-    var onWillEndDragging: ((_ velocity: CGFloat, _ offset: inout CGFloat) -> Void)?
 
     /// Each new set of rows shows at once from the top (search's results,
     /// replaced as the query changes) rather than gliding in under the
@@ -88,8 +82,6 @@ final class SidebarList: UIView {
     private var requested: Input?
     private var observation: ApplyObservation?
     private var hold: HoldOverlay?
-    /// Moves the story rows' times on, once a minute while on screen.
-    private var clock: Timer?
     private var indicatorFlashed: CFTimeInterval = 0
     /// Applies waiting for their rows to be drawn.
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -99,9 +91,7 @@ final class SidebarList: UIView {
         var width: CGFloat
         var dark: Bool
         var displayScale: CGFloat
-        var textScale: CGFloat
         var selected: String?
-        var minute: Int
         var notice: String?
     }
 
@@ -186,11 +176,10 @@ final class SidebarList: UIView {
             onDidEndDragging?(list.isDecelerating)
         }
         list.didEndScrolling = { [weak self] in self?.onDidEndDecelerating?() }
-        list.shouldStopScrolling = { [weak self] velocity in self?.release(velocity: velocity) ?? false }
         addSubview(edge)
         edge.addSubview(list)
         observation = pipeline.observation
-        registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self, UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in self.update() }
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in self.update() }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -206,20 +195,8 @@ final class SidebarList: UIView {
 
     override func willMove(toWindow newWindow: UIWindow?) {
         super.willMove(toWindow: newWindow)
-        clock?.invalidate()
-        clock = nil
-        if newWindow != nil {
-            // On the minute, so every time turns together.
-            let next = (Date().timeIntervalSince1970 / 60).rounded(.down) * 60 + 60
-            let timer = Timer(fire: Date(timeIntervalSince1970: next), interval: 60, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.update() }
-            }
-            RunLoop.main.add(timer, forMode: .common)
-            clock = timer
-        } else {
-            // Leaving the screen mid-hold: nothing is left behind in the window.
-            hold?.close(animated: false)
-        }
+        // Leaving the screen mid-hold: nothing is left behind in the window.
+        if newWindow == nil { hold?.close(animated: false) }
     }
 
     // MARK: Rows
@@ -256,10 +233,7 @@ final class SidebarList: UIView {
         let input = Input(
             rows: rows, width: bounds.width, dark: traits.userInterfaceStyle == .dark,
             displayScale: traits.displayScale > 0 ? traits.displayScale : 3,
-            textScale: StoryRowText.scale(traits), selected: selectedRowId,
-            // Only story rows read the clock.
-            minute: rows.contains { $0.story != nil } ? Int(Date().timeIntervalSince1970 / 60) : 0,
-            notice: notice
+            selected: selectedRowId, notice: notice
         )
         guard input != requested else { return }
         requested = input
@@ -270,13 +244,12 @@ final class SidebarList: UIView {
     /// drawing, and a new revision only for a slot that draws differently.
     nonisolated static func derive(_ input: Input, previous: Prepared?) -> Prepared {
         typealias G = GroupedSidebarMetrics
-        let layoutRows = SidebarView.layoutRows(input.rows, textScale: input.textScale)
+        let layoutRows = SidebarView.layoutRows(input.rows)
         let result = SidebarLayout.layout(layoutRows, width: input.width, top: G.contentTop, bottom: G.contentBottom, scale: input.displayScale, style: .grouped)
         let slots = SidebarLayout.slots(layoutRows, result, width: input.width)
         var old: [String: Entry] = [:]
         for entry in previous?.entries ?? [] { old[entry.row.id] = entry }
         var sequence = previous?.sequence ?? 0
-        let now = Date(timeIntervalSince1970: TimeInterval(input.minute * 60))
         // The notice heads the content; the rows start under it.
         let notice = input.notice.map { text -> Notice in
             let layout = BannerLayout(width: input.width, title: SidebarNoticeItem.title(text, scale: input.displayScale), detail: nil, button: nil)
@@ -289,8 +262,7 @@ final class SidebarList: UIView {
             let row = input.rows[slot.row]
             let drawing = SidebarItemDrawing(
                 row: row, frame: SidebarLayout.local(result.frames[slot.row], top: slot.frame.minY),
-                selected: row.id == input.selected, dark: input.dark, displayScale: input.displayScale,
-                textScale: input.textScale, now: row.story == nil ? .distantPast : now
+                selected: row.id == input.selected, dark: input.dark, displayScale: input.displayScale
             )
             var entry = Entry(row: row, size: slot.frame.size, box: slot.box, top: below + slot.frame.minY, drawing: drawing, revision: 0, titleRun: drawing.shimmers ? drawing.titleAdvance() : nil)
             if let kept = old[row.id], kept.drawing == drawing, kept.size == entry.size {
@@ -482,38 +454,11 @@ final class SidebarList: UIView {
         edge.flashScrollIndicators()
     }
 
-    /// The finger let go at `velocity` (content points a second): a scroll
-    /// view would glide to where its deceleration stops it. When the screen
-    /// sends it elsewhere, the list stops and goes there instead.
-    private func release(velocity: Double) -> Bool {
-        guard let onWillEndDragging else { return false }
-        let current = contentOffsetY
-        // The finger's velocity (points a second, down positive) as the
-        // content's, points a millisecond, up positive; UIScrollView's
-        // normal deceleration, 0.998 a millisecond.
-        let speed = CGFloat(-velocity) / 1000
-        var target = current + speed * 0.998 / (1 - 0.998)
-        onWillEndDragging(speed, &target)
-        // Where the list would come to rest by itself, inside its edges as
-        // they are now (the stories may have just changed the top).
-        let top = -contentInsets.top
-        let bottom = max(top, (prepared?.contentHeight ?? 0) + contentInsets.bottom - bounds.height)
-        let resting = min(bottom, max(top, current + speed * 0.998 / (1 - 0.998)))
-        guard abs(min(bottom, max(top, target)) - resting) > 1 else { return false }
-        let goal = min(bottom, max(top, target))
-        DispatchQueue.main.async { [weak self] in self?.glide(to: goal) }
-        return true
-    }
-
     /// The list glides on with no finger on it: a touch now only stops it.
     var isGliding: Bool {
         list.isDecelerating && !list.isTracking || CACurrentMediaTime() - glidedAt < 0.05
     }
     private var glidedAt: CFTimeInterval = 0
-
-    private func glide(to offset: CGFloat) {
-        setContentOffsetY(offset, animated: true)
-    }
 
     // MARK: Reading
 
@@ -569,12 +514,6 @@ final class SidebarList: UIView {
             // Home folds nothing.
             break
         default:
-            // A ring with stories in it opens them, with a finger's room around it.
-            if let ring = view.frames.ring, (row.story?.segments ?? 0) > 0, let onOpenStory,
-               ring.insetBy(dx: -8, dy: -8).contains(point), let ringView = view.ringView {
-                onOpenStory(row, ringView)
-                return
-            }
             onSelect?(row)
         }
     }
@@ -608,18 +547,9 @@ final class SidebarList: UIView {
         overlay.present()
     }
 
-    /// What VoiceOver offers on `row`: its stories, then its hold's menu.
+    /// What VoiceOver offers on `row`: its hold's menu.
     func actions(for view: SidebarItemView) -> [UIAccessibilityCustomAction] {
-        let row = view.row
-        var actions: [UIAccessibilityCustomAction] = []
-        if (row.story?.segments ?? 0) > 0, let onOpenStory {
-            actions.append(UIAccessibilityCustomAction(name: Strings.Stories.watchStory) { [weak view] _ in
-                guard let ring = view?.ringView else { return false }
-                onOpenStory(row, ring)
-                return true
-            })
-        }
-        return actions + (menu?(row) ?? []).joined().map { item in
+        (menu?(view.row) ?? []).joined().map { item in
             UIAccessibilityCustomAction(name: item.title, image: Glyphs.image(item.icon)) { _ in
                 item.run()
                 return true
@@ -628,10 +558,6 @@ final class SidebarList: UIView {
     }
 }
 
-extension SidebarList: StoriesList {
-    var offsetY: CGFloat { contentOffsetY }
-    var insetTop: CGFloat { contentInsets.top }
-}
 
 /// The scroll view home's bar shades: it holds the list, never scrolls
 /// under a finger, and follows the list's place and size.

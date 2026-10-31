@@ -21,8 +21,8 @@ final class SearchTests: XCTestCase {
     }
 
     func testRankedIsBestFirstThenOwnOrderAndStopsAtSix() {
-        let titles = ["Report an issue", "Theme", "Edit name", "Status", "Privacy policy", "Terms of service", "Stories", "Hide projects"]
-        XCTAssertEqual(Search.ranked(titles, query: "s", title: { $0 }), ["Status", "Stories", "Terms of service", "Report an issue", "Hide projects"])
+        let titles = ["Report an issue", "Theme", "Edit name", "Status", "Privacy policy", "Terms of service", "Spelling", "Hide projects"]
+        XCTAssertEqual(Search.ranked(titles, query: "s", title: { $0 }), ["Status", "Spelling", "Terms of service", "Report an issue", "Hide projects"])
         XCTAssertEqual(Search.ranked(titles, query: "e", title: { $0 }).count, 6)
         XCTAssertEqual(Search.ranked(titles, query: "e", title: { $0 }).first, "Edit name")
         XCTAssertEqual(Search.ranked(titles, query: "e", limit: 2, title: { $0 }), ["Edit name", "Report an issue"])

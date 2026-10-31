@@ -8,7 +8,7 @@ import XCTest
 
 /// Pictures on a slow network (every one arrives 1.5 s after it is asked
 /// for), drawn at moments from the first frame on: a chat picture, the
-/// viewer, a story circle and the Settings picture. The frames go to the
+/// viewer, a bot's row picture and the Settings picture. The frames go to the
 /// repository's `.context/evidence/thumbhash/`.
 @MainActor
 final class HostedThumbHashEvidenceTests: XCTestCase {
@@ -104,12 +104,13 @@ final class HostedThumbHashEvidenceTests: XCTestCase {
         let viewer = PicturePage(source: host.media, picture: Picture(key: "tool/t/1", thumbhash: Self.landscape, label: "b.png"))
         viewer.backgroundColor = .black
         viewer.frame = CGRect(x: 16, y: 300, width: 220, height: 300)
-        let story = StoriesCircleView(frame: CGRect(origin: CGPoint(x: 260, y: 320), size: StoriesRowLayout.Metrics.item))
-        story.configure(StoriesRowItem(id: "u2", title: "Ada", isSelf: false, photo: "/v0/users/u2/photo", thumbhash: Self.square, initials: "AL", placeholderSeed: "u2", segments: 1, unseen: 1), images: images)
+        let row = RowView(frame: CGRect(x: 260, y: 320, width: 114, height: 52))
+        row.images = images
+        row.configure(Row(id: "bot:research", nodeId: "bot:research", kind: .space, label: "Research", mark: .image(path: "/v0/bots/research/avatar", thumbhash: Self.square), targetKind: "bot"))
         let settings = RemoteImageView(size: SettingsProfileHeaderLayout.Metrics.avatarSize)
         settings.show(URL(string: "https://example.com/\(UUID().uuidString).png")!, thumbhash: Self.square, from: pictures)
         settings.frame = CGRect(x: 260, y: 440, width: 90, height: 90)
-        for view in [media, viewer, story, settings] as [UIView] { host.view.addSubview(view) }
+        for view in [media, viewer, row, settings] as [UIView] { host.view.addSubview(view) }
         host.view.layoutIfNeeded()
 
         // The first frame these are drawn in: nothing has had a turn yet.
