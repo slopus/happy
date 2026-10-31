@@ -51,6 +51,9 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
     private var family: [Row] = []
     private var completedOpen = false
     private var heldName: String?
+    /// The computer answered when last heard: back after a gap, the
+    /// pictures that failed are asked again.
+    private var live = true
 
     private let scroll = DetailScrollView()
     /// Its avatar, name and what it is: the legacy session's profile's too.
@@ -120,7 +123,6 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         }
         mediaHeading.text = Strings.media.uppercased()
         scroll.addSubview(mediaHeading)
-        mediaCard.source = loader
         mediaCard.accessibilityIdentifier = "detail-media"
         mediaCard.onSelect = { [weak self] index in self?.openMedia(index) }
         mediaCard.onMore = { [weak self] in self?.showMore(media: true) }
@@ -157,8 +159,11 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         navigationItem.largeTitleDisplayMode = .never
 
         watch = session.watch { [weak self] snapshot in
-            self?.spaceRows = snapshot.allRows
-            self?.follow()
+            guard let self else { return }
+            if snapshot.live, !live { loader.retryFailed() }
+            live = snapshot.live
+            spaceRows = snapshot.allRows
+            follow()
         }
         homeWatch = session.watchHome { [weak self] home in
             self?.homeRows = home.allRows
@@ -574,6 +579,13 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         let media = shownMedia
         guard media.indices.contains(index) else { return }
         let one = media[index]
+        let loader = loader
+        // Not here yet: the tap reads it, as the chat's ring does; a
+        // recording plays as it streams.
+        if case .tool(let file) = one, file.isVisual, !file.isVideo, !loader.isDownloaded(one.key) {
+            loader.toggleDownload(one.key)
+            return
+        }
         if case .tool(let file) = one, !file.isVisual {
             // The last file asked for, while this screen still shows.
             previewing?.cancel()
@@ -586,7 +598,6 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
             }
             return
         }
-        let loader = loader
         if VideoOpening.shared.open(boardKey: loader.download(one.key)?.boardKey, from: self, player: { loader.player(one.key) }) { return }
         let pictures = shared.media.filter(\.isPicture).map { picture -> Picture in
             switch picture {
@@ -685,6 +696,12 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
     }
 
     func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+}
+
+/// The shared media's squares are the chat's tiles, reading from this
+/// screen's loader.
+extension SessionDetailViewController: ChatMediaProviding {
+    var chatMedia: ChatMediaSource? { loader }
 }
 
 /// The detail's scroll: a drag begun on a media cell, or any control,
@@ -924,8 +941,10 @@ final class DetailMarkView: UIView {
     }
     private let seedling = MarkView()
     private let picture = UIImageView()
-    private var job: Task<Void, Never>?
+    private let markPicture = MarkPicture()
     private let placeholder = AvatarPlaceholderSlot()
+    /// What it draws, for tests.
+    var pictureImage: UIImage? { picture.image }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -949,7 +968,7 @@ final class DetailMarkView: UIView {
     }
 
     private func apply() {
-        job?.cancel(); job = nil
+        markPicture.cancel()
         placeholder.cancel()
         seedling.isHidden = true
         seedling.seed = nil
@@ -969,16 +988,7 @@ final class DetailMarkView: UIView {
             picture.image = ClayIconImages.image(slug)
         case .image(let path, let thumbhash):
             picture.contentMode = .scaleAspectFill
-            let pixels = Int(SessionDetailLayout.Metrics.mark * 3)
-            if let cached = images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels) {
-                picture.image = cached
-            } else {
-                picture.image = ThumbHashImages.image(thumbhash)
-                job = Task { [weak self] in
-                    guard let image = await self?.images?.picture(path, thumbhash: thumbhash, pixels: pixels), !Task.isCancelled, let self else { return }
-                    ImageFade.show(image, in: picture, fade: true)
-                }
-            }
+            markPicture.load(path, thumbhash: thumbhash, pixels: Int(SessionDetailLayout.Metrics.mark * 3), images: images, into: picture)
         case .placeholder(let seed):
             picture.contentMode = .scaleAspectFill
             placeholder.show(seed: seed, side: SessionDetailLayout.Metrics.mark) { [weak self] in self?.picture.image = $0 }

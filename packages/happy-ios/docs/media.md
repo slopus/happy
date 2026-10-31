@@ -125,6 +125,10 @@ Where it shows:
   (`MediaBadgeView`: a video's length, then the size or "1.2 / 8.4 MB").
   A tap on the ring sends `.toggleDownload(key)`; a video's badge does
   that, and the play button plays.
+- The session profile's shared media (`SharedMediaCell`): the same
+  `ChatMediaView`, filling its square (`fills`), reading from the
+  profile's own `MediaLoader`. A tap on a picture not here yet reads it;
+  anything else opens.
 - `ChatFileStatusView` (file cards): the ring on the chip, the size or
   progress after the kind.
 - `ChatAttachmentView` (legacy pictures and recordings): the ring and the
@@ -167,3 +171,10 @@ the phone plus range fetches, never after the whole file.
 Files on up to 1 MB, Videos off. One setting for every network; Telegram
 splits Wi-Fi and cellular, which is not done here. Settings › Data and
 Storage edits it.
+
+When the computer answers again after a gap (the store's or home's
+snapshot turns `live`), `MediaLoader.retryFailed` starts again the
+automatic downloads that gave up while it was away and asks every tile
+still without its picture to read it again, and `Images.retryFailed` does
+the same for row, profile and story pictures (`MarkPicture`), so nothing
+is left on its thumbhash or placeholder for good.

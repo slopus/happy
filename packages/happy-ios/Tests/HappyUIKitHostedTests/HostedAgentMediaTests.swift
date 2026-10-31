@@ -25,6 +25,8 @@ private actor MediaComputer: AgentTransport {
     var runs: [JSONValue]
     let files: [String: ArtifactDaemon.File]
     private(set) var fetched: [String] = []
+    /// Its media route doesn't answer, as a computer away.
+    var away = false
 
     init(runs: [JSONValue], files: [String: ArtifactDaemon.File]) {
         self.runs = runs
@@ -32,11 +34,18 @@ private actor MediaComputer: AgentTransport {
     }
 
     func set(runs: [JSONValue]) { self.runs = runs }
+    func set(away: Bool) { self.away = away }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
+        if path.hasPrefix("/v0/bots/"), path.hasSuffix("/avatar") {
+            fetched.append(path)
+            guard !away, let picture = files["avatar"] else { return HTTP1Response(status: away ? 502 : 404) }
+            return .init(status: 200, body: picture.data)
+        }
         if let range = path.range(of: "/tool-calls/") {
             let parts = path[range.upperBound...].split(separator: "/")
             guard parts.count == 3, let file = files["\(parts[0])/\(parts[2])"] else { return HTTP1Response(status: 404) }
+            if away { return HTTP1Response(status: 502) }
             fetched.append("\(parts[0])/\(parts[2])")
             return ArtifactDaemon.serve(file, range: headers["Range"])
         }
@@ -298,6 +307,92 @@ final class HostedAgentMediaTests: XCTestCase {
         XCTAssertNotNil(plan(chat, "t-show")?.hits.first { $0.action == .openMedia("tool/t-show/0") }, "the recording's tile plays it")
         chat.act(.openMedia("tool/t-show/0"))
         try await until("the player", 15) { window.rootViewController?.presentedViewController is AVPlayerViewController }
+    }
+
+    /// The profile, pushed over its chat.
+    private func profile(_ session: Session) async throws -> SessionDetailViewController {
+        let detail = SessionDetailViewController(session: session, agentId: "a", title: "Header", spaceId: nil)
+        let scene = try await hostedActiveScene()
+        let window = hostedKeyWindow(in: scene, root: UINavigationController(rootViewController: detail))
+        addTeardownBlock { @MainActor in window.isHidden = true }
+        window.layoutIfNeeded()
+        return detail
+    }
+
+    private func squares(_ detail: SessionDetailViewController) -> [SharedMediaCell] { views(SharedMediaCell.self, in: detail.view) }
+
+    /// The chat's profile shows what it shared as the chat does: every
+    /// picture and the recording's first frame read and drawn, not left on
+    /// its thumbhash.
+    func testTheProfilesSharedMediaLoads() async throws {
+        let turn = try await turn()
+        let detail = try await profile(try await session(MediaComputer(runs: [turn.run(ended: true)], files: turn.files)))
+        try await until("the shared media", 10) {
+            let cells = squares(detail)
+            return cells.count == 7 && cells.allSatisfy { $0.pictureImage != nil }
+        }
+        XCTAssertEqual(squares(detail).map { $0.shown?.key }, ["tool/t-show/0", "tool/t-show/1", "tool/t-show/2", "tool/t-show/3", "tool/t-read-2/0", "tool/t-read-1/0", "sent/u-r#0"])
+        // The chat's own tile in each square: the recording under its ring.
+        XCTAssertEqual(squares(detail).map { $0.mediaTile?.item?.isVideo }, [true, false, false, false, false, false, false])
+        XCTAssertNotNil(squares(detail)[0].mediaTile?.ring)
+    }
+
+    /// Opened while the computer is away, the profile's squares wait on
+    /// their thumbhashes with the download's ring; once it is back they
+    /// read and draw by themselves, as the chat's do.
+    func testTheProfilesMediaArrivesWhenTheComputerIsBack() async throws {
+        let turn = try await turn()
+        let computer = MediaComputer(runs: [turn.run(ended: true)], files: turn.files)
+        await computer.set(away: true)
+        let session = try await session(computer)
+        let detail = try await profile(session)
+        try await until("the reads give up", 15) {
+            let tiles = squares(detail).filter { $0.shown?.isPicture == true && !$0.shown!.key.hasPrefix("sent/") }.compactMap(\.mediaTile)
+            return tiles.count == 5 && tiles.allSatisfy { if case .failed? = $0.downloadPhase { true } else { false } }
+        }
+        XCTAssertEqual(squares(detail).filter { $0.pictureImage != nil }.map { $0.shown?.key }, ["sent/u-r#0"], "only the person's own photo, which is here")
+
+        await computer.set(away: false)
+        await session.store.externalResync(loadSidebar: false)
+        try await until("the shared media", 15) { squares(detail).count == 7 && squares(detail).allSatisfy { $0.pictureImage != nil } }
+    }
+
+    /// A bot's picture asked for while the computer was away (as a launch
+    /// draws the kept rows before it answers) shows once it is back, in
+    /// place of its thumbhash; before, it stayed on the thumbhash for good.
+    func testAnAvatarAskedForWhileAwayShowsWhenTheComputerIsBack() async throws {
+        let turn = try await turn()
+        var files = turn.files
+        files["avatar"] = Self.screenshot(CGSize(width: 300, height: 300), UIColor(red: 0.85, green: 0.30, blue: 0.25, alpha: 1))
+        let computer = MediaComputer(runs: [turn.run(ended: true)], files: files)
+        await computer.set(away: true)
+        let session = try await session(computer)
+        let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: Data(#"""
+        {"cursor":"c1","profile":{"userId":null},"userSettings":[],"projects":[],"workspaces":[],"surfaces":[],
+         "bots":[{"id":"bot-a","name":"Header","status":"active","avatar":{"thumbhash":"\#(Self.thumbhash)"},"agent":{"id":"a","workspaceId":"w","status":"idle"}}]}
+        """#.utf8))
+        var home = HomeSnapshot()
+        home.loaded = true
+        home.allRows = SidebarRows.make(desktop, settings: [:])
+        home.rows = Rows.visible(home.allRows)
+        // After the engine's own first snapshot, which would replace it.
+        var first = await session.engine.snapshots().makeAsyncIterator()
+        _ = await first.next()
+        try await Task.sleep(for: .milliseconds(100))
+        session.receive(home: home)
+
+        let detail = try await profile(session)
+        XCTAssertEqual(detail.header.avatar, .mark(.image(path: "/v0/bots/bot-a/avatar", thumbhash: Self.thumbhash)))
+        let mark = detail.header.mark
+        try await until("the picture is asked for") { await computer.fetched.contains("/v0/bots/bot-a/avatar") }
+        try await Task.sleep(for: .milliseconds(300))
+        func pixels(_ image: UIImage?) -> CGFloat { image.map { $0.size.width * $0.scale } ?? 0 }
+        XCTAssertLessThan(pixels(mark.pictureImage), 64, "away: its thumbhash")
+
+        await computer.set(away: false)
+        home.live = true
+        session.receive(home: home)
+        try await until("the picture") { pixels(mark.pictureImage) >= 200 }
     }
 
     // MARK: Screenshots

@@ -9,7 +9,6 @@ import UIKit
 final class DetailMediaCardView: UIView {
     var onSelect: ((Int) -> Void)?
     var onMore: (() -> Void)?
-    weak var source: ChatMediaSource?
     private var cells: [SharedMediaCell] = []
     private let moreView = SettingsCardView.RowView()
 
@@ -35,10 +34,7 @@ final class DetailMediaCardView: UIView {
             cells.append(cell)
         }
         while cells.count > media.count { cells.removeLast().removeFromSuperview() }
-        for (cell, one) in zip(cells, media) {
-            cell.source = source
-            cell.show(one)
-        }
+        for (cell, one) in zip(cells, media) { cell.show(one) }
     }
 
     func place(_ card: SessionDetailLayout.MediaCard) {
@@ -52,46 +48,27 @@ final class DetailMediaCardView: UIView {
     }
 }
 
-/// One square of the grid: the picture filling it over its thumbhash, a
-/// recording's first frame under a play button, or a file's glyph over its
-/// name. Decoded at the square's size, off the main thread.
+/// One square of the grid: a picture or recording is the chat's own tile
+/// (`ChatMediaView`) filling it, so it reads, rings and recovers as the
+/// chat does: a photo the rules allow arrives by itself, anything else
+/// shows its ring and size until a tap, and one that failed is asked
+/// again when the computer is back. A file is its glyph over its name.
 final class SharedMediaCell: UIControl {
-    weak var source: ChatMediaSource?
-    private let placeholder = UIImageView()
-    private let picture = UIImageView()
-    private let play = UIView()
-    private let playIcon = UIImageView()
+    private let tile = ChatMediaView()
     private let glyph = UIImageView()
     private let name = UILabel()
     private let dim = UIView()
     private var media: Shared.Media?
-    private var loadedPixels = 0
-    private var task: Task<Void, Never>?
-    /// Not asked again until the cell comes back into a window: the
-    /// computer may be away.
-    private var failed = false
 
-    private static let playSize: CGFloat = 36
     private static let glyphSize: CGFloat = 30
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         clipsToBounds = true
         backgroundColor = UIColor(Palette.surfacePressed)
-        for view in [placeholder, picture] {
-            view.contentMode = .scaleAspectFill
-            view.clipsToBounds = true
-            view.isUserInteractionEnabled = false
-            addSubview(view)
-        }
-        play.backgroundColor = UIColor(Palette.playFill)
-        play.layer.cornerRadius = Self.playSize / 2
-        play.isUserInteractionEnabled = false
-        playIcon.contentMode = .center
-        playIcon.image = .icon(.ionicons("play"), size: 16)
-        playIcon.tintColor = UIColor(Palette.playGlyph)
-        play.addSubview(playIcon)
-        addSubview(play)
+        tile.fills = true
+        tile.isAccessibilityElement = false
+        addSubview(tile)
         glyph.contentMode = .center
         glyph.image = Glyphs.image("document-outline", size: Self.glyphSize)
         glyph.tintColor = UIColor(Palette.settingsSecondary)
@@ -111,88 +88,51 @@ final class SharedMediaCell: UIControl {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// What it shows, for tests.
+    var shown: Shared.Media? { media }
+    var pictureImage: UIImage? { tile.pictureImage }
+    var mediaTile: ChatMediaView? { tile.isHidden ? nil : tile }
+
     override var isHighlighted: Bool {
         didSet { dim.isHidden = !isHighlighted }
     }
 
+    override var accessibilityValue: String? {
+        get { tile.isHidden ? nil : tile.accessibilityValue }
+        set {}
+    }
+
     func show(_ media: Shared.Media) {
         guard media != self.media else { return }
-        task?.cancel()
-        task = nil
         self.media = media
-        loadedPixels = 0
-        failed = false
-        picture.layer.removeAllAnimations()
-        picture.alpha = 1
-        picture.image = nil
-        var video = false
         var file: Media?
-        var label = Strings.picture
-        var thumbhash: String?
-        if case .tool(let one) = media {
-            video = one.isVideo
+        let shown: ChatMedia
+        switch media {
+        case .picture:
+            shown = ChatMedia(key: media.key, isVideo: false, thumbhash: nil, label: Strings.picture)
+        case .tool(let one):
             file = one.isVisual ? nil : one
-            label = video ? Strings.sharedVideo : one.item.name
-            thumbhash = one.item.thumbhash
+            shown = ChatMedia(key: one.key, isVideo: one.isVideo, thumbhash: one.item.thumbhash, label: one.isVideo ? Strings.sharedVideo : one.item.name)
         }
-        play.isHidden = !video
+        tile.isHidden = file != nil
+        tile.apply(file == nil ? shown : nil)
         glyph.isHidden = file == nil
         name.isHidden = file == nil
         name.text = file?.item.name
-        accessibilityLabel = label
-        accessibilityTraits = file == nil && !video ? [.image, .button] : .button
-        // Now, not once it is on screen: its first frame shows it.
-        placeholder.image = ThumbHashImages.image(thumbhash)
+        accessibilityLabel = shown.label
+        accessibilityTraits = file == nil && !shown.isVideo ? [.image, .button] : .button
         setNeedsLayout()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        placeholder.frame = bounds
-        picture.frame = bounds
+        tile.frame = bounds
         dim.frame = bounds
-        play.frame = CGRect(x: ((bounds.width - Self.playSize) / 2).rounded(), y: ((bounds.height - Self.playSize) / 2).rounded(), width: Self.playSize, height: Self.playSize)
-        playIcon.frame = play.bounds
         let nameHeight = ceil(name.font.lineHeight * 2)
         let block = Self.glyphSize + 6 + nameHeight
         let top = ((bounds.height - block) / 2).rounded()
         glyph.frame = CGRect(x: 0, y: top, width: bounds.width, height: Self.glyphSize)
         name.frame = CGRect(x: 8, y: glyph.frame.maxY + 6, width: max(0, bounds.width - 16), height: nameHeight)
-        load()
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        if window != nil { failed = false }
-        load()
-    }
-
-    /// The picture at the square's pixels, once; a file has none.
-    private func load() {
-        guard window != nil, let media, let source, bounds.width > 0, task == nil, !failed else { return }
-        if case .tool(let one) = media, !one.isVisual { return }
-        let pixels = Int((max(bounds.width, bounds.height) * max(1, traitCollection.displayScale)).rounded(.up))
-        guard pixels > loadedPixels else { return }
-        if let image = source.cachedImage(media.key, pixels: pixels) {
-            loadedPixels = pixels
-            picture.image = image
-            return
-        }
-        task = Task { [weak self] in
-            let image = await source.image(media.key, pixels: pixels)
-            guard let self, !Task.isCancelled, self.media == media else { return }
-            self.task = nil
-            guard let image else {
-                self.failed = true
-                return
-            }
-            let first = self.picture.image == nil
-            self.loadedPixels = pixels
-            self.picture.image = image
-            if first { ImageFade.fadeIn(self.picture) }
-            // Grown while it read: the larger one now.
-            self.load()
-        }
     }
 }
 #endif

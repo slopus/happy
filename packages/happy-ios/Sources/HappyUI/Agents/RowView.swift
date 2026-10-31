@@ -38,7 +38,7 @@ final class RowView: UIView {
     private let draft = UILabel()
     private let empty = EmptyMarkView(frame: .zero)
     private let corner = CornerView()
-    private var pictureJob: Task<Void, Never>?
+    private let markPicture = MarkPicture()
     private let placeholder = AvatarPlaceholderSlot()
 
     private(set) var row: Row?
@@ -214,7 +214,7 @@ final class RowView: UIView {
     }
 
     private func applyMark(_ mark: Row.Mark) {
-        pictureJob?.cancel(); pictureJob = nil
+        markPicture.cancel()
         placeholder.cancel()
         seedling.seed = nil
         seedling.isHidden = true
@@ -265,15 +265,7 @@ final class RowView: UIView {
             picture.layer.cornerRadius = row?.story != nil ? StoryRowMetrics.disc / 2 : grouped ? GroupedSidebarMetrics.tileRadius : Metrics.pictureRadius
             picture.layer.cornerCurve = .continuous
             let pixels = Int((row?.story != nil ? StoryRowMetrics.disc : Metrics.mark) * 3)
-            if let cached = images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels) {
-                picture.image = cached
-            } else {
-                picture.image = ThumbHashImages.image(thumbhash)
-                pictureJob = Task { [weak self] in
-                    guard let image = await self?.images?.picture(path, thumbhash: thumbhash, pixels: pixels), !Task.isCancelled, let self else { return }
-                    ImageFade.show(image, in: picture, fade: true)
-                }
-            }
+            markPicture.load(path, thumbhash: thumbhash, pixels: pixels, images: images, into: picture)
         }
     }
 

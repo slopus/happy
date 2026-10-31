@@ -115,6 +115,17 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
         fatalError("init(coder:) is not supported")
     }
 
+    /// A square of a grid (the profile's shared media): the picture fills
+    /// it, cropped, with no corners or hairline of its own.
+    var fills = false {
+        didSet {
+            placeholder.contentMode = fills ? .scaleAspectFill : .scaleToFill
+            picture.contentMode = fills ? .scaleAspectFill : .scaleAspectFit
+            layer.cornerRadius = fills ? 0 : Self.radius
+            outline.isHidden = fills
+        }
+    }
+
     /// Nil lets go of the picture.
     func apply(_ media: ChatMedia?) {
         guard media != self.media else { return }
@@ -339,8 +350,10 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
         }
     }
 
+    /// Every tile still without its picture asks again: one that failed,
+    /// and one whose ring stood in for it (a recording's first frame).
     @objc private func retry(_ notification: Notification) {
-        guard failed, let source = source(), notification.object as AnyObject? === source else { return }
+        guard failed || picture.image == nil, task == nil, let source = source(), notification.object as AnyObject? === source else { return }
         setFailed(false)
         loadedPixels = 0
         loadIfNeeded()

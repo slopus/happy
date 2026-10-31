@@ -228,11 +228,14 @@ final class MediaLoader: NSObject, ChatMediaSource {
     }
 
     /// Asks every picture that failed to load to try again, as when the
-    /// computer is reachable again.
+    /// computer is reachable again, and starts again the automatic
+    /// downloads that gave up while it was away.
     func retryFailed() {
         #if DEBUG
         failsUntilRetry = false
         #endif
+        automatic = []
+        startAutomatic()
         NotificationCenter.default.post(name: Self.retry, object: self)
     }
 

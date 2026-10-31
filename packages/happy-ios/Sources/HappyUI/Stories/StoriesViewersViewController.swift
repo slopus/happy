@@ -316,7 +316,7 @@ final class StoriesViewerCell: UITableViewCell {
     private let time = UILabel()
     private let reaction = UILabel()
     private let separator = UIView()
-    private var loading: Task<Void, Never>?
+    private let markPicture = MarkPicture()
     private var key: String?
     private var viewer: StoryViewer?
 
@@ -347,7 +347,7 @@ final class StoriesViewerCell: UITableViewCell {
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        loading?.cancel()
+        markPicture.cancel()
         placeholder.cancel()
         key = nil
         avatar.image = nil
@@ -364,28 +364,20 @@ final class StoriesViewerCell: UITableViewCell {
         let key = viewer.photo.map { "\($0)#\(viewer.thumbhash ?? "")" } ?? "placeholder:\(viewer.userId)"
         guard key != self.key else { return }
         self.key = key
-        loading?.cancel()
+        markPicture.cancel()
         placeholder.cancel()
         avatar.image = nil
         // Without a photo, the placeholder the viewer's ID picks; with one,
         // its thumbhash until it comes.
-        let showPlaceholder = { [weak self] in
+        let showPlaceholder: @MainActor @Sendable () -> Void = { [weak self] in
             self?.placeholder.show(seed: viewer.userId, side: StoryViewersRowLayout.Metrics.avatar) { self?.avatar.image = $0 }
         }
         guard let path = viewer.photo else {
             showPlaceholder()
             return
         }
-        if let cached = images.cachedPicture(path, thumbhash: viewer.thumbhash, pixels: 120) {
-            avatar.image = cached
-            return
-        }
-        avatar.image = ThumbHashImages.image(viewer.thumbhash)
-        loading = Task { [weak self] in
-            let image = await images.picture(path, thumbhash: viewer.thumbhash, pixels: 120)
-            guard let self, !Task.isCancelled, self.key == key else { return }
-            if let image { ImageFade.show(image, in: avatar, fade: true) } else if avatar.image == nil { showPlaceholder() }
-        }
+        let placeholder = placeholder
+        markPicture.load(path, thumbhash: viewer.thumbhash, pixels: 120, images: images, into: avatar, failed: showPlaceholder) { placeholder.cancel() }
     }
 
     override func layoutSubviews() {

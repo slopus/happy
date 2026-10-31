@@ -40,7 +40,7 @@ final class StoryViewerPageView: UIView {
 
     private(set) var author: StoryFeedAuthor?
     private var photoKey: String?
-    private var loading: Task<Void, Never>?
+    private let markPicture = MarkPicture()
     var layout = StoryViewerLayout(size: .zero, safeArea: LayoutInsets())
 
     override init(frame: CGRect) {
@@ -123,8 +123,6 @@ final class StoryViewerPageView: UIView {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    deinit { loading?.cancel() }
 
     // MARK: Showing
 
@@ -222,7 +220,7 @@ final class StoryViewerPageView: UIView {
         if author.ringAgentId != nil, let authorImage {
             // An agent wears its row's icon.
             photoKey = nil
-            loading?.cancel()
+            markPicture.cancel()
             placeholder.cancel()
             avatar.image = authorImage
             avatar.contentMode = .scaleAspectFit
@@ -232,27 +230,18 @@ final class StoryViewerPageView: UIView {
         let key = (images == nil ? nil : author.photo.map { "\($0)#\(author.thumbhash ?? "")" }) ?? "placeholder:\(author.placeholderSeed)"
         guard key != photoKey else { return }
         photoKey = key
-        loading?.cancel()
+        markPicture.cancel()
         placeholder.cancel()
         // Without a photo, the placeholder the author's ID picks.
-        let showPlaceholder = { [weak self] in
+        let showPlaceholder: @MainActor @Sendable () -> Void = { [weak self] in
             self?.placeholder.show(seed: author.placeholderSeed, side: StoryViewerLayout.Metrics.avatar) { self?.avatar.image = $0 }
         }
         guard let path = author.photo, let images else {
             showPlaceholder()
             return
         }
-        let pixels = Int(StoryViewerLayout.Metrics.avatar * 3)
-        if let cached = images.cachedPicture(path, thumbhash: author.thumbhash, pixels: pixels) {
-            avatar.image = cached
-            return
-        }
-        avatar.image = ThumbHashImages.image(author.thumbhash)
-        loading = Task { [weak self] in
-            let image = await images.picture(path, thumbhash: author.thumbhash, pixels: pixels)
-            guard let self, !Task.isCancelled, photoKey == key else { return }
-            if let image { ImageFade.show(image, in: avatar, fade: true) } else if avatar.image == nil { showPlaceholder() }
-        }
+        let placeholder = placeholder
+        markPicture.load(path, thumbhash: author.thumbhash, pixels: Int(StoryViewerLayout.Metrics.avatar * 3), images: images, into: avatar, failed: showPlaceholder) { placeholder.cancel() }
     }
 
     // MARK: Layout

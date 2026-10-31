@@ -153,6 +153,8 @@ final class Session {
         following = Task { [weak self] in
             for await snapshot in updates {
                 guard let self else { return }
+                // Back after a gap: the pictures it couldn't read then.
+                if snapshot.live, !self.snapshot.live { images.retryFailed() }
                 self.snapshot = snapshot
                 for watcher in self.watchers.values { watcher(snapshot) }
             }
@@ -210,6 +212,7 @@ final class Session {
 
     /// A snapshot from the engine (or a test standing in for it).
     func receive(home snapshot: HomeSnapshot) {
+        if snapshot.live, !home.live { images.retryFailed() }
         home = snapshot
         madeProfile?.placeholderSeed = personSeed
         updateHeaderState()

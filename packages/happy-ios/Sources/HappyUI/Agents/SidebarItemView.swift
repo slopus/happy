@@ -25,7 +25,7 @@ final class SidebarItemView: ListRowView {
     private let picture = UIImageView()
     private let corner = CornerView()
     private let placeholder = AvatarPlaceholderSlot()
-    private var pictureJob: Task<Void, Never>?
+    private let markPicture = MarkPicture()
     /// The mark as last applied, so a row that only changed its title keeps its picture.
     private var shownMark: (mark: Row.Mark, story: Bool, tint: String?)?
     /// The finger came down on a list still gliding: it stops the list, and opens nothing.
@@ -161,7 +161,7 @@ final class SidebarItemView: ListRowView {
     /// The mark, as a grouped `RowView` wears it.
     private func applyMark(_ row: Row, tint: (key: String, ink: ColorToken, fill: ColorToken)?) {
         shownMark = (row.mark, row.story != nil, tint?.key)
-        pictureJob?.cancel(); pictureJob = nil
+        markPicture.cancel()
         placeholder.cancel()
         seedling.seed = nil
         seedling.isHidden = true
@@ -204,16 +204,7 @@ final class SidebarItemView: ListRowView {
             picture.contentMode = .scaleAspectFill
             picture.layer.cornerRadius = radius
             let pixels = Int((story ? StoryRowMetrics.disc : Metrics.mark) * 3)
-            let images = item.owner?.images
-            if let cached = images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels) {
-                picture.image = cached
-            } else {
-                picture.image = ThumbHashImages.image(thumbhash)
-                pictureJob = Task { [weak self, images] in
-                    guard let image = await images?.picture(path, thumbhash: thumbhash, pixels: pixels), !Task.isCancelled, let self else { return }
-                    ImageFade.show(image, in: picture, fade: true)
-                }
-            }
+            markPicture.load(path, thumbhash: thumbhash, pixels: pixels, images: item.owner?.images, into: picture)
         }
     }
 

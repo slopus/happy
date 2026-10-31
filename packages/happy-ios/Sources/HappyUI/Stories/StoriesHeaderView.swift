@@ -200,7 +200,7 @@ final class StoriesCircleView: UIControl {
     private var photoKey: String?
     /// The photo or its placeholder, for tests.
     var avatarImage: UIImage? { avatar.image }
-    private var loading: Task<Void, Never>?
+    private let markPicture = MarkPicture()
     private var single = false
     private var drawnScale: CGFloat = 1
     private var drawnNeighbor: CGPoint?
@@ -429,10 +429,10 @@ final class StoriesCircleView: UIControl {
         let key = item.photo.map { "\($0)#\(item.thumbhash ?? "")\(images == nil ? "?" : "")" } ?? "placeholder:\(item.placeholderSeed)"
         guard key != photoKey else { return }
         photoKey = key
-        loading?.cancel()
+        markPicture.cancel()
         placeholder.cancel()
         // Without a photo: the placeholder the author's ID picks.
-        let showPlaceholder = { [weak self] in
+        let showPlaceholder: @MainActor @Sendable () -> Void = { [weak self] in
             self?.placeholder.show(seed: item.placeholderSeed, side: StoriesRowLayout.Metrics.avatar) { self?.avatar.image = $0 }
         }
         guard let path = item.photo, let images else {
@@ -442,16 +442,8 @@ final class StoriesCircleView: UIControl {
             return
         }
         let pixels = Int(StoriesRowLayout.Metrics.avatar * (window?.screen.scale ?? 3))
-        if let cached = images.cachedPicture(path, thumbhash: item.thumbhash, pixels: pixels) {
-            avatar.image = cached
-            return
-        }
-        avatar.image = ThumbHashImages.image(item.thumbhash)
-        loading = Task { [weak self] in
-            let image = await images.picture(path, thumbhash: item.thumbhash, pixels: pixels)
-            guard let self, !Task.isCancelled, photoKey == key else { return }
-            if let image { ImageFade.show(image, in: avatar, fade: true) } else if avatar.image == nil { showPlaceholder() }
-        }
+        let placeholder = placeholder
+        markPicture.load(path, thumbhash: item.thumbhash, pixels: pixels, images: images, into: avatar, failed: showPlaceholder) { placeholder.cancel() }
     }
 
     override func layoutSubviews() {
@@ -473,7 +465,7 @@ final class StoriesCircleView: UIControl {
 
     /// Leaves the row: no more loading, and no taps while it fades.
     func leave() {
-        loading?.cancel()
+        markPicture.cancel()
         isLoadingStory = false
         isUserInteractionEnabled = false
     }
