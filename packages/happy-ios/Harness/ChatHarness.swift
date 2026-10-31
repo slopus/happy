@@ -27,6 +27,7 @@ final class HarnessAppDelegate: UIResponder, UIApplicationDelegate {
         configurationForConnecting connectingSceneSession: UISceneSession,
         options: UIScene.ConnectionOptions
     ) -> UISceneConfiguration {
+        application.isIdleTimerDisabled = true
         let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
         configuration.delegateClass = HarnessSceneDelegate.self
         return configuration
@@ -63,6 +64,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var qaReal: ChatUltraQAReal?
     private var stories: StoriesHarness?
     private var homeControllerScroll: HomeControllerScrollHarness?
+    private var homeScrollDiagnostic: HomeScrollDiagnosticHarness?
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -74,6 +76,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         let arguments = ProcessInfo.processInfo.arguments
         #if DEBUG || HAPPY_FIXTURES
+        if arguments.contains("-homeScrollDiagnostic") {
+            homeScrollDiagnostic = HomeScrollDiagnosticHarness(window: window, arguments: arguments)
+            return
+        }
         if arguments.contains("-composerKeyboardProbe") {
             composerKeyboardProbe = ComposerKeyboardProbe(window: window, arguments: arguments)
         }

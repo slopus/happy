@@ -204,8 +204,8 @@ public enum Metrics {
     public static let newPulseDuration: Double = 1.4
     // Desktop's sidebar at its own pixels (`Sidebar.tsx`: `SIDEBAR_ROW_HEIGHT`
     // and the rest, `styles/sidebar.css`, `theme.css`), half again as big on
-    // the phone: rows, gaps, type and marks all `phone` times desktop's.
-    // Nesting stays tight.
+    // the phone: rows, gaps and marks are `phone` times desktop's.
+    // Type uses legacy home's sizes; nesting stays tight.
     /// How much bigger than desktop's the phone draws the sidebar.
     public static let phone: CGFloat = 1.5
     /// The row box's inset from the screen's edges.
@@ -221,10 +221,7 @@ public enum Metrics {
     /// The fold's optical centre, and the trailing square's, from the right edge.
     public static let trailingCenter: CGFloat = inset + endInset
     /// A row's title, lifted so its x-height's middle is the row's middle,
-    /// where the end marks' centres are. Figtree 19.5 centred in the row
-    /// sets its baseline at 30.83 (line 23.4, ascender 18.53) and its
-    /// x-height (9.75) from 21.08: middle 25.95, 1.95 below the row's 24.
-    /// On whole pixels at 3x, 2 (`RowInkTests` measures it).
+    /// where the end marks' centres are (`RowInkTests` measures it).
     public static let titleLift: CGFloat = 2
     /// Where a fold chevron's ink weighs, from its image's centre, at
     /// `chevronGlyph` (alpha-weighted at 3x; `RowInkTests`):
@@ -263,10 +260,10 @@ public enum Metrics {
     public static let cornerRadius: CGFloat = 6 * phone
     /// A picture's rounding in its lane: a rounded square, never a circle.
     public static let pictureRadius: CGFloat = 6 * phone
-    /// `.happy-sidebar__item-label`: 13, weight 500, line 16.
-    public static let labelSize: CGFloat = 13 * phone
-    /// `.happy-sidebar__section-item-label`: mono 11, bold.
-    public static let sectionLabelSize: CGFloat = 11 * phone
+    /// Legacy home's session/project title size, keeping this row's face and weight.
+    public static let labelSize: CGFloat = TextStyles.sessionTitle.size
+    /// Legacy home's "BOTS" / "PROJECTS" section size, keeping the mono bold face.
+    public static let sectionLabelSize: CGFloat = TextStyles.projectSection.size
     /// `letter-spacing: 0.08em`.
     public static let sectionTracking: CGFloat = 0.08
     /// The tree's lines and a separator's rule: desktop's, not scaled.
