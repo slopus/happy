@@ -70,7 +70,7 @@ final class HomeViewController: UIViewController {
     var homeList: SidebarList { sidebar }
 
     /// Search's results over home, while something answers.
-    var resultsList: UIScrollView? { search != nil ? resultsView.list : nil }
+    var resultsList: UIScrollView? { search != nil ? resultsView.list.edge : nil }
 
     /// The bar home lays its content under.
     var contentInsets = HomeContentInsets(safeArea: .zero, dock: 0) {
@@ -238,6 +238,8 @@ final class HomeViewController: UIViewController {
         search = Search()
         resultsView.clear()
         showResults()
+        // The status bar takes the results to their top, never home under them.
+        sidebar.list.scrollsToTop = false
         resultsView.isHidden = false
         UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
             self.resultsView.alpha = 1
@@ -253,6 +255,7 @@ final class HomeViewController: UIViewController {
             guard let self, search == nil else { return }
             resultsView.clear()
             resultsView.isHidden = true
+            sidebar.list.scrollsToTop = true
         }
         if animated {
             UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {

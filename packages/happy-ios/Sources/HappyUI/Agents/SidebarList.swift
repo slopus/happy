@@ -4,7 +4,8 @@ import HappyLayout
 import UIKit
 import UltraView
 
-/// Home's list on UltraList: the grouped sidebar's rows (`SidebarLayout`'s
+/// Home's list, and search's results over it, on UltraList: the grouped
+/// sidebar's rows (`SidebarLayout`'s
 /// inset cards), only those near the screen mounted, each one's text drawn
 /// off the main thread. Where `SidebarView` keeps a view per row and lays
 /// every row out again on each frame it moves, this keeps a window of rows
@@ -54,6 +55,11 @@ final class SidebarList: UIView {
     /// The finger lifts and the list would glide to `offset` (as a scroll
     /// view's `contentOffset.y`): the screen may send it somewhere else.
     var onWillEndDragging: ((_ velocity: CGFloat, _ offset: inout CGFloat) -> Void)?
+
+    /// Each new set of rows shows at once from the top (search's results,
+    /// replaced as the query changes) rather than gliding in under the
+    /// reader's place (home's).
+    var startsEachChangeAtTop = false
 
     /// The row drawn selected: on home, the one whose screen is coming in.
     var selectedRowId: String? {
@@ -300,7 +306,7 @@ final class SidebarList: UIView {
 
     private func show(_ next: Prepared) {
         let previousIDs = prepared?.identities
-        let target = anchor(next)
+        let target = startsEachChangeAtTop ? top(next, previous: previousIDs) : anchor(next)
         prepared = next
         var shown: [any ListRow] = []
         if let notice = next.notice {
@@ -325,7 +331,7 @@ final class SidebarList: UIView {
         }
         items = kept
         let structural = previousIDs != nil && previousIDs != next.identities
-        let animated = structural && window != nil && !UIAccessibility.isReduceMotionEnabled
+        let animated = structural && !startsEachChangeAtTop && window != nil && !UIAccessibility.isReduceMotionEnabled
         if animated, next.notice == nil, previousIDs?.first == SidebarNoticeItem.id { departNotice() }
         ApplyPerf.measure(.homeList) {
             list.applyChanges(items: shown, newSize: bounds.size, scrollTo: target, anchorMode: .automatic, compensatesInsetChange: false, transition: animated ? .easeInOut(0.25) : .none)
@@ -389,6 +395,14 @@ final class SidebarList: UIView {
         return ListScrollTarget(index: nextIndex, identity: nextIDs[nextIndex], pointOffset: nextTop - place - contentInsets.top)
     }
 
+    /// Other rows than before: the first at the top, where a scroll view
+    /// given new content would be put back.
+    private func top(_ next: Prepared, previous: [String]?) -> ListScrollTarget? {
+        let ids = next.identities
+        guard let first = ids.first, previous != nil, previous != ids else { return nil }
+        return ListScrollTarget(index: 0, identity: first, pointOffset: 0)
+    }
+
     // MARK: Place
 
     /// Where the rows start and end, under the bar and above the toolbar,
@@ -415,6 +429,10 @@ final class SidebarList: UIView {
     }
 
     var isAtTop: Bool { contentOffsetY <= -contentInsets.top + 1 }
+    /// The finger's pan that moves the list.
+    var panGestureRecognizer: UIPanGestureRecognizer? {
+        list.contentView.gestureRecognizers?.lazy.compactMap { $0 as? UIPanGestureRecognizer }.first { $0.minimumNumberOfTouches == 1 }
+    }
     var isDragging: Bool { list.isDragging }
     var isDecelerating: Bool { list.isDecelerating }
     var isTracking: Bool { list.isTracking }

@@ -58,8 +58,11 @@ bot's, task's or subtask's title keeps `RowView.shimmers`'s sweep as a
 `ShimmerBand` over the drawn title. Rows that change above the screen keep
 the reader's place (`SidebarScrollAnchor`, as `SidebarView` does). It draws what
 the grouped `SidebarView` drew (`HostedSidebarListTests` compares them
-pixel for pixel); `SidebarView` and `RowView` stay for search's
-results, a session's tree and proposals. UltraList is not a scroll view, so
+pixel for pixel). Search's results over home are a `SidebarList` too
+(`HomeSearchResultsView`, `startsEachChangeAtTop`: new results show at once
+from the top; `HostedSearchResultsListTests`). `SidebarView` and `RowView`
+stay for a session's tree and proposals, which are drawn whole, folding,
+inside another screen's scroll. UltraList is not a scroll view, so
 the bar's soft edge and the indicator follow `SidebarList.edge`, a scroll
 view holding the list that moves with it. With agent
 stories on, every bot's and task's row is a story row (`StoryRowViews`):

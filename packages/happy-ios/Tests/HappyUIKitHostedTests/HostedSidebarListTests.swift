@@ -154,6 +154,8 @@ final class HostedSidebarListTests: XCTestCase {
             let rows = Self.rows()
             let old = SidebarView(frame: frame)
             old.style = .grouped
+            // The soft edge under the status bar is the window's, not the rows'.
+            if #available(iOS 26.0, *) { old.topEdgeEffect.isHidden = true }
             old.selectedRowId = "bot:wait"
             root.view.addSubview(old)
             old.apply(rows)
