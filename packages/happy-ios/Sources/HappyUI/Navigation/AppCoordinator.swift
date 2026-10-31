@@ -296,9 +296,15 @@ public final class AppCoordinator {
         navigation.presentedViewController?.dismiss(animated: false)
         navigation.setViewControllers([root] + [kept].compactMap { $0 }, animated: animated && kept == nil)
         shell.rootDidChange() // Tablet: the sidebar follows the account.
+        NotificationCenter.default.post(name: Self.rootDidChange, object: window)
         openPendingLink()
         openNotificationSession()
     }
+
+    /// Posted, with the window as its object, once an account's screens
+    /// are its root. Whatever was shown over the old ones went with them,
+    /// so a flow that changed the account says what it did after this.
+    static let rootDidChange = Notification.Name("AppCoordinator.rootDidChange")
 
     /// Where a link from outside opens: on top of the window's stack, with
     /// anything over it (a QR sheet, a scanner, an alert) put away so the

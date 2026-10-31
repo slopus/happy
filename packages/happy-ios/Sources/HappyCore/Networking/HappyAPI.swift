@@ -182,6 +182,11 @@ public struct HappyAPI: Sendable {
         let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
         components.percentEncodedPath = basePath + path
         components.queryItems = query.isEmpty ? nil : query
+        // URLComponents leaves "+" bare, and the server's query parser
+        // (fastify's fast-querystring, as axios expects) reads it as a
+        // space: half of all base64 keys, a computer's code included, came
+        // out as garbage and a 500.
+        components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         guard let url = components.url else { throw APIError.http(status: 0, body: "bad URL for \(path)") }
 
         var headers = ["X-Happy-Client": clientID]

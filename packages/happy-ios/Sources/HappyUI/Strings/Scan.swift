@@ -10,6 +10,5 @@ extension Strings {
         public static let alreadyUsed = "This code was already used or has expired. Show a new one on your computer and scan it again."
         public static let deviceNeedsAccountTitle = "No account to share"
         public static let deviceNeedsAccount = "This code asks for a Happy account. Sign in to one on this phone first."
-        public static let newAccountForComputer = "Create a Happy account and connect this computer to it?"
     }
 }

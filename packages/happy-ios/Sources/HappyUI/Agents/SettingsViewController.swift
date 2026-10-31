@@ -52,6 +52,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     private let context: AppContext
     private var shownID: String?
+    /// The profiles the page had, to tell one just added.
+    private var knownProfiles: Set<String> = []
     private var profiles: [Profile] = []
     private let scroll = UIScrollView()
     private let name = UILabel()
@@ -229,6 +231,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         // With none left, the window's root is the link screen and this
         // page goes with the old one (`AppCoordinator.install`).
         guard !profiles.isEmpty else { return }
+        // One added while this page is open (Add Agent) is the active one:
+        // the page turns to it, as the tick does.
+        if !knownProfiles.isEmpty, let added = profiles.first(where: { $0.isActive && !knownProfiles.contains($0.id) }) { shownID = added.id }
+        knownProfiles = Set(profiles.map(\.id))
         if shown == nil { shownID = (profiles.first(where: \.isActive) ?? profiles[0]).id }
         for account in accounts { loadImage(account) }
         watchShown()

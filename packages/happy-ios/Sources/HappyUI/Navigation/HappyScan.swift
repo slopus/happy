@@ -103,9 +103,11 @@ enum HappyScan {
     }
 
     /// A new account for the computer, made without asking, as happy-app's
-    /// first run makes one (`AccountController.addAccount`): kept and made
-    /// active only once the computer has it, so the window's screens become
-    /// its home then; a used code or a failure keeps nothing and says so.
+    /// first run makes one (`AccountController.addAccount`), always: beside
+    /// a Happy account or an agent connection too, since there can be many.
+    /// Kept and made active only once the computer has it, so the window's
+    /// screens become its home then, and the success shows over them; a
+    /// used code or a failure keeps nothing and says so.
     private static func newAccount(
         for key: Data,
         context: AppContext,
@@ -115,6 +117,7 @@ enum HappyScan {
     ) async -> Result {
         // The window outlives the screens signIn replaces.
         let window = controller.view.window
+        let root = RootChange(window: window)
         busy(true)
         let outcome: LegacyPairingFlow.Outcome
         do {
@@ -131,7 +134,41 @@ enum HappyScan {
             LegacyPairingFlow.report(outcome, kind: .terminal, on: window.flatMap(topmost) ?? controller)
             return .ended
         }
+        // The new home takes the window and puts away anything over the
+        // old one, so the alert waits for it. A settings page stays on top
+        // and turns to the new account; with nothing else changing there,
+        // a scan that only buzzed read as broken.
+        await root.wait()
+        LegacyPairingFlow.report(.approved, kind: .terminal, on: window.flatMap(topmost) ?? controller)
+        Alerts.show(Strings.Common.success, Strings.Modals.terminalConnectedSuccessfully, on: window.flatMap(topmost) ?? controller)
         return .accountAdded
+    }
+
+    /// Whether the window's screens were replaced (`AppCoordinator`) since
+    /// this was made; a window with no coordinator never is, so waiting
+    /// gives up after a few seconds.
+    @MainActor
+    private final class RootChange {
+        private var changed = false
+        nonisolated(unsafe) private var token: NSObjectProtocol?
+
+        init(window: UIWindow?) {
+            guard let window else { return }
+            token = NotificationCenter.default.addObserver(forName: AppCoordinator.rootDidChange, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.changed = true }
+            }
+        }
+
+        deinit {
+            if let token { NotificationCenter.default.removeObserver(token) }
+        }
+
+        func wait(upTo limit: Duration = .seconds(3)) async {
+            let deadline = ContinuousClock.now + limit
+            while !changed, token != nil, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(30))
+            }
+        }
     }
 
     private static func report(_ problem: ScanProblem, on controller: UIViewController) {

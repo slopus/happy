@@ -98,8 +98,10 @@ final class HappyScanTests: XCTestCase {
         XCTAssertEqual(connectTerminal, "\(Strings.Common.error) | \(Strings.Modals.failedToConnectTerminal)")
         let linkDevice = try await shown(account, .connect, context: context)
         XCTAssertEqual(linkDevice, "\(Strings.Common.error) | \(Strings.Modals.failedToLinkDevice)")
+        // Add makes a new account for the computer without asking; with no
+        // network, making it fails, and says so.
         let addAccount = try await shown(terminal, .addAccount, context: context)
-        XCTAssertEqual(addAccount, "\(Strings.Modals.authenticateTerminal) | \(Strings.Scan.newAccountForComputer)")
+        XCTAssertEqual(addAccount, "\(Strings.Common.error) | \(Strings.Modals.failedToConnectTerminal)")
         let garbage = try await shown("garbage", .connect, context: context)
         XCTAssertEqual(garbage, "\(Strings.Scan.notHappyTitle) | \(Strings.Scan.notHappy)")
         let broken = try await shown("happy://terminal?xx", .addAccount, context: context)
