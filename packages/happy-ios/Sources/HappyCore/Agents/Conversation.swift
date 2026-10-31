@@ -30,6 +30,9 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         case text(String)
         /// A picture sent with a message, inline.
         case picture(id: String, mimeType: String, data: Data)
+        /// A file sent with a message the computer hasn't taken yet, from
+        /// its copy on this phone: a video's tile while it uploads.
+        case sentFile(SentFile)
         /// Pictures and videos an agent's tool presented, in `columns` (0:
         /// justified rows); read on demand.
         case gallery([Media], columns: Int)
@@ -47,6 +50,26 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         /// A sidebar Prioritizing proposed (a `sidebar_proposal` artifact),
         /// drawn by the sidebar's own rows and answered where it stands.
         case sidebarProposal(artifactId: String)
+    }
+
+    /// A file of a message still on its way, by its piece's id
+    /// (`UploadProgressBoard.fileKey`).
+    public struct SentFile: Equatable, Sendable {
+        public var id: String
+        public var name: String
+        public var mimeType: String
+        public var file: URL
+        public var width: Int?
+        public var height: Int?
+
+        public init(id: String, name: String, mimeType: String, file: URL, width: Int? = nil, height: Int? = nil) {
+            self.id = id; self.name = name; self.mimeType = mimeType; self.file = file
+            self.width = width; self.height = height
+        }
+
+        public var isVideo: Bool { mimeType.hasPrefix("video/") }
+        /// A picture or video, drawn as a tile; anything else is named.
+        public var isVisual: Bool { isVideo || mimeType.hasPrefix("image/") }
     }
 
     public var id: String
@@ -598,6 +621,7 @@ public actor Conversation {
             messages[message.id] = message
             attachmentCleanup.insert(message.id)
             outgoing.removeAll { $0.id == message.id }
+            UploadProgressBoard.shared.clear(message: message.id)
             if let runId = payload["runId"]?.stringValue {
                 place(message.id, in: runId)
             } else if !pending.contains(message.id), !runs.contains(where: { $0.messageIds.contains(message.id) }) {
@@ -806,6 +830,45 @@ public actor Conversation {
         deliver(id)
     }
 
+    /// Takes one picture or file (`key`, its piece's id) out of a message
+    /// the computer hasn't taken yet, and sends the rest of it; one left
+    /// with nothing is taken back whole.
+    public func removeAttachment(_ id: String, key: String) async {
+        guard let piece = UploadProgressBoard.piece(key, message: id),
+              let found = outgoing.first(where: { $0.id == id }), !found.accepted else { return }
+        // Nothing still sending writes the message as it was.
+        if let task = delivering[id] {
+            task.cancel()
+            await task.value
+        }
+        var withdrawn = false
+        if let persistence {
+            guard let result = try? await persistence.removeAttachment(id, piece), result.removed else { return }
+            withdrawn = result.message == nil
+        }
+        guard let index = outgoing.firstIndex(where: { $0.id == id }), !outgoing[index].accepted else { return }
+        switch piece {
+        case .picture(let at):
+            guard outgoing[index].pictures.indices.contains(at) else { return }
+            outgoing[index].pictures.remove(at: at)
+        case .file(let at):
+            guard outgoingFiles[id]?.indices.contains(at) == true else { return }
+            outgoingFiles[id]?.remove(at: at)
+        }
+        // What is left starts again under its new keys.
+        UploadProgressBoard.shared.clear(message: id)
+        let send = outgoing[index]
+        if withdrawn || (send.text.isEmpty && send.pictures.isEmpty && (outgoingFiles[id] ?? []).isEmpty) {
+            outgoing.remove(at: index)
+            outgoingModes.removeValue(forKey: id)
+            attachmentCleanup.insert(id)
+            publish()
+            return
+        }
+        publish()
+        if persistence == nil, send.failure == nil { deliver(id) }
+    }
+
     private func deliver(_ id: String) {
         guard delivering[id] == nil, !admitting.contains(id) else { return }
         let client = client
@@ -851,6 +914,8 @@ public actor Conversation {
                 }
                 sent(id)
             } catch {
+                // Stopped to take a picture out (`removeAttachment`), which sends the rest.
+                if error is CancellationError { return }
                 if persistence != nil, !(error is AgentClientError) || (error as? AgentClientError)?.status.map({ $0 >= 500 }) == true {
                     // Offline sends stay queued and resume on the account's
                     // next resync, with the same daemon message ID.
@@ -1010,6 +1075,7 @@ public actor Conversation {
 
     /// Accepted: it shows as waiting until its echo or its run arrives.
     private func sent(_ id: String) {
+        UploadProgressBoard.shared.clear(message: id)
         guard let index = outgoing.firstIndex(where: { $0.id == id }) else { return }
         outgoing[index].accepted = true
         // Until the run says when it began, the clock counts from the send.
@@ -1228,8 +1294,9 @@ public actor Conversation {
             for (offset, picture) in send.pictures.enumerated() {
                 pieces.append(.picture(id: "\(send.id):\(offset + 1)", mimeType: picture.mimeType, data: picture.data))
             }
-            if let files = outgoingFiles[send.id], !files.isEmpty {
-                pieces.append(.text(files.map { "📎 \(AttachmentRules.safeName($0.name))" }.joined(separator: "\n")))
+            for (offset, file) in (outgoingFiles[send.id] ?? []).enumerated() {
+                pieces.append(.sentFile(ChatItem.SentFile(id: UploadProgressBoard.fileKey(send.id, offset), name: AttachmentRules.safeName(file.name),
+                    mimeType: file.mimeType, file: file.fileURL, width: file.width, height: file.height)))
             }
             items.append(ChatItem(id: send.id, role: .user, pieces: pieces, delivery: send.failure.map { .failed($0) } ?? (send.accepted ? .pending : .sending)))
         }

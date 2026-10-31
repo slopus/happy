@@ -41,7 +41,9 @@ struct Picture: Equatable {
                     for one in media where one.isVisual && !one.isVideo {
                         pictures.append(Picture(one))
                     }
-                case .text, .file, .artifact, .story, .sidebarProposal:
+                case .sentFile(let file) where file.isVisual && !file.isVideo:
+                    pictures.append(Picture(key: MediaLoader.sentKey(file.id), thumbhash: nil, label: file.name))
+                case .text, .file, .artifact, .story, .sidebarProposal, .sentFile:
                     break
                 }
             }

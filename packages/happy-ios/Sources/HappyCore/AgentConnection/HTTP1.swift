@@ -17,6 +17,9 @@ public protocol AgentTransport: Sendable {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response
     /// A bounded file write with a longer deadline than small API requests.
     func upload(path: String, credential: String, body: Data) async throws -> HTTP1Response
+    /// `upload`, or a `request` with `method`, telling `sent` how many of
+    /// the body's bytes have gone out as they go: a sending picture's ring.
+    func send(method: String, path: String, credential: String, body: Data, upload: Bool, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response
     /// A GET whose body arrives as it is written, for an event stream.
     func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream
     /// Lets go of the connection so the next request makes a new one.
@@ -39,6 +42,16 @@ extension AgentTransport {
     public func upload(path: String, credential: String, body: Data) async throws -> HTTP1Response {
         try await request(method: "PUT", path: path, credential: credential, body: body, headers: ["Content-Type": "application/json"])
     }
+    /// A transport that can't tell its writes apart has sent it all once
+    /// it is answered.
+    public func send(method: String, path: String, credential: String, body: Data, upload: Bool, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        let response = upload
+            ? try await self.upload(path: path, credential: credential, body: body)
+            : try await request(method: method, path: path, credential: credential, body: body, headers: [:])
+        sent(body.count)
+        return response
+    }
+
     public func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
         throw PairingError.unavailable
     }
@@ -101,11 +114,15 @@ public actor TailcatHTTPTransport: AgentTransport {
     }
 
     public func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        try await request(method: method, path: path, credential: credential, body: body, headers: headers, sent: nil)
+    }
+
+    private func request(method: String, path: String, credential: String, body: Data?, headers: [String: String], sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
         guard ["GET", "POST", "PATCH", "PUT", "DELETE"].contains(method), Self.safe(path: path, credential: credential, headers: headers) else { throw PairingError.invalidResponse }
         let client = try await connection()
         let port = port
         do {
-            return try await exchange(client: client, port: port, method: method, path: path, credential: credential, body: body, headers: headers, timeout: .seconds(35))
+            return try await exchange(client: client, port: port, method: method, path: path, credential: credential, body: body, headers: headers, timeout: .seconds(35), sent: sent)
         } catch {
             if Self.lostTunnel(error) { await reset(client) }
             throw error
@@ -121,20 +138,30 @@ public actor TailcatHTTPTransport: AgentTransport {
     }
 
     public func upload(path: String, credential: String, body: Data) async throws -> HTTP1Response {
+        try await upload(path: path, credential: credential, body: body, sent: nil)
+    }
+
+    public func send(method: String, path: String, credential: String, body: Data, upload: Bool, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        upload
+            ? try await self.upload(path: path, credential: credential, body: body, sent: sent)
+            : try await request(method: method, path: path, credential: credential, body: body, headers: [:], sent: sent)
+    }
+
+    private func upload(path: String, credential: String, body: Data, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
         guard body.count <= 72 * 1024 * 1024, Self.safe(path: path, credential: credential, headers: [:]) else {
             throw PairingError.invalidResponse
         }
         let client = try await connection()
         do {
             return try await exchange(client: client, port: port, method: "PUT", path: path, credential: credential,
-                body: body, headers: [:], timeout: .seconds(15 * 60))
+                body: body, headers: [:], timeout: .seconds(15 * 60), sent: sent)
         } catch {
             if Self.lostTunnel(error) { await reset(client) }
             throw error
         }
     }
 
-    private nonisolated func exchange(client: TailcatClient, port: UInt16, method: String, path: String, credential: String, body: Data?, headers: [String: String], timeout: Duration) async throws -> HTTP1Response {
+    private nonisolated func exchange(client: TailcatClient, port: UInt16, method: String, path: String, credential: String, body: Data?, headers: [String: String], timeout: Duration, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
         try await withThrowingTaskGroup(of: HTTP1Response.self) { group in
             group.addTask {
                 let stream = try await client.openTCP(port: port)
@@ -152,6 +179,8 @@ public actor TailcatHTTPTransport: AgentTransport {
                                 let end = min(body.count, offset + 256 * 1024)
                                 try await stream.write(Data(body[offset..<end]))
                                 offset = end
+                                // Written to the tunnel: what a sending picture's ring shows.
+                                sent?(offset)
                             }
                         }
                         var parser = HTTP1Parser()

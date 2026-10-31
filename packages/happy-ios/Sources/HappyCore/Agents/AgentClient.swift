@@ -38,14 +38,20 @@ public final class AgentClient: Sendable {
     #endif
 
     /// `raw` is sent as is, in place of `json` (an upload's bytes).
-    func send(_ method: String, _ path: String, json: JSONValue? = nil, raw: Data? = nil, headers: [String: String] = [:]) async throws -> HTTP1Response {
+    /// `sent` hears the body's bytes as they are written.
+    func send(_ method: String, _ path: String, json: JSONValue? = nil, raw: Data? = nil, headers: [String: String] = [:], sent: (@Sendable (Int) -> Void)? = nil) async throws -> HTTP1Response {
         #if DEBUG
         if method != "GET", let slow = Self.slowWrites { try await Task.sleep(for: .seconds(slow)) }
         #endif
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]
         let body = try raw ?? json.map { try encoder.encode($0) }
-        let response = try await transport.request(method: method, path: path, credential: token, body: body, headers: headers)
+        let response: HTTP1Response
+        if let sent, let body, headers.isEmpty {
+            response = try await transport.send(method: method, path: path, credential: token, body: body, upload: false, sent: sent)
+        } else {
+            response = try await transport.request(method: method, path: path, credential: token, body: body, headers: headers)
+        }
         if response.status == 401 { throw AgentClientError.revoked }
         guard (200..<300).contains(response.status) || response.status == 304 || response.status == 206 else {
             struct Failure: Decodable { let error: String?; let code: String? }
@@ -312,7 +318,9 @@ public final class AgentClient: Sendable {
 
     /// Always steering, as desktop sends: mid-turn it is taken at the next
     /// boundary rather than waiting behind the run; idle, it starts one.
-    public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], mode: AgentWire.Mode) async throws {
+    /// `progress` hears each image's share written, in order, as the body goes out.
+    public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], mode: AgentWire.Mode,
+        progress: (@Sendable ([Double]) -> Void)? = nil) async throws {
         guard images.allSatisfy({ $0.data.count <= AttachmentRules.maxInlineImageBytes }),
               images.reduce(0, { $0 + $1.data.count }) <= AttachmentRules.maxInlineImageTotalBytes else {
             throw AttachmentRules.invalid("Inline images exceed the model's image limit.")
@@ -322,14 +330,27 @@ public final class AgentClient: Sendable {
             "id": .string(id), "text": .string(caption), "delivery": .string("steer"),
             "clientMetadata": .object(["composer": .string("mobile")]),
         ]
+        let encoded = images.map { $0.data.base64EncodedString() }
         if !images.isEmpty {
             // /send prepends its required top-level text to these rich blocks.
-            object["content"] = .array(images.map {
-                .object(["type": .string("image"), "mimeType": .string($0.mimeType), "data": .string($0.data.base64EncodedString())])
+            object["content"] = .array(zip(images, encoded).map {
+                .object(["type": .string("image"), "mimeType": .string($0.0.mimeType), "data": .string($0.1)])
             })
         }
         object["mode"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode))
-        _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/send", json: .object(object))
+        let path = "/v0/agents/\(Self.escape(agentId))/send"
+        guard let progress, !images.isEmpty else {
+            _ = try await send("POST", path, json: .object(object))
+            return
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        let body = try encoder.encode(JSONValue.object(object))
+        // Where each picture's base64 is in the body: the bytes written
+        // so far say how far each one is.
+        let ranges = UploadRanges(body: body, encoded: encoded)
+        progress(ranges.shares(sent: 0))
+        _ = try await send("POST", path, raw: body, sent: { progress(ranges.shares(sent: $0)) })
     }
 
     /// The composer's draft as the computer keeps it for this person.

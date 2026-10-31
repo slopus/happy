@@ -158,23 +158,40 @@ final class ComposerPanelKeyboardUITests: XCTestCase {
         _ = try preserve(baseline, phase: "model outside dismissal")
     }
 
-    func testMainAttachmentPanelPreservesKeyboardDraftAndSelection() throws {
+    /// Telegram's attachment menu puts the keyboard away while it is up
+    /// and gives the same editor its keyboard, draft and selection back
+    /// once it closes, by its circle or a tap on the dim over the chat.
+    func testMainAttachmentMenuPutsTheKeyboardAwayAndGivesItBack() throws {
         let baseline = try startAgent()
         let add = app.buttons["Add a picture"]
         XCTAssertTrue(add.waitForExistence(timeout: 5))
         add.tap()
-        _ = try waitForState { self.hasPanel("attach-sheet", $0) }
-        let opened = try preserve(baseline, phase: "attachment panel open")
-        try assertPanel("attach-sheet", in: opened)
-        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "attach-permission").firstMatch.exists)
+        let opened = try waitForState { self.hasPanel("attach-sheet", $0) && $0["keyboardVisible"] as? Bool == false }
+        XCTAssertEqual(opened["draft"] as? String, baseline["draft"] as? String, "the menu changed the draft")
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "attach-paste").firstMatch.exists, "the menu still pastes")
         app.buttons["attach-close"].tap()
-        _ = try waitForState { !self.hasPanel("attach-sheet", $0) }
-        _ = try preserve(baseline, phase: "attachment close")
+        _ = try waitForState { !self.hasPanel("attach-sheet", $0) && $0["keyboardVisible"] as? Bool == true }
+        try restored(baseline, phase: "attachment close")
         add.tap()
-        let reopened = try waitForState { self.hasPanel("attach-sheet", $0) }
-        try outsidePanel("attach-sheet", state: reopened)
-        _ = try waitForState { !self.hasPanel("attach-sheet", $0) }
-        _ = try preserve(baseline, phase: "attachment outside dismissal")
+        _ = try waitForState { self.hasPanel("attach-sheet", $0) && $0["keyboardVisible"] as? Bool == false }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06)).tap()
+        _ = try waitForState { !self.hasPanel("attach-sheet", $0) && $0["keyboardVisible"] as? Bool == true }
+        try restored(baseline, phase: "attachment outside dismissal")
+    }
+
+    /// After an overlay that put the keyboard away: the same editor has it
+    /// again, with the draft and selection it had.
+    @discardableResult
+    private func restored(_ baseline: [String: Any], phase: String) throws -> [String: Any] {
+        let current = try waitForState { $0["firstResponder"] as? Bool == true && $0["keyboardVisible"] as? Bool == true }
+        XCTAssertEqual(current["editorID"] as? String, baseline["editorID"] as? String, phase)
+        XCTAssertEqual(current["draft"] as? String, baseline["draft"] as? String, phase)
+        XCTAssertEqual(current["selection"] as? [Int], baseline["selection"] as? [Int], phase)
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = phase
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        return current
     }
 
     func testTheDetailsPermissionModeKeepsTheDraft() throws {
@@ -256,19 +273,12 @@ final class ComposerPanelKeyboardUITests: XCTestCase {
         _ = try waitForState { !self.hasPanel("picker-efforts", $0) }
         _ = try preserve(baseline, phase: "landscape effort selected")
         app.buttons["Add a picture"].tap()
-        _ = try waitForState { self.hasPanel("attach-sheet", $0) }
-        let attachment = try preserve(baseline, phase: "landscape attachment panel")
-        try assertPanel("attach-sheet", in: attachment)
-        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "attach-permission").firstMatch.exists)
+        let attachment = try waitForState { self.hasPanel("attach-sheet", $0) && $0["keyboardVisible"] as? Bool == false }
         let panel = try XCTUnwrap((attachment["panels"] as? [[String: Any]])?.first { $0["id"] as? String == "attach-sheet" })
         let scrolls = try XCTUnwrap(panel["scrolls"] as? [[String: Any]])
-        XCTAssertTrue(try scrolls.contains { scroll in
-            let frame = try rectangle(scroll["frame"])
-            let content = try XCTUnwrap(scroll["contentSize"] as? [Double])
-            return content[1] > frame.height + 1 && scroll["scrollEnabled"] as? Bool == true
-        }, "compact attachment content must scroll vertically")
+        XCTAssertTrue(scrolls.contains { $0["scrollEnabled"] as? Bool == true }, "compact attachment content must scroll")
         app.buttons["attach-close"].tap()
         _ = try waitForState { !self.hasPanel("attach-sheet", $0) }
-        _ = try preserve(baseline, phase: "landscape attachment dismissed")
+        try restored(baseline, phase: "landscape attachment dismissed")
     }
 }

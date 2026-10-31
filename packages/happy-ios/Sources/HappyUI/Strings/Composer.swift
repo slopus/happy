@@ -93,9 +93,6 @@ extension Strings {
         public static func uploadFailedMessage(_ count: Int) -> String { localized("imageUpload.uploadFailedMessage", ["count": .number(count)], count == 1 ? "One image could not be uploaded and was not sent." : "\(count) images could not be uploaded and were not sent.") }
         public static var notSupportedTitle: String { localized("imageUpload.notSupportedTitle", "Images Not Supported") }
         public static var notSupportedMessage: String { localized("imageUpload.notSupportedMessage", "This agent does not support image attachments. Images were not sent.") }
-        public static var attachTitle: String { localized("imageUpload.attachTitle", "Add Image") }
-        public static var pasteFromClipboard: String { localized("imageUpload.pasteFromClipboard", "Paste from Clipboard") }
-        public static var chooseFromLibrary: String { localized("imageUpload.chooseFromLibrary", "Photo Library") }
         public static var nothingToPasteTitle: String { localized("imageUpload.nothingToPasteTitle", "Nothing to Paste") }
         public static var nothingToPasteMessage: String { localized("imageUpload.nothingToPasteMessage", "Copy an image first, then try again.") }
     }

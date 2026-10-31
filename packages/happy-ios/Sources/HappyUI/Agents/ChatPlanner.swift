@@ -135,7 +135,7 @@ actor ChatPlanner {
                         parts.append(.markdown(markdown.blocks))
                         spoken.append(line)
                     }
-                case .picture:
+                case .picture, .sentFile:
                     break
                 }
             }
@@ -191,17 +191,29 @@ actor ChatPlanner {
             // Desktop's own message: the text as written (Figtree 16/24), lines and all, in
             // the accent bubble at the right, its photos under it. Past ten
             // lines it is cut there until tapped open, as on desktop.
-            let string = ChatTextStyles.text.string(text, color: Palette.userMessageText, in: environment)
-            let body = text.isEmpty ? nil : MeasuredText(string)
+            // A file that is no picture or video is named under the words.
+            let named = item.pieces.compactMap { piece -> String? in
+                guard case .sentFile(let file) = piece, !file.isVisual else { return nil }
+                return "📎 \(file.name)"
+            }
+            let written = ([text] + named).filter { !$0.isEmpty }.joined(separator: "\n\n")
+            let string = ChatTextStyles.text.string(written, color: Palette.userMessageText, in: environment)
+            let body = written.isEmpty ? nil : MeasuredText(string)
             let preview = MeasuredText(string, maxLines: M.previewLines)
             let toggles = opened ? Strings.showLess : Strings.showFull
             let control = MeasuredText(ChatTextStyles.fold.string(toggles, color: Palette.textSecondary, in: environment))
-            let pictures: [(id: String, image: MediaFlow.Image)] = item.pieces.compactMap {
-                guard case .picture(let id, _, let data) = $0 else { return nil }
-                return (id, Self.pictureSize(data))
+            let pictures: [(id: String, image: MediaFlow.Image, isVideo: Bool)] = item.pieces.compactMap {
+                switch $0 {
+                case .picture(let id, _, let data): return (id, Self.pictureSize(data), false)
+                case .sentFile(let file) where file.isVisual: return (file.id, Self.fileSize(file), file.isVideo)
+                default: return nil
+                }
             }
             var failure = false
             if case .failed = item.delivery { failure = true }
+            // On its way: each picture shows how far it is, and can be
+            // taken out; one that failed is sent again with a tap.
+            let uploading = item.delivery == .sending || failure
             let layout = MessageLayout.user(
                 width: width, maxContentWidth: key.maxContentWidth, text: body?.measurable,
                 fold: body.map { _ in .init(preview: preview.measurable, control: control.measurable, opened: opened, lineHeight: ChatTextStyles.text.lineHeight ?? 24) },
@@ -218,8 +230,17 @@ actor ChatPlanner {
             if let frame = layout.foldControl { items.append(.text(control.layout(for: frame), frame)) }
             for (picture, frame) in zip(pictures, layout.pictures) {
                 let key = MediaLoader.sentKey(picture.id)
-                items.append(.media(ChatMedia(key: key, isVideo: false, thumbhash: nil, label: Strings.picture), frame: frame))
-                hits.append(ChatHit(frame: frame, action: .openMedia(key)))
+                let upload = uploading ? ChatUpload(key: picture.id, failed: failure) : nil
+                items.append(.media(ChatMedia(key: key, isVideo: picture.isVideo, thumbhash: nil, label: picture.isVideo ? Strings.video : Strings.picture, upload: upload), frame: frame))
+                if failure {
+                    hits.insert(ChatHit(frame: frame, action: .retry(localId: item.id)), at: 0)
+                } else if uploading {
+                    // Telegram's cancel: the ring's middle takes this one out.
+                    hits.insert(ChatHit(frame: ChatUpload.ring(in: frame).insetBy(dx: -8, dy: -8), action: .cancelUpload(messageId: item.id, piece: picture.id)), at: 0)
+                    hits.append(ChatHit(frame: frame, action: .openMedia(key)))
+                } else {
+                    hits.append(ChatHit(frame: frame, action: .openMedia(key)))
+                }
             }
             if failure, let frame = layout.status {
                 let line = ChatTextLayout(
@@ -229,8 +250,10 @@ actor ChatPlanner {
                 items.append(.text(line, frame))
                 hits.insert(ChatHit(frame: frame, action: .retry(localId: item.id)), at: 0)
             }
-            // On its way, or waiting for the agent to take it: dimmed, never moved.
-            let alpha: CGFloat = item.delivery == .sending || item.delivery == .pending ? 0.6 : 1
+            // On its way, or waiting for the agent to take it: dimmed, never
+            // moved. Pictures still uploading say so themselves, undimmed.
+            let rings = uploading && !pictures.isEmpty
+            let alpha: CGFloat = !rings && (item.delivery == .sending || item.delivery == .pending) ? 0.6 : 1
             let label = [text, failure ? Strings.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
             return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, alpha: alpha, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles)
         case .collaborator, .failure:
@@ -366,6 +389,12 @@ actor ChatPlanner {
     }
 
     /// A sent photo's upright pixel size, read from its header alone.
+    /// A sent file's shape as the composer measured it; a square until known.
+    static func fileSize(_ file: ChatItem.SentFile) -> MediaFlow.Image {
+        guard let width = file.width, let height = file.height, width > 0, height > 0 else { return MediaFlow.Image() }
+        return MediaFlow.Image(width: CGFloat(width), height: CGFloat(height))
+    }
+
     static func pictureSize(_ data: Data) -> MediaFlow.Image {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],

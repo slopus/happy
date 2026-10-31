@@ -1789,6 +1789,9 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         case .retry(let localId):
             let sender = services.sender
             Task { try? await sender.retry(localId: localId) }
+        case .cancelUpload:
+            // Only a V2 conversation's sending pictures have a cross.
+            break
         case .copyMenu, .selectable, .markdownSelectable:
             // Long presses; see `chatList(_:hold:frame:at:)`.
             break

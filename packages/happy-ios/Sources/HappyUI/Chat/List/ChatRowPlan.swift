@@ -133,6 +133,21 @@ struct ChatMedia: Equatable, Sendable {
     var thumbhash: String?
     /// What VoiceOver reads: its name.
     var label: String
+    /// Still going to the computer: its ring.
+    var upload: ChatUpload? = nil
+}
+
+/// A picture or video of a message on its way: how far it is lives on
+/// `UploadProgressBoard` under `key`, applied to its tile a frame at a
+/// time; the plan only says it is sending, or failed.
+struct ChatUpload: Equatable, Sendable {
+    var key: String
+    var failed: Bool
+
+    /// The ring's disc in a tile at `frame`.
+    static func ring(in frame: CGRect) -> CGRect {
+        UploadRingLayout.disc(in: frame.size).offsetBy(dx: frame.minX, dy: frame.minY)
+    }
 }
 
 /// A picture the person attached: `ref` under the session's attachments,
@@ -155,6 +170,8 @@ enum ChatRowAction: Equatable, Sendable {
     case openFile(String)
     case option(String)
     case retry(localId: String)
+    /// A sending picture's cross: takes it out of message `messageId`.
+    case cancelUpload(messageId: String, piece: String)
     case permission(ChatPermissionTap)
     /// An option in a tool's question form, by tool message id.
     case questionOption(toolId: String, questionId: String, option: Int)

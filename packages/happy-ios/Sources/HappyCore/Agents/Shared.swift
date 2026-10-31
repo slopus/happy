@@ -76,7 +76,8 @@ public struct Shared: Equatable, Sendable {
             case .gallery(let shown, _), .tree(let shown, _): media += shown.map(Media.tool)
             case .file(let one): media.append(.tool(one))
             case .text(let text): texts.append(text)
-            case .artifact, .story, .sidebarProposal: break
+            // Not the computer's yet: it is shared once it is there.
+            case .artifact, .story, .sidebarProposal, .sentFile: break
             }
         }
         shared.add(media: media, texts: texts)

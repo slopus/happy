@@ -17,6 +17,8 @@ final class MediaLoader: NSObject, ChatMediaSource {
     var agentId: String
     private var tools: [String: Media] = [:]
     private var sent: [String: Data] = [:]
+    /// Files still on their way, read from their copy on this phone.
+    private var local: [String: ChatItem.SentFile] = [:]
     private var streams: [String: MediaStream] = [:]
     /// Each key's largest decode, so eviction drops the size with the picture.
     private let images = NSCache<NSString, Decoded>()
@@ -57,6 +59,7 @@ final class MediaLoader: NSObject, ChatMediaSource {
             for piece in item.pieces {
                 switch piece {
                 case .picture(let id, _, let data): sent[Self.sentKey(id)] = data
+                case .sentFile(let file): local[Self.sentKey(file.id)] = file
                 case .gallery(let media, _), .tree(let media, _): for one in media { tools[one.key] = one }
                 case .file(let one): tools[one.key] = one
                 case .text, .artifact, .story, .sidebarProposal: break
@@ -81,6 +84,8 @@ final class MediaLoader: NSObject, ChatMediaSource {
         let image: UIImage?
         if let data = sent[key] {
             image = await Task.detached(priority: .userInitiated) { Images.decode(data, maxPixels: pixels) }.value
+        } else if let file = local[key] {
+            image = await Self.picture(file, pixels: pixels)
         } else if let media = tools[key] {
             image = media.isVideo ? await poster(media, pixels: pixels) : await picture(media, pixels: pixels)
         } else {
@@ -107,6 +112,21 @@ final class MediaLoader: NSObject, ChatMediaSource {
             bytes.setObject(data as NSData, forKey: key, cost: data.count)
         }
         return await Task.detached(priority: .userInitiated) { Images.decode(data, maxPixels: pixels) }.value
+    }
+
+    /// A file on its way: a picture decoded, a video's first frame, off
+    /// the main thread.
+    private nonisolated static func picture(_ file: ChatItem.SentFile, pixels: Int) async -> UIImage? {
+        if file.isVideo {
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: file.file))
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: pixels, height: pixels)
+            guard let frame = try? await generator.image(at: .zero) else { return nil }
+            return UIImage(cgImage: frame.image)
+        }
+        return await Task.detached(priority: .userInitiated) {
+            (try? Data(contentsOf: file.file, options: .mappedIfSafe)).flatMap { Images.decode($0, maxPixels: pixels) }
+        }.value
     }
 
     /// A recording's first frame, read through its stream.
@@ -158,6 +178,7 @@ final class MediaLoader: NSObject, ChatMediaSource {
 
     /// A player for a recording, streamed from the computer as it plays.
     func player(_ key: String) -> AVPlayer? {
+        if let file = local[key], file.isVideo { return AVPlayer(url: file.file) }
         guard let media = tools[key], media.isVideo else { return nil }
         return AVPlayer(playerItem: AVPlayerItem(asset: stream(media).asset()))
     }

@@ -17,12 +17,12 @@ private struct VideoTestComputer: AgentTransport {
     func close() async {}
 }
 
-/// Exercises the actual + sheet and library against a video in Photos. Run
+/// Exercises the actual + menu and its PhotoKit grid against a video in Photos. Run
 /// on a throwaway simulator with full Photos access granted to the UIKit test
 /// host. Removing that simulator also removes the generated library fixture.
 @MainActor
 final class HostedComposerVideoTests: XCTestCase {
-    func testPlusAttachesVideoFromRecentStripAndWholeLibrary() async throws {
+    func testPlusAttachesVideoFromTheMenusGrid() async throws {
         try XCTSkipUnless(PHPhotoLibrary.authorizationStatus(for: .readWrite) == .authorized,
             "Grant full Photos access to the test host on a throwaway simulator")
         let source = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("mov")
@@ -53,17 +53,18 @@ final class HostedComposerVideoTests: XCTestCase {
         window.layoutIfNeeded()
         let card = try XCTUnwrap(subviews(chat.view).compactMap { $0 as? AgentInputCardView }.first)
 
-        // Tap the composer's actual +, then select the video in its recent strip.
+        // Tap the composer's actual +, then pick the video, newest, in its grid.
         try plus(in: card).sendActions(for: .touchUpInside)
         try await wait { chat.presentedViewController is AttachSheetViewController }
         let sheet = try XCTUnwrap(chat.presentedViewController as? AttachSheetViewController)
-        try await wait { self.subviews(sheet.view).contains { $0.accessibilityLabel?.hasPrefix("Video,") == true } }
-        let tile = try XCTUnwrap(subviews(sheet.view).compactMap { $0 as? AttachTile }.first { $0.videoDuration != nil })
-        XCTAssertGreaterThan(try XCTUnwrap(tile.videoDuration), 0)
-        tile.sendActions(for: .touchUpInside)
+        let grid = try XCTUnwrap(subviews(sheet.view).first { $0.accessibilityIdentifier == "attach-grid" } as? UICollectionView)
+        try await wait { grid.visibleCells.contains { $0.accessibilityLabel?.hasPrefix("Video,") == true } }
+        let tile = try XCTUnwrap(grid.visibleCells.compactMap { $0 as? AttachGridCell }.first { $0.itemID == asset.localIdentifier })
+        XCTAssertTrue(tile.accessibilityLabel?.hasPrefix("Video,") == true)
+        sheet.collectionView(grid, didSelectItemAt: try XCTUnwrap(grid.indexPath(for: tile)))
         XCTAssertTrue(tile.accessibilityLabel?.contains("picked 1") == true)
-        try await keep(window, "composer-plus-video-strip")
-        try button("attach-photos", in: sheet.view).sendActions(for: .touchUpInside)
+        try await keep(window, "composer-plus-video-grid")
+        try button("attach-add", in: sheet.view).sendActions(for: .touchUpInside)
         try await wait { card.configuration.attachments.count == 1 && chat.presentedViewController == nil }
         try assertVideo(card, source: source)
         try await keep(window, "composer-video-attached")
@@ -71,20 +72,16 @@ final class HostedComposerVideoTests: XCTestCase {
         remove.sendActions(for: .touchUpInside)
         XCTAssertTrue(card.configuration.attachments.isEmpty)
 
-        // Open the whole library through the same + sheet and select that video.
+        // The same + again: the video is still first, and attaches again.
         try plus(in: card).sendActions(for: .touchUpInside)
         try await wait { chat.presentedViewController is AttachSheetViewController }
         let secondSheet = try XCTUnwrap(chat.presentedViewController as? AttachSheetViewController)
-        try button("attach-photos", in: secondSheet.view).sendActions(for: .touchUpInside)
-        try await wait { chat.presentedViewController is LibraryPickerViewController }
-        let library = try XCTUnwrap(chat.presentedViewController as? LibraryPickerViewController)
-        let grid = try XCTUnwrap(subviews(library.view).compactMap { $0 as? UICollectionView }.first)
-        try await wait { grid.visibleCells.compactMap { $0 as? LibraryCell }.contains { $0.assetID == asset.localIdentifier } }
-        let cell = try XCTUnwrap(grid.visibleCells.compactMap { $0 as? LibraryCell }.first { $0.assetID == asset.localIdentifier })
-        XCTAssertTrue(cell.accessibilityLabel?.hasPrefix("Video,") == true)
-        library.collectionView(grid, didSelectItemAt: try XCTUnwrap(grid.indexPath(for: cell)))
-        try await keep(window, "composer-library-video-picked")
-        try button("library-add", in: library.view).sendActions(for: .touchUpInside)
+        let secondGrid = try XCTUnwrap(subviews(secondSheet.view).first { $0.accessibilityIdentifier == "attach-grid" } as? UICollectionView)
+        try await wait { secondGrid.visibleCells.compactMap { $0 as? AttachGridCell }.contains { $0.itemID == asset.localIdentifier } }
+        let cell = try XCTUnwrap(secondGrid.visibleCells.compactMap { $0 as? AttachGridCell }.first { $0.itemID == asset.localIdentifier })
+        secondSheet.collectionView(secondGrid, didSelectItemAt: try XCTUnwrap(secondGrid.indexPath(for: cell)))
+        try await keep(window, "composer-grid-video-picked")
+        try button("attach-add", in: secondSheet.view).sendActions(for: .touchUpInside)
         try await wait { card.configuration.attachments.count == 1 && chat.presentedViewController == nil }
         try assertVideo(card, source: source)
     }

@@ -2,7 +2,6 @@
 import AVKit
 import HappyCore
 import HappyLayout
-import Photos
 import QuickLook
 import UIKit
 import UniformTypeIdentifiers
@@ -395,8 +394,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         // Leaving keeps a name being typed, as a tap away does.
         titleView.finishEditing()
         picker?.close(animated: false)
-        attachPanel?.close()
-        attachPanel = nil
         giveBarBack(animated: animated)
         if !previewing {
             let conversation = conversation
@@ -688,9 +685,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
     }
     /// A pick made here, until the conversation's own mode says it back.
     private var picked: AgentWire.Mode?
-    /// The attachment panel while it is up.
+    /// The "+" menu while it is up.
     private weak var attachSheet: AttachSheetViewController?
-    private var attachPanel: ComposerPanelPresenter?
     /// The model or effort list while it is open.
     private var picker: PickerPresenter?
     /// The permission modes for the detail over this screen, a pick going
@@ -715,34 +711,43 @@ final class ChatViewController: UIViewController, ComposeHosting {
         }
     }
 
-    /// The "+" sheet over `host`: new work for a picture opens it over this screen as
-    /// the screen comes in. What it adds waits in the composer, which then
-    /// takes the keyboard.
+    /// The "+" menu over `host`: new work for a picture opens it over this
+    /// screen as the screen comes in. As Telegram's attachment menu, it
+    /// takes the keyboard down while it is up; the draft and what already
+    /// waits in the composer stay. What it adds waits in the composer,
+    /// which then takes the keyboard, as does closing it with nothing.
     func presentAttach(from host: UIViewController) {
+        guard attachSheet == nil else { return }
         let sheet = AttachSheetViewController(limit: ComposerAttachmentRules.remaining(selected: pictures.images.count))
         if session.models.catalog == nil { session.models.load() }
+        let library = sheet.library
         sheet.onAction = { [weak self] action in
             guard let self else { return }
             switch action {
-            case .photos: presentLibrary()
+            case .photos: presentSystemPhotos()
             case .camera: presentCamera()
-            case .add(let ids): add(assets: ids)
-            case .paste: pasteFromClipboard()
+            case .add(let ids): add(ids, from: library)
             case .files: presentFiles()
             }
         }
-        keyboardOwed = card.textView.isFirstResponder
         sheet.onGone = { [weak self] in self?.settleFocus(added: false) }
-        attachSheet = sheet
-        let panel = ComposerPanelPresenter(content: sheet, height: AttachSheetViewController.contentHeight, host: host, anchor: card)
-        panel.onOutside = { [weak sheet] in sheet?.close() }
-        sheet.dismissPanel = { [weak self, weak panel] completion in
-            panel?.close(completion: completion)
-            if self?.attachPanel === panel { self?.attachPanel = nil }
+        sheet.source = { [weak self, weak sheet] in
+            guard let self, let sheet, sheet.isViewLoaded else { return nil }
+            return card.addControl.convert(card.addControl.bounds, to: sheet.view)
         }
-        attachPanel?.close()
-        attachPanel = panel
-        panel.show()
+        keyboardOwed = keyboardOwed || card.textView.isFirstResponder
+        attachSheet = sheet
+        let show = { [weak host, weak self] in
+            guard let host, let self, attachSheet === sheet else { return }
+            card.textView.resignFirstResponder()
+            host.present(sheet, animated: false)
+        }
+        // New work opens it as its screen comes in: once that screen is in.
+        if let transition = host.transitionCoordinator {
+            transition.animate(alongsideTransition: nil) { _ in show() }
+        } else {
+            show()
+        }
     }
 
     /// The mode the next message runs with, by its name.
@@ -750,45 +755,36 @@ final class ChatViewController: UIViewController, ComposeHosting {
         Strings.permissionName(mode?.permissionMode ?? session.models.catalog?.defaultPermissionMode ?? "auto")
     }
 
-    /// Photos and videos from the whole library, uploaded through the
-    /// direct connection: in the library sheet when the person has let the
-    /// app read their library, else in the system's picker, which asks
-    /// nothing.
-    private func presentLibrary() {
+    /// Photos and videos in the system's picker, which runs outside the app
+    /// and needs no access: the way in when the library is refused, and
+    /// the Files tab's "Select Photos or Videos".
+    private func presentSystemPhotos() {
         let room = pictures.room()
         guard room > 0 else { return settleFocus(added: false) }
         let options = LibraryPicker.Options(limit: room)
-        let onPick: ([LibraryPick]) -> Void = { [weak self] picks in
+        LibrarySystemPicker.present(from: self, options: options) { [weak self] picks in
             guard let self else { return LibraryPicker.discard(picks) }
             take(picks)
-        }
-        if AttachSheetViewController.mayReadLibrary {
-            LibraryPicker.present(from: self, options: options, onPick: onPick).onCancel = { [weak self] in self?.settleFocus(added: false) }
-        } else {
-            LibrarySystemPicker.present(from: self, options: options, onPick: onPick).onCancel = { [weak self] in self?.settleFocus(added: false) }
-        }
+        }.onCancel = { [weak self] in self?.settleFocus(added: false) }
     }
 
-    /// Photos and videos picked in the sheet's strip, read in full off the main thread.
-    private func add(assets ids: [String]) {
+    /// Photos and videos picked in the menu's grid, read in full.
+    private func add(_ ids: [String], from library: AttachLibrary) {
         Task { [weak self] in
-            let found = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
-            let byID = Dictionary((0..<found.count).map { (found.object(at: $0).localIdentifier, found.object(at: $0)) }, uniquingKeysWith: { a, _ in a })
-            var picks: [LibraryPick] = []
-            for id in ids {
-                guard let asset = byID[id], let pick = await LibraryPicker.read(asset) else { continue }
-                picks.append(pick)
-            }
+            let picks = await library.read(ids)
             guard let self else { return LibraryPicker.discard(picks) }
             take(picks)
         }
     }
 
+    /// A photo or a video, as Telegram's camera takes either.
     private func presentCamera() {
         guard UIImagePickerController.isSourceTypeAvailable(.camera), pictures.room() > 0 else { return settleFocus(added: false) }
         let camera = UIImagePickerController()
         camera.sourceType = .camera
-        camera.mediaTypes = [UTType.image.identifier]
+        let available = UIImagePickerController.availableMediaTypes(for: .camera) ?? []
+        camera.mediaTypes = [UTType.image.identifier, UTType.movie.identifier].filter(available.contains)
+        camera.videoQuality = .typeHigh
         camera.delegate = self
         present(camera, animated: true)
     }
@@ -799,66 +795,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         files.allowsMultipleSelection = true
         files.delegate = self
         present(files, animated: true)
-    }
-
-    /// The clipboard, read as the system allows: a picture attaches, text
-    /// goes in where the cursor is, anything else is said, not sent. What
-    /// it holds is asked without a prompt; reading it may prompt, and a
-    /// prompt waits on the thread that reads, so that is never this one.
-    private func pasteFromClipboard() {
-        let board = UIPasteboard.general
-        let picture = board.hasImages
-        guard picture || board.hasStrings || board.hasURLs else { return nothingToPaste() }
-        Task { [weak self] in
-            let clip = await Task.detached(priority: .userInitiated) { Self.readClipboard(picture: picture) }.value
-            guard let self else { return }
-            switch clip {
-            case .picture(let data):
-                guard pictures.room() > 0 else { return settleFocus(added: false) }
-                pictures.add(pictures: [data])
-                settleFocus(added: true)
-            case .text(let text):
-                focusesAfterPick = false
-                keyboardOwed = false
-                card.focus()
-                card.textView.insertText(text)
-            case .other:
-                nothingToPaste()
-            case nil:
-                // Refused, or gone since it was asked about.
-                settleFocus(added: false)
-            }
-        }
-    }
-
-    private enum Clip: Sendable {
-        case picture(Data)
-        case text(String)
-        /// A file copied in Files, say: its name is not what was meant.
-        case other
-    }
-
-    /// The picture as it was copied (so its orientation comes along), else
-    /// re-encoded; else the text. Nil when the paste was refused.
-    nonisolated private static func readClipboard(picture: Bool) -> Clip? {
-        let board = UIPasteboard.general
-        if picture {
-            for type in board.types {
-                guard let uti = UTType(type), uti.conforms(to: .image), let data = board.data(forPasteboardType: type), !data.isEmpty else { continue }
-                return .picture(data)
-            }
-            if let data = board.image?.pngData() { return .picture(data) }
-        }
-        if board.types.contains(UTType.fileURL.identifier) { return .other }
-        guard let text = board.string ?? board.url?.absoluteString, !text.isEmpty else { return nil }
-        return .text(text)
-    }
-
-    /// Said, then the keyboard as it was, once it is read.
-    private func nothingToPaste() {
-        let alert = UIAlertController(title: Strings.nothingToPaste, message: Strings.filesNotSentDetail, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: Strings.done, style: .default) { [weak self] _ in self?.settleFocus(added: false) })
-        present(alert, animated: true)
     }
 
     /// Preserve the library's order and copy every file before its temporary
@@ -1201,7 +1137,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         transcriptHeaderScrim.setLayoutFrame(screen.headerScrim)
         card.setLayoutFrame(screen.card)
         picker?.follow()
-        attachPanel?.follow()
         let foot = ChatFootLayout(size: view.bounds.size, card: screen.card)
         composerScrim.setLayoutFrame(foot.scrim)
         jump.setLayoutFrame(foot.jump)
@@ -1750,6 +1685,11 @@ final class ChatViewController: UIViewController, ComposeHosting {
             }
             let conversation = conversation
             Task { await conversation.retry(localId) }
+        case .cancelUpload(let messageId, let piece):
+            // Telegram's cross: that one is taken out, the rest still goes.
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            let conversation = conversation
+            Task { await conversation.removeAttachment(messageId, key: piece) }
         case .openMedia(let key):
             open(key)
         case .openArtifact(let artifact):
@@ -1847,8 +1787,7 @@ extension ChatViewController: AgentInputCardDelegate {
 
     func agentInputCardDidPressSend(_ card: AgentInputCardView) { send() }
 
-    /// The add button opens the "+" sheet: photos, the clipboard, files
-    /// and the permission the next message runs with.
+    /// The add button opens the "+" menu: the library, the camera and files.
     func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
         presentAttach(from: self)
     }
@@ -1888,8 +1827,18 @@ extension ChatViewController: AgentInputCardDelegate {
 
 extension ChatViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate, UIDocumentPickerDelegate {
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-        let image = info[.originalImage] as? UIImage
         picker.dismiss(animated: true)
+        // A recording: the camera's file is moved in as Files' are.
+        if let movie = info[.mediaURL] as? URL {
+            Task { [weak self] in
+                let pick = await Task.detached(priority: .userInitiated) { LibraryPicker.document(movie, videos: true) }.value
+                guard let self else { return LibraryPicker.discard(pick.map { [$0] } ?? []) }
+                guard let pick else { return settleFocus(added: false) }
+                take([pick])
+            }
+            return
+        }
+        let image = info[.originalImage] as? UIImage
         guard let data = image?.jpegData(compressionQuality: 0.9) else { return settleFocus(added: false) }
         pictures.add(pictures: [data])
         settleFocus(added: true)

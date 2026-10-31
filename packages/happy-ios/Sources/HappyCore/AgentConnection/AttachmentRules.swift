@@ -11,10 +11,14 @@ public struct QueuedFile: Codable, Equatable, Sendable {
     public var size: Int
     public var path: String
     public var uploaded: Bool
+    /// A picture's or video's size, so its tile has its shape before it is read.
+    public var width: Int?
+    public var height: Int?
 
-    public init(fileURL: URL, name: String, mimeType: String, size: Int, path: String, uploaded: Bool = false) {
+    public init(fileURL: URL, name: String, mimeType: String, size: Int, path: String, uploaded: Bool = false, width: Int? = nil, height: Int? = nil) {
         self.fileURL = fileURL; self.name = name; self.mimeType = mimeType
         self.size = size; self.path = path; self.uploaded = uploaded
+        self.width = width; self.height = height
     }
 }
 
@@ -63,7 +67,7 @@ public enum AttachmentRules {
                 guard actual?.intValue == size else { throw invalid("The attachment changed while being copied.") }
                 try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
                 return QueuedFile(fileURL: destination, name: attachment.name, mimeType: attachment.mimeType,
-                    size: size, path: ".happy-uploads/\(messageID)/\(filename)")
+                    size: size, path: ".happy-uploads/\(messageID)/\(filename)", width: attachment.width, height: attachment.height)
             }
         } catch {
             for file in copied { try? FileManager.default.removeItem(at: file) }
@@ -113,31 +117,55 @@ public enum AttachmentRules {
 extension AgentClient {
     /// Sequential uploads keep only one file's encoded request in memory.
     /// Progress is durable before moving to the next file or sending the text.
-    public func deliverMessage(_ queued: QueuedMessage,
+    /// Each picture's and file's bytes as they go out are on `board`, by
+    /// the piece's key: waiting its turn, then how much is written.
+    public func deliverMessage(_ queued: QueuedMessage, board: UploadProgressBoard = .shared,
         persist: @Sendable (QueuedMessage) async throws -> Void) async throws {
         var message = queued
-        if !(message.files ?? []).isEmpty {
-            if message.workspaceID == nil {
-                message.workspaceID = try await agent(message.agentID).workspaceId
-                try await persist(message)
+        let pictureKeys = message.pictures.indices.map { UploadProgressBoard.pictureKey(message.id, $0) }
+        let fileKeys = (message.files ?? []).indices.map { UploadProgressBoard.fileKey(message.id, $0) }
+        for (key, file) in zip(fileKeys, message.files ?? []) { board.set(key, file.uploaded ? .done : .preparing) }
+        for key in pictureKeys { board.set(key, .preparing) }
+        do {
+            if !(message.files ?? []).isEmpty {
+                if message.workspaceID == nil {
+                    message.workspaceID = try await agent(message.agentID).workspaceId
+                    try await persist(message)
+                }
+                guard let workspace = message.workspaceID else { throw AgentClientError.invalidResponse }
+                for index in (message.files ?? []).indices {
+                    try Task.checkCancellation()
+                    guard let file = message.files?[index], !file.uploaded else { continue }
+                    let key = fileKeys[index]
+                    try await uploadFile(file, workspaceID: workspace) { board.set(key, .uploading($0)) }
+                    board.set(key, .done)
+                    message.files?[index].uploaded = true
+                    try await persist(message)
+                }
             }
-            guard let workspace = message.workspaceID else { throw AgentClientError.invalidResponse }
-            for index in (message.files ?? []).indices {
-                try Task.checkCancellation()
-                guard let file = message.files?[index], !file.uploaded else { continue }
-                try await uploadFile(file, workspaceID: workspace)
-                message.files?[index].uploaded = true
-                try await persist(message)
+            guard let mode = message.mode else { throw AgentClientError.invalidResponse }
+            try Task.checkCancellation()
+            let images: [(mimeType: String, data: Data)] = message.pictures.map { ($0.mimeType, $0.data) }
+            var progress: (@Sendable ([Double]) -> Void)?
+            if !pictureKeys.isEmpty {
+                progress = { @Sendable (shares: [Double]) in
+                    for (key, share) in zip(pictureKeys, shares) { board.set(key, UploadPhase.uploading(share)) }
+                }
             }
+            try await sendMessage(message.agentID, id: message.id,
+                text: AttachmentRules.text(message.text, files: message.files ?? []),
+                images: images, mode: mode, progress: progress)
+            for key in pictureKeys { board.set(key, .done) }
+        } catch {
+            // To go again, now or once retried: what didn't finish starts over.
+            for key in pictureKeys + fileKeys where board.phase(key) != .done { board.set(key, .preparing) }
+            throw error
         }
-        guard let mode = message.mode else { throw AgentClientError.invalidResponse }
-        try Task.checkCancellation()
-        try await sendMessage(message.agentID, id: message.id,
-            text: AttachmentRules.text(message.text, files: message.files ?? []),
-            images: message.pictures.map { ($0.mimeType, $0.data) }, mode: mode)
     }
 
-    public func uploadFile(_ file: QueuedFile, workspaceID: String) async throws {
+    /// `progress` hears the share of the file's bytes written, once read
+    /// and encoded.
+    public func uploadFile(_ file: QueuedFile, workspaceID: String, progress: (@Sendable (Double) -> Void)? = nil) async throws {
         let values = try URL(fileURLWithPath: file.fileURL.path).resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
         guard values.isRegularFile == true, values.fileSize == file.size, file.size <= AttachmentRules.maxFileBytes else {
             throw AttachmentRules.invalid("The queued attachment is unavailable or its size changed.")
@@ -149,10 +177,21 @@ extension AgentClient {
         // Slash-heavy base64 must keep the ordinary 4/3 expansion. Default
         // JSON slash escaping can double an otherwise valid 50 MiB request.
         encoder.outputFormatting = [.withoutEscapingSlashes]
-        let response = try await transport.upload(path: "/v0/workspaces/\(Self.escape(workspaceID))/file",
-            credential: token, body: encoder.encode(JSONValue.object([
-                "path": .string(file.path), "content": .string(bytes.base64EncodedString()), "expectedHash": .null,
-            ])))
+        let content = bytes.base64EncodedString()
+        let body = try encoder.encode(JSONValue.object([
+            "path": .string(file.path), "content": .string(content), "expectedHash": .null,
+        ]))
+        let path = "/v0/workspaces/\(Self.escape(workspaceID))/file"
+        let response: HTTP1Response
+        if let progress {
+            let range = UploadRanges(body: body, encoded: [content])
+            progress(0)
+            response = try await transport.send(method: "PUT", path: path, credential: token, body: body, upload: true) {
+                progress(range.shares(sent: $0)[0])
+            }
+        } else {
+            response = try await transport.upload(path: path, credential: token, body: body)
+        }
         if response.status == 401 { throw AgentClientError.revoked }
         let result = try? JSONDecoder().decode(JSONValue.self, from: response.body)
         if response.status == 409, result?["code"]?.stringValue == "hash_mismatch", result?["hash"]?.stringValue == hash { return }

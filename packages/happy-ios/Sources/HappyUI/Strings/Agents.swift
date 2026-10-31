@@ -38,7 +38,6 @@ extension Strings {
     public static func filesNotSent(_ names: [String]) -> String {
         names.count == 1 ? "\(names[0]) wasn't attached" : "\(names.count) files weren't attached"
     }
-    public static let filesNotSentDetail = "A message to an agent carries text and pictures only for now."
     public static let closeNewWork = "Close new work"
     public static let leaveTask = "Leave task"
     /// A Surface's, as desktop's menu says it.
@@ -265,17 +264,6 @@ extension Strings {
         }
     }
 
-    // The composer's "+" sheet, as Claude's "Add to session".
-    public static let addToMessage = "Add to message"
-    public static let photos = "Photos"
-    public static let camera = "Camera"
-    public static let cameraUnavailable = "No camera on this device"
-    public static let pasteFromClipboard = "Paste from clipboard"
-    public static let addFiles = "Add files"
-    public static func addPhotos(_ count: Int) -> String { "Add \(count)" }
-    public static func photo(picked: Int?) -> String { picked.map { "Photo, picked \($0)" } ?? "Photo" }
-    /// The clipboard held nothing a message can carry.
-    public static let nothingToPaste = "Nothing to paste"
     public static let provider = "Provider"
     public static let effort = "Effort"
     public static let modelsNotConfigured = "Models not configured"

@@ -220,21 +220,15 @@ final class ScrollPerfGymTests: XCTestCase {
         print("GYM_POST_STORY \(task)")
         watchRing(row, "posted on home")
 
-        // As SHIP BOSS had it: in the chat, + and its permission changed
-        // first, then the story posted while the chat is on screen.
+        // As SHIP BOSS had it: in the chat, + opened and closed first, then
+        // the story posted while the chat is on screen.
         open(task)
         app.buttons["Add a picture"].tap()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         if springboard.alerts.firstMatch.waitForExistence(timeout: 3) {
             springboard.alerts.firstMatch.buttons["Don’t Allow"].tap()
         }
-        let permission = app.descendants(matching: .any)["attach-permission"]
-        XCTAssertTrue(permission.waitForExistence(timeout: 5), "+ didn't open its sheet")
-        pause(1)
-        permission.tap()
-        let auto = app.collectionViews.buttons.matching(NSPredicate(format: "label == 'Auto' OR label BEGINSWITH 'Auto,'")).firstMatch
-        XCTAssertTrue(auto.waitForExistence(timeout: 5), "no permission menu")
-        auto.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["attach-sheet"].waitForExistence(timeout: 5), "+ didn't open its sheet")
         pause(1)
         app.buttons["attach-close"].tap()
         pause(1)
@@ -245,20 +239,27 @@ final class ScrollPerfGymTests: XCTestCase {
         watchRing(row, "posted in its chat")
     }
 
-    /// Not a workload: with the photo library never asked about, the composer's + opens its sheet and Photos opens the
-    /// system's picker without either asking for the library; a photo
-    /// picked there waits in the composer.
-    func testAttachAsksNothing() {
+    /// Not a workload: with the photo library never asked about, the
+    /// composer's + asks once, as Telegram's menu does. Refused, it shows
+    /// why with "Choose Photos or Videos" under it, which opens the system's
+    /// picker without asking again; a photo picked there waits in the composer.
+    func testAttachAsksOnceAndRefusedKeepsTheSystemPicker() {
         app.resetAuthorizationStatus(for: .photos)
         launch()
         open(environment["GYM_STORY_TASK"] ?? "Release notes")
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         app.buttons["Add a picture"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["attach-sheet"].waitForExistence(timeout: 5), "+ didn't open its sheet")
-        XCTAssertFalse(springboard.alerts.firstMatch.waitForExistence(timeout: 3), "+ asked for the photo library")
-        app.buttons["attach-photos"].tap()
-        XCTAssertFalse(springboard.alerts.firstMatch.waitForExistence(timeout: 3), "Photos asked for the photo library")
-        XCTAssertFalse(app.descendants(matching: .any)["library-picker"].exists, "Photos opened the app's own library, which needs it")
+        let refuse = springboard.alerts.firstMatch.buttons["Don’t Allow"]
+        XCTAssertTrue(refuse.waitForExistence(timeout: 5), "+ never asked for the photo library")
+        refuse.tap()
+        let explanation = app.descendants(matching: .any)["attach-no-access"]
+        let photos = app.buttons["attach-photos"]
+        XCTAssertTrue(photos.waitForExistence(timeout: 5), "refused, the menu offers no Photos")
+        XCTAssertFalse(app.descendants(matching: .any)["attach-grid"].isHittable, "refused, the menu still shows a grid")
+        XCTAssertGreaterThan(photos.frame.minY, explanation.staticTexts.firstMatch.frame.maxY, "Photos isn't under the explanation")
+        photos.tap()
+        XCTAssertFalse(springboard.alerts.firstMatch.waitForExistence(timeout: 3), "Photos asked for the photo library again")
         let photo = app.images.matching(NSPredicate(format: "label BEGINSWITH 'Photo'")).firstMatch
         XCTAssertTrue(photo.waitForExistence(timeout: 10), "the system's picker shows no photo")
         pause(1.5)

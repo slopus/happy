@@ -44,9 +44,27 @@ struct UnixSocketAgentTransport: AgentTransport {
     let path: String
 
     func request(method: String, path route: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        try await request(method: method, path: route, credential: credential, body: body, headers: headers, sent: nil)
+    }
+
+    func send(method: String, path: String, credential: String, body: Data, upload: Bool, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        try await request(method: upload ? "PUT" : method, path: path, credential: credential, body: body, headers: [:], sent: sent)
+    }
+
+    private func request(method: String, path route: String, credential: String, body: Data?, headers: [String: String], sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
         let socket = try await connect()
         defer { Darwin.close(socket) }
-        try write(socket, head(method: method, route: route, credential: credential, accept: "application/json", body: body, headers: headers) + (body ?? Data()))
+        try write(socket, head(method: method, route: route, credential: credential, accept: "application/json", body: body, headers: headers))
+        if let body {
+            // As the tunnel writes it, so a sending picture's ring moves.
+            var offset = 0
+            while offset < body.count {
+                let end = min(body.count, offset + 256 * 1024)
+                try write(socket, Data(body[offset..<end]))
+                offset = end
+                sent?(offset)
+            }
+        }
         var parser = HTTP1Parser()
         while true {
             let bytes = try await read(socket)

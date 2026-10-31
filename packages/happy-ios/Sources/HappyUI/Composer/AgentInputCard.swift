@@ -387,6 +387,8 @@ public final class AgentInputCardView: UIView {
     private let expandButton = ComposerIconButton(icon: .ionicons("expand-outline"), size: AgentInputCardLayout.Metrics.expandIconSize)
     private let attachmentStrip = AttachmentStripView()
     private let addButton = ComposerIconButton(icon: .ionicons("add"), size: MobileComposerMetrics.mobile.addIconSize)
+    /// The "+", for what it opens to sit over (the iPad's attachment card).
+    var addControl: UIView { addButton }
     private let middle = UIView()
     private let permissionChip = ComposerChipButton(chip: .permission)
     private let modelChip = ComposerChipButton(chip: .model)

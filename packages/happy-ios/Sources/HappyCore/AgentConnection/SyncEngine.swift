@@ -36,6 +36,10 @@ public actor SyncEngine {
     private var verified = false
     private var settingsDeliveryDirty = false
     private var messageDeliveryDirty = false
+    /// The queued message being delivered now, and those being changed,
+    /// which delivery leaves until they are written again.
+    private var deliveringMessage: String?
+    private var holding: Set<String> = []
     private var generation = 0
     private var stopped = false
     private var cursor: String?
@@ -385,6 +389,38 @@ public actor SyncEngine {
         beginMessageDelivery(generation)
     }
 
+    /// Takes one picture or file out of a queued message the computer
+    /// hasn't taken, stopping its delivery first so nothing writes the old
+    /// one back; one left with nothing goes whole. The message as it is
+    /// now (nil: gone), or nil, false when it was already sent.
+    public func removeAttachment(_ id: String, _ piece: UploadProgressBoard.Piece) async throws -> (message: QueuedMessage?, removed: Bool) {
+        holding.insert(id)
+        defer {
+            holding.remove(id)
+            beginMessageDelivery(generation)
+        }
+        if deliveringMessage == id, let task = messageDelivery {
+            task.cancel()
+            await task.value
+        }
+        let database = try database()
+        guard var message = try await database.queuedMessages().first(where: { $0.id == id }) else { return (nil, false) }
+        switch piece {
+        case .picture(let index):
+            guard message.pictures.indices.contains(index) else { return (message, false) }
+            message.pictures.remove(at: index)
+        case .file(let index):
+            guard let files = message.files, files.indices.contains(index) else { return (message, false) }
+            message.files?.remove(at: index)
+        }
+        if message.text.isEmpty, message.pictures.isEmpty, (message.files ?? []).isEmpty {
+            try await database.acknowledgeMessage(id)
+            return (nil, true)
+        }
+        try await database.updateMessage(message)
+        return (message, true)
+    }
+
     public func queuedMessages(for agentID: String) async throws -> [QueuedMessage] {
         try await database().queuedMessages().filter { $0.agentID == agentID }
     }
@@ -409,10 +445,13 @@ public actor SyncEngine {
             var blocked = Set<String>()
             var candidate: QueuedMessage?
             for message in queued {
-                if message.failure != nil { blocked.insert(message.agentID) }
+                // One being changed holds its conversation's later ones, in order.
+                if message.failure != nil || holding.contains(message.id) { blocked.insert(message.agentID) }
                 else if !blocked.contains(message.agentID) { candidate = message; break }
             }
             guard var message = candidate else { return }
+            deliveringMessage = message.id
+            defer { deliveringMessage = nil }
             do {
                 let migrated = try AttachmentRules.migratePictures(message, directory: attachmentDirectory)
                 if migrated != message {
