@@ -1,4 +1,5 @@
 #if canImport(UIKit) && (DEBUG || HAPPY_FIXTURES)
+import CryptoKit
 import Foundation
 @testable import HappyCore
 import HappyLayout
@@ -12,13 +13,29 @@ import UIKit
 /// (faces, project marks) from the mockup's `img`. With `-inHome`, the same
 /// cards in Home's grouped list, in the tasks' place among classic rows.
 /// `-expand <taskId>` opens a card out; `-scroll <points>` scrolls the column.
+/// `-taskIcon <webp>` serves the last card's icon, outside the clay set, by
+/// slug and hash as the daemon does; without it, that card draws its letter.
 @MainActor
 final class TaskListHarness {
     private let list = TaskListView()
+    private static var iconPath: String?
+
+    private struct IconServer: AgentTransport {
+        let path: String, data: Data
+        func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+            HTTP1Response(status: path == self.path ? 200 : 404, headers: ["content-type": "image/webp"], body: path == self.path ? data : Data())
+        }
+        func close() async {}
+    }
 
     init(window: UIWindow, arguments: [String]) {
         let controller = UIViewController()
         window.rootViewController = controller
+        if let file = arguments.firstIndex(of: "-taskIcon").flatMap({ arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }), let data = FileManager.default.contents(atPath: file) {
+            let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            Self.iconPath = TaskIcon(type: "library", slug: "kubernetes-deployments", hash: hash).path
+            list.images = Images(client: AgentClient(transport: IconServer(path: Self.iconPath ?? "", data: data), token: "t"))
+        }
         let directory = arguments.firstIndex(of: "-mockImages").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
         let pictures = ["steve": "steve.png", "agent": "proj-happy-agent.webp", "desktop": "proj-happy-desktop.webp", "ios": "proj-happy.webp"]
         list.picture = { key in
@@ -38,7 +55,7 @@ final class TaskListHarness {
             sidebar.style = .grouped
             sidebar.makeBlock = { [weak sidebar, list] id in
                 let block = TaskListView()
-                (block.block, block.picture, block.people, block.rings) = (id, list.picture, list.people, list.rings)
+                (block.block, block.picture, block.people, block.rings, block.images) = (id, list.picture, list.people, list.rings, list.images)
                 block.onResize = { [weak sidebar] in sidebar?.setNeedsLayout() }
                 block.apply(Self.model())
                 block.selectedId = "task:onboarding/agent:install"
@@ -87,7 +104,7 @@ final class TaskListHarness {
                   shown: [RichTasks.SubRow] = [], hidden: [RichTasks.SubRow] = []) -> RichTasks.Card {
             let agent = AgentWire.Agent(id: "\(id)-agent", workspaceId: "\(id)-work", status: signal == .braille ? "working" : "idle",
                                         pendingQuestionId: signal == .dot ? "q" : nil, statusLine: .init(text: status, updatedAt: now), lastActivityAt: now - minutes * 60_000)
-            return RichTasks.Card(taskId: id, name: name, iconSlug: icon, canArchive: true, agent: agent, faces: faces, subRows: shown, hidden: hidden)
+            return RichTasks.Card(taskId: id, name: name, iconSlug: icon, iconPath: icon == "kubernetes-deployments" ? iconPath : nil, canArchive: true, agent: agent, faces: faces, subRows: shown, hidden: hidden)
         }
         let priorities = [
             card("demo", "Telegram-style UI demo", "architecture", ago: 0, "Planning the work split", signal: .braille, shown: [
@@ -115,7 +132,7 @@ final class TaskListHarness {
         let bugs = [
             card("crashes", "iPhone launch crashes", "crash", ago: 60, "On main; iPhone build still needed", shown: [ws("iPhone resume socket fix", "ios", 0, 0)]),
             card("stats", "Task diff stats", "code-review", ago: 48, "Needs your OK on the new row layout", signal: .dot),
-            card("upscaling", "Icon upscaling task", "design-system", ago: 20, "Upscaling the icon library", signal: .braille),
+            card("upscaling", "Kubernetes deployments", "kubernetes-deployments", ago: 20, "Upscaling the icon library", signal: .braille),
         ]
         var model = RichTasks(sections: [
             .init(id: "priorities", name: "Priorities", collapsed: false, cards: priorities),

@@ -21,6 +21,8 @@ public struct RichTasks: Equatable, Sendable {
         public var taskId: String
         public var name: String
         public var iconSlug: String?
+        /// Its icon from the daemon, by slug and hash (`TaskIcon.path`); nil from an older daemon.
+        public var iconPath: String? = nil
         public var canArchive: Bool
         public var agent: AgentWire.Agent
         /// Who wrote to its agent since the person last read it, newest first.
@@ -169,7 +171,7 @@ public struct RichTasks: Equatable, Sendable {
         let derivedRefs = Set(derived.map(\.ref))
         let linked = (task.children ?? []).filter { $0.visibility == "shown" && !derivedRefs.contains($0.ref) }
         return Card(
-            taskId: task.id, name: task.name ?? agent.title ?? "Untitled", iconSlug: task.icon?.librarySlug,
+            taskId: task.id, name: task.name ?? agent.title ?? "Untitled", iconSlug: task.icon?.librarySlug, iconPath: task.icon?.path,
             canArchive: task.canArchive ?? false, agent: agent, faces: agent.unread?.from ?? [],
             subRows: shown + linked.map { SubRow(ref: $0.ref, reason: .linked) }, hidden: derived.filter { choices[$0.ref] == "hidden" }
         )

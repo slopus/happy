@@ -255,6 +255,19 @@ final class RichTasksTests: XCTestCase {
             return try await group.next()!
         }
     }
+
+    /// Any slug with a good hash is fetched by both, no or a bad hash keeps the slug alone; until a picture, the name's letter.
+    func testIconHashMakesTheDaemonsPath() throws {
+        let hash = String(repeating: "a8", count: 32)
+        func icon(_ slug: String, _ rest: String, type: String = "library") throws -> TaskIcon { try JSONDecoder().decode(TaskIcon.self, from: Data(#"{"type":"\#(type)","slug":"\#(slug)"\#(rest)}"#.utf8)) }
+        XCTAssertEqual(try icon("kubernetes-deployments", #","hash":"\#(hash)""#).path, "/v0/task-icons/kubernetes-deployments?v=\(hash)")
+        for bad in ["", #","hash":7"#, #","hash":"\#(hash.uppercased())""#, #","hash":"abc""#, #","hash":null"#] {
+            XCTAssertEqual(try [icon("rocket", bad).librarySlug, icon("rocket", bad).path], ["rocket", nil], bad)
+        }
+        XCTAssertNil(try icon("x", #","hash":"\#(hash)""#, type: "image").path)
+        XCTAssertEqual(TaskList.Card(taskId: "t1", agentId: "a", title: " kubernetes", signal: .none, faces: []).letter, "K")
+        XCTAssertNotEqual(TaskList.tint("t1", among: 7), TaskList.tint("t2", among: 7))
+    }
 }
 
 private actor RichFixture: AgentTransport {

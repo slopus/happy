@@ -295,7 +295,7 @@ final class HomeViewController: UIViewController {
     private func poster(_ author: StoryFeedAuthor) -> StoryFeedAuthor {
         var author = author
         if let agentId = author.ringAgentId, let card = agentHome.richTasks?.card(holding: agentId) {
-            (author.name, author.photo) = (author.name.isEmpty ? card.name : author.name, card.iconSlug.map(StoriesRow.clayPhoto))
+            (author.name, author.photo) = (author.name.isEmpty ? card.name : author.name, card.iconPath ?? card.iconSlug.map(StoriesRow.clayPhoto))
         } else if let id = author.userId, let person = agentHome.people[id] {
             (author.name, author.photo, author.thumbhash) = (author.name.isEmpty ? person.name : author.name, person.hasPhoto ? Person.photoPath(id) : nil, person.thumbhash)
         } else if author.ringAgentId == nil, let id = author.userId, let engine = session?.engine {

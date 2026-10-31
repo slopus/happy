@@ -31,14 +31,15 @@ public enum TaskListMetrics {
     /// The card's highlight is at least the disc and 8, rounded 14 (Telegram's row: 68 at Large).
     public static let cardRadius: CGFloat = 14
     public static let discRoom: CGFloat = 8
-    /// The disc: Telegram's 60, its fill the ink at 5%, its art 0.8 of it, 0.7 in a story's ring (2.33 wide, the fill 4 in).
+    /// The disc: Telegram's 60, unfilled, its art 0.8 of it, 0.7 in a story's ring (2.33 wide, the disc 4 in);
+    /// a face's fill the ink at 5%; an icon's letter tile its letter at 0.45 of it.
     public static let disc: CGFloat = 60
     public static let discInk: CGFloat = 0.05
     public static let iconShare: CGFloat = 0.8
     public static let storyIconShare: CGFloat = 0.7
     public static let storyRing: CGFloat = 2.33
     public static let storyFill: CGFloat = 4
-    public static let iconGlyph: CGFloat = 30
+    public static let letterScale: CGFloat = 0.45
     /// Disc to text; the title's line and the time 8 apart.
     public static let textGap: CGFloat = 10
     public static let timeGap: CGFloat = 8

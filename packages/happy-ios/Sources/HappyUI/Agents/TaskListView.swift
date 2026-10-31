@@ -189,15 +189,16 @@ final class TaskRowView: UIView {
     /// The story ring round the disc, which the viewer grows out of, and its arcs, seen and new.
     let ringView = UIView()
     private let seenArc = CAShapeLayer(), newArc = CAShapeLayer()
-    private let disc = UIView(), dot = UIView(), tile = UIView(), icon = UIImageView(), mark = UIImageView(), separator = UIView()
+    private let letter = UILabel(), dot = UIView(), tile = UIView(), icon = UIImageView(), mark = UIImageView(), separator = UIView()
     private let status = StatusTextView(), braille = BrailleView()
     private var faces: [FaceView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
-        // The disc's ink over its icon, the tile under its mark; none takes a touch, as the row takes none.
-        [separator, highlight, label, icon, ringView, time, status, more, dot, braille, disc, tile, mark, meta].forEach(addSubview)
+        // The tile under its mark; none takes a touch, as the row takes none.
+        [separator, highlight, label, letter, icon, ringView, time, status, more, dot, braille, tile, mark, meta].forEach(addSubview)
+        (letter.textColor, letter.textAlignment, letter.layer.masksToBounds) = (.white, .center, true)
         for arc in [seenArc, newArc] { (arc.fillColor, arc.lineWidth) = (nil, M.storyRing); ringView.layer.addSublayer(arc) }
         (highlight.layer.cornerCurve, braille.tintColor, dot.backgroundColor) = (.continuous, UIColor(Palette.taskMuted), UIColor(Palette.taskMuted))
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyColors() }
@@ -211,8 +212,7 @@ final class TaskRowView: UIView {
         switch item {
         case .card(let card):
             (label.font, label.textColor, label.text) = (text.title, ink, card.title)
-            let clay = card.iconSlug.flatMap(ClayIconImages.image)
-            (icon.image, icon.contentMode, icon.tintColor) = (clay ?? Glyphs.image("tasks", size: M.iconGlyph), clay == nil ? .center : .scaleAspectFit, muted)
+            showIcon(card)
             ringView.isHidden = !card.story
             (time.font, time.textColor, time.textAlignment) = (text.time, muted, .right)
             time.text = card.time.map { RowTime.text($0) }
@@ -251,6 +251,21 @@ final class TaskRowView: UIView {
         return true
     }
 
+    /// The daemon's icon by slug and hash, else an older daemon's clay one; its letter's tile until one comes, or with none.
+    private func showIcon(_ card: TaskList.Card) {
+        job?.cancel()
+        let pixels = Int(M.disc * traitCollection.displayScale)
+        if let path = card.iconPath { icon.image = picture?(path) ?? images?.cachedPicture(path, thumbhash: nil, pixels: pixels) }
+        else { icon.image = card.iconSlug.flatMap(ClayIconImages.image) }
+        (letter.text, letter.isHidden) = (card.letter, icon.image != nil)
+        letter.backgroundColor = UIColor(FaceView.colors[TaskList.tint(card.taskId, among: FaceView.colors.count)])
+        guard icon.image == nil, let path = card.iconPath, let images else { return }
+        job = Task { [weak self] in
+            guard let image = await images.picture(path, thumbhash: nil, pixels: pixels), !Task.isCancelled, let self else { return }
+            (icon.image, letter.isHidden) = (image, true)
+        }
+    }
+
     private func showMark(_ shown: TaskList.Mark, glyph: CGFloat) {
         job?.cancel()
         switch shown {
@@ -271,7 +286,6 @@ final class TaskRowView: UIView {
         let accent = UIColor(Palette.taskAccent).resolvedColor(with: traitCollection)
         let ink = UIColor(Palette.taskText).resolvedColor(with: traitCollection)
         highlight.backgroundColor = selected ? accent.withAlphaComponent(M.selectedAlpha) : pressed ? ink.withAlphaComponent(M.pressedAlpha) : nil
-        disc.backgroundColor = ink.withAlphaComponent(M.discInk)
         tile.backgroundColor = ink.withAlphaComponent(M.markInk)
         separator.backgroundColor = UIColor(Palette.groupedSeparator)
         newArc.strokeColor = accent.cgColor
@@ -285,10 +299,11 @@ final class TaskRowView: UIView {
         guard let f = frames, let item else { return }
         func local(_ rect: CGRect?) -> CGRect { rect?.offsetBy(dx: -f.box.minX, dy: -f.box.minY) ?? .zero }
         highlight.layer.cornerRadius = f.radius
-        for (view, rect) in [(highlight, f.highlight), (label, f.label), (ringView, f.ring), (disc, f.disc), (icon, f.icon), (time, f.time), (status, f.status), (more, f.more), (dot, f.signal), (braille, f.signal), (tile, f.mark), (mark, f.mark), (meta, f.meta), (separator, f.separator)] as [(UIView, CGRect?)] {
+        for (view, rect) in [(highlight, f.highlight), (label, f.label), (ringView, f.ring), (letter, f.icon), (icon, f.icon), (time, f.time), (status, f.status), (more, f.more), (dot, f.signal), (braille, f.signal), (tile, f.mark), (mark, f.mark), (meta, f.meta), (separator, f.separator)] as [(UIView, CGRect?)] {
             view.frame = local(rect)
         }
-        for view in [ringView, disc, dot] { view.layer.cornerRadius = view.bounds.width / 2 }
+        for view in [ringView, letter, dot] { view.layer.cornerRadius = view.bounds.width / 2 }
+        letter.font = Fonts.ui(.semiBold, size: letter.bounds.height * M.letterScale)
         status.lineEnd = f.statusEnd.map { $0 - (f.status?.minX ?? 0) }
         for (face, rect) in zip(faces, f.faces) { face.frame = local(rect) }
         (tile.layer.cornerRadius, mark.layer.cornerRadius) = (M.markRadius * tile.bounds.width / M.mark, M.markRadius * tile.bounds.width / M.mark)
@@ -330,7 +345,7 @@ final class FaceView: UIView {
         image.image = cached ?? ThumbHashImages.image(thumbhash)
         let letter = image.image == nil ? person?.name.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } : nil
         initial.text = letter
-        tint = letter.map { _ in Self.colors[userId.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xffff } % Self.colors.count] }
+        tint = letter.map { _ in Self.colors[TaskList.tint(userId, among: Self.colors.count)] }
         guard cached == nil, person?.hasPhoto == true, let images else { return }
         job = Task { [weak self] in
             let read = await images.picture(path, thumbhash: thumbhash, pixels: pixels)

@@ -32,5 +32,22 @@ final class TaskListViewTests: XCTestCase {
         list.apply(tasks(["Zero", "One", "Two, now longer", "Three"], first: -1))
         XCTAssertEqual(list.drift, list.result.frames[0].box.height, "a whole card")
     }
+
+    private final class Icons: AgentTransport, @unchecked Sendable {
+        var paths: [String] = []
+        func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+            paths.append(path)
+            return HTTP1Response(status: 200, headers: [:], body: UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).pngData { $0.fill(CGRect(x: 0, y: 0, width: 4, height: 4)) })
+        }
+        func close() async {}
+    }
+
+    /// A card's icon is read once per hash: the same again comes from the cache, a new one from the daemon.
+    func testIconsAreReadOncePerHash() async {
+        let icons = Icons(), images = Images(client: AgentClient(transport: icons, token: "t"))
+        let paths = ["a", "a", "b"].compactMap { TaskIcon(type: "library", slug: "kubernetes-deployments", hash: String(repeating: $0, count: 64)).path }
+        for path in paths { _ = await images.picture(path, thumbhash: nil, pixels: 180) }
+        XCTAssertEqual(icons.paths, [paths[0], paths[2]])
+    }
 }
 #endif

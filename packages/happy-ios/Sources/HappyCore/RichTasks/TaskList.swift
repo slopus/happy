@@ -19,7 +19,7 @@ public enum TaskList {
 
     public struct Card: Equatable, Sendable {
         public var taskId, agentId, title: String
-        public var iconSlug: String?
+        public var iconSlug, iconPath: String?
         /// The last activity, to the minute (ms).
         public var time: Double?
         public var status: String?
@@ -32,6 +32,13 @@ public enum TaskList {
         public var people: [Person?] = []
         /// "+N more" in the corner: every child hidden, the card not opened out.
         public var more: Int?
+        /// Its tile while (or when no) icon is drawn: its name's first letter, on the colour `tint` picks by task.
+        public var letter: String? { title.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } }
+    }
+
+    /// Which of `count` colours is `id`'s own: a face's, a card's tile.
+    public static func tint(_ id: String, among count: Int) -> Int {
+        id.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xffff } % count
     }
 
     public struct SubRow: Equatable, Sendable {
@@ -88,7 +95,7 @@ public enum TaskList {
     static func card(_ card: RichTasks.Card) -> Card {
         let status = Rows.activity(card.agent)
         let signal: Row.Corner = status == .working ? .braille : status == .awaitingInput || card.agent.unread != nil ? .dot : .none
-        return Card(taskId: card.taskId, agentId: card.agent.id, title: card.name, iconSlug: card.iconSlug, time: card.agent.activityAt.map(Rows.minute),
+        return Card(taskId: card.taskId, agentId: card.agent.id, title: card.name, iconSlug: card.iconSlug, iconPath: card.iconPath, time: card.agent.activityAt.map(Rows.minute),
                     status: card.agent.statusLine?.text, signal: signal, faces: card.faces)
     }
 

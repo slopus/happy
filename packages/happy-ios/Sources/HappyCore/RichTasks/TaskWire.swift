@@ -33,8 +33,17 @@ extension KeyedDecodingContainer {
 public struct TaskIcon: Codable, Equatable, Sendable {
     public var type: String
     public var slug: String?
+    /// The SHA-256 of the daemon's 128px WebP; an older daemon sends none.
+    @Lenient public var hash: String?
 
     public var librarySlug: String? { type == "library" ? slug : nil }
+
+    /// Where the daemon serves its picture, versioned by its hash so a copy never goes stale; nil without a well-formed one.
+    public var path: String? {
+        guard let slug = librarySlug?.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(["-"])), let hash, hash.count == 64,
+              hash.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { return nil }
+        return "/v0/task-icons/\(slug)?v=\(hash)"
+    }
 }
 
 /// One choice about whether something shows under a task: a link, or a
