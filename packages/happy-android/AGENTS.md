@@ -884,9 +884,13 @@ NOTICE and license in `assets/avatar-placeholders/`.
 Placeholders move only with Settings › Appearance › Animated Avatars on
 (device-local, off by default), on Android 13+ (`RuntimeShader`), while
 their screen is resumed, animations aren't removed and power save is off;
-at most 32 at once on one shared ~20 fps Choreographer clock
-(`LiveAvatarClock`). The account menu and settings rows pass
-`animated = false`. Seeds follow happy-ios: an agent connection is
+at most 32 at once on one shared Choreographer clock (`LiveAvatarClock`)
+at `AvatarShader.FRAMES_PER_SECOND` (20), each at `AvatarShader.speed`
+for its size (2× at 48 dp and under, 1.5× above), as happy-ios. Settings'
+picture, its accounts card, settings search and the account menu's button
+move only for an account without a picture or thumbhash of its own
+(`AvatarPlaceholder.liveSeed`); the menu's rows stay still. Seeds follow
+happy-ios: an agent connection is
 `agent:<address>`, a bot or task its own id, a project its id. Agent
 home's project folders read the wire's `avatar`: `kind: "image"` is
 `/v0/projects/:id/avatar` over its thumbhash, `"home"` the home glyph,

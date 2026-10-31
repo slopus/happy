@@ -38,6 +38,18 @@ object AvatarShader {
     const val SCALE = 1f
     const val GRAIN = 0.07f
 
+    /**
+     * How fast a live placeholder [side] dp across moves: its clock's rate,
+     * 1 the package's own (happy-ios's `speed(side:)`). At the package's
+     * rate a row's avatar changes about a third as much each second as
+     * Settings' large one and reads as still, so small ones run at twice it
+     * and large ones (Settings, a chat's mark) at one and a half.
+     */
+    fun speed(side: Float): Float = if (side <= 48f) 2f else 1.5f
+
+    /** The frames a second live placeholders are drawn at (happy-ios's `framesPerSecond`). */
+    const val FRAMES_PER_SECOND = 20
+
     private val table: List<Parameters> = List(AvatarPlaceholder.COUNT) { index ->
         val at = index * ROW
         Parameters(
@@ -57,6 +69,10 @@ object AvatarShader {
 
     /** The shader's clock after [elapsed] seconds on screen. */
     fun time(parameters: Parameters, elapsed: Double): Float = parameters.phase + elapsed.toFloat()
+
+    /** The clock of one moving [speed] times its own rate, [millis] after it started; its phase when it doesn't [move]. */
+    fun time(parameters: Parameters, millis: Long, speed: Float, move: Boolean = true): Float =
+        time(parameters, if (move) millis.coerceAtLeast(0) / 1000.0 * speed else 0.0)
 
     /** The grain's cell in device pixels for an avatar [pixels] across (renderer.js: `max(1, 2r / 540)`), so large ones keep visible grain. */
     fun grainCell(pixels: Int): Float = max(1f, pixels / 540f)

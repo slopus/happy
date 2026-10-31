@@ -37,6 +37,7 @@ import com.slopus.happy.ui.browser.rememberLinkMenu
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.Avatar
+import com.slopus.happy.ui.components.avatar.AvatarPlaceholder
 import com.slopus.happy.ui.components.GlassColors
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.HappyDropdownMenu
@@ -133,7 +134,10 @@ data class SettingsProfile(
     val thumbhash: String? = null,
     /** What picks the placeholder picture: an agent's own seed, else [id]. */
     val seed: String = id,
-)
+) {
+    /** Its placeholder's seed when it has no picture: it moves with Animated Avatars on ([AvatarPlaceholder.liveSeed]). */
+    val liveSeed: String? get() = AvatarPlaceholder.liveSeed(seed, imageUri, thumbhash)
+}
 
 /** One item of the picture's menu. */
 @Immutable
@@ -183,7 +187,7 @@ fun SettingsHeader(profile: SettingsProfile, edit: List<SettingsEditItem>? = nul
                 modifier = if (edit != null) Modifier.glassSource(picture) else Modifier,
                 imageUri = profile.imageUri,
                 thumbhash = profile.thumbhash,
-                animated = false,
+                animated = profile.liveSeed != null,
             )
             if (edit != null) {
                 Box(
@@ -274,7 +278,7 @@ fun AccountsCard(accounts: AccountMenu, actions: AccountsCardActions) {
                 Item(
                     title = name,
                     subtitle = entry.detail,
-                    icon = { Avatar(entry.seed, SettingsPageSpec.accountAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = false) },
+                    icon = { Avatar(entry.seed, SettingsPageSpec.accountAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = entry.liveSeed != null) },
                     rightElement = when {
                         entry.active -> { { Icon(Ionicon.Checkmark, SettingsPageSpec.check, colors.textLink) } }
                         entry.attention -> { { Icon(Ionicon.AlertCircleOutline, SettingsPageSpec.check, colors.textDestructive) } }

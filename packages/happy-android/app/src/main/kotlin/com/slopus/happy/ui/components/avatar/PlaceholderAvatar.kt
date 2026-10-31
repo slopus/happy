@@ -81,8 +81,9 @@ private var SemanticsPropertyReceiver.placeholderIndex by PlaceholderIndexKey
  *
  * Where it [may move][animated] and Animated Avatars is on, on Android 13
  * and later it is drawn as its live shader instead ([AVATAR_SHADER_AGSL]),
- * starting on the still picture's frame (its phase): about 20 frames a
- * second from one shared clock, only while composed (a lazy list's rows on
+ * starting on the still picture's frame (its phase), [AvatarShader.speed]
+ * times the package's rate for its size: [AvatarShader.FRAMES_PER_SECOND]
+ * frames a second from one shared clock, only while composed (a lazy list's rows on
  * screen) and its screen is resumed, at most [LiveAvatarClock.MAX_LIVE] at
  * once (the rest stay still). With animations removed or in battery saver
  * each holds its picture, as happy-ios does under Reduce Motion or Low
@@ -118,11 +119,12 @@ fun PlaceholderAvatar(
         if (moving) {
             val parameters = remember(index) { AvatarShader.parameters(index) }
             val started = remember(index) { SystemClock.uptimeMillis() }
+            val speed = AvatarShader.speed(size.value)
             Box(
                 box.testTag(PlaceholderAvatarTags.LIVE).drawBehind {
-                    val elapsed = (LiveAvatarClock.millis.longValue - started).coerceAtLeast(0) / 1000.0
+                    val time = AvatarShader.time(parameters, LiveAvatarClock.millis.longValue - started, speed)
                     drawIntoCanvas { canvas ->
-                        AvatarShaderProgram.draw(canvas.nativeCanvas, parameters, AvatarShader.time(parameters, elapsed), this.size.width, monochrome)
+                        AvatarShaderProgram.draw(canvas.nativeCanvas, parameters, time, this.size.width, monochrome)
                     }
                 },
             )
@@ -198,14 +200,14 @@ object AvatarPlaceholderImages {
 }
 
 /**
- * The one clock every moving placeholder reads, ticking about 20 times a
- * second (the package's rate: they drift slowly) on the main thread's
+ * The one clock every moving placeholder reads, ticking
+ * [AvatarShader.FRAMES_PER_SECOND] times a second (they drift slowly) on the main thread's
  * Choreographer while any has joined, and stopped when none has. The first
  * [MAX_LIVE] to join move; the rest wait their turn on their still picture.
  */
 object LiveAvatarClock {
     const val MAX_LIVE = 32
-    private const val FRAME_MS = 50L
+    private const val FRAME_MS = 1000L / AvatarShader.FRAMES_PER_SECOND
 
     /** [SystemClock.uptimeMillis] at the last tick; read in draw, so a tick only redraws. */
     val millis = mutableLongStateOf(SystemClock.uptimeMillis())

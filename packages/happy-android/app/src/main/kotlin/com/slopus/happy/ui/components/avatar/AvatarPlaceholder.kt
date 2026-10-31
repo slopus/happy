@@ -26,6 +26,15 @@ object AvatarPlaceholder {
     fun name(seed: String): String = name(index(seed))
 
     /**
+     * What an account's placeholder moves as with Animated Avatars on
+     * (happy-ios's `ProfilePictures.liveSeed`): its [seed], only when it has
+     * no picture of its own ([imageUri]) nor a [thumbhash] of one, so a
+     * real picture is never covered.
+     */
+    fun liveSeed(seed: String, imageUri: String?, thumbhash: String?): String? =
+        seed.takeIf { imageUri == null && thumbhash == null }
+
+    /**
      * FNV-1a over the UTF-8 bytes, then MurmurHash3's finaliser, in 32-bit
      * unsigned arithmetic (an Int's bits here): FNV's low bits barely move
      * for IDs that differ only in their last character, and the pick is

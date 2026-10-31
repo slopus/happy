@@ -84,7 +84,8 @@ internal fun harnessBadgeSizes(size: Int, harness: AvatarHarness): Pair<Int, Int
  * for it, cover-fit as expo-image draws one (Avatar.tsx `placeholder`), or
  * without one the still placeholder. The monochrome setting forces
  * black-and-white; a caller's [monochrome] (offline rows) also does. Where
- * [animated] (the default; account menus and settings rows pass false) and
+ * [animated] (the default; the account menu's rows pass false, and an
+ * account elsewhere only without a picture, `AvatarPlaceholder.liveSeed`) and
  * Animated Avatars is on, the placeholder moves.
  *
  * With [badgeLocation] opted in by the matching setting, a harness badge

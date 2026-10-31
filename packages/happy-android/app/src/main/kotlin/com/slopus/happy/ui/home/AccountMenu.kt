@@ -31,6 +31,7 @@ import com.slopus.happy.R
 import com.slopus.happy.ui.connect.LocalAddFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.ui.components.Avatar
+import com.slopus.happy.ui.components.avatar.AvatarPlaceholder
 import com.slopus.happy.ui.components.HappyDropdownMenu
 import com.slopus.happy.ui.components.HappyMenuDivider
 import com.slopus.happy.ui.components.HappyMenuItem
@@ -54,7 +55,10 @@ data class AccountMenuEntry(
     val attention: Boolean = false,
     /** What its placeholder is picked by: a Happy account its id, an agent connection its computer's address ([AgentConnections.placeholderSeed]). */
     val seed: String = id,
-)
+) {
+    /** Its placeholder's seed when it has no picture: it moves with Animated Avatars on ([AvatarPlaceholder.liveSeed]). */
+    val liveSeed: String? get() = AvatarPlaceholder.liveSeed(seed, imageUrl, thumbhash)
+}
 
 /** What Home's avatar menu lists: Happy accounts first, then agent connections, each oldest first. */
 @Immutable
@@ -159,7 +163,8 @@ fun AccountMenuButton(
                 contentAlignment = Alignment.Center,
             ) {
                 if (active != null) {
-                    Avatar(active.seed, AccountMenuSpec.avatar, imageUri = active.imageUrl, thumbhash = active.thumbhash, animated = false)
+                    // The button moves; the menu's rows stay still, as happy-ios's system menu does.
+                    Avatar(active.seed, AccountMenuSpec.avatar, imageUri = active.imageUrl, thumbhash = active.thumbhash, animated = active.liveSeed != null)
                 } else {
                     Icon(Ionicon.PersonCircleOutline, AccountMenuSpec.avatar, colors.header.tint)
                 }

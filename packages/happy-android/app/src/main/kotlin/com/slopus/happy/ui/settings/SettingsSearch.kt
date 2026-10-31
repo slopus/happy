@@ -235,7 +235,7 @@ fun settingsProfileEntries(accounts: AccountMenu, onSwitch: (String) -> Unit): L
         SettingsEntry(
             id = SettingsSearchTags.profile(entry.id),
             title = entry.name ?: if (entry.agent) unnamedAgent else unnamedAccount,
-            icon = { Avatar(entry.seed, SettingsPageSpec.accountAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = false) },
+            icon = { Avatar(entry.seed, SettingsPageSpec.accountAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = entry.liveSeed != null) },
             detail = if (entry.agent) agentKind else accountKind,
             onClick = { if (!entry.active) onSwitch(entry.id) },
             closesSearch = true,
