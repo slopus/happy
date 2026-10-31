@@ -16,13 +16,15 @@ import UIKit
 /// keeps this page on top); tapping its circle makes it the active one and
 /// goes back to its home. "+" adds a computer in the link sheet.
 ///
-/// A computer's page: its name and status; Appearance (the theme, which
+/// A computer's page: the person's own Profile there (`ProfileViewController`);
+/// asking its agent to change its name or picture (`ChiefOfStaffAsk`,
+/// nothing renamed here); its status; Appearance (the theme, which
 /// each profile keeps on this phone, and Hide projects); adding a computer
 /// or a Happy account; About; Disconnect. A Happy account's: its own pages
 /// (Account, Appearance, Language, Voice, Agents), its connected services,
 /// connecting a terminal, Support us, adding; About; Sign out. Those pages
 /// write to that account's synced settings, so they are on its page alone.
-final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGestureRecognizerDelegate, UISearchResultsUpdating, UISearchControllerDelegate {
+final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISearchResultsUpdating, UISearchControllerDelegate {
     /// Pushes settings over `controller`, on `computer`'s page (the active
     /// profile's when nil), showing the row `reveal` names if there is one.
     /// Once: a second tap meanwhile does nothing.
@@ -47,9 +49,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     private let scroll = UIScrollView()
     private let name = UILabel()
     private let subtitle = UILabel()
-    private var nameField: RenameField?
-    /// A rename sent, shown until the computer says the same.
-    private var heldName: (id: String, name: String)?
     private var cards: [SettingsCardView] = []
     private var rows: [[SettingsRow]] = []
     /// What the page shows now, card by card, and where the profiles'
@@ -65,6 +64,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     func tapRow(_ id: String) {
         rows.joined().first { $0.id == id }?.action?()
     }
+    /// The row `id` as the page shows it.
+    func shownRow(_ id: String) -> SettingsRow? { rows.joined().first { $0.id == id } }
     /// The frames last applied.
     private var settingsLayout = SettingsLayout(width: 0, nameHeight: 0, subtitleHeight: 0, cards: [])
     private lazy var searchController = UISearchController(searchResultsController: nil)
@@ -75,6 +76,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     private var prioritizing: Bool?
     private var connectionSettingsWatch: Task<Void, Never>?
     private var projectsHidden = false
+    /// The person's own profile on the computer shown, for its row.
+    private var profileWatch: (id: String, watch: Watch)?
+    private var profileName = ""
+    private var profilePhoto: UIImage?
+    private var appeared = false
     /// The nested page open over this one, drawn again with it.
     private weak var page: SettingsPageViewController?
     /// The Happy account's own settings, while its page shows.
@@ -113,8 +119,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         name.textColor = UIColor(Palette.settingsText)
         name.textAlignment = .center
         name.accessibilityIdentifier = "settings-name"
-        name.isUserInteractionEnabled = true
-        name.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(nameTapped)))
         subtitle.font = Fonts.ui(.regular, size: 17)
         subtitle.textColor = UIColor(Palette.settingsSecondary)
         subtitle.textAlignment = .center
@@ -126,12 +130,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         empty.textAlignment = .center
         empty.isHidden = true
         scroll.addSubview(empty)
-        scroll.addGestureRecognizer({
-            let tap = UITapGestureRecognizer(target: self, action: #selector(tappedAway))
-            tap.cancelsTouchesInView = false
-            tap.delegate = self
-            return tap
-        }())
         setUpBar()
         observation = context.account.observeAccounts { [weak self] _ in self?.reload() }
         reload()
@@ -141,10 +139,13 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         super.viewWillAppear(animated)
         // Back from Welcome without signing in: no account is being added.
         if context.account.isAddingAccount, presentedViewController == nil { context.account.cancelAddingAccount() }
+        // Back from a page over this one: the Profile row reads its profile again.
+        if appeared, let id = profileWatch?.id { Session.session(for: id, context: context)?.profile.refresh() }
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        appeared = true
         guard reveal != nil else { return }
         showRevealed()
         // A row that hasn't come by now isn't coming.
@@ -153,7 +154,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
 
     /// The row search found: scrolled to the middle and flashed, for the
     /// person to change or open; nothing runs on its own (a link would
-    /// leave the app, a rename would raise the keyboard).
+    /// leave the app, an ask would open a conversation).
     private func showRevealed() {
         guard let id = reveal, query == nil, view.window != nil else { return }
         if !rows.joined().contains(where: { $0.id == id }), let page = page(holding: id) {
@@ -208,13 +209,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         let direct = context.account.agentConnections.accounts
         profiles = (accounts.filter(\.isAgentConnection) + accounts.filter { !$0.isAgentConnection }).map { account in
             if account.isAgentConnection, let computer = direct.first(where: { $0.id == account.id }) {
-                let name = heldName?.id == account.id ? heldName!.name : computer.name
-                return Profile(id: account.id, name: name, subtitle: computer.status.title, isAgentConnection: true, isActive: account.isActive)
+                return Profile(id: account.id, name: computer.name, subtitle: computer.status.title, isAgentConnection: true, isActive: account.isActive)
             }
             let name = account.name ?? account.username ?? Strings.happyAccount
             return Profile(id: account.id, name: name, subtitle: account.username.map { "@\($0)" } ?? Strings.happyAccount, isAgentConnection: false, isActive: account.isActive)
         }
-        if let held = heldName, direct.first(where: { $0.id == held.id })?.name == held.name { heldName = nil }
         // With none left, the window's root is the link screen and this
         // page goes with the old one (`AppCoordinator.install`).
         guard !profiles.isEmpty else { return }
@@ -244,7 +243,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     private func choose(_ index: Int, closing: Bool = false) {
         guard profiles.indices.contains(index) else { return }
         let profile = profiles[index]
-        endEditingName(keep: true)
         if shownID != profile.id {
             shownID = profile.id
             watchShown()
@@ -285,7 +283,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
 
     /// Telegram's "Add Account": the one Add flow (`AccountAdding`).
     private func connectAgent() {
-        endEditingName(keep: true)
         AccountAdding.begin(context: context, from: self)
     }
 
@@ -296,6 +293,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
     }
 
     private func watchShown() {
+        watchProfile()
         connectionSettingsWatch?.cancel(); connectionSettingsWatch = nil
         projectsHidden = false
         prioritizingWatch?.invalidate()
@@ -329,6 +327,26 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
             prioritizing = snapshot.prioritizing
             rebuild(animated: false)
         }
+    }
+
+    /// The Profile row follows the shown computer's profile: read once
+    /// when the computer is shown, then as it changes.
+    private func watchProfile() {
+        let id = shown.flatMap { $0.isAgentConnection ? $0.id : nil }
+        guard profileWatch?.id != id else { return }
+        profileWatch?.watch.invalidate()
+        profileWatch = nil
+        profileName = ""
+        profilePhoto = nil
+        guard let id, let session = Session.session(for: id, context: context) else { return }
+        let source = session.profile
+        profileWatch = (id, source.watch { [weak self, weak source] in
+            guard let self, let source, profileName != source.state.name || profilePhoto !== source.photo else { return }
+            profileName = source.state.name
+            profilePhoto = source.photo
+            rebuild(animated: false)
+        })
+        source.refresh()
     }
 
     // MARK: Rows
@@ -369,8 +387,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
             typealias Index = SettingsIndex
             return [
                 accountRows(),
+                [Row(Index.profile, image: profilePhoto, value: profileName.isEmpty ? nil : profileName, action: { [weak self] in self?.openProfile() })],
                 [
-                    Row(Index.editName, action: { [weak self] in self?.beginRename() }),
+                    Row(Index.changeAgentName, action: { [weak self] in self?.ask(.agentName) }),
+                    Row(Index.changeAgentAvatar, action: { [weak self] in self?.ask(.agentAvatar) }),
                     Row(Index.status, value: profile.subtitle, accessory: .none),
                 ],
                 [Row(Index.appearance, action: { [weak self] in self?.open(.appearance) })],
@@ -495,33 +515,18 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         } else {
             rows = rowsFor(profile)
         }
-        // A row tapped keeps a name being typed first.
-        rows = rows.map { card in
-            card.map { row in
-                var row = row
-                if let action = row.action {
-                    row.action = { [weak self] in
-                        self?.endEditingName(keep: true)
-                        action()
-                    }
-                }
-                return row
-            }
-        }
         page?.reload()
         let searching = query != nil
-        name.isHidden = searching || nameField != nil
+        name.isHidden = searching
         subtitle.isHidden = searching
         empty.isHidden = !(searching && !(query ?? "").isEmpty && rows.isEmpty)
-        let text = heldName?.id == profile.id ? heldName!.name : profile.name
-        for (label, value) in [(name, text), (subtitle, profile.subtitle)] where label.text != value {
+        for (label, value) in [(name, profile.name), (subtitle, profile.subtitle)] where label.text != value {
             if animated {
                 UIView.transition(with: label, duration: 0.2, options: [.transitionCrossDissolve, .beginFromCurrentState], animations: { label.text = value })
             } else {
                 label.text = value
             }
         }
-        name.accessibilityTraits = profile.isAgentConnection ? .button : .staticText
         while cards.count < rows.count { let card = SettingsCardView(); scroll.addSubview(card); cards.append(card) }
         while cards.count > rows.count { cards.removeLast().removeFromSuperview() }
         view.setNeedsLayout()
@@ -548,7 +553,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         let layout = SettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, searching: searching, showsStrip: false)
         settingsLayout = layout
         name.frame = layout.name
-        nameField?.frame = layout.name
         subtitle.frame = layout.subtitle
         empty.frame = layout.empty
         for (index, card) in cards.enumerated() where layout.cards.indices.contains(index) {
@@ -563,7 +567,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
 
     /// The bar's search field opened: the page narrows as it is typed in.
     func willPresentSearchController(_ searchController: UISearchController) {
-        endEditingName(keep: true)
         query = ""
         rebuild(animated: false)
     }
@@ -584,79 +587,21 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UIGe
         searchController.isActive = false
     }
 
-    // MARK: Rename
-
-    @objc private func nameTapped() { beginRename() }
-
-    /// The name, in place, as a field; Return or a tap away keeps it.
-    private func beginRename() {
-        guard nameField == nil, query == nil, let profile = shown, profile.isAgentConnection else { return }
-        let field = RenameField()
-        field.font = name.font
-        field.textColor = name.textColor
-        field.tintColor = UIColor(Palette.settingsPrimary)
-        field.textAlignment = .center
-        field.text = name.text
-        field.returnKeyType = .done
-        field.autocapitalizationType = .words
-        field.accessibilityIdentifier = "settings-rename"
-        field.frame = name.frame
-        field.onFinish = { [weak self] kept in self?.finishRename(profile.id, kept: kept) }
-        scroll.addSubview(field)
-        nameField = field
-        name.isHidden = true
-        view.setNeedsLayout()
-        field.becomeFirstResponder()
-        field.selectAll(nil)
-    }
-
-    private func endEditingName(keep: Bool) {
-        guard let field = nameField else { return }
-        // Its own profile's, whichever shows now.
-        if field.isFirstResponder { field.resignFirstResponder() } else { field.onFinish?(keep ? field.text : nil) }
-    }
-
-    @objc private func tappedAway() {
-        endEditingName(keep: true)
-    }
-
-    /// Beside the circles' and rows' own taps, never instead of them; not
-    /// on the name, whose tap starts the rename, or the rows.
-    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        guard let view = touch.view else { return true }
-        if view === name || cards.contains(where: { view.isDescendant(of: $0) }) { return false }
-        return nameField.map { !view.isDescendant(of: $0) } ?? true
-    }
-
-    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
-
-    private func finishRename(_ id: String, kept: String?) {
-        guard let field = nameField else { return }
-        nameField = nil
-        field.onFinish = nil
-        field.removeFromSuperview()
-        name.isHidden = query != nil
-        view.setNeedsLayout()
-        let previous = profiles.first { $0.id == id }?.name
-        guard let kept = kept?.trimmingCharacters(in: .whitespacesAndNewlines), !kept.isEmpty, kept != previous else { return }
-        // Shown at once and kept until the computer says the same: no flicker back.
-        heldName = (id, kept)
-        name.text = kept
-        Haptics.play(.renamed)
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await context.account.agentConnections.rename(id, to: kept)
-            } catch {
-                heldName = nil
-                reload()
-                let message = Store.describe(error)
-                Alerts.show(Strings.couldNotRename, message.isEmpty ? error.localizedDescription : message, on: self)
-            }
-        }
-    }
-
     // MARK: Actions
+
+    /// The person's own name and picture on the computer shown.
+    private func openProfile() {
+        guard isTop, let id = profileWatch?.id, let session = Session.session(for: id, context: context) else { return }
+        show(ProfileViewController(source: session.profile))
+    }
+
+    /// "Change agent name" and "Change agent avatar" change nothing here:
+    /// they open Happy's conversation on the computer shown with the ask
+    /// typed in, unsent, for the person to finish (`ChiefOfStaffAsk`).
+    private func ask(_ prefill: ChatPrefill) {
+        guard isTop, let profile = shown, profile.isAgentConnection, let session = Session.session(for: profile.id, context: context) else { return }
+        ChiefOfStaffAsk.open(prefill, session: session, from: self)
+    }
 
     private func setPrioritizing(_ on: Bool) {
         guard let profile = shown, let session = Session.session(for: profile.id, context: context) else { return }

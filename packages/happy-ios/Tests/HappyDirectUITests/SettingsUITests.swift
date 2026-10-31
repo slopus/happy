@@ -177,21 +177,16 @@ final class SettingsUITests: XCTestCase {
 
         // Every row of the computer's page.
         openSettings()
-        let name = element("settings-name")
-        let before = name.label
-        row("edit-name").tap()
-        let field = app.textFields["settings-rename"]
-        XCTAssertTrue(field.waitForExistence(timeout: 3), "Edit name didn't open the field")
-        let renamed = before == "Settings Mac" ? "Settings Studio" : "Settings Mac"
-        field.typeText(renamed + "\n")
+        // The agent is asked to change its own name and picture; nothing
+        // renames in place, the heading included.
         XCTAssertTrue(element("settings-name").waitForExistence(timeout: 3))
-        XCTAssertEqual(element("settings-name").label, renamed, "the name didn't change")
-        // The name itself starts it too.
+        XCTAssertFalse(element("settings:edit-name").exists, "Edit name is still there")
+        XCTAssertTrue(row("change-agent-name").exists, "no Change agent name")
+        XCTAssertTrue(row("change-agent-avatar").exists, "no Change agent avatar")
+        XCTAssertTrue(row("profile").exists, "no Profile row")
         element("settings-name").tap()
-        XCTAssertTrue(field.waitForExistence(timeout: 3), "tapping the name didn't open the field")
-        capture("settings-rename")
-        field.typeText("\n")
-        pause(0.5)
+        XCTAssertFalse(app.textFields["settings-rename"].waitForExistence(timeout: 1), "tapping the name still renames in place")
+        capture("settings-asks")
         XCTAssertTrue(element("settings:status").exists, "no status row")
 
         let prioritizing = app.switches["settings-toggle:prioritizing"]

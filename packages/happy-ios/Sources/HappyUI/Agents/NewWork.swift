@@ -16,8 +16,9 @@ protocol NavigationTransitionProviding: AnyObject {
 /// on the "+" sheet. Its first message makes the work, in place.
 @MainActor
 enum NewWork {
-    static func chat(_ session: Session, creation: Creation, library: Bool = false) -> ChatViewController {
-        let chat = ChatViewController(session: session, agentId: creation.agentId, title: Strings.untitled, spaceId: creation.spaceId, seedling: .seedling(seed: creation.spaceId), creation: creation)
+    /// `prefill` is an ask typed in for the person, unsent (`ChatPrefill`).
+    static func chat(_ session: Session, creation: Creation, library: Bool = false, prefill: ChatPrefill? = nil) -> ChatViewController {
+        let chat = ChatViewController(session: session, agentId: creation.agentId, title: Strings.untitled, spaceId: creation.spaceId, seedling: .seedling(seed: creation.spaceId), creation: creation, prefill: prefill)
         chat.focusesOnOpen = !library
         chat.focusesAfterPick = library
         return chat

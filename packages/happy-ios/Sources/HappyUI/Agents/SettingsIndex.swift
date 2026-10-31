@@ -14,7 +14,9 @@ enum SettingsIndex {
         var tile: SettingsRow.Tile
     }
 
-    static var editName: Entry { Entry(id: "edit-name", title: Strings.editName, glyph: "create-outline", tile: .blue) }
+    static var profile: Entry { Entry(id: "profile", title: Strings.Profile.title, glyph: "person-circle-outline", tile: .gray) }
+    static var changeAgentName: Entry { Entry(id: "change-agent-name", title: Strings.changeAgentName, glyph: "create-outline", tile: .blue) }
+    static var changeAgentAvatar: Entry { Entry(id: "change-agent-avatar", title: Strings.changeAgentAvatar, glyph: "image-outline", tile: .orange) }
     static var status: Entry { Entry(id: "status", title: Strings.status, glyph: "desktop-outline", tile: .green) }
     static var hideProjects: Entry { Entry(id: "hide-projects", title: "Hide projects", glyph: "folder-outline", tile: .orange) }
     static var appearance: Entry { Entry(id: "appearance", title: Strings.Settings.appearance, glyph: "color-palette-outline", tile: .purple) }
@@ -33,7 +35,7 @@ enum SettingsIndex {
     /// order. Disconnect is left out: a search doesn't offer to take the
     /// computer away.
     static var computer: [Entry] {
-        [editName, status, appearance, hideProjects, connectAgent, addAccount] + aboutRows
+        [profile, changeAgentName, changeAgentAvatar, status, appearance, hideProjects, connectAgent, addAccount] + aboutRows
     }
 
     /// The About page's rows.
@@ -42,8 +44,8 @@ enum SettingsIndex {
 
 extension SettingsRow {
     /// `entry`'s row: its id, title and icon.
-    init(_ entry: SettingsIndex.Entry, value: String? = nil, accessory: SettingsLayout.Accessory = .chevron, isOn: Bool = false, action: (() -> Void)? = nil, toggled: ((Bool) -> Void)? = nil) {
-        self.init(id: entry.id, title: entry.title, icon: (entry.glyph, entry.tile), value: value, accessory: accessory, isOn: isOn, action: action, toggled: toggled)
+    init(_ entry: SettingsIndex.Entry, image: UIImage? = nil, value: String? = nil, accessory: SettingsLayout.Accessory = .chevron, isOn: Bool = false, action: (() -> Void)? = nil, toggled: ((Bool) -> Void)? = nil) {
+        self.init(id: entry.id, title: entry.title, icon: (entry.glyph, entry.tile), image: image, value: value, accessory: accessory, isOn: isOn, action: action, toggled: toggled)
     }
 }
 #endif

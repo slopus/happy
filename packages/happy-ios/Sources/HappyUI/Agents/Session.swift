@@ -26,6 +26,8 @@ final class Session {
     /// The person's settings for this phone, the transcript's renderer
     /// among them (`LocalSettings.chatListRenderer`).
     let localSettings: LocalSettings
+    /// The person's own name and picture on this computer.
+    private(set) lazy var profile = ProfileSource(client: client, engine: engine)
     private(set) var snapshot = Snapshot()
     private var watchers: [UUID: (Snapshot) -> Void] = [:]
     /// Readable, not settable, so a test can say the follow was let go of

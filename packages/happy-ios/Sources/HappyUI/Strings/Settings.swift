@@ -5,7 +5,6 @@ import HappyCore
 // beside the ones happy-app names (`Strings.Settings`), and adding a
 // computer. English only, as the rest of V2 is.
 extension Strings {
-    public static let editName = "Edit name"
     public static let voice = "Voice"
     public static let connectTerminal = "Scan terminal QR code"
     public static let enterTerminalURL = "Enter terminal URL"

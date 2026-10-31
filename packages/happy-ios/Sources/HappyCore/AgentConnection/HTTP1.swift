@@ -139,7 +139,8 @@ public actor TailcatHTTPTransport: AgentTransport {
                 return try await withTaskCancellationHandler {
                     do {
                         var head = "\(method) \(path) HTTP/1.1\r\nHost: server.tailcat:\(port)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: application/json\r\nContent-Length: \(body?.count ?? 0)\r\n"
-                        if body != nil { head += "Content-Type: application/json\r\n" }
+                        // JSON unless the caller names the type (a picture's bytes).
+                        if body != nil, !headers.keys.contains(where: { $0.lowercased() == "content-type" }) { head += "Content-Type: application/json\r\n" }
                         for (name, value) in headers { head += "\(name): \(value)\r\n" }
                         try await stream.write(Data((head + "\r\n").utf8))
                         if let body {

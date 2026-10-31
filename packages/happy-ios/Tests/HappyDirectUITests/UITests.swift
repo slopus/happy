@@ -2633,8 +2633,8 @@ final class UITests: XCTestCase {
         closeSettings()
     }
 
-    /// Settings from the picture: the QR sheet and its Scan, Edit name
-    /// renaming the computer in place, Prioritizing's switch, and "+"
+    /// Settings from the picture: the QR sheet and its Scan, the Profile
+    /// row and the agent's two asks, Prioritizing's switch, and "+"
     /// opening the link sheet. Every row, the push and the sheet's
     /// relay and pairing: SettingsUITests.
     func testSettings() {
@@ -2660,24 +2660,14 @@ final class UITests: XCTestCase {
         closeScanner.tap()
         pause(1)
 
-        // Edit name renames the computer in place; Return keeps it.
-        let name = app.descendants(matching: .any)["settings-name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 3))
-        let from = name.label
-        let to = from == "Studio Mac" ? "Mac Studio" : "Studio Mac"
-        app.descendants(matching: .any)["settings:edit-name"].tap()
-        let field = app.textFields["settings-rename"]
-        XCTAssertTrue(field.waitForExistence(timeout: 3))
-        pause(1)
-        capture("settings-edit")
-        field.typeText(to)
-        pause(0.8)
-        field.typeText("\n")
-        XCTAssertTrue(app.descendants(matching: .any)["settings-name"].waitForExistence(timeout: 2))
-        pause(2)
-        XCTAssertEqual(app.descendants(matching: .any)["settings-name"].label, to, "the name went back")
-        capture("settings-renamed")
-        print("HAPPY_RENAMED \(from) -> \(to)")
+        // No rename in place: the agent is asked to change its own name and
+        // picture, and the person's own profile has a page of its own.
+        XCTAssertTrue(app.descendants(matching: .any)["settings-name"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.descendants(matching: .any)["settings:edit-name"].exists, "Edit name is still there")
+        XCTAssertTrue(app.descendants(matching: .any)["settings:change-agent-name"].exists, "no Change agent name")
+        XCTAssertTrue(app.descendants(matching: .any)["settings:change-agent-avatar"].exists, "no Change agent avatar")
+        XCTAssertTrue(app.descendants(matching: .any)["settings:profile"].exists, "no Profile row")
+        capture("settings-asks")
 
         // Prioritizing's switch, off and on again.
         let prioritizing = app.switches["settings-toggle:prioritizing"]
@@ -2708,11 +2698,6 @@ final class UITests: XCTestCase {
         app.descendants(matching: .any)["glass-close"].tap()
         pause(1)
 
-        // Back to the first name, so the next run starts the same.
-        name.tap()
-        XCTAssertTrue(field.waitForExistence(timeout: 3))
-        field.typeText(from + "\n")
-        pause(2)
         closeSettings()
         XCTAssertTrue(app.descendants(matching: .any)["settings-mark"].waitForExistence(timeout: 3))
         capture("settings-closed")

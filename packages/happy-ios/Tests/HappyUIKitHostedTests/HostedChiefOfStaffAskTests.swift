@@ -67,7 +67,7 @@ final class HostedChiefOfStaffAskTests: XCTestCase {
         let warm = session.warm.hold(Self.agentId)
         defer { session.warm.release(warm.chat, token: warm.token, opened: false) }
         try await until { warm.chat.snapshot.loaded }
-        let ask = ChatPrefill.connectionName
+        let ask = ChatPrefill.agentName
         let expected = ask.applied(to: existing?.text ?? "").text
         let chat = ChatViewController(session: session, agentId: Self.agentId, title: "Happy", spaceId: nil, seedling: nil, prefill: ask)
         let navigation = UINavigationController(rootViewController: chat)
@@ -127,10 +127,10 @@ final class HostedChiefOfStaffAskTests: XCTestCase {
         }
         let context = AppContext(account: controller, variant: .preview, version: "test")
         let session = try XCTUnwrap(Session.session(for: computer.id, context: context))
-        XCTAssertNil(ChiefOfStaffAsk.chat(session: session, snapshot: Snapshot(), ask: .connectionAvatar))
+        XCTAssertNil(ChiefOfStaffAsk.chat(session: session, snapshot: Snapshot(), ask: .agentAvatar))
         var snapshot = Snapshot()
         snapshot.happyAgentId = Self.agentId
-        XCTAssertTrue(ChiefOfStaffAsk.chat(session: session, snapshot: snapshot, ask: .connectionAvatar) is ChatViewController,
+        XCTAssertTrue(ChiefOfStaffAsk.chat(session: session, snapshot: snapshot, ask: .agentAvatar) is ChatViewController,
                       "with one read, its conversation opens")
     }
 

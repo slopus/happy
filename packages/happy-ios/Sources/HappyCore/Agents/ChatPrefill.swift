@@ -1,10 +1,10 @@
 import Foundation
 
 /// An ask typed into a conversation's composer for the person, unsent:
-/// Settings' rename and avatar actions open the Chief of Staff's
-/// conversation with the words already there, the caret after them, so
-/// the person says which name or drops in which picture and sends it
-/// themselves. Nothing here sends anything.
+/// Settings' "Change agent name" and "Change agent avatar" open the
+/// Chief of Staff's conversation with the words already there, the caret
+/// after them, so the person says which name or which picture and sends
+/// it themselves. Nothing here sends anything.
 public struct ChatPrefill: Equatable, Sendable {
     /// Exactly what the composer opens with, the caret at its end. The
     /// trailing space is part of it: the person types straight on.
@@ -14,8 +14,8 @@ public struct ChatPrefill: Equatable, Sendable {
         self.prefix = prefix
     }
 
-    public static let connectionName = ChatPrefill(prefix: "Change this agent connection's name to ")
-    public static let connectionAvatar = ChatPrefill(prefix: "Change this agent connection's avatar: ")
+    public static let agentName = ChatPrefill(prefix: "Change your name to ")
+    public static let agentAvatar = ChatPrefill(prefix: "Change your avatar to ")
 
     /// What the composer shows, given the draft the conversation already
     /// had. The draft is kept, two lines under the ask, never dropped and

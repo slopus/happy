@@ -34,6 +34,7 @@ public actor SyncEngine {
     private var delivery: Task<Void, Never>?
     private var messageDelivery: Task<Void, Never>?
     private var messageListeners: [UUID: (agentID: String, continuation: AsyncStream<DeliveryEvent>.Continuation)] = [:]
+    private var profileListeners: [UUID: AsyncStream<Void>.Continuation] = [:]
     private var verified = false
     private var settingsDeliveryDirty = false
     private var messageDeliveryDirty = false
@@ -65,6 +66,23 @@ public actor SyncEngine {
         continuation.yield(snapshot)
         continuation.onTermination = { [weak self] _ in Task { await self?.removeListener(id) } }
         return stream
+    }
+
+    /// A beat whenever the person's profile may have changed elsewhere: a
+    /// `profile.updated`, or the stream coming back after missing some.
+    /// Whoever shows the profile reads it again.
+    public func profileUpdates() -> AsyncStream<Void> {
+        let id = UUID()
+        let (stream, continuation) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
+        profileListeners[id] = continuation
+        continuation.onTermination = { [weak self] _ in Task { await self?.removeProfileListener(id) } }
+        return stream
+    }
+
+    private func removeProfileListener(_ id: UUID) { profileListeners.removeValue(forKey: id) }
+
+    private func profileChanged() {
+        for listener in profileListeners.values { listener.yield() }
     }
 
     public var deliveryAllowed: Bool { !stopped && runner != nil && verified }
@@ -106,6 +124,8 @@ public actor SyncEngine {
         listeners.removeAll()
         for listener in messageListeners.values { listener.continuation.finish() }
         messageListeners.removeAll()
+        for listener in profileListeners.values { listener.finish() }
+        profileListeners.removeAll()
     }
 
     private func database() throws -> SyncStorage {
@@ -153,12 +173,14 @@ public actor SyncEngine {
                         // it is safe even after a crash, replay or daemon replacement.
                         let hello = try JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8))
                         if hello["gap"] == .bool(true) { scheduleReconcile(generation) }
+                        profileChanged()
                         try await resyncSidebar(generation, loadSidebar: snapshot.usesSpaces)
                         continue
                     }
                     guard let event = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8)) else { continue }
                     await spaces.externalEvent(event)
                     guard current(generation) else { return }
+                    if event["type"] == .string("profile.updated") { profileChanged() }
                     if event["type"] == .string("user_settings.updated"), let value = event["payload"]?["setting"],
                        let setting = try? JSONDecoder().decode(UserSetting.self, from: JSONEncoder().encode(value)) {
                         try await database().receiveSetting(setting.key, value: setting.value, version: setting.version)
