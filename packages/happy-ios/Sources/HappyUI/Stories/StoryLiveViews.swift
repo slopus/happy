@@ -12,6 +12,7 @@ import WebKit
 /// computer as an inline page's do. Where the viewer lets it, it takes
 /// touches; touching it says so, so the story holds still meanwhile.
 final class StoryArtifactPageView: UIView, WKNavigationDelegate {
+    private var browserPage: BrowserPage?
     /// A touch on the page began (true) or ended.
     var onTouch: ((Bool) -> Void)?
     /// The page can't be shown: deleted, a pinned version gone, or nothing to load.
@@ -68,7 +69,7 @@ final class StoryArtifactPageView: UIView, WKNavigationDelegate {
                 guard let self, !Task.isCancelled else { return }
                 // A live-URL page runs on the computer, which a phone can't reach yet.
                 guard found.live == nil, let entry = found.entry else { return self.unavailable() }
-                self.show(version: found.number, entry: entry.path)
+                try await self.show(version: found.number, entry: entry.path)
             } catch {
                 self?.unavailable()
             }
@@ -80,10 +81,11 @@ final class StoryArtifactPageView: UIView, WKNavigationDelegate {
         onUnavailable?()
     }
 
-    private func show(version: Int, entry: String) {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        configuration.setURLSchemeHandler(ArtifactFiles(client: client, artifactId: artifactId), forURLScheme: ArtifactFiles.scheme)
+    private func show(version: Int, entry: String) async throws {
+        let page = try await BrowserPage.artifact(client: client, id: artifactId, version: version, entry: entry)
+        try Task.checkCancellation()
+        browserPage = page
+        let configuration = page.configuration
         configuration.allowsInlineMediaPlayback = true
         let content = configuration.userContentController
         content.addUserScript(WKUserScript(source: InlinePageView.viewportScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -100,8 +102,7 @@ final class StoryArtifactPageView: UIView, WKNavigationDelegate {
         web.accessibilityIdentifier = "story-artifact-web"
         addSubview(web)
         self.web = web
-        let path = entry.split(separator: "/").map { ArtifactFiles.escape(String($0)) }.joined(separator: "/")
-        if let url = URL(string: "\(ArtifactFiles.scheme)://artifact/\(version)/\(path)") { web.load(URLRequest(url: url)) }
+        web.load(URLRequest(url: page.url))
         setNeedsLayout()
     }
 
@@ -117,7 +118,7 @@ final class StoryArtifactPageView: UIView, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
-        action.request.url?.scheme == ArtifactFiles.scheme ? .allow : .cancel
+        action.request.url?.host == browserPage?.url.host ? .allow : .cancel
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

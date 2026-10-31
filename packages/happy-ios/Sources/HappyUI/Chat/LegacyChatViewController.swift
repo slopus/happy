@@ -1815,7 +1815,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 
     func chatList(_ list: ChatListView, openLink url: String) {
         guard let url = URL(string: url) else { return }
-        UIApplication.shared.open(url)
+        openBrowser(url)
     }
 
     /// Sends a permission answer; the button pulses until it has gone.

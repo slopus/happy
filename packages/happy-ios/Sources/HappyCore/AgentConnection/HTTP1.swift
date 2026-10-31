@@ -12,6 +12,8 @@ public struct HTTP1Response: Sendable {
 }
 
 public protocol AgentTransport: Sendable {
+    /// A raw connection, for the browser's scoped HTTP and CONNECT bridges.
+    func browserConnection() async throws -> any BrowserStream
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response
     /// A bounded file write with a longer deadline than small API requests.
     func upload(path: String, credential: String, body: Data) async throws -> HTTP1Response

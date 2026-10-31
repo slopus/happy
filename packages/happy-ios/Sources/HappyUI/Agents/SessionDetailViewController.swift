@@ -594,7 +594,7 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
     private func openLink(_ index: Int) {
         let links = shownLinks
         guard links.indices.contains(index), let url = URL(string: links[index].url) else { return }
-        UIApplication.shared.open(url)
+        openBrowser(url, session: session, agentID: agentId)
     }
 
     private func toggleCompleted() {

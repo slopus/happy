@@ -852,7 +852,7 @@ final class HomeDockFocusViewController: UIViewController {
     private func openHarnessHelp() {
         guard controller?.composer.choices.hasAvailableHarness == false else { return }
         card.blur()
-        UIApplication.shared.open(Strings.Home.harnessHelpURL)
+        openBrowser(Strings.Home.harnessHelpURL)
     }
 
     // MARK: Closing and refusing

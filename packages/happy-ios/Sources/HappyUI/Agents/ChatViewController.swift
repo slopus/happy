@@ -1728,7 +1728,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// A link in a row: the reference it names, else the web.
     private func open(link: String) {
         if let reference = HappyReferences.reference(link: link) { open(reference) }
-        else if let url = URL(string: link) { UIApplication.shared.open(url) }
+        else if let url = URL(string: link) { openBrowser(url, session: session, agentID: media.agentId) }
     }
 
     /// What a tap on a row's action does, from either transcript.
@@ -1918,6 +1918,7 @@ extension ChatViewController: ChatMediaProviding {
 
 extension ChatViewController: PageHosting {
     var pageClient: AgentClient { session.client }
+    func page(open url: URL) { openBrowser(url, session: session, agentID: media.agentId) }
 
     func page(_ artifactId: String, measured height: CGFloat) {
         let height = min(max(1, height.rounded(.up)), 4000)

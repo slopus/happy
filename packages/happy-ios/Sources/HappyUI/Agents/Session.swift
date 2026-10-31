@@ -9,6 +9,7 @@ import UIKit
 @MainActor
 final class Session {
     let accountID: String
+    private(set) var computerName: String
     let engine: SyncEngine
     let client: AgentClient
     let store: Store
@@ -102,6 +103,7 @@ final class Session {
 
     private init(accountID: String, engine: SyncEngine, account: AccountController) {
         self.accountID = accountID
+        computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? "agent connection"
         self.engine = engine
         self.localSettings = account.localSettings
         let client = engine.client
@@ -137,6 +139,7 @@ final class Session {
         }
         connectionObservation = account.observeAccounts { [weak self, weak account] _ in
             guard let self, let account else { return }
+            computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? computerName
             connectionStatus = account.agentConnections.accounts.first { $0.id == accountID }?.status ?? .paused
             updateHeaderState()
         }

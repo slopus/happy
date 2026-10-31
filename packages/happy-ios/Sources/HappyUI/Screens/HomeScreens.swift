@@ -429,8 +429,8 @@ final class TroubleshootViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = Strings.Troubleshoot.title
-        guide.onOpenWebsite = {
-            UIApplication.shared.open(Strings.Onboarding.desktopURL)
+        guide.onOpenWebsite = { [weak self] in
+            self?.openBrowser(Strings.Onboarding.desktopURL)
         }
         prompt.button.onTap = { [weak self] in self?.copyPrompt() }
     }

@@ -284,7 +284,7 @@ final class ChangelogEntryView: UIView {
     private var rasterViews: [[ChangelogTextView]] = []
 
     /// Opens a tapped link (tests replace it).
-    var openLink: (URL) -> Void = { UIApplication.shared.open($0) }
+    lazy var openLink: (URL) -> Void = { [weak self] in self?.openBrowserLink($0) }
 
     let card = GroupCardView()
     private(set) var titleView: ChangelogTextView?

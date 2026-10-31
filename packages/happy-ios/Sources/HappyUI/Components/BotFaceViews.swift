@@ -121,9 +121,9 @@ final class BotFacePickerView: UIView {
         creditLink.isAccessibilityElement = true
         creditLink.accessibilityLabel = BotFaceStyle.adventurerNeutralCredit.artist
         creditLink.accessibilityTraits = .link
-        creditLink.addAction(UIAction { _ in
+        creditLink.addAction(UIAction { [weak self] _ in
             guard let url = URL(string: BotFaceStyle.adventurerNeutralCredit.artistURL) else { return }
-            UIApplication.shared.open(url)
+            self?.openBrowserLink(url)
         }, for: .touchUpInside)
         addSubview(creditLink)
 

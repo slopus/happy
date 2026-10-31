@@ -57,7 +57,7 @@ public enum Alerts {
         let sheet = UIAlertController(title: Strings.Onboarding.getHelp, message: Strings.Onboarding.helpMessage, preferredStyle: .alert)
         for link in Strings.helpLinks {
             sheet.addAction(UIAlertAction(title: link.title, style: .default) { _ in
-                UIApplication.shared.open(link.url)
+                controller.openBrowser(link.url)
             })
         }
         sheet.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))

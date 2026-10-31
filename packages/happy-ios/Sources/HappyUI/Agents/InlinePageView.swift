@@ -10,12 +10,17 @@ import WebKit
 protocol PageHosting: AnyObject {
     var pageClient: AgentClient { get }
     func page(_ artifactId: String, measured height: CGFloat)
+    func page(open url: URL)
+}
+
+extension PageHosting {
+    func page(open url: URL) { (self as? UIViewController)?.openBrowser(url) }
 }
 
 /// An HTML artifact shown inline in a conversation, as desktop shows one
 /// whose latest version asks for `inline_expanded` (happy-agent `API.md`,
 /// "Display"): the live page, its files read through the paired computer
-/// (`ArtifactFiles`), laid on the conversation's own surface in its
+/// (`BrowserPage`), laid on the conversation's own surface in its
 /// colour scheme, with the host's `--happy-host-*` properties set. It never
 /// scrolls inside; it measures its content and the row grows to fit.
 final class InlinePageView: UIView, WKNavigationDelegate {
@@ -24,6 +29,8 @@ final class InlinePageView: UIView, WKNavigationDelegate {
     /// The page loaded now, so a row planned again reloads nothing.
     private var loaded: (artifactId: String, version: Int, entry: String)?
     private weak var host: PageHosting?
+    private var browserPage: BrowserPage?
+    private var loading: Task<Void, Never>?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -44,6 +51,11 @@ final class InlinePageView: UIView, WKNavigationDelegate {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        if window == nil {
+            loading?.cancel(); web?.stopLoading(); web?.removeFromSuperview()
+            web = nil; browserPage = nil; loaded = nil
+            return
+        }
         load()
     }
 
@@ -54,7 +66,9 @@ final class InlinePageView: UIView, WKNavigationDelegate {
 
     private func load() {
         guard let page else {
+            loading?.cancel()
             web?.stopLoading()
+            web?.removeFromSuperview(); web = nil; browserPage = nil
             loaded = nil
             return
         }
@@ -62,19 +76,23 @@ final class InlinePageView: UIView, WKNavigationDelegate {
         self.host = host
         let target = (page.artifactId, page.page.version, page.page.entry)
         if let loaded, loaded == target { return }
-        // The file handler belongs to one artifact; another needs a new view.
-        if loaded?.artifactId != page.artifactId { makeWeb(page.artifactId, client: host.pageClient) }
         loaded = target
         accessibilityValue = nil
-        let path = page.page.entry.split(separator: "/").map { ArtifactFiles.escape(String($0)) }.joined(separator: "/")
-        if let url = URL(string: "\(ArtifactFiles.scheme)://artifact/\(page.page.version)/\(path)") { web?.load(URLRequest(url: url)) }
+        loading?.cancel()
+        let client = host.pageClient
+        loading = Task { [weak self] in
+            do {
+                let browserPage = try await BrowserPage.artifact(client: client, id: page.artifactId, version: page.page.version, entry: page.page.entry)
+                guard let self, !Task.isCancelled, let loaded = self.loaded, loaded == target else { return }
+                self.browserPage = browserPage
+                self.makeWeb(browserPage)
+            } catch { self?.accessibilityValue = "unavailable" }
+        }
     }
 
-    private func makeWeb(_ artifactId: String, client: AgentClient) {
+    private func makeWeb(_ page: BrowserPage) {
         web?.removeFromSuperview()
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        configuration.setURLSchemeHandler(ArtifactFiles(client: client, artifactId: artifactId), forURLScheme: ArtifactFiles.scheme)
+        let configuration = page.configuration
         configuration.userContentController.add(Heights(self), name: Self.heightMessage)
         let web = WKWebView(frame: bounds, configuration: configuration)
         web.navigationDelegate = self
@@ -87,6 +105,7 @@ final class InlinePageView: UIView, WKNavigationDelegate {
         addSubview(web)
         self.web = web
         applyScheme()
+        web.load(URLRequest(url: page.url))
     }
 
     /// The scheme as the view has it now: for the next document, and for the
@@ -119,7 +138,10 @@ final class InlinePageView: UIView, WKNavigationDelegate {
 
     /// The page stays on its own files: nothing it does leaves for the network.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
-        action.request.url?.scheme == ArtifactFiles.scheme ? .allow : .cancel
+        guard let url = action.request.url else { return .cancel }
+        if url.host == browserPage?.url.host { return .allow }
+        if action.navigationType == .linkActivated { host?.page(open: url) }
+        return .cancel
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

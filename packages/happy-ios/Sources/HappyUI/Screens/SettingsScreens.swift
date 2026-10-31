@@ -157,20 +157,20 @@ public final class LegacySettingsViewController: UIViewController {
                 title: Strings.Settings.github,
                 detail: Strings.Links.githubDetail,
                 icon: ItemIcon(.ionicons("logo-github"), tint: Palette.text)
-            ) {
-                UIApplication.shared.open(Strings.Links.github)
+            ) { [weak self] in
+                self?.openBrowser(Strings.Links.github)
             },
-            ItemRowView(title: Strings.Settings.reportIssue, icon: ItemIcon(.ionicons("bug-outline"), tint: Palette.iconRed)) {
-                UIApplication.shared.open(Strings.Links.issues)
+            ItemRowView(title: Strings.Settings.reportIssue, icon: ItemIcon(.ionicons("bug-outline"), tint: Palette.iconRed)) { [weak self] in
+                self?.openBrowser(Strings.Links.issues)
             },
-            ItemRowView(title: Strings.Settings.privacyPolicy, icon: ItemIcon(.ionicons("shield-checkmark-outline"), tint: blue)) {
-                UIApplication.shared.open(Strings.Links.privacy)
+            ItemRowView(title: Strings.Settings.privacyPolicy, icon: ItemIcon(.ionicons("shield-checkmark-outline"), tint: blue)) { [weak self] in
+                self?.openBrowser(Strings.Links.privacy)
             },
-            ItemRowView(title: Strings.Settings.termsOfService, icon: ItemIcon(.ionicons("document-text-outline"), tint: blue)) {
-                UIApplication.shared.open(Strings.Links.terms)
+            ItemRowView(title: Strings.Settings.termsOfService, icon: ItemIcon(.ionicons("document-text-outline"), tint: blue)) { [weak self] in
+                self?.openBrowser(Strings.Links.terms)
             },
-            ItemRowView(title: Strings.Settings.eula, icon: ItemIcon(.ionicons("document-text-outline"), tint: blue)) {
-                UIApplication.shared.open(Strings.Links.eula)
+            ItemRowView(title: Strings.Settings.eula, icon: ItemIcon(.ionicons("document-text-outline"), tint: blue)) { [weak self] in
+                self?.openBrowser(Strings.Links.eula)
             },
             version,
         ]))

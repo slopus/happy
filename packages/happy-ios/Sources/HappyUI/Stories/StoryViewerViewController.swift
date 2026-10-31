@@ -978,7 +978,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         let sheet = UIAlertController(title: url, message: nil, preferredStyle: .actionSheet)
         sheet.addAction(UIAlertAction(title: Strings.Stories.open, style: .default) { [weak self] _ in
             self?.pause(.sheet, false)
-            UIApplication.shared.open(target)
+            guard let self else { return }
+            self.openBrowser(target, session: self.session.v2)
         })
         sheet.addAction(UIAlertAction(title: Strings.Stories.copyLink, style: .default) { [weak self] _ in
             UIPasteboard.general.url = target

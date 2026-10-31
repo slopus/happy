@@ -29,23 +29,8 @@ final class HostedInlinePageTests: XCTestCase {
         func page(_ artifactId: String, measured height: CGFloat) { heights.append(height) }
     }
 
-    private actor Files: AgentTransport {
-        var paths: [String] = []
-        func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
-            paths.append(path)
-            if path.hasSuffix("/api/v1/style.css") { return HTTP1Response(status: 200, headers: ["content-type": "text/css"], body: Data(":root{}".utf8)) }
-            if path.contains("/versions/2/files/index.html") {
-                return HTTP1Response(status: 206, headers: ["content-type": "text/html; charset=utf-8", "content-range": "bytes 0-\(HostedInlinePageTests.html.utf8.count - 1)/\(HostedInlinePageTests.html.utf8.count)"], body: Data(HostedInlinePageTests.html.utf8))
-            }
-            return HTTP1Response(status: 404)
-        }
-        nonisolated func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream { throw AgentClientError.invalidResponse }
-        nonisolated func reset() async {}
-        nonisolated func close() async {}
-    }
-
     func testAnInlinePageLoadsFromTheComputerAndMeasuresItself() async throws {
-        let files = Files()
+        let files = BrowserDaemon(artifactHTML: Self.html)
         let host = Host(AgentClient(transport: files, token: "test"))
         let window = hostedKeyWindow(in: try await hostedActiveScene(), root: host)
         window.overrideUserInterfaceStyle = .dark
@@ -70,9 +55,9 @@ final class HostedInlinePageTests: XCTestCase {
         let height = try XCTUnwrap(host.heights.last)
         XCTAssertGreaterThan(height, 140)
         XCTAssertLessThan(height, 200)
-        let paths = await files.paths
+        let paths = await files.requests
         XCTAssertTrue(paths.contains { $0.contains("/v0/artifacts/art1/versions/2/files/index.html") }, "\(paths)")
-        XCTAssertTrue(paths.contains("/v0/artifacts/art1/api/v1/style.css"), "\(paths)")
+        XCTAssertTrue(paths.contains { $0.contains("/v0/artifacts/art1/api/v1/style.css") }, "\(paths)")
 
         // The host's colours reached the page, and it drew its bars.
         let probe = try await web.evaluateJavaScript("document.getElementById('probe').textContent") as? String
@@ -81,10 +66,10 @@ final class HostedInlinePageTests: XCTestCase {
         XCTAssertEqual(text?.trimmingCharacters(in: .whitespaces), "rgba(255, 255, 255, 1.0)")
 
         // The same page again loads nothing new.
-        let before = await files.paths.count
+        let before = await files.requests.count
         view.apply(InlinePage(artifactId: "art1", title: "Voice waveform", page: .init(version: 2, entry: "index.html")))
         try await Task.sleep(for: .milliseconds(300))
-        let after = await files.paths.count
+        let after = await files.requests.count
         XCTAssertEqual(before, after)
 
         if let directory = ProcessInfo.processInfo.environment["HAPPY_PREVIEW_DIR"] {

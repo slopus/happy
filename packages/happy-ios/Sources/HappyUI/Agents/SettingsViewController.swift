@@ -495,11 +495,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         typealias Index = SettingsIndex
         return [
             Row(Index.whatsNew, action: { [weak self] in self?.show(ChangelogViewController()) }),
-            Row(Index.githubRepo, value: Strings.Links.githubDetail, action: { UIApplication.shared.open(Strings.Links.github) }),
-            Row(Index.reportIssue, action: { UIApplication.shared.open(Strings.Links.issues) }),
-            Row(Index.privacy, action: { UIApplication.shared.open(Strings.Links.privacy) }),
-            Row(Index.terms, action: { UIApplication.shared.open(Strings.Links.terms) }),
-            Row(Index.eula, action: { UIApplication.shared.open(Strings.Links.eula) }),
+            Row(Index.githubRepo, value: Strings.Links.githubDetail, action: { [weak self] in self?.openBrowser(Strings.Links.github) }),
+            Row(Index.reportIssue, action: { [weak self] in self?.openBrowser(Strings.Links.issues) }),
+            Row(Index.privacy, action: { [weak self] in self?.openBrowser(Strings.Links.privacy) }),
+            Row(Index.terms, action: { [weak self] in self?.openBrowser(Strings.Links.terms) }),
+            Row(Index.eula, action: { [weak self] in self?.openBrowser(Strings.Links.eula) }),
             Row(Index.version, value: SettingsIndexModel.versionDetail(version: context.version, variant: context.variant), accessory: .none, action: { [weak self] in self?.versionTapped() }),
         ]
     }

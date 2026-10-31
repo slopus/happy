@@ -35,6 +35,7 @@ final class AppConfigurationTests: XCTestCase {
             XCTAssertEqual(ats["NSAllowsLocalNetworking"], true)
             // Plain HTTP to any host only in dev and preview, as in app.config.js.
             XCTAssertEqual(ats["NSAllowsArbitraryLoads"] ?? false, variant != .production)
+            XCTAssertEqual(ats["NSAllowsArbitraryLoadsInWebContent"], true)
         }
     }
 

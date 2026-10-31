@@ -10,7 +10,7 @@ import UIKit
 public final class AppCoordinator {
     public let window: UIWindow
     public let context: AppContext
-    private let navigation = UINavigationController()
+    private lazy var navigation = BrowserNavigationController(context: context)
     // Tablet (HappyUI/Tablet): the window's root holds the stack, and the
     // sidebar beside it on a tablet-wide window.
     private lazy var shell = TabletShellViewController(context: context, detail: navigation)
