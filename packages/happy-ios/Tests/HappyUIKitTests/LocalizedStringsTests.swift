@@ -85,7 +85,6 @@ final class LocalizedStringsTests: XCTestCase {
         XCTAssertEqual(Strings.Agents.clearOverrides, "Clear Overrides")
         XCTAssertEqual(Strings.Home.dockPlaceholder, "Plan, ask, build…")
         XCTAssertEqual(Strings.Home.createWorkspaceIn("happy"), "Create workspace in happy")
-        XCTAssertEqual(Strings.SettingsTitles.connectClaude, "Connect to Claude")
     }
 }
 #endif

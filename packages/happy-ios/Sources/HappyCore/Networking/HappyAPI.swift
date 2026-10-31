@@ -141,21 +141,6 @@ public struct HappyAPI: Sendable {
         let _: SuccessResponse = try await send("DELETE", "/v1/sessions/\(Self.escape(id))")
     }
 
-    // MARK: Connected services
-
-    public func githubOAuthParams() async throws -> GitHubOAuthParams {
-        try await send("GET", "/v1/connect/github/params")
-    }
-
-    public func disconnectGitHub() async throws {
-        let _: SuccessResponse = try await send("DELETE", "/v1/connect/github")
-    }
-
-    /// Removes a vendor token, e.g. `anthropic`.
-    public func disconnectService(_ vendor: String) async throws {
-        let _: SuccessResponse = try await send("DELETE", "/v1/connect/\(Self.escape(vendor))")
-    }
-
     // MARK: Push tokens
 
     public func pushTokens() async throws -> [PushToken] {

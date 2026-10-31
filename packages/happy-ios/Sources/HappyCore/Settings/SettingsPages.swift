@@ -14,10 +14,6 @@ public struct SettingsIndexModel: Equatable, Sendable {
     }
 
     public var header: Header
-    /// `profile.connectedServices` includes `anthropic`.
-    public var claudeConnected: Bool
-    /// The GitHub login, when GitHub is connected.
-    public var githubLogin: String?
 
     public init(profile: AccountProfile?) {
         // SettingsView.tsx branches on firstName, not on the display name, so
@@ -33,8 +29,6 @@ public struct SettingsIndexModel: Equatable, Sendable {
         } else {
             header = .logo
         }
-        claudeConnected = profile?.connectedServices.contains("anthropic") ?? false
-        githubLogin = profile?.github?.login
     }
 
     /// The Version row's detail. happy-app shows `version / runtime N`; this
@@ -69,61 +63,6 @@ public struct MultiClickCounter: Sendable {
         count = 0
         lastClick = nil
         return true
-    }
-}
-
-/// Settings › Account's profile and connected services
-/// (app/(app)/settings/account.tsx).
-public struct AccountPageModel: Equatable, Sendable {
-    /// A service account.tsx knows how to show.
-    public enum Service: String, CaseIterable, Sendable {
-        case anthropic
-        case gemini
-        case openai
-
-        public var name: String {
-            switch self {
-            case .anthropic: "Claude Code"
-            case .gemini: "Google Gemini"
-            case .openai: "OpenAI Codex"
-            }
-        }
-
-        /// The bundled logo.
-        public var imageName: String {
-            switch self {
-            case .anthropic: "icon-claude"
-            case .gemini: "icon-gemini"
-            case .openai: "icon-gpt"
-            }
-        }
-
-        /// OpenAI's mark is black and follows the text colour; the others
-        /// keep their own colours.
-        public var tintsWithText: Bool {
-            self == .openai
-        }
-    }
-
-    public var displayName: String?
-    public var githubLogin: String?
-    /// The uploaded picture, which the GitHub row shows instead of the logo,
-    /// and its placeholder.
-    public var avatarURL: String?
-    public var avatarThumbhash: String?
-    /// The Profile group shows when there is a name, a GitHub login or a
-    /// picture.
-    public var showsProfile: Bool
-    /// Known services in the profile's order; unknown ones are left out.
-    public var services: [Service]
-
-    public init(profile: AccountProfile?) {
-        displayName = profile?.displayName
-        githubLogin = profile?.github?.login
-        avatarURL = profile?.avatar?.url
-        avatarThumbhash = profile?.avatar?.thumbhash
-        showsProfile = displayName != nil || githubLogin != nil || profile?.avatar != nil
-        services = (profile?.connectedServices ?? []).compactMap(Service.init(rawValue:))
     }
 }
 
@@ -199,66 +138,6 @@ public enum PushPermissionText {
     public static func reregisterSubtitle(currentToken: String?) -> String {
         guard let currentToken else { return "Fetches the current Expo token and registers it again." }  // account.tsx:534, spelled out
         return "Current token \(PushTokenText.fingerprint(currentToken))"  // account.tsx:533, spelled out
-    }
-}
-
-/// One row of the account switcher at the top of Settings › Account.
-public struct AccountSwitcherEntry: Equatable, Sendable {
-    public var id: String
-    public var title: String
-    public var subtitle: String?
-    public var avatarURL: URL?
-    public var avatarThumbhash: String?
-    public var isActive: Bool
-
-    /// Entries in registry order. The active account's own profile fills in
-    /// what the registry has not stored yet. The title is the name, else
-    /// the GitHub login, else `fallbackTitle` with the start of the id; the
-    /// subtitle adds the login under a name and the server when it is not
-    /// the default one.
-    public static func entries(
-        _ accounts: [AccountSummary],
-        activeProfile: AccountProfile?,
-        defaultServer: URL,
-        fallbackTitle: String,
-        agentTitle: String = "Agent"
-    ) -> [AccountSwitcherEntry] {
-        accounts.map { account in
-            var name = account.name
-            var username = account.username
-            var avatar = account.avatarURL
-            var thumbhash = account.avatarThumbhash
-            if account.isActive, let profile = activeProfile {
-                name = name ?? profile.displayName
-                username = username ?? profile.github?.login
-                if avatar == nil {
-                    avatar = profile.avatarURL.flatMap(URL.init(string:))
-                    thumbhash = profile.avatar?.thumbhash
-                }
-            }
-            // One made for a computer goes by the computer; before it has
-            // one, it is an agent, never a legacy account.
-            let title = (account.isLegacy ? nil : account.computerName) ?? name ?? username.map { "@\($0)" }
-                ?? "\(account.isLegacy || account.isAgentConnection ? fallbackTitle : agentTitle) \(account.id.prefix(8))"
-            var details: [String] = []
-            if name != nil, let username { details.append("@\(username)") }
-            if account.isAgentConnection { details.append("Agent"); if let status = account.connectionStatus { details.append(status) } }
-            else if account.serverURL != defaultServer { details.append(displayHost(account.serverURL)) }
-            return AccountSwitcherEntry(
-                id: account.id,
-                title: title,
-                subtitle: details.isEmpty ? nil : details.joined(separator: " • "),
-                avatarURL: avatar,
-                avatarThumbhash: thumbhash,
-                isActive: account.isActive
-            )
-        }
-    }
-
-    /// Host and port, as `ServerConfig.displayHost` shows them.
-    static func displayHost(_ url: URL) -> String {
-        guard let host = url.host else { return url.absoluteString }
-        return url.port.map { "\(host):\($0)" } ?? host
     }
 }
 

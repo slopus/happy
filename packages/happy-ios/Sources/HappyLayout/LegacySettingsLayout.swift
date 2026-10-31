@@ -168,50 +168,6 @@ public enum BubblePreviewLayout {
     }
 }
 
-/// Settings › Connected Accounts › Claude Code (settings/connect/claude.tsx,
-/// `OAuthViewUnsupported`): a title, one line of instruction and the
-/// command in a terminal card, centred on the screen.
-public struct ConnectCommandLayout: Equatable, Sendable {
-    public enum Metrics {
-        public static let padding: CGFloat = 20
-        public static let titleMarginBottom: CGFloat = 20
-        public static let bodyMarginBottom: CGFloat = 24
-        public static let terminalPadding: CGFloat = 16
-        public static let terminalMinWidth: CGFloat = 280
-        public static let terminalCornerRadius: CGFloat = 18
-    }
-
-    public var title: CGRect
-    public var body: CGRect
-    public var terminal: CGRect
-    /// In the terminal card's coordinates.
-    public var command: CGRect
-
-    public init(size: CGSize, safeArea: LayoutInsets, title: Measurable, body: Measurable, command: Measurable) {
-        typealias M = Metrics
-        let width = max(0, size.width - safeArea.horizontal)
-        let inner = max(0, width - M.padding * 2)
-        let titleSize = title.size(fitting: inner)
-        let bodySize = body.size(fitting: inner)
-        let commandSize = command.size(fitting: max(0, inner - M.terminalPadding * 2))
-        let terminalWidth = min(inner, max(M.terminalMinWidth, commandSize.width + M.terminalPadding * 2))
-        let terminalHeight = commandSize.height + M.terminalPadding * 2
-        let height = titleSize.height + M.titleMarginBottom + bodySize.height + M.bodyMarginBottom + terminalHeight
-
-        let available = max(0, size.height - safeArea.vertical - M.padding * 2)
-        var y = safeArea.top + M.padding + (available - height) / 2
-        func centred(_ size: CGSize) -> CGRect {
-            CGRect(x: safeArea.left + (width - size.width) / 2, y: y, width: size.width, height: size.height)
-        }
-        self.title = centred(titleSize)
-        y = self.title.maxY + M.titleMarginBottom
-        self.body = centred(bodySize)
-        y = self.body.maxY + M.bodyMarginBottom
-        terminal = centred(CGSize(width: terminalWidth, height: terminalHeight))
-        self.command = CGRect(x: M.terminalPadding, y: M.terminalPadding, width: commandSize.width, height: commandSize.height)
-    }
-}
-
 /// One What's New card (app/(app)/changelog.tsx `cardContent` with
 /// MarkdownView): an optional summary line, then paragraphs and bullet
 /// lists. Consecutive bullets form one list, 6 apart, with 8 after it;

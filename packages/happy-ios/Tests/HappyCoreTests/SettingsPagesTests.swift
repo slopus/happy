@@ -44,14 +44,6 @@ final class SettingsIndexModelTests: XCTestCase {
             services: ["anthropic"]
         ))
         XCTAssertEqual(model.header, .profile(id: "p1", name: "Ada Lovelace", bio: "Math", avatarURL: "https://a/ada.png", thumbhash: nil))
-        XCTAssertTrue(model.claudeConnected)
-        XCTAssertEqual(model.githubLogin, "ada")
-    }
-
-    func testConnectionsWithoutAProfile() {
-        let model = SettingsIndexModel(profile: profile(services: ["openai"]))
-        XCTAssertFalse(model.claudeConnected)
-        XCTAssertNil(model.githubLogin)
     }
 
     func testVersionDetail() {
@@ -85,32 +77,6 @@ final class MultiClickCounterTests: XCTestCase {
             XCTAssertFalse(counter.click(at: start + 6 + TimeInterval(tap) * 0.5))
         }
         XCTAssertTrue(counter.click(at: start + 11))
-    }
-}
-
-/// app/(app)/settings/account.tsx.
-final class AccountPageModelTests: XCTestCase {
-    func testProfileGroupAndKnownServices() {
-        XCTAssertFalse(AccountPageModel(profile: nil).showsProfile)
-        let page = AccountPageModel(profile: profile(
-            github: GitHubProfile(id: 1, login: "ada"),
-            services: ["openai", "somethingelse", "anthropic"]
-        ))
-        XCTAssertTrue(page.showsProfile)
-        XCTAssertEqual(page.displayName, "ada")
-        XCTAssertEqual(page.githubLogin, "ada")
-        XCTAssertEqual(page.services, [.openai, .anthropic], "unknown services are left out, order kept")
-        XCTAssertEqual(page.services.map(\.name), ["OpenAI Codex", "Claude Code"])
-        XCTAssertEqual(page.services.map(\.tintsWithText), [true, false])
-    }
-
-    func testAPictureAloneShowsTheProfileGroup() {
-        let avatar = ImageRef(width: 1, height: 1, thumbhash: "HwgK", path: "p", url: "https://a/p.png")
-        let page = AccountPageModel(profile: profile(avatar: avatar))
-        XCTAssertTrue(page.showsProfile)
-        XCTAssertNil(page.displayName)
-        XCTAssertEqual(page.avatarURL, "https://a/p.png")
-        XCTAssertEqual(page.avatarThumbhash, "HwgK")
     }
 }
 
@@ -173,26 +139,9 @@ final class PushPermissionTests: XCTestCase {
     }
 }
 
-final class AccountSwitcherEntryTests: XCTestCase {
-    func testTitlesSubtitlesAndTheActiveProfile() {
-        let base = ServerConfig.defaultServerURL
-        let accounts = [
-            AccountSummary(id: "aaaaaaaaaaaaaaaa", serverURL: base, isActive: true, usesSharedItem: true),
-            AccountSummary(id: "bbbbbbbbbbbbbbbb", serverURL: URL(string: "http://10.0.0.2:3005")!, name: "Bea", username: "bea", isActive: false, usesSharedItem: false),
-            AccountSummary(id: "cccccccccccccccc", serverURL: base, username: "cee", isActive: false, usesSharedItem: false),
-            AccountSummary(id: "0123abcdef012345", serverURL: URL(string: "https://happy.example.com")!, isActive: false, usesSharedItem: false),
-        ]
-        let active = profile(firstName: "Ada", github: GitHubProfile(id: 1, login: "ada", avatarURL: "https://a/ada.png"))
-        let entries = AccountSwitcherEntry.entries(accounts, activeProfile: active, defaultServer: base, fallbackTitle: "Account")
-        XCTAssertEqual(entries.map(\.title), ["Ada", "Bea", "@cee", "Account 0123abcd"])
-        XCTAssertEqual(entries.map(\.subtitle), ["@ada", "@bea • 10.0.0.2:3005", nil, "happy.example.com"])
-        XCTAssertEqual(entries[0].avatarURL, URL(string: "https://a/ada.png"))
-        XCTAssertNil(entries[1].avatarURL, "another account's profile is not this one's")
-        XCTAssertEqual(entries.map(\.isActive), [true, false, false, false])
-    }
-
+final class AccountSummaryNameTests: XCTestCase {
     /// One made for a computer goes by the computer, even over a profile
-    /// name; before it has one it is an agent, never a legacy account.
+    /// name; a legacy account never does.
     func testAnAccountMadeForAComputerGoesByIt() {
         let base = ServerConfig.defaultServerURL
         var named = AccountSummary(id: "aaaaaaaaaaaaaaaa", serverURL: base, name: "Ada", isActive: true, usesSharedItem: false)
@@ -202,8 +151,6 @@ final class AccountSwitcherEntryTests: XCTestCase {
         unnamed.origin = .madeForComputer
         var legacy = AccountSummary(id: "cccccccccccccccc", serverURL: base, isActive: false, usesSharedItem: true)
         legacy.computerName = "Old Mac"
-        let entries = AccountSwitcherEntry.entries([named, unnamed, legacy], activeProfile: nil, defaultServer: base, fallbackTitle: "Legacy Account")
-        XCTAssertEqual(entries.map(\.title), ["Steve’s MacBook", "Agent bbbbbbbb", "Legacy Account cccccccc"])
         XCTAssertEqual([named, unnamed, legacy].map(\.resolvedName), ["Steve’s MacBook", nil, nil])
     }
 }

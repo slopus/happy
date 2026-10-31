@@ -5,7 +5,6 @@ extension Strings {
     public enum SettingsTitles {
         /// en.ts `navigation.whatsNew`.
         public static var whatsNew: String { localized("navigation.whatsNew", "What's New") }
-        public static let connectClaude = "Connect to Claude"  // (app)/_layout.tsx:417, spelled out
     }
 
     /// hooks/useHappyAction.ts's alert, which is hard-coded there.
@@ -32,7 +31,6 @@ extension Strings {
         public static let addAccount = "Add Account"
         /// The account switcher's one way to add an account or a connection.
         public static let add = "Add"
-        public static let manageAccounts = "Manage Accounts"
         /// The bar's switcher, to VoiceOver.
         public static let switcher = "Account"
         /// Precedes the start of a legacy account's id when nothing better

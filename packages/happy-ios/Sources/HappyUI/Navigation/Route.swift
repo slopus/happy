@@ -25,11 +25,9 @@ enum Route: Hashable {
 
     // Settings
     case settings
-    case settingsAccount
     case settingsAppearance
     case settingsLanguage
     case settingsAgents
-    case settingsConnectClaude
     case settingsVoice
     case settingsVoiceLanguage
     case supportUs
@@ -46,7 +44,8 @@ enum Screens {
     static func make(_ route: Route, context: AppContext, session: AccountSession) -> UIViewController {
         switch route {
         case .settings:
-            return LegacySettingsViewController(context: context)
+            // The one Settings, on this account's page.
+            return SettingsViewController(context: context, computer: session.keys.anonID)
         case .server:
             return ServerConfigViewController(context: context)
         case .troubleshoot:
@@ -69,16 +68,12 @@ enum Screens {
             return MachineViewController(context: context, session: session, machineId: id)
         case .newSession(let machineId, let path, let prompt):
             return NewSessionViewController(context: context, session: session, machineId: machineId, path: path, prompt: prompt)
-        case .settingsAccount:
-            return SettingsAccountViewController(context: context, session: session)
         case .settingsAppearance:
             return SettingsAppearanceViewController(context: context, session: session)
         case .settingsLanguage:
             return SettingsLanguageViewController(session: session)
         case .settingsAgents:
             return SettingsAgentsViewController(context: context, session: session)
-        case .settingsConnectClaude:
-            return SettingsConnectClaudeViewController()
         case .settingsVoice:
             return VoiceSettingsViewController(context: context, session: session)
         case .settingsVoiceLanguage:

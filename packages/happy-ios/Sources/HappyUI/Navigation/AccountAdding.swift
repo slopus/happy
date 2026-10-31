@@ -36,6 +36,11 @@ enum AccountAdding {
         ]
     }
 
+    /// Restore: the code another phone scans, with a secret key under it.
+    static func restore(context: AppContext, from controller: UIViewController) {
+        show(RestoreQRViewController(context: context), context: context, from: controller)
+    }
+
     /// A pasted link, routed as a scanned code is.
     static func enterLink(context: AppContext, from controller: UIViewController, busy: @escaping (Bool) -> Void = { _ in }) {
         Task {

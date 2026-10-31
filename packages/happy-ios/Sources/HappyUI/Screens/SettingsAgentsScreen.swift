@@ -256,4 +256,15 @@ public final class SettingsAgentsViewController: UIViewController {
         present(alert, animated: true)
     }
 }
+/// A row's tick, for the old-design pages that still pick from a list.
+@MainActor
+enum SettingsCheckmark {
+    static func view(tint: ColorToken) -> UIImageView {
+        let check = UIImageView(image: .icon(.ionicons("checkmark"), size: 20))
+        check.tintColor = UIColor(tint)
+        check.contentMode = .center
+        check.accessibilityLabel = "selected"
+        return check
+    }
+}
 #endif

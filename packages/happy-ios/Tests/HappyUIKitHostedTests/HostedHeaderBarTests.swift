@@ -336,8 +336,10 @@ final class HostedHeaderBarTests: XCTestCase {
         // The button draws the first active one, so the tick belongs there.
         let shown = try XCTUnwrap(accounts.first(where: \.isActive))
         XCTAssertEqual(ticked.first?.accessibilityIdentifier, "account-\(shown.id)")
-        // Every account is still offered, with Add and Manage Accounts.
-        XCTAssertEqual(actions.count, accounts.count + 2)
+        // Every account is still offered, with Add; Manage Accounts is
+        // gone (Settings' accounts card signs one out from its row).
+        XCTAssertEqual(actions.count, accounts.count + 1)
+        XCTAssertFalse(actions.contains { $0.accessibilityIdentifier == "account-manage" })
     }
 
     /// No ground, no blur, no line, the same scrolled as at the edge: the

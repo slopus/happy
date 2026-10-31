@@ -142,14 +142,9 @@ final class AccountSwitcher: NSObject {
             AccountAdding.begin(context: context, from: controller)
         }
         add.accessibilityIdentifier = "account-add"
-        let manage = UIAction(title: Strings.AccountSwitcher.manageAccounts, image: UIImage(systemName: "person.2")) { [weak self] _ in
-            guard let self, let navigation = controller?.navigationController, navigation.topViewController === controller else { return }
-            navigation.pushViewController(CombinedAccountsViewController(context: context), animated: true)
-        }
-        manage.accessibilityIdentifier = "account-manage"
         return [
             UIMenu(options: .displayInline, children: choices),
-            UIMenu(options: .displayInline, children: [add, manage]),
+            UIMenu(options: .displayInline, children: [add]),
         ]
     }
 

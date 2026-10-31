@@ -3,26 +3,6 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// Settings › Connected Accounts › Claude Code
-/// (app/(app)/settings/connect/claude.tsx). happy-app's OAuth flow is
-/// commented out; the page tells you to connect from a terminal.
-public final class SettingsConnectClaudeViewController: UIViewController {
-    public override func loadView() {
-        followsTextSize()
-        view = ConnectCommandView(
-            title: Strings.ConnectClaude.title,
-            body: Strings.ConnectClaude.instruction,
-            command: Strings.ConnectClaude.command
-        )
-    }
-
-    public override func viewDidLoad() {
-        super.viewDidLoad()
-        title = Strings.SettingsTitles.connectClaude
-        showsBackTitle()
-    }
-}
-
 /// What's New (app/(app)/changelog.tsx): one card per release, newest
 /// first. Opening it marks the newest one read.
 ///

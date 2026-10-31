@@ -3,7 +3,7 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// A computer's settings page as a list of what is on it: each row's id,
+/// A profile's settings page as a list of what is on it: each row's id,
 /// title and icon. The page draws its rows from these, and home's search
 /// finds them here, so the two can never name a setting differently.
 enum SettingsIndex {
@@ -18,6 +18,14 @@ enum SettingsIndex {
     static var changeAgentName: Entry { Entry(id: "change-agent-name", title: Strings.changeAgentName, glyph: "create-outline", tile: .blue) }
     static var changeAgentAvatar: Entry { Entry(id: "change-agent-avatar", title: Strings.changeAgentAvatar, glyph: "image-outline", tile: .orange) }
     static var hideProjects: Entry { Entry(id: "hide-projects", title: "Hide projects", glyph: "folder-outline", tile: .orange) }
+    static var account: Entry { Entry(id: "account", title: Strings.Settings.account, glyph: "person-circle-outline", tile: .blue) }
+    static var backupRestore: Entry { Entry(id: "backup-restore", title: Strings.BackupRestore.title, glyph: "key-outline", tile: .green) }
+    static var language: Entry { Entry(id: "language", title: Strings.SettingsLanguage.title, glyph: "language-outline", tile: .green) }
+    static var voice: Entry { Entry(id: "voice", title: Strings.Voice.title, glyph: "mic-outline", tile: .orange) }
+    static var agents: Entry { Entry(id: "agents", title: Strings.Settings.agents, glyph: "options-outline", tile: .teal) }
+    static var scanTerminal: Entry { Entry(id: "scan-terminal", title: Strings.connectTerminal, glyph: "qr-code-outline", tile: .indigo) }
+    static var enterTerminal: Entry { Entry(id: "enter-terminal", title: Strings.enterTerminalURL, glyph: "link-outline", tile: .indigo) }
+    static var supportUs: Entry { Entry(id: "support-us", title: Strings.SupportUs.title, glyph: "heart-outline", tile: .red) }
     static var appearance: Entry { Entry(id: "appearance", title: Strings.Settings.appearance, glyph: "color-palette-outline", tile: .purple) }
     static var about: Entry { Entry(id: "about", title: Strings.Settings.about, glyph: "information-circle-outline", tile: .gray) }
     static var connectAgent: Entry { Entry(id: "connect-agent", title: Strings.SettingsActions.addAgent, glyph: "add-outline", tile: .action) }
@@ -34,7 +42,14 @@ enum SettingsIndex {
     /// picture's menu (the two asks) included, in their order. Disconnect is left
     /// out: a search doesn't offer to take the computer away.
     static var computer: [Entry] {
-        [profile, changeAgentName, changeAgentAvatar, appearance, hideProjects, connectAgent, addAccount] + aboutRows
+        [profile, changeAgentName, changeAgentAvatar, appearance, hideProjects, supportUs, connectAgent, addAccount] + aboutRows
+    }
+
+    /// What a Happy account's settings show under its accounts card, in
+    /// their order: the same places as a computer's, with the account's own
+    /// pages beside them. Sign out is left out, as Disconnect is.
+    static var happyAccount: [Entry] {
+        [account, backupRestore, appearance, language, voice, agents, scanTerminal, enterTerminal, supportUs] + aboutRows
     }
 
     /// The About page's rows.

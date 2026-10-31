@@ -115,11 +115,6 @@ public struct AccountProfile: Codable, Hashable, Sendable {
     }
 }
 
-/// `GET /v1/connect/github/params`.
-public struct GitHubOAuthParams: Codable, Sendable {
-    public var url: String
-}
-
 // MARK: Push tokens
 
 /// An element of `GET /v1/push-tokens`.

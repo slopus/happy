@@ -277,6 +277,24 @@ struct SettingsRow {
     var isOn = false
     var action: (() -> Void)?
     var toggled: ((Bool) -> Void)?
+    /// The line under this row's card, said by the card's last row.
+    var footer: String?
+    /// A block of text the card's width (a secret key), in monospace.
+    var isCode = false
+    /// Quieter, for a row that can't be used here.
+    var dimmed = false
+    /// What VoiceOver adds about it: why a dimmed row does nothing.
+    var hint: String?
+    /// What a hold on it offers (signing an account out), and VoiceOver's
+    /// actions on it.
+    var menu: [MenuItem] = []
+
+    struct MenuItem {
+        var title: String
+        var glyph: String
+        var destructive = false
+        var run: () -> Void
+    }
 
     /// Whether it takes the icon's lane.
     var hasIcon: Bool { icon != nil || avatar }
@@ -315,9 +333,30 @@ final class SettingsCardView: UIView {
         text.map { ($0 as NSString).size(withAttributes: [.font: RowView.valueFont]).width }
     }
 
-    final class RowView: UIView {
+    /// The cards' rows as the layout takes them, a code row measured at
+    /// the page's `width`.
+    static func specs(_ cards: [[SettingsRow]], width: CGFloat) -> [[SettingsLayout.RowSpec]] {
+        cards.map { card in
+            card.map { row in
+                let text = row.isCode ? height(row.title, font: RowView.codeFont, width: SettingsLayout.textWidth(width)) : nil
+                return SettingsLayout.RowSpec(hasIcon: row.hasIcon && !row.isCode, valueWidth: row.isCode ? nil : valueWidth(row.value), accessory: row.isCode ? .none : row.accessory, textHeight: text)
+            }
+        }
+    }
+
+    /// Each card's footer, its last row's, measured at the page's `width`.
+    static func footers(_ cards: [[SettingsRow]], width: CGFloat) -> [CGFloat?] {
+        cards.map { card in card.last?.footer.map { height($0, font: SettingsFooters.font, width: SettingsLayout.footerWidth(width)) } }
+    }
+
+    private static func height(_ text: String, font: UIFont, width: CGFloat) -> CGFloat {
+        ceil((text as NSString).boundingRect(with: CGSize(width: width, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font], context: nil).height)
+    }
+
+    final class RowView: UIView, UIContextMenuInteractionDelegate {
         static let titleFont = Fonts.ui(.regular, size: 17)
         static let valueFont = Fonts.ui(.regular, size: 17)
+        static let codeFont = Fonts.mono(bold: false, size: 15)
         private let tile = UIView()
         private let glyph = UIImageView()
         private let title = UILabel()
@@ -326,6 +365,7 @@ final class SettingsCardView: UIView {
         private let toggle = UISwitch()
         private let separator = UIView()
         private var row: SettingsRow?
+        private lazy var menuInteraction = UIContextMenuInteraction(delegate: self)
         /// A fold's chevron, turned down while what it folds is open.
         var chevronTurned = false {
             didSet { chevron.image = Glyphs.image(chevronTurned ? "chevron-down" : "chevron-right", size: 14) }
@@ -388,7 +428,9 @@ final class SettingsCardView: UIView {
                 }
             }
             title.text = row.title
-            title.textColor = UIColor(row.destructive ? Palette.settingsDestructive : row.icon?.tile == .action ? Palette.textLink : Palette.settingsText)
+            title.font = row.isCode ? Self.codeFont : Self.titleFont
+            title.numberOfLines = row.isCode ? 0 : 1
+            title.textColor = UIColor(row.destructive ? Palette.settingsDestructive : row.dimmed ? Palette.settingsSecondary : row.icon?.tile == .action ? Palette.textLink : Palette.settingsText)
             title.frame = local(frames.title)
             value.isHidden = frames.value == nil
             value.text = row.value
@@ -409,7 +451,25 @@ final class SettingsCardView: UIView {
             toggle.accessibilityLabel = row.title
             isAccessibilityElement = row.accessory != .toggle
             accessibilityLabel = [row.title, row.value].compactMap { $0 }.joined(separator: ", ")
-            accessibilityTraits = row.accessory == .toggle ? [] : .button
+            accessibilityHint = row.hint
+            accessibilityTraits = row.accessory == .toggle ? [] : row.action != nil ? .button : row.dimmed ? .notEnabled : .staticText
+            if row.menu.isEmpty {
+                removeInteraction(menuInteraction)
+            } else if !interactions.contains(where: { $0 === menuInteraction }) {
+                addInteraction(menuInteraction)
+            }
+            accessibilityCustomActions = row.menu.map { item in
+                UIAccessibilityCustomAction(name: item.title) { _ in item.run(); return true }
+            }
+        }
+
+        func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
+            guard let items = row?.menu, !items.isEmpty else { return nil }
+            return UIContextMenuConfiguration(actionProvider: { _ in
+                UIMenu(children: items.map { item in
+                    UIAction(title: item.title, image: Glyphs.image(item.glyph, size: 17), attributes: item.destructive ? .destructive : []) { _ in item.run() }
+                })
+            })
         }
 
         static func color(_ tile: SettingsRow.Tile) -> ColorToken {
@@ -448,6 +508,36 @@ final class SettingsCardView: UIView {
             UIView.animate(withDuration: 0.8, delay: 0.6, options: [.allowUserInteraction, .curveEaseOut]) { self.backgroundColor = nil }
         }
     }
+}
+
+/// The lines under settings' cards, each where the layout put it.
+final class SettingsFooters {
+    static let font = Fonts.ui(.regular, size: 13)
+    private weak var container: UIView?
+    private var labels: [UILabel] = []
+
+    init(in container: UIView) { self.container = container }
+
+    /// `texts` by card, at `layout`'s footer frames.
+    func show(_ texts: [String?], layout: [SettingsLayout.Card]) {
+        let shown = zip(texts, layout).compactMap { text, card in text.flatMap { text in card.footer.map { (text, $0) } } }
+        while labels.count < shown.count {
+            let label = UILabel()
+            label.font = Self.font
+            label.textColor = UIColor(Palette.settingsSecondary)
+            label.numberOfLines = 0
+            container?.addSubview(label)
+            labels.append(label)
+        }
+        while labels.count > shown.count { labels.removeLast().removeFromSuperview() }
+        for (label, (text, frame)) in zip(labels, shown) {
+            label.text = text
+            label.frame = frame
+        }
+    }
+
+    /// What they say, top to bottom: for the tests.
+    var texts: [String] { labels.compactMap { $0.text } }
 }
 
 /// A profile's picture: a computer's own bytes, an account's from its

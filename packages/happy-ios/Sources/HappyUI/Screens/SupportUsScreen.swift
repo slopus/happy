@@ -2,20 +2,21 @@
 import HappyLayout
 import UIKit
 
-/// A useful destination even before purchases are configured. No purchase
-/// SDK is initialized and no paywall, restore, or network request runs on
-/// opening this screen. Subscription access remains the server's decision.
+/// Support us, in settings' cards, the same on a computer's page and a
+/// Happy account's. A useful destination even before purchases are
+/// configured: no purchase SDK is initialized and no paywall, restore, or
+/// network request runs on opening it. Subscription access remains the
+/// server's decision.
 ///
 /// happy-app's SettingsView opens its hosted voluntary_support paywall;
 /// its title, subtitle, heart and unavailable copy are retained here. Until
 /// a purchase provider can verify this account's subscriptions, status is
 /// unknown rather than "not subscribed". Add that provider here when its
 /// configuration is available, keeping receipt validation on the server.
-public final class SupportUsViewController: UIViewController {
+final class SupportUsViewController: SettingsPageViewController {
     private let openURL: @MainActor (URL) async -> Bool
-    private let list = GroupedListView()
 
-    public convenience init() {
+    convenience init() {
         self.init(openURL: { await UIApplication.shared.open($0) })
     }
 
@@ -23,126 +24,55 @@ public final class SupportUsViewController: UIViewController {
     /// or browser. It does not grant purchase or entitlement access.
     init(openURL: @escaping @MainActor (URL) async -> Bool) {
         self.openURL = openURL
-        super.init(nibName: nil, bundle: nil)
-        followsTextSize()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    public override func loadView() {
-        view = list
-    }
-
-    public override func viewDidLoad() {
-        super.viewDidLoad()
-        title = Strings.SupportUs.title
-        showsBackTitle()
-
-        let support = ItemRowView(
-            title: Strings.SupportUs.title,
-            subtitle: Strings.SupportUs.subtitle,
-            icon: ItemIcon(.ionicons("heart"), tint: Palette.iconRed)
-        )
-        support.accessibilityIdentifier = "supportUs.summary"
-
-        let subscribe = unavailableRow(
-            title: Strings.SupportUs.subscribe,
-            explanation: Strings.SupportUs.unavailable,
-            identifier: "supportUs.subscribe"
-        )
-        let restore = unavailableRow(
-            title: Strings.SupportUs.restore,
-            explanation: Strings.SupportUs.restoreUnavailable,
-            identifier: "supportUs.restore"
-        )
-        let manage = linkRow(
-            title: Strings.SupportUs.manage,
-            subtitle: Strings.SupportUs.appStore,
-            icon: ItemIcon(.ionicons("card-outline"), tint: Palette.iconBlue),
-            url: Self.manageSubscriptionsURL,
-            identifier: "supportUs.manage"
-        )
-
-        // Existing measured components own all frames. Their pure layouts
-        // grow with content/text size and the list scrolls on small screens.
-        list.sections = [
-            ItemGroupView(footer: Strings.SupportUs.unavailable, rows: [support]),
-            ItemGroupView(
-                title: Strings.SupportUs.subscriptions,
-                footer: Strings.SupportUs.statusUnavailable,
-                rows: [subscribe, restore]
-            ),
-            ItemGroupView(footer: Strings.SupportUs.manageFooter, rows: [manage]),
-            ItemGroupView(rows: [
-                linkRow(
-                    title: Strings.Settings.github,
-                    subtitle: Strings.Links.githubDetail,
-                    icon: ItemIcon(.ionicons("logo-github"), tint: Palette.text),
-                    url: Strings.Links.github,
-                    identifier: "supportUs.project"
-                ),
-                linkRow(
-                    title: Strings.Settings.privacyPolicy,
-                    icon: ItemIcon(.ionicons("shield-checkmark-outline"), tint: Palette.iconBlue),
-                    url: Strings.Links.privacy,
-                    identifier: "supportUs.privacy"
-                ),
-                linkRow(
-                    title: Strings.Settings.termsOfService,
-                    icon: ItemIcon(.ionicons("document-text-outline"), tint: Palette.iconBlue),
-                    url: Strings.Links.terms,
-                    identifier: "supportUs.terms"
-                ),
-            ]),
-        ]
-        // Groups configure row dividers, which reapplies ItemRowView's
-        // default enabled state. Apply the unavailable state afterward.
-        for row in [subscribe, restore] {
-            row.isEnabled = false
-            row.titleLabel.color = Palette.textSecondary
-        }
-        // These short groups can grow vertically. Keep all their words
-        // visible at accessibility text sizes instead of Item's usual caps.
-        for group in list.sections.compactMap({ $0 as? ItemGroupView }) {
-            for row in group.rows.compactMap({ $0 as? ItemRowView }) {
-                row.titleLabel.numberOfLines = 0
-                row.subtitleLabel.numberOfLines = 0
-            }
-        }
+        super.init(title: Strings.SupportUs.title)
     }
 
     /// Apple's account-wide subscription management page works independently
     /// of a purchase SDK. It makes no claim about this Happy account's status.
     static let manageSubscriptionsURL = URL(string: "https://apps.apple.com/account/subscriptions")!
 
-    private func unavailableRow(title: String, explanation: String, identifier: String) -> ItemRowView {
-        let row = ItemRowView(title: title, subtitle: Strings.SupportUs.notAvailable)
-        row.accessibilityHint = explanation
-        row.accessibilityIdentifier = identifier
-        return row
+    override func makeRows() -> [[SettingsRow]] {
+        typealias Row = SettingsRow
+        typealias Text = Strings.SupportUs
+        // Subscribing and restoring say why they can't be used, and do nothing.
+        func unavailable(_ id: String, _ title: String, hint: String) -> Row {
+            Row(id: id, title: title, value: Text.notAvailable, accessory: .none, dimmed: true, hint: hint)
+        }
+        return [
+            [Row(id: "support-summary", title: Text.subtitle, icon: ("heart", .red), accessory: .none, footer: Text.unavailable)],
+            [
+                unavailable("subscribe", Text.subscribe, hint: Text.unavailable),
+                unavailable("restore-purchases", Text.restore, hint: Text.restoreUnavailable),
+            ].withFooter(Text.statusUnavailable),
+            [link("manage-subscriptions", Text.manage, icon: ("card-outline", .blue), value: Text.appStore, url: Self.manageSubscriptionsURL, footer: Text.manageFooter)],
+            [
+                link("support-github", Strings.Settings.github, icon: ("logo-github", .gray), value: Strings.Links.githubDetail, url: Strings.Links.github),
+                link("support-privacy", Strings.Settings.privacyPolicy, icon: ("shield-checkmark-outline", .blue), url: Strings.Links.privacy),
+                link("support-terms", Strings.Settings.termsOfService, icon: ("document-text-outline", .gray), url: Strings.Links.terms),
+            ],
+        ]
     }
 
-    private func linkRow(
-        title: String,
-        subtitle: String? = nil,
-        icon: ItemIcon,
-        url: URL,
-        identifier: String
-    ) -> ItemRowView {
-        let row = ItemRowView(title: title, subtitle: subtitle, icon: icon) { [weak self] in
+    private func link(_ id: String, _ title: String, icon: (String, SettingsRow.Tile), value: String? = nil, url: URL, footer: String? = nil) -> SettingsRow {
+        SettingsRow(id: id, title: title, icon: icon, value: value, action: { [weak self] in self?.open(url) }, footer: footer)
+    }
+
+    private func open(_ url: URL) {
+        Task { @MainActor [weak self] in
             guard let self else { return }
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if !(await self.openURL(url)), self.viewIfLoaded?.window != nil {
-                    Alerts.show(Strings.Common.error, Strings.SupportUs.linkFailed, on: self)
-                }
+            if !(await openURL(url)), viewIfLoaded?.window != nil {
+                Alerts.show(Strings.Common.error, Strings.SupportUs.linkFailed, on: self)
             }
         }
-        row.accessibilityIdentifier = identifier
-        return row
+    }
+}
+
+extension Array where Element == SettingsRow {
+    /// The card with `footer` under it, said by its last row.
+    func withFooter(_ footer: String) -> [SettingsRow] {
+        var rows = self
+        if !rows.isEmpty { rows[rows.count - 1].footer = footer }
+        return rows
     }
 }
 #endif

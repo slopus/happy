@@ -201,13 +201,18 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
             XCTAssertEqual(title(of: old.id, in: page), Strings.legacyAccount, "\(here)")
         }
 
-        // Its Account page offers no key to show and no device to link.
-        let accountPage = SettingsAccountViewController(context: context, session: session)
-        accountPage.loadViewIfNeeded()
-        let rows = rowTitles(accountPage)
-        XCTAssertFalse(rows.contains(Strings.SettingsAccount.secretKey), "\(here): \(rows)")
-        XCTAssertFalse(rows.contains(Strings.SettingsAccount.linkNewDevice), "\(here): \(rows)")
-        XCTAssertTrue(rows.contains(Strings.SettingsAccount.logout), "\(here): \(rows)")
+        // Its Backup & Restore offers no key to show and no device to
+        // link, but still restores another; Settings still signs it out.
+        let backup = BackupSettingsViewController(context: context, session: session)
+        backup.loadViewIfNeeded()
+        XCTAssertFalse(backup.isLegacy, "\(here)")
+        let rows = backup.shownRowIDs.joined()
+        XCTAssertFalse(rows.contains("secret-key"), "\(here): \(rows)")
+        XCTAssertFalse(rows.contains("link-device"), "\(here): \(rows)")
+        XCTAssertEqual(Array(rows), ["no-key", "restore"], "\(here)")
+        backup.tapRow("no-key")
+        XCTAssertFalse(backup.shownRowIDs.joined().contains("secret-key-text"), "\(here): the key showed")
+        XCTAssertNotNil(page.shownRow("sign-out"), "\(here)")
         withExtendedLifetime(coordinator) {}
     }
 
@@ -215,13 +220,7 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
         zip(settings.shownRowIDs.joined(), settings.shownRowTitles.joined()).first { $0.0 == "account:\(id)" }?.1
     }
 
-    /// Every row title on a grouped page, group by group.
-    private func rowTitles(_ controller: UIViewController) -> [String] {
-        let sections = (controller.view as? GroupedListView)?.sections ?? []
-        return sections.compactMap { $0 as? ItemGroupView }.flatMap(\.rows).compactMap { ($0 as? ItemRowView)?.title }
-    }
-
-    /// A legacy account's Account page keeps its key and Link New Device.
+    /// A legacy account's Backup & Restore keeps its key and Link New Device.
     func testALegacyAccountKeepsItsKey() async throws {
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
@@ -230,11 +229,10 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
             transport: Relay(terminal: Data()), connector: NoSockets())
         try await account.signIn(Credentials(token: "existing", secret: Data(repeating: 7, count: 32)))
         let context = AppContext(account: account, variant: .preview, version: "test")
-        let page = SettingsAccountViewController(context: context, session: try XCTUnwrap(account.session))
+        let page = BackupSettingsViewController(context: context, session: try XCTUnwrap(account.session))
         page.loadViewIfNeeded()
-        let rows = rowTitles(page)
-        XCTAssertTrue(rows.contains(Strings.SettingsAccount.secretKey), "\(rows)")
-        XCTAssertTrue(rows.contains(Strings.SettingsAccount.linkNewDevice), "\(rows)")
+        XCTAssertTrue(page.isLegacy)
+        XCTAssertEqual(page.shownRowIDs, [["secret-key"], ["link-device"], ["restore"]])
         XCTAssertEqual(account.accounts.first?.shownName, Strings.legacyAccount)
         await account.signOut()
     }

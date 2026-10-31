@@ -206,8 +206,8 @@ final class TranslationCatalogTests: XCTestCase {
             counts[name] = (strings, calls - strings)
         }
         // Home's: Strings.swift, Strings/Home.swift, Strings/SettingsPages.swift.
-        XCTAssertEqual(counts["Strings.swift"]?.strings, 232)
-        XCTAssertEqual(counts["Strings.swift"]?.functions, 10)
+        XCTAssertEqual(counts["Strings.swift"]?.strings, 206)
+        XCTAssertEqual(counts["Strings.swift"]?.functions, 6)
         XCTAssertEqual(counts["Home.swift"]?.strings, 36)
         XCTAssertEqual(counts["Home.swift"]?.functions, 1)
         XCTAssertEqual(counts["SettingsPages.swift"]?.strings, 1)
@@ -271,9 +271,9 @@ final class TranslationCatalogTests: XCTestCase {
                 XCTAssertTrue(body.contains(english), "\(at): \(english.debugDescription) is not in it any more")
             }
         }
-        XCTAssertEqual(counts["HappyUI/Strings.swift"], 40)
+        XCTAssertEqual(counts["HappyUI/Strings.swift"], 34)
         XCTAssertEqual(counts["HappyUI/Strings/Home.swift"], 43)
-        XCTAssertEqual(counts["HappyUI/Strings/SettingsPages.swift"], 7)
+        XCTAssertEqual(counts["HappyUI/Strings/SettingsPages.swift"], 6)
         XCTAssertEqual(counts["HappyCore/Settings/SettingsPages.swift"], 15)
         XCTAssertEqual(counts["HappyCore/Settings/AgentsPage.swift"], 4)
     }

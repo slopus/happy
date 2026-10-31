@@ -89,20 +89,6 @@ final class SettingsPageLayoutTests: XCTestCase {
         XCTAssertEqual(BubblePreviewLayout.lines, [rect(19, 9, 18, 3), rect(11, 16, 26, 3)])
     }
 
-    func testConnectCommandIsCentred() {
-        let layout = ConnectCommandLayout(
-            size: phone,
-            safeArea: phoneUnderBar,
-            title: text("Connect Claude", lineHeight: 23),
-            body: text("Run the following command in your terminal:", lineHeight: 19),
-            command: text("$ happy connect claude", lineHeight: 19, maxLines: 1)
-        )
-        assertFrame(layout.title, rect(140.5, 392, 112, 23))
-        assertFrame(layout.body, rect(24.5, 435, 344, 19))
-        assertFrame(layout.terminal, rect(56.5, 478, 280, 51))
-        assertFrame(layout.command, rect(16, 16, 176, 19))
-    }
-
     func testChangelogBodyListsAndParagraphs() {
         let items = [
             ChangelogBodyLayout.Item(text: text("aaaa", lineHeight: 25), bulleted: true),

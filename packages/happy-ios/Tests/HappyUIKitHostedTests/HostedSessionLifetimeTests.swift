@@ -139,12 +139,12 @@ final class HostedSessionLifetimeTests: XCTestCase {
         try await account.agentConnections.remove(computer.id)
     }
 
-    // MARK: Signing out from Manage Accounts
+    // MARK: Signing out from Settings' accounts card
 
-    /// The switcher's Manage Accounts screen, in a window so it can present
-    /// its confirmation.
-    private func manageAccounts(_ context: AppContext) async throws -> (CombinedAccountsViewController, UIWindow) {
-        let screen = CombinedAccountsViewController(context: context)
+    /// Settings, whose accounts card signs any account out from its row's
+    /// hold, in a window so it can present its confirmation.
+    private func manageAccounts(_ context: AppContext) async throws -> (SettingsViewController, UIWindow) {
+        let screen = SettingsViewController(context: context, computer: nil)
         let window = hostedKeyWindow(in: try await hostedActiveScene(), root: UINavigationController(rootViewController: screen))
         window.layoutIfNeeded()
         return (screen, window)
@@ -154,10 +154,10 @@ final class HostedSessionLifetimeTests: XCTestCase {
         try XCTUnwrap(account.accounts.first { $0.id == id }, "\(id) is not listed")
     }
 
-    /// Disconnecting a computer from Manage Accounts lets go of its session,
+    /// Disconnecting a computer from Settings lets go of its session,
     /// which it never used to: the session stayed in the dictionary with its
     /// monitor and observers running, out of reach.
-    func testDisconnectingAComputerFromManageAccountsLetsGoOfItsSession() async throws {
+    func testDisconnectingAComputerFromSettingsLetsGoOfItsSession() async throws {
         let account = makeAccount()
         await account.agentConnections.setForeground(false)
         let computer = try await account.agentConnections.add(credentials(device: UUID().uuidString), name: "Manage test")
@@ -167,9 +167,9 @@ final class HostedSessionLifetimeTests: XCTestCase {
         let (screen, window) = try await manageAccounts(context)
         defer { window.isHidden = true }
 
-        await screen.signOut(try summary(computer.id, in: account))
+        await screen.signOut(try summary(computer.id, in: account).id, direct: true)
         XCTAssertFalse(account.agentConnections.accounts.contains { $0.id == computer.id }, "the computer is gone")
-        assertLetGo(session, "a computer disconnected from Manage Accounts")
+        assertLetGo(session, "a computer disconnected from Settings")
         XCTAssertNil(Session.session(for: computer.id, context: context), "and nothing makes it a new one")
     }
 
@@ -183,7 +183,10 @@ final class HostedSessionLifetimeTests: XCTestCase {
         let (screen, window) = try await manageAccounts(context)
         defer { window.isHidden = true }
 
-        screen.remove(try summary(computer.id, in: account))
+        // The hold on its row in the accounts card.
+        let row = try XCTUnwrap(screen.shownRow("account:\(computer.id)"))
+        XCTAssertEqual(row.menu.map(\.title), [Strings.disconnect])
+        row.menu.first?.run()
         let asked = try await until { screen.presentedViewController is UIAlertController }
         XCTAssertTrue(asked, "no confirmation")
         let alert = try XCTUnwrap(screen.presentedViewController as? UIAlertController)
@@ -214,7 +217,7 @@ final class HostedSessionLifetimeTests: XCTestCase {
         let (screen, window) = try await manageAccounts(context)
         defer { window.isHidden = true }
 
-        await screen.signOut(try summary(gone.id, in: account))
+        await screen.signOut(try summary(gone.id, in: account).id, direct: true)
         assertLetGo(goneSession, "the computer that was disconnected")
         XCTAssertTrue(Session.session(for: kept.id, context: context) === keptSession, "the other computer's session is the same object")
         assertLive(keptSession, "the other computer's session")
@@ -239,7 +242,7 @@ final class HostedSessionLifetimeTests: XCTestCase {
         // first await, so the next one is refused.
         let running = Task { try await account.signOut(accountID: other.id) }
         await Task.yield()
-        await screen.signOut(try summary(computer.id, in: account))
+        await screen.signOut(try summary(computer.id, in: account).id, direct: true)
         _ = try? await running.value
 
         XCTAssertTrue(screen.presentedViewController is UIAlertController, "the failure is said, not swallowed")

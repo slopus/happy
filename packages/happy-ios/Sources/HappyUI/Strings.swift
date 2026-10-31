@@ -156,33 +156,21 @@ public enum Strings {
     public enum Connect {
         public static var enterSecretKey: String { localized("connect.enterSecretKey", "Please enter a secret key") }
         public static var invalidSecretKey: String { localized("connect.invalidSecretKey", "Invalid secret key. Please check and try again.") }
-        public static var enterUrlManually: String { localized("connect.enterUrlManually", "Enter URL manually") }
     }
 
     public enum Settings {
         public static var title: String { localized("settings.title", "Settings") }
-        public static var connectedAccounts: String { localized("settings.connectedAccounts", "Connected Accounts") }
-        public static var connectAccount: String { localized("settings.connectAccount", "Connect account") }
         public static var github: String { localized("settings.github", "GitHub") }
-        public static var features: String { localized("settings.features", "Features") }
-        public static var scanQrCodeToAuthenticate: String { localized("settings.scanQrCodeToAuthenticate", "Scan QR code to authenticate") }
         public static var account: String { localized("settings.account", "Account") }
-        public static var accountSubtitle: String { localized("settings.accountSubtitle", "Manage your account details") }
         public static var appearance: String { localized("settings.appearance", "Appearance") }
-        public static var appearanceSubtitle: String { localized("settings.appearanceSubtitle", "Customize how the app looks") }
         public static var about: String { localized("settings.about", "About") }
         public static var aboutFooter: String { localized("settings.aboutFooter", "Happy Coder is a Codex and Claude Code mobile client. It's fully end-to-end encrypted and your account is stored only on your device. Not affiliated with Anthropic.") }
         public static var whatsNew: String { localized("settings.whatsNew", "What's New") }
-        public static var whatsNewSubtitle: String { localized("settings.whatsNewSubtitle", "See the latest updates and improvements") }
         public static var reportIssue: String { localized("settings.reportIssue", "Report an Issue") }
         public static var privacyPolicy: String { localized("settings.privacyPolicy", "Privacy Policy") }
         public static var termsOfService: String { localized("settings.termsOfService", "Terms of Service") }
         public static var eula: String { localized("settings.eula", "EULA") }
-        public static func githubConnected(login: String) -> String { localized("settings.githubConnected", ["login": .text(login)], "Connected as @\(login)") }
-        public static var connectGithubAccount: String { localized("settings.connectGithubAccount", "Connect your GitHub account") }
         public static let agents = "Agents"  // SettingsView.tsx:341, spelled out
-        public static let agentsSubtitle = "Connected machines and agent defaults"  // SettingsView.tsx:342, spelled out
-        public static let claudeCode = "Claude Code"  // SettingsView.tsx:275, spelled out
     }
 
     /// Where the About rows lead (SettingsView.tsx).
@@ -272,33 +260,18 @@ public enum Strings {
     }
 
     public enum SettingsAccount {
-        public static var accountInformation: String { localized("settingsAccount.accountInformation", "Account Information") }
-        public static var status: String { localized("settingsAccount.status", "Status") }
-        public static var statusActive: String { localized("settingsAccount.statusActive", "Active") }
         public static var anonymousId: String { localized("settingsAccount.anonymousId", "Analytics ID") }
         public static var publicId: String { localized("settingsAccount.publicId", "Public ID") }
         public static var notAvailable: String { localized("settingsAccount.notAvailable", "Not available") }
         public static var linkNewDevice: String { localized("settingsAccount.linkNewDevice", "Link New Device") }
         public static var linkNewDeviceSubtitle: String { localized("settingsAccount.linkNewDeviceSubtitle", "Scan QR code to link device") }
-        public static var profile: String { localized("settingsAccount.profile", "Profile") }
         public static var name: String { localized("settingsAccount.name", "Name") }
-        public static var github: String { localized("settingsAccount.github", "GitHub") }
-        public static var tapToDisconnect: String { localized("settingsAccount.tapToDisconnect", "Tap to disconnect") }
-        public static var privacy: String { localized("settingsAccount.privacy", "Privacy") }
         public static var privacyDescription: String { localized("settingsAccount.privacyDescription", "Shares usage data, like which features you use and your device type, to help us improve Happy. Never your messages or code.") }
         public static var analytics: String { localized("settingsAccount.analytics", "Analytics") }
-        public static var analyticsDisabled: String { localized("settingsAccount.analyticsDisabled", "No data is shared") }
-        public static var analyticsEnabled: String { localized("settingsAccount.analyticsEnabled", "Usage data is shared") }
-        public static var dangerZone: String { localized("settingsAccount.dangerZone", "Danger Zone") }
-        public static var backup: String { localized("settingsAccount.backup", "Backup") }
         public static var backupDescription: String { localized("settingsAccount.backupDescription", "Your secret key is the only way to recover your account. Save it in a secure place like a password manager.") }
         public static var secretKey: String { localized("settingsAccount.secretKey", "Secret Key") }
-        public static var tapToReveal: String { localized("settingsAccount.tapToReveal", "Tap to reveal") }
-        public static var tapToHide: String { localized("settingsAccount.tapToHide", "Tap to hide") }
         public static var secretKeyLabel: String { localized("settingsAccount.secretKeyLabel", "SECRET KEY (TAP TO COPY)") }
         public static var secretKeyCopied: String { localized("settingsAccount.secretKeyCopied", "Secret key copied to clipboard. Store it in a safe place!") }
-        public static var logout: String { localized("settingsAccount.logout", "Logout") }
-        public static var logoutSubtitle: String { localized("settingsAccount.logoutSubtitle", "Sign out and clear local data") }
         public static var logoutConfirm: String { localized("settingsAccount.logoutConfirm", "Are you sure you want to logout? Make sure you have backed up your secret key!") }
     }
 
@@ -316,7 +289,6 @@ public enum Strings {
         public static func registeredTokens(_ count: Int) -> String { "Registered Tokens (\(count))" }  // account.tsx:544, spelled out
         public static let tokensFooter = "Current-device metadata comes from this phone. Older tokens use their token fingerprint plus server timestamps."  // account.tsx:545, spelled out
         public static let noTokens = "No registered push tokens"  // account.tsx:549, spelled out
-        public static let noTokensSubtitle = "Once this device is registered, it will appear here."  // account.tsx:550, spelled out
         public static let deleteTitle = "Delete Push Token"  // account.tsx:290, spelled out
         public static func deleteMessage(_ fingerprint: String) -> String { "Remove \(fingerprint) from your account?" }  // account.tsx:291, spelled out
         public static let deleteFailed = "Failed to delete push token."  // account.tsx:305, spelled out
@@ -341,13 +313,6 @@ public enum Strings {
 
     public enum Changelog {
         public static var noEntriesAvailable: String { localized("changelog.noEntriesAvailable", "No changelog entries available.") }
-    }
-
-    /// settings/connect/claude.tsx `OAuthViewUnsupported`.
-    public enum ConnectClaude {
-        public static let title = "Connect Claude"  // OAuthView.tsx:363 "Connect ", spelled out
-        public static let instruction = "Run the following command in your terminal:"  // OAuthView.tsx:364, spelled out
-        public static let command = "happy connect claude"  // connect/claude.tsx:54, spelled out
     }
 
     public enum Server {
@@ -380,12 +345,6 @@ public enum Strings {
         public static var developerMode: String { localized("modals.developerMode", "Developer Mode") }
         public static var developerModeEnabled: String { localized("modals.developerModeEnabled", "Developer mode enabled") }
         public static var developerModeDisabled: String { localized("modals.developerModeDisabled", "Developer mode disabled") }
-        public static var disconnectGithub: String { localized("modals.disconnectGithub", "Disconnect GitHub") }
-        public static var disconnectGithubConfirm: String { localized("modals.disconnectGithubConfirm", "Are you sure you want to disconnect your GitHub account?") }
-        public static func disconnectService(_ service: String) -> String { localized("modals.disconnectService", ["service": .text(service)], "Disconnect \(service)") }
-        public static func disconnectServiceConfirm(_ service: String) -> String {
-            localized("modals.disconnectServiceConfirm", ["service": .text(service)], "Are you sure you want to disconnect \(service) from your account?")
-        }
         public static var disconnect: String { localized("modals.disconnect", "Disconnect") }
         // Not in happy-app, which still accepts v1 terminals.
         public static let terminalNeedsUpdate = "This terminal runs an old version of Happy. Update Happy on your computer, then scan again."
@@ -401,6 +360,5 @@ public enum Strings {
 
     public enum Errors {
         public static var authenticationFailed: String { localized("errors.authenticationFailed", "Authentication failed") }
-        public static func disconnectServiceFailed(_ service: String) -> String { localized("errors.disconnectServiceFailed", ["service": .text(service)], "Failed to disconnect \(service)") }
     }
 }
