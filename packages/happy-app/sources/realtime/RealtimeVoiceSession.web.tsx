@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react';
-import { registerVoiceSession } from './RealtimeSession';
+import { finishRealtimeSession, onRealtimeSessionConnected, registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
@@ -110,15 +110,18 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 }
 
 export const RealtimeVoiceSession: React.FC = () => {
+    const registeredSession = useRef<VoiceSession | null>(null);
     const conversation = useConversation({
         clientTools: realtimeClientTools,
-        onConnect: () => {
+        onConnect: (data) => {
             console.log('Realtime session connected');
+            if (registeredSession.current) onRealtimeSessionConnected(registeredSession.current, data.conversationId);
             storage.getState().setRealtimeStatus('connected');
             storage.getState().setRealtimeMode('idle');
         },
         onDisconnect: () => {
             console.log('Realtime session disconnected');
+            if (registeredSession.current) finishRealtimeSession('disconnected', registeredSession.current);
             const prev = storage.getState().realtimeStatus;
             storage.getState().setRealtimeStatus('disconnected');
             storage.getState().setRealtimeMode('idle', true);
@@ -190,19 +193,21 @@ export const RealtimeVoiceSession: React.FC = () => {
         if (!hasRegistered.current) {
             try {
                 console.log('[RealtimeVoiceSession] Registering voice session');
-                registerVoiceSession(new RealtimeVoiceSessionImpl());
+                registeredSession.current = new RealtimeVoiceSessionImpl();
+                registerVoiceSession(registeredSession.current);
                 hasRegistered.current = true;
                 console.log('[RealtimeVoiceSession] Voice session registered successfully');
             } catch (error) {
                 console.error('Failed to register voice session:', error);
             }
         }
-
-        return () => {
-            // Clean up on unmount
-            conversationInstance = null;
-        };
     }, [conversation]);
+
+    useEffect(() => () => {
+        // Keep teardown separate from hook-instance updates on ordinary renders.
+        if (registeredSession.current) finishRealtimeSession('unmount', registeredSession.current);
+        conversationInstance = null;
+    }, []);
 
     // This component doesn't render anything visible
     return null;

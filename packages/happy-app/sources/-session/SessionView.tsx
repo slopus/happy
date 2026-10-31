@@ -40,7 +40,6 @@ import { sync } from '@/sync/sync';
 import { supportsImageAttachmentsForFlavor } from '@/sync/attachmentSupport';
 import { t } from '@/text';
 import { tracking } from '@/track';
-import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useHeaderHeight, useIsLandscape, useIsTablet, useLayoutDimensions } from '@/utils/responsive';
 import { resolveSessionGitPresentation } from '@/utils/sessionGitPresentation';
@@ -1076,17 +1075,7 @@ export function SessionViewLoaded({
         if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
             try {
                 const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
-                const conversationId = await startRealtimeSession(sessionId, initialPrompt);
-                if (conversationId) {
-                    const hasPro = storage.getState().purchases.entitlements['pro'] ?? false;
-                    tracking?.capture('voice_session_started', {
-                        session_id: sessionId,
-                        elevenlabs_conversation_id: conversationId,
-                        has_pro: hasPro,
-                        onboarding_prompt_load_count: getVoiceOnboardingPromptLoadCount(),
-                        voice_message_count: getVoiceMessageCount(),
-                    });
-                }
+                await startRealtimeSession(sessionId, initialPrompt);
             } catch (error) {
                 console.error('Failed to start realtime session:', error);
                 Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));

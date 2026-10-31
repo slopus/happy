@@ -1,4 +1,4 @@
-import type { VoiceSession } from './types';
+import type { VoiceSession, VoiceSessionConfig } from './types';
 import { fetchVoiceCredentials } from '@/sync/apiVoice';
 import { sync } from '@/sync/sync';
 import { Modal } from '@/modal';
@@ -15,20 +15,113 @@ import {
 } from '@/sync/persistence';
 import { buildVoiceFirstMessage, buildVoiceSystemPrompt } from './voiceSystemPrompt';
 import { getVoiceUpsellVariant } from './voiceExperiment';
+import { tracking } from '@/track';
 
 let voiceSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
 let currentSessionId: string | null = null;
-let currentVoiceConversationId: string | null = null;
-let currentVoiceSessionStartedAt: number | null = null;
+type VoiceSessionEndReason = 'manual_stop' | 'disconnected' | 'error' | 'unmount';
+type ActiveVoiceSession = {
+    voice: VoiceSession;
+    sessionId: string;
+    conversationId: string | null;
+    connectedAt: number | null;
+    end: { at: number; reason: VoiceSessionEndReason } | null;
+    ready: boolean;
+    startTracked: boolean;
+};
+let activeVoiceSession: ActiveVoiceSession | null = null;
+
+function reportVoiceSession(session: ActiveVoiceSession) {
+    // The SDK can disconnect before startSession resolves with the conversation ID.
+    // Keep both timestamps, then emit the pair once that ID is available.
+    if (!session.ready || session.connectedAt === null) return;
+    const properties = {
+        session_id: session.sessionId,
+        elevenlabs_conversation_id: session.conversationId,
+    };
+    if (!session.startTracked) {
+        session.startTracked = true;
+        tracking?.capture('voice_session_started', {
+            ...properties,
+            has_pro: storage.getState().purchases.entitlements['pro'] ?? false,
+            onboarding_prompt_load_count: getVoiceOnboardingPromptLoadCount(),
+            voice_message_count: getVoiceMessageCount(),
+        });
+    }
+    if (session.end) {
+        const durationMs = Math.max(0, session.end.at - session.connectedAt);
+        tracking?.capture('voice_session_ended', {
+            ...properties,
+            duration_ms: durationMs,
+            duration_seconds: durationMs / 1000,
+            end_reason: session.end.reason,
+        });
+    }
+}
+
+export function onRealtimeSessionConnected(voice: VoiceSession, conversationId?: string) {
+    if (!activeVoiceSession || activeVoiceSession.voice !== voice || activeVoiceSession.end) return;
+    activeVoiceSession.conversationId ||= conversationId || null;
+    activeVoiceSession.connectedAt ??= performance.now();
+    voiceSessionStarted = true;
+    reportVoiceSession(activeVoiceSession);
+}
+
+export function finishRealtimeSession(reason: VoiceSessionEndReason, voice?: VoiceSession) {
+    const session = activeVoiceSession;
+    if (!session || (voice && session.voice !== voice)) return;
+    // Clear first: manual stop, SDK disconnect and provider unmount can all fire.
+    activeVoiceSession = null;
+    currentSessionId = null;
+    voiceSessionStarted = false;
+    session.end = { at: performance.now(), reason };
+    reportVoiceSession(session);
+}
+
+async function startVoiceSession(
+    voice: VoiceSession,
+    config: VoiceSessionConfig,
+    options: { conversationId?: string; incrementOnboardingPromptLoad?: boolean } = {},
+): Promise<string | null> {
+    // Permission and credential requests can overlap before the SDK is started.
+    if (activeVoiceSession) return activeVoiceSession.conversationId;
+    const session: ActiveVoiceSession = {
+        voice,
+        sessionId: config.sessionId,
+        conversationId: options.conversationId ?? null,
+        connectedAt: null,
+        end: null,
+        ready: false,
+        startTracked: false,
+    };
+    activeVoiceSession = session;
+    currentSessionId = config.sessionId;
+    try {
+        const startedConversationId = await voice.startSession(config);
+        session.conversationId ||= startedConversationId || null;
+        if (options.incrementOnboardingPromptLoad) {
+            incrementVoiceOnboardingPromptLoadCount();
+        }
+        session.ready = true;
+        reportVoiceSession(session);
+        return session.end ? null : session.conversationId;
+    } catch (error) {
+        session.ready = true;
+        if (activeVoiceSession === session) {
+            finishRealtimeSession('error');
+        } else {
+            reportVoiceSession(session);
+        }
+        throw error;
+    }
+}
 
 /**
  * Start a voice session. Returns the ElevenLabs conversation ID if started, null otherwise.
  */
 export async function startRealtimeSession(sessionId: string, initialContext?: string): Promise<string | null> {
-    currentVoiceConversationId = null;
-    currentVoiceSessionStartedAt = null;
-
+    if (activeVoiceSession) return activeVoiceSession.conversationId;
     if (!voiceSession) {
         console.warn('No voice session registered');
         return null;
@@ -51,16 +144,11 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         const { voiceBypassToken, voiceCustomAgentId } = storage.getState().settings;
         if (voiceBypassToken && voiceCustomAgentId) {
             console.log('[Voice] Bypassing token, custom agent ID:', voiceCustomAgentId);
-            currentSessionId = sessionId;
-            const conversationId = await voiceSession.startSession({
+            return await startVoiceSession(voiceSession, {
                 sessionId,
                 initialContext,
                 agentId: voiceCustomAgentId,
             });
-            currentVoiceConversationId = conversationId;
-            currentVoiceSessionStartedAt = Date.now();
-            voiceSessionStarted = true;
-            return conversationId;
         }
 
         const credentials = await TokenStorage.getCredentials();
@@ -113,7 +201,6 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             // Dismissed or error — continue anyway, they can still use free tier.
         }
 
-        currentSessionId = sessionId;
         const onboardingPromptLoadCount = getVoiceOnboardingPromptLoadCount();
         const voiceMessageCount = getVoiceMessageCount();
         const systemPrompt = buildVoiceSystemPrompt({
@@ -128,7 +215,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             includePaidVoiceOnboarding: voiceUpsellVariant === 'voice-onboarding-and-upsell',
         });
 
-        const startedConversationId = await voiceSession.startSession({
+        const startedConversationId = await startVoiceSession(voiceSession, {
             sessionId,
             initialContext,
             systemPrompt,
@@ -136,27 +223,21 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             conversationToken: response.conversationToken,
             agentId: response.agentId,
             userId: response.elevenUserId,
+        }, {
+            conversationId: response.conversationId,
+            incrementOnboardingPromptLoad: !hasPro && voiceUpsellVariant === 'voice-onboarding-and-upsell',
         });
-        if (!hasPro && voiceUpsellVariant === 'voice-onboarding-and-upsell') {
-            incrementVoiceOnboardingPromptLoadCount();
-        }
-        currentVoiceConversationId = response.conversationId ?? startedConversationId;
-        currentVoiceSessionStartedAt = Date.now();
-        voiceSessionStarted = true;
-        return currentVoiceConversationId;
+        return startedConversationId;
     } catch (error) {
         console.error('Failed to start realtime session:', error);
         storage.getState().setRealtimeStatus('disconnected');
-        currentSessionId = null;
-        currentVoiceConversationId = null;
-        currentVoiceSessionStartedAt = null;
-        voiceSessionStarted = false;
         Modal.alert(t('common.error'), t('errors.voiceServiceUnavailable'));
         return null;
     }
 }
 
 export async function stopRealtimeSession() {
+    finishRealtimeSession('manual_stop');
     if (!voiceSession) {
         return;
     }
@@ -165,11 +246,6 @@ export async function stopRealtimeSession() {
         await voiceSession.endSession();
     } catch (error) {
         console.error('Failed to stop realtime session:', error);
-    } finally {
-        currentSessionId = null;
-        currentVoiceConversationId = null;
-        currentVoiceSessionStartedAt = null;
-        voiceSessionStarted = false;
     }
 }
 
@@ -193,14 +269,14 @@ export function getCurrentRealtimeSessionId(): string | null {
 }
 
 export function getCurrentVoiceConversationId(): string | null {
-    return currentVoiceConversationId;
+    return activeVoiceSession?.conversationId ?? null;
 }
 
 export function getCurrentVoiceSessionDurationSeconds(): number | undefined {
-    if (currentVoiceSessionStartedAt === null) {
+    if (activeVoiceSession?.connectedAt == null) {
         return undefined;
     }
-    return Math.max(0, Math.round((Date.now() - currentVoiceSessionStartedAt) / 1000));
+    return Math.max(0, Math.round((performance.now() - activeVoiceSession.connectedAt) / 1000));
 }
 
 export function setCurrentRealtimeSessionId(sessionId: string) {

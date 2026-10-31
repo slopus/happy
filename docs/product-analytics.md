@@ -49,6 +49,15 @@
 - voice_session_started
   - session_id
   - elevenlabs_conversation_id
+  - has_pro
+  - onboarding_prompt_load_count
+  - voice_message_count
+- voice_session_ended
+  - session_id (same as start, even if the active chat changes)
+  - elevenlabs_conversation_id (same as start)
+  - duration_ms (milliseconds of connected time)
+  - duration_seconds (same duration in seconds, including fractional seconds)
+  - end_reason (`manual_stop`, `disconnected`, `error`, or `unmount`)
 - voice_session_error
   - session_id
   - elevenlabs_conversation_id
@@ -148,6 +157,7 @@ all include flow property which customizes the upsell screen shown by revenue ca
 
 - session_switched now includes stable identity (`session_id`, `session_created_at`) plus recency. Entry source is still merged until we add an explicit source property.
 - elevenlabs_conversation_id is the conversation id returned by the ElevenLabs voice session layer.
+- voice_session_ended uses the monotonic `performance.now()` clock, from the SDK connected callback until manual stop, disconnect, provider unmount, or a startup rejection after connecting. Repeated teardown callbacks emit one end event. Recoverable SDK errors wait for disconnect. Failed connections emit neither start nor end; process termination can prevent an end event from being delivered.
 - github_connected is a plain event with no GitHub profile data attached.
 
 ## Relevant Sources
