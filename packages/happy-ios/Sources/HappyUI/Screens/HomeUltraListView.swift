@@ -31,9 +31,9 @@ final class HomeUltraRow: ListRow {
     var trailingSwipeActions: [ListSwipeAction] {
         guard let archive else { return [] }
         if leaves {
-            return [ListSwipeAction(title: Strings.Tasks.leave, image: .icon(.ionicons("exit-outline"), size: 20), isDestructive: true) { archive() }]
+            return [ListSwipeAction(title: Strings.Tasks.leave, image: .icon(.ionicons("exit-outline"), size: 20), color: UIColor(Palette.statusError), isDestructive: true) { archive() }]
         }
-        return [ListSwipeAction(title: Strings.SessionInfo.archiveSession, image: .icon(.ionicons("archive-outline"), size: 20), isDestructive: true) { archive() }]
+        return [ListSwipeAction(title: Strings.SessionInfo.archiveSession, image: .icon(.ionicons("archive-outline"), size: 20), color: UIColor(Palette.statusError), isDestructive: true) { archive() }]
     }
 
     init(identity: String, revision: UInt64, plan: HomeRowDrawing, selected: Bool = false,
@@ -176,7 +176,7 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
         if row.selected { accessibilityTraits.insert(.selected) }
         var actions: [UIAccessibilityCustomAction] = []
         if row.longPress != nil {
-            actions.append(UIAccessibilityCustomAction(name: Strings.HomeRenderer.actions, actionHandler: { [weak self] _ in
+            actions.append(UIAccessibilityCustomAction(name: Strings.Home.rowActions, actionHandler: { [weak self] _ in
                 self?.row.longPress?(); return self?.row.longPress != nil
             }))
         }

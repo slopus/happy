@@ -45,9 +45,8 @@ it asks for the microphone and fetches voice credentials from the server.
 ## Harness flags
 
 - `-fixture <name>`: opens a fixture chat.
-- `-screen home -renderer UITableView -grouping flat -sessionCount 0
-  -archiveCount 0`: opens the seeded Home, which pushes chats through
-  normal navigation. `-renderer stored` keeps the stored Home renderer.
+- `-screen home -grouping flat -sessionCount 0 -archiveCount 0`: opens the
+  seeded Home, which pushes chats through normal navigation.
 - `-qaProbe`: installs the probe. `-qaRun <name>` names its files, and
   `-qaDark` shows the window in dark appearance.
 - `-giantParagraphs N` (1…1000): sets the size of the `giant` fixture's message.

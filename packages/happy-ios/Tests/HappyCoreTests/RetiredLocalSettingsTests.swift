@@ -8,10 +8,12 @@ final class RetiredLocalSettingsTests: XCTestCase {
     func testRendererPicksAreDeletedOnRead() {
         let store = InMemoryKeyValueStore([
             "chatListRenderer": "UICollectionView",
+            "homeListRenderer": "UltraList",
             "themePreference": "dark",
         ])
         let settings = LocalSettings(storage: store)
         XCTAssertNil(store.string(forKey: "chatListRenderer"))
+        XCTAssertNil(store.string(forKey: "homeListRenderer"))
         XCTAssertEqual(settings.themePreference, .dark)
         XCTAssertEqual(store.string(forKey: "themePreference"), "dark")
     }

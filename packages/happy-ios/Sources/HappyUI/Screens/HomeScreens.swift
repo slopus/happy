@@ -104,7 +104,6 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         // Midnight, a new time zone, a clock set by hand: the stamps are
         // written again, off the main thread.
         NotificationCenter.default.addObserver(self, selector: #selector(clockChanged), name: UIApplication.significantTimeChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(rendererChanged), name: HomeRendererPreference.didChange, object: nil)
     }
 
     /// Something can be started from compose: a computer is linked and,
@@ -140,7 +139,7 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        rendererChanged()
+        prepareArchivesIfNeeded()
         // The server may have changed on a screen pushed from here.
         updateNavigation(animated: animated)
         HomeToolbar.show(for: self, animated: animated)
@@ -189,7 +188,7 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     }
 
     private func prepareArchivesIfNeeded() {
-        let wanted = state?.kind == .list && context.account.localSettings.homeListRenderer == .ultraList && !traitCollection.isTabletLayout
+        let wanted = state?.kind == .list && !traitCollection.isTabletLayout
         guard wanted != preparesArchives else { return }
         preparesArchives = wanted
         pipeline?.update { $0.preparesArchives = wanted }
@@ -275,17 +274,9 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         return controller
     }
 
-    @objc private func rendererChanged() {
-        prepareArchivesIfNeeded()
-        guard isCurrentAccount, let list = content as? SessionListViewController,
-              list.rendererPreference != context.account.localSettings.homeListRenderer else { return }
-        embed(makeList(list.model, changeset: RowChangeset()), animated: false)
-        updateNavigation(animated: false)
-    }
-
     private func embed(_ next: UIViewController, animated: Bool) {
         let previous = content
-        (previous as? SessionListViewController)?.deactivateRenderer()
+        (previous as? SessionListViewController)?.deactivate()
         content = next
         previous?.willMove(toParent: nil)
         addChild(next)

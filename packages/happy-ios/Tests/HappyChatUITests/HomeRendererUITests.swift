@@ -3,9 +3,9 @@ import XCTest
 final class HomeRendererUITests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false; _ = skipsQuiescence }
 
-    private func launch(_ renderer: String, grouping: String = "flat", count: Int = 0, archives: Int = 0) -> XCUIApplication {
+    private func launch(grouping: String = "flat", count: Int = 0, archives: Int = 0) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-screen", "home", "-renderer", renderer, "-grouping", grouping, "-sessionCount", "\(count)", "-archiveCount", "\(archives)"]
+        app.launchArguments = ["-screen", "home", "-grouping", grouping, "-sessionCount", "\(count)", "-archiveCount", "\(archives)"]
         app.launch()
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 20))
         return app
@@ -20,39 +20,26 @@ final class HomeRendererUITests: XCTestCase {
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
 
-    func testTableHomeOpensChat() {
-        let app = launch("UITableView")
-        let chat = row("Scroll indicator", in: app)
-        XCTAssertTrue(chat.waitForExistence(timeout: 15))
-        screenshot("Home-UITableView")
-        chat.tap()
-        XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 15))
-        XCTAssertFalse(app.buttons["Settings"].exists)
-    }
-
-    func testArchivePressReleasesOnceLikeTable() {
-        for renderer in ["UITableView", "UltraList"] {
-            let app = launch(renderer, archives: 1000)
-            let show = row("Show archived", in: app)
-            XCTAssertTrue(show.waitForExistence(timeout: 15))
-            screenshot("\(renderer)-archive-collapsed")
-            // A held press must stay a button press: the toggle has no
-            // long-press action to become.
-            show.press(forDuration: 0.65)
-            let hide = row("Hide archived", in: app)
-            XCTAssertTrue(hide.waitForExistence(timeout: 5), "\(renderer) swallowed release")
-            XCTAssertTrue(row("Archived fixture", in: app).waitForExistence(timeout: 5))
-            screenshot("\(renderer)-archive-expanded")
-            hide.tap()
-            XCTAssertTrue(show.waitForExistence(timeout: 5))
-            XCTAssertFalse(row("Archived fixture", in: app).exists)
-            app.terminate()
-        }
+    func testArchivePressReleasesOnce() {
+        let app = launch(archives: 1000)
+        let show = row("Show archived", in: app)
+        XCTAssertTrue(show.waitForExistence(timeout: 15))
+        screenshot("archive-collapsed")
+        // A held press must stay a button press: the toggle has no
+        // long-press action to become.
+        show.press(forDuration: 0.65)
+        let hide = row("Hide archived", in: app)
+        XCTAssertTrue(hide.waitForExistence(timeout: 5), "swallowed release")
+        XCTAssertTrue(row("Archived fixture", in: app).waitForExistence(timeout: 5))
+        screenshot("archive-expanded")
+        hide.tap()
+        XCTAssertTrue(show.waitForExistence(timeout: 5))
+        XCTAssertFalse(row("Archived fixture", in: app).exists)
     }
 
     func testDraggingFromArchiveToggleScrollsWithoutSelecting() {
         for grouping in ["flat", "project"] {
-            let app = launch("UltraList", grouping: grouping, archives: 12)
+            let app = launch(grouping: grouping, archives: 12)
             let show = row("Show archived", in: app)
             XCTAssertTrue(show.waitForExistence(timeout: 15))
             let start = show.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -69,19 +56,18 @@ final class HomeRendererUITests: XCTestCase {
     }
 
     /// Small, readable visual fixture for recording the normal/held toggle
-    /// and the actual insertion/removal animation in both renderers/layouts.
+    /// and the actual insertion/removal animation in both layouts.
     func testArchiveControlVisualComparison() {
-        let renderers = ProcessInfo.processInfo.environment["HAPPY_ARCHIVE_ULTRA_ONLY"] == "1" ? ["UltraList"] : ["UITableView", "UltraList"]
         for grouping in ["flat", "project"] {
-            for renderer in renderers {
-                let app = launch(renderer, grouping: grouping, archives: 12)
+            for renderer in ["UltraList"] {
+                let app = launch(grouping: grouping, archives: 12)
                 let show = row("Show archived", in: app)
                 let appeared = show.waitForExistence(timeout: 15)
                 if !appeared { print("ARCHIVE FIXTURE ACCESSIBILITY\n\(app.debugDescription)") }
                 XCTAssertTrue(appeared)
                 screenshot("\(renderer)-\(grouping)-archive-normal")
                 show.press(forDuration: 1.5)
-                if renderer == "UltraList" { print("ARCHIVE OPEN TOUCHES \(String(describing: app.staticTexts["home.archive-touch-events"].value))") }
+                do { print("ARCHIVE OPEN TOUCHES \(String(describing: app.staticTexts["home.archive-touch-events"].value))") }
                 let opened = row("Hide archived", in: app).waitForExistence(timeout: 7)
                 if !opened {
                     print("ARCHIVE OPEN PROBE \(String(describing: app.staticTexts["home.archive-probe"].value))")
@@ -91,7 +77,7 @@ final class HomeRendererUITests: XCTestCase {
                 Thread.sleep(forTimeInterval: 0.7)
                 screenshot("\(renderer)-\(grouping)-archive-open")
                 row("Hide archived", in: app).press(forDuration: 1.5)
-                if renderer == "UltraList" { print("ARCHIVE CLOSE TOUCHES \(String(describing: app.staticTexts["home.archive-touch-events"].value))") }
+                do { print("ARCHIVE CLOSE TOUCHES \(String(describing: app.staticTexts["home.archive-touch-events"].value))") }
                 let closed = show.waitForExistence(timeout: 7)
                 if !closed {
                     screenshot("\(renderer)-\(grouping)-held-close-failed")
@@ -180,9 +166,8 @@ final class HomeRendererUITests: XCTestCase {
 
     private func assertArchiveToggleFirstFrameTiming(grouping: String) throws {
         var report: [(renderer: String, samples: [ArchiveSample])] = []
-        let renderers = ProcessInfo.processInfo.environment["HAPPY_ARCHIVE_ULTRA_ONLY"] == "1" ? ["UltraList"] : ["UITableView", "UltraList"]
-        for renderer in renderers {
-            let app = launch(renderer, grouping: grouping, archives: 1000)
+        for renderer in ["UltraList"] {
+            let app = launch(grouping: grouping, archives: 1000)
             let show = row("Show archived", in: app)
             let appeared = show.waitForExistence(timeout: 15)
             if !appeared {
@@ -231,7 +216,7 @@ final class HomeRendererUITests: XCTestCase {
     }
 
     func testUltraHomeOpensChat() {
-        let app = launch("UltraList")
+        let app = launch()
         let list = app.descendants(matching: .any)["home.ultralist"]
         XCTAssertTrue(list.waitForExistence(timeout: 15), "must use the real custom UltraList")
         let chat = row("Scroll indicator", in: app)
@@ -242,39 +227,13 @@ final class HomeRendererUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Settings"].exists)
     }
 
-    func testRendererSwitchKeepsAccountAndHomeData() {
-        let app = launch("UITableView")
-        XCTAssertTrue(row("Scroll indicator", in: app).waitForExistence(timeout: 15))
-        app.buttons["Settings"].tap()
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
-        let appearance = row("Appearance,", in: app)
-        XCTAssertTrue(appearance.waitForExistence(timeout: 10)); appearance.tap()
-        let renderer = row("Home list renderer,", in: app)
-        XCTAssertTrue(renderer.waitForExistence(timeout: 10)); renderer.tap()
-        let choice = app.alerts.buttons["UltraList"]
-        XCTAssertTrue(choice.waitForExistence(timeout: 10)); XCTAssertTrue(choice.isHittable)
-        choice.tap()
-        XCTAssertTrue(app.alerts.firstMatch.waitForNonExistence(timeout: 10))
-        XCTAssertTrue(row("Home list renderer,", in: app).label.hasSuffix("UltraList"))
-        app.navigationBars["Appearance"].buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
-        app.navigationBars["Settings"].buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.descendants(matching: .any)["home.ultralist"].waitForExistence(timeout: 15))
-        XCTAssertTrue(row("Scroll indicator", in: app).exists)
-        screenshot("Home-after-live-switch")
-        app.terminate()
-        let restored = launch("stored")
-        XCTAssertTrue(restored.descendants(matching: .any)["home.ultralist"].waitForExistence(timeout: 15))
-        XCTAssertTrue(row("Scroll indicator", in: restored).exists)
-    }
-
     func testUltraProjectGroupingAndFastScrollStayResponsive() {
-        let grouped = launch("UltraList", grouping: "project")
+        let grouped = launch(grouping: "project")
         XCTAssertTrue(grouped.descendants(matching: .any)["home.ultralist"].waitForExistence(timeout: 15))
         XCTAssertTrue(row("happy", in: grouped).waitForExistence(timeout: 15))
         screenshot("Home-UltraList-projects")
         grouped.terminate()
-        let app = launch("UltraList", count: 1000)
+        let app = launch(count: 1000)
         let list = app.descendants(matching: .any)["home.ultralist"]
         XCTAssertTrue(list.waitForExistence(timeout: 15))
         for _ in 0..<4 { list.swipeUp(velocity: .fast) }
@@ -283,7 +242,7 @@ final class HomeRendererUITests: XCTestCase {
     }
 
     func testGroupedHomeOpensChat() {
-        let app = launch("UltraList", grouping: "project")
+        let app = launch(grouping: "project")
         let list = app.descendants(matching: .any)["home.ultralist"]
         XCTAssertTrue(list.waitForExistence(timeout: 15))
         let chat = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "Scroll indicator", "chat-nav")).firstMatch
@@ -296,11 +255,5 @@ final class HomeRendererUITests: XCTestCase {
         chat.tap()
         XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 15))
         screenshot("Home-UltraList-grouped-selected-chat")
-    }
-
-    func testTableProjectGrouping() {
-        let app = launch("UITableView", grouping: "project")
-        XCTAssertTrue(row("happy", in: app).waitForExistence(timeout: 15))
-        screenshot("Home-UITableView-projects")
     }
 }

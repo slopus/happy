@@ -5,6 +5,7 @@ import HappyLayout
 import HappyStore
 @testable import HappyUI
 import UIKit
+import UltraView
 import XCTest
 
 private struct NoNetwork: HTTPTransport {
@@ -21,9 +22,10 @@ private struct NoSockets: WebSocketConnector {
 
 /// Home's list at the person's text size: every row's height and the
 /// notices' worked out off the main thread from one environment, against
-/// the cells and the header drawing at that size; and the list itself in a
-/// window, taking a new size without going blank or moving the row at its
-/// top, and refusing any environment or header it did not last ask for.
+/// the cells and the header drawing at that size; and the list itself, on
+/// UltraList in a window, taking a new size without going blank or moving
+/// the row at its top, and refusing any environment or header it did not
+/// last ask for.
 @MainActor
 final class HomeListTextSizeTests: XCTestCase {
     private let categories: [UIContentSizeCategory] = [.extraSmall, .large, .extraExtraExtraLarge, .accessibilityExtraExtraExtraLarge]
@@ -247,23 +249,31 @@ final class HomeListTextSizeTests: XCTestCase {
     private struct Shown {
         let window: UIWindow
         let list: SessionListViewController
-        let table: UITableView
+        let rows: UltraListView
         let account: AccountController
 
-        /// The screen's pixels per point, which the table's geometry is
+        /// The screen's pixels per point, which the list's geometry is
         /// compared on (`assertSamePixel`).
         var scale: CGFloat { window.traitCollection.displayScale }
 
-        /// Where the table is, for a failure's message.
-        func geometry(_ anchor: IndexPath? = nil) -> String {
-            var parts = [
-                "offset \(table.contentOffset.y)",
-                "content \(table.contentSize.height)",
-                "header \(table.tableHeaderView?.frame.height ?? 0)",
-                "insets \(table.adjustedContentInset.top)/\(table.adjustedContentInset.bottom)",
-            ]
-            if let anchor { parts.append("anchor \(anchor.row) \(table.rectForRow(at: anchor))") }
-            return parts.joined(separator: ", ")
+        /// The row shown for `id`, if the list has one.
+        func index(_ id: HomeListRow.ID) -> Int? {
+            rows.items.firstIndex { $0.identity == id.ultraIdentity }
+        }
+
+        /// Its settled frame on screen, once it is loaded.
+        func frame(_ id: HomeListRow.ID) -> CGRect? {
+            index(id).flatMap { rows.settledFrame(at: $0) }
+        }
+
+        /// The rows the list has, banner aside, each with its planned height.
+        var planned: [(identity: String, height: CGFloat)] {
+            rows.items.compactMap { $0 as? HomeUltraRow }.filter { $0.identity != "home:banner" }.map { ($0.identity, $0.plan.size.height) }
+        }
+
+        /// Where the list is, for a failure's message.
+        var geometry: String {
+            "loaded \(rows.loadedIndexRange), content \(rows.settledContentHeight), insets \(rows.viewportInsets.top)/\(rows.viewportInsets.bottom)"
         }
     }
 
@@ -283,17 +293,30 @@ final class HomeListTextSizeTests: XCTestCase {
         list.contentInsets = HomeContentInsets(safeArea: LayoutInsets(top: 59, bottom: 34), dock: HomeDockLayout.Metrics.contentInset)
         window.updateTraitsIfNeeded()
         list.view.layoutIfNeeded()
-        let table = try XCTUnwrap(list.view as? UITableView)
-        return Shown(window: window, list: list, table: table, account: account)
+        let rows = try XCTUnwrap((list.view as? HomeUltraListView)?.list)
+        return Shown(window: window, list: list, rows: rows, account: account)
     }
 
-    /// Once the environment asked for last is in, and the notices measured
-    /// with it: landing asks for the header again, and it lands after.
-    /// (On a fresh simulator What's new is unread, so there is a header.)
-    private func landed(_ shown: Shown) async {
+    private func until(seconds: Double = 5, _ condition: () -> Bool) async throws -> Bool {
+        let deadline = ContinuousClock.now + .milliseconds(Int(seconds * 1000))
+        while !condition(), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        return condition()
+    }
+
+    /// Once the environment asked for last is in, the notices measured
+    /// with it, and the rows prepared at it and on screen.
+    private func landed(_ shown: Shown, _ model: HomeListModel) async throws {
         await shown.list.textEnvironmentTask?.value
         await shown.list.headerTask?.value
-        shown.table.layoutIfNeeded()
+        let environment = shown.list.textEnvironment
+        let drawn = try await until {
+            shown.list.view.layoutIfNeeded()
+            return shown.planned.count == model.rows.count && !shown.rows.loadedIndexRange.isEmpty
+                && shown.rows.loadedItemViews.allSatisfy(\.isDisplayReady)
+        }
+        XCTAssertTrue(drawn, "the rows never drew at \(String(describing: environment?.text)): \(shown.geometry)")
     }
 
     private func change(_ shown: Shown, to category: UIContentSizeCategory) {
@@ -302,57 +325,39 @@ final class HomeListTextSizeTests: XCTestCase {
         shown.list.updateTraitsIfNeeded()
     }
 
-    /// Each shown row is as tall as its cell draws itself.
-    private func assertRowsAreTheirCells(_ shown: Shown, _ message: String, line: UInt = #line) {
-        let width = shown.table.bounds.width
-        let paths = shown.table.indexPathsForVisibleRows ?? []
-        XCTAssertFalse(paths.isEmpty, message, line: line)
-        for path in paths {
-            guard let cell = shown.table.cellForRow(at: path) else {
-                XCTFail("no cell at \(path.row), \(message)", line: line)
-                continue
-            }
-            assertSamePixel(
-                shown.table.rectForRow(at: path).height,
-                cell.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height,
-                scale: shown.scale,
-                "row \(path.row), \(message)",
-                line: line
-            )
+    /// Each loaded row is as tall as it was planned, and each session's
+    /// plan is as tall as the measurer says at the environment shown.
+    private func assertRowsAreTheirPlans(_ shown: Shown, _ model: HomeListModel, _ message: String, line: UInt = #line) throws {
+        let environment = try XCTUnwrap(shown.list.textEnvironment, message, line: line)
+        XCTAssertFalse(shown.rows.loadedIndexRange.isEmpty, message, line: line)
+        for index in shown.rows.loadedIndexRange {
+            guard let row = shown.rows.items[index] as? HomeUltraRow, let frame = shown.rows.settledFrame(at: index) else { continue }
+            assertSamePixel(frame.height, row.plan.size.height, scale: shown.scale, "\(row.identity), \(message)", line: line)
         }
-    }
-
-    /// The table's content is the header and every row's own height, on
-    /// screen or not: no row is the table's estimate.
-    private func assertContentIsEveryRow(_ shown: Shown, _ message: String, line: UInt = #line) {
-        let table = shown.table
-        var height = table.tableHeaderView?.frame.height ?? 0
-        for row in 0..<table.numberOfRows(inSection: 0) {
-            height += shown.list.tableView(table, heightForRowAt: IndexPath(row: row, section: 0))
+        for (id, item) in zip(model.ids, model.rows) {
+            guard let kind = SessionListViewController.kind(item, grouped: false), case .flatSession = kind,
+                  let index = shown.index(id), let row = shown.rows.items[index] as? HomeUltraRow else { continue }
+            assertSamePixel(row.plan.size.height, HomeRowMeasurer.height(kind, width: 393, environment: environment), scale: shown.scale,
+                            "\(row.identity) against the measurer, \(message)", line: line)
         }
-        assertSamePixel(table.contentSize.height, height, scale: shown.scale, "the content, \(message): \(shown.geometry())", line: line)
     }
 
     /// The first show waits one hop for its environment, with no rows,
-    /// then shows every row at the person's text size, as tall as its cell
-    /// draws it.
+    /// then shows every row at the person's text size.
     func testTheListShowsItsRowsAtTheTextSizeOnceItsEnvironmentIsIn() async throws {
         let model = self.model(sessions: 6)
         let account = try await signedIn()
         let shown = try show(model, category: .accessibilityExtraExtraExtraLarge, account: account)
         defer { shown.window.isHidden = true }
         XCTAssertNil(shown.list.textEnvironment)
-        XCTAssertEqual(shown.table.numberOfRows(inSection: 0), 0)
+        XCTAssertTrue(shown.planned.isEmpty)
 
-        await landed(shown)
+        try await landed(shown, model)
         XCTAssertEqual(shown.list.textEnvironment?.text, text(.accessibilityExtraExtraExtraLarge, 3))
-        XCTAssertEqual(shown.table.numberOfRows(inSection: 0), model.rows.count)
-        assertRowsAreTheirCells(shown, "largest")
-        let first = try XCTUnwrap(shown.table.cellForRow(at: IndexPath(row: 0, section: 0)) as? SessionRowCell)
-        XCTAssertEqual(first.projectLabel.renderedStyle.size, 15 * TextScale(.accessibilityExtraExtraExtraLarge).multiplier)
-        XCTAssertEqual(first.lines, shown.list.textEnvironment?.rows.sessionLines)
-        assertSamePixel(shown.table.rectForRow(at: IndexPath(row: 0, section: 0)).height, Self.largestWithWorkspace, scale: shown.scale)
-        assertSamePixel(shown.table.rectForRow(at: IndexPath(row: 1, section: 0)).height, Self.largestWithoutWorkspace, scale: shown.scale)
+        XCTAssertEqual(shown.planned.count, model.rows.count)
+        try assertRowsAreTheirPlans(shown, model, "largest")
+        assertSamePixel(try XCTUnwrap(shown.frame(model.ids[0])).height, Self.largestWithWorkspace, scale: shown.scale)
+        assertSamePixel(try XCTUnwrap(shown.frame(model.ids[1])).height, Self.largestWithoutWorkspace, scale: shown.scale)
         await shown.account.signOut()
     }
 
@@ -364,121 +369,83 @@ final class HomeListTextSizeTests: XCTestCase {
         let account = try await signedIn()
         let shown = try show(model, category: .large, account: account)
         defer { shown.window.isHidden = true }
-        await landed(shown)
-        assertContentIsEveryRow(shown, "large")
-        let table = shown.table
-        let inset = table.adjustedContentInset.top
-        XCTAssertGreaterThan(inset, 0)
-        table.contentOffset.y = 1500
-        table.layoutIfNeeded()
-        let top = table.contentOffset.y + inset
-        let anchor = try XCTUnwrap((table.indexPathsForVisibleRows ?? []).first { table.rectForRow(at: $0).maxY > top })
-        XCTAssertGreaterThan(anchor.row, 0)
-        let onScreen = table.rectForRow(at: anchor).minY - top
-        let before = table.rectForRow(at: anchor).height
+        try await landed(shown, model)
+        // The row at the top: the first one showing below the header,
+        // its start 10 under it.
+        let anchor = model.ids[20]
+        let index = try XCTUnwrap(shown.index(anchor))
+        shown.rows.scrollTo(.init(index: index, identity: anchor.ultraIdentity, pointOffset: -10), transition: .none)
+        let scrolled = try await until { shown.frame(anchor) != nil }
+        XCTAssertTrue(scrolled, shown.geometry)
+        let before = try XCTUnwrap(shown.frame(anchor))
+        XCTAssertEqual(before.minY, shown.rows.viewportInsets.top - 10, accuracy: 0.5)
 
         change(shown, to: .accessibilityExtraExtraExtraLarge)
-        // Asked for, not in: the rows and the offset are as they were.
+        // Asked for, not in: the rows are where they were.
         XCTAssertEqual(shown.list.textEnvironment?.text, text(.large, 3))
-        XCTAssertEqual(table.numberOfRows(inSection: 0), model.rows.count)
-        XCTAssertEqual(table.contentOffset.y, 1500)
+        XCTAssertEqual(shown.planned.count, model.rows.count)
+        XCTAssertEqual(shown.frame(anchor), before)
 
-        await landed(shown)
+        await shown.list.textEnvironmentTask?.value
+        let grown = try await until { (shown.frame(anchor)?.height ?? 0) > before.height + 1 }
+        XCTAssertTrue(grown, "the row never took its new height: \(shown.geometry)")
+        try await landed(shown, model)
         XCTAssertEqual(shown.list.textEnvironment?.text, text(.accessibilityExtraExtraExtraLarge, 3))
-        XCTAssertEqual(table.numberOfRows(inSection: 0), model.rows.count)
-        XCTAssertGreaterThan(table.rectForRow(at: anchor).height, before)
-        XCTAssertNotEqual(table.contentOffset.y, 1500, "the rows above grew")
-        assertContentIsEveryRow(shown, "after the change")
-        assertSamePixel(
-            table.rectForRow(at: anchor).minY - (table.contentOffset.y + inset),
-            onScreen,
-            scale: shown.scale,
-            "the row at the top stays where it was: \(shown.geometry(anchor))"
-        )
-        assertRowsAreTheirCells(shown, "after the change")
+        XCTAssertEqual(shown.planned.count, model.rows.count)
+        assertSamePixel(try XCTUnwrap(shown.frame(anchor)).minY, before.minY, scale: shown.scale,
+                        "the row at the top stays where it was: \(shown.geometry)")
+        try assertRowsAreTheirPlans(shown, model, "after the change")
         await shown.account.signOut()
     }
 
-    /// Every session row takes a new size's lines, not only the cells on
-    /// screen: a cell the table made ahead for a row below (cell
-    /// prefetching) is reconfigured with them. Scrolled down a screen at a
-    /// time from where the size landed to the end, every session cell
-    /// shown has the new lines and every row is as tall as its cell.
-    func testANewTextSizeReachesEveryCellTheListHas() async throws {
+    /// Every row takes a new size's plan, not only the ones on screen:
+    /// scrolled from the top to the end after the size landed, every row
+    /// loaded is at its plan for the new size.
+    func testANewTextSizeReachesEveryRowTheListHas() async throws {
         let model = self.model(sessions: 60)
         let account = try await signedIn()
         let shown = try show(model, category: .large, account: account)
         defer { shown.window.isHidden = true }
-        await landed(shown)
-        let table = shown.table
-        let inset = table.adjustedContentInset
-        // Scrolled down a little, in steps, with the run loop let go
-        // between them, so the table can make cells ahead of the scroll.
-        for step in 1...4 {
-            table.contentOffset.y = -inset.top + CGFloat(step) * 40
-            table.layoutIfNeeded()
-            try await Task.sleep(for: .milliseconds(50))
-        }
+        try await landed(shown, model)
+        let large = Dictionary(uniqueKeysWithValues: shown.planned.map { ($0.identity, $0.height) })
 
         change(shown, to: .accessibilityExtraExtraExtraLarge)
-        await landed(shown)
-        let environment = try XCTUnwrap(shown.list.textEnvironment)
-        XCTAssertEqual(environment.text, text(.accessibilityExtraExtraExtraLarge, 3))
-        let sessions = model.rows.indices.compactMap { index -> IndexPath? in
-            if case .flat(.session) = model.rows[index] { return IndexPath(row: index, section: 0) }
-            return nil
+        try await landed(shown, model)
+        let replanned = try await until { shown.planned.allSatisfy { !$0.identity.hasPrefix("session:") || $0.height > large[$0.identity] ?? .infinity } }
+        XCTAssertTrue(replanned, shown.geometry)
+        let largest = shown.planned
+        XCTAssertEqual(largest.count, model.rows.count)
+        for row in largest where row.identity.hasPrefix("session:") {
+            XCTAssertGreaterThan(row.height, large[row.identity] ?? .infinity, "\(row.identity) kept its old plan")
         }
-        XCTAssertEqual(sessions.count, 62)
-        let last = try XCTUnwrap(sessions.last).row
-        XCTAssertEqual(shown.list.textEnvironmentReconfigured, sessions, "every session row, on screen or not")
-        assertContentIsEveryRow(shown, "after the change")
-
-        let page = table.bounds.height - inset.top - inset.bottom
-        XCTAssertGreaterThan(page, 0)
-        var seen = Set<Int>()
-        // A screen a step, until the last session row has been shown or the
-        // list moves no further; the end is read again at every step, from
-        // the table as it is then. 62 rows at the largest size are well
-        // under 100 screens.
-        for _ in 0..<100 {
-            let y = table.contentOffset.y
-            for path in table.indexPathsForVisibleRows ?? [] {
-                guard let cell = table.cellForRow(at: path) as? SessionRowCell else { continue }
-                seen.insert(path.row)
-                XCTAssertEqual(cell.lines, environment.rows.sessionLines, "row \(path.row), \(shown.geometry())")
-            }
-            assertRowsAreTheirCells(shown, shown.geometry())
-            if seen.contains(last) { break }
-            let bottom = table.contentSize.height + inset.bottom - table.bounds.height
-            table.contentOffset.y = min(y + page, bottom)
-            table.layoutIfNeeded()
-            try await Task.sleep(for: .milliseconds(50))
-            if table.contentOffset.y == y { break }
-        }
-        XCTAssertTrue(seen.contains(last), "scrolled to the last row: \(shown.geometry(IndexPath(row: last, section: 0)))")
+        let last = try XCTUnwrap(model.ids.last)
+        let index = try XCTUnwrap(shown.index(last))
+        shown.rows.scrollTo(.init(index: index, identity: last.ultraIdentity), transition: .none)
+        let reached = try await until { shown.frame(last) != nil && shown.rows.loadedItemViews.allSatisfy(\.isDisplayReady) }
+        XCTAssertTrue(reached, "scrolled to the last row: \(shown.geometry)")
+        try assertRowsAreTheirPlans(shown, model, "at the end")
         await shown.account.signOut()
     }
 
     /// A session reconfigured in place that gains its workspace line takes
-    /// the taller row, without the rows around it moving index.
+    /// the taller row, the row under it moving down with it.
     func testASessionGainingItsWorkspaceLineGrowsInPlace() async throws {
         let before = self.model(sessions: 4)
         let account = try await signedIn()
         let shown = try show(before, category: .accessibilityExtraExtraExtraLarge, account: account)
         defer { shown.window.isHidden = true }
-        await landed(shown)
-        let path = IndexPath(row: 1, section: 0)
-        assertSamePixel(shown.table.rectForRow(at: path).height, Self.largestWithoutWorkspace, scale: shown.scale)
+        try await landed(shown, before)
+        assertSamePixel(try XCTUnwrap(shown.frame(before.ids[1])).height, Self.largestWithoutWorkspace, scale: shown.scale)
 
         var after = before
         guard case .flat(.session(var row)) = after.rows[1] else { return XCTFail("row 1 is a session") }
         row.workspaceName = "fix-login"
         after.rows[1] = .flat(.session(row))
         shown.list.apply(after, changeset: RowChangeset(reconfigures: [1]), animated: false)
-        shown.table.layoutIfNeeded()
-        assertSamePixel(shown.table.rectForRow(at: path).height, Self.largestWithWorkspace, scale: shown.scale)
-        assertSamePixel(shown.table.rectForRow(at: IndexPath(row: 2, section: 0)).minY, shown.table.rectForRow(at: path).maxY, scale: shown.scale)
-        assertRowsAreTheirCells(shown, "after the reconfigure")
+        let grown = try await until { abs((shown.frame(before.ids[1])?.height ?? 0) - Self.largestWithWorkspace) < 0.5 }
+        XCTAssertTrue(grown, shown.geometry)
+        assertSamePixel(try XCTUnwrap(shown.frame(before.ids[2])).minY, try XCTUnwrap(shown.frame(before.ids[1])).maxY, scale: shown.scale)
+        try assertRowsAreTheirPlans(shown, after, "after the reconfigure")
         await shown.account.signOut()
     }
 
@@ -487,15 +454,16 @@ final class HomeListTextSizeTests: XCTestCase {
     /// for and asked away again before it lands moves nothing.
     func testOnlyTheSizeLastAskedForLands() async throws {
         let account = try await signedIn()
-        let shown = try show(model(sessions: 6), category: .large, account: account)
+        let model = self.model(sessions: 6)
+        let shown = try show(model, category: .large, account: account)
         defer { shown.window.isHidden = true }
-        await landed(shown)
+        try await landed(shown, model)
 
         change(shown, to: .extraExtraExtraLarge)
         change(shown, to: .accessibilityExtraExtraExtraLarge)
-        await landed(shown)
+        try await landed(shown, model)
         XCTAssertEqual(shown.list.textEnvironment?.text, text(.accessibilityExtraExtraExtraLarge, 3))
-        let heights = (0..<shown.table.numberOfRows(inSection: 0)).map { shown.table.rectForRow(at: IndexPath(row: $0, section: 0)).height }
+        let heights = shown.planned.map(\.height)
         #if DEBUG
         let applies = shown.list.textEnvironmentApplies
         #endif
@@ -510,31 +478,32 @@ final class HomeListTextSizeTests: XCTestCase {
         // Asked for and asked away before it lands.
         change(shown, to: .large)
         change(shown, to: .accessibilityExtraExtraExtraLarge)
-        await landed(shown)
+        try await landed(shown, model)
         XCTAssertEqual(shown.list.textEnvironment?.text, text(.accessibilityExtraExtraExtraLarge, 3))
         #if DEBUG
         XCTAssertEqual(shown.list.textEnvironmentApplies, applies, "nothing moved")
         #endif
-        let after = (0..<shown.table.numberOfRows(inSection: 0)).map { shown.table.rectForRow(at: IndexPath(row: $0, section: 0)).height }
-        XCTAssertEqual(after, heights)
+        XCTAssertEqual(shown.planned.map(\.height), heights)
         await shown.account.signOut()
     }
 
     /// The plaque's height is measured off the main thread for its words,
     /// the list's width, how wide a group may grow and the environment;
-    /// a height for anything else is refused and the header stays.
+    /// a height for anything else is refused and the banner row stays.
     func testOnlyAHeaderMeasuredForWhatIsShownLands() async throws {
         let account = try await signedIn()
-        let shown = try show(model(sessions: 4, offline: true), category: .large, account: account)
+        let model = self.model(sessions: 4, offline: true)
+        let shown = try show(model, category: .large, account: account)
         defer { shown.window.isHidden = true }
-        await landed(shown)
-        await shown.list.headerTask?.value
-        let header = try XCTUnwrap(shown.table.tableHeaderView)
+        try await landed(shown, model)
+        func banner() -> CGFloat? { (shown.rows.items.first { $0.identity == "home:banner" } as? HomeUltraRow)?.plan.size.height }
+        let height = try XCTUnwrap(banner(), "no banner row")
         let key = try XCTUnwrap(shown.list.headerRequested)
         XCTAssertEqual(key.environment, shown.list.textEnvironment)
         XCTAssertEqual(key.width, 393)
-        let height = header.frame.height
-        XCTAssertEqual(height, header.sizeThatFits(CGSize(width: 393, height: CGFloat.greatestFiniteMagnitude)).height)
+        let header = HomeListHeaderView()
+        header.content = key.banners
+        assertSamePixel(height, header.sizeThatFits(CGSize(width: 393, height: CGFloat.greatestFiniteMagnitude)).height, scale: shown.scale)
 
         var stale = [key, key, key, key]
         stale[0].width += 1
@@ -543,20 +512,19 @@ final class HomeListTextSizeTests: XCTestCase {
         stale[3].environment = await HomeTextEnvironment.make(text(.extraSmall, 3))
         for other in stale {
             shown.list.landHeader(other, height: height + 40)
-            XCTAssertEqual(shown.table.tableHeaderView?.frame.height, height)
+            XCTAssertEqual(banner(), height)
         }
         shown.list.landHeader(key, height: height + 40)
-        XCTAssertEqual(shown.table.tableHeaderView?.frame.height, height + 40)
+        let taken = try await until { banner() == height + 40 }
+        XCTAssertTrue(taken)
 
         // A new text size measures it again, at that size.
         change(shown, to: .accessibilityExtraExtraExtraLarge)
-        await landed(shown)
+        try await landed(shown, model)
         await shown.list.headerTask?.value
-        shown.table.layoutIfNeeded()
-        let larger = try XCTUnwrap(shown.table.tableHeaderView)
+        let larger = try await until { (banner() ?? 0) > height + 40 }
+        XCTAssertTrue(larger, "the banner kept \(banner() ?? 0)")
         XCTAssertEqual(shown.list.headerRequested?.environment.text, text(.accessibilityExtraExtraExtraLarge, 3))
-        XCTAssertGreaterThan(larger.frame.height, height)
-        XCTAssertEqual(larger.frame.height, larger.sizeThatFits(CGSize(width: 393, height: CGFloat.greatestFiniteMagnitude)).height)
         await shown.account.signOut()
     }
 }

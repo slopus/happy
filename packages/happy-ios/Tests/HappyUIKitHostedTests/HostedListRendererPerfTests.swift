@@ -67,9 +67,8 @@ final class HostedListRendererPerfTests: XCTestCase {
 
     // MARK: Legacy home
 
-    private func home(_ renderer: HomeListRenderer) async throws {
+    func testLegacyHome() async throws {
         let controller = try await account()
-        controller.localSettings.homeListRenderer = renderer
         let session = try XCTUnwrap(controller.session)
         let store = session.store
         try await Task.detached {
@@ -104,20 +103,16 @@ final class HostedListRendererPerfTests: XCTestCase {
         }
         let sessions = try XCTUnwrap(list)
         try await Task.sleep(for: .milliseconds(800))
-        let scroll: UIView = (sessions.view as? HomeUltraListView)?.list ?? sessions.view
-        try await run("home \(renderer.rawValue)", window: window, scroll: scroll, script: "down*3 up*3 dragdown*2 dragup*2")
+        let scroll = try XCTUnwrap((sessions.view as? HomeUltraListView)?.list)
+        try await run("home UltraList", window: window, scroll: scroll, script: "down*3 up*3 dragdown*2 dragup*2")
         await controller.signOut()
     }
 
-    func testLegacyHomeTable() async throws { try await home(.tableView) }
-    func testLegacyHomeUltra() async throws { try await home(.ultraList) }
-
     /// The seeded legacy home, light and dark, into `HAPPY_PREVIEW_DIR`.
-    private func screens(_ renderer: HomeListRenderer, grouping: String) async throws {
+    private func screens(grouping: String) async throws {
         guard let directory = ProcessInfo.processInfo.environment["HAPPY_PREVIEW_DIR"] else { throw XCTSkip("no HAPPY_PREVIEW_DIR") }
         for style in [UIUserInterfaceStyle.light, .dark] {
             let controller = try await account()
-            controller.localSettings.homeListRenderer = renderer
             let session = try XCTUnwrap(controller.session)
             let store = session.store
             try await Task.detached {
@@ -136,7 +131,7 @@ final class HostedListRendererPerfTests: XCTestCase {
             let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
                 _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
             }
-            let name = "home-\(grouping)-\(renderer.rawValue)-\(style == .dark ? "dark" : "light").png"
+            let name = "home-\(grouping)-UltraList-\(style == .dark ? "dark" : "light").png"
             try image.pngData()?.write(to: URL(fileURLWithPath: directory).appendingPathComponent(name))
             window.isHidden = true
             await controller.signOut()
@@ -144,9 +139,7 @@ final class HostedListRendererPerfTests: XCTestCase {
     }
 
     func testLegacyHomeScreens() async throws {
-        for renderer in HomeListRenderer.allCases {
-            for grouping in ["flat", "project"] { try await screens(renderer, grouping: grouping) }
-        }
+        for grouping in ["flat", "project"] { try await screens(grouping: grouping) }
     }
 
     // MARK: Legacy chat

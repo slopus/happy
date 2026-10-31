@@ -20,7 +20,7 @@ final class AccountMenuUITests: XCTestCase {
 
     func testEveryKindOfAccountIsOneRowStyle() {
         let app = XCUIApplication()
-        app.launchArguments = ["-screen", "home", "-renderer", "UITableView", "-sessionCount", "12", "-accountMix"]
+        app.launchArguments = ["-screen", "home", "-sessionCount", "12", "-accountMix"]
         app.launch()
         let switcher = app.buttons["account-switcher"]
         XCTAssertTrue(switcher.waitForExistence(timeout: 20))

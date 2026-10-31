@@ -78,9 +78,9 @@ final class ChatUltraQATests: XCTestCase {
         launch(app, clip: clip)
     }
 
-    private func launchHome(clip: String, renderer: String = "UITableView", grouping: String = "flat") {
+    private func launchHome(clip: String, grouping: String = "flat") {
         let app = XCUIApplication()
-        app.launchArguments = ["-screen", "home", "-renderer", renderer, "-grouping", grouping, "-sessionCount", "0", "-archiveCount", "0",
+        app.launchArguments = ["-screen", "home", "-grouping", grouping, "-sessionCount", "0", "-archiveCount", "0",
                                "-qaProbe", "-qaRun", "\(pass)-\(clip)"]
         launch(app, clip: clip)
     }

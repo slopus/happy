@@ -34,7 +34,7 @@ final class HomeScrollDiagnosticUITests: XCTestCase {
         let current = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         current.name = "home-typography-current-legacy-sizes"; current.lifetime = .keepAlways; add(current)
         app.terminate()
-        app.launchArguments = ["-screen", "home", "-renderer", "UITableView", "-grouping", "project"]
+        app.launchArguments = ["-screen", "home", "-grouping", "project"]
         app.launch()
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 20))
         Thread.sleep(forTimeInterval: 1)

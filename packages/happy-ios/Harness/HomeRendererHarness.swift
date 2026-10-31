@@ -24,8 +24,6 @@ final class HomeRendererHarness {
         func option(_ name: String) -> String? {
             arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
         }
-        let renderer = HomeListRenderer(rawValue: option("-renderer") ?? "UITableView") ?? .tableView
-        let restoreRenderer = option("-renderer") == "stored"
         let grouping = option("-grouping") ?? "flat"
         let sessionCount = Int(option("-sessionCount") ?? "0") ?? 0
         let archiveCount = Int(option("-archiveCount") ?? "0") ?? 0
@@ -54,9 +52,6 @@ final class HomeRendererHarness {
                 }
                 guard let session = controller.session else { fatalError("Home harness missing session") }
                 self.account = controller
-                if !restoreRenderer {
-                    controller.localSettings.homeListRenderer = renderer
-                }
                 let store = session.store
                 try await Task.detached {
                     try SeededAccount.seed(store)

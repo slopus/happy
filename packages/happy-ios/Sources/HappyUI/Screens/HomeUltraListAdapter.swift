@@ -4,16 +4,6 @@ import HappyLayout
 import UIKit
 
 @MainActor
-enum HomeRendererPreference {
-    static let didChange = Notification.Name("HappyHomeRendererPreferenceDidChange")
-    static func set(_ renderer: HomeListRenderer, settings: LocalSettings) {
-        guard renderer != settings.homeListRenderer else { return }
-        settings.homeListRenderer = renderer
-        NotificationCenter.default.post(name: didChange, object: settings)
-    }
-}
-
-@MainActor
 final class HomeUltraListAdapter {
     let view: HomeUltraListView
     var onSelect: ((HomeListRow.ID) -> Void)?
@@ -338,7 +328,7 @@ extension TabletGroupedRow.ID {
     var ultraBridgeID: HomeListRow.ID { .project("tablet:\(String(reflecting: self))") }
 }
 
-private extension HomeListRow.ID {
+extension HomeListRow.ID {
     var ultraIdentity: String {
         switch self {
         case .session(let id): "session:\(id)"

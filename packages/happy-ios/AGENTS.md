@@ -261,7 +261,7 @@ nothing here is wired to the release skill or to EAS.
   - the session list otherwise, even while every computer is offline (the
     offline plaque heads it then).
 
-  The session list is a `UITableView` over `SessionList` (happy-app's flat
+  The session list is an UltraList over `SessionList` (happy-app's flat
   grouping): live rows by activity, the archive toggle, archived rows by
   day. Swipe or long press archives (`SessionActions`: `killSession` over
   `rpc-call`, then `POST /v1/sessions/:id/archive`). A tap only marks the

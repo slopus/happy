@@ -355,9 +355,6 @@ struct HomeApp {
             transport: NoNetwork(), connector: NoSockets())
         try await account.signIn(Credentials(token: "t", secret: Data(repeating: 9, count: 32)))
         let session = try XCTUnwrap(account.session)
-        let previous = account.localSettings.homeListRenderer
-        account.localSettings.homeListRenderer = .ultraList
-        test.addTeardownBlock { @MainActor in account.localSettings.homeListRenderer = previous }
         let store = session.store
         try await Task.detached {
             try SeededAccount.seed(store)

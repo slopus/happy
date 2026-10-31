@@ -44,6 +44,8 @@ extension Strings {
         public static var unknownMachine: String { localized("status.unknown", "unknown") }
         public static let createWorkspace = "Create workspace"  // ProjectHomeList.tsx:466, spelled out
         public static func createWorkspaceIn(_ project: String) -> String { "Create workspace in \(project)" }  // ProjectHomeList.tsx:520, spelled out
+        /// A row's VoiceOver action for what a long press opens; native only.
+        static let rowActions = "Actions"
 
         // The "Session" alert (useSessionQuickActions.ts).
         /// `profile.details`.

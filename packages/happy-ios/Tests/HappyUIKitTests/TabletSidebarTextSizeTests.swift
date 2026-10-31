@@ -5,6 +5,7 @@ import HappyLayout
 import HappyStore
 @testable import HappyUI
 import UIKit
+import UltraView
 import XCTest
 
 private struct NoNetwork: HTTPTransport {
@@ -19,8 +20,8 @@ private struct NoSockets: WebSocketConnector {
     }
 }
 
-/// The sidebar's grouped list at the person's text size, in a window: its
-/// bots as tall as their cells draw at that size, taking the new lines and
+/// The sidebar's grouped list at the person's text size, on UltraList in a
+/// window: its bots as tall as home's rows at that size, taking the new
 /// heights when it changes, and the notices over them measured off the
 /// main thread as home's are, landing only for what was last asked for.
 @MainActor
@@ -81,8 +82,15 @@ final class TabletSidebarTextSizeTests: XCTestCase {
     private struct Shown {
         let window: UIWindow
         let grouped: TabletGroupedListViewController
-        let table: UITableView
+        let rows: UltraListView
         let account: AccountController
+
+        /// The planned height of `id`'s row, once the list has it.
+        func height(_ id: TabletGroupedRow.ID) -> CGFloat? {
+            (rows.items.first { $0.identity == id.ultraBridgeID.ultraIdentity } as? HomeUltraRow)?.plan.size.height
+        }
+
+        var banner: CGFloat? { (rows.items.first { $0.identity == "home:banner" } as? HomeUltraRow)?.plan.size.height }
     }
 
     private func show(_ list: TabletGroupedList, category: UIContentSizeCategory, account: AccountController) throws -> (Shown, TabletSidebarViewState) {
@@ -98,23 +106,27 @@ final class TabletSidebarTextSizeTests: XCTestCase {
         window.isHidden = false
         window.updateTraitsIfNeeded()
         grouped.view.layoutIfNeeded()
-        let table = try XCTUnwrap(grouped.view as? UITableView)
-        return (Shown(window: window, grouped: grouped, table: table, account: account), derived.state)
+        let rows = try XCTUnwrap((grouped.view as? HomeUltraListView)?.list)
+        return (Shown(window: window, grouped: grouped, rows: rows, account: account), derived.state)
     }
 
-    private func assertBotsAreTheirCells(_ shown: Shown, lines: FlatSessionRowLayout.Lines, _ message: String, line: UInt = #line) throws {
-        shown.table.layoutIfNeeded()
-        for row in 1...3 {
-            let path = IndexPath(row: row, section: 0)
-            let cell = try XCTUnwrap(shown.table.cellForRow(at: path) as? SessionRowCell, message, line: line)
-            XCTAssertEqual(cell.lines, lines, "row \(row), \(message)", line: line)
-            assertSamePixel(
-                shown.table.rectForRow(at: path).height,
-                cell.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height,
-                scale: 3,
-                "row \(row), \(message)",
-                line: line
-            )
+    private func until(seconds: Double = 5, _ condition: () -> Bool) async throws -> Bool {
+        let deadline = ContinuousClock.now + .milliseconds(Int(seconds * 1000))
+        while !condition(), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        return condition()
+    }
+
+    /// Each bot's row is as tall as the derivation measured it, off the
+    /// main thread, at the size shown.
+    private func assertBotsAreTheirRows(_ shown: Shown, _ list: TabletGroupedList, text: TextEnvironment, _ message: String, line: UInt = #line) async throws {
+        XCTAssertEqual(shown.grouped.headings.metrics, TabletGroupedHeights.metrics(text), message, line: line)
+        for (id, row) in zip(list.ids, list.rows) {
+            guard case .bot = row else { continue }
+            let expected = try XCTUnwrap(shown.grouped.headings.height(id), message, line: line)
+            let landed = try await until { shown.height(id).map { abs($0 - expected) < 0.5 } ?? false }
+            XCTAssertTrue(landed, "\(id) is \(shown.height(id) ?? 0), not \(expected), \(message)", line: line)
         }
     }
 
@@ -123,21 +135,18 @@ final class TabletSidebarTextSizeTests: XCTestCase {
         let list = list()
         let (shown, state) = try show(list, category: .large, account: account)
         defer { shown.window.isHidden = true }
-        let large = TabletGroupedHeights.metrics(text(.large))
-        try assertBotsAreTheirCells(shown, lines: large.sessionLines, "large")
-        XCTAssertEqual(shown.table.rectForRow(at: IndexPath(row: 1, section: 0)).height, 81)
+        try await assertBotsAreTheirRows(shown, list, text: text(.large), "large")
+        XCTAssertEqual(shown.height(list.ids[1]), 81)
 
-        // A new size: the heights come from the derivation, and every bot
-        // takes the new lines.
+        // A new size: every bot takes its new height.
         shown.window.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
         shown.window.updateTraitsIfNeeded()
         let larger = try derive(list, text(.accessibilityExtraExtraExtraLarge), from: state)
         XCTAssertNil(larger.output.rows)
         XCTAssertEqual(larger.output.moved, Set(list.ids))
         XCTAssertEqual(shown.grouped.applyHeadings(larger.output.headings, moved: larger.output.moved), 4)
-        let largest = TabletGroupedHeights.metrics(text(.accessibilityExtraExtraExtraLarge))
-        try assertBotsAreTheirCells(shown, lines: largest.sessionLines, "largest")
-        XCTAssertGreaterThan(shown.table.rectForRow(at: IndexPath(row: 2, section: 0)).height, shown.table.rectForRow(at: IndexPath(row: 1, section: 0)).height)
+        try await assertBotsAreTheirRows(shown, list, text: text(.accessibilityExtraExtraExtraLarge), "largest")
+        XCTAssertGreaterThan(try XCTUnwrap(shown.height(list.ids[2])), try XCTUnwrap(shown.height(list.ids[1])))
         await account.signOut()
     }
 
@@ -146,15 +155,13 @@ final class TabletSidebarTextSizeTests: XCTestCase {
         let (shown, _) = try show(list(), category: .large, account: account)
         defer { shown.window.isHidden = true }
         await shown.grouped.headerTask?.value
-        shown.table.layoutIfNeeded()
-        let header = try XCTUnwrap(shown.table.tableHeaderView)
+        let shownBanner = try await until { shown.banner != nil }
+        XCTAssertTrue(shownBanner, "no banner row")
+        let height = try XCTUnwrap(shown.banner)
         let key = try XCTUnwrap(shown.grouped.headerRequested)
         XCTAssertEqual(key.text, text(.large))
         XCTAssertEqual(key.width, width)
         XCTAssertEqual(key.banners.offlineTitle, Strings.Troubleshoot.bannerTitleOne(name: "MacBook Pro"))
-        let height = header.frame.height
-        // The view draws what was measured off the main thread.
-        XCTAssertEqual(height, header.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)).height)
 
         var stale = [key, key, key, key]
         stale[0].width += 1
@@ -163,21 +170,20 @@ final class TabletSidebarTextSizeTests: XCTestCase {
         stale[3].text = text(.extraSmall)
         for other in stale {
             shown.grouped.landHeader(other, height: height + 40)
-            XCTAssertEqual(shown.table.tableHeaderView?.frame.height, height)
+            XCTAssertEqual(shown.banner, height)
         }
         shown.grouped.landHeader(key, height: height + 40)
-        XCTAssertEqual(shown.table.tableHeaderView?.frame.height, height + 40)
+        let taken = try await until { shown.banner == height + 40 }
+        XCTAssertTrue(taken)
 
         // A new text size measures it again, at that size.
         shown.window.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
         shown.window.updateTraitsIfNeeded()
         shown.grouped.updateTraitsIfNeeded()
         await shown.grouped.headerTask?.value
-        shown.table.layoutIfNeeded()
-        let larger = try XCTUnwrap(shown.table.tableHeaderView)
+        let larger = try await until { (shown.banner ?? 0) > height + 40 }
+        XCTAssertTrue(larger, "the banner kept \(shown.banner ?? 0)")
         XCTAssertEqual(shown.grouped.headerRequested?.text, text(.accessibilityExtraExtraExtraLarge))
-        XCTAssertGreaterThan(larger.frame.height, height)
-        XCTAssertEqual(larger.frame.height, larger.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)).height)
         await account.signOut()
     }
 }
