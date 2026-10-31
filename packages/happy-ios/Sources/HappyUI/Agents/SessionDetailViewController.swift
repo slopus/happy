@@ -53,18 +53,18 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
     private var heldName: String?
 
     private let scroll = DetailScrollView()
-    private let mark = DetailMarkView()
-    private let name = UILabel()
-    private let pencil = UIButton(type: .system)
+    /// Its avatar, name and what it is: the legacy session's profile's too.
+    let header = ProfileHeaderView()
+    private var name: UILabel { header.name }
+    private var pencil: UIButton { header.pencil }
     private var nameField: RenameField?
-    private let subtitle = UILabel()
     private let tiles = (0..<3).map { _ in DetailTileView() }
     /// The chat's permission mode, which its header's More menu used to
     /// pick, asked of the chat under this screen each layout; nil opened
     /// from anywhere else. Its modes open as a pull-down from the row.
     var permissionChoice: (() -> PermissionModeChoice?)?
-    private let controls = SettingsCardView()
-    private let permissionButton = MenuRowButton()
+    /// The cards under the tiles: the chat's controls.
+    private lazy var sections = ProfileSections(in: scroll)
     private let mediaHeading = DetailTileView.heading()
     private let mediaCard = DetailMediaCardView()
     private let linksHeading = DetailTileView.heading()
@@ -76,6 +76,11 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
     private let running = DetailActivityCardView()
     private let completed = DetailActivityCardView()
     private var watch: Watch?
+    private var homeWatch: Watch?
+    /// What the spaces sidebar holds, and what home lists: its row is
+    /// home's, else the sidebar's.
+    private var spaceRows: [Row] = []
+    private var homeRows: [Row] = []
     private var following: Task<Void, Never>?
 
     private static let treePadding: CGFloat = 8
@@ -102,42 +107,17 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         scroll.delegate = self
         scroll.keyboardDismissMode = .interactive
         view.addSubview(scroll)
-        mark.images = session.images
-        scroll.addSubview(mark)
-        name.font = Fonts.ui(.medium, size: 28)
-        name.textColor = UIColor(Palette.settingsText)
-        name.textAlignment = .center
-        name.lineBreakMode = .byTruncatingTail
-        name.accessibilityIdentifier = "detail-name"
-        name.accessibilityTraits = .header
+        header.images = session.images
+        // The placeholder home's row wears, from the first frame.
+        header.avatar = .mark(SidebarRows.profileMark(nil, agentId: agentId))
         name.isUserInteractionEnabled = true
         name.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(nameTapped)))
-        scroll.addSubview(name)
-        pencil.setImage(Glyphs.image("pencil", size: 16), for: .normal)
-        pencil.tintColor = UIColor(Palette.settingsSecondary)
-        pencil.accessibilityLabel = Strings.rename
-        pencil.accessibilityIdentifier = "detail-rename-button"
-        pencil.isHidden = true
         pencil.addAction(UIAction { [weak self] _ in self?.beginRename() }, for: .touchUpInside)
-        scroll.addSubview(pencil)
-        subtitle.font = Fonts.ui(.regular, size: 17)
-        subtitle.textColor = UIColor(Palette.settingsSecondary)
-        subtitle.textAlignment = .center
-        subtitle.accessibilityIdentifier = "detail-subtitle"
-        scroll.addSubview(subtitle)
+        scroll.addSubview(header)
         for (tile, id) in zip(tiles, ["model", "effort", "started"]) {
             tile.accessibilityIdentifier = "detail-tile:\(id)"
             scroll.addSubview(tile)
         }
-        permissionButton.accessibilityIdentifier = "profile-permission-mode"
-        permissionButton.accessibilityLabel = Strings.ChatActions.permissionMode
-        permissionButton.menuFor = { [weak self] in
-            self?.permissionChoice?()?.uiMenu { [weak self] in self?.view.setNeedsLayout() }
-        }
-        controls.accessibilityElements = [permissionButton]
-        controls.addSubview(permissionButton)
-        controls.isHidden = true
-        scroll.addSubview(controls)
         mediaHeading.text = Strings.media.uppercased()
         scroll.addSubview(mediaHeading)
         mediaCard.source = loader
@@ -176,7 +156,14 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
 
         navigationItem.largeTitleDisplayMode = .never
 
-        watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
+        watch = session.watch { [weak self] snapshot in
+            self?.spaceRows = snapshot.allRows
+            self?.follow()
+        }
+        homeWatch = session.watchHome { [weak self] home in
+            self?.homeRows = home.allRows
+            self?.follow()
+        }
         session.warm.watch(warm.chat, token: warm.token) { [weak self] snapshot in
             guard let self else { return }
             let items = chat.items
@@ -225,6 +212,7 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         probe?.link.invalidate()
         #endif
         watch?.invalidate()
+        homeWatch?.invalidate()
         let feed = feed
         Task { await feed.stop() }
         session.warm.release(warm.chat, token: warm.token, opened: false)
@@ -244,10 +232,12 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
 
     // MARK: What it shows
 
-    /// Its row as the sidebar has it now: name, mark, kind, and its family.
-    private func follow(_ snapshot: Snapshot) {
-        let rows = snapshot.allRows
-        let found = spaceId.flatMap { id in rows.first { $0.spaceId == id && $0.kind == .space } } ?? rows.first { $0.agentId == agentId && ($0.kind == .space || $0.kind == .session) }
+    /// Its row as home lists it now (else as the spaces sidebar has it):
+    /// name, mark, kind, and its family.
+    private func follow() {
+        let home = SidebarRows.row(agentId: agentId, spaceId: spaceId, in: homeRows)
+        let rows = home == nil ? spaceRows : homeRows
+        let found = home ?? SidebarRows.row(agentId: agentId, spaceId: spaceId, in: spaceRows)
         row = found
         if let heldName, found?.label == heldName { self.heldName = nil }
         applyName()
@@ -265,8 +255,8 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
     /// doesn't hold, what its screen and the daemon call it.
     private func applyName() {
         name.text = heldName ?? row?.label ?? detail?.title ?? fallbackTitle ?? Strings.untitledSession
-        mark.mark = row?.mark ?? .glyph("agents")
-        subtitle.text = row.map { Self.subtitle($0) } ?? Self.subtitle(subtask: detail?.subtask == true, working: detail?.working == true)
+        header.avatar = .mark(SidebarRows.profileMark(row, agentId: agentId))
+        header.subtitle.text = row.map { Self.subtitle($0) } ?? Self.subtitle(subtask: detail?.subtask == true, working: detail?.working == true)
         // The name is as wide as its text, its pencil just after it.
         view.setNeedsLayout()
     }
@@ -418,35 +408,20 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         ).contentHeight
         let workCount = (detail?.running.count ?? 0) + (detail?.terminals.count ?? 0)
         let settled = detail?.completed.count ?? 0
-        let permission = permissionChoice?().map {
-            SettingsRow(id: "permission-mode", title: Strings.ChatActions.permissionMode, icon: ("shield-checkmark-outline", .blue), value: $0.current, accessory: .none)
-        }
-        let controlRows = permission.map { [$0] } ?? []
+        sections.show(permissionChoice?().map { [ProfileSection(id: "controls", rows: [Self.permissionRow($0) { [weak self] in self?.permissionChoice?() } relaid: { [weak self] in self?.view.setNeedsLayout() }])] } ?? [])
         let layout = SessionDetailLayout(
-            width: width, nameHeight: ceil(name.font.lineHeight),
-            nameWidth: name.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: name.font.lineHeight)).width,
-            renames: canRename, subtitleHeight: ceil(subtitle.font.lineHeight), tiles: tiles.count,
-            controls: controlRows.map { SettingsLayout.RowSpec(hasIcon: true, valueWidth: SettingsCardView.valueWidth($0.value), accessory: $0.accessory) },
+            width: width, nameHeight: header.nameHeight, nameWidth: header.nameWidth,
+            renames: canRename, subtitleHeight: header.subtitleHeight, tiles: tiles.count,
+            sections: sections.specs(width: width),
             media: .init(count: shownMedia.count, more: hasMore(shared.media.count, limit: mediaLimit)),
             links: .init(count: shownLinks.count, more: hasMore(shared.links.count, limit: linksLimit)),
             family: familyHeight, running: workCount, completed: settled,
             countWidth: SettingsCardView.valueWidth("\(settled)") ?? 0, open: completedOpen
         )
-        mark.frame = layout.mark
-        name.frame = layout.name
+        header.place(layout.header, width: width, editing: nameField != nil)
         nameField?.frame = layout.field
-        pencil.isHidden = layout.pencilTouch == nil || nameField != nil
-        if let frame = layout.pencilTouch { pencil.frame = frame }
-        subtitle.frame = layout.subtitle
         for (tile, frame) in zip(tiles, layout.tiles) { tile.place(frame) }
-        controls.isHidden = layout.controls == nil
-        if let card = layout.controls {
-            controls.frame = card.frame
-            controls.show(controlRows, layout: card)
-            permissionButton.frame = controls.bounds
-            permissionButton.accessibilityValue = permission?.value
-            controls.bringSubviewToFront(permissionButton)
-        }
+        sections.place(layout.sections)
         mediaHeading.isHidden = layout.media == nil
         mediaCard.isHidden = layout.media == nil
         if let frame = layout.mediaHeading { mediaHeading.frame = frame }
@@ -472,6 +447,15 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         // Grown or shrunk while pulled past an end, it takes its new size
         // once it is back (it bounces to its old end first) or at rest.
         if let size = heldSize.laidOut(size, current: scroll.contentSize, holding: holding) { scroll.contentSize = size }
+    }
+
+    /// The chat's permission mode as a row: the current one as its value,
+    /// its modes a pull-down asked of `choice` each time it opens; the
+    /// legacy session's profile has the same row.
+    static func permissionRow(_ current: PermissionModeChoice, choice: @escaping () -> PermissionModeChoice?, relaid: @escaping () -> Void) -> SettingsRow {
+        var row = SettingsRow(id: "permission-mode", title: Strings.ChatActions.permissionMode, icon: ("shield-checkmark-outline", .blue), value: current.current, accessory: .none)
+        row.pullDown = { choice()?.uiMenu(picked: relaid) }
+        return row
     }
 
     private var heldSize = SessionDetailLayout.HeldSize()

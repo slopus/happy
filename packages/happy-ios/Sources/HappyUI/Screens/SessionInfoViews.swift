@@ -67,7 +67,8 @@ final class DetailChangesAccessoryView: UIView {
     private let chevron = IconView(.ionicons("chevron-forward"), size: 17, tint: Palette.groupedChevron)
     private let presentation: SessionDetails.GitPresentation
 
-    init(_ presentation: SessionDetails.GitPresentation) {
+    /// Without its `chevron` where the row draws its own.
+    init(_ presentation: SessionDetails.GitPresentation, chevron shown: Bool = true) {
         self.presentation = presentation
         lines = DetailLineChangesView(presentation.changes)
         super.init(frame: .zero)
@@ -75,6 +76,7 @@ final class DetailChangesAccessoryView: UIView {
         count.string = presentation.changedFileCount.map(Strings.FilesDetail.changedFiles) ?? ""
         count.isHidden = presentation.changedFileCount == nil
         lines.isHidden = presentation.changes == nil
+        chevron.isHidden = !shown
         for view in [count, lines, chevron] { addSubview(view) }
     }
 

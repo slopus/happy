@@ -46,17 +46,75 @@ final class SessionDetailLayoutTests: XCTestCase {
     /// Settings row under the tiles; what follows moves down by its card.
     func testThePermissionModeRowIsUnderTheTiles() throws {
         let spec = SettingsLayout.RowSpec(hasIcon: true, valueWidth: 60, accessory: .none)
-        let detail = Layout(width: 402, nameHeight: 34, nameWidth: 180, renames: true, subtitleHeight: 22, tiles: 3, controls: [spec],
+        let detail = Layout(width: 402, nameHeight: 34, nameWidth: 180, renames: true, subtitleHeight: 22, tiles: 3, sections: [.init(rows: [spec])],
                             media: .init(count: 5, more: true), links: .init(count: 2, more: false), family: 100,
                             running: 2, completed: 3, countWidth: 10, open: false)
-        let card = try XCTUnwrap(detail.controls)
+        XCTAssertEqual(detail.sections.count, 1)
+        let card = detail.sections[0].card
+        XCTAssertNil(detail.sections[0].heading)
+        XCTAssertNil(detail.sections[0].block)
         XCTAssertEqual(card.frame, CGRect(x: 16, y: 540, width: 370, height: 52))
         XCTAssertEqual(card.rows.count, 1)
         XCTAssertEqual(card.rows[0].box, CGRect(x: 0, y: 0, width: 370, height: 52))
         XCTAssertNil(card.rows[0].separator, "one row, no hairline")
         XCTAssertNotNil(card.rows[0].icon)
         XCTAssertEqual(detail.mediaHeading, CGRect(x: 32, y: 616, width: 338, height: 18))
-        XCTAssertNil(layout().controls)
+        XCTAssertEqual(layout().sections, [])
+    }
+
+    /// The head is `ProfileHeaderLayout`'s, the agent's and the legacy
+    /// profile's alike.
+    func testTheHeadIsTheSharedOne() {
+        let detail = layout()
+        XCTAssertEqual(detail.header, ProfileHeaderLayout(width: 402, nameHeight: 34, nameWidth: 180, renames: true, subtitleHeight: 22))
+        XCTAssertEqual(detail.header.bottom, 172)
+    }
+
+    /// A legacy session's profile: its head, its model and start as two
+    /// tiles side by side, then its groups as cards, a heading over some,
+    /// the rows with a line under their title taller; a raw JSON block
+    /// under its row, the card's width. Nothing else.
+    func testALegacySessionsProfile() {
+        let plain = SettingsLayout.RowSpec(hasIcon: true, valueWidth: 50, accessory: .none)
+        let subtitled = SettingsLayout.RowSpec(hasIcon: true, accessory: .chevron, subtitle: true)
+        let detail = Layout(
+            width: 402, nameHeight: 34, nameWidth: 200, subtitleHeight: 22, tiles: 2,
+            sections: [
+                .init(heading: true, rows: [plain, subtitled]),
+                .init(rows: [subtitled]),
+                .init(heading: true, rows: [plain], block: 300),
+            ],
+            family: nil, running: 0, completed: 0, open: false
+        )
+        XCTAssertEqual(detail.mark, CGRect(x: 157, y: 12, width: 88, height: 88))
+        XCTAssertEqual(detail.name, CGRect(x: 101, y: 114, width: 200, height: 34))
+        XCTAssertNil(detail.pencil)
+        XCTAssertEqual(detail.subtitle, CGRect(x: 24, y: 150, width: 354, height: 22))
+        XCTAssertEqual(detail.tiles.map(\.frame), [CGRect(x: 16, y: 196, width: 180, height: 80), CGRect(x: 206, y: 196, width: 180, height: 80)])
+        XCTAssertEqual(detail.sections.map(\.heading), [
+            CGRect(x: 32, y: 300, width: 338, height: 18), nil, CGRect(x: 32, y: 550, width: 338, height: 18),
+        ])
+        // Quick actions: a plain row, then one with its line, 62 tall.
+        let actions = detail.sections[0].card
+        XCTAssertEqual(actions.frame, CGRect(x: 16, y: 326, width: 370, height: 114))
+        XCTAssertEqual(actions.rows.map(\.box), [CGRect(x: 0, y: 0, width: 370, height: 52), CGRect(x: 0, y: 52, width: 370, height: 62)])
+        XCTAssertNil(actions.rows[0].subtitle)
+        XCTAssertEqual(actions.rows[1].title, CGRect(x: 62, y: 62, width: 276, height: 22))
+        XCTAssertEqual(actions.rows[1].subtitle, CGRect(x: 62, y: 84, width: 276, height: 18))
+        XCTAssertEqual(actions.rows[1].icon, CGRect(x: 16, y: 68, width: 30, height: 30))
+        XCTAssertEqual(actions.rows[1].chevron, CGRect(x: 346, y: 76, width: 8, height: 14))
+        XCTAssertEqual(actions.rows[0].separator, CGRect(x: 62, y: 52 - 1.0 / 3, width: 308, height: 1.0 / 3))
+        XCTAssertNil(actions.rows[1].separator)
+        // A card of its own, no heading, 24 under the last.
+        XCTAssertEqual(detail.sections[1].card.frame, CGRect(x: 16, y: 464, width: 370, height: 62))
+        // Raw JSON: its row keeps its hairline over the block under it.
+        let raw = detail.sections[2]
+        XCTAssertEqual(raw.card.frame, CGRect(x: 16, y: 576, width: 370, height: 352))
+        XCTAssertNotNil(raw.card.rows[0].separator)
+        XCTAssertEqual(raw.block, CGRect(x: 0, y: 52, width: 370, height: 300))
+        XCTAssertNil(detail.mediaHeading)
+        XCTAssertNil(detail.activityHeading)
+        XCTAssertEqual(detail.contentHeight, 928 + 32)
     }
 
     /// The family first, right under the name; then Model and Effort side

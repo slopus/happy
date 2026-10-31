@@ -156,7 +156,14 @@ final class AvatarShaderRenderer {
 
     /// Whether they move: not with Reduce Motion or in Low Power Mode.
     static var animates: Bool {
-        !UIAccessibility.isReduceMotionEnabled && !ProcessInfo.processInfo.isLowPowerModeEnabled
+        if let holdsStill { return !holdsStill }
+        return !UIAccessibility.isReduceMotionEnabled && !ProcessInfo.processInfo.isLowPowerModeEnabled
+    }
+
+    /// Stands in for Reduce Motion or Low Power Mode, which a test can't
+    /// turn on; nil, the system's.
+    static var holdsStill: Bool? {
+        didSet { shared?.redrawAll() }
     }
 
     func add(_ view: LiveAvatarView) {

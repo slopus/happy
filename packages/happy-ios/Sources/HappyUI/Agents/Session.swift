@@ -43,7 +43,9 @@ final class Session {
     private var observers: [NSObjectProtocol] = []
     private var connectionObservation: AccountsObservation?
     private var connectionFollowing: Task<Void, Never>?
-    private var connectionSnapshot = HomeSnapshot()
+    /// What home lists for this computer (`SidebarRows`), as it last came.
+    private(set) var home = HomeSnapshot()
+    private var homeWatchers: [UUID: (HomeSnapshot) -> Void] = [:]
     private var connectionStatus: ConnectionStatus = .connecting
     private var headerWatchers: [UUID: (Strings.HeaderStatus.State) -> Void] = [:]
     private(set) var headerState: Strings.HeaderStatus.State = .connecting
@@ -155,8 +157,7 @@ final class Session {
         connectionFollowing = Task { [weak self, engine] in
             for await snapshot in await engine.snapshots() {
                 guard !Task.isCancelled, let self else { return }
-                connectionSnapshot = snapshot
-                updateHeaderState()
+                receive(home: snapshot)
             }
         }
         // AgentConnections owns foreground/background and account switching.
@@ -183,10 +184,26 @@ final class Session {
     }
 
     private func updateHeaderState() {
-        let next = Self.headerState(status: connectionStatus, snapshot: connectionSnapshot)
+        let next = Self.headerState(status: connectionStatus, snapshot: home)
         guard next != headerState else { return }
         headerState = next
         for watch in headerWatchers.values { watch(next) }
+    }
+
+    /// What home lists, now and as it changes: the rows a screen finds its
+    /// chat's among, as home draws them.
+    func watchHome(_ watch: @escaping (HomeSnapshot) -> Void) -> Watch {
+        let id = UUID()
+        homeWatchers[id] = watch
+        watch(home)
+        return Watch { [weak self] in self?.homeWatchers.removeValue(forKey: id) }
+    }
+
+    /// A snapshot from the engine (or a test standing in for it).
+    func receive(home snapshot: HomeSnapshot) {
+        home = snapshot
+        updateHeaderState()
+        for watch in homeWatchers.values { watch(snapshot) }
     }
 
     func watchHeader(_ watch: @escaping (Strings.HeaderStatus.State) -> Void) -> Watch {

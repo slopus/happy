@@ -6,24 +6,31 @@ import HappyStore
 import HappyWire
 import UIKit
 
-/// app/(app)/session/[id]/info.tsx: quick actions, the session's ids and
-/// state, its metadata, agent state and activity. Reads only the local
+/// A legacy session's profile, app/(app)/session/[id]/info.tsx's rows in
+/// the agent chat's profile's design: the same head (`ProfileHeaderView`:
+/// its avatar as home draws it, its name, what it is and its status), its
+/// model and start as tiles, then Settings' cards (`ProfileSections`) at
+/// `SessionDetailLayout`'s frames: the chat's permission mode, quick
+/// actions, the session's ids and state, its metadata, agent state and
+/// activity. Only what a legacy session has is shown. Reads only the local
 /// store; git status comes from `GitStatusSync`.
 ///
 /// What it shows is worked out off the main thread from this session's own
-/// snapshot (`LegacySessionDetailFeed`), never home's: `apply` builds only the
-/// groups that changed, and a new message retexts "Last updated" and
+/// snapshot (`LegacySessionDetailFeed`), never home's: `apply` makes only
+/// the cards that changed, and a new message retexts "Last updated" and
 /// "Sequence" in place. A tap reads what it acts on off the main thread too.
-///
-/// Groups are made a few rows a frame (`sliceBudget`), out of sight in the
-/// list, so each row's text is drawn once, at the screen's text size, in
-/// the frame that made it; they join the list together once the last is
-/// made.
-final class SessionInfoViewController: UIViewController {
+final class SessionInfoViewController: UIViewController, UIScrollViewDelegate {
     private let context: AppContext
     private let session: AccountSession
     private let sessionId: String
-    private let list = GroupedListView()
+    private let scroll = DetailScrollView()
+    /// The agent chat's profile's head.
+    let header = ProfileHeaderView()
+    /// Its model and when it started.
+    private let tiles = (0..<2).map { _ in DetailTileView() }
+    /// Its cards, by `ProfileSections`; read by the tests.
+    private(set) lazy var sections = ProfileSections(in: scroll)
+    private var heldSize = SessionDetailLayout.HeldSize()
     private var observation: ApplyObservation?
     private var pipeline: ApplyPipeline<SessionInfoInput, SessionInfoFrame?, SessionInfoUpdate>?
     private var gitTask: Task<Void, Never>?
@@ -40,58 +47,21 @@ final class SessionInfoViewController: UIViewController {
     private var isVisible = false
     private var appActive = false
     private var loadState = LoadState.loading
-    private var loadStatusGroup: ItemGroupView?
+    /// "Loading…", or what went wrong with Retry and Copy diagnostics.
+    private var loadStatus: ProfileSection?
     private var firstFailureDiagnostics: [String: Any]?
+    /// The word its status says while it thinks, as the chat's header has one.
+    private let vibingWord = ComposerStatus.randomVibingWord()
+    /// The picture home gave its avatar (its own, or its project's): the
+    /// session's snapshot doesn't hold its project.
+    private var avatarImage: AvatarImageSource?
 
     private enum LoadState: Equatable {
         case loading, delayed, failed(SessionDetailFailure), ready
     }
-    /// The groups on screen, and the rows retexted in place.
-    private var sectionViews: [SessionInfoSection: UIView] = [:]
-    private var shownSections: [SessionInfoSection] = []
-    private weak var lastUpdatedRow: ItemRowView?
-    private weak var sequenceRow: ItemRowView?
+    /// Each group's cards as last made: one, or a raw JSON block's each.
+    private var groups: [SessionInfoSection: [ProfileSection]] = [:]
     private var rawBlockViews: [CodeBlockView] = []
-
-    /// The longest a frame spends making rows: a third of the AGENTS.md
-    /// block, leaving the rest for one row past it and for laying out and
-    /// drawing what it made, which took up to about 1.5 ms a frame in Debug
-    /// on the iPhone 17 Pro simulator.
-    static let sliceBudget: CFTimeInterval = ApplyBudget.block / 3 / 1000
-    /// Where groups are made: in the list, though not one of its sections,
-    /// so they have the screen's traits and scroll view, but far above its
-    /// content and clipped to nothing, out of sight, touch and VoiceOver.
-    private let workshop = UIView()
-    /// Groups still to make, made from the newest frame when their turn
-    /// comes.
-    private var queue: [SessionInfoSection] = []
-    private var making: Making?
-    /// Groups made, waiting in the workshop to join the list.
-    private var made: [SessionInfoSection: UIView] = [:]
-    /// Updates to a group already started belong to the next batch. The
-    /// current batch must finish even while sync keeps changing the model.
-    private var remakeAfterShowing = Set<SessionInfoSection>()
-    private var makeLink: CADisplayLink?
-    #if DEBUG
-    /// Each frame's making: how long it took and the steps it made (tests).
-    private(set) var slices: [(seconds: CFTimeInterval, steps: Int)] = []
-    #endif
-
-    /// A group made a row at a time: its rows in order, each made when its
-    /// turn comes, and what is set on the group once they are all in. Only
-    /// the screen makes them, so they hold it unowned.
-    private struct GroupPlan {
-        var title: String?
-        var rows: [() -> UIView]
-        var finish: (ItemGroupView) -> Void = { _ in }
-    }
-
-    private struct Making {
-        var section: SessionInfoSection
-        var group: ItemGroupView
-        var plan: GroupPlan
-        var next = 0
-    }
 
     private enum Action: Hashable { case archive, delete, resume, fork, leave }
 
@@ -120,28 +90,35 @@ final class SessionInfoViewController: UIViewController {
 
     override func loadView() {
         view = UIView()
-        view.backgroundColor = UIColor(Palette.groupedBackground)
-        workshop.frame = CGRect(x: 0, y: -10_000, width: 0, height: 0)
-        workshop.clipsToBounds = true
-        workshop.isUserInteractionEnabled = false
-        workshop.accessibilityElementsHidden = true
-        list.addSubview(workshop)
-        view.addSubview(list)
+        view.backgroundColor = UIColor(Palette.settingsGround)
+        view.accessibilityIdentifier = "session-info"
+        scroll.alwaysBounceVertical = true
+        scroll.delegate = self
+        view.addSubview(scroll)
+        scroll.addSubview(header)
+        for (tile, id) in zip(tiles, ["model", "started"]) {
+            tile.accessibilityIdentifier = "detail-tile:\(id)"
+            tile.isHidden = true
+            scroll.addSubview(tile)
+        }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Header.tsx's title and every row's Text scale; the rows are
-        // measured from their labels as drawn, as Settings' are.
-        followsTextSize()
         minimalBackButton()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
-        // The title home already shows, in the bar as the screen slides in.
-        // The first frame of the session's own snapshot sets the same title,
-        // which changes nothing (`setPlainHeaderTitle`).
+        navigationItem.largeTitleDisplayMode = .never
+        // Its name and avatar as home has them, from the first frame. The
+        // first frame of the session's own snapshot says the same.
         if let seed = SessionInfoSeed(session.homeFeed.latest, sessionId: sessionId) {
-            setPlainHeaderTitle(seed.title ?? Strings.Session.newChat)
+            avatarImage = seed.avatar.image
+            header.name.text = seed.title ?? Strings.Session.newChat
+            header.avatar = .session(AvatarView.Content(avatar: seed.avatar, style: seed.avatarStyle, monochrome: seed.avatarMonochrome))
+            header.subtitle.text = Self.kind(isBot: seed.avatar.isBot, isTask: seed.avatar.isTask)
         }
+        header.pictures = session.avatarPictures
+        // The way back when its body never shows: Retry and Copy
+        // diagnostics stay reachable from the bar.
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: .icon(.materialIcons("more-horiz"), size: 22),
             menu: UIMenu(children: [
@@ -170,6 +147,7 @@ final class SessionInfoViewController: UIViewController {
         var input = SessionInfoInput(includesRaw: includesRaw)
         input.forking = busy.contains(.fork)
         input.copiedResumeCommand = frame?.copiedResumeCommand ?? false
+        input.vibingWord = vibingWord
         let pipeline = ApplyPipeline<SessionInfoInput, SessionInfoFrame?, SessionInfoUpdate>(
             input: input,
             state: nil,
@@ -204,17 +182,10 @@ final class SessionInfoViewController: UIViewController {
         Task { await git.refresh(sessionId: id) }
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        list.frame = view.bounds
-        stateView?.frame = view.bounds
-        // Making waits while the screen is off the window or has no size.
-        if making != nil || !queue.isEmpty { scheduleMaking() }
-    }
-
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        if making != nil || !queue.isEmpty { scheduleMaking() }
+        // The chat under it, whose permission mode it shows, is known now.
+        showSections()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -230,10 +201,55 @@ final class SessionInfoViewController: UIViewController {
         loadWatchdog = nil
     }
 
+    // MARK: Layout
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Set again only when it changed, as the agent's profile does: a
+        // scroll view given its frame while pulled past an end snaps back.
+        if scroll.frame != view.bounds { scroll.frame = view.bounds }
+        stateView?.frame = view.bounds
+        let width = view.bounds.width
+        let showsTiles = frame?.model != nil
+        let layout = SessionDetailLayout(
+            width: width, nameHeight: header.nameHeight, nameWidth: header.nameWidth,
+            subtitleHeight: header.subtitleHeight, tiles: showsTiles ? tiles.count : 0,
+            sections: sections.specs(width: width),
+            family: nil, running: 0, completed: 0, open: false
+        )
+        header.place(layout.header, width: width)
+        for tile in tiles { tile.isHidden = !showsTiles }
+        for (tile, frame) in zip(tiles, layout.tiles) { tile.place(frame) }
+        sections.place(layout.sections)
+        let size = CGSize(width: width, height: layout.contentHeight)
+        if let size = heldSize.laidOut(size, current: scroll.contentSize, holding: holding) { scroll.contentSize = size }
+    }
+
+    /// A finger pulls it, or it bounces, past an end.
+    private var holding: Bool {
+        (scroll.isTracking || scroll.isDecelerating) && SessionDetailLayout.stretched(
+            offset: scroll.contentOffset.y, top: scroll.adjustedContentInset.top, bottom: scroll.adjustedContentInset.bottom,
+            contentHeight: scroll.contentSize.height, viewport: scroll.bounds.height
+        )
+    }
+
+    private func applyHeldSize() {
+        if let size = heldSize.release(current: scroll.contentSize, holding: holding) { scroll.contentSize = size }
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if heldSize.held != nil { applyHeldSize() }
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { applyHeldSize() }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { applyHeldSize() }
+
     // MARK: Building
 
     /// Shows `update.frame`, touching only what `update.changes` names.
-    /// The groups it rebuilds are made over the next frames (`makeSlice`).
     private func apply(_ update: SessionInfoUpdate) {
         let next = update.frame
         let changes = update.changes
@@ -242,184 +258,99 @@ final class SessionInfoViewController: UIViewController {
             switch next.content {
             case .loading:
                 if changes.state { showLoadStatus(.loading) }
+                return 0
             case .deleted:
                 loadState = .ready
-                loadStatusGroup = nil
+                loadStatus = nil
                 loadWatchdog?.cancel()
-                if changes.state { showState(deletedView(), title: Strings.SessionDetail.sessionDeleted) }
+                groups = [:]
+                rawBlockViews = []
+                if changes.state { showState(deletedView()) }
+                return 0
             case .shown(let model):
-                if changes.title { setPlainHeaderTitle(model.title ?? Strings.Session.newChat) }
-                for section in changes.rebuilt { remake(section) }
-                if changes.lastUpdated { lastUpdatedRow?.subtitle = SessionDetails.localeDateTime(model.updatedAt) }
-                if changes.sequence { sequenceRow?.detail = String(model.seq) }
+                if let stateView {
+                    stateView.removeFromSuperview()
+                    self.stateView = nil
+                    scroll.isHidden = false
+                }
+                if changes.title || changes.header { applyHeader(model) }
+                var made = 0
+                for section in changes.rebuilt {
+                    groups[section] = plan(section, model: model, frame: next)
+                    made += 1
+                }
+                // "Last updated" and "Sequence" retexted where they are.
+                if !changes.rebuilt.contains(.details), changes.lastUpdated || changes.sequence {
+                    groups[.details] = [details(model, copied: next.copiedResumeCommand)]
+                    made += 1
+                }
                 for index in changes.rawBlocks where rawBlockViews.indices.contains(index) {
                     rawBlockViews[index].code = next.raw[index].code
                 }
-            }
-            return changes.rawBlocks.count + (changes.lastUpdated ? 1 : 0) + (changes.sequence ? 1 : 0)
-        }
-        guard case .shown = next.content else { return }
-        // Groups are made from the next frame on, not in this one; with none
-        // to make, the list takes the new order now.
-        if making != nil || !queue.isEmpty { scheduleMaking() } else { showMade() }
-    }
-
-    /// Queued groups use the newest frame when they start. Once started,
-    /// finish and show them before rebuilding for a newer frame: restarting
-    /// an unfinished group on every update can hide the whole list forever.
-    private func remake(_ section: SessionInfoSection) {
-        if making?.section == section || made[section] != nil {
-            remakeAfterShowing.insert(section)
-            return
-        }
-        if !queue.contains(section) { queue.append(section) }
-    }
-
-    /// Makes rows for at most `sliceBudget` a frame, and the frame after
-    /// the last is made, shows every group.
-    @objc private func makeSlice() {
-        guard making != nil || !queue.isEmpty else {
-            stopMaking()
-            showMade()
-            return
-        }
-        // Made in the window, at the width the list will give them.
-        guard list.window != nil, list.bounds.width > 0 else {
-            stopMaking()
-            return
-        }
-        let started = CACurrentMediaTime()
-        var steps = 0
-        ApplyPerf.measure(.screen) {
-            while CACurrentMediaTime() - started < Self.sliceBudget, makeStep() { steps += 1 }
-            return steps
-        }
-        #if DEBUG
-        slices.append((CACurrentMediaTime() - started, steps))
-        #endif
-        scheduleMaking()
-    }
-
-    /// Goes on making from the next frame.
-    private func scheduleMaking() {
-        guard makeLink == nil else { return }
-        let link = CADisplayLink(target: self, selector: #selector(makeSlice))
-        link.add(to: .main, forMode: .common)
-        makeLink = link
-    }
-
-    /// Starts the next group, makes one of its rows, or finishes it; false
-    /// when nothing is left to make.
-    private func makeStep() -> Bool {
-        guard var making else {
-            guard let frame, let model = frame.model else {
-                queue = []
-                return false
-            }
-            guard !queue.isEmpty else { return false }
-            let section = queue.removeFirst()
-            guard let plan = plan(section, model: model, frame: frame) else {
-                made[section] = UIView()
-                return true
-            }
-            let group = ItemGroupView(title: plan.title, rows: [])
-            // Laid out at the width the list will give it.
-            group.frame.size.width = GroupedListLayout.contentWidth(size: list.bounds.size, safeArea: LayoutInsets(list.safeAreaInsets))
-            workshop.addSubview(group)
-            self.making = Making(section: section, group: group, plan: plan)
-            return true
-        }
-        if making.next < making.plan.rows.count {
-            making.group.rows.append(making.plan.rows[making.next]())
-            making.next += 1
-            self.making = making
-            return true
-        }
-        making.plan.finish(making.group)
-        made[making.section] = making.group
-        self.making = nil
-        return true
-    }
-
-    private func stopMaking() {
-        makeLink?.invalidate()
-        makeLink = nil
-    }
-
-    /// The groups made join the list in the frame's order, retexted in
-    /// place where a frame since they were planned moved on.
-    private func showMade() {
-        guard let frame, let model = frame.model else { return }
-        let order = frame.sections
-        let new = made
-        made = [:]
-        for (section, group) in new { sectionViews[section] = group }
-        for gone in Set(sectionViews.keys).subtracting(order) {
-            // Off the list below, or never on it.
-            if let group = sectionViews.removeValue(forKey: gone), group.superview === workshop { group.removeFromSuperview() }
-        }
-        if new[.details] != nil {
-            let updated = SessionDetails.localeDateTime(model.updatedAt)
-            if let row = lastUpdatedRow, row.subtitle != updated { row.subtitle = updated }
-            if let row = sequenceRow, row.detail != String(model.seq) { row.detail = String(model.seq) }
-        }
-        if new[.raw] != nil {
-            for (view, block) in zip(rawBlockViews, frame.raw) where view.code != block.code { view.code = block.code }
-            // Drawn near the screen once there (`CodeBlockView`).
-            for view in rawBlockViews { view.setNeedsLayout() }
-        }
-        if let stateView {
-            stateView.removeFromSuperview()
-            self.stateView = nil
-            list.isHidden = false
-        }
-        let removesStatus: Bool
-        if case .failed = loadState {
-            removesStatus = false
-        } else {
-            removesStatus = loadStatusGroup != nil
-            loadState = .ready
-            loadStatusGroup = nil
-        }
-        if order != shownSections || !new.isEmpty || removesStatus {
-            ApplyPerf.measure(.screen) {
-                shownSections = order
-                installSections()
-                return new.count
+                for gone in Set(groups.keys).subtracting(next.sections) { groups[gone] = nil }
+                if case .failed = loadState {} else {
+                    loadState = .ready
+                    loadStatus = nil
+                }
+                showSections()
+                return made + changes.rawBlocks.count
             }
         }
-        let pending = remakeAfterShowing.intersection(order)
-        remakeAfterShowing = []
-        for section in pending { remake(section) }
-        if !queue.isEmpty { scheduleMaking() }
     }
 
-    private func plan(_ section: SessionInfoSection, model: SessionInfoModel, frame: SessionInfoFrame) -> GroupPlan? {
+    /// The head: its name, its avatar as home draws it, what it is and its
+    /// status; its tiles.
+    private func applyHeader(_ model: SessionInfoModel) {
+        header.name.text = model.title ?? Strings.Session.newChat
+        var avatar = model.avatar
+        avatar.image = avatarImage
+        header.avatar = .session(AvatarView.Content(avatar: avatar, style: model.avatarStyle, monochrome: model.avatarMonochrome))
+        let status = SessionComposerView.headerStatus(model.status).text
+        header.subtitle.text = [Self.kind(isBot: model.isBot, isTask: model.isTask), status].compactMap { $0 }.joined(separator: " · ")
+        tiles[0].show(value: model.metadata?.model ?? Strings.none, label: Strings.model)
+        tiles[1].show(value: Strings.started(DetailFormat.started(since: Double(model.createdAt), now: Date())), label: Strings.started)
+        view.setNeedsLayout()
+    }
+
+    /// What it is, as the agent's profile says it: a bot, a task; a plain
+    /// session says nothing.
+    private static func kind(isBot: Bool, isTask: Bool) -> String? {
+        isBot ? Strings.bot : isTask ? Strings.task : nil
+    }
+
+    /// The cards in the frame's order: the load status first, the chat's
+    /// permission mode, the groups.
+    private func showSections() {
+        var shown: [ProfileSection] = []
+        if let loadStatus { shown.append(loadStatus) }
+        if let frame, frame.model != nil {
+            if let choice = chatBeneath?.permissionChoice {
+                shown.append(ProfileSection(id: "controls", rows: [SessionDetailViewController.permissionRow(
+                    choice, choice: { [weak self] in self?.chatBeneath?.permissionChoice },
+                    relaid: { [weak self] in self?.showSections() }
+                )]))
+            }
+            shown += frame.sections.flatMap { groups[$0] ?? [] }
+        }
+        sections.show(shown)
+        view.setNeedsLayout()
+    }
+
+    private func plan(_ section: SessionInfoSection, model: SessionInfoModel, frame: SessionInfoFrame) -> [ProfileSection] {
         switch section {
-        case .quickActions: return quickActions(model, forking: frame.forking)
-        case .cliWarning: return cliWarning()
-        case .details: return details(model, copied: frame.copiedResumeCommand)
-        case .metadata: return model.metadata.map { metadataGroup($0, model: model) }
-        case .agentState: return model.agentState.map(agentStateGroup)
-        case .activity: return activityGroup(model)
+        case .quickActions: return [quickActions(model, forking: frame.forking)]
+        case .cliWarning: return [cliWarning()]
+        case .details: return [details(model, copied: frame.copiedResumeCommand)]
+        case .metadata: return model.metadata.map { [metadataGroup($0, model: model)] } ?? []
+        case .agentState: return model.agentState.map { [agentStateGroup($0)] } ?? []
+        case .activity: return [activityGroup(model)]
         case .raw: return rawJSON(frame.raw)
         }
     }
 
-    private func showState(_ view: UIView, title: String) {
-        setPlainHeaderTitle(title)
-        stopMaking()
-        queue = []
-        remakeAfterShowing = []
-        making?.group.removeFromSuperview()
-        making = nil
-        for group in made.values { group.removeFromSuperview() }
-        made = [:]
-        list.isHidden = true
-        list.sections = []
-        sectionViews = [:]
-        shownSections = []
-        rawBlockViews = []
+    private func showState(_ view: UIView) {
+        scroll.isHidden = true
+        sections.show([])
         stateView?.removeFromSuperview()
         stateView = view
         self.view.addSubview(view)
@@ -428,14 +359,8 @@ final class SessionInfoViewController: UIViewController {
 
     // MARK: Loading and local diagnostics
 
-    private func installSections() {
-        let status: [UIView] = loadStatusGroup.map { [$0] } ?? []
-        list.sections = status + shownSections.compactMap { sectionViews[$0] }
-    }
-
-    /// Status is a separate group, so an observation failure or retry never
-    /// throws away rows that the user can already read. Construction can
-    /// continue behind it and removes the waiting state when it finishes.
+    /// Status is a card of its own, so an observation failure or retry
+    /// never throws away rows that the user can already read.
     private func showLoadStatus(_ state: LoadState) {
         ApplyPerf.measure(.screen) {
             loadState = state
@@ -446,33 +371,37 @@ final class SessionInfoViewController: UIViewController {
             case .failed: message = Strings.SessionInfoLoading.failed
             case .ready: return 0
             }
-            let messageRow = ItemRowView(title: message)
-            messageRow.showsChevron = false
-            var rows: [UIView] = [messageRow]
+            var rows = [SettingsRow(id: "load-status", title: message, accessory: .none)]
             if state != .loading {
-                rows.append(ItemRowView(title: Strings.SessionInfoLoading.retry) { [weak self] in self?.retryLoading() })
-                rows.append(ItemRowView(title: Strings.SessionInfoLoading.copyDiagnostics) { [weak self] in self?.copyLoadingDiagnostics() })
+                rows.append(SettingsRow(id: "load-retry", title: Strings.SessionInfoLoading.retry, icon: ("refresh-outline", .action), accessory: .none, action: { [weak self] in
+                    self?.retryLoading()
+                }))
+                rows.append(SettingsRow(id: "load-copy-diagnostics", title: Strings.SessionInfoLoading.copyDiagnostics, icon: ("copy-outline", .action), accessory: .none, action: { [weak self] in
+                    self?.copyLoadingDiagnostics()
+                }))
             }
-            loadStatusGroup = ItemGroupView(rows: rows)
-            loadStatusGroup?.accessibilityIdentifier = "session-info-load-status"
-            stateView?.removeFromSuperview()
-            stateView = nil
-            list.isHidden = false
-            installSections()
+            loadStatus = ProfileSection(id: "session-info-load-status", rows: rows)
+            if stateView != nil, frame?.model == nil {
+                stateView?.removeFromSuperview()
+                stateView = nil
+                scroll.isHidden = false
+            }
+            showSections()
             return rows.count
         }
     }
 
     private var hasVisibleBody: Bool {
-        guard let window = view.window, !list.isHidden, list.alpha > 0 else { return false }
-        var ancestor: UIView? = list
+        guard let window = view.window, !scroll.isHidden, scroll.alpha > 0 else { return false }
+        var ancestor: UIView? = scroll
         while let current = ancestor {
             guard !current.isHidden, current.alpha > 0 else { return false }
             ancestor = current.superview
         }
-        return sectionViews.values.contains { group in
-            group.superview === list && !group.isHidden && group.alpha > 0
-                && group.bounds.height > 0 && group.convert(group.bounds, to: window).intersects(window.bounds)
+        return groups.values.joined().contains { section in
+            guard let card = sections.card(section.id) else { return false }
+            return card.superview === scroll && !card.isHidden && card.alpha > 0
+                && card.bounds.height > 0 && card.convert(card.bounds, to: window).intersects(window.bounds)
         }
     }
 
@@ -504,13 +433,6 @@ final class SessionInfoViewController: UIViewController {
     }
 
     @objc private func retryLoading() {
-        stopMaking()
-        making?.group.removeFromSuperview()
-        making = nil
-        for group in made.values { group.removeFromSuperview() }
-        made = [:]
-        queue = []
-        remakeAfterShowing = []
         showLoadStatus(.loading)
         beginObservation()
         startLoadWatchdog()
@@ -544,18 +466,17 @@ final class SessionInfoViewController: UIViewController {
         case .deleted: content = "deleted"
         case .shown: content = "shown"
         }
+        let cards = groups.values.joined().compactMap { sections.card($0.id) }
         let stage: String
         if hasVisibleBody { stage = "body-visible" }
         else if frame == nil { stage = "no-snapshot-or-apply" }
-        else if making != nil || !queue.isEmpty { stage = "building-groups" }
-        else if !made.isEmpty { stage = "groups-awaiting-install" }
-        else if !sectionViews.isEmpty { stage = "installed-groups-not-visible" }
-        else { stage = "no-installed-groups" }
+        else if cards.isEmpty { stage = "no-installed-groups" }
+        else { stage = "installed-groups-not-visible" }
         let currentFailure: SessionDetailFailure?
         if let failure { currentFailure = failure }
         else if case .failed(let error) = loadState { currentFailure = error }
         else { currentFailure = nil }
-        let first = shownSections.compactMap { sectionViews[$0] }.first
+        let first = sections.sections.first { $0.id != loadStatus?.id }.flatMap { sections.card($0.id) }
         let window = view.window
         let status: String
         switch loadState {
@@ -575,11 +496,10 @@ final class SessionInfoViewController: UIViewController {
             "accountMatches": context.account.session === session,
             "windowAttached": window != nil, "keyWindow": window?.isKeyWindow ?? false,
             "sceneState": window?.windowScene?.activationState.rawValue ?? -1,
-            "viewBounds": NSCoder.string(for: view.bounds), "listBounds": NSCoder.string(for: list.bounds),
-            "listHidden": list.isHidden, "listAlpha": list.alpha,
-            "contentSize": NSCoder.string(for: list.contentSize), "contentOffset": NSCoder.string(for: list.contentOffset),
-            "installedGroups": sectionViews.count, "listSections": list.sections.count,
-            "queuedGroups": queue.count, "madeGroups": made.count, "making": making != nil, "displayLink": makeLink != nil,
+            "viewBounds": NSCoder.string(for: view.bounds), "listBounds": NSCoder.string(for: scroll.bounds),
+            "listHidden": scroll.isHidden, "listAlpha": scroll.alpha,
+            "contentSize": NSCoder.string(for: scroll.contentSize), "contentOffset": NSCoder.string(for: scroll.contentOffset),
+            "installedGroups": cards.count, "listSections": sections.sections.count,
             "firstGroupFrame": NSCoder.string(for: first?.frame ?? .zero),
             "firstGroupInWindow": NSCoder.string(for: first.flatMap { group in window.map { group.convert(group.bounds, to: $0) } } ?? CGRect.zero),
         ]
@@ -617,16 +537,6 @@ final class SessionInfoViewController: UIViewController {
         ])
     }
 
-    private func icon(_ name: String, _ tint: ColorToken, size: CGFloat = 29) -> ItemIcon {
-        ItemIcon(.ionicons(name), tint: tint, size: size)
-    }
-
-    private func info(_ title: String, subtitle: String? = nil, detail: String? = nil, icon: ItemIcon) -> ItemRowView {
-        let row = ItemRowView(title: title, subtitle: subtitle, detail: detail, icon: icon)
-        row.showsChevron = false
-        return row
-    }
-
     /// The chat this profile was opened over, which holds the composer the
     /// permission mode is picked through; nil opened from anywhere else.
     private var chatBeneath: LegacyChatViewController? {
@@ -635,292 +545,218 @@ final class SessionInfoViewController: UIViewController {
         return chat
     }
 
-    /// The chat's permission mode, which its header's More menu used to
-    /// pick: the current one as the row's value, the modes a pull-down from
-    /// the row, a pick going through the chat's composer as before.
-    private weak var permissionRow: ItemRowView?
+    // MARK: Groups
 
-    private func permissionModeRow(_ choice: PermissionModeChoice) -> UIView {
-        let row = ItemRowView(title: Strings.ChatActions.permissionMode, detail: choice.current, icon: icon("shield-checkmark-outline", SecondaryPalette.blue))
-        let button = MenuRowButton(frame: row.bounds)
-        button.menuFor = { [weak self] in
-            self?.chatBeneath?.permissionChoice?.uiMenu { [weak self] in self?.refreshPermissionMode() }
-        }
-        button.accessibilityIdentifier = "profile-permission-mode"
-        button.accessibilityLabel = Strings.ChatActions.permissionMode
-        button.accessibilityValue = choice.current
-        row.addSubview(button)
-        row.isAccessibilityElement = false
-        row.accessibilityElements = [button]
-        permissionRow = row
+    /// A row that says something: its title over what it is, or its
+    /// value at its end.
+    private func info(_ id: String, _ title: String, subtitle: String? = nil, value: String? = nil, glyph: String, tile: SettingsRow.Tile) -> SettingsRow {
+        var row = SettingsRow(id: id, title: title, icon: (glyph, tile), value: value, accessory: .none)
+        row.subtitle = subtitle
         return row
     }
 
-    private func refreshPermissionMode() {
-        guard let row = permissionRow, let current = chatBeneath?.permissionChoice?.current else { return }
-        row.detail = current
-        row.subviews.compactMap { $0 as? MenuRowButton }.first?.accessibilityValue = current
+    /// A row that does something: opens a screen (`opens`, with its
+    /// chevron) or acts where it is.
+    private func act(_ id: String, _ title: String, subtitle: String? = nil, glyph: String, tile: SettingsRow.Tile, opens: Bool = true,
+                     destructive: Bool = false, action: @escaping () -> Void) -> SettingsRow {
+        var row = SettingsRow(id: id, title: title, icon: (glyph, tile), accessory: opens ? .chevron : .none, destructive: destructive, action: action)
+        row.subtitle = subtitle
+        return row
     }
 
-    private func quickActions(_ model: SessionInfoModel, forking: Bool) -> GroupPlan {
+    private func quickActions(_ model: SessionInfoModel, forking: Bool) -> ProfileSection {
         typealias S = Strings.SessionDetail
-        var rows: [() -> UIView] = []
-        if let choice = chatBeneath?.permissionChoice {
-            rows.append { [unowned self] in permissionModeRow(choice) }
+        var rows: [SettingsRow] = []
+        var changes = act("changes", Strings.FilesDetail.changes, glyph: "git-compare-outline", tile: .blue) { [weak self] in
+            guard let self else { return }
+            push(.sessionChanges(id: sessionId), context: context)
         }
-        rows.append { [unowned self] in
-            let changes = ItemRowView(
-                title: Strings.FilesDetail.changes,
-                icon: ItemIcon(.octicons("file-diff"), tint: SecondaryPalette.blue, size: 26)
-            ) { [weak self] in
-                guard let self else { return }
-                push(.sessionChanges(id: sessionId), context: context)
-            }
-            if model.git.hasAccessory { changes.trailingView = DetailChangesAccessoryView(model.git) }
-            return changes
-        }
-
+        if model.git.hasAccessory { changes.valueView = DetailChangesAccessoryView(model.git, chevron: false) }
+        rows.append(changes)
         if let machineId = model.machineId {
-            rows.append { [unowned self] in
-                ItemRowView(title: S.viewMachine, subtitle: S.viewMachineSubtitle, icon: icon("server-outline", SecondaryPalette.blue)) { [weak self] in
-                    guard let self else { return }
-                    push(.machine(id: machineId), context: context)
-                }
-            }
+            rows.append(act("view-machine", S.viewMachine, subtitle: S.viewMachineSubtitle, glyph: "server-outline", tile: .blue) { [weak self] in
+                guard let self else { return }
+                push(.machine(id: machineId), context: context)
+            })
         }
         if model.resume.showsRow {
-            rows.append { [unowned self] in
-                ItemRowView(title: S.resumeSession, subtitle: model.resume.canResume ? S.resumeSessionSubtitle : resumeMessages.message(for: model.resume),
-                            icon: icon("play-circle-outline", SecondaryPalette.blue)) { [weak self] in
-                    self?.resume()
-                }
-            }
+            rows.append(act("resume", S.resumeSession, subtitle: model.resume.canResume ? S.resumeSessionSubtitle : resumeMessages.message(for: model.resume),
+                            glyph: "play-circle-outline", tile: .blue) { [weak self] in self?.resume() })
         }
         if model.canFork {
-            rows.append { [unowned self] in
-                let fork = ItemRowView(title: S.forkAction, subtitle: S.forkSubtitle, icon: icon("git-branch-outline", SecondaryPalette.blue)) { [weak self] in
-                    self?.fork(canFork: model.canFork)
-                }
-                fork.isLoading = forking
-                return fork
+            var fork = act("fork", S.forkAction, subtitle: S.forkSubtitle, glyph: "git-branch-outline", tile: .blue) { [weak self] in
+                self?.fork(canFork: model.canFork)
             }
-            rows.append { [unowned self] in
-                ItemRowView(title: S.duplicateAction, subtitle: S.duplicateSubtitle, icon: icon("time-outline", SecondaryPalette.blue)) { [weak self] in
-                    self?.openDuplicateSheet()
-                }
+            if forking {
+                let spinner = UIActivityIndicatorView(style: .medium)
+                spinner.startAnimating()
+                fork.valueView = spinner
+                fork.accessory = .none
             }
+            rows.append(fork)
+            rows.append(act("duplicate", S.duplicateAction, subtitle: S.duplicateSubtitle, glyph: "time-outline", tile: .blue) { [weak self] in
+                self?.openDuplicateSheet()
+            })
         }
         if let parent = model.parentSessionId {
-            rows.append { [unowned self] in
-                ItemRowView(title: S.forkedFromLabel, subtitle: S.forkedFromSubtitle, icon: icon("return-up-back-outline", SecondaryPalette.purple)) { [weak self] in
-                    guard let self else { return }
-                    push(.session(id: parent), context: context)
-                }
-            }
+            rows.append(act("forked-from", S.forkedFromLabel, subtitle: S.forkedFromSubtitle, glyph: "return-up-back-outline", tile: .purple) { [weak self] in
+                guard let self else { return }
+                push(.session(id: parent), context: context)
+            })
         }
         if model.canLeaveTask {
             // Out of this person's list; the task runs on for the rest.
-            rows.append { [unowned self] in
-                ItemRowView(title: Strings.Tasks.leave, icon: icon("exit-outline", SecondaryPalette.red)) { [weak self] in
-                    self?.leaveTask()
-                }
-            }
+            rows.append(act("leave-task", Strings.Tasks.leave, glyph: "exit-outline", tile: .red, opens: false, destructive: true) { [weak self] in
+                self?.leaveTask()
+            })
         }
         // A task is archived only by its owner or the team's.
         if model.canArchive {
-            rows.append { [unowned self] in
-                ItemRowView(title: model.isTask ? Strings.Tasks.archive : S.archiveSession, subtitle: model.isTask ? nil : S.archiveSessionSubtitle, icon: icon("archive-outline", SecondaryPalette.red)) { [weak self] in
-                    self?.archive()
-                }
-            }
+            rows.append(act("archive", model.isTask ? Strings.Tasks.archive : S.archiveSession, subtitle: model.isTask ? nil : S.archiveSessionSubtitle,
+                            glyph: "archive-outline", tile: .red, opens: false, destructive: true) { [weak self] in self?.archive() })
         }
         if !model.keepsConversation {
-            rows.append { [unowned self] in
-                ItemRowView(title: S.deleteSession, subtitle: S.deleteSessionSubtitle, icon: icon("trash-outline", SecondaryPalette.red)) { [weak self] in
-                    self?.confirmDelete()
-                }
-            }
+            rows.append(act("delete", S.deleteSession, subtitle: S.deleteSessionSubtitle, glyph: "trash-outline", tile: .red, opens: false, destructive: true) { [weak self] in
+                self?.confirmDelete()
+            })
         }
-        return GroupPlan(title: S.quickActions, rows: rows) { $0.keepsLastDivider(model.keepsConversation) }
+        return ProfileSection(id: "quick-actions", heading: S.quickActions, rows: rows)
     }
 
-    private func cliWarning() -> GroupPlan {
+    private func cliWarning() -> ProfileSection {
         typealias S = Strings.SessionDetail
-        return GroupPlan(rows: [{ [unowned self] in
-            let row = ItemRowView(title: S.cliVersionOutdated, subtitle: S.updateCliInstructions, icon: icon("warning-outline", SecondaryPalette.orange)) { [weak self] in
+        return ProfileSection(id: "cli-warning", rows: [
+            act("cli-outdated", S.cliVersionOutdated, subtitle: S.updateCliInstructions, glyph: "warning-outline", tile: .orange, opens: false) { [weak self] in
                 guard let self else { return }
                 UIPasteboard.general.string = S.updateCommand
                 Alerts.show(Strings.Common.success, S.updateCommand, on: self)
-            }
-            row.showsChevron = false
-            return row
-        }])
+            },
+        ])
     }
 
-    private func details(_ model: SessionInfoModel, copied: Bool) -> GroupPlan {
+    private func details(_ model: SessionInfoModel, copied: Bool) -> ProfileSection {
         typealias S = Strings.SessionDetail
-        var rows: [() -> UIView] = []
-        rows.append { [unowned self] in
-            ItemRowView(title: S.happySessionId, subtitle: model.sessionIdShort, icon: icon("finger-print-outline", SecondaryPalette.blue)) { [weak self] in
-                self?.copy(model.sessionId, success: S.happySessionIdCopied)
-            }
-        }
+        var rows: [SettingsRow] = []
+        rows.append(act("happy-session-id", S.happySessionId, subtitle: model.sessionIdShort, glyph: "finger-print-outline", tile: .blue, opens: false) { [weak self] in
+            self?.copy(model.sessionId, success: S.happySessionIdCopied)
+        })
         if let claude = model.claudeSessionId {
-            rows.append { [unowned self] in
-                ItemRowView(title: S.claudeCodeSessionId, subtitle: SessionDetails.shortId(claude), icon: icon("code-outline", SecondaryPalette.claude)) { [weak self] in
-                    self?.copy(claude, success: S.claudeCodeSessionIdCopied)
-                }
-            }
+            rows.append(act("claude-session-id", S.claudeCodeSessionId, subtitle: SessionDetails.shortId(claude), glyph: "code-outline", tile: .orange, opens: false) { [weak self] in
+                self?.copy(claude, success: S.claudeCodeSessionIdCopied)
+            })
         }
         if let codex = model.codexThreadId {
-            rows.append { [unowned self] in
-                ItemRowView(title: S.codexThreadId, subtitle: SessionDetails.shortId(codex), icon: icon("terminal-outline", SecondaryPalette.codex)) { [weak self] in
-                    self?.copy(codex, success: S.codexThreadIdCopied)
-                }
-            }
+            rows.append(act("codex-thread-id", S.codexThreadId, subtitle: SessionDetails.shortId(codex), glyph: "terminal-outline", tile: .gray, opens: false) { [weak self] in
+                self?.copy(codex, success: S.codexThreadIdCopied)
+            })
         }
         if let command = model.resumeCommand {
             // info.tsx CopyableItem: copies quietly and shows a check for 2s.
-            rows.append { [unowned self] in
-                let row = ItemRowView(title: S.resumeCommand, subtitle: command, icon: icon("play-circle-outline", SecondaryPalette.copied)) { [weak self] in
-                    self?.copyResumeCommand(command)
-                }
-                row.showsChevron = false
-                row.trailingView = copied
-                    ? DetailTrailingIcon(.ionicons("checkmark"), size: 18, tint: SecondaryPalette.copied)
-                    : DetailTrailingIcon(.ionicons("copy-outline"), size: 18, tint: SecondaryPalette.gray)
-                return row
+            var row = act("resume-command", S.resumeCommand, subtitle: command, glyph: "play-circle-outline", tile: .green, opens: false) { [weak self] in
+                self?.copyResumeCommand(command)
             }
+            row.valueView = copied
+                ? DetailTrailingIcon(.ionicons("checkmark"), size: 18, tint: SecondaryPalette.copied)
+                : DetailTrailingIcon(.ionicons("copy-outline"), size: 18, tint: SecondaryPalette.gray)
+            rows.append(row)
         }
-        rows.append { [unowned self] in
-            info(
-                S.connectionStatus,
-                detail: model.isConnected ? Strings.Status.online : Strings.Status.offline,
-                icon: icon("pulse-outline", model.isConnected ? SecondaryPalette.green : SecondaryPalette.gray)
-            )
-        }
-        rows.append { [unowned self] in info(S.created, subtitle: SessionDetails.localeDateTime(model.createdAt), icon: icon("calendar-outline", SecondaryPalette.blue)) }
-        rows.append { [unowned self] in
-            let row = info(S.lastUpdated, subtitle: SessionDetails.localeDateTime(model.updatedAt), icon: icon("time-outline", SecondaryPalette.blue))
-            lastUpdatedRow = row
-            return row
-        }
-        rows.append { [unowned self] in
-            let row = info(S.sequence, detail: String(model.seq), icon: icon("git-commit-outline", SecondaryPalette.blue))
-            sequenceRow = row
-            return row
-        }
-        return GroupPlan(rows: rows)
+        rows.append(info("connection-status", S.connectionStatus, value: model.isConnected ? Strings.Status.online : Strings.Status.offline,
+                         glyph: "pulse-outline", tile: model.isConnected ? .green : .gray))
+        rows.append(info("created", S.created, subtitle: SessionDetails.localeDateTime(model.createdAt), glyph: "calendar-outline", tile: .blue))
+        rows.append(info("last-updated", S.lastUpdated, subtitle: SessionDetails.localeDateTime(model.updatedAt), glyph: "time-outline", tile: .blue))
+        rows.append(info("sequence", S.sequence, value: String(model.seq), glyph: "git-commit-outline", tile: .blue))
+        return ProfileSection(id: "details", rows: rows)
     }
 
-    private func metadataGroup(_ metadata: SessionInfoModel.Metadata, model: SessionInfoModel) -> GroupPlan {
+    private func metadataGroup(_ metadata: SessionInfoModel.Metadata, model: SessionInfoModel) -> ProfileSection {
         typealias S = Strings.SessionDetail
-        let purple = SecondaryPalette.purple
-        var rows: [() -> UIView] = []
-        rows.append { [unowned self] in info(S.host, subtitle: metadata.host, icon: icon("desktop-outline", purple)) }
-        rows.append { [unowned self] in info(S.path, subtitle: metadata.path, icon: icon("folder-outline", purple)) }
+        var rows: [SettingsRow] = []
+        if let host = metadata.host { rows.append(info("host", S.host, subtitle: host, glyph: "desktop-outline", tile: .purple)) }
+        rows.append(info("path", S.path, subtitle: metadata.path, glyph: "folder-outline", tile: .purple))
         // Once under the chat's name in its header, where its status is now.
         if let branch = model.branch {
-            rows.append { [unowned self] in info(Strings.ChatActions.branch, subtitle: branch, icon: icon("git-branch-outline", purple)) }
+            rows.append(info("branch", Strings.ChatActions.branch, subtitle: branch, glyph: "git-branch-outline", tile: .purple))
         }
         if let version = metadata.cliVersion {
-            rows.append { [unowned self] in
-                info(S.cliVersion, subtitle: version, detail: model.cliOutdated ? "⚠️" : nil,
-                     icon: icon("git-branch-outline", model.cliOutdated ? SecondaryPalette.orange : purple))
-            }
+            rows.append(info("cli-version", S.cliVersion, subtitle: version, value: model.cliOutdated ? "⚠️" : nil,
+                             glyph: "git-branch-outline", tile: model.cliOutdated ? .orange : .purple))
         }
         if let os = metadata.operatingSystem {
-            rows.append { [unowned self] in info(S.operatingSystem, subtitle: os, icon: icon("hardware-chip-outline", purple)) }
+            rows.append(info("os", S.operatingSystem, subtitle: os, glyph: "hardware-chip-outline", tile: .purple))
         }
         if let client = metadata.client {
-            rows.append { [unowned self] in info(S.client, subtitle: client, icon: icon("terminal-outline", purple)) }
+            rows.append(info("client", S.client, subtitle: client, glyph: "terminal-outline", tile: .purple))
         }
-        rows.append { [unowned self] in info(S.aiProvider, subtitle: metadata.aiProvider, icon: icon("sparkles-outline", purple)) }
+        rows.append(info("ai-provider", S.aiProvider, subtitle: metadata.aiProvider, glyph: "sparkles-outline", tile: .purple))
         if let modelName = metadata.model {
-            rows.append { [unowned self] in info(S.model, subtitle: modelName, icon: icon("hardware-chip-outline", purple)) }
+            rows.append(info("model", S.model, subtitle: modelName, glyph: "hardware-chip-outline", tile: .purple))
         }
         if let sandbox = metadata.sandbox {
-            rows.append { [unowned self] in info(S.sandbox, subtitle: sandbox, icon: icon("shield-outline", purple)) }
+            rows.append(info("sandbox", S.sandbox, subtitle: sandbox, glyph: "shield-outline", tile: .purple))
         }
         if let skip = metadata.dangerouslySkipPermissions {
-            rows.append { [unowned self] in info(S.dangerouslySkipPermissions, subtitle: skip, icon: icon("warning-outline", purple)) }
+            rows.append(info("skip-permissions", S.dangerouslySkipPermissions, subtitle: skip, glyph: "warning-outline", tile: .purple))
         }
         if let pid = metadata.processId {
-            rows.append { [unowned self] in info(S.processId, subtitle: pid, icon: icon("terminal-outline", purple)) }
+            rows.append(info("pid", S.processId, subtitle: pid, glyph: "terminal-outline", tile: .purple))
         }
         if let home = metadata.happyHome {
-            rows.append { [unowned self] in info(S.happyHome, subtitle: home, icon: icon("home-outline", purple)) }
+            rows.append(info("happy-home", S.happyHome, subtitle: home, glyph: "home-outline", tile: .purple))
         }
-        rows.append { [unowned self] in
-            ItemRowView(title: S.copyMetadata, icon: icon("copy-outline", SecondaryPalette.blue)) { [weak self] in
-                self?.copyMetadata(withLogs: false)
-            }
-        }
-        rows.append { [unowned self] in
-            ItemRowView(title: S.copyMetadataAndLogs, icon: icon("document-text-outline", SecondaryPalette.blue)) { [weak self] in
-                self?.copyMetadata(withLogs: true)
-            }
-        }
-        return GroupPlan(title: S.metadata, rows: rows)
+        rows.append(act("copy-metadata", S.copyMetadata, glyph: "copy-outline", tile: .blue, opens: false) { [weak self] in
+            self?.copyMetadata(withLogs: false)
+        })
+        rows.append(act("copy-metadata-logs", S.copyMetadataAndLogs, glyph: "document-text-outline", tile: .blue, opens: false) { [weak self] in
+            self?.copyMetadata(withLogs: true)
+        })
+        return ProfileSection(id: "metadata", heading: S.metadata, rows: rows)
     }
 
-    private func agentStateGroup(_ state: SessionInfoModel.AgentState) -> GroupPlan {
+    private func agentStateGroup(_ state: SessionInfoModel.AgentState) -> ProfileSection {
         typealias S = Strings.SessionDetail
-        let orange = SecondaryPalette.orange
-        var rows: [() -> UIView] = [{ [unowned self] in info(S.controlledByUser, detail: state.controlledByUser ? S.yes : S.no, icon: icon("person-outline", orange)) }]
+        var rows = [info("controlled-by-user", S.controlledByUser, value: state.controlledByUser ? S.yes : S.no, glyph: "person-outline", tile: .orange)]
         if state.pendingRequests > 0 {
-            rows.append { [unowned self] in info(S.pendingRequests, detail: String(state.pendingRequests), icon: icon("hourglass-outline", orange)) }
+            rows.append(info("pending-requests", S.pendingRequests, value: String(state.pendingRequests), glyph: "hourglass-outline", tile: .orange))
         }
-        return GroupPlan(title: S.agentState, rows: rows) { $0.keepsLastDivider(state.pendingRequests == 0) }
+        return ProfileSection(id: "agent-state", heading: S.agentState, rows: rows)
     }
 
-    private func activityGroup(_ model: SessionInfoModel) -> GroupPlan {
+    private func activityGroup(_ model: SessionInfoModel) -> ProfileSection {
         typealias S = Strings.SessionDetail
-        let purple = SecondaryPalette.purple
-        var rows: [() -> UIView] = [{ [unowned self] in
-            info(S.thinking, detail: model.thinking ? S.yes : S.no,
-                 icon: icon("bulb-outline", model.thinking ? SecondaryPalette.yellow : SecondaryPalette.gray))
-        }]
+        var rows = [info("thinking", S.thinking, value: model.thinking ? S.yes : S.no, glyph: "bulb-outline", tile: model.thinking ? .orange : .gray)]
         if model.thinking {
-            rows.append { [unowned self] in info(S.thinkingSince, subtitle: SessionDetails.localeDateTime(model.thinkingAt), icon: icon("timer-outline", SecondaryPalette.yellow)) }
+            rows.append(info("thinking-since", S.thinkingSince, subtitle: SessionDetails.localeDateTime(model.thinkingAt), glyph: "timer-outline", tile: .orange))
         }
         if let subagents = model.activity.subagents {
-            rows.append { [unowned self] in info(S.subagents, detail: subagents, icon: icon("people-outline", purple)) }
+            rows.append(info("subagents", S.subagents, value: subagents, glyph: "people-outline", tile: .purple))
         }
         if let workflows = model.activity.workflows {
-            rows.append { [unowned self] in info(S.workflows, detail: workflows, icon: icon("git-network-outline", purple)) }
+            rows.append(info("workflows", S.workflows, value: workflows, glyph: "git-network-outline", tile: .purple))
         }
         if let processes = model.activity.processes {
-            rows.append { [unowned self] in info(S.backgroundProcesses, detail: processes, icon: icon("terminal-outline", purple)) }
+            rows.append(info("background-processes", S.backgroundProcesses, value: processes, glyph: "terminal-outline", tile: .purple))
         }
         if let tasks = model.activity.tasks {
-            rows.append { [unowned self] in info(S.tasks, detail: tasks, icon: icon("checkbox-outline", purple)) }
+            rows.append(info("tasks", S.tasks, value: tasks, glyph: "checkbox-outline", tile: .purple))
         }
-        return GroupPlan(title: S.activity, rows: rows) { $0.keepsLastDivider(model.activity.tasks == nil) }
+        return ProfileSection(id: "activity", heading: S.activity, rows: rows)
     }
 
     /// info.tsx's "Raw JSON (Dev Mode)" group, shown in `__DEV__` builds;
-    /// here in Debug builds, printed off the main thread. The rows sit in
-    /// fragments, so every one keeps Item's default divider.
-    private func rawJSON(_ blocks: [SessionInfoRawBlock]) -> GroupPlan {
+    /// here in Debug builds, printed off the main thread: each block's name
+    /// over its code, a card each, under one heading.
+    private func rawJSON(_ blocks: [SessionInfoRawBlock]) -> [ProfileSection] {
         typealias S = Strings.SessionDetail
-        var rows: [() -> UIView] = []
-        rawBlockViews = []
-        for block in blocks {
-            rows.append { [unowned self] in
-                switch block.kind {
-                case .agentState: return info(S.rawAgentState, icon: icon("code-working-outline", SecondaryPalette.orange))
-                case .metadata: return info(S.rawMetadata, icon: icon("information-circle-outline", SecondaryPalette.purple))
-                case .session: return info(S.rawSession, icon: icon("document-text-outline", SecondaryPalette.green))
-                }
+        rawBlockViews = blocks.map { CodeBlockView(code: $0.code) }
+        return zip(blocks.indices, zip(blocks, rawBlockViews)).map { index, pair in
+            let (block, code) = pair
+            let row = switch block.kind {
+            case .agentState: info("raw-agent-state", S.rawAgentState, glyph: "code-working-outline", tile: .orange)
+            case .metadata: info("raw-metadata", S.rawMetadata, glyph: "information-circle-outline", tile: .purple)
+            case .session: info("raw-session", S.rawSession, glyph: "document-text-outline", tile: .green)
             }
-            rows.append { [unowned self] in
-                let code = CodeBlockView(code: block.code)
-                rawBlockViews.append(code)
-                return code
-            }
+            return ProfileSection(id: "raw-\(index)", heading: index == 0 ? S.rawJSON : nil, rows: [row], block: code)
         }
-        return GroupPlan(title: S.rawJSON, rows: rows) { $0.keepsLastDivider(true) }
     }
 
     // MARK: Actions

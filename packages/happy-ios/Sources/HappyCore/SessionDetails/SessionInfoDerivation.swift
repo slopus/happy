@@ -13,6 +13,10 @@ public struct SessionInfoInput: Sendable {
     public var copiedResumeCommand = false
     /// The "Raw JSON (Dev Mode)" group (Debug builds).
     public var includesRaw = false
+    /// What the status says while it thinks, picked once for the screen.
+    public var vibingWord = "Thinking"
+    /// The clock a last seen is read against (ms); now when nil.
+    public var now: Int64?
 
     public init(includesRaw: Bool = false) {
         self.includesRaw = includesRaw
@@ -49,7 +53,9 @@ public struct SessionInfoFrame: Equatable, Sendable {
             machine: detail.machine,
             settings: AccountSettings(detail.settings),
             gitStatus: input.git,
-            permissionMode: permissionMode
+            permissionMode: permissionMode,
+            now: input.now,
+            vibingWord: input.vibingWord
         ))
         raw = input.includesRaw ? SessionInfoRawBlock.blocks(record) : []
     }
@@ -138,15 +144,19 @@ public struct SessionInfoChanges: Equatable, Sendable {
     /// Raw JSON blocks given their new text in place, by index.
     public var rawBlocks: [Int] = []
     public var title = false
+    /// The profile's head under the name (its avatar, what it is, its
+    /// status) or its tiles (its model, when it started).
+    public var header = false
 
     public init(state: Bool = false, rebuilt: Set<SessionInfoSection> = [], lastUpdated: Bool = false, sequence: Bool = false,
-                rawBlocks: [Int] = [], title: Bool = false) {
+                rawBlocks: [Int] = [], title: Bool = false, header: Bool = false) {
         self.state = state
         self.rebuilt = rebuilt
         self.lastUpdated = lastUpdated
         self.sequence = sequence
         self.rawBlocks = rawBlocks
         self.title = title
+        self.header = header
     }
 }
 
@@ -162,12 +172,25 @@ public struct SessionInfoUpdate: Sendable {
 public struct SessionInfoSeed: Equatable, Sendable {
     /// As `SessionInfoModel.title` reads it; nil reads "New chat".
     public var title: String?
+    /// The avatar as home draws it, its picture too (which its project
+    /// may give it), in home's style.
+    public var avatar: SessionAvatar
+    public var avatarStyle: AvatarStyle
+    public var avatarMonochrome: Bool
 
     /// From home's snapshot; nil when home doesn't hold the session, and
     /// the screen waits for its own snapshot as before.
     public init?(_ snapshot: LegacyHomeSnapshot?, sessionId: String) {
-        guard let record = snapshot?.sessions.first(where: { $0.id == sessionId }) else { return nil }
+        guard let snapshot, let record = snapshot.sessions.first(where: { $0.id == sessionId }) else { return nil }
         title = record.title
+        let settings = AccountSettings(snapshot.settings)
+        let model = SessionInfoModel.avatar(record, settings: settings)
+        avatar = SessionAvatar(
+            seed: model.seed, isBot: model.isBot, isTask: model.isTask, harness: model.harness,
+            image: AvatarImageSource.resolve(record, project: snapshot.projects.first { $0.id == record.projectReference })
+        )
+        avatarStyle = settings.avatarStyle
+        avatarMonochrome = settings.avatarMonochrome
     }
 }
 
@@ -193,10 +216,14 @@ public enum SessionInfoDerivation {
         guard let old, let before = old.model else {
             changes.state = true
             changes.title = true
+            changes.header = true
             changes.rebuilt = Set(new.sections)
             return changes
         }
         changes.title = before.title != after.title
+        changes.header = before.avatar != after.avatar || before.avatarStyle != after.avatarStyle
+            || before.avatarMonochrome != after.avatarMonochrome || before.status != after.status
+            || before.metadata?.model != after.metadata?.model || before.createdAt != after.createdAt
         let shown = Set(old.sections)
         for section in new.sections {
             guard shown.contains(section) else {

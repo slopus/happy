@@ -3,11 +3,12 @@ import Foundation
 import CoreGraphics
 #endif
 
-/// A conversation's detail, opened from its header's capsule: the legacy
-/// app's session screen made over in Settings' glass style
-/// (`SettingsLayout`). Under the glass bar, scrolling:
+/// A chat's profile, opened from its header's capsule, the agent chat's
+/// and the legacy session's alike: the legacy app's session screen made
+/// over in Settings' glass style (`SettingsLayout`). Under the glass bar,
+/// scrolling:
 ///
-///          (mark)
+///          (mark)               ← `ProfileHeaderLayout`
 ///       Pineapple poem ✎        ← the pencil renames it where it stands
 ///       Task · Working
 ///   FAMILY
@@ -17,7 +18,9 @@ import CoreGraphics
 ///   │ Model  │ │ Effort │         last one the row's width
 ///   └────────┘ └────────┘
 ///   ┌ Today 3:41 AM ──────┐
-///   ┌ Permission mode  Ask ┐   ← the chat's controls, Settings' rows
+///   ┌ Permission mode  Ask ┐   ← sections: the chat's controls, a
+///   QUICK ACTIONS                 legacy session's groups; Settings'
+///   ┌ Changes          +3 › ┐     cards, a heading over some
 ///   MEDIA
 ///   ┌──┬──┬──┐                  ← what it showed, Telegram's
 ///   ├──┼──┼──┤                    grid, three to a row
@@ -34,16 +37,7 @@ import CoreGraphics
 /// links, nothing at work or settled.
 public struct SessionDetailLayout: Equatable, Sendable {
     public enum Metrics {
-        public static let top: CGFloat = 12
-        public static let mark: CGFloat = 88
-        public static let nameGap: CGFloat = 14
-        public static let subtitleGap: CGFloat = 2
-        /// The pencil after the name, its glyph's box; a finger's room
-        /// around it takes the tap.
-        public static let pencil: CGFloat = 20
-        public static let pencilGap: CGFloat = 6
-        public static let pencilTouch: CGFloat = 44
-        public static let textSide: CGFloat = SettingsLayout.Metrics.textSide
+        public static let mark: CGFloat = ProfileHeaderLayout.Metrics.mark
         public static let side: CGFloat = SettingsLayout.Metrics.side
         public static let radius: CGFloat = SettingsLayout.Metrics.radius
         public static let tilesTop: CGFloat = 24
@@ -64,10 +58,10 @@ public struct SessionDetailLayout: Equatable, Sendable {
         public static let mediaColumns = 3
         public static let mediaGap: CGFloat = 2
         /// A link, an agent or a terminal: what it is over a quieter line.
-        public static let activityRow: CGFloat = 62
-        public static let activityTitleTop: CGFloat = 10
-        public static let activityTitleHeight: CGFloat = 22
-        public static let activityMetaHeight: CGFloat = 18
+        public static let activityRow: CGFloat = SettingsLayout.Metrics.subtitledRow
+        public static let activityTitleTop: CGFloat = SettingsLayout.Metrics.subtitledTitleTop
+        public static let activityTitleHeight: CGFloat = SettingsLayout.Metrics.titleHeight
+        public static let activityMetaHeight: CGFloat = SettingsLayout.Metrics.subtitleHeight
         public static let bottom: CGFloat = 32
     }
 
@@ -119,22 +113,42 @@ public struct SessionDetailLayout: Equatable, Sendable {
         }
     }
 
-    public var mark: CGRect
-    /// The name, as wide as it reads, centred.
-    public var name: CGRect
-    /// The pencil just after it, and where its tap lands; nil when it
-    /// can't be renamed.
-    public var pencil: CGRect?
-    public var pencilTouch: CGRect?
-    /// The field the name becomes while renamed: the row's width.
-    public var field: CGRect
-    public var subtitle: CGRect
+    /// A card of Settings' rows under the tiles: the chat's controls, or
+    /// one of a legacy session's groups. Some have a heading over them; a
+    /// block (raw JSON) goes under its rows, the card's width. Every
+    /// section has rows or a block.
+    public struct Section: Equatable, Sendable {
+        public var heading: Bool
+        public var rows: [SettingsLayout.RowSpec]
+        /// The block's height under the rows.
+        public var block: CGFloat?
+        public init(heading: Bool = false, rows: [SettingsLayout.RowSpec], block: CGFloat? = nil) {
+            self.heading = heading
+            self.rows = rows
+            self.block = block
+        }
+    }
+
+    public struct SectionFrames: Equatable, Sendable {
+        public var heading: CGRect?
+        public var card: SettingsLayout.Card
+        /// In the card's space.
+        public var block: CGRect?
+    }
+
+    /// The avatar, the name and what it is, on top.
+    public var header: ProfileHeaderLayout
+    public var mark: CGRect { header.mark }
+    public var name: CGRect { header.name }
+    public var pencil: CGRect? { header.pencil }
+    public var pencilTouch: CGRect? { header.pencilTouch }
+    public var field: CGRect { header.field }
+    public var subtitle: CGRect { header.subtitle }
     public var familyHeading: CGRect?
     public var family: CGRect?
     public var tiles: [Tile]
-    /// The chat's controls under the tiles (its permission mode), as a
-    /// Settings card; nil with none.
-    public var controls: SettingsLayout.Card?
+    /// Under the tiles, by `sections`' order.
+    public var sections: [SectionFrames]
     public var mediaHeading: CGRect?
     public var media: MediaCard?
     public var linksHeading: CGRect?
@@ -153,33 +167,15 @@ public struct SessionDetailLayout: Equatable, Sendable {
     /// count `countWidth` wide).
     public init(
         width: CGFloat, nameHeight: CGFloat, nameWidth: CGFloat? = nil, renames: Bool = false, subtitleHeight: CGFloat, tiles count: Int,
-        controls: [SettingsLayout.RowSpec] = [],
+        sections: [Section] = [],
         media: Shown? = nil, links: Shown? = nil, family familyHeight: CGFloat?,
         running: Int, completed: Int, countWidth: CGFloat = 0, open: Bool
     ) {
         typealias M = Metrics
         let cardWidth = max(0, width - 2 * M.side)
-        let textWidth = max(0, width - 2 * M.textSide)
-        mark = CGRect(x: ((width - M.mark) / 2).rounded(), y: M.top, width: M.mark, height: M.mark)
-        let nameTop = mark.maxY + M.nameGap
-        field = CGRect(x: M.textSide, y: nameTop, width: textWidth, height: nameHeight)
-        // The name stays centred under the mark; the pencil hangs after
-        // it, as much room kept on the other side.
-        let hang = renames ? M.pencilGap + M.pencil : 0
-        let text = min((nameWidth ?? textWidth).rounded(.up), max(0, textWidth - 2 * hang))
-        name = CGRect(x: ((width - text) / 2).rounded(), y: nameTop, width: text, height: nameHeight)
-        if renames {
-            let pencil = CGRect(x: name.maxX + M.pencilGap, y: (name.midY - M.pencil / 2).rounded(), width: M.pencil, height: M.pencil)
-            self.pencil = pencil
-            let grow = (M.pencilTouch - M.pencil) / 2
-            pencilTouch = pencil.insetBy(dx: -grow, dy: -grow)
-        } else {
-            pencil = nil
-            pencilTouch = nil
-        }
-        subtitle = CGRect(x: M.textSide, y: name.maxY + M.subtitleGap, width: textWidth, height: subtitleHeight)
+        header = ProfileHeaderLayout(width: width, nameHeight: nameHeight, nameWidth: nameWidth, renames: renames, subtitleHeight: subtitleHeight)
 
-        var y = subtitle.maxY + M.tilesTop
+        var y = header.bottom + M.tilesTop
         func heading() -> CGRect {
             let frame = CGRect(x: M.side + M.headingInset, y: y, width: max(0, cardWidth - 2 * M.headingInset), height: M.headingHeight)
             y = frame.maxY + M.headingGap
@@ -216,15 +212,20 @@ public struct SessionDetailLayout: Equatable, Sendable {
         }
         self.tiles = tiles
         if let last = tiles.last { y = last.frame.maxY + M.cardGap }
-        if controls.isEmpty {
-            self.controls = nil
-        } else {
-            let rows = controls.enumerated().map { index, spec in
-                SettingsLayout.row(spec, y: CGFloat(index) * SettingsLayout.Metrics.row, width: cardWidth, last: index == controls.count - 1)
+        self.sections = sections.map { section in
+            let heading = section.heading ? heading() : nil
+            var rows: [SettingsLayout.Row] = []
+            var rowY: CGFloat = 0
+            for (index, spec) in section.rows.enumerated() {
+                // The last row keeps its hairline over a block under it.
+                let row = SettingsLayout.row(spec, y: rowY, width: cardWidth, last: index == section.rows.count - 1 && section.block == nil)
+                rows.append(row)
+                rowY = row.box.maxY
             }
-            let card = SettingsLayout.Card(frame: CGRect(x: M.side, y: y, width: cardWidth, height: CGFloat(controls.count) * SettingsLayout.Metrics.row), rows: rows)
-            self.controls = card
+            let block = section.block.map { CGRect(x: 0, y: rowY, width: cardWidth, height: $0) }
+            let card = SettingsLayout.Card(frame: CGRect(x: M.side, y: y, width: cardWidth, height: block?.maxY ?? rowY), rows: rows)
             y = card.frame.maxY + M.cardGap
+            return SectionFrames(heading: heading, card: card, block: block)
         }
 
         /// "Show more" at `top`, the card's last row.

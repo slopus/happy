@@ -105,6 +105,22 @@ public enum SidebarRows {
         return .placeholder(seed: project.id)
     }
 
+    /// The row a chat's profile speaks for, as home lists it: its space's
+    /// row, else its conversation's.
+    public static func row(agentId: String, spaceId: String?, in rows: [Row]) -> Row? {
+        spaceId.flatMap { id in rows.first { $0.spaceId == id && $0.kind == .space } }
+            ?? rows.first { $0.agentId == agentId && ($0.kind == .space || $0.kind == .session) }
+    }
+
+    /// The avatar a chat's profile wears: its home row's, so the two are
+    /// the same picture or placeholder. A row drawn without one (a
+    /// project's session, a subtask), or no row at all, the placeholder
+    /// its agent's ID picks.
+    public static func profileMark(_ row: Row?, agentId: String) -> Row.Mark {
+        guard let mark = row?.mark, mark != .none else { return .placeholder(seed: agentId) }
+        return mark
+    }
+
     /// The rows while agent stories are on (`rings` set, keyed by agent):
     /// each bot's and task's row a story row wearing its agent's ring, with
     /// its status line and time, and everything nested and the projects kept

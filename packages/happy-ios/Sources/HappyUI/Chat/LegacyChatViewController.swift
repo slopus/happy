@@ -48,7 +48,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// The phone's header: the name and the session's status on one glass
     /// capsule, the agent chat's own, in the bar from the first frame.
     private let header = ChatHeaderView()
-    private lazy var avatarControl = ChatHeaderAvatarControl()
+    private(set) lazy var avatarControl = ChatHeaderAvatarControl()
     private lazy var avatarItem = UIBarButtonItem(customView: avatarControl)
     /// The title on a tablet, without glass.
     private lazy var plainTitleView = ChatPlainHeaderTitleView()

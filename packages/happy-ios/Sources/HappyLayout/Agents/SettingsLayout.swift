@@ -100,6 +100,11 @@ public struct SettingsLayout: Equatable, Sendable {
         /// A text row (a key, a long line): its text this far from the
         /// row's top and bottom.
         public static let textPadding: CGFloat = 14
+        /// A row with a quieter line under its title (a path, an ID):
+        /// taller, its title this far from its top, the line under it.
+        public static let subtitledRow: CGFloat = 62
+        public static let subtitledTitleTop: CGFloat = 10
+        public static let subtitleHeight: CGFloat = 18
     }
 
     public enum Accessory: Equatable, Sendable {
@@ -116,11 +121,14 @@ public struct SettingsLayout: Equatable, Sendable {
         /// A text row's measured text, at `SettingsLayout.textWidth`: the
         /// row grows to hold it, its title the whole width.
         public var textHeight: CGFloat?
-        public init(hasIcon: Bool, valueWidth: CGFloat? = nil, accessory: Accessory, textHeight: CGFloat? = nil) {
+        /// A quieter line under the title.
+        public var subtitle: Bool
+        public init(hasIcon: Bool, valueWidth: CGFloat? = nil, accessory: Accessory, textHeight: CGFloat? = nil, subtitle: Bool = false) {
             self.hasIcon = hasIcon
             self.valueWidth = valueWidth
             self.accessory = accessory
             self.textHeight = textHeight
+            self.subtitle = subtitle
         }
     }
 
@@ -134,6 +142,8 @@ public struct SettingsLayout: Equatable, Sendable {
         public var toggle: CGRect?
         /// Under the row, from the title's start; nil under a card's last row.
         public var separator: CGRect?
+        /// The quieter line under the title, for a row that has one.
+        public var subtitle: CGRect? = nil
     }
 
     public struct Card: Equatable, Sendable {
@@ -242,15 +252,16 @@ public struct SettingsLayout: Equatable, Sendable {
             )
         }
         let textX = spec.hasIcon ? M.textX : M.plainTextX
+        let height = spec.subtitle ? M.subtitledRow : M.row
         var right = width - M.trailing
         var chevron: CGRect?
         var toggle: CGRect?
         switch spec.accessory {
         case .chevron:
-            chevron = CGRect(x: right - M.chevron.width, y: y + (M.row - M.chevron.height) / 2, width: M.chevron.width, height: M.chevron.height)
+            chevron = CGRect(x: right - M.chevron.width, y: y + (height - M.chevron.height) / 2, width: M.chevron.width, height: M.chevron.height)
             right -= M.chevron.width + M.valueGap
         case .toggle:
-            toggle = CGRect(x: right - M.toggle.width, y: y + (M.row - M.toggle.height) / 2, width: M.toggle.width, height: M.toggle.height)
+            toggle = CGRect(x: right - M.toggle.width, y: y + (height - M.toggle.height) / 2, width: M.toggle.width, height: M.toggle.height)
             right -= M.toggle.width + M.valueGap
         case .none:
             break
@@ -258,17 +269,21 @@ public struct SettingsLayout: Equatable, Sendable {
         var value: CGRect?
         if let valueWidth = spec.valueWidth {
             let fitted = min(valueWidth.rounded(.up), max(0, (right - textX) / 2))
-            value = CGRect(x: right - fitted, y: y + (M.row - M.titleHeight) / 2, width: fitted, height: M.titleHeight)
+            value = CGRect(x: right - fitted, y: y + (height - M.titleHeight) / 2, width: fitted, height: M.titleHeight)
             right -= fitted + M.valueGap
         }
+        // A subtitled row's title sits over its line; a plain one's in the middle.
+        let titleY = spec.subtitle ? y + M.subtitledTitleTop : y + (height - M.titleHeight) / 2
+        let title = CGRect(x: textX, y: titleY, width: max(0, right - textX), height: M.titleHeight)
         return Row(
-            box: CGRect(x: 0, y: y, width: width, height: M.row),
-            icon: spec.hasIcon ? CGRect(x: (M.textX - M.tile) / 2, y: y + (M.row - M.tile) / 2, width: M.tile, height: M.tile) : nil,
-            title: CGRect(x: textX, y: y + (M.row - M.titleHeight) / 2, width: max(0, right - textX), height: M.titleHeight),
+            box: CGRect(x: 0, y: y, width: width, height: height),
+            icon: spec.hasIcon ? CGRect(x: (M.textX - M.tile) / 2, y: y + (height - M.tile) / 2, width: M.tile, height: M.tile) : nil,
+            title: title,
             value: value,
             chevron: chevron,
             toggle: toggle,
-            separator: last ? nil : CGRect(x: textX, y: y + M.row - M.separator, width: width - textX, height: M.separator)
+            separator: last ? nil : CGRect(x: textX, y: y + height - M.separator, width: width - textX, height: M.separator),
+            subtitle: spec.subtitle ? CGRect(x: textX, y: title.maxY, width: title.width, height: M.subtitleHeight) : nil
         )
     }
 }

@@ -52,12 +52,8 @@ final class HostedSessionInfoLoadingTests: XCTestCase {
         return condition()
     }
 
-    private func rows(_ info: UIViewController) -> [ItemRowView] {
-        func descend(_ view: UIView) -> [ItemRowView] {
-            view.subviews.flatMap { ($0 as? ItemRowView).map { [$0] } ?? descend($0) }
-        }
-        guard let list = info.view.subviews.compactMap({ $0 as? GroupedListView }).first else { return [] }
-        return list.sections.flatMap { descend($0) }
+    private func rows(_ info: SessionInfoViewController) -> [SettingsRow] {
+        info.sections.sections.flatMap(\.rows)
     }
 
     private func fixture(attach: Bool = true) async throws -> (SessionInfoViewController, DetailsSource, SessionDetailSnapshot, UINavigationController, UIWindow) {
@@ -104,11 +100,11 @@ final class HostedSessionInfoLoadingTests: XCTestCase {
     func testNoFirstSnapshotShowsLoadingThenRetryAndLateDataCanStillAppear() async throws {
         let (info, source, snapshot, _, _) = try await fixture()
         XCTAssertTrue(rows(info).contains { $0.title == Strings.SessionDetail.loading })
-        XCTAssertEqual(info.title, "PRIVATE-title")
+        XCTAssertEqual(info.header.name.text, "PRIVATE-title")
         XCTAssertNotNil(info.navigationItem.rightBarButtonItem?.menu, "Copy is reachable even if the body is invisible")
         let delayed = try await until { self.rows(info).contains { $0.title == Strings.SessionInfoLoading.delayed } }
         XCTAssertTrue(delayed)
-        XCTAssertEqual(info.title, "PRIVATE-title")
+        XCTAssertEqual(info.header.name.text, "PRIVATE-title")
         let report = try XCTUnwrap(info.loadingDiagnostics().data(using: .utf8))
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: report) as? [String: Any])
         let first = try XCTUnwrap(json["firstFailure"] as? [String: Any])
@@ -125,9 +121,9 @@ final class HostedSessionInfoLoadingTests: XCTestCase {
         source.fail()
         let failed = try await until { self.rows(info).contains { $0.title == Strings.SessionInfoLoading.failed } }
         XCTAssertTrue(failed)
-        XCTAssertEqual(info.title, "PRIVATE-title")
+        XCTAssertEqual(info.header.name.text, "PRIVATE-title")
         let retry = try XCTUnwrap(rows(info).first { $0.title == Strings.SessionInfoLoading.retry })
-        retry.sendActions(for: .touchUpInside)
+        retry.action?()
         XCTAssertEqual(source.starts, 2)
         source.fail(0)
         source.yield(snapshot)
@@ -137,10 +133,11 @@ final class HostedSessionInfoLoadingTests: XCTestCase {
         source.fail()
         let failedAgain = try await until { self.rows(info).contains { $0.title == Strings.SessionInfoLoading.failed } }
         XCTAssertTrue(failedAgain)
-        let goodRow = try XCTUnwrap(rows(info).first { $0.title == Strings.SessionDetail.happySessionId })
-        XCTAssertNotNil(goodRow.window)
-        try XCTUnwrap(rows(info).first { $0.title == Strings.SessionInfoLoading.retry }).sendActions(for: .touchUpInside)
-        XCTAssertTrue(rows(info).contains { $0 === goodRow }, "Retry retains the readable body")
+        let goodCard = try XCTUnwrap(info.sections.card("details"))
+        XCTAssertNotNil(goodCard.window)
+        try XCTUnwrap(rows(info).first { $0.title == Strings.SessionInfoLoading.retry }).action?()
+        XCTAssertTrue(info.sections.card("details") === goodCard, "Retry retains the readable body")
+        XCTAssertTrue(rows(info).contains { $0.title == Strings.SessionDetail.happySessionId }, "Retry retains the readable body")
         let text = info.loadingDiagnostics()
         for forbidden in ["PRIVATE", "/PRIVATE/path", "metadataCipher", "sessionId", "SELECT", "token", "secret"] {
             XCTAssertFalse(text.contains(forbidden), "report leaked \(forbidden)")
