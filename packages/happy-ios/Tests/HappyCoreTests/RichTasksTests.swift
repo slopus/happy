@@ -84,6 +84,38 @@ final class RichTasksTests: XCTestCase {
         XCTAssertTrue(try mainRows().contains { $0.label == "Three" }, "a task Focus hid still shows in the classic list")
     }
 
+    /// Rich off, Home draws today's rows untouched; on, the tasks' rows and their subtasks' give way to the cards' one row.
+    func testRichOffDrawsTodaysRowsAndOnGivesTheTasksToTheCards() throws {
+        let rows = try mainRows()
+        XCTAssertEqual(SidebarRows.withRichTasks(rows, nil), rows)
+        let model = try XCTUnwrap(RichTasks.make(try desktop(Self.bootstrap(.v34)), capabilities: try capabilities(Self.health34), settings: Self.richOn))
+        let start = try XCTUnwrap(rows.firstIndex { $0.id == "direct:tasks" })
+        let end = rows[(start + 1)...].firstIndex { $0.kind == .separator } ?? rows.endIndex
+        let rich = SidebarRows.withRichTasks(rows, model)
+        XCTAssertEqual(rich.map(\.id), rows[...start].map(\.id) + [TaskList.blockId] + rows[end...].map(\.id))
+        XCTAssertFalse(rich.contains { $0.targetKind == "task" })
+    }
+
+    /// Three sub-rows, then "+N more" counting the hidden; every child hidden, the count rides the corner. Opened out: all, the hidden faded, then "hide".
+    func testCardsShowThreeSubRowsThenMore() throws {
+        let model = try XCTUnwrap(RichTasks.make(try desktop(Self.bootstrap(.v34)), capabilities: try capabilities(Self.health34), settings: Self.richOn))
+        let items = TaskList.items(model)
+        XCTAssertEqual(items.map(\.id), ["task:t1", "task:t1/agent:t1-asking", "task:t1/agent:t1-working", "task:t1/workspace:w1", "more:t1", "section:s1", "task:t2", "section:s2"])
+        XCTAssertEqual(items[4], .more(taskId: "t1", count: 2))
+        guard case .card(let two) = items[6], case .card(let one) = items[0], case .subRow(let working) = items[2] else { return XCTFail() }
+        XCTAssertEqual(two.more, 2)
+        XCTAssertNil(one.more)
+        XCTAssertEqual(one.faces, ["steve", "jordan"])
+        XCTAssertEqual(one.signal, .dot)
+        XCTAssertEqual([working.title, model.children[.init(kind: "workspace", id: "w1")]?.title, model.children[.init(kind: "artifact", id: "a2")]?.title], ["Working", "Made", "Plan"])
+        XCTAssertTrue(working.working)
+        let open = TaskList.items(model, expanded: ["t2"], folded: ["s2": false])
+        XCTAssertEqual(open.suffix(5).map(\.id), ["task:t2", "task:t2/workspace:w3", "task:t2/artifact:a3", "more:t2", "section:s2"])
+        XCTAssertEqual(open[open.count - 2], .more(taskId: "t2", count: nil))
+        guard case .subRow(let faded) = open[open.count - 4] else { return XCTFail() }
+        XCTAssertTrue(faded.dimmed)
+    }
+
     func testGateNeedsTheCapabilityAndTheSetting() throws {
         let new = try desktop(Self.bootstrap(.v34))
         XCTAssertNil(RichTasks.make(new, capabilities: nil, settings: Self.richOn))
@@ -110,7 +142,7 @@ final class RichTasksTests: XCTestCase {
         ])
         let two = model.sections[0].cards[0]
         XCTAssertEqual(two.subRows, [])
-        XCTAssertEqual(two.hiddenCount, 2)
+        XCTAssertEqual(two.hidden.count, 2)
         XCTAssertFalse(model.focus)
         // Sections off: one list, in the person's order.
         let flat = try XCTUnwrap(RichTasks.make(try desktop(Self.bootstrap(.v34)), capabilities: try capabilities(Self.health34), settings: [RichTasks.richKey: .bool(true)]))

@@ -20,6 +20,8 @@ final class HomeViewController: UIViewController {
     /// The computer this screen always shows; nil to follow the choice.
     private let fixedAgentConnection: String?
     private let sidebar = SidebarView()
+    /// The tasks as rich cards, in the tasks' place in the list, while the daemon serves them and they are on.
+    private let tasks = TaskListView()
     private let banner = BannerView()
     private let empty = EmptyView()
     private var session: Session?
@@ -115,6 +117,9 @@ final class HomeViewController: UIViewController {
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
         sidebar.delegate = self
+        sidebar.block = tasks
+        tasks.onResize = { [weak self] in self?.sidebar.setNeedsLayout() }
+        tasks.onOpen = { [weak self] item in self?.open(item) }
         stories.onInsetChange = { [weak self] change in self?.storiesMoved(change) }
         // Agent stories turn the conversations' rows into story rows.
         stories.onRings = { [weak self] _ in self?.showRows() }
@@ -145,6 +150,7 @@ final class HomeViewController: UIViewController {
         // conversation it opened (on iPad too it is pushed over), so there
         // is no open chat for a selection to show.
         sidebar.selectedRowId = nil
+        tasks.selectedId = nil
         if let store = session?.store { Task { await store.attentionVisibleUpdate(false) } }
     }
 
@@ -168,6 +174,7 @@ final class HomeViewController: UIViewController {
         stories.attach(session)
         sidebar.images = session?.images
         resultsView.list.images = session?.images
+        tasks.images = session?.images
         sidebar.apply([])
         snapshot = Snapshot()
         agentHome = HomeSnapshot()
@@ -187,7 +194,9 @@ final class HomeViewController: UIViewController {
     /// Connection snapshots may change the notice over the list. Its
     /// arrival never changes the rows' inset or screen positions.
     func applyConnection(_ home: HomeSnapshot) {
+        let rich = agentHome.richTasks != nil
         agentHome = home
+        tasks.apply(home.richTasks)
         let previous = snapshot.rows
         snapshot = Snapshot()
         snapshot.availability = agentHome.loaded ? .available : .loading
@@ -196,7 +205,7 @@ final class HomeViewController: UIViewController {
         snapshot.allRows = agentHome.allRows
         snapshot.error = agentHome.error
         onSnapshot?(snapshot)
-        if previous != snapshot.rows { showRows() }
+        if previous != snapshot.rows || rich != (home.richTasks != nil) { showRows() }
         if search != nil { showResults() }
         warmUp()
         applyChrome()
@@ -265,9 +274,10 @@ final class HomeViewController: UIViewController {
         sidebar.apply(shownRows)
     }
 
-    /// The rows the list draws: the list with the stories' rings, its tree kept.
+    /// The rows the list draws: the list with the stories' rings, its tree
+    /// kept, and its tasks as cards while there are rich tasks.
     private var shownRows: [Row] {
-        SidebarRows.withStories(snapshot.rows, rings: stories.rings)
+        SidebarRows.withRichTasks(SidebarRows.withStories(snapshot.rows, rings: stories.rings), agentHome.richTasks)
     }
 
     /// What answers the query, in the results over home: the rows that
@@ -459,6 +469,31 @@ final class HomeViewController: UIViewController {
         default:
             break
         }
+    }
+
+    /// A card opens its task as its classic row does; a sub-row its
+    /// subtask's chat or its artifact, and a workspace, which opens nothing
+    /// of its own, its task.
+    private func open(_ item: TaskList.Item) {
+        guard let session else { return }
+        let taskId: String
+        switch item {
+        case .card(let card): taskId = card.taskId
+        case .subRow(let row) where row.ref.kind == "agent":
+            tasks.selectedId = item.id
+            navigationController?.pushViewController(ChatViewController(session: session, agentId: row.ref.id, title: row.title, spaceId: nil, intro: nil), animated: true)
+            return
+        case .subRow(let row) where row.ref.kind == "artifact":
+            tasks.selectedId = item.id
+            let type = agentHome.richTasks?.children[row.ref]?.type ?? ""
+            navigationController?.pushViewController(ArtifactViewController(session: session, artifact: Artifact(id: row.ref.id, version: 1, type: type, title: row.title, followsLatest: true)), animated: true)
+            return
+        case .subRow(let row): taskId = row.taskId
+        default: return
+        }
+        guard let row = snapshot.rows.first(where: { $0.id == "task:\(taskId)" }) else { return }
+        tasks.selectedId = item.id
+        open(row)
     }
 
     /// What a hold on a row shows over its menu: a conversation's newest

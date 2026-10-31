@@ -56,6 +56,18 @@ final class SidebarView: UIScrollView {
         }
     }
 
+    /// Home's rich tasks, drawn in their row's place (`TaskList.blockId`) as tall as they are.
+    var block: TaskListView? {
+        didSet {
+            oldValue?.removeFromSuperview()
+            if let block {
+                addSubview(block)
+                block.isHidden = !rows.contains { $0.id == TaskList.blockId }
+            }
+            setNeedsLayout()
+        }
+    }
+
     private(set) var rows: [Row] = []
     private var views: [String: RowView] = [:]
     /// A grouped list's cards, by the heading or separator over each ("top" for the first, unheaded one).
@@ -163,6 +175,7 @@ final class SidebarView: UIScrollView {
         var live = Set<String>()
         for row in rows {
             live.insert(row.id)
+            if block != nil, row.id == TaskList.blockId { continue }
             let view: RowView
             if let existing = views[row.id] {
                 view = existing
@@ -204,6 +217,7 @@ final class SidebarView: UIScrollView {
             view.accessibilityElementsHidden = true
             leaving[id] = view
         }
+        block?.isHidden = !live.contains(TaskList.blockId)
         setNeedsLayout()
         return touched
     }
@@ -322,7 +336,9 @@ final class SidebarView: UIScrollView {
     }
 
     private func layoutRows(_ rows: [Row]) -> [SidebarLayout.Row] {
-        Self.layoutRows(rows, textScale: StoryRowText.scale(traitCollection))
+        var input = Self.layoutRows(rows, textScale: StoryRowText.scale(traitCollection))
+        if let block, let index = rows.firstIndex(where: { $0.id == TaskList.blockId }) { input[index].fixedHeight = block.contentHeight }
+        return input
     }
 
     /// `input` laid out at this list's width, room and style.
@@ -342,13 +358,8 @@ final class SidebarView: UIScrollView {
             case .widget: .widget
             default: .row
             }
-            let corner: SidebarLayout.Corner = switch row.corner {
-            case .none: .none
-            case .dot: .dot
-            case .braille: .braille
-            }
             let story = row.story.map { _ in
-                SidebarLayout.StoryRow(corner: corner, timeWidth: StoryRowText.timeWidth(row, scale: textScale), last: StoryRowText.lastLine(row), text: StoryRowText.text(textScale))
+                SidebarLayout.StoryRow(corner: SidebarLayout.Corner(row.corner), timeWidth: StoryRowText.timeWidth(row, scale: textScale), last: StoryRowText.lastLine(row), text: StoryRowText.text(textScale))
             }
             return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, story: story, amongStories: row.amongStories)
         }
@@ -359,7 +370,7 @@ final class SidebarView: UIScrollView {
         let shown = rows
         let input = layoutRows(shown)
         let width = bounds.width
-        if laidOut?.width != width || laidOut?.rows != input || layoutResult?.frames.count != shown.count {
+        if laidOut?.width != width || laidOut?.rows != input || layoutResult?.frames.count != shown.count || (block?.drift ?? 0) != 0 {
             // A width change lays out at once even mid-fold: rotation is
             // not the fold's to animate.
             let glide = foldGlide && placedWidth == width
@@ -369,6 +380,7 @@ final class SidebarView: UIScrollView {
         // A row scrolled out of sight stops its title's sweep. Drawn whole
         // inside another screen's scroll, every row counts as seen.
         for view in views.values { view.onScreen = !scrolls || view.frame.intersects(bounds) }
+        if let block { block.viewport = scrolls ? convert(bounds, to: block) : nil }
     }
 
     /// Lays `shown` out and moves each row to its place, gliding when asked.
@@ -382,7 +394,9 @@ final class SidebarView: UIScrollView {
             && layoutResult?.contentHeight == result.contentHeight
             && layoutResult?.frames.map(\.box) == result.frames.map(\.box)
         // Where the reader is, before the new places are known.
-        let anchor = samePlacement ? nil : anchor(in: shown, nextFrames: result.frames)
+        let drift = block?.drift ?? 0
+        block?.drift = 0
+        let anchor = samePlacement && drift == 0 ? nil : anchor(in: shown, nextFrames: result.frames)
         let offset = contentOffset.y
         let oldBottom = max(-contentInset.top, contentSize.height + contentInset.bottom - bounds.height)
         let overscroll = max(0, offset - oldBottom)
@@ -394,6 +408,7 @@ final class SidebarView: UIScrollView {
         let move = {
             for (key, frame) in cardFrames { self.cards[key]?.frame = frame }
             for (row, frame) in zip(shown, result.frames) {
+                if row.id == TaskList.blockId { self.block?.frame = frame.box }
                 guard let view = self.views[row.id], view.frames != frame else { continue }
                 view.bounds = CGRect(origin: .zero, size: frame.box.size)
                 view.center = CGPoint(x: frame.box.midX, y: frame.box.midY)
@@ -414,7 +429,7 @@ final class SidebarView: UIScrollView {
         CATransaction.commit()
         let size = CGSize(width: bounds.width, height: result.contentHeight)
         if contentSize != size { contentSize = size }
-        if !samePlacement { keep(anchor, in: shown, result, offset: offset, overscroll: overscroll) }
+        if !samePlacement || drift != 0 { keep(anchor, in: shown, result, offset: offset, overscroll: overscroll, drift: drift) }
     }
 
     /// The cards `result` draws, by what heads each: a card that is new
@@ -518,10 +533,10 @@ final class SidebarView: UIScrollView {
     /// are. UIKit can adjust the offset when contentSize changes, so the
     /// correction starts from the offset before that change. A bounce's
     /// existing overscroll is preserved instead of snapping to the edge.
-    private func keep(_ anchor: (id: String, y: CGFloat)?, in shown: [Row], _ result: SidebarLayout.Result, offset: CGFloat, overscroll: CGFloat) {
+    private func keep(_ anchor: (id: String, y: CGFloat)?, in shown: [Row], _ result: SidebarLayout.Result, offset: CGFloat, overscroll: CGFloat, drift: CGFloat) {
         guard let anchor, let index = shown.firstIndex(where: { $0.id == anchor.id }),
               result.frames.indices.contains(index) else { return }
-        let moved = result.frames[index].box.minY - anchor.y
+        let moved = result.frames[index].box.minY - anchor.y + (anchor.id == TaskList.blockId ? drift : 0)
         let top = -contentInset.top
         let bottom = max(top, result.contentHeight + contentInset.bottom - bounds.height)
         let next = min(bottom + overscroll, max(top, offset + moved))
@@ -533,6 +548,7 @@ final class SidebarView: UIScrollView {
 
     /// The times as the clock reads them now; a width that changed lays the list out again.
     private func tick() {
+        block?.tick()
         guard rows.contains(where: { $0.story != nil }) else { return }
         for view in views.values { view.refreshTime() }
         setNeedsLayout()
@@ -630,6 +646,16 @@ final class PressRecognizer: UILongPressGestureRecognizer {
         allowableMovement = 8
         cancelsTouchesInView = false
         delaysTouchesBegan = false
+    }
+}
+
+extension SidebarLayout.Corner {
+    init(_ corner: Row.Corner) {
+        self = switch corner {
+        case .none: .none
+        case .dot: .dot
+        case .braille: .braille
+        }
     }
 }
 #endif

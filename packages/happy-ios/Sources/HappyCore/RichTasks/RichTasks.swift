@@ -27,8 +27,29 @@ public struct RichTasks: Equatable, Sendable {
         public var faces: [String]
         /// What shows under it, most urgent first.
         public var subRows: [SubRow]
-        /// What it made that was chosen not to show, for "+k show".
-        public var hiddenCount: Int
+        /// What it made that was chosen not to show, counted in "+N more" and drawn faded once opened out.
+        public var hidden: [SubRow] = []
+        /// As drawn, and every row it can show (the hidden ones dimmed), projected off the main thread (`projected`).
+        public var drawn: TaskList.Card?
+        public var rows: [TaskList.SubRow] = []
+    }
+
+    /// What a sub-row draws for its ref: its name, and the kind of thing it is.
+    public struct Child: Equatable, Sendable {
+        public var title: String
+        /// An artifact's type.
+        public var type: String?
+        /// A workspace's project picture, daemon-relative.
+        public var picture: String?
+        /// A subtask at work, or the one living in a workspace.
+        public var working = false
+        /// After the title, muted (a question's words); the lines a workspace changed, none merged.
+        /// The daemon sends neither yet: only fixtures fill them.
+        public var detail: String?
+        public var changes: Row.LineChanges?
+        public init(title: String, type: String? = nil, picture: String? = nil, working: Bool = false, detail: String? = nil, changes: Row.LineChanges? = nil) {
+            self.title = title; self.type = type; self.picture = picture; self.working = working; self.detail = detail; self.changes = changes
+        }
     }
 
     public struct SubRow: Equatable, Sendable {
@@ -44,6 +65,8 @@ public struct RichTasks: Equatable, Sendable {
     /// Cards above the first header, which belong to no section.
     public var unsectioned: [Card] = []
     public var sections: [Section] = []
+    /// What every card's sub-rows, shown or hidden, point at.
+    public var children: [TaskChild.Ref: Child] = [:]
     /// Whether Focus arranges this list.
     public var focus = false
 
@@ -71,7 +94,49 @@ public struct RichTasks: Equatable, Sendable {
                 model.unsectioned.append(card)
             }
         }
+        model.children = children(model, desktop)
+        return model.projected()
+    }
+
+    /// Every card as Home draws it, so the main thread only picks what shows.
+    public func projected() -> RichTasks {
+        func project(_ card: Card) -> Card {
+            var card = card
+            card.drawn = TaskList.card(card)
+            card.rows = card.subRows.map { TaskList.subRow(card.taskId, $0, dimmed: false, children) } + card.hidden.map { TaskList.subRow(card.taskId, $0, dimmed: true, children) }
+            return card
+        }
+        var model = self
+        model.unsectioned = unsectioned.map(project)
+        for index in sections.indices { model.sections[index].cards = sections[index].cards.map(project) }
         return model
+    }
+
+    /// Names the sub-rows' refs from the agents, workspaces and artifacts at hand.
+    static func children(_ model: RichTasks, _ desktop: DesktopSnapshot) -> [TaskChild.Ref: Child] {
+        var agents: [String: AgentWire.Agent] = [:]
+        func index(_ agent: AgentWire.Agent) { agents[agent.id] = agent; (agent.subtasks ?? []).forEach(index) }
+        let cards = model.unsectioned + model.sections.flatMap(\.cards)
+        cards.forEach { index($0.agent) }
+        let workspaces = Dictionary(desktop.workspaces.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let projects = Dictionary(desktop.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let artifacts = Dictionary((desktop.taskArtifacts ?? []).map { ($0.artifactId, $0) }, uniquingKeysWith: { first, _ in first })
+        var children: [TaskChild.Ref: Child] = [:]
+        for ref in cards.flatMap({ ($0.subRows + $0.hidden).map(\.ref) }) where children[ref] == nil {
+            switch ref.kind {
+            case "agent":
+                let agent = agents[ref.id]
+                children[ref] = Child(title: agent?.title ?? "Untitled", working: agent?.isWorking == true && agent?.pendingQuestionId == nil)
+            case "workspace":
+                let workspace = workspaces[ref.id]
+                let avatar = workspace?.projectId.flatMap { projects[$0]?.avatar?.url }.flatMap { $0.hasPrefix("/v0/") ? $0 : nil }
+                children[ref] = Child(title: workspace?.name ?? ref.id, picture: avatar, working: workspace?.subtaskAgentId.flatMap { agents[$0]?.isWorking } == true)
+            default:
+                let artifact = artifacts[ref.id]
+                children[ref] = Child(title: artifact?.title ?? "Untitled", type: artifact?.type)
+            }
+        }
+        return children
     }
 
     /// Data model's "a task's sub-rows": its subtasks waiting or at work, the
@@ -104,7 +169,7 @@ public struct RichTasks: Equatable, Sendable {
         return Card(
             taskId: task.id, name: task.name ?? agent.title ?? "Untitled", iconSlug: task.icon?.librarySlug,
             canArchive: task.canArchive ?? false, agent: agent, faces: agent.unread?.from ?? [],
-            subRows: shown + linked.map { SubRow(ref: $0.ref, reason: .linked) }, hiddenCount: derived.count - shown.count
+            subRows: shown + linked.map { SubRow(ref: $0.ref, reason: .linked) }, hidden: derived.filter { choices[$0.ref] == "hidden" }
         )
     }
 }

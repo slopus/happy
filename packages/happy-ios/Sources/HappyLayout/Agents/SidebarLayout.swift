@@ -32,6 +32,8 @@ public enum SidebarLayout {
         /// A section heading or separator among story rows: at desktop's
         /// own size, as the rows are.
         public var amongStories: Bool
+        /// As tall as a view drawn in its place says (Home's rich tasks).
+        public var fixedHeight: CGFloat?
 
         public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, foldClosed: Bool = false, story: StoryRow? = nil, amongStories: Bool = false) {
             self.kind = kind
@@ -192,6 +194,7 @@ public enum SidebarLayout {
     }
 
     public static func height(_ row: Row) -> CGFloat {
+        if let fixed = row.fixedHeight { return fixed }
         if row.kind == .row, let story = row.story { return storyHeight(story.text.scale) }
         if row.kind == .section, row.amongStories { return StoryRowMetrics.headingHeight }
         if row.kind == .separator, row.amongStories { return StoryRowMetrics.separatorHeight }
