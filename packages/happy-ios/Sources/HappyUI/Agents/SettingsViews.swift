@@ -568,6 +568,15 @@ enum ProfilePictures {
         return ThumbHashImages.image(direct.map { $0.thumbhash } ?? account.avatarThumbhash)
     }
 
+    /// What can show at once: the thumbhash, or, for an account with no
+    /// picture of its own, its placeholder if that is decoded already.
+    static func immediate(_ account: AccountSummary, context: AppContext) -> UIImage? {
+        if let thumbhash = placeholder(account, context: context) { return thumbhash }
+        let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
+        guard direct.map({ $0.avatar == nil }) ?? (account.avatarURL == nil) else { return nil }
+        return AvatarPlaceholderImages.cached(seed: placeholderSeed(account, context: context), side: placeholderSide)
+    }
+
     /// Nil only when the placeholder isn't bundled.
     static func load(_ account: AccountSummary, context: AppContext) async -> UIImage? {
         if let picture = await picture(account, context: context) { return picture }

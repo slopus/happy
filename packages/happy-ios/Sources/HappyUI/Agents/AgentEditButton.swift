@@ -3,13 +3,14 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// The agent's own picture, large and centred at the top of its
-/// connection's Settings: a circle, the placeholder its computer picks
-/// without one (`ProfilePictures`), with a small pencil badge on its rim
-/// made of the system's Liquid Glass (`UIGlassEffect`). A press opens its native
-/// menu from it, "Change avatar" and "Edit name". Each asks the agent in
-/// Happy's conversation; nothing here changes the agent itself
-/// (`ChiefOfStaffAsk`).
+/// The profile's own picture, large and centred at the top of Settings: a
+/// circle, the placeholder its account picks without one
+/// (`ProfilePictures`). On a computer's page it is `editable`: a small
+/// pencil badge on its rim made of the system's Liquid Glass
+/// (`UIGlassEffect`), and a press opens its native menu from it, "Change
+/// avatar" and "Edit name". Each asks the agent in Happy's conversation;
+/// nothing here changes the agent itself (`ChiefOfStaffAsk`). A Happy
+/// account's picture is only the picture: no badge, no menu.
 final class AgentEditButton: UIButton {
     private let avatar = UIImageView()
     private let badge = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
@@ -25,6 +26,11 @@ final class AgentEditButton: UIButton {
     /// What each menu item asks for.
     var ask: (@MainActor (ChatPrefill) -> Void)?
 
+    /// The pencil and the menu, a computer's; without them, a picture.
+    var editable = true {
+        didSet { if editable != oldValue { showEditable() } }
+    }
+
     /// What the badge shows, for the raster test.
     var badgeView: UIView { badge }
 
@@ -38,11 +44,8 @@ final class AgentEditButton: UIButton {
         pencil.contentMode = .center
         badge.contentView.addSubview(pencil)
         addSubview(badge)
-        showsMenuAsPrimaryAction = true
-        menu = Self.menu { [weak self] in self?.ask?($0) }
-        accessibilityIdentifier = "settings-agent-menu"
-        accessibilityLabel = Strings.AgentMenu.button
         showPicture()
+        showEditable()
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -68,6 +71,15 @@ final class AgentEditButton: UIButton {
             avatar.backgroundColor = UIColor(Palette.settingsAddFill)
         }
         avatar.contentMode = .scaleAspectFill
+    }
+
+    private func showEditable() {
+        badge.isHidden = !editable
+        showsMenuAsPrimaryAction = editable
+        menu = editable ? Self.menu { [weak self] in self?.ask?($0) } : nil
+        isUserInteractionEnabled = editable
+        accessibilityIdentifier = editable ? "settings-agent-menu" : "settings-avatar"
+        accessibilityLabel = editable ? Strings.AgentMenu.button : nil
     }
 
     static func menu(_ ask: @escaping @MainActor (ChatPrefill) -> Void) -> UIMenu {

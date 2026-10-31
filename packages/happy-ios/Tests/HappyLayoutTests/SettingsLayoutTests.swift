@@ -25,6 +25,45 @@ final class SettingsLayoutTests: XCTestCase {
         XCTAssertNil(layout.revealOffset(card: 0, row: 4, viewport: 874, insets: insets))
     }
 
+    /// Both kinds of page have the profile's picture over its name, so
+    /// switching between them changes nothing above the cards' rows:
+    /// the picture centred under the bar, the name and line under it.
+    /// Searching, the picture goes with the name.
+    func testThePictureHeadsEitherKindOfPage() {
+        typealias L = SettingsLayout
+        let row = [L.RowSpec(hasIcon: true, accessory: .chevron)]
+        let layout = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [row, row], showsStrip: false, picture: 100)
+        XCTAssertEqual(layout.strip, .zero)
+        XCTAssertEqual(layout.picture, CGRect(x: 145, y: 8, width: 100, height: 100))
+        XCTAssertEqual(layout.name, CGRect(x: 24, y: 120, width: 342, height: 34))
+        XCTAssertEqual(layout.subtitle, CGRect(x: 24, y: 156, width: 342, height: 22))
+        XCTAssertEqual(layout.cards.map(\.frame), [CGRect(x: 16, y: 206, width: 358, height: 52), CGRect(x: 16, y: 282, width: 358, height: 52)])
+        XCTAssertEqual(layout.contentHeight, 366)
+        // An odd width keeps the picture on whole points.
+        XCTAssertEqual(L(width: 393, nameHeight: 34, subtitleHeight: 22, cards: [row], showsStrip: false, picture: 100).picture, CGRect(x: 147, y: 8, width: 100, height: 100))
+        let searching = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [row], searching: true, showsStrip: false, picture: 100)
+        XCTAssertEqual(searching.picture, .zero)
+        XCTAssertEqual(searching.cards[0].frame, CGRect(x: 16, y: 8, width: 358, height: 52))
+    }
+
+    /// Switching profiles keeps the page where it was, unless the new
+    /// page ends before there.
+    func testSwitchingKeepsThePlaceUnlessThePageEndsSooner() {
+        typealias L = SettingsLayout
+        let row = [L.RowSpec(hasIcon: true, accessory: .chevron)]
+        // Six one-row cards under the picture: 206 + 6 × 52 + 5 × 24, then 32.
+        let layout = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: Array(repeating: row, count: 6), showsStrip: false, picture: 100)
+        XCTAssertEqual(layout.contentHeight, 670)
+        let insets = LayoutInsets(top: 114, left: 0, bottom: 34, right: 0)
+        // 670 + 34 - 500: the farthest a 500 viewport scrolls.
+        XCTAssertEqual(layout.keptOffset(120, viewport: 500, insets: insets), 120)
+        XCTAssertEqual(layout.keptOffset(300, viewport: 500, insets: insets), 204)
+        XCTAssertEqual(layout.keptOffset(-114, viewport: 500, insets: insets), -114)
+        XCTAssertEqual(layout.keptOffset(-200, viewport: 500, insets: insets), -114)
+        // A page shorter than the screen rests at its top.
+        XCTAssertEqual(layout.keptOffset(120, viewport: 874, insets: insets), -114)
+    }
+
     func testSearchingTheCardsMoveUpUnderTheField() {
         typealias L = SettingsLayout
         let layout = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: true, accessory: .chevron)]], searching: true)

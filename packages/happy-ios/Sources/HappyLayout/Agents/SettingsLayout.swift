@@ -145,8 +145,8 @@ public struct SettingsLayout: Equatable, Sendable {
     }
 
     public var strip: CGRect
-    /// The agent's own picture over its name, on a connection's page;
-    /// zero without one, or while searching.
+    /// The profile's picture over its name, on either kind of page; zero
+    /// without one, or while searching.
     public var picture: CGRect
     public var name: CGRect
     public var subtitle: CGRect
@@ -205,6 +205,15 @@ public struct SettingsLayout: Equatable, Sendable {
         let top = -insets.top
         let bottom = max(top, contentHeight + insets.bottom - viewport)
         return min(bottom, max(top, (middle - insets.top - shown / 2).rounded()))
+    }
+
+    /// Where the page rests after it changes under `offset` (another
+    /// profile's rows, dissolved in place): where it was, unless this page
+    /// ends sooner, then at its end; never above its top.
+    public func keptOffset(_ offset: CGFloat, viewport: CGFloat, insets: LayoutInsets) -> CGFloat {
+        let top = -insets.top
+        let bottom = max(top, contentHeight + insets.bottom - viewport)
+        return min(bottom, max(top, offset))
     }
 
     /// The width a card's footer is measured at.

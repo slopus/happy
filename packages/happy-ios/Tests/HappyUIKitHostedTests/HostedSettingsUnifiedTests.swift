@@ -404,7 +404,7 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         let opened = try await until { settings.navigationItem.hidesBackButton && search.isActive }
         XCTAssertTrue(opened, "Back is still beside the field: active \(search.isActive) hidden \(settings.navigationItem.hidesBackButton)")
         try await Task.sleep(for: .milliseconds(500))
-        XCTAssertEqual(settings.title, Strings.Settings.title, "the page lost its title")
+        XCTAssertNil(settings.navigationItem.title, "Settings has a title")
         let edge = try XCTUnwrap(navigation.interactivePopGestureRecognizer)
         XCTAssertEqual(edge.delegate?.gestureRecognizerShouldBegin?(edge), true, "the edge swipe can't go back while searching")
         search.isActive = false

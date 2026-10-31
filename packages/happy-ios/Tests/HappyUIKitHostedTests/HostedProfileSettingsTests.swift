@@ -381,7 +381,10 @@ final class HostedProfileSettingsTests: XCTestCase {
         XCTAssertEqual(menu.children.count, 2)
         XCTAssertEqual(actions.map(\.title), ["Change avatar", "Edit name"])
         XCTAssertTrue(actions.allSatisfy { $0.image != nil }, "an action has no icon")
-        XCTAssertNil(button.picture, "a computer with no picture shows a picture")
+        // Nothing yet, or its placeholder at once when that is decoded already.
+        let computer = try XCTUnwrap(rig.controller.accounts.first { $0.id == rig.computerID })
+        let placeholder = AvatarPlaceholderImages.cached(seed: ProfilePictures.placeholderSeed(computer, context: rig.context), side: ProfilePictures.placeholderSide)
+        XCTAssertTrue(button.picture == nil || button.picture === placeholder, "a computer with no picture shows a picture")
 
         // In the page's content, centred, over the name.
         try await Task.sleep(for: .milliseconds(400))
@@ -447,13 +450,15 @@ final class HostedProfileSettingsTests: XCTestCase {
         }
         window.overrideUserInterfaceStyle = .light
 
-        // A Happy account's page: no picture at all.
+        // A Happy account's page: its picture, with no pencil and no menu.
         let happyID = try XCTUnwrap(rig.controller.accounts.first { !$0.isAgentConnection }?.id)
         let accountPage = SettingsViewController(context: rig.context, computer: happyID)
         navigation.pushViewController(accountPage, animated: false)
         accountPage.loadViewIfNeeded()
         accountPage.view.layoutIfNeeded()
-        XCTAssertTrue(accountPage.agentButton.isHidden, "a Happy account's page has the agent's picture")
+        XCTAssertFalse(accountPage.agentButton.isHidden, "a Happy account's page has no picture")
+        XCTAssertTrue(accountPage.agentButton.badgeView.isHidden, "a Happy account's picture has the pencil")
+        XCTAssertNil(accountPage.agentButton.menu, "a Happy account's picture has the agent's menu")
         XCTAssertTrue(accountPage.navigationItem.rightBarButtonItems?.isEmpty ?? true)
         withExtendedLifetime(rig.controller) {}
     }

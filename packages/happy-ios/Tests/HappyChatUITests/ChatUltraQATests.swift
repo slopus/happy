@@ -1265,7 +1265,7 @@ final class ChatUltraQATests: XCTestCase {
 
         func choose(_ renderer: String) {
             app.buttons["Settings"].tap()
-            XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.otherElements["settings"].waitForExistence(timeout: 10))
             let appearance = row("Appearance,")
             XCTAssertTrue(appearance.waitForExistence(timeout: 10)); appearance.tap()
             let setting = row("Chat list renderer,")
@@ -1275,8 +1275,8 @@ final class ChatUltraQATests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.8)
             screenshot("setting-\(renderer)")
             app.navigationBars["Appearance"].buttons.element(boundBy: 0).tap()
-            XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
-            app.navigationBars["Settings"].buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(app.otherElements["settings"].waitForExistence(timeout: 10))
+            app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
             XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 10))
         }
         choose("UICollectionView")
@@ -1430,7 +1430,8 @@ final class ChatUltraQATests: XCTestCase {
         screenshot("04-home-again")
 
         app.buttons["Settings"].tap()
-        let settings = app.navigationBars["Settings"]
+        XCTAssertTrue(app.otherElements["settings"].waitForExistence(timeout: 10))
+        let settings = app.navigationBars.firstMatch
         require("Settings has the ordinary bar", settings.waitForExistence(timeout: 10) && settings.frame.height > 20, "\(settings.frame)")
         screenshot("05-settings")
         settings.buttons.element(boundBy: 0).tap()

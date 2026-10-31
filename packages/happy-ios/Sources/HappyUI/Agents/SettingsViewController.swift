@@ -11,14 +11,15 @@ import UIKit
 /// centred and ringed, its name and line under it; then every setting the
 /// chosen profile has, in grouped cards, with Appearance and About each a
 /// page of their own, as Happy's settings have them.
-/// Swiping a profile to the middle makes it the active one and turns the
-/// page to it, while home changes underneath (`AppCoordinator.install`
-/// keeps this page on top); tapping its circle makes it the active one and
-/// goes back to its home. "+" adds a computer in the link sheet.
+/// Tapping a profile in the accounts card makes it the active one in
+/// place: the page stays, its contents dissolve into that profile's, and
+/// that profile's home replaces the old one underneath, unseen
+/// (`AppCoordinator.install` keeps this page on top), so back goes there.
 ///
-/// Both kinds of profile have one page, in one order: the accounts card,
-/// who it is, how it looks, Support us, About, then Disconnect or Sign out.
-/// A computer's page: the agent's own picture over its name, whose menu
+/// Both kinds of profile have one page, in one order: the profile's
+/// picture over its name, the accounts card, who it is, how it looks,
+/// Support us, About, then Disconnect or Sign out. A Happy account's
+/// picture is only that. A computer's page: the agent's picture, whose menu
 /// asks it to change its picture or name (`AgentEditButton`,
 /// `ChiefOfStaffAsk`; nothing renamed here); the person's own Profile
 /// there (`ProfileViewController`); Appearance (the theme, which
@@ -98,7 +99,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private var profileName = ""
     private var profilePhoto: UIImage?
     private var appeared = false
-    /// The agent's own picture over its name, on a connection's page.
+    /// The profile's picture over its name; on a connection's page, the
+    /// agent's, with its pencil and menu.
     let agentButton = AgentEditButton()
     /// The nested page open over this one, drawn again with it.
     private weak var page: SettingsPageViewController?
@@ -117,6 +119,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     /// The row home's search found, shown once the page is on screen
     /// and has it (a row that waits on the computer comes a moment later).
     private var reveal: String?
+    nonisolated(unsafe) private var rootChange: NSObjectProtocol?
 
     init(context: AppContext, computer: String?) {
         self.context = context
@@ -154,7 +157,16 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         scroll.addSubview(empty)
         setUpBar()
         observation = context.account.observeAccounts { [weak self] _ in self?.reload() }
+        // A switch made here builds the new home in its account's language:
+        // this page, kept over it, speaks it too.
+        rootChange = NotificationCenter.default.addObserver(forName: AppCoordinator.rootDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.rebuild() }
+        }
         reload()
+    }
+
+    deinit {
+        if let rootChange { NotificationCenter.default.removeObserver(rootChange) }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -202,10 +214,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     // MARK: Bar
 
-    /// The system's back, the title, and the bar's own search, which grows
-    /// into a field in the bar. No QR button: scanning is Add's.
+    /// The system's back and the bar's own search, which grows into a field
+    /// in the bar. No title: the profile's picture and name head the page.
+    /// No QR button: scanning is Add's.
     private func setUpBar() {
-        title = Strings.Settings.title
         navigationItem.largeTitleDisplayMode = .never
         HeaderBar.edge(scroll, in: self)
         searchController.searchResultsUpdater = self
@@ -249,7 +261,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         if shown == nil { shownID = (profiles.first(where: \.isActive) ?? profiles[0]).id }
         for account in accounts { loadImage(account) }
         watchShown()
-        rebuild(animated: false)
+        rebuild()
     }
 
     private func loadImage(_ account: AccountSummary) {
@@ -257,27 +269,30 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         guard imageKeys[account.id] != key else { return }
         imageKeys[account.id] = key
         imageJobs[account.id]?.cancel()
-        // Its thumbhash in the first build, the picture when it comes.
-        if let placeholder = ProfilePictures.placeholder(account, context: context) { images[account.id] = placeholder }
+        // What it has now in the first build, the picture when it comes.
+        if let placeholder = ProfilePictures.immediate(account, context: context) { images[account.id] = placeholder }
         imageJobs[account.id] = Task { [weak self] in
             guard let self else { return }
             let image = await ProfilePictures.load(account, context: context)
             guard !Task.isCancelled, imageKeys[account.id] == key else { return }
             images[account.id] = image
-            rebuild(animated: false)
+            rebuild()
         }
     }
 
-    /// The circle that came to rest, or was tapped: the page turns to it
-    /// and it becomes the active profile, home changing under this page.
-    /// `closing` (a tap) then goes back to that home, once it is there.
-    private func choose(_ index: Int, closing: Bool = false) {
+    /// The account tapped in the card, or found by search: it becomes the
+    /// active profile without leaving this page. Search closes first; the
+    /// page dissolves into the profile's at once, where it was scrolled to;
+    /// its home replaces the old one under this page once the switch is
+    /// made (`AppCoordinator.install`).
+    private func choose(_ index: Int) {
         guard profiles.indices.contains(index) else { return }
         let profile = profiles[index]
+        if query != nil { endSearch() }
         if shownID != profile.id {
             shownID = profile.id
             watchShown()
-            rebuild(animated: true)
+            crossfade()
         }
         // One switch at a time, and only the last choice still wanted (one
         // back to the active profile too, behind a switch away from it); a
@@ -285,31 +300,37 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         let previous = switching
         let account = context.account
         wanted = profile.id
-        // The home under this page now: unless it is already the profile's,
-        // back waits for the one that replaces it, even when a switch in
-        // line before this one is what makes the profile active.
-        let home = account.accounts.first(where: { $0.id == profile.id })?.isActive == true ? nil : navigationController?.viewControllers.first
         switching = Task { [weak self] in
             await previous?.value
-            guard self?.wanted ?? profile.id == profile.id else { return }
-            if account.accounts.first(where: { $0.id == profile.id })?.isActive == false {
-                do {
-                    try await account.switchAccount(to: profile.id)
-                } catch {
-                    guard let self, view.window != nil, shownID == profile.id else { return }
-                    shownID = account.accounts.first(where: \.isActive)?.id
-                    reload()
-                    Alerts.show(Strings.couldNotSwitch, error.localizedDescription, on: self)
-                    return
-                }
+            guard self?.wanted ?? profile.id == profile.id,
+                  account.accounts.first(where: { $0.id == profile.id })?.isActive == false else { return }
+            do {
+                try await account.switchAccount(to: profile.id)
+            } catch {
+                guard let self, view.window != nil, shownID == profile.id else { return }
+                shownID = account.accounts.first(where: \.isActive)?.id
+                crossfade { self.reload() }
+                Alerts.show(Strings.couldNotSwitch, error.localizedDescription, on: self)
             }
-            // The new home is built in its language first: back goes to it.
-            for _ in 0..<60 where closing && home != nil && self?.navigationController?.viewControllers.first === home {
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-            guard closing, let self, wanted == profile.id, navigationController?.topViewController === self else { return }
-            navigationController?.popViewController(animated: true)
         }
+    }
+
+    /// The page's contents dissolve into what `change` makes of them (a
+    /// fresh build by default), as home does on a switch: the same length
+    /// and curve (`AppCoordinator.rootCrossfade`). Only the scrolling part
+    /// changes; the bar and its search stay where they are. The page keeps
+    /// its place, unless the new one ends before it (`SettingsLayout.keptOffset`).
+    private func crossfade(_ change: (() -> Void)? = nil) {
+        let apply = {
+            UIView.performWithoutAnimation {
+                if let change { change() } else { self.rebuild() }
+                self.view.layoutIfNeeded()
+                let offset = self.settingsLayout.keptOffset(self.scroll.contentOffset.y, viewport: self.scroll.bounds.height, insets: LayoutInsets(self.scroll.adjustedContentInset))
+                if offset != self.scroll.contentOffset.y { self.scroll.setContentOffset(CGPoint(x: 0, y: offset), animated: false) }
+            }
+        }
+        guard view.window != nil else { return apply() }
+        UIView.transition(with: scroll, duration: AppCoordinator.rootCrossfade, options: [.transitionCrossDissolve, .allowUserInteraction], animations: apply)
     }
 
     /// Telegram's "Add Account": the one Add flow (`AccountAdding`).
@@ -339,7 +360,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             settingsObservation = session.store.observeSettings { [weak self] snapshot in
                 guard let self, self.snapshot != snapshot else { return }
                 self.snapshot = snapshot
-                rebuild(animated: false)
+                rebuild()
             }
             return
         }
@@ -350,13 +371,13 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 let hidden = DesktopSettingKeys.projectsHidden(snapshot.settings)
                 guard hidden != projectsHidden else { continue }
                 projectsHidden = hidden
-                rebuild(animated: false)
+                rebuild()
             }
         }
         prioritizingWatch = session.watch { [weak self] snapshot in
             guard let self, prioritizing != snapshot.prioritizing else { return }
             prioritizing = snapshot.prioritizing
-            rebuild(animated: false)
+            rebuild()
         }
     }
 
@@ -376,7 +397,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             guard let self, let source, profileName != source.state.name || profilePhoto !== photo else { return }
             profileName = source.state.name
             profilePhoto = photo
-            rebuild(animated: false)
+            rebuild()
         })
         source.refresh()
     }
@@ -385,28 +406,27 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     /// Every account and agent connection this phone has, in one card, the
     /// active one ticked, with Connect Agent under them. Tapping one makes
-    /// it the active one, as its circle used to; there is no selector, no
-    /// selector and no second Add anywhere on the page. Every kind is one
+    /// it the active one in place; there is no selector and no second Add
+    /// anywhere on the page. Every kind is one
     /// row: its picture (or the placeholder its ID picks) round, its name,
     /// and the tick, as the switcher's menu draws them. No row has a line
     /// of its own; the chosen one's is under its name at the top.
     private func accountRows() -> [SettingsRow] {
         typealias Row = SettingsRow
-        // A signed-in Happy account and an open agent connection both
-        // call themselves active, so more than one row would be ticked.
-        // The one being looked at is the first in the order shown, which
-        // is the connection where there is one: the same one the
-        // switcher names.
-        let active = profiles.first(where: \.isActive)?.id
+        // The tick is on the profile the page shows: the active one, or the
+        // one just tapped while the switch to it is made. A signed-in Happy
+        // account and an open agent connection both call themselves active;
+        // the page shows the first in the order shown, the connection, the
+        // same one the switcher names.
         var rows: [SettingsRow] = profiles.enumerated().map { index, profile in
             Row(
                 id: "account:\(profile.id)",
                 title: profile.name,
                 avatar: true,
                 image: images[profile.id],
-                value: profile.id == active ? "✓" : nil,
+                value: profile.id == shownID ? "✓" : nil,
                 accessory: .none,
-                action: { [weak self] in self?.choose(index, closing: true) },
+                action: { [weak self] in self?.choose(index) },
                 // Any of them goes from here, the shown one or not.
                 menu: [Row.MenuItem(title: profile.isAgentConnection ? Strings.disconnect : Strings.signOut, glyph: "log-out-outline", destructive: true) { [weak self] in
                     self?.remove(profile.id, direct: profile.isAgentConnection)
@@ -537,7 +557,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         var found: [SettingsRow] = []
         for (index, profile) in profiles.enumerated() where profile.name.localizedCaseInsensitiveContains(query) {
             found.append(SettingsRow(id: "profile:\(profile.id)", title: profile.name, avatar: true, image: images[profile.id], value: profile.kind, action: { [weak self] in
-                self?.endSearch()
                 self?.choose(index)
             }))
         }
@@ -572,7 +591,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         return found
     }
 
-    private func rebuild(animated: Bool) {
+    private func rebuild() {
         guard isViewLoaded, let profile = shown else { return }
         if let query, !query.isEmpty {
             let found = searchRows(query)
@@ -586,28 +605,19 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         let searching = query != nil
         name.isHidden = searching
         subtitle.isHidden = searching
-        // A connection's page has the agent's picture over its name, the
-        // one the accounts card shows; a Happy account's has none.
-        agentButton.isHidden = searching || !profile.isAgentConnection
-        if profile.isAgentConnection { agentButton.picture = images[profile.id] }
+        // The profile's picture over its name, the one the accounts card
+        // shows; only a connection's has the pencil and the agent's menu.
+        agentButton.isHidden = searching
+        agentButton.editable = profile.isAgentConnection
+        agentButton.picture = images[profile.id]
         empty.isHidden = !(searching && !(query ?? "").isEmpty && rows.isEmpty)
-        for (label, value) in [(name, profile.name), (subtitle, profile.subtitle)] where label.text != value {
-            if animated {
-                UIView.transition(with: label, duration: 0.2, options: [.transitionCrossDissolve, .beginFromCurrentState], animations: { label.text = value })
-            } else {
-                label.text = value
-            }
-        }
+        name.text = profile.name
+        subtitle.text = profile.subtitle
         while cards.count < rows.count { let card = SettingsCardView(); scroll.addSubview(card); cards.append(card) }
         while cards.count > rows.count { cards.removeLast().removeFromSuperview() }
         view.setNeedsLayout()
         // A row search found that only came now (one waiting on the computer).
         if reveal != nil, view.window != nil { DispatchQueue.main.async { [weak self] in self?.showRevealed() } }
-        if animated {
-            for card in cards { card.alpha = 0 }
-            view.layoutIfNeeded()
-            UIView.animate(withDuration: 0.2) { for card in self.cards { card.alpha = 1 } }
-        }
     }
 
     // MARK: Layout
@@ -619,7 +629,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         // Under the bar, whose row is in the safe area: the cards scroll under it.
         scroll.frame = view.bounds
         let specs = SettingsCardView.specs(rows, width: width)
-        let picture = shown?.isAgentConnection == true ? agentButton.intrinsicContentSize.width : nil
+        let picture = shown == nil ? nil : agentButton.intrinsicContentSize.width
         let layout = SettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, footers: SettingsCardView.footers(rows, width: width), searching: searching, showsStrip: false, picture: picture)
         settingsLayout = layout
         agentButton.frame = layout.picture
@@ -645,20 +655,20 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         // edge swipe still goes back meanwhile.
         navigationItem.setHidesBackButton(true, animated: true)
         query = ""
-        rebuild(animated: false)
+        rebuild()
     }
 
     func updateSearchResults(for searchController: UISearchController) {
         guard query != nil else { return }
         query = searchController.searchBar.text ?? ""
-        rebuild(animated: false)
+        rebuild()
     }
 
     func willDismissSearchController(_ searchController: UISearchController) {
         navigationItem.setHidesBackButton(false, animated: true)
         guard query != nil else { return }
         query = nil
-        rebuild(animated: false)
+        rebuild()
     }
 
     private func endSearch() {
@@ -690,7 +700,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     private func setTheme(_ theme: ThemePreference) {
         ThemeController.set(theme, in: context)
-        rebuild(animated: false)
+        rebuild()
     }
 
     private static func themeName(_ theme: ThemePreference) -> String {
