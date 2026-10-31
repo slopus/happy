@@ -88,23 +88,28 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
     private let clip = UIView()
     private let ground = UIView()
     private let body = UIView()
-    private let morphGlass: UIVisualEffectView = {
-        let effect = UIGlassEffect(style: .regular)
-        return UIVisualEffectView(effect: effect)
-    }()
-    private let morphGlyph = UIImageView(image: UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)))
+    /// The page under the header: what fades over the growing glass. The
+    /// header's glass controls sit beside it, so no glass is ever under a
+    /// fading alpha (it draws wrong there and pops when the alpha reaches 1).
+    private let pageFade = UIView()
+    /// The morph's glass: it materializes and dematerializes, it never fades.
+    private let morphGlass = UIVisualEffectView(effect: nil)
+    /// The "+" as it is drawn, so the morph starts and ends on its exact pixels.
+    private let morphGlyph = UIImageView()
     private let edge = AttachMenuTopEdge()
-    private let closeGlass: UIVisualEffectView = {
+    private static func closeEffect() -> UIGlassEffect {
         let effect = UIGlassEffect(style: .regular)
         effect.isInteractive = true
-        return UIVisualEffectView(effect: effect)
-    }()
-    private let closeButton = UIButton(type: .custom)
-    private let countGlass: UIVisualEffectView = {
+        return effect
+    }
+    private static func countEffect() -> UIGlassEffect {
         let effect = UIGlassEffect(style: .regular)
         effect.tintColor = UIColor(Palette.attachMenuAccent)
-        return UIVisualEffectView(effect: effect)
-    }()
+        return effect
+    }
+    private let closeGlass = UIVisualEffectView(effect: AttachSheetViewController.closeEffect())
+    private let closeButton = UIButton(type: .custom)
+    private let countGlass = UIVisualEffectView(effect: AttachSheetViewController.countEffect())
     private let countIcon = UIImageView(image: UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)))
     private let countLabel = UILabel()
     private let titleLabel = UILabel()
@@ -162,8 +167,8 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         clip.accessibilityIdentifier = "attach-sheet"
         host.addSubview(clip)
         morphGlass.isHidden = true
-        morphGlyph.tintColor = UIColor(Palette.attachMenuControl)
         morphGlyph.contentMode = .center
+        morphGlyph.accessibilityIdentifier = "attach-morph-glyph"
         morphGlass.contentView.addSubview(morphGlyph)
         morphGlass.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         morphGlyph.autoresizingMask = [.flexibleLeftMargin, .flexibleRightMargin, .flexibleTopMargin, .flexibleBottomMargin]
@@ -250,7 +255,9 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         titleLabel.accessibilityTraits = .header
         titleLabel.accessibilityIdentifier = "attach-title"
 
-        for view in [gallery, files, edge, closeGlass, countGlass, titleLabel] as [UIView] { body.addSubview(view) }
+        pageFade.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        for view in [gallery, files, edge] as [UIView] { pageFade.addSubview(view) }
+        for view in [pageFade, closeGlass, countGlass, titleLabel] as [UIView] { body.addSubview(view) }
 
         panel.setTabs([
             (Strings.AttachMenu.gallery, AttachMenuPanel.glyph("photo.fill.on.rectangle.fill"), "attach-tab-gallery"),
@@ -407,8 +414,9 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         clip.cornerConfiguration = corners(sheet)
         ground.frame = clip.bounds
         morphGlass.frame = clip.bounds
-        morphGlyph.frame = morphGlass.bounds
+        morphGlyph.center = CGPoint(x: morphGlass.bounds.midX, y: morphGlass.bounds.midY)
         body.frame = placement.content
+        pageFade.frame = body.bounds
         shadow.isHidden = sheet.style != .card
         shadow.frame = placement.clip
         shadow.layer.cornerRadius = sheet.cornerRadius
@@ -563,7 +571,7 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         UIView.animate(withDuration: AttachMenuMotion.dimDuration, delay: 0, options: [.curveLinear, .allowUserInteraction]) {
             self.dim.alpha = dimTarget
         }
-        if sheet.style == .sheet, let button = button?(), button.window === view.window, !UIAccessibility.isReduceMotionEnabled {
+        if sheet.style == .sheet, let button = button?(), button.window === view.window, !AttachMenuEnvironment.reduceMotion() {
             morphIn(from: button)
             return
         }
@@ -588,46 +596,56 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         let source = button.convert(button.bounds, to: host)
         let target = (center: clip.center, bounds: clip.bounds, transform: clip.transform)
         morphing = true
-        hiddenButton = button
-        button.alpha = 0
+        // One frame: the "+" goes as its exact picture takes its place.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        take(button)
         clip.transform = .identity
         clip.bounds = CGRect(origin: .zero, size: source.size)
         clip.center = CGPoint(x: source.midX, y: source.midY)
         clip.cornerConfiguration = .uniformCorners(radius: .fixed(source.height / 2))
         morphGlass.isHidden = false
-        morphGlass.alpha = 1
+        morphGlass.frame = clip.bounds
+        morphGlass.effect = nil
         morphGlyph.alpha = 1
         ground.alpha = 0
-        body.alpha = 0
-        panel.alpha = 0
-        let position = UIViewPropertyAnimator(duration: M.positionDuration, timingParameters: AttachMenuSprings.custom(damping: M.positionDamping, duration: M.positionDuration, velocity: M.positionVelocity))
-        position.addAnimations { self.clip.center = target.center }
-        let size = UIViewPropertyAnimator(duration: M.scaleDuration, timingParameters: AttachMenuSprings.custom(damping: M.scaleDamping, duration: M.scaleDuration, velocity: 0))
-        size.addAnimations {
-            self.clip.bounds = target.bounds
-            self.clip.transform = target.transform
-        }
-        size.addCompletion { [weak self] _ in
-            guard let self else { return }
-            morphing = false
-            morphGlass.isHidden = true
-            view.setNeedsLayout()
-        }
-        for animator in [position, size] {
-            animator.isUserInteractionEnabled = true
-            animator.startAnimation()
-        }
-        UIView.animate(withDuration: M.cornersDuration, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
-            self.clip.cornerConfiguration = self.corners(sheet)
-        }
-        UIView.animate(withDuration: M.contentFadeIn, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
-            self.ground.alpha = 1
-            self.body.alpha = 1
-            self.panel.alpha = 1
-            self.morphGlass.alpha = 0
-        }
-        UIView.animate(withDuration: M.glyphFade, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
-            self.morphGlyph.alpha = 0
+        setContent(shown: false)
+        CATransaction.commit()
+        // The motion starts once that frame is on screen: the sheet's first
+        // commit (its grid, its glass) is the heaviest, and a spring started
+        // before it would show its first frame already far along.
+        AttachMenuFrame.next { [weak self] in
+            guard let self, !closing else { return }
+            let position = UIViewPropertyAnimator(duration: M.positionDuration, timingParameters: AttachMenuSprings.custom(damping: M.positionDamping, duration: M.positionDuration, velocity: M.positionVelocity))
+            position.addAnimations { self.clip.center = target.center }
+            let size = UIViewPropertyAnimator(duration: M.scaleDuration, timingParameters: AttachMenuSprings.custom(damping: M.scaleDamping, duration: M.scaleDuration, velocity: 0))
+            size.addAnimations {
+                self.clip.bounds = target.bounds
+                self.clip.transform = target.transform
+            }
+            size.addCompletion { [weak self] _ in
+                guard let self, !closing else { return }
+                morphing = false
+                // Under the opaque ground by now: going makes no difference on screen.
+                morphGlass.effect = nil
+                morphGlass.isHidden = true
+                view.setNeedsLayout()
+            }
+            for animator in [position, size] {
+                animator.isUserInteractionEnabled = true
+                animator.startAnimation()
+            }
+            UIView.animate(withDuration: M.cornersDuration, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
+                self.clip.cornerConfiguration = self.corners(sheet)
+            }
+            UIView.animate(withDuration: M.contentFadeIn, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
+                self.morphGlass.effect = UIGlassEffect(style: .regular)
+                self.ground.alpha = 1
+                self.setContent(shown: true)
+            }
+            UIView.animate(withDuration: M.glyphFade, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
+                self.morphGlyph.alpha = 0
+            }
         }
     }
 
@@ -679,7 +697,7 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         UIView.animate(withDuration: AttachMenuMotion.closeDuration, delay: 0, options: [.curveEaseInOut, .beginFromCurrentState]) {
             self.dim.alpha = 0
         }
-        let glassButton = sheet.style == .sheet && !UIAccessibility.isReduceMotionEnabled ? (hiddenButton ?? button?()).flatMap { $0.window === view.window ? $0 : nil } : nil
+        let glassButton = sheet.style == .sheet && !AttachMenuEnvironment.reduceMotion() ? (hiddenButton ?? button?()).flatMap { $0.window === view.window ? $0 : nil } : nil
         switch how {
         case let .dragged(velocity):
             // Glass: from where the finger left it, into the "+", carrying
@@ -715,11 +733,23 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         typealias M = AttachMenuMotion.Morph
         let target = button.convert(button.bounds, to: host)
         morphing = true
-        hiddenButton = button
-        button.alpha = 0
+        take(button)
         morphGlass.isHidden = false
-        morphGlass.alpha = 0
+        // Under the opaque ground still: it shows as the page fades off it.
+        morphGlass.effect = UIGlassEffect(style: .regular)
         morphGlyph.alpha = 0
+        // The button comes back only once the clip is on it, in one frame.
+        var pending = 3
+        let landed = { [weak self] in
+            pending -= 1
+            guard pending == 0, let self else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            button.alpha = 1
+            view.isHidden = true
+            CATransaction.commit()
+            completion()
+        }
         let center = CGPoint(x: target.midX, y: target.midY)
         let distance = center.y - clip.center.y
         let relative = abs(distance) > 1 ? max(0, velocity / distance) : 0
@@ -730,23 +760,56 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
             self.clip.bounds = CGRect(origin: .zero, size: target.size)
             self.clip.transform = .identity
         }
-        for animator in [position, size] { animator.startAnimation() }
+        for animator in [position, size] {
+            animator.addCompletion { _ in landed() }
+            animator.startAnimation()
+        }
         UIView.animate(withDuration: M.cornersDuration, delay: 0, options: [.curveEaseInOut]) {
             self.clip.cornerConfiguration = .uniformCorners(radius: .fixed(target.height / 2))
         }
         UIView.animate(withDuration: M.contentFadeOut, delay: 0, options: [.curveEaseInOut]) {
             self.ground.alpha = 0
-            self.body.alpha = 0
-            self.panel.alpha = 0
-            self.morphGlass.alpha = 1
+            self.setContent(shown: false)
         }
         UIView.animate(withDuration: M.outGlyphFade, delay: 0, options: [.curveEaseInOut]) {
             self.morphGlyph.alpha = 1
         }
         UIView.animate(withDuration: M.glassFade, delay: M.glassFadeDelay, options: [.curveEaseInOut]) {
-            self.morphGlass.alpha = 0
-            button.alpha = 1
-        } completion: { _ in completion() }
+            self.morphGlass.effect = nil
+        } completion: { _ in landed() }
+    }
+
+    /// The "+" taken over by the morph: drawn as it is at rest into the
+    /// morph's glyph, then hidden. Its press's spring is stopped first, or
+    /// it would bring the button back over the morph a moment later.
+    private func take(_ button: UIView) {
+        if let control = button as? UIControl, control.isHighlighted { control.isHighlighted = false }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        button.layer.removeAllAnimations()
+        button.transform = .identity
+        button.alpha = 1
+        let format = UIGraphicsImageRendererFormat(for: button.traitCollection)
+        morphGlyph.image = UIGraphicsImageRenderer(bounds: button.bounds, format: format).image { context in
+            button.layer.render(in: context.cgContext)
+        }
+        morphGlyph.bounds = CGRect(origin: .zero, size: button.bounds.size)
+        morphGlyph.center = CGPoint(x: morphGlass.bounds.midX, y: morphGlass.bounds.midY)
+        button.alpha = 0
+        CATransaction.commit()
+        hiddenButton = button
+    }
+
+    /// The page and the panel over the morph: what is drawn fades, the
+    /// glass materializes. Inside an animation, animates.
+    private func setContent(shown: Bool) {
+        pageFade.alpha = shown ? 1 : 0
+        titleLabel.alpha = shown ? 1 : 0
+        for (glass, effect) in [(closeGlass, Self.closeEffect()), (countGlass, Self.countEffect())] {
+            glass.effect = shown ? effect : nil
+            glass.contentView.alpha = shown ? 1 : 0
+        }
+        panel.setShown(shown)
     }
 
     @objc private func dimTapped() { requestClose() }
@@ -1141,6 +1204,30 @@ final class AttachMenuTopEdge: UIView {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+}
+
+/// Runs once on the next display frame, after what is set now has been drawn.
+@MainActor
+final class AttachMenuFrame: NSObject {
+    private var link: CADisplayLink?
+    private let work: () -> Void
+
+    private init(_ work: @escaping () -> Void) {
+        self.work = work
+    }
+
+    static func next(_ work: @escaping () -> Void) {
+        let frame = AttachMenuFrame(work)
+        let link = CADisplayLink(target: frame, selector: #selector(tick))
+        frame.link = link
+        link.add(to: .main, forMode: .common)
+    }
+
+    @objc private func tick() {
+        link?.invalidate()
+        link = nil
+        work()
+    }
 }
 
 /// Telegram's springs as UIKit's, sped up to their durations as Display

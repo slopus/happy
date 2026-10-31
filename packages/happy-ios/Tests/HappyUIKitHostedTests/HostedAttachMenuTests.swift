@@ -100,6 +100,7 @@ final class HostedAttachMenuTests: XCTestCase {
 
     override func tearDown() async throws {
         AttachMenuEnvironment.library = { PhotoKitAttachLibrary() }
+        AttachMenuEnvironment.reduceMotion = { UIAccessibility.isReduceMotionEnabled }
         AttachMenuEnvironment.camera = { UIImagePickerController.isSourceTypeAvailable(.camera) }
         window?.isHidden = true
         window = nil
@@ -349,22 +350,24 @@ final class HostedAttachMenuTests: XCTestCase {
 
     // MARK: In and out
 
-    /// What is on screen each frame: the sheet's clip and the dim as drawn
-    /// (their presentation layers), in the window's space.
+    /// What is on screen each frame, as drawn (presentation layers), in the
+    /// window's space: the sheet's clip and dim, the "+" and the morph's
+    /// picture of it.
     private struct Frame {
         var clip: CGRect
         var dim: Float
+        /// The "+" as drawn: its own opacity times its ancestors'.
+        var plus: Float
+        var plusFrame: CGRect
+        /// The morph's picture of the "+": opacity as drawn, and where.
+        var glyph: Float
+        var glyphFrame: CGRect
     }
 
-    private func film(_ sheet: @escaping () -> AttachSheetViewController?, for seconds: Double, while act: () async throws -> Void) async throws -> [Frame] {
+    private func film(_ sheet: @escaping () -> AttachSheetViewController?, plus: UIView, for seconds: Double, while act: () async throws -> Void) async throws -> [Frame] {
         var frames: [Frame] = []
         let recorder = TickRecorder { _ in
-            guard let sheet = sheet(), sheet.isViewLoaded, let window = sheet.view.window,
-                  let clip = self.views(sheet.view).first(where: { $0.accessibilityIdentifier == "attach-sheet" }),
-                  let dim = self.views(sheet.view).first(where: { $0.accessibilityIdentifier == "attach-dim" }) else { return }
-            let layer = clip.layer.presentation() ?? clip.layer
-            let frame = layer.convert(layer.bounds, to: window.layer.presentation() ?? window.layer)
-            frames.append(Frame(clip: frame, dim: (dim.layer.presentation() ?? dim.layer).opacity))
+            frames.append(self.frame(sheet(), plus: plus))
         }
         try await act()
         try await Task.sleep(for: .seconds(seconds))
@@ -372,35 +375,156 @@ final class HostedAttachMenuTests: XCTestCase {
         return frames
     }
 
-    /// The "+" as a finger opens it: the sheet grows out of the button
-    /// over several frames, from about the button's size to its own, while
-    /// the dim fades in; closed, it shrinks back into the button and the
-    /// dim fades out. Neither may land in one frame.
+    private func frame(_ sheet: AttachSheetViewController?, plus: UIView) -> Frame {
+        func drawn(_ view: UIView) -> (Float, CGRect) {
+            guard let window = view.window else { return (0, .zero) }
+            var opacity: Float = 1
+            var current: UIView? = view
+            while let one = current {
+                let layer = one.layer.presentation() ?? one.layer
+                // As drawn: the presentation tree only, so every view is read
+                // from the same committed frame.
+                if layer.isHidden { return (0, .zero) }
+                opacity *= layer.opacity
+                current = one.superview
+            }
+            let layer = view.layer.presentation() ?? view.layer
+            return (opacity, layer.convert(layer.bounds, to: window.layer.presentation() ?? window.layer))
+        }
+        let (plusOpacity, plusFrame) = drawn(plus)
+        var result = Frame(clip: .zero, dim: 0, plus: plusOpacity, plusFrame: plusFrame, glyph: 0, glyphFrame: .zero)
+        guard let sheet, sheet.isViewLoaded, sheet.view.window != nil else { return result }
+        if let clip = views(sheet.view).first(where: { $0.accessibilityIdentifier == "attach-sheet" }) {
+            let layer = clip.layer.presentation() ?? clip.layer
+            if let window = clip.window { result.clip = layer.convert(layer.bounds, to: window.layer.presentation() ?? window.layer) }
+        }
+        if let dim = views(sheet.view).first(where: { $0.accessibilityIdentifier == "attach-dim" }) {
+            result.dim = (dim.layer.presentation() ?? dim.layer).opacity
+        }
+        if let glyph = views(sheet.view).first(where: { $0.accessibilityIdentifier == "attach-morph-glyph" }) {
+            (result.glyph, result.glyphFrame) = drawn(glyph)
+        }
+        return result
+    }
+
+    /// Across a hand-off between the "+" and the morph's picture of it:
+    /// every frame shows exactly one "+", whole, in the button's place;
+    /// never neither, never both.
+    private func assertOnePlus(_ frames: ArraySlice<Frame>, _ phase: String, travel: CGFloat = 0.5, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertFalse(frames.isEmpty, "\(phase): no frames", file: file, line: line)
+        // The morph's "+" travels onto the button; the frame before the
+        // button shows again it is on its pixels.
+        if let index = frames.lastIndex(where: { $0.glyph > 0.02 }) {
+            let last = frames[index]
+            XCTAssertEqual(last.glyphFrame.midX, last.plusFrame.midX, accuracy: travel, "\(phase): the morph's + is off the button at the hand-over", file: file, line: line)
+            XCTAssertEqual(last.glyphFrame.midY, last.plusFrame.midY, accuracy: travel, "\(phase): the morph's + is off the button at the hand-over", file: file, line: line)
+            XCTAssertEqual(last.glyphFrame.width, last.plusFrame.width, accuracy: 0.5, file: file, line: line)
+        }
+        for (index, frame) in frames.enumerated() {
+            let shown = [frame.plus, frame.glyph].filter { $0 > 0.02 }
+            XCTAssertEqual(shown.count, 1, "\(phase) frame \(index): plus \(frame.plus), morph \(frame.glyph)", file: file, line: line)
+            XCTAssertGreaterThan(max(frame.plus, frame.glyph), 0.98, "\(phase) frame \(index): the + is faded (\(frame.plus), \(frame.glyph))", file: file, line: line)
+        }
+    }
+
+    /// The "+" as a finger presses it: down, the action, then up, as
+    /// UIControl orders them, so its press's own spring runs as on a phone.
+    private func press(_ plus: UIControl) {
+        plus.isHighlighted = true
+        plus.sendActions(for: .touchUpInside)
+        plus.isHighlighted = false
+    }
+
+    /// The "+" as a finger opens it: the sheet grows out of the button over
+    /// several frames, from about the button's size to its own, while the
+    /// dim fades in; closed, it shrinks back into the button and the dim
+    /// fades out. Neither may land in one frame, and the "+" hands over to
+    /// the morph and back without a frame where it is missing or doubled,
+    /// nor ever showing over the sheet in between.
     func testTheMenuGrowsOutOfThePlusAndBackIntoIt() async throws {
         try await open(FixtureAttachLibrary(access: .authorized, count: 30))
         let plus = try plus()
         let button = plus.convert(plus.bounds, to: nil)
-        let opening = try await film({ self.chat.presentedViewController as? AttachSheetViewController }, for: 0.8) {
-            plus.sendActions(for: .touchUpInside)
+        // Before the press, for the hand-over's first frame.
+        let before = frame(nil, plus: plus)
+        let opening = try await film({ self.chat.presentedViewController as? AttachSheetViewController }, plus: plus, for: 0.8) {
+            press(plus)
         }
         let sheet = try XCTUnwrap(chat.presentedViewController as? AttachSheetViewController)
         let rest = try XCTUnwrap(opening.last).clip
         let growing = opening.filter { $0.clip.width > button.width + 4 && $0.clip.width < rest.width - 4 }
         XCTAssertGreaterThanOrEqual(growing.count, 5, "the sheet didn't grow over frames: \(opening.prefix(12).map { Int($0.clip.width) })")
-        XCTAssertLessThan(try XCTUnwrap(opening.first).clip.width, rest.width / 2, "the first frame was already big")
+        XCTAssertLessThan(try XCTUnwrap(opening.first { $0.clip.width > 0 }).clip.width, rest.width / 2, "the first frame was already big")
         XCTAssertGreaterThanOrEqual(opening.filter { $0.dim > 0.05 && $0.dim < 0.95 }.count, 4, "the dim didn't fade in")
         XCTAssertEqual(rest.width, sheet.view.bounds.width, accuracy: 12)
+        // The hand-over: up to the morph's first frame the button shows,
+        // from it the morph's picture, on the same pixels.
+        XCTAssertGreaterThan(before.plus, 0.98)
+        let firstMorph = try XCTUnwrap(opening.firstIndex { $0.clip.width > 0 }, "the morph never showed")
+        // Its first frame on screen is already one frame into its spring.
+        assertOnePlus(opening[..<(firstMorph + 1)], "open hand-over", travel: 2)
+        // From then on the button stays hidden: its press's spring doesn't
+        // bring it back over the sheet.
+        let after = opening[firstMorph...]
+        XCTAssertTrue(after.allSatisfy { $0.plus < 0.02 }, "the + showed again while the menu opened: \(after.map(\.plus).prefix(30))")
 
-        let closing = try await film({ sheet }, for: 0.8) {
+        let closing = try await film({ sheet }, plus: plus, for: 0.9) {
             try XCTUnwrap(view("attach-close", in: sheet.view) as? UIControl).sendActions(for: .touchUpInside)
         }
         try await wait { self.chat.presentedViewController == nil }
         let shrinking = closing.filter { $0.clip.width > button.width + 4 && $0.clip.width < rest.width - 4 }
         XCTAssertGreaterThanOrEqual(shrinking.count, 4, "the sheet didn't shrink over frames: \(closing.prefix(12).map { Int($0.clip.width) })")
         XCTAssertGreaterThanOrEqual(closing.filter { $0.dim > 0.05 && $0.dim < 0.95 }.count, 3, "the dim didn't fade out")
-        let last = try XCTUnwrap(closing.last).clip
-        XCTAssertEqual(last.midX, button.midX, accuracy: 12, "it didn't go back into the +")
-        XCTAssertEqual(plus.alpha, 1, "the + stayed hidden")
+        // The hand-back: from the frame the morph's + is whole to the end,
+        // exactly one + every frame, the button's own at the end.
+        let whole = try XCTUnwrap(closing.firstIndex { $0.glyph > 0.98 }, "the morph's + never came back whole")
+        assertOnePlus(closing[whole...], "close hand-back")
+        XCTAssertGreaterThan(try XCTUnwrap(closing.last).plus, 0.98, "the + stayed hidden")
+        let landed = try XCTUnwrap(closing.last { $0.glyph > 0.98 })
+        XCTAssertEqual(landed.clip.midX, button.midX, accuracy: 0.5, "it didn't go back into the +")
+        XCTAssertEqual(plus.alpha, 1)
+    }
+
+    /// Closed by tapping the dim and by Escape, the same hand-back.
+    func testTheDimAndEscapeHandTheButtonBackInOneFrame() async throws {
+        try await open(FixtureAttachLibrary(access: .authorized, count: 30))
+        let plus = try plus()
+        for how in ["dim", "escape"] {
+            press(plus)
+            try await wait { self.chat.presentedViewController is AttachSheetViewController }
+            let sheet = try XCTUnwrap(chat.presentedViewController as? AttachSheetViewController)
+            try await Task.sleep(for: .milliseconds(700))
+            let closing = try await film({ sheet }, plus: plus, for: 0.9) {
+                if how == "dim" {
+                    _ = sheet.perform(NSSelectorFromString("dimTapped"))
+                } else {
+                    _ = sheet.accessibilityPerformEscape()
+                }
+            }
+            try await wait { self.chat.presentedViewController == nil }
+            let whole = try XCTUnwrap(closing.firstIndex { $0.glyph > 0.98 }, "\(how): the morph's + never came back whole")
+            assertOnePlus(closing[whole...], "\(how) hand-back")
+            XCTAssertEqual(plus.alpha, 1)
+        }
+    }
+
+    /// With Reduce Motion the sheet slides: the "+" never hides.
+    func testWithReduceMotionThePlusStaysAndTheSheetSlides() async throws {
+        AttachMenuEnvironment.reduceMotion = { true }
+        try await open(FixtureAttachLibrary(access: .authorized, count: 30))
+        let plus = try plus()
+        let opening = try await film({ self.chat.presentedViewController as? AttachSheetViewController }, plus: plus, for: 0.7) {
+            press(plus)
+        }
+        let sheet = try XCTUnwrap(chat.presentedViewController as? AttachSheetViewController)
+        let shown = opening.filter { $0.clip.width > 0 }
+        XCTAssertGreaterThanOrEqual(Set(shown.map { Int($0.clip.minY) }).count, 5, "it didn't slide in")
+        XCTAssertTrue(opening.allSatisfy { $0.glyph < 0.02 }, "a morph under Reduce Motion")
+        let closing = try await film({ sheet }, plus: plus, for: 0.6) { sheet.close() }
+        try await wait { self.chat.presentedViewController == nil }
+        // Its press dims it a moment, as any press does; it never goes.
+        XCTAssertTrue((opening + closing).allSatisfy { $0.plus > 0.5 }, "the + hid under Reduce Motion: \((opening + closing).map(\.plus).min() ?? 0)")
+        XCTAssertGreaterThan(try XCTUnwrap(closing.last).plus, 0.98)
     }
 
     /// A picture waiting in the composer grows in over frames and, taken

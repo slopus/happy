@@ -95,6 +95,8 @@ enum AttachMenuEnvironment {
         return PhotoKitAttachLibrary()
     }
     static var camera: () -> Bool = { UIImagePickerController.isSourceTypeAvailable(.camera) }
+    /// Reduce Motion: the menu slides instead of growing out of the "+".
+    static var reduceMotion: () -> Bool = { UIAccessibility.isReduceMotionEnabled }
 }
 
 /// The library through PhotoKit, newest first, photos and videos.

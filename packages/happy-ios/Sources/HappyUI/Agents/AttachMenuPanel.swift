@@ -24,11 +24,12 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private(set) var selected = 0
     private(set) var picking = false
 
-    private let glass: UIVisualEffectView = {
+    private let glass = UIVisualEffectView(effect: AttachMenuPanel.glassEffect())
+    private static func glassEffect() -> UIGlassEffect {
         let effect = UIGlassEffect(style: .regular)
         effect.isInteractive = true
-        return UIVisualEffectView(effect: effect)
-    }()
+        return effect
+    }
     /// The tabs' space: the bar less 3 all round, its ends round (28).
     private let tabsHost = UIView()
     private let lens = UIView()
@@ -110,6 +111,14 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// In and out with the sheet's morph: the glass materializes or goes,
+    /// what is on it fades (a glass view under a fading alpha draws wrong
+    /// and pops at 1). Inside an animation, animates.
+    func setShown(_ shown: Bool) {
+        glass.effect = shown ? Self.glassEffect() : nil
+        glass.contentView.alpha = shown ? 1 : 0
+    }
 
     /// The tabs: names, glyphs and accessibility ids.
     func setTabs(_ tabs: [(title: String, glyph: UIImage?, id: String)]) {

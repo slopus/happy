@@ -237,6 +237,26 @@ final class HostedAttachGestureTests: XCTestCase {
         let clip = try XCTUnwrap(views(sheet.view).first { $0.accessibilityIdentifier == "attach-sheet" })
         let start = point(sheet)
         var lifted: CGFloat = 0
+        // The "+" and the morph's picture of it, as drawn each frame.
+        let plus = try XCTUnwrap(sheet.button?())
+        let glyph = try XCTUnwrap(views(sheet.view).first { $0.accessibilityIdentifier == "attach-morph-glyph" })
+        var hands: [(plus: Float, glyph: Float, offset: CGFloat)] = []
+        let watcher = TickRecorder { _ in
+            let plusOpacity = (plus.layer.presentation() ?? plus.layer).opacity
+            guard let window = glyph.window else { return hands.append((plusOpacity, 0, 0)) }
+            var opacity: Float = 1
+            var current: UIView? = glyph
+            while let one = current {
+                let layer = one.layer.presentation() ?? one.layer
+                // The presentation tree only: every view from the same committed frame.
+                opacity *= layer.isHidden ? 0 : layer.opacity
+                current = one.superview
+            }
+            let layer = glyph.layer.presentation() ?? glyph.layer
+            let frame = layer.convert(layer.bounds, to: window.layer.presentation() ?? window.layer)
+            hands.append((plusOpacity, opacity, hypot(frame.midX - button.midX, frame.midY - button.midY)))
+        }
+        defer { watcher.stop() }
         let frames = try await film(sheet, for: 0.8) {
             try await drag(sheet, at: start, by: Array(repeating: 10, count: 8), speed: 600, each: { _ in
                 lifted = clip.convert(clip.bounds, to: nil).minY
@@ -253,6 +273,17 @@ final class HostedAttachGestureTests: XCTestCase {
         XCTAssertEqual(last.midX, button.midX, accuracy: 12)
         XCTAssertEqual(last.midY, button.midY, accuracy: 12)
         XCTAssertEqual(gone, 1)
+        // The hand-back: from the frame the morph's "+" is whole, exactly
+        // one "+" every frame; the last frame of the morph's is on the
+        // button's pixels.
+        let whole = try XCTUnwrap(hands.firstIndex { $0.glyph > 0.98 }, "the morph's + never came back whole")
+        for (index, hand) in hands[whole...].enumerated() {
+            XCTAssertEqual([hand.plus, hand.glyph].filter { $0 > 0.02 }.count, 1, "frame \(index): plus \(hand.plus), morph \(hand.glyph)")
+            XCTAssertGreaterThan(max(hand.plus, hand.glyph), 0.98, "frame \(index): the + is faded")
+        }
+        let handOver = try XCTUnwrap(hands.last { $0.glyph > 0.02 })
+        XCTAssertLessThan(handOver.offset, 0.5, "the morph's + is \(handOver.offset) off the button at the hand-over")
+        XCTAssertGreaterThan(try XCTUnwrap(hands.last).plus, 0.98)
     }
 
     private func point(_ sheet: AttachSheetViewController) -> CGPoint {
