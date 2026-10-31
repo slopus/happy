@@ -119,7 +119,6 @@ extension AgentWire {
 
     public struct Health: Equatable, Sendable, Codable {
         public struct Capabilities: Equatable, Sendable, Codable {
-            public var identities: Bool?
             public var sidebarOperations: Bool?
             public var sidebarProposals: Bool?
             public var sidebarAttachments: Bool?
@@ -127,13 +126,6 @@ extension AgentWire {
             public var stickers: Bool?
             /// Agents' stories, their rings and status lines.
             public var agentStories: Bool?
-
-            /// The daemon's names (API.md, Health); `stemCellIdentities` is
-            /// the wire's, not ours.
-            enum CodingKeys: String, CodingKey {
-                case identities = "stemCellIdentities"
-                case sidebarOperations, sidebarProposals, sidebarAttachments, stories, stickers, agentStories
-            }
         }
         public var ready: Bool
         public var capabilities: Capabilities?
@@ -328,11 +320,6 @@ extension AgentWire {
         public var text: String
         /// `active`, `completed` or `deleted`.
         public var status: String
-    }
-
-    public struct CreateV2Response: Equatable, Sendable, Codable {
-        public var space: Space
-        public var agent: Agent
     }
 
     public struct Mode: Equatable, Sendable, Codable {

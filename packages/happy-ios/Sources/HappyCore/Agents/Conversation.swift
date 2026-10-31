@@ -304,8 +304,12 @@ public actor Conversation {
     /// The running turn and when it began (or when a send was taken, before
     /// its run is known).
     private var activeRun: (id: String?, startedAt: Double?)?
-    /// New work the daemon may not have made yet; sends wait for it.
-    private var creation: Task<String, Error>?
+    /// A task its first message makes (`NewTask`): until then nothing of it
+    /// is on the computer, and everything that goes there waits for it.
+    private var creation: NewTask?
+    /// Why the last send was refused before anything was drawn: the task
+    /// its first message makes could not be made.
+    public private(set) var sendRefusal: String?
     private var visible = false
     /// On screen, the reader at the newest message and at rest.
     private var readsNewest = false
@@ -323,12 +327,14 @@ public actor Conversation {
     private var lastDraftEdit: Double = 0
     static let draftDebounce: Duration = .milliseconds(300)
 
-    public init(client: AgentClient, store: Store, agentId: String, creation: Task<String, Error>? = nil, mode: AgentWire.Mode? = nil, persistence: SyncEngine? = nil) {
+    /// `newTask` opens the conversation of a task its first message makes,
+    /// under the ID named for it here.
+    public init(client: AgentClient, store: Store, agentId: String, newTask: NewTask? = nil, mode: AgentWire.Mode? = nil, persistence: SyncEngine? = nil) {
         self.client = client
         self.store = store
         self.persistence = persistence
-        self.agentId = agentId
-        self.creation = creation
+        self.agentId = newTask?.agentId ?? agentId
+        self.creation = newTask
         (updates, continuation) = AsyncStream.makeStream(of: ChatSnapshot.self, bufferingPolicy: .bufferingNewest(1))
         picked = mode
         self.mode = mode
@@ -345,12 +351,13 @@ public actor Conversation {
             snapshot.error = "Could not open this conversation on this device."; publish(); return
         }
         if let creation {
-            // New work has nothing to read yet: it is shown at once, empty.
+            // A new task has nothing to read yet: it is shown at once, empty,
+            // and followed once its first message has made it.
             snapshot.loaded = true
             publish()
             defaultMode = Task { [client] in try await client.defaultMode() }
             following = Task {
-                guard let id = try? await creation.value, !Task.isCancelled else { return }
+                guard let id = try? await creation.made(), !Task.isCancelled else { return }
                 await self.created(id)
             }
             return
@@ -722,11 +729,20 @@ public actor Conversation {
 
     // MARK: Sending
 
-    /// Draws the message at once and sends it, after the new work it is in
-    /// has been made.
+    /// Draws the message and sends it. A new task's first message makes the
+    /// task first: refused, nothing is drawn, `sendRefusal` says why, and
+    /// false leaves the composer holding what it held.
     @discardableResult
     public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = [], attachments: [OutgoingAttachment] = []) async -> Bool {
         guard !outgoing.contains(where: { $0.id == id }), messages[id] == nil else { return false }
+        sendRefusal = nil
+        if let creation {
+            do { agentId = try await creation.make() }
+            catch {
+                sendRefusal = Store.describe(error)
+                return false
+            }
+        }
         admitting.insert(id)
         defer { admitting.remove(id) }
         var inline = pictures
@@ -758,7 +774,7 @@ public actor Conversation {
         }
         if let persistence {
             do {
-                if let creation { agentId = try await creation.value }
+                if let creation { agentId = try await creation.make() }
                 try await checkpointClaim(for: "conversation:\(agentId)").value
                 try await persistence.enqueueMessage(queuedMessage(id: id, text: text, pictures: inline))
             }
@@ -798,9 +814,9 @@ public actor Conversation {
             do {
                 if let persistence, !(await persistence.deliveryAllowed) { return }
                 guard await saveConversationNow() else { failed(id, "Could not save this message on this device."); return }
-                // New work: its conversation exists once the daemon has made it,
-                // under the ID the daemon gave it.
-                if let creation { agentId = try await creation.value }
+                // A new task: its conversation exists once the computer has
+                // made it, under the ID the computer gave it.
+                if let creation { agentId = try await creation.make() }
                 if let persistence, !(await persistence.deliveryAllowed) { return }
                 guard let outgoingIndex = outgoing.firstIndex(where: { $0.id == id }) else { return }
                 let send = outgoing[outgoingIndex]
@@ -1018,7 +1034,8 @@ public actor Conversation {
             snapshot.localDraftLoaded = true
             publish()
         }
-        guard creation == nil, let kept = await drafts.draft(agentId), kept.updatedAt > draft.updatedAt else { return }
+        // A new task's is kept under the ID named for it here.
+        guard let kept = await drafts.draft(agentId), kept.updatedAt > draft.updatedAt else { return }
         draft = kept
         snapshot.draft = kept.text
         snapshot.draftUpdatedAt = kept.updatedAt
@@ -1063,8 +1080,15 @@ public actor Conversation {
     private func saveDraft(_ revision: Int) async {
         let local = draft
         do {
-            // New work's draft is under the ID the daemon gives it.
-            if let creation { agentId = try await creation.value }
+            // A new task's draft stays on this phone until its first message
+            // makes the task, then goes under the ID the computer gave it.
+            if let creation {
+                guard let made = await creation.madeAgentId else {
+                    await drafts?.keep(agentId, local)
+                    return
+                }
+                agentId = made
+            }
             await drafts?.keep(agentId, local)
             // Cleared, it is still the mode the next message goes with.
             let value = AgentWire.DraftValue(text: local.text, mode: try await sendingMode())

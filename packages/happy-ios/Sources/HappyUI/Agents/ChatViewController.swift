@@ -49,8 +49,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// The ask has been put in: it goes in once, however many drafts
     /// arrive afterwards.
     private var prefilled = false
-    /// New work on its way to the screen from this one's compose.
-    private var composing: UUID?
+    /// A new task on its way to the screen from this one's compose.
+    private var composing = false
     private let previewing: Bool
     private let previewPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
     /// The card's ground over the messages above the list, fading out under the capsule.
@@ -186,18 +186,19 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private let header = ChatHeaderView()
     private var titleView: ChatTitleView { header.titleView }
 
-    init(session: Session, agentId: String, title: String, spaceId: String?, seedling intro: Intro?, creation: Creation? = nil, prefill: ChatPrefill? = nil, previewing: Bool = false) {
+    init(session: Session, agentId: String, title: String, spaceId: String?, seedling intro: Intro?, newTask: NewTask? = nil, prefill: ChatPrefill? = nil, previewing: Bool = false) {
         self.session = session
         self.spaceId = spaceId
         self.intro = intro
         self.previewing = previewing
         self.prefill = previewing ? nil : prefill
         ultra = previewing || session.localSettings.chatListRenderer == .collectionView ? nil : AgentChatUltraList()
-        opensFocused = creation != nil
+        self.newTask = newTask
+        opensFocused = newTask != nil
         // An ask typed in for the person brings the keyboard up too, so
         // they only have to finish the sentence.
-        focusPending = creation != nil || (prefill != nil && !previewing)
-        if creation == nil {
+        focusPending = newTask != nil || (prefill != nil && !previewing)
+        if newTask == nil {
             let held = session.warm.hold(agentId)
             warm = held
             conversation = held.chat.conversation
@@ -206,7 +207,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
             planner = previewing ? ChatPlanner(syntax: session.syntax) : held.chat.planner
         } else {
             warm = nil
-            conversation = Conversation(client: session.client, store: session.store, agentId: agentId, creation: creation?.created, mode: session.models.newWorkMode, persistence: session.engine)
+            conversation = Conversation(client: session.client, store: session.store, agentId: agentId, newTask: newTask, mode: session.models.newWorkMode, persistence: session.engine)
             planner = ChatPlanner(syntax: session.syntax)
         }
         tappedAt = previewing ? nil : session.warm.takeTap(agentId)
@@ -220,13 +221,21 @@ final class ChatViewController: UIViewController, ComposeHosting {
         header.resize()
         navigationItem.titleView = header
         navigationItem.largeTitleDisplayMode = .never
-        // New work's media is under the ID the daemon gives it.
-        if let created = creation?.created {
+        // A new task's media is under the ID the computer gives it, once
+        // its first message has made it; from then on its row on home
+        // names this screen, as the task names itself.
+        if let newTask {
             creating = true
-            Task { [weak self] in
-                guard let id = try? await created.value else { return }
+            made = Task { [weak self, engine = session.engine] in
+                guard let id = try? await newTask.made() else { return }
                 self?.media.agentId = id
                 self?.creating = false
+                for await home in await engine.snapshots() {
+                    guard let self, !Task.isCancelled else { return }
+                    guard let row = home.allRows.first(where: { $0.agentId == id && $0.depth == 0 }) else { continue }
+                    rowName = (row.label, true)
+                    applyTitle()
+                }
             }
         }
     }
@@ -379,12 +388,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         attachPanel?.close()
         attachPanel = nil
         giveBarBack(animated: animated)
-        // Left holding something, new work isn't offered again as empty.
-        if isMovingFromParent, !previewing, let spaceId {
-            let holding = !composerIsEmpty
-            let store = session.store
-            Task { await store.leftHolding(spaceId, holding) }
-        }
         if !previewing {
             let conversation = conversation
             Task { await conversation.flushDraft() }
@@ -397,6 +400,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         Task { await conversation.setVisible(false) }
         if isMovingFromParent || navigationController == nil {
             following?.cancel()
+            made?.cancel()
             #if DEBUG
             probe?.link.invalidate()
             #endif
@@ -535,28 +539,26 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// Nothing typed or picked.
     var composerIsEmpty: Bool { card.text.isEmpty && pictures.images.isEmpty }
 
-    /// The bar's compose: new work in this conversation's place, so Back
-    /// still leads home and the stack grows no deeper. New work standing
-    /// empty is opened instead, as from home; when that is this one, it
-    /// only takes the keyboard. What is typed here stays in its draft.
+    /// The bar's compose: a new task in this conversation's place, so Back
+    /// still leads home and the stack grows no deeper. Nothing is made
+    /// until its first message; when the task compose opens is this one,
+    /// it only takes the keyboard. What is typed here stays in its draft.
     func compose() {
-        guard !previewing, composing == nil, let navigationController, navigationController.topViewController === self else { return }
+        guard !previewing, !composing, let navigationController, navigationController.topViewController === self else { return }
+        composing = true
         let store = session.store
         let session = session
         Task { @MainActor in
-            let going = await store.goToNewWork(under: nil)
-            guard composing == nil else { return }
-            composing = going.id
-            defer { composing = nil }
-            Haptics.play(.newWork)
-            let creation = await going.work.value
+            defer { composing = false }
+            let task = await store.newTask()
             guard self.navigationController?.topViewController === self else { return }
-            if creation.spaceId == spaceId {
+            Haptics.play(.newWork)
+            if task === newTask {
                 card.focus()
                 return
             }
             card.blur()
-            ComposeNavigation.replace(self, with: NewWork.chat(session, creation: creation))
+            ComposeNavigation.replace(self, with: NewWork.chat(session, task: task))
         }
     }
 
@@ -625,8 +627,13 @@ final class ChatViewController: UIViewController, ComposeHosting {
         introView.isHidden = intro == nil || reading(chat) || (!chat.items.isEmpty && !planShown)
     }
 
-    /// New work the daemon hasn't made yet: it has no detail to open.
+    /// A task its first message makes, which hasn't been sent yet: it has
+    /// no detail to open.
     private var creating = false
+    /// The task this conversation's first message makes, when it is one.
+    private let newTask: NewTask?
+    /// Waits for it to be made, then names this screen after its row.
+    private var made: Task<Void, Never>?
 
     /// A plan has been shown, if only an empty one.
     private var planShown = false
@@ -1558,7 +1565,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
                 }
                 staged.removeSent(pickedIDs)
             } else {
-                let alert = UIAlertController(title: Strings.Common.error, message: "The message could not be saved. Your text and attachments are still here.", preferredStyle: .alert)
+                let refusal = await conversation.sendRefusal
+                let message = refusal.map(Strings.newTaskFailed) ?? "The message could not be saved. Your text and attachments are still here."
+                let alert = UIAlertController(title: Strings.Common.error, message: message, preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
                 present(alert, animated: true)
             }

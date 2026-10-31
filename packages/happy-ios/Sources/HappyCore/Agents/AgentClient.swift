@@ -103,21 +103,6 @@ public final class AgentClient: Sendable {
         return AgentWire.OperationsResponse(artifactId: artifactId, version: Int(version), html: html, operations: operations)
     }
 
-    public func createV2(id: String, mutationId: String, sectionId: String?, identity: Identity?) async throws -> AgentWire.CreateV2Response {
-        var object: [String: JSONValue] = ["id": .string(id), "mutationId": .string(mutationId), "sectionId": sectionId.map(JSONValue.string) ?? .null]
-        if let identity {
-            object["taskId"] = .string(identity.taskId)
-            object["workspaceId"] = .string(identity.workspaceId)
-            object["agentId"] = .string(identity.agentId)
-        }
-        return try await decode(AgentWire.CreateV2Response.self, "POST", "/v0/spaces/stem-cells", json: .object(object))
-    }
-
-    /// Closes new work nobody wrote in; the daemon refuses once it has a message.
-    public func removeSpace(_ spaceId: String, mutationId: String) async throws {
-        _ = try await send("PATCH", "/v0/spaces/\(Self.escape(spaceId))", json: .object(["removed": .bool(true), "mutationId": .string(mutationId)]))
-    }
-
     public func reportAttention(_ state: String) async throws {
         _ = try await send("POST", "/v0/spaces/attention", json: .object(["state": .string(state)]))
     }
@@ -131,6 +116,20 @@ public final class AgentClient: Sendable {
     /// Every bot as sent, so its embedded agent can be normalized.
     public func bots() async throws -> [JSONValue] {
         try await decode(JSONValue.self, "GET", "/v0/bots")["bots"]?.arrayValue ?? []
+    }
+
+    /// Makes a task the person owns and joins (`POST /v0/tasks`), named by
+    /// this phone; the same `id` again answers the same task. Unnamed, it is
+    /// "New Task" until its first message names it, as desktop's blank
+    /// name does. Its conversation's ID, as the computer gives it.
+    public func createTask(_ identity: Identity, mutationId: String) async throws -> String {
+        let json: JSONValue = .object([
+            "id": .string(identity.taskId), "mutationId": .string(mutationId),
+            "agentId": .string(identity.agentId), "workspaceId": .string(identity.workspaceId),
+        ])
+        let answer = try await decode(JSONValue.self, "POST", "/v0/tasks", json: json)
+        guard let agentId = answer["task"]?["agent"]?["id"]?.stringValue else { throw AgentClientError.invalidResponse }
+        return agentId
     }
 
     /// The tasks the person joined, as sent, each holding the person's own
@@ -529,7 +528,7 @@ public final class AgentClient: Sendable {
     }
 }
 
-/// The task, workspace and conversation a client names for new work.
+/// The task, workspace and conversation a client names for a new task.
 public struct Identity: Equatable, Sendable {
     public let taskId: String
     public let workspaceId: String

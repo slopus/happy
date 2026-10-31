@@ -27,9 +27,8 @@ final class HomeViewController: UIViewController {
     private var snapshot = Snapshot()
     private var agentHome = HomeSnapshot()
     private var connectionWatch: Task<Void, Never>?
-    /// New work on its way to the screen, by the store's ask: a second tap
-    /// meanwhile gets the same and opens nothing more.
-    private var opening: Set<UUID> = []
+    /// A new task on its way to the screen: a second tap meanwhile opens nothing more.
+    private var opening = false
     /// Stories, in a band under the bar: open above the list, or put away.
     /// Nothing at all while Stories are off.
     private lazy var stories = StoriesHomeController(host: self)
@@ -211,7 +210,7 @@ final class HomeViewController: UIViewController {
         sidebar.isHidden = !empty.isHidden
         stories.isSuppressed = sidebar.isHidden
         let reason = { (text: String) in text.isEmpty ? Strings.unanswered : text }
-        let notice = snapshot.creationError.map { Strings.newWorkFailed(reason($0)) } ?? snapshot.error.map(reason)
+        let notice = snapshot.error.map(reason)
         // Prioritizing being off is Settings' business: home says nothing of it.
         banner.configure(notice: notice)
         view.setNeedsLayout()
@@ -487,25 +486,22 @@ final class HomeViewController: UIViewController {
         makeNewWork()
     }
 
-    /// New work, right below Happy: the row and its empty conversation exist
-    /// at once, and the conversation is pushed with the keyboard coming up,
-    /// or, for a picture, the "+" sheet over it. Leaving new work never
-    /// closes it, so new work already standing empty is opened instead,
-    /// where it is (desktop's rule): from the bar any, newest first; from a
-    /// heading's "+" only one under that heading.
-    func makeNewWork(in sectionId: String? = nil, library: Bool = false) {
-        guard let session, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
+    /// A new task: its empty conversation is pushed with the keyboard
+    /// coming up, or, for a picture, the "+" sheet over it. Nothing is made
+    /// on the computer and no row shows until its first message is sent,
+    /// so leaving it leaves nothing behind; compose again before then opens
+    /// the same one, with what was typed in it.
+    func makeNewWork(library: Bool = false) {
+        guard let session, !opening, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
+        opening = true
         let store = session.store
         Task { @MainActor in
-            let going = await store.goToNewWork(under: sectionId)
-            guard opening.insert(going.id).inserted else { return }
-            Haptics.play(.newWork)
-            let creation = await going.work.value
-            opening.remove(going.id)
-            // Another ask got to the screen first.
+            defer { opening = false }
+            let task = await store.newTask()
+            // Gone from the screen meanwhile: nothing is pushed over another.
             guard navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
-            sidebar.selectedRowId = "space:\(creation.spaceId)"
-            let chat = NewWork.chat(session, creation: creation, library: library)
+            Haptics.play(.newWork)
+            let chat = NewWork.chat(session, task: task, library: library)
             guard let navigation = navigationController else { return }
             navigation.pushViewController(chat, animated: true)
             // Over the screen it goes to, as that screen comes in.

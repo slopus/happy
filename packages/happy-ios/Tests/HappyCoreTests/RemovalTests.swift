@@ -3,7 +3,7 @@ import Foundation
 import HappyWire
 import XCTest
 
-/// Archive, Leave and Close new work take a row off the sidebar the moment
+/// Archive and Leave take a row off the sidebar the moment
 /// they are asked for, as desktop's `spaceRemove` (c15edf9c) does: nothing
 /// that still lists the row brings it back, neither a read nor an event,
 /// and no timer does either. It is let go of once the computer no longer
@@ -13,14 +13,6 @@ final class RemovalTests: XCTestCase {
         AgentWire.Space(
             id: id, title: title ?? "Task \(id)", icon: nil,
             target: AgentWire.SpaceTarget(kind: kind, id: "t\(id)", agentId: "a\(id)", workspaceId: "w\(id)"),
-            placement: "settled", version: 1, createdAt: 1, updatedAt: 1
-        )
-    }
-
-    private func newWork(_ id: String) -> AgentWire.Space {
-        AgentWire.Space(
-            id: id, title: nil, icon: .seedling,
-            target: AgentWire.SpaceTarget(kind: "task", id: "t\(id)", agentId: "a\(id)", workspaceId: "w\(id)"),
             placement: "settled", version: 1, createdAt: 1, updatedAt: 1
         )
     }
@@ -183,50 +175,6 @@ final class RemovalTests: XCTestCase {
         XCTAssertEqual(writes, ["/v0/surfaces/ts/leave"])
     }
 
-    /// Close new work: gone already (404) stays gone.
-    func testClosedNewWorkGoneAlreadyStaysGone() async throws {
-        let computer = Computer(spaces: [space("a"), newWork("n")])
-        var (store, updates) = store(computer)
-        await store.externalResync(loadSidebar: true)
-        _ = await shown(&updates)
-
-        await computer.hold()
-        let closed = Task { await store.discard("n") }
-        var rows = await shown(&updates)
-        XCTAssertEqual(rows, ["a"])
-        await computer.answer(404)
-        let taken = await closed.value
-        XCTAssertTrue(taken)
-        await store.externalResync(loadSidebar: true)
-        rows = await shown(&updates)
-        XCTAssertEqual(rows, ["a"], "new work already gone came back")
-    }
-
-    /// Close new work whose chat has a message (409): back, and the
-    /// sidebar read again.
-    func testClosedNewWorkWithAMessageComesBack() async throws {
-        let computer = Computer(spaces: [space("a"), newWork("n")])
-        var (store, updates) = store(computer)
-        await store.externalResync(loadSidebar: true)
-        _ = await shown(&updates)
-        let readsBefore = await computer.sidebarReads
-
-        await computer.hold()
-        let closed = Task { await store.discard("n") }
-        _ = await shown(&updates)
-        await computer.answer(409)
-        let rows = await shown(&updates)
-        XCTAssertEqual(rows, ["a", "n"], "refused, the new work stayed off")
-        let taken = await closed.value
-        XCTAssertFalse(taken)
-        var readsAfter = readsBefore
-        for _ in 0..<50 where readsAfter == readsBefore {
-            try await Task.sleep(for: .milliseconds(20))
-            readsAfter = await computer.sidebarReads
-        }
-        XCTAssertGreaterThan(readsAfter, readsBefore, "the sidebar wasn't read again")
-    }
-
     /// A subtask's row stays in the computer's document after it is
     /// archived; it stays off until no bot or task holds the subtask.
     func testAnArchivedSubtaskStaysOffWhileTheDocumentKeepsIt() async throws {
@@ -258,35 +206,6 @@ final class RemovalTests: XCTestCase {
         await store.externalResync(loadSidebar: true)
         rows = await every(&updates)
         XCTAssertEqual(rows, ["space:b", "session:s1"], "the subtask was held off after the computer let it go")
-    }
-}
-
-/// New work asked for again while the first ask is still on its way gets
-/// that same one, as desktop's `create` does: the dock any, a
-/// heading's "+" only its own heading's.
-final class NewWorkGuardTests: XCTestCase {
-    func testAnAskOnItsWayAnswersTheNextOne() async throws {
-        var empty = AgentWire.Space(
-            id: "n", title: nil, icon: .seedling,
-            target: AgentWire.SpaceTarget(kind: "task", id: "tn", agentId: "an", workspaceId: "wn"),
-            placement: "settled", version: 1, createdAt: 1, updatedAt: 1
-        )
-        empty.sectionId = nil
-        let computer = Computer(spaces: [empty])
-        let store = Store(client: AgentClient(transport: computer, token: "t"))
-        await store.externalResync(loadSidebar: true)
-        // The computer is slow to say whether the new work is empty.
-        await computer.hold(reads: true)
-        let dock = await store.goToNewWork(under: nil)
-        let again = await store.goToNewWork(under: nil)
-        XCTAssertEqual(dock.id, again.id, "a second tap made a second ask")
-        let plus = await store.goToNewWork(under: "work")
-        XCTAssertNotEqual(plus.id, dock.id, "a heading's + took the dock's ask")
-        let plusAgain = await store.goToNewWork(under: "work")
-        XCTAssertEqual(plus.id, plusAgain.id)
-        await computer.answer(200)
-        let went = await dock.work.value
-        XCTAssertEqual(went.spaceId, "n", "the empty new work wasn't reused")
     }
 }
 

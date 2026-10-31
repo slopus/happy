@@ -107,31 +107,18 @@ final class DaemonTests: XCTestCase {
         XCTAssertEqual(written["version"]?.numberValue, (before["version"]?.numberValue ?? 0) + 2)
     }
 
-    /// New work below Happy, its first message sent before the daemon has
-    /// made it, and the agent's answer streamed back, with no tool call shown.
-    func testNewWorkTalksBack() async throws {
+    /// A new task is made by its first message, and the agent's answer
+    /// streams back, with no tool call shown.
+    func testANewTaskTalksBack() async throws {
         let credentials = try await credentials()
         let client = client(credentials)
         let store = Store(client: client)
         await store.start()
-        var updates = store.updates.makeAsyncIterator()
-        let deadline = ContinuousClock.now + .seconds(20)
-        var ready: Snapshot?
-        while ContinuousClock.now < deadline, let snapshot = await updates.next() {
-            if snapshot.live, snapshot.happySpaceId != nil { ready = snapshot; break }
-        }
-        XCTAssertNotNil(ready)
-        let creation = await store.createV2()
-        // Drawn at once, right below Happy, before the daemon has answered.
-        let drawn = await updates.next()
-        let rows = try XCTUnwrap(drawn?.rows)
-        let happy = try XCTUnwrap(rows.firstIndex { $0.isHappy })
-        XCTAssertEqual(rows[happy + 1].spaceId, creation.spaceId)
-        XCTAssertTrue(rows[happy + 1].isUntouchedSeedling)
-
-        let conversation = Conversation(client: client, store: store, agentId: creation.agentId, creation: creation.created)
+        let task = await store.newTask()
+        let conversation = Conversation(client: client, store: store, agentId: task.agentId, newTask: task)
         await conversation.start()
-        await conversation.send(text: "Reply with exactly the word: pineapple")
+        let sent = await conversation.send(text: "Reply with exactly the word: pineapple")
+        XCTAssertTrue(sent)
         var chat = conversation.updates.makeAsyncIterator()
         var answered: ChatSnapshot?
         let until = ContinuousClock.now + .seconds(120)
@@ -145,41 +132,9 @@ final class DaemonTests: XCTestCase {
         XCTAssertEqual(items.first?.role, .user)
         XCTAssertEqual(items.first?.text, "Reply with exactly the word: pineapple")
         XCTAssertEqual(items.first?.delivery, .sent)
-        let agentId = try await creation.created.value
-        XCTAssertEqual(agentId, creation.agentId)
+        let agentId = try await task.make()
+        XCTAssertEqual(agentId, task.agentId)
         await conversation.stop()
-        await store.stop()
-    }
-
-    /// New work left empty goes: off the sidebar at once, even while the
-    /// daemon is still making it, and off the computer once it is made.
-    func testEmptyNewWorkGoesEverywhere() async throws {
-        let credentials = try await credentials()
-        let (api, _) = try daemon()
-        let store = Store(client: client(credentials))
-        await store.start()
-        var updates = store.updates.makeAsyncIterator()
-        let deadline = ContinuousClock.now + .seconds(20)
-        while ContinuousClock.now < deadline, let snapshot = await updates.next() {
-            if snapshot.live, snapshot.happySpaceId != nil { break }
-        }
-        let creation = await store.createV2()
-        let drawn = await updates.next()
-        XCTAssertTrue(drawn?.rows.contains { $0.spaceId == creation.spaceId } == true)
-        await store.discard(creation.spaceId)
-        // Gone in the very next snapshot, and never back.
-        let gone = await updates.next()
-        XCTAssertFalse(gone?.rows.contains { $0.spaceId == creation.spaceId } ?? true)
-        _ = try await creation.created.value
-        let until = ContinuousClock.now + .seconds(10)
-        var onComputer = true
-        while ContinuousClock.now < until {
-            let spaces = try call(api, ["GET", "/v0/spaces/sidebar"])["spaces"]?.arrayValue ?? []
-            onComputer = spaces.contains { $0["id"]?.stringValue == creation.spaceId }
-            if !onComputer { break }
-            try await Task.sleep(for: .milliseconds(250))
-        }
-        XCTAssertFalse(onComputer, "the computer kept it")
         await store.stop()
     }
 

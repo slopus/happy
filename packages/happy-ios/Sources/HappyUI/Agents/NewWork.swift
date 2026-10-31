@@ -10,15 +10,16 @@ protocol NavigationTransitionProviding: AnyObject {
     func navigationTransition(_ operation: UINavigationController.Operation, other: UIViewController) -> UIViewControllerAnimatedTransitioning?
 }
 
-/// New work's screen, as home's compose and a conversation's compose both
-/// open it: the empty conversation, named "Untitled" under its seedling,
+/// A new task's screen, as home's compose and a conversation's compose
+/// both open it: the empty conversation, named "New" under its seedling,
 /// the keyboard coming up with it, or after the first pick when it opens
-/// on the "+" sheet. Its first message makes the work, in place.
+/// on the "+" sheet. Nothing is made until its first message, which makes
+/// the task in place (`NewTask`).
 @MainActor
 enum NewWork {
     /// `prefill` is an ask typed in for the person, unsent (`ChatPrefill`).
-    static func chat(_ session: Session, creation: Creation, library: Bool = false, prefill: ChatPrefill? = nil) -> ChatViewController {
-        let chat = ChatViewController(session: session, agentId: creation.agentId, title: Strings.untitled, spaceId: creation.spaceId, seedling: .seedling(seed: creation.spaceId), creation: creation, prefill: prefill)
+    static func chat(_ session: Session, task: NewTask, library: Bool = false, prefill: ChatPrefill? = nil) -> ChatViewController {
+        let chat = ChatViewController(session: session, agentId: task.agentId, title: Strings.untitled, spaceId: nil, seedling: .seedling(seed: task.identity.taskId), newTask: task, prefill: prefill)
         chat.focusesOnOpen = !library
         chat.focusesAfterPick = library
         return chat

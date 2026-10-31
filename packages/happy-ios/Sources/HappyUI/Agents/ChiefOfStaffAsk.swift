@@ -30,8 +30,8 @@ enum ChiefOfStaffAsk {
     }
 
     /// Pushes the Chief of Staff's conversation over `controller` with
-    /// `ask` typed in. With none to be found, the same words open new work
-    /// instead, as home's compose opens it.
+    /// `ask` typed in. With none to be found, the same words open a new
+    /// task instead, as home's compose opens it.
     static func open(_ ask: ChatPrefill, session: Session, from controller: UIViewController) {
         guard !opening, let navigation = controller.navigationController else { return }
         if let chat = chat(session: session, snapshot: session.snapshot, ask: ask) {
@@ -42,16 +42,15 @@ enum ChiefOfStaffAsk {
         let store = session.store
         Task { @MainActor in
             defer { opening = false }
-            let going = await store.goToNewWork(under: nil)
-            Haptics.play(.newWork)
-            let creation = await going.work.value
+            let task = await store.newTask()
             // Gone from the screen meanwhile: nothing is pushed over another.
             guard navigation.topViewController === controller else { return }
-            navigation.pushViewController(NewWork.chat(session, creation: creation, prefill: ask), animated: true)
+            Haptics.play(.newWork)
+            navigation.pushViewController(NewWork.chat(session, task: task, prefill: ask), animated: true)
         }
     }
 
-    /// New work being made for an ask: a second tap meanwhile makes none.
+    /// A new task on its way for an ask: a second tap meanwhile opens none.
     private static var opening = false
 }
 #endif

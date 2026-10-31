@@ -82,7 +82,10 @@ extension Strings {
     public static let connecting = "Connecting…"
     public static let offline = "Offline — showing what this phone last saw."
     public static let unanswered = "The computer did not answer."
-    public static func newWorkFailed(_ reason: String) -> String { "New work could not be made. \(reason)" }
+    /// A new task's first message couldn't make the task; nothing was sent.
+    public static func newTaskFailed(_ reason: String) -> String {
+        "The task could not be started.\(reason.isEmpty ? "" : " \(reason)") Your text and attachments are still here."
+    }
 
     // New work (MakeStuffView.tsx).
     public static let introLine = "Say what it is — it’ll find its place."
