@@ -164,7 +164,9 @@ struct HomeRowDrawing: Sendable {
         let rowWidth = inCard ? HomeCardLayout.contentWidth(width) : width
         var separatorX: CGFloat = ProjectListMetrics.nameX
         func measured(_ value: String, _ style: TextStyle) -> Measurable {
-            if deferred { return .fixed(.zero) }
+            // Unmeasured, but as tall as the one line it is: a row's
+            // height follows its text.
+            if deferred { return .fixed(width: 0, height: value.isEmpty ? 0 : style.oneLine(in: environment.text)) }
             return Measurable { HomeRowMeasurer.measure(value, style: style, in: environment.text, width: $0, maxLines: 1) }
         }
         func text(_ value: String, _ style: TextStyle, _ color: ColorToken, _ frame: CGRect) {
@@ -241,7 +243,7 @@ struct HomeRowDrawing: Sendable {
         case .project(.archived(let row)): session(row, archived: true)
         case .flat(.dayHeader), .project(.section), .project(.archiveHeader):
             // Only the room between two cards.
-            plan.size = CGSize(width: width, height: HomeRowHeights.gap)
+            plan.size = CGSize(width: width, height: HomeCardLayout.Metrics.gap)
         case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
             let value = catalog(hidden ? "sidebar.showArchived" : "sidebar.hideArchived")
             let layout = ArchiveToggleLayout(width: width, label: measured(value, TextStyles.archiveToggle), paddingTop: grouped ? ArchiveToggleLayout.unbanded.top : ArchiveToggleLayout.Metrics.paddingTop, paddingBottom: grouped ? ArchiveToggleLayout.unbanded.bottom : ArchiveToggleLayout.Metrics.paddingBottom)

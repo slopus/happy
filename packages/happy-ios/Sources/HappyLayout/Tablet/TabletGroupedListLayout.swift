@@ -170,7 +170,10 @@ public struct TabletChatRowLayout: Equatable, Sendable {
         public static let cardMarginBottom: CGFloat = 8
         public static let cardRadius: CGFloat = 18
         public static let projectMarginBottom: CGFloat = 4
+        /// The row at the designed text size and smaller; a larger size
+        /// grows it to keep `paddingVertical` around its title.
         public static let rowHeight: CGFloat = 56
+        public static let paddingVertical: CGFloat = 8
         public static let paddingHorizontal: CGFloat = 16
         public static let indicatorSlot: CGFloat = 18
         public static let indicatorMarginLeft: CGFloat = 8
@@ -219,7 +222,12 @@ public struct TabletChatRowLayout: Equatable, Sendable {
         let line = input.hairline
         let top: CGFloat = input.first ? line : 0
         let rowWidth = max(0, width - 2 * M.cardMarginHorizontal - 2 * line)
-        row = CGRect(x: M.cardMarginHorizontal + line, y: top, width: rowWidth, height: M.rowHeight)
+        let slotRight = M.cardMarginHorizontal + line + rowWidth - M.paddingHorizontal - M.indicatorSlot
+        let titleX = M.cardMarginHorizontal + line + M.paddingHorizontal
+        let titleWidth = max(0, slotRight - M.indicatorMarginLeft - titleX)
+        let titleHeight = input.title.height(fitting: titleWidth)
+        let rowHeight = max(M.rowHeight, titleHeight + 2 * M.paddingVertical)
+        row = CGRect(x: M.cardMarginHorizontal + line, y: top, width: rowWidth, height: rowHeight)
         let cardBottom = input.last ? row.maxY + line : row.maxY + M.cardRadius + line
         let cardTop = input.first ? 0 : -(M.cardRadius + line)
         card = CGRect(
@@ -231,9 +239,6 @@ public struct TabletChatRowLayout: Equatable, Sendable {
         let slotX = row.maxX - M.paddingHorizontal - M.indicatorSlot
         indicator = CGRect(x: slotX, y: row.midY - M.indicatorSlot / 2, width: M.indicatorSlot, height: M.indicatorSlot)
         dot = CGRect(x: indicator.midX - M.dotSize / 2, y: indicator.midY - M.dotSize / 2, width: M.dotSize, height: M.dotSize)
-        let titleX = row.minX + M.paddingHorizontal
-        let titleWidth = max(0, slotX - M.indicatorMarginLeft - titleX)
-        let titleHeight = input.title.height(fitting: titleWidth)
         title = CGRect(x: titleX, y: row.midY - titleHeight / 2, width: titleWidth, height: titleHeight)
         divider = input.showsBorder ? CGRect(x: row.minX, y: row.maxY - line, width: row.width, height: line) : nil
         var height = row.maxY
@@ -259,7 +264,10 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
         public static let marginBottom: CGFloat = 1
         public static let lastMarginBottom: CGFloat = 12
         public static let radius: CGFloat = 12
+        /// The card at the designed text size and smaller; a larger size
+        /// grows it to keep `paddingVertical` around its lines.
         public static let rowHeight: CGFloat = 88
+        public static let paddingVertical: CGFloat = 12
         public static let paddingHorizontal: CGFloat = 16
         public static let avatarSize: CGFloat = 48
         public static let contentMarginLeft: CGFloat = 16
@@ -323,11 +331,27 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
         typealias M = Metrics
         let width = max(0, input.width)
         let line = input.hairline
+        let cardWidth = max(0, width - 2 * M.marginHorizontal)
+        let x = M.marginHorizontal + line + M.paddingHorizontal + M.avatarSize + M.contentMarginLeft
+        let contentWidth = max(0, M.marginHorizontal + cardWidth - line - M.paddingHorizontal - x)
+
+        let titleHeight = input.title.height(fitting: contentWidth)
+        let iconWidth = input.subtitleIcon.map { $0.width + M.subtitleIconGap } ?? 0
+        let subtitleWidth = max(0, contentWidth - iconWidth)
+        let subtitleSize = input.subtitle.size(fitting: subtitleWidth)
+        let subtitleLine = max(subtitleSize.height, input.subtitleIcon?.height ?? 0)
+        let subtitleGap = input.subtitleRow ? M.subtitleMarginBottom : 0
+        let slotHeight = M.dotSlotMarginTop + M.dotSlotHeight
+        let statusX = x + M.dotSize + M.dotSlotMarginRight
+        let statusHeight = input.status.height(fitting: max(0, contentWidth - M.dotSize - M.dotSlotMarginRight))
+        let statusRow = max(slotHeight, statusHeight)
+        let total = titleHeight + M.titleMarginBottom + subtitleLine + subtitleGap + statusRow
+
         card = CGRect(
             x: M.marginHorizontal,
             y: 0,
-            width: max(0, width - 2 * M.marginHorizontal),
-            height: M.rowHeight + 2 * line
+            width: cardWidth,
+            height: max(M.rowHeight, total + 2 * M.paddingVertical) + 2 * line
         )
         row = card.insetBy(dx: line, dy: line)
         avatar = CGRect(
@@ -342,21 +366,6 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
             width: M.draftOverlaySize,
             height: M.draftOverlaySize
         )
-        let x = avatar.maxX + M.contentMarginLeft
-        let contentWidth = max(0, row.maxX - M.paddingHorizontal - x)
-
-        let titleHeight = input.title.height(fitting: contentWidth)
-        let iconWidth = input.subtitleIcon.map { $0.width + M.subtitleIconGap } ?? 0
-        let subtitleWidth = max(0, contentWidth - iconWidth)
-        let subtitleSize = input.subtitle.size(fitting: subtitleWidth)
-        let subtitleLine = max(subtitleSize.height, input.subtitleIcon?.height ?? 0)
-        let subtitleGap = input.subtitleRow ? M.subtitleMarginBottom : 0
-        let slotHeight = M.dotSlotMarginTop + M.dotSlotHeight
-        let statusX = x + M.dotSize + M.dotSlotMarginRight
-        let statusHeight = input.status.height(fitting: max(0, contentWidth - M.dotSize - M.dotSlotMarginRight))
-        let statusRow = max(slotHeight, statusHeight)
-        let total = titleHeight + M.titleMarginBottom + subtitleLine + subtitleGap + statusRow
-
         var y = row.midY - total / 2
         title = CGRect(x: x, y: y, width: contentWidth, height: titleHeight)
         y += titleHeight + M.titleMarginBottom
@@ -379,24 +388,5 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
             height: statusHeight
         )
         size = CGSize(width: width, height: card.maxY + (input.last ? M.lastMarginBottom : M.marginBottom))
-    }
-}
-
-/// The grouped list's rows whose height never depends on their text, from
-/// their layouts fed empty content (as `HomeRowHeights`), so a changed row
-/// costs no text measurement on the main thread.
-public enum TabletGroupedRowHeights {
-    private static var empty: Measurable { .fixed(.zero) }
-
-    public static func chat(width: CGFloat, hairline: CGFloat, first: Bool, last: Bool, projectEnd: Bool) -> CGFloat {
-        TabletChatRowLayout(.init(
-            width: width, hairline: hairline, title: empty, first: first, last: last, projectEnd: projectEnd, showsBorder: false
-        )).size.height
-    }
-
-    public static func archived(width: CGFloat, hairline: CGFloat, last: Bool) -> CGFloat {
-        TabletArchivedRowLayout(.init(
-            width: width, hairline: hairline, title: empty, subtitle: empty, subtitleRow: false, status: empty, last: last
-        )).size.height
     }
 }

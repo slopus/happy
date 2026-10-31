@@ -139,8 +139,9 @@ final class DraftGlyphLayoutTests: XCTestCase {
     // MARK: The iPad sidebar's chats and archived cards
 
     /// The 14 glyph takes the dot's 18 slot, centred as Yoga centres a text
-    /// node (its offset floored to the pixel), and the 56 row and its
-    /// slot stay put whatever the title's size.
+    /// node (its offset floored to the pixel). The slot stays at the row's
+    /// end, centred in it, while the row is 56 or grows past it around a
+    /// taller title.
     func testAChatsDraftIsCentredInTheTrailingSlotAtEveryTextSize() {
         for (scale, hairline) in [(CGFloat(2), CGFloat(0.5)), (3, 1.0 / 3)] {
             var slots: [CGRect] = []
@@ -151,8 +152,9 @@ final class DraftGlyphLayoutTests: XCTestCase {
                     width: 300, hairline: hairline, title: text("Fix the build", lineHeight: titleLine, maxLines: 2),
                     first: true, last: true, projectEnd: false, showsBorder: false
                 ))
-                XCTAssertEqual(layout.row.height, 56)
-                slots.append(layout.indicator)
+                XCTAssertEqual(layout.row.height, max(56, layout.title.height + 16))
+                XCTAssertEqual(layout.indicator.midY, layout.row.midY)
+                slots.append(layout.indicator.offsetBy(dx: 0, dy: 28 - layout.row.midY))
             }
             let slot = slots[0]
             XCTAssertTrue(slots.allSatisfy { $0 == slot }, "@\(scale)x")
@@ -186,8 +188,9 @@ final class DraftGlyphLayoutTests: XCTestCase {
         XCTAssertTrue(layout.row.contains(layout.draftOverlay))
     }
 
-    /// The card is 88 at every text size, so the overlay never moves; the
-    /// lines beside it are centred and cut at the card.
+    /// The overlay keeps its place on the avatar at every text size; the
+    /// avatar and the lines beside it are centred in the card, which grows
+    /// past its 88 to hold the lines.
     func testTheArchivedOverlayKeepsItsPlaceAtEveryTextSize() {
         for category in TextSizeCategory.allCases {
             let m = TextScale(category).multiplier
@@ -201,8 +204,10 @@ final class DraftGlyphLayoutTests: XCTestCase {
                 last: true
             ))
             assertFrame(layout.draftOverlay, rect(layout.avatar.maxX - 16, layout.avatar.maxY - 16, 18, 18))
-            assertFrame(layout.avatar, rect(16 + 1.0 / 3 + 16, 1.0 / 3 + 20, 48, 48))
-            XCTAssertEqual(layout.size.height, TabletGroupedRowHeights.archived(width: 300, hairline: 1.0 / 3, last: true), "\(category)")
+            assertFrame(layout.avatar, rect(16 + 1.0 / 3 + 16, layout.row.midY - 24, 48, 48))
+            XCTAssertGreaterThanOrEqual(layout.row.height, 88, "\(category)")
+            XCTAssertGreaterThanOrEqual(layout.title.minY, layout.row.minY + 12 - 0.001, "\(category)")
+            XCTAssertLessThanOrEqual(layout.status.maxY, layout.row.maxY - 12 + 0.001, "\(category)")
         }
     }
 }

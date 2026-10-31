@@ -135,8 +135,8 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
     /// The row's height for these lines, with or without a workspace line
     /// under a glyph `branchIcon` tall, line counts and a draft glyph
     /// `draftIcon` tall (0 without one): what `init` makes `size.height`.
-    /// The draft glyph is fixed and under the row's 18, so home's row
-    /// heights leave it out (`HomeRowKind` doesn't carry it).
+    /// The draft glyph is fixed and under the row's 18, so it never moves
+    /// the height.
     public static func height(
         lines: Lines,
         workspace: Bool,

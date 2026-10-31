@@ -58,8 +58,8 @@ final class HomeCardLayoutTests: XCTestCase {
         let small = FlatSessionRowLayout.Lines(title: 17, project: 15, workspace: 14)
         XCTAssertEqual(FlatSessionRowLayout.height(lines: small, workspace: true), 80)
         XCTAssertEqual(FlatSessionRowLayout.height(lines: small, workspace: true, avatarSize: HomeCardLayout.Metrics.sessionAvatar), 76)
-        XCTAssertEqual(HomeRowHeights.flatSession(width: 393), 81)
-        XCTAssertEqual(HomeRowHeights.gap, 24)
+        XCTAssertEqual(FlatSessionRowLayout.height(lines: .designed, workspace: true, avatarSize: HomeCardLayout.Metrics.sessionAvatar), 81)
+        XCTAssertEqual(HomeCardLayout.Metrics.gap, 24)
     }
 
     /// A computer's heading stands over its card in line with the avatars,

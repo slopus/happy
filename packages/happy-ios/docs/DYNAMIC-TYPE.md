@@ -167,37 +167,24 @@ Following now:
   once theirs are in; a size change measures them again. A name taller
   than its tab is centred on it and cut by the capsule.
 
-- The iPad sidebar's list grouped by project: the "Bots" and day
-  headings, the computers' rules, the checkouts' headings (project,
-  branch, line changes), the archive toggle and the bots draw scaled,
-  and their heights are measured at that size off the main thread
-  (`TabletGroupedHeights`, from one line of each style, ceiled to the
-  screen's pixels as its label measures it, through the
-  HappyLayout layouts), keyed by the heading, the list's width and the
-  text size and screen scale, and measured again only for what changed.
-  A bot is home's flat row (FlatSessionRow.tsx) and is as tall as it is
-  on home: its lines are the ones `HomeTextEnvironment` works out (the
-  same `TextStyle.oneLine(in:)`), and its key is only whether it has the
-  workspace's line and line counts, so 81 at the designed size whatever
-  it shows, and 235⅔ with a workspace at the largest on a 3x screen; a
-  new size reconfigures every bot in the batch that moves the heights,
-  so a cell made ahead for a row off screen takes the new lines too.
-  A heading's key holds the person's words (a computer's name, a
-  project, a branch) but none of the app's: "Bots", the days and "Show
-  archived" are one line in any language, so the derivation never reads
-  the screens' language, which is the main thread's. A new text size or screen scale goes through the sidebar's
-  pipeline: every heading is measured again there, and only rows whose
-  height moved make the table ask again. The chats (56,
+- The iPad sidebar's list grouped by project, on home's UltraList: the
+  "Bots" and day headings, the computers' rules, the checkouts'
+  headings (project, branch, line changes), the archive toggle and the
+  bots draw scaled, and every row's plan is made off the main thread
+  from `HomeTextEnvironment` at that size, as home's are
+  (`HomeRowDrawing.makeTablet`). A bot is home's flat row
+  (FlatSessionRow.tsx) and is as tall as it is on home: 81 at the
+  designed size whatever it shows, and 235⅔ with a workspace at the
+  largest on a 3x screen. A new text size or screen scale is the list's
+  own trait change: it asks for the new environment and plans its rows
+  again, with no new rows from the sidebar's derivation. The chats (56,
   ActiveSessionsGroupCompact.tsx `sessionRow`) and the archived cards
-  (88, SessionsList.tsx `sessionItem`) are fixed heights in RN, so they
-  stay that tall at every size and draw their text scaled inside,
-  centred. What outgrows them is cut where RN cuts it: a chat's at its
-  own 56 row (it sits in react-native-gesture-handler 2.30's Swipeable,
-  whose container is `overflow: 'hidden'`, Swipeable.tsx 585), not at
-  the card, so it never spills over the rows next to it; an archived
-  card's at the card's edge, borders and rounded corners included
-  (`sessionItemContainer`'s `overflow: 'hidden'`). The glyphs, the
-  faces and the `+` keep their size. Each cell sets the trait on itself,
+  (88, SessionsList.tsx `sessionItem`) are fixed heights in RN, which
+  cuts what outgrows them. Here they keep those heights while their
+  text fits with 8 (a chat's title) or 12 (a card's lines) above and
+  below, and grow past them to keep that room, the text centred, so
+  nothing is cut; a chat's card runs on under the next chat's row as
+  before. The glyphs, the faces and the `+` keep their size. Each cell sets the trait on itself,
   and the notices over the list (home's header) too. They are measured
   off the main thread as home's are (`HomeRowMeasurer.headerHeight`),
   keyed by their words, the list's width, how wide a group may grow and
@@ -263,8 +250,11 @@ Following now:
   (`FlatSessionRowLayout.Lines`). The headings are their line and
   their padding, as before. The project card (52 + 8), the worktree
   rows (48) and the bots' and archived chats' rows (48) are fixed
-  `height`s in RN (ProjectHomeList.tsx), so they stay that tall and
-  their text, scaled, is centred in them and spills past when taller.
+  `height`s in RN (ProjectHomeList.tsx), where scaled text spills past
+  them. Here they keep those heights while their text fits with 12
+  above and below (`ProjectListMetrics.rowHeight`), so up to the
+  designed size, and grow past them to keep that room, the text
+  centred; nothing runs past a row.
   The notices are measured off the main thread at the size, keyed by
   their words, the list's width, how wide a group may grow and the
   environment; a height for anything else is refused. The first show

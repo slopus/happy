@@ -52,9 +52,8 @@ For the real-device route measurements and their limits, see
   diffable snapshot and never reloads after the first load. Flat and grouped
   rows never share an id, so switching layouts is a delete plus an insert,
   and a reconfigured row always keeps its cell class.
-- Session, project-card, worktree and chat rows are one fixed height at any
-  width (`HomeRowHeights`, checked by `HomeRowHeightTests`), so they are
-  never measured.
+- Every row's plan, its height with it, is made off the main thread
+  (`HomeRowDrawing`), so a row is never measured on it.
 - Home's stamps and day headings are written at the time of the
   derivation, and home is derived again, off the main thread, at the next
   instant one can read differently (`HomeClockBoundary`): midnight, or the

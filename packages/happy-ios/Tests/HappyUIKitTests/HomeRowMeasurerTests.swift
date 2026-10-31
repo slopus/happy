@@ -79,23 +79,6 @@ final class HomeRowMeasurerTests: XCTestCase {
         XCTAssertEqual(environment.rows.sessionLines, .init(title: 22, project: 20, workspace: 18, changes: 43.0 / 3))
     }
 
-    /// The session list measures each heading as the text its cell is
-    /// configured with, and leaves the constant rows to their layouts.
-    func testTheSessionListMeasuresHeadingsAsItsCellsShowThem() {
-        typealias List = SessionListViewController
-        // Headings are gaps between cards now, the same at every size.
-        XCTAssertNil(List.kind(.flat(.dayHeader(.today)), grouped: false))
-        XCTAssertNil(List.kind(.project(.archiveHeader(.daysAgo(3))), grouped: true))
-        XCTAssertEqual(List.kind(.flat(.archiveToggle(hidden: true)), grouped: false), .archiveToggle(label: Strings.Sidebar.showArchived, banded: true))
-        XCTAssertEqual(List.kind(.project(.archiveToggle(hidden: false)), grouped: true), .archiveToggle(label: Strings.Sidebar.hideArchived, banded: false))
-        XCTAssertEqual(List.kind(.flat(.session(Self.session(workspace: "fix-login"))), grouped: false), .flatSession(workspace: true, changes: false))
-        XCTAssertEqual(List.kind(.flat(.session(Self.session(workspace: nil))), grouped: false), .flatSession(workspace: false, changes: false))
-        XCTAssertEqual(
-            List.kind(.flat(.session(Self.session(workspace: nil, changes: Self.changes))), grouped: false),
-            .flatSession(workspace: false, changes: true)
-        )
-    }
-
     /// The banners take their words on the main thread, where the screens'
     /// strings live; measuring them off it reads no strings and gives what
     /// it gives on the main thread.

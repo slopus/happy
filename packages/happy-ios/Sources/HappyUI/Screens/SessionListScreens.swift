@@ -169,23 +169,6 @@ final class SessionListViewController: UIViewController {
         return changeset.touchedRows
     }
 
-    /// What a row's height is made of: a heading's text as the list draws
-    /// it, and for a toggle whether it heads a band; whether a session has
-    /// a workspace line and line counts.
-    static func kind(_ item: HomeListRow, grouped: Bool) -> HomeRowKind? {
-        switch item {
-        case .flat(.session(let row)):
-            .flatSession(workspace: row.workspaceName != nil, changes: row.changes != nil)
-        case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
-            .archiveToggle(label: hidden ? Strings.Sidebar.showArchived : Strings.Sidebar.hideArchived, banded: !grouped)
-        case .project(.machine(_, let name)):
-            .machineHeader(name: name)
-        case .flat(.dayHeader), .project(.section), .project(.archiveHeader), .project(.project), .project(.worktree),
-             .project(.worktreeToggle), .project(.bot), .project(.task), .project(.archived):
-            nil
-        }
-    }
-
     // MARK: Text size
 
     /// Asks for the environment of the screen's text size and scale, made

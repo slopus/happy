@@ -236,9 +236,12 @@ final class HomeRendererUITests: XCTestCase {
         let app = launch(count: 1000)
         let list = app.descendants(matching: .any)["home.ultralist"]
         XCTAssertTrue(list.waitForExistence(timeout: 15))
+        // Tapped right after the flings, with no wait for them to settle,
+        // it opens Settings at once. Settings' bar has no title; its root
+        // is "settings".
         for _ in 0..<4 { list.swipeUp(velocity: .fast) }
         app.buttons["Settings"].tap()
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.descendants(matching: .any)["settings"].waitForExistence(timeout: 5))
     }
 
     func testGroupedHomeOpensChat() {

@@ -35,21 +35,6 @@ final class SecondaryTextSizeTests: XCTestCase {
         view.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
     }
 
-    // MARK: The sidebar's bots
-
-    func testTheSidebarsBotsTakeHomesLinesAtEveryTextSize() async {
-        for category in categories {
-            for scale in scales {
-                let text = TextEnvironment(scale: TextScale(TextSizeCategory(category)), displayScale: scale)
-                let metrics = TabletGroupedHeights.metrics(text)
-                // The lines home's flat rows take at this size.
-                let home = await HomeTextEnvironment.make(text)
-                XCTAssertEqual(metrics.sessionLines, home.rows.sessionLines, category.rawValue)
-                XCTAssertEqual(metrics.branchIcon, home.rows.branchIcon.height, category.rawValue)
-            }
-        }
-    }
-
     // MARK: Session info
 
     func testATrailingDetailIsFourteenTimesTheMultiplier() {

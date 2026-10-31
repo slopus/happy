@@ -121,9 +121,9 @@ final class HomeListTextSizeTests: XCTestCase {
         XCTAssertEqual(environment.rows.sessionLines.project, 215.0 / 3)
         XCTAssertEqual(environment.rows.sessionLines.workspace, 193.0 / 3)
         XCTAssertEqual(environment.rows.sessionLines.changes, 154.0 / 3)
-        XCTAssertEqual(HomeRowMeasurer.height(.flatSession(workspace: true, changes: false), width: 393, environment: environment), Self.largestWithWorkspace)
-        XCTAssertEqual(HomeRowMeasurer.height(.flatSession(workspace: true, changes: true), width: 393, environment: environment), Self.largestWithWorkspace)
-        XCTAssertEqual(HomeRowMeasurer.height(.flatSession(workspace: false, changes: true), width: 393, environment: environment), Self.largestWithOnlyChanges)
+        XCTAssertEqual(Self.sessionHeight(workspace: true, changes: false, environment), Self.largestWithWorkspace)
+        XCTAssertEqual(Self.sessionHeight(workspace: true, changes: true, environment), Self.largestWithWorkspace)
+        XCTAssertEqual(Self.sessionHeight(workspace: false, changes: true, environment), Self.largestWithOnlyChanges)
         // The glyphs and the hairline keep their size.
         XCTAssertEqual(environment.rows.branchIcon, large.rows.branchIcon)
         XCTAssertEqual(environment.rows.machineIcon, large.rows.machineIcon)
@@ -257,8 +257,19 @@ final class HomeListTextSizeTests: XCTestCase {
         shown.list.updateTraitsIfNeeded()
     }
 
+    /// A session's row in a card from `environment`'s lines alone.
+    static func sessionHeight(workspace: Bool, changes: Bool, _ environment: HomeTextEnvironment) -> CGFloat {
+        FlatSessionRowLayout.height(
+            lines: environment.rows.sessionLines,
+            workspace: workspace,
+            changes: changes,
+            branchIcon: environment.rows.branchIcon.height,
+            avatarSize: HomeCardLayout.Metrics.sessionAvatar
+        )
+    }
+
     /// Each loaded row is as tall as it was planned, and each session's
-    /// plan is as tall as the measurer says at the environment shown.
+    /// plan is as tall as its lines at the environment shown.
     private func assertRowsAreTheirPlans(_ shown: Shown, _ model: HomeListModel, _ message: String, line: UInt = #line) throws {
         let environment = try XCTUnwrap(shown.list.textEnvironment, message, line: line)
         XCTAssertFalse(shown.rows.loadedIndexRange.isEmpty, message, line: line)
@@ -267,10 +278,11 @@ final class HomeListTextSizeTests: XCTestCase {
             assertSamePixel(frame.height, row.plan.size.height, scale: shown.scale, "\(row.identity), \(message)", line: line)
         }
         for (id, item) in zip(model.ids, model.rows) {
-            guard let kind = SessionListViewController.kind(item, grouped: false), case .flatSession = kind,
+            guard case .flat(.session(let session)) = item,
                   let index = shown.index(id), let row = shown.rows.items[index] as? HomeUltraRow else { continue }
-            assertSamePixel(row.plan.size.height, HomeRowMeasurer.height(kind, width: 393, environment: environment), scale: shown.scale,
-                            "\(row.identity) against the measurer, \(message)", line: line)
+            let expected = Self.sessionHeight(workspace: session.workspaceName != nil, changes: session.changes != nil, environment)
+            assertSamePixel(row.plan.size.height, expected, scale: shown.scale,
+                            "\(row.identity) against its lines, \(message)", line: line)
         }
     }
 

@@ -30,9 +30,6 @@ final class TabletGroupedListViewController: UIViewController {
     private var ultraText: HomeTextEnvironment?
     private var ultraTextRequested: TextEnvironment?
     private var ultraTextTask: Task<Void, Never>?
-    /// The headings' and bots' heights for `model`'s rows, measured off the
-    /// main thread at this screen's text size and the list's width.
-    private(set) var headings = TabletHeadingHeights<TabletGroupedRow.ID>()
     private let banners = HomeListHeaderView()
     private var bannerState: HomeBanners?
     /// What the header was last measured for; its height lands only for
@@ -129,31 +126,14 @@ final class TabletGroupedListViewController: UIViewController {
         sizeHeader()
     }
 
-    /// Shows `next`, with `headings` its headings' heights. Returns how
-    /// many rows `changeset` touched.
+    /// Shows `next`. Returns how many rows `changeset` touched.
     @discardableResult
-    func apply(
-        _ next: TabletGroupedList,
-        changeset: RowChangeset,
-        headings: TabletHeadingHeights<TabletGroupedRow.ID>,
-        moved: Set<TabletGroupedRow.ID>,
-        animated: Bool
-    ) -> Int {
+    func apply(_ next: TabletGroupedList, changeset: RowChangeset, animated: Bool) -> Int {
         let previous = model
         model = next
-        self.headings = headings
         updateUltraList()
         if next.offline != previous.offline { updateBanners() }
         return changeset.touchedRows
-    }
-
-    /// New heights for the rows as they are: a new text size or width.
-    /// Returns how many rows moved.
-    @discardableResult
-    func applyHeadings(_ headings: TabletHeadingHeights<TabletGroupedRow.ID>, moved: Set<TabletGroupedRow.ID>) -> Int {
-        self.headings = headings
-        updateUltraList()
-        return moved.count
     }
 
     // MARK: Banners

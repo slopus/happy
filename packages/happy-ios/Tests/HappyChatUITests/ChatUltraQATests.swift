@@ -1221,22 +1221,21 @@ final class ChatUltraQATests: XCTestCase {
                     step("fling the opened chat", quiet: 2.5, expect: .scroll) { fling(older: true) }
                 }
                 if label == "short", pass == "warm" {
-                    // The header's avatar, labelled with the chat's title; a
-                    // worktree tab below the header can carry the same label.
-                    let avatar = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", title)).allElementsBoundByIndex
-                        .first { $0.frame.midX > size.width * 0.75 && $0.frame.midY < 100 && $0.frame.width < 70 }
-                    if let avatar {
-                        let spot = avatar.frame
+                    // The title's capsule opens Details; at the right of the
+                    // bar is only Compose.
+                    let capsule = app.descendants(matching: .any)["chat-capsule"]
+                    if capsule.exists {
+                        let spot = capsule.frame
                         tap(CGPoint(x: spot.midX, y: spot.midY))
                         Thread.sleep(forTimeInterval: 1.5)
                         screenshot("details")
                         let texts = app.staticTexts.allElementsBoundByIndex.prefix(40).map { $0.label }.filter { !$0.isEmpty }
                         attach("\(clip) details texts", "\(texts)")
-                        require("header avatar opens Details with content", texts.count >= 4, "\(texts.count) texts")
+                        require("header title opens Details with content", texts.count >= 4, "\(texts.count) texts")
                         back()
                         Thread.sleep(forTimeInterval: 1.2)
                     } else {
-                        require("header avatar opens Details with content", false, "no header avatar")
+                        require("header title opens Details with content", false, "no title capsule")
                     }
                 }
                 backToHome()
@@ -1667,10 +1666,10 @@ final class ChatUltraQATests: XCTestCase {
             XCTFail("not in a chat for Details")
             return
         }
-        let avatar = app.descendants(matching: .any).allElementsBoundByIndex.prefix(80)
-            .first { $0.elementType != .window && $0.frame.width < 70 && $0.frame.width > 30 && $0.frame.midX > size.width * 0.8 && $0.frame.midY < 100 && $0.frame.midY > 40 }
-        if let avatar {
-            let spot = avatar.frame
+        // The title's capsule opens Details; at the right is only Compose.
+        let capsule = app.descendants(matching: .any)["chat-capsule"]
+        if capsule.exists {
+            let spot = capsule.frame
             mark("open Details")
             tap(CGPoint(x: spot.midX, y: spot.midY))
             Thread.sleep(forTimeInterval: 3)
@@ -1680,7 +1679,7 @@ final class ChatUltraQATests: XCTestCase {
             back()
             Thread.sleep(forTimeInterval: 1.5)
         } else {
-            XCTFail("no header avatar to open Details")
+            XCTFail("no title capsule to open Details")
         }
         back()
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 10), "back on Home")

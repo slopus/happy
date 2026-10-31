@@ -35,8 +35,6 @@ struct HomeTextEnvironment: Equatable, Sendable {
         }
         self.text = text
         rows = HomeRowMetrics(
-            archiveToggleLine: line(TextStyles.archiveToggle),
-            machineLine: line(TextStyles.projectMachine),
             machineIcon: icon("desktop-outline", 12),
             hairline: 1 / max(scale, 1),
             sessionLines: FlatSessionRowLayout.Lines(
@@ -105,19 +103,11 @@ struct HomeBanners: Hashable, Sendable {
     var isEmpty: Bool { notices.isEmpty }
 }
 
-/// Home list heights without views: the rows, from their kinds and the
-/// lines of a `HomeTextEnvironment`, and the notices above them, measured
-/// off the main thread. Synchronous and free of shared state; every
-/// TextKit object lives for one call.
+/// Home list text and heights without views: the rows' text as their
+/// plans measure it, and the notices above them, off the main thread.
+/// Synchronous and free of shared state; every TextKit object lives for
+/// one call.
 enum HomeRowMeasurer {
-    nonisolated static func heights(_ kinds: [HomeRowKind], width: CGFloat, environment: HomeTextEnvironment) -> [CGFloat] {
-        kinds.map { HomeRowHeights.height($0, width: width, metrics: environment.rows) }
-    }
-
-    nonisolated static func height(_ kind: HomeRowKind, width: CGFloat, environment: HomeTextEnvironment) -> CGFloat {
-        HomeRowHeights.height(kind, width: width, metrics: environment.rows)
-    }
-
     /// The table header's height; 0 when there are no notices. `maxWidth`
     /// is `ContentWidth.maxWidth`, how wide a notice's group may grow.
     nonisolated static func headerHeight(_ banners: HomeBanners, width: CGFloat, maxWidth: CGFloat, environment: HomeTextEnvironment) -> CGFloat {

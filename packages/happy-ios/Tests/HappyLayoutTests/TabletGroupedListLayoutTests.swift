@@ -182,18 +182,38 @@ final class TabletGroupedListLayoutTests: XCTestCase {
         assertSize(layout.size, CGSize(width: 300, height: 101))
     }
 
-    func testFixedHeightsMatchRealContent() {
-        let chat = TabletChatRowLayout(.init(
-            width: 300, hairline: 0.5, title: text("A title long enough to wrap onto a second line", lineHeight: 20, maxLines: 2),
-            first: true, last: true, projectEnd: true, showsBorder: false
-        ))
-        XCTAssertEqual(TabletGroupedRowHeights.chat(width: 300, hairline: 0.5, first: true, last: true, projectEnd: true), chat.size.height)
-        XCTAssertEqual(TabletGroupedRowHeights.chat(width: 300, hairline: 0.5, first: false, last: false, projectEnd: false), 56)
-        let archived = TabletArchivedRowLayout(.init(
-            width: 300, hairline: 0.5, title: text("Old chat", lineHeight: 20), subtitle: text("project", lineHeight: 18),
-            subtitleRow: true, status: text("online", lineHeight: 16), last: false
-        ))
-        XCTAssertEqual(TabletGroupedRowHeights.archived(width: 300, hairline: 0.5, last: false), archived.size.height)
-        XCTAssertEqual(TabletGroupedRowHeights.archived(width: 300, hairline: 0.5, last: true), 101)
+    /// A chat's row is 56 and an archived card 88 while their text fits
+    /// with room around it; taller text grows them to keep that room.
+    func testTheRowsGrowOnlyPastTheirDesignedHeight() {
+        func chat(_ title: CGFloat) -> TabletChatRowLayout {
+            TabletChatRowLayout(.init(
+                width: 300, hairline: 0.5, title: .fixed(width: 0, height: title),
+                first: false, last: false, projectEnd: false, showsBorder: false
+            ))
+        }
+        // Two lines of 20 fill the designed row exactly.
+        XCTAssertEqual(chat(40).row.height, 56)
+        XCTAssertEqual(chat(20).row.height, 56)
+        let tall = chat(60)
+        XCTAssertEqual(tall.row.height, 76)
+        assertFrame(tall.title, rect(tall.title.minX, tall.row.minY + 8, tall.title.width, 60))
+        XCTAssertEqual(tall.indicator.midY, tall.row.midY)
+
+        func archived(_ title: CGFloat, _ subtitle: CGFloat, _ status: CGFloat) -> TabletArchivedRowLayout {
+            TabletArchivedRowLayout(.init(
+                width: 300, hairline: 0.5, title: .fixed(width: 0, height: title), subtitle: .fixed(width: 0, height: subtitle),
+                subtitleRow: true, status: .fixed(width: 0, height: status), last: true
+            ))
+        }
+        // 20 + 2 + 18 + 4 + the status's 18 slot, with 12 above and below,
+        // is under the designed 88.
+        XCTAssertEqual(archived(20, 18, 16).size.height, 101)
+        let large = archived(40, 36, 32)
+        // 40 + 2 + 36 + 4 + 32.
+        XCTAssertEqual(large.row.height, 114 + 24)
+        XCTAssertEqual(large.title.minY, large.row.minY + 12)
+        XCTAssertEqual(large.status.maxY, large.row.maxY - 12)
+        XCTAssertEqual(large.avatar.midY, large.row.midY)
+        XCTAssertEqual(large.size.height, large.card.maxY + 12)
     }
 }

@@ -255,23 +255,29 @@ final class HomeUltraListTests: XCTestCase {
         }
     }
 
-    /// The tablet's plans: a heading is as tall as the grouped list
-    /// measures it off the main thread (`TabletGroupedHeights`), at every
-    /// width and text size, and draws its title one line of its style; the
-    /// chats' and archived cards' rows keep their height at every size.
-    func testTabletPlansAreTheirMeasuredHeadings() async throws {
+    /// The tablet's plans at every width and text size: a heading draws
+    /// its title one line of its style, every row holds its text, and the
+    /// chats' and archived cards' rows keep their designed height up to the
+    /// designed size and grow past it.
+    func testTabletPlansHoldTheirTextAtEverySize() async throws {
         _ = await TranslationCatalog.load("en")
-        var fixed: [String: CGFloat] = [:]
-        for category in [UIContentSizeCategory.extraSmall, .large, .accessibilityExtraExtraExtraLarge] {
+        var heights: [String: [UIContentSizeCategory: CGFloat]] = [:]
+        let categories = [UIContentSizeCategory.extraSmall, .large, .accessibilityExtraExtraExtraLarge]
+        for category in categories {
             let text = TextEnvironment(scale: TextScale(TextSizeCategory(category)), displayScale: 2)
             let environment = await HomeTextEnvironment.make(text)
-            let metrics = TabletGroupedHeights.metrics(text)
             for width in [CGFloat(280), 320] {
                 let at = "\(category.rawValue) at \(width)"
+                func assertHoldsItsText(_ plan: HomeRowDrawing, _ row: TabletGroupedRow) {
+                    XCTAssertEqual(plan.size.width, width, "\(row) \(at)")
+                    for case .text(let value, _, _, let frame) in plan.marks {
+                        XCTAssertGreaterThanOrEqual(frame.minY, -0.001, "\(value) in \(row) \(at)")
+                        XCTAssertLessThanOrEqual(frame.maxY, plan.size.height + 0.001, "\(value) in \(row) \(at)")
+                    }
+                }
                 func check(_ row: TabletGroupedRow, title: String, style: TextStyle) throws {
                     let plan = HomeRowDrawing.makeTablet(row, width: width, selected: true, environment: environment, dark: true)
-                    let heading = try XCTUnwrap(TabletGroupedHeights.heading(row), "\(row)")
-                    XCTAssertEqual(plan.size, CGSize(width: width, height: TabletGroupedRowHeights.heading(heading, width: width, metrics: metrics)), "\(row) \(at)")
+                    assertHoldsItsText(plan, row)
                     let frame = try XCTUnwrap(plan.marks.lazy.compactMap { mark -> CGRect? in
                         if case .text(let value, _, _, let frame) = mark, value == title { return frame }
                         return nil
@@ -288,18 +294,22 @@ final class HomeUltraListTests: XCTestCase {
                 for first in [false, true] {
                     for last in [false, true] {
                         let chat = TabletChatRow(id: "c", title: "A chat title with enough words for two lines", connected: true, indicator: .dot(.working, pulsing: false), showsBorder: !last, first: first, last: last, projectEnd: last)
-                        let height = HomeRowDrawing.makeTablet(.chat(chat), width: width, selected: true, environment: environment, dark: true).size.height
-                        XCTAssertEqual(height, fixed["chat \(first) \(last) \(width)", default: height], "a chat's row followed the text, \(at)")
-                        fixed["chat \(first) \(last) \(width)"] = height
+                        let plan = HomeRowDrawing.makeTablet(.chat(chat), width: width, selected: true, environment: environment, dark: true)
+                        assertHoldsItsText(plan, .chat(chat))
+                        heights["chat \(first) \(last) \(width)", default: [:]][category] = plan.size.height
                     }
                 }
                 let session = SessionRecord(id: "a", seq: 1, createdAt: 0, updatedAt: 0, active: false, activeAt: 0, projectId: nil, metadataVersion: 1, metadataCipher: "", metadata: nil, agentStateVersion: 0, agentStateCipher: nil, agentState: nil, dataKeyCipher: "", decryptable: true, thinking: false, unread: false)
                 var archived = TabletArchivedRow(session, row: HomeRowMeasurerTests.session("a", workspace: nil), now: 10_000, first: true)
                 archived.last = true
-                let height = HomeRowDrawing.makeTablet(.archived(archived), width: width, selected: true, environment: environment, dark: true).size.height
-                XCTAssertEqual(height, fixed["archived \(width)", default: height], "an archived card followed the text, \(at)")
-                fixed["archived \(width)"] = height
+                let plan = HomeRowDrawing.makeTablet(.archived(archived), width: width, selected: true, environment: environment, dark: true)
+                assertHoldsItsText(plan, .archived(archived))
+                heights["archived \(width)", default: [:]][category] = plan.size.height
             }
+        }
+        for (row, at) in heights {
+            XCTAssertEqual(at[.extraSmall], at[.large], "\(row) is its designed height up to the designed size")
+            XCTAssertGreaterThan(at[.accessibilityExtraExtraExtraLarge] ?? 0, at[.large] ?? 0, "\(row) grows with its text")
         }
     }
 

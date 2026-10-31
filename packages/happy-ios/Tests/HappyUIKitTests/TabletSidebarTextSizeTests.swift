@@ -22,8 +22,9 @@ private struct NoSockets: WebSocketConnector {
 
 /// The sidebar's grouped list at the person's text size, on UltraList in a
 /// window: its bots as tall as home's rows at that size, taking the new
-/// heights when it changes, and the notices over them measured off the
-/// main thread as home's are, landing only for what was last asked for.
+/// heights when it changes with nothing applied, and the notices over them
+/// measured off the main thread as home's are, landing only for what was
+/// last asked for.
 @MainActor
 final class TabletSidebarTextSizeTests: XCTestCase {
     private let width: CGFloat = 320
@@ -69,15 +70,6 @@ final class TabletSidebarTextSizeTests: XCTestCase {
         )
     }
 
-    /// The derivation's heights for `list` at `text`, from `state`.
-    private func derive(_ list: TabletGroupedList, _ text: TextEnvironment, from state: TabletSidebarViewState? = nil) throws -> (output: TabletSidebarViewUpdate, state: TabletSidebarViewState) {
-        let wake = ClockWake()
-        defer { wake.cancel() }
-        var applied = state ?? TabletSidebarViewState()
-        applied.feeds.grouped = list
-        return try XCTUnwrap(TabletGroupedHeights.derive(TabletSidebarViewInput(width: width, text: text), applied: applied, wake: wake))
-    }
-
     @MainActor
     private struct Shown {
         let window: UIWindow
@@ -93,12 +85,11 @@ final class TabletSidebarTextSizeTests: XCTestCase {
         var banner: CGFloat? { (rows.items.first { $0.identity == "home:banner" } as? HomeUltraRow)?.plan.size.height }
     }
 
-    private func show(_ list: TabletGroupedList, category: UIContentSizeCategory, account: AccountController) throws -> (Shown, TabletSidebarViewState) {
+    private func show(_ list: TabletGroupedList, category: UIContentSizeCategory, account: AccountController) throws -> Shown {
         let session = try XCTUnwrap(account.session)
         let context = AppContext(account: account, variant: .development, version: "test")
         let grouped = TabletGroupedListViewController(context: context, session: session)
-        let derived = try derive(list, text(category))
-        grouped.apply(list, changeset: RowChangeset(), headings: derived.output.headings, moved: [], animated: false)
+        grouped.apply(list, changeset: RowChangeset(), animated: false)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: 900))
         window.traitOverrides.preferredContentSizeCategory = category
         window.traitOverrides.displayScale = 3
@@ -107,7 +98,7 @@ final class TabletSidebarTextSizeTests: XCTestCase {
         window.updateTraitsIfNeeded()
         grouped.view.layoutIfNeeded()
         let rows = try XCTUnwrap((grouped.view as? HomeUltraListView)?.list)
-        return (Shown(window: window, grouped: grouped, rows: rows, account: account), derived.state)
+        return Shown(window: window, grouped: grouped, rows: rows, account: account)
     }
 
     private func until(seconds: Double = 5, _ condition: () -> Bool) async throws -> Bool {
@@ -118,13 +109,17 @@ final class TabletSidebarTextSizeTests: XCTestCase {
         return condition()
     }
 
-    /// Each bot's row is as tall as the derivation measured it, off the
-    /// main thread, at the size shown.
+    /// Each bot's row is as tall as home's session rows at the size shown.
     private func assertBotsAreTheirRows(_ shown: Shown, _ list: TabletGroupedList, text: TextEnvironment, _ message: String, line: UInt = #line) async throws {
-        XCTAssertEqual(shown.grouped.headings.metrics, TabletGroupedHeights.metrics(text), message, line: line)
+        let environment = await HomeTextEnvironment.make(text)
         for (id, row) in zip(list.ids, list.rows) {
-            guard case .bot = row else { continue }
-            let expected = try XCTUnwrap(shown.grouped.headings.height(id), message, line: line)
+            guard case .bot(let session) = row else { continue }
+            let expected = FlatSessionRowLayout.height(
+                lines: environment.rows.sessionLines,
+                workspace: session.workspaceName != nil,
+                changes: session.changes != nil,
+                branchIcon: environment.rows.branchIcon.height
+            )
             let landed = try await until { shown.height(id).map { abs($0 - expected) < 0.5 } ?? false }
             XCTAssertTrue(landed, "\(id) is \(shown.height(id) ?? 0), not \(expected), \(message)", line: line)
         }
@@ -133,18 +128,14 @@ final class TabletSidebarTextSizeTests: XCTestCase {
     func testTheBotsFollowTheTextSize() async throws {
         let account = try await signedIn()
         let list = list()
-        let (shown, state) = try show(list, category: .large, account: account)
+        let shown = try show(list, category: .large, account: account)
         defer { shown.window.isHidden = true }
         try await assertBotsAreTheirRows(shown, list, text: text(.large), "large")
         XCTAssertEqual(shown.height(list.ids[1]), 81)
 
-        // A new size: every bot takes its new height.
+        // A new size: every bot takes its new height, with no new rows.
         shown.window.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
         shown.window.updateTraitsIfNeeded()
-        let larger = try derive(list, text(.accessibilityExtraExtraExtraLarge), from: state)
-        XCTAssertNil(larger.output.rows)
-        XCTAssertEqual(larger.output.moved, Set(list.ids))
-        XCTAssertEqual(shown.grouped.applyHeadings(larger.output.headings, moved: larger.output.moved), 4)
         try await assertBotsAreTheirRows(shown, list, text: text(.accessibilityExtraExtraExtraLarge), "largest")
         XCTAssertGreaterThan(try XCTUnwrap(shown.height(list.ids[2])), try XCTUnwrap(shown.height(list.ids[1])))
         await account.signOut()
@@ -152,7 +143,7 @@ final class TabletSidebarTextSizeTests: XCTestCase {
 
     func testOnlyAHeaderMeasuredForWhatIsShownLands() async throws {
         let account = try await signedIn()
-        let (shown, _) = try show(list(), category: .large, account: account)
+        let shown = try show(list(), category: .large, account: account)
         defer { shown.window.isHidden = true }
         await shown.grouped.headerTask?.value
         let shownBanner = try await until { shown.banner != nil }
