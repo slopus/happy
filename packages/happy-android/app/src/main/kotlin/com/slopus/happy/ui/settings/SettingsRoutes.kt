@@ -44,6 +44,13 @@ import com.slopus.happy.model.settings.HttpConnectApi
 import com.slopus.happy.model.settings.Languages
 import com.slopus.happy.ui.RestoreManualRoute
 import com.slopus.happy.ui.SettingsRoute
+import com.slopus.happy.OpenAccount
+import com.slopus.happy.ui.LocalAccountSwitcher
+import com.slopus.happy.ui.AccountSwitcher
+import com.slopus.happy.ui.ProvideSettingsDissolve
+import com.slopus.happy.ui.connection.AgentConnectionSettings
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
 import com.slopus.happy.accounts.accountId
 import com.slopus.happy.ui.connection.rememberAccountsCardActions
 import com.slopus.happy.ui.home.rememberAccountMenu
@@ -71,10 +78,9 @@ import com.slopus.happy.ui.voice.VoiceSettingsRoute
 @Serializable data object ConnectClaudeRoute
 @Serializable data object ChangelogRoute
 
-/** Settings and its screens. [SettingsRoute] is the entry point. */
+/** Settings' screens; [SettingsRoute] itself is HappyApp's ([AccountSettings]). */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     voiceRoutes(graph, nav)
-    composable<SettingsRoute> { SettingsIndex(graph, nav) }
     composable<AccountRoute> { entry -> ProvideRowReveal(entry.toRoute<AccountRoute>().reveal) { Account(graph, nav) } }
     composable<BackupRoute> { entry -> ProvideRowReveal(entry.toRoute<BackupRoute>().reveal) { Backup(graph, nav) } }
     composable<AppearanceRoute> { Appearance(graph, nav) }
@@ -269,29 +275,63 @@ internal fun rememberAboutActions(graph: AppGraph, nav: NavHostController): Abou
 private fun serverHost(graph: AppGraph): String? =
     graph.serverUrl.takeIf { it != graph.serverConfig.defaultUrl }?.let { url -> runCatching { java.net.URI(url).host }.getOrNull() ?: url }
 
+/**
+ * Settings of the open account ([AppGraph.openAccount]), of either kind,
+ * on one scroll position. A switch made here ([AccountSwitcher.fromSettings])
+ * changes the page in place where it was scrolled to, clamped to the new
+ * page's end (iOS's `SettingsLayout.keptOffset`): the picture, name, line
+ * and accounts card head both kinds alike, so they stay put.
+ */
 @Composable
-private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
+fun AccountSettings(graph: AppGraph, nav: NavHostController, open: OpenAccount) {
+    val scroll = rememberScrollState()
+    ProvideSettingsDissolve {
+        when (open) {
+            is OpenAccount.Happy -> SettingsIndex(graph, nav, scroll)
+            is OpenAccount.Agent -> AgentConnectionSettings(graph, nav, open.id, scroll)
+            OpenAccount.None -> Unit
+        }
+    }
+}
+
+/** [value] while there is one, else the last there was: what a page keeps showing while its account goes. */
+@Composable
+internal fun <T : Any> rememberLast(value: T?): T? {
+    val last = remember { arrayOfNulls<Any>(1) }
+    if (value != null) last[0] = value
+    @Suppress("UNCHECKED_CAST")
+    return last[0] as T?
+}
+
+@Composable
+private fun SettingsIndex(graph: AppGraph, nav: NavHostController, scroll: ScrollState) {
     val auth by graph.auth.state.collectAsStateWithLifecycle()
-    val signedIn = auth as? AuthState.SignedIn ?: return
-    val profile by rememberProfile(graph)
+    // Signing out from here, the page stays as it was until the next account's takes its place.
+    val signedIn = rememberLast(auth as? AuthState.SignedIn) ?: return
+    val stored by rememberProfile(graph)
+    val registry by graph.accountStore.registry.collectAsStateWithLifecycle()
     val connect = rememberTerminalConnect(graph)
     var enteringUrl by remember { mutableStateOf(false) }
     val kind = stringResource(R.string.settings_happy_account)
-    val login = profile.github?.login
-    val id = accountId(signedIn.credentials) ?: profile.id
+    val id = accountId(signedIn.credentials) ?: stored.id
+    // The store follows a switch a moment after the account: until it is this one's, the switcher's copy.
+    val profile = stored.takeIf { it.id.isNotEmpty() && it.id == signedIn.publicId }
+    val display = registry.entry(id)?.display
+    val login = profile?.github?.login ?: display?.username
+    val switcher = LocalAccountSwitcher.current
 
     SettingsScreen(
         profile = SettingsProfile(
             id = id,
-            name = profile.displayName ?: login ?: kind,
+            name = profile?.displayName ?: display?.name ?: login ?: kind,
             subtitle = login?.let { "@$it" } ?: kind,
-            imageUri = profile.avatarUrl,
-            thumbhash = profile.avatar?.thumbhash,
+            imageUri = profile?.avatarUrl ?: display?.avatarUrl,
+            thumbhash = profile?.avatar?.thumbhash ?: display?.avatarThumbhash,
         ),
         about = rememberAboutInfo(graph),
-        accounts = rememberAccountMenu(graph),
+        accounts = rememberAccountMenu(graph).shownAs(id),
         accountActions = rememberAccountsCardActions(graph),
-        actions = remember(graph, nav, connect) {
+        actions = remember(graph, nav, connect, switcher) {
             HappySettingsActions(
                 onBack = { nav.popBackStack() },
                 onAccount = { nav.navigate(AccountRoute()) },
@@ -302,12 +342,13 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
                 onAgents = { nav.navigate(AgentsRoute) },
                 onScanTerminal = connect::scan,
                 onEnterTerminal = { enteringUrl = true },
-                onSignOut = { graph.logout() },
+                onSignOut = { if (switcher != null) switcher.removingFromSettings { graph.logout().join() } else graph.logout() },
             )
         },
         aboutActions = rememberAboutActions(graph, nav),
         connectingTerminal = connect.isLoading,
-        pages = rememberPageEntries(graph, nav, signedIn, profile),
+        pages = rememberPageEntries(graph, nav, signedIn, profile ?: Profile.Defaults),
+        scroll = scroll,
     )
     if (enteringUrl) EnterTerminalUrlPrompt(connect, onDismiss = { enteringUrl = false })
 }

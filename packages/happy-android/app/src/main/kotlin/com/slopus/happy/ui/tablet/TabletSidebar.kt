@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.tablet
 
+import com.slopus.happy.ui.rememberHomeAccountSwitch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -170,7 +171,7 @@ fun TabletSidebar(
         } else {
             null
         }
-        TabletSidebarContent(host, machines, selectedSessionId, headerHeight, modifier, groupedRows, grouped, stopping, rememberAccountMenu(graph), { graph.open(it) })
+        TabletSidebarContent(host, machines, selectedSessionId, headerHeight, modifier, groupedRows, grouped, stopping, rememberAccountMenu(graph), rememberHomeAccountSwitch(graph))
     }
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
 }

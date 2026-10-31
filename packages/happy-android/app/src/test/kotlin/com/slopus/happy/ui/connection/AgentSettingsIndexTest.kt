@@ -20,6 +20,7 @@ import androidx.navigation.toRoute
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.StartRoute
+import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.ProvideRowReveal
 import com.slopus.happy.ui.conversation.ChiefOfStaffRoute
@@ -122,7 +123,7 @@ class AgentSettingsIndexTest {
             nav = rememberNavController()
             NavHost(nav, startDestination = StartRoute) {
                 composable<StartRoute> { Text("home") }
-                composable<AgentConnectionSettingsRoute> { Text("settings") }
+                composable<SettingsRoute> { Text("settings") }
                 composable<AgentAppearanceRoute> { Text("appearance") }
                 composable<ChiefOfStaffRoute> { Text("chief") }
             }
@@ -132,7 +133,7 @@ class AgentSettingsIndexTest {
     private fun stack(): List<String> = nav.currentBackStack.value.mapNotNull { entry ->
         when {
             entry.destination.hasRoute<StartRoute>() -> "home"
-            entry.destination.hasRoute<AgentConnectionSettingsRoute>() -> entry.toRoute<AgentConnectionSettingsRoute>().let { "settings:${it.connectionId}:${it.reveal}" }
+            entry.destination.hasRoute<SettingsRoute>() -> entry.toRoute<SettingsRoute>().let { "settings:${it.reveal}" }
             entry.destination.hasRoute<AgentAppearanceRoute>() -> entry.toRoute<AgentAppearanceRoute>().let { "appearance:${it.connectionId}:${it.reveal}" }
             entry.destination.hasRoute<ChiefOfStaffRoute>() -> entry.toRoute<ChiefOfStaffRoute>().let { "chief:${it.connectionId}:${it.prefix}" }
             else -> null
@@ -143,7 +144,7 @@ class AgentSettingsIndexTest {
     fun aRowOpensItsPageToRevealIt() {
         host()
         rule.runOnIdle { nav.openAgentSettingsRow("c1", AgentSettingsRow(SettingsTags.PRIVACY, "Privacy Policy", com.slopus.happy.ui.components.Ionicon.Add, AgentSettingsPlace.Settings)) }
-        rule.runOnIdle { assertEquals(listOf("home", "settings:c1:${SettingsTags.PRIVACY}"), stack()) }
+        rule.runOnIdle { assertEquals(listOf("home", "settings:${SettingsTags.PRIVACY}"), stack()) }
     }
 
     @Test
@@ -152,7 +153,7 @@ class AgentSettingsIndexTest {
         rule.runOnIdle {
             nav.openAgentSettingsRow("c1", AgentSettingsRow(AgentPagesTags.HIDE_PROJECTS_ROW, "Hide projects", com.slopus.happy.ui.components.Ionicon.Add, AgentSettingsPlace.Appearance))
         }
-        rule.runOnIdle { assertEquals(listOf("home", "settings:c1:null", "appearance:c1:${AgentPagesTags.HIDE_PROJECTS_ROW}"), stack()) }
+        rule.runOnIdle { assertEquals(listOf("home", "settings:null", "appearance:c1:${AgentPagesTags.HIDE_PROJECTS_ROW}"), stack()) }
     }
 
     @Test

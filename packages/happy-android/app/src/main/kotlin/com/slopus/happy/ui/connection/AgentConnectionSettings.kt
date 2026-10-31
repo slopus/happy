@@ -69,21 +69,20 @@ import com.slopus.happy.ui.settings.supportEntry
 import com.slopus.happy.ui.settings.SettingsTiles
 import com.slopus.happy.ui.settings.rememberAboutActions
 import com.slopus.happy.ui.settings.rememberAboutInfo
+import com.slopus.happy.ui.settings.rememberLast
+import com.slopus.happy.ui.LocalAccountSwitcher
+import com.slopus.happy.ui.AccountSwitcher
+import com.slopus.happy.ui.SettingsRoute
+import com.slopus.happy.ui.SettingsDissolveBox
+import androidx.compose.foundation.ScrollState
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
-/** An agent connection's settings; [reveal]: the row home's search found there ([ProvideRowReveal]). */
-@Serializable data class AgentConnectionSettingsRoute(val connectionId: String, val reveal: String? = null)
-
-/** The agent connection screens beside home. HappyApp's NavHost calls this once. */
+/** The agent connection screens beside home and Settings ([SettingsRoute]). HappyApp's NavHost calls this once. */
 fun NavGraphBuilder.agentHomeRoutes(graph: AppGraph, nav: NavHostController) {
-    composable<AgentConnectionSettingsRoute> { entry ->
-        val route = entry.toRoute<AgentConnectionSettingsRoute>()
-        ProvideRowReveal(route.reveal) { AgentConnectionSettings(graph, nav, route.connectionId) }
-    }
     agentSettingsPages(graph, nav)
 }
 
@@ -133,9 +132,9 @@ fun agentSettingsIndex(): List<AgentSettingsRow> {
  */
 fun NavHostController.openAgentSettingsRow(connectionId: String, row: AgentSettingsRow) {
     when (row.place) {
-        AgentSettingsPlace.Settings -> navigate(AgentConnectionSettingsRoute(connectionId, reveal = row.id))
+        AgentSettingsPlace.Settings -> navigate(SettingsRoute(reveal = row.id))
         AgentSettingsPlace.Appearance -> {
-            navigate(AgentConnectionSettingsRoute(connectionId))
+            navigate(SettingsRoute())
             navigate(AgentAppearanceRoute(connectionId, reveal = row.id))
         }
         AgentSettingsPlace.Ask -> openChiefOfStaff(connectionId, row.ask.orEmpty())
@@ -194,6 +193,8 @@ fun AgentConnectionSettingsScreen(
     person: AgentPerson = AgentPerson(),
     /** Appearance's rows, for search: found, they change here, as on their page. */
     appearance: List<SettingsEntry> = emptyList(),
+    /** Where the page is scrolled; shared with the other kind's page, so a switch keeps it (AccountSettings). */
+    scroll: ScrollState = rememberScrollState(),
 ) {
     val namePrefix = stringResource(R.string.agent_settings_edit_name_prefix)
     val avatarPrefix = stringResource(R.string.agent_settings_edit_avatar_prefix)
@@ -256,11 +257,13 @@ fun AgentConnectionSettingsScreen(
             val rows = listOf(addAgentEntry(accountActions)) + sections.flatMap { it.rows } + appearance
             SettingsSearchResults(search, settingsSearchResults(search.query, profiles, asks, rows))
         } else {
-            ItemList {
-                SettingsHeader(profile, edit)
-                AccountsCard(accounts, accountActions)
-                for (section in sections) SettingsCard(section)
-                RemoveCard(agent = true, name = profile.name, onRemove = actions.onRemove)
+            SettingsDissolveBox {
+                ItemList(scrollState = scroll) {
+                    SettingsHeader(profile, edit)
+                    AccountsCard(accounts, accountActions)
+                    for (section in sections) SettingsCard(section)
+                    RemoveCard(agent = true, name = profile.name, onRemove = actions.onRemove)
+                }
             }
         }
     }
@@ -298,14 +301,14 @@ internal fun statusText(status: AgentLinkStatus): String = stringResource(
  * next account opens: a Happy account first, else another agent; none, the
  * first screen.
  */
-internal suspend fun removeAgentConnection(graph: AppGraph, id: String) {
+internal suspend fun removeAgentConnection(graph: AppGraph, id: String) = graph.whileSwitching {
     val open = graph.openAgentId.value == id
     val next = graph.accountStore.registry.value.ordered.firstOrNull()?.id
         ?: graph.agentConnections.accounts.value.filter { it.id != id }.minByOrNull { it.addedAt }?.id
     graph.agentConnections.remove(id)
-    if (!open) return
+    if (!open) return@whileSwitching
     if (next != null) {
-        graph.open(next)
+        graph.open(next).join()
     } else {
         withContext(Dispatchers.IO) { graph.accountStore.select(null) }
         graph.auth.reload()
@@ -314,28 +317,41 @@ internal suspend fun removeAgentConnection(graph: AppGraph, id: String) {
 
 /**
  * The accounts card's actions, the same on both kinds of page: a tap opens
- * another account, Add scans, holding an agent connection disconnects it and
- * holding the open Happy account signs it out (another Happy account isn't
- * signed out from here: its push token and data belong to its own session).
+ * another account without leaving Settings ([AccountSwitcher.fromSettings]),
+ * Add scans, holding an agent connection disconnects it and holding the open
+ * Happy account signs it out (another Happy account isn't signed out from
+ * here: its push token and data belong to its own session). Taking away the
+ * open one keeps Settings, over the next account's home.
  */
 @Composable
 internal fun rememberAccountsCardActions(graph: AppGraph): AccountsCardActions {
     val scope = rememberCoroutineScope()
     val add = LocalAddFlow.current
-    return remember(graph, add) {
+    val switcher = LocalAccountSwitcher.current
+    return remember(graph, add, switcher) {
         AccountsCardActions(
-            onSwitch = { graph.open(it) },
+            onSwitch = { id -> if (switcher != null) switcher.fromSettings(id) else graph.open(id) },
             onAdd = { add?.scan() },
-            onRemove = { entry -> if (entry.agent) scope.launch { removeAgentConnection(graph, entry.id) } else graph.logout() },
+            onRemove = { entry ->
+                val remove: suspend () -> Unit = if (entry.agent) {
+                    { removeAgentConnection(graph, entry.id) }
+                } else {
+                    { graph.logout().join() }
+                }
+                val open = graph.openAccount.value.id == entry.id
+                if (switcher != null && open) switcher.removingFromSettings(remove) else scope.launch { remove() }
+            },
             canRemove = { it.agent || (it.active && graph.openAgentId.value == null) },
         )
     }
 }
 
+/** Agent connection [connectionId]'s Settings, scrolled by [scroll] (AccountSettings). */
 @Composable
-private fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, connectionId: String) {
+internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, connectionId: String, scroll: ScrollState) {
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
-    val agent = agents.firstOrNull { it.id == connectionId } ?: return
+    // Disconnecting from here, the page stays as it was until the next account's takes its place.
+    val agent = rememberLast(agents.firstOrNull { it.id == connectionId })?.takeIf { it.id == connectionId } ?: return
     val session = remember(connectionId) { graph.agentSessions.session(connectionId) }
     val status = session?.status?.collectAsStateWithLifecycle()?.value ?: AgentLinkStatus.Offline
     val personState = session?.profile?.state?.collectAsStateWithLifecycle()?.value ?: AgentProfileState()
@@ -345,14 +361,18 @@ private fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, con
     // Read every time the page shows, as iOS's Profile row is.
     LaunchedEffect(session) { session?.profile?.refresh() }
     val scope = rememberCoroutineScope()
-    val accounts = rememberAccountMenu(graph)
-    val actions = remember(graph, nav, connectionId) {
+    val accounts = rememberAccountMenu(graph).shownAs(connectionId)
+    val switcher = LocalAccountSwitcher.current
+    val actions = remember(graph, nav, connectionId, switcher) {
         AgentSettingsActions(
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
             onAppearance = { nav.navigate(AgentAppearanceRoute(connectionId)) },
             onAskChief = { prefix -> nav.openChiefOfStaff(connectionId, prefix) },
-            onRemove = { scope.launch { removeAgentConnection(graph, connectionId) } },
+            onRemove = {
+                if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }
+                else scope.launch { removeAgentConnection(graph, connectionId) }
+            },
         )
     }
     AgentConnectionSettingsScreen(
@@ -371,5 +391,6 @@ private fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, con
         aboutActions = rememberAboutActions(graph, nav),
         person = AgentPerson(personState.name, personPhoto),
         appearance = agentAppearanceSections(theme, graph.localSettings::setThemePreference, projectsHidden, { session?.setProjectsHidden(it) }).flatMap { it.rows },
+        scroll = scroll,
     )
 }

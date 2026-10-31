@@ -101,7 +101,7 @@ private fun route(segments: List<String>, rawQuery: String?): DeepLink? {
         listOf("terminal") -> DeepLink.Terminal(firstParamName(rawQuery))
         listOf("terminal", "connect") -> DeepLink.TerminalWeb
         listOf("new") -> screen(NewSessionRoute)
-        listOf("settings") -> screen(SettingsRoute)
+        listOf("settings") -> screen(SettingsRoute())
         listOf("settings", "account") -> screen(AccountRoute())
         listOf("settings", "appearance") -> screen(AppearanceRoute)
         listOf("settings", "agents") -> screen(AgentsRoute)

@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.ui.rememberHomeAccountSwitch
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -528,13 +529,14 @@ fun AgentHome(
     val feed by session.feed.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
     val add = LocalAddFlow.current
-    val actions = remember(graph, session, onOpenConversation, onCompose, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, add) {
+    val switchAccount = rememberHomeAccountSwitch(graph)
+    val actions = remember(graph, session, onOpenConversation, onCompose, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, add, switchAccount) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
             onSettings = onSettings,
             onSettingsRow = onSettingsRow,
-            onSwitchAccount = { graph.open(it) },
+            onSwitchAccount = switchAccount,
             onAdd = { add?.scan() },
             onOpenArtifacts = onOpenArtifacts,
             onOpenSurface = onOpenSurface,

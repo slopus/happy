@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.settings
 
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
@@ -16,6 +18,7 @@ import com.slopus.happy.ui.components.ItemList
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.StackHeader
 import com.slopus.happy.ui.home.AccountMenu
+import com.slopus.happy.ui.SettingsDissolveBox
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -202,6 +205,8 @@ fun SettingsScreen(
     aboutActions: AboutActions = AboutActions(),
     connectingTerminal: Boolean = false,
     pages: List<SettingsEntry> = emptyList(),
+    /** Where the page is scrolled; shared with the other kind's page, so a switch keeps it ([AccountSettings]). */
+    scroll: ScrollState = rememberScrollState(),
 ) {
     val search = rememberSettingsSearch()
     val sections = happySettingsSections(actions, connectingTerminal) +
@@ -222,11 +227,13 @@ fun SettingsScreen(
             val rows = listOf(addAgentEntry(accountActions)) + sections.flatMap { it.rows } + pages
             SettingsSearchResults(search, settingsSearchResults(search.query, profiles, emptyList(), rows))
         } else {
-            ItemList {
-                SettingsHeader(profile)
-                AccountsCard(accounts, accountActions)
-                for (section in sections) SettingsCard(section)
-                RemoveCard(agent = false, name = profile.name, onRemove = actions.onSignOut)
+            SettingsDissolveBox {
+                ItemList(scrollState = scroll) {
+                    SettingsHeader(profile)
+                    AccountsCard(accounts, accountActions)
+                    for (section in sections) SettingsCard(section)
+                    RemoveCard(agent = false, name = profile.name, onRemove = actions.onSignOut)
+                }
             }
         }
     }

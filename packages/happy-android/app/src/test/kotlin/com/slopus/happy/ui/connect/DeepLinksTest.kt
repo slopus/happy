@@ -94,7 +94,7 @@ class DeepLinksTest {
             "happy://session/s1/message/m1" to screen(MessageDetailRoute("s1", "m1")),
             "happy://machine/mac-1" to screen(MachineRoute("mac-1")),
             "happy://new?autoSubmit=1" to screen(NewSessionRoute),
-            "happy://settings" to screen(SettingsRoute),
+            "happy://settings" to screen(SettingsRoute()),
             "happy://settings/account" to screen(AccountRoute()),
             "happy://settings/appearance" to screen(AppearanceRoute),
             "happy://settings/agents" to screen(AgentsRoute),

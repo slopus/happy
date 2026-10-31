@@ -67,7 +67,7 @@ class HomeNavigation(
 ) {
     companion object {
         fun of(graph: AppGraph, nav: NavHostController, onOpenSession: (String) -> Unit, onTroubleshoot: () -> Unit) = HomeNavigation(
-            onSettings = { nav.navigate(SettingsRoute) },
+            onSettings = { nav.navigate(SettingsRoute()) },
             onWhatsNew = { nav.navigate(ChangelogRoute) },
             onOpenSession = onOpenSession,
             onOpenMachine = { id -> nav.navigate(MachineRoute(id)) },
@@ -86,35 +86,40 @@ class HomeNavigation(
  */
 val LocalHomeInSidebar = staticCompositionLocalOf { false }
 
-/** The home routes. [onOpenSession] belongs to the chat, [onTroubleshoot] to onboarding. */
+/**
+ * A Happy account's home, [HomeRoute]'s while one is open (HappyApp). [onOpenSession]
+ * belongs to the chat, [onTroubleshoot] to onboarding.
+ */
+@Composable
+fun LegacyHome(graph: AppGraph, nav: NavHostController, onOpenSession: (sessionId: String) -> Unit, onTroubleshoot: () -> Unit) {
+    if (LocalHomeInSidebar.current) {
+        Box(Modifier.fillMaxSize().background(HappyTheme.colors.grouped.background).testTag(HomeTags.TABLET_BLANK))
+    } else {
+        HomeListHost(graph, remember(nav) { HomeNavigation.of(graph, nav, onOpenSession, onTroubleshoot) }, phone = true) { host ->
+            HomeScreen(
+                state = host.state,
+                connectionStatus = host.connectionStatus,
+                grouping = host.grouping,
+                callbacks = host.callbacks,
+                actions = host.actions,
+                update = host.update,
+                offlineContent = { computers, onShowArchived ->
+                    LinkComputerChecklist(graph, computers = computers, onTroubleshoot = host.navigation.onTroubleshoot, onShowArchived = onShowArchived)
+                },
+                accounts = rememberAccountMenu(graph),
+                listState = host.listState,
+                syncing = host.syncing,
+            )
+        }
+    }
+}
+
+/** The screens beside a Happy account's home. [onOpenSession] belongs to the chat. */
 fun NavGraphBuilder.homeRoutes(
     graph: AppGraph,
     nav: NavHostController,
     onOpenSession: (sessionId: String) -> Unit = {},
-    onTroubleshoot: () -> Unit = {},
 ) {
-    composable<HomeRoute> {
-        if (LocalHomeInSidebar.current) {
-            Box(Modifier.fillMaxSize().background(HappyTheme.colors.grouped.background).testTag(HomeTags.TABLET_BLANK))
-        } else {
-            HomeListHost(graph, remember(nav) { HomeNavigation.of(graph, nav, onOpenSession, onTroubleshoot) }, phone = true) { host ->
-                HomeScreen(
-                    state = host.state,
-                    connectionStatus = host.connectionStatus,
-                    grouping = host.grouping,
-                    callbacks = host.callbacks,
-                    actions = host.actions,
-                    update = host.update,
-                    offlineContent = { computers, onShowArchived ->
-                        LinkComputerChecklist(graph, computers = computers, onTroubleshoot = host.navigation.onTroubleshoot, onShowArchived = onShowArchived)
-                    },
-                    accounts = rememberAccountMenu(graph),
-                    listState = host.listState,
-                    syncing = host.syncing,
-                )
-            }
-        }
-    }
     composable<NewSessionRoute> {
         val dock = rememberNewSessionDock(
             graph,

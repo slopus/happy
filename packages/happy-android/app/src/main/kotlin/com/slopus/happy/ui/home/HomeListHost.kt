@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.home
 
+import com.slopus.happy.ui.rememberHomeAccountSwitch
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -137,14 +138,15 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = f
     val connect = rememberTerminalConnect(graph)
     var enteringUrl by remember { mutableStateOf(false) }
     connect.onUnavailable = { enteringUrl = true }
-    val actions = remember(navigation, uriHandler, connect) {
+    val switchAccount = rememberHomeAccountSwitch(graph)
+    val actions = remember(navigation, uriHandler, connect, switchAccount) {
         HomeScreenActions(
             onSettings = navigation.onSettings,
             onNewSession = navigation.onNewSession,
             onTroubleshoot = navigation.onTroubleshoot,
             onOpenUrl = uriHandler::openUri,
             onWhatsNew = navigation.onWhatsNew,
-            onSwitchAccount = { id -> graph.open(id) },
+            onSwitchAccount = switchAccount,
             onLinkComputer = connect::scan,
             onCompose = navigation.onCompose,
         )

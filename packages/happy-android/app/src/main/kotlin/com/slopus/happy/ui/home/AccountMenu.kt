@@ -64,6 +64,10 @@ data class AccountMenuEntry(
 @Immutable
 data class AccountMenu(val entries: List<AccountMenuEntry> = emptyList()) {
     val active: AccountMenuEntry? get() = entries.firstOrNull { it.active }
+
+    /** The check on [id], the account a page shows, also in the moment before a switch to it lands. */
+    fun shownAs(id: String): AccountMenu =
+        if (entries.all { it.active == (it.id == id) }) this else copy(entries = entries.map { it.copy(active = it.id == id) })
 }
 
 /** The account menu from the stored accounts and agent connections; [AppGraph.open] switches. */
