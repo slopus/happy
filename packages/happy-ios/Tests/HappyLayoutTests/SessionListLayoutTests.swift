@@ -256,12 +256,6 @@ final class FlatSessionRowLayoutTests: XCTestCase {
 }
 
 final class SessionListChromeLayoutTests: XCTestCase {
-    func testDayHeader() {
-        let layout = SessionDayHeaderLayout(width: 393, label: text("Today", lineHeight: 18))
-        assertFrame(layout.label, rect(16, 20, 361, 18))
-        assertSize(layout.size, CGSize(width: 393, height: 46))
-    }
-
     func testArchiveToggleCentresTheLabelBetweenHairlines() {
         let layout = ArchiveToggleLayout(width: 393, label: text("Show archived", lineHeight: 18))
         assertFrame(layout.leadingLine, rect(24, 32.835, 108.5, 0.33))

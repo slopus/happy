@@ -4,7 +4,8 @@ import CoreGraphics
 #endif
 
 /// The rows of the home list grouped by project (components/
-/// ProjectHomeList.tsx). Every row shares two leading columns:
+/// ProjectHomeList.tsx), each laid out at its card's width
+/// (`HomeCardLayout`). Every row shares two leading columns:
 ///
 ///     |16| avatar lane 28 |12| name ………………… |8| trailing |16|
 ///
@@ -17,7 +18,6 @@ public enum ProjectListMetrics {
     public static let avatarSize: CGFloat = 28
     public static let avatarGap: CGFloat = 12
     public static let projectRowHeight: CGFloat = 52
-    public static let projectMarginTop: CGFloat = 8
     public static let worktreeRowHeight: CGFloat = 48
     public static let botRowHeight: CGFloat = 48
     public static let trailingGap: CGFloat = 8
@@ -52,9 +52,9 @@ func trailingFrames(_ sizes: [CGSize], right: CGFloat, midY: CGFloat, gap: CGFlo
     return (frames, x)
 }
 
-/// A project's card: avatar, name, then an activity dot, its line changes
-/// and the `+`. The card sits 8 below the row above it, inside its own
-/// cell, and the tree stem drops from under the avatar to the cell's foot.
+/// A project's row: avatar, name, then an activity dot, its line changes
+/// and the `+`. The tree stem drops from under the avatar to the row's
+/// foot.
 public struct ProjectCardLayout: Equatable, Sendable {
     public struct Input {
         public var width: CGFloat
@@ -88,13 +88,12 @@ public struct ProjectCardLayout: Equatable, Sendable {
     public init(_ input: Input) {
         typealias M = ProjectListMetrics
         let width = max(0, input.width)
-        let top = M.projectMarginTop
-        let height = top + M.projectRowHeight
-        let midY = top + M.projectRowHeight / 2
+        let height = M.projectRowHeight
+        let midY = height / 2
         size = CGSize(width: width, height: height)
         avatar = CGRect(x: M.paddingX, y: midY - M.avatarSize / 2, width: M.avatarSize, height: M.avatarSize)
         let line = M.treeLineWidth(hairline: input.hairline)
-        let stemTop = top + (M.projectRowHeight + M.avatarSize) / 2
+        let stemTop = (height + M.avatarSize) / 2
         stem = input.showsTree
             ? CGRect(x: M.paddingX + (M.avatarSize - line) / 2, y: stemTop, width: line, height: height - stemTop)
             : nil
@@ -214,59 +213,32 @@ public struct ProjectChatRowLayout: Equatable, Sendable {
     }
 }
 
-/// "BOTS", "PROJECTS", or a day over the archive (ProjectHomeList.tsx
-/// `section`).
-public struct ProjectSectionLayout: Equatable, Sendable {
-    public enum Metrics {
-        public static let paddingLeft: CGFloat = 16
-        public static let paddingRight: CGFloat = 12
-        public static let paddingTop: CGFloat = 18
-        public static let paddingBottom: CGFloat = 6
-    }
-
-    public var size: CGSize
-    public var label: CGRect
-
-    public init(width: CGFloat, label: Measurable) {
-        typealias M = Metrics
-        let width = max(0, width)
-        let labelWidth = max(0, width - M.paddingLeft - M.paddingRight)
-        let height = label.height(fitting: labelWidth)
-        self.label = CGRect(x: M.paddingLeft, y: M.paddingTop, width: labelWidth, height: height)
-        size = CGSize(width: width, height: M.paddingTop + height + M.paddingBottom)
-    }
-}
-
-/// The computer heading everything under it: a desktop glyph, its name (at
-/// most 60% of the row) and a rule to the edge.
+/// The computer heading its cards, as a section's title stands over its
+/// card in the modern home: a desktop glyph and its name, in line with the
+/// cards' avatars, `paddingBottom` above the first card.
 public struct MachineHeaderLayout: Equatable, Sendable {
     public enum Metrics {
-        public static let paddingX: CGFloat = 16
-        public static let paddingTop: CGFloat = 14
-        public static let paddingBottom: CGFloat = 2
+        /// The cards' side and the avatars' inset in them.
+        public static let paddingX: CGFloat = HomeCardLayout.Metrics.side + ProjectListMetrics.paddingX
+        public static let paddingTop: CGFloat = 20
+        public static let paddingBottom: CGFloat = 8
         public static let gap: CGFloat = 6
-        public static let nameMaxFraction: CGFloat = 0.6
     }
 
     public var size: CGSize
     public var icon: CGRect
     public var name: CGRect
-    public var rule: CGRect
 
-    public init(width: CGFloat, hairline: CGFloat, icon: CGSize, name: Measurable) {
+    public init(width: CGFloat, icon: CGSize, name: Measurable) {
         typealias M = Metrics
         let width = max(0, width)
-        let inner = max(0, width - 2 * M.paddingX)
-        let nameMax = inner * M.nameMaxFraction
+        let nameMax = max(0, width - 2 * M.paddingX - icon.width - M.gap)
         let fitted = name.size(fitting: nameMax)
         let text = CGSize(width: min(fitted.width, nameMax), height: fitted.height)
-        let line = ProjectListMetrics.treeLineWidth(hairline: hairline)
-        let rowHeight = max(icon.height, text.height, line)
+        let rowHeight = max(icon.height, text.height)
         let midY = M.paddingTop + rowHeight / 2
         self.icon = CGRect(x: M.paddingX, y: midY - icon.height / 2, width: icon.width, height: icon.height)
         self.name = CGRect(x: self.icon.maxX + M.gap, y: midY - text.height / 2, width: text.width, height: text.height)
-        let ruleX = self.name.maxX + M.gap
-        rule = CGRect(x: ruleX, y: midY - line / 2, width: max(0, width - M.paddingX - ruleX), height: line)
         size = CGSize(width: width, height: M.paddingTop + rowHeight + M.paddingBottom)
     }
 }

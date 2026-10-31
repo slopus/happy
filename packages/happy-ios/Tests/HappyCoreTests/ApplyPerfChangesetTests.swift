@@ -126,10 +126,12 @@ final class ApplyPerfHomeTests: XCTestCase {
         let (before, after) = ApplyPerfFixtures.overtaking()
         let applied = try XCTUnwrap(ApplyPerfFixtures.derive(before, after: nil)).state
         let update = try XCTUnwrap(ApplyPerfFixtures.derive(after, after: applied)).output
-        // The old apply also redrew the row for its raw activity time.
+        // The old apply also redrew the row for its raw activity time. Only
+        // the card's top corners follow: the row that overtook takes them
+        // from the one it passed.
         XCTAssertEqual(update.changeset.moves.count, 1)
-        XCTAssertEqual(update.changeset.reconfigures, [])
-        XCTAssertEqual(update.changeset.touchedRows, 1)
+        XCTAssertEqual(update.changeset.reconfigures, [0, 1])
+        XCTAssertEqual(update.changeset.touchedRows, 3)
     }
 
     func testOneBatchOf500IsOneApplyOfInserts() throws {
@@ -675,8 +677,10 @@ final class ApplyPerfPresenceClockTests: XCTestCase {
     }
 
     /// The presence clock stands still while nothing is disconnected, here
-    /// 30 hours. Home and the sidebar write headings at the real time, so
-    /// last night's archived chat is "Yesterday", not "Today".
+    /// 30 hours. The list home and the sidebar draw from writes its day
+    /// headings at the real time, so last night's archived chat is
+    /// "Yesterday", not "Today"; the rows themselves stand in one card with
+    /// no headings.
     func testHomeHeadingsIgnoreAStalePresenceClock() throws {
         let now = Date()
         let calendar = Calendar.autoupdatingCurrent
@@ -690,20 +694,21 @@ final class ApplyPerfPresenceClockTests: XCTestCase {
         snapshot.settings = SettingsSnapshot(pending: ["hideInactiveSessions": .bool(false)])
         snapshot.presenceNow = millis(now) - 30 * 3_600_000
 
-        let home = try XCTUnwrap(HomeDerivation.derive(HomeDerivation.Input(snapshot: snapshot), applied: .init())).output
-        let headings = try XCTUnwrap(home.content.list).rows.compactMap { row -> SessionList.DayAge? in
-            if case .flat(.dayHeader(let age)) = row { return age }
+        // As `HomeDerivation` and `TabletSidebarDerivation` make it, at
+        // the time of the derivation.
+        let list = SessionList(snapshot, clock: SessionList.Clock())
+        let headings = list.items.compactMap { item -> SessionList.DayAge? in
+            if case .dayHeader(let age) = item { return age }
             return nil
         }
         XCTAssertEqual(headings, [.today, .yesterday])
 
+        let home = try XCTUnwrap(HomeDerivation.derive(HomeDerivation.Input(snapshot: snapshot), applied: .init())).output
+        let rows = try XCTUnwrap(home.content.list).rows
+        XCTAssertFalse(rows.contains { if case .flat(.dayHeader) = $0 { true } else { false } })
         let sidebar = try XCTUnwrap(TabletSidebarDerivation.derive(snapshot, applied: .init())).output
-        guard case .list(let list) = sidebar.frame.content else { return XCTFail("the sidebar lists the live session") }
-        let sidebarHeadings = list.rows.compactMap { row -> SessionList.DayAge? in
-            if case .flat(.dayHeader(let age)) = row { return age }
-            return nil
-        }
-        XCTAssertEqual(sidebarHeadings, [.today, .yesterday])
+        guard case .list(let sidebarList) = sidebar.frame.content else { return XCTFail("the sidebar lists the live session") }
+        XCTAssertEqual(sidebarList.rows, rows)
     }
 
     /// With the time fixed, presence ticks alone reach neither home nor the

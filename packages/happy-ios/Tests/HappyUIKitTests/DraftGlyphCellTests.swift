@@ -66,7 +66,7 @@ final class DraftGlyphCellTests: XCTestCase {
                         // RN's 13 box, unscaled, where the layout puts it.
                         let glyph = try box(13, scale: scale)
                         XCTAssertEqual(cell.draftIcon.sizeThatFits(.zero), glyph.size, at)
-                        let layout = cell.layout(width: cell.contentView.bounds.width)
+                        let layout = cell.layout(width: cell.card.bounds.width)
                         let frame = try XCTUnwrap(layout.draftIcon, at)
                         assertSamePixels(cell.draftIcon.frame, PixelGrid.snap(frame, scale: scale), scale: scale, at)
                         if changes != nil {

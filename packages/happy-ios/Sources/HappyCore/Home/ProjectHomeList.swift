@@ -71,6 +71,9 @@ public struct ProjectHomeData: Equatable, Sendable {
     /// Ordered: Happy Agent computers, then Happy CLI ones, then chats that
     /// name no computer; most recently worked on first within each.
     public var sections: [MachineSection]
+    /// The account has more than one computer, or chats on more than one:
+    /// only then does each computer head its own rows.
+    public var showsMachines: Bool
     public var hasArchived: Bool
     public var archiveHidden: Bool
     /// The archive, newest first, when it is shown.
@@ -224,6 +227,7 @@ public struct ProjectHomeData: Equatable, Sendable {
             return Collation.precedes(a.name, b.name)
         }
         self.sections = sections
+        showsMachines = machines.count > 1 || sections.count > 1
 
         archivedSessions.sort { a, b in
             if a.lastActivityAt != b.lastActivityAt { return a.lastActivityAt > b.lastActivityAt }
@@ -361,14 +365,17 @@ public struct ProjectHomeData: Equatable, Sendable {
     // MARK: Rows
 
     /// `buildProjectHomeRows` with `expanded` projects showing every
-    /// worktree.
+    /// worktree; a computer heads its rows only when there is more than
+    /// one (`showsMachines`).
     public func rows(expanded: Set<String>) -> [ProjectHomeRow] {
         var rows: [ProjectHomeRow] = []
         for section in sections {
             let projectRows = section.projects.flatMap { Self.projectRows($0, expanded: expanded.contains($0.id)) }
             guard !section.bots.isEmpty || !section.tasks.isEmpty || !projectRows.isEmpty else { continue }
             let key = section.machineId ?? "unknown"
-            rows.append(.machine(id: section.machineId, name: section.name))
+            if showsMachines {
+                rows.append(.machine(id: section.machineId, name: section.name))
+            }
             if !section.bots.isEmpty {
                 rows.append(.section(id: "bots:\(key)", label: .bots))
                 rows.append(contentsOf: section.bots.map(ProjectHomeRow.bot))

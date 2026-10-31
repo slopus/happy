@@ -165,10 +165,9 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         tableView.dataSource = self
         for (type, identifier) in [
             (SessionRowCell.self as UITableViewCell.Type, SessionRowCell.reuseIdentifier),
-            (SessionDayHeaderCell.self, SessionDayHeaderCell.reuseIdentifier),
+            (HomeGapCell.self, HomeGapCell.reuseIdentifier),
             (ArchiveToggleCell.self, ArchiveToggleCell.reuseIdentifier),
             (ProjectMachineHeaderCell.self, ProjectMachineHeaderCell.reuseIdentifier),
-            (ProjectSectionCell.self, ProjectSectionCell.reuseIdentifier),
             (ProjectCardCell.self, ProjectCardCell.reuseIdentifier),
             (WorktreeCell.self, WorktreeCell.reuseIdentifier),
             (ProjectChatCell.self, ProjectChatCell.reuseIdentifier),
@@ -188,7 +187,8 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
             self.requestTextEnvironment()
         }
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.updateUltraList() }
-        tableView.backgroundColor = UIColor(model.grouped ? Palette.groupedBackground : Palette.flatListBackground)
+        // Both layouts stand in cards on the modern home's ground.
+        tableView.backgroundColor = UIColor(Palette.groupedGround)
         // The rows come in with the first text environment.
         requestTextEnvironment()
         updateBanners()
@@ -233,11 +233,6 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
             return changeset.touchedRows
         }
         guard isViewLoaded, tableLoaded else { return 0 }
-        if next.grouped != previous.grouped {
-            // The two layouts share no row ids, so the changeset swaps every
-            // row; only the page colour is left to change.
-            tableView.backgroundColor = UIColor(next.grouped ? Palette.groupedBackground : Palette.flatListBackground)
-        }
         if changeset.isStructural {
             let rows = { (indexes: [Int]) in indexes.map { IndexPath(row: $0, section: 0) } }
             let animation: UITableView.RowAnimation = animated ? .fade : .none
@@ -306,7 +301,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let item = item(at: indexPath) else { return UITableViewCell() }
         let cell = tableView.dequeueReusableCell(withIdentifier: Self.reuseIdentifier(item), for: indexPath)
-        configure(cell, item)
+        configure(cell, item, place: model.places[indexPath.row])
         return cell
     }
 
@@ -316,12 +311,14 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
 
     /// Rows that are one height whatever they say and at any text size
     /// (`HomeRowHeights`): RN gives them a fixed `height`, and their text
-    /// is centred in it.
+    /// is centred in it. A section's gap is only the room between cards.
     private static func fixedHeight(_ item: Item, width: CGFloat) -> CGFloat? {
-        switch item {
-        case .project(.project): HomeRowHeights.projectCard(width: width)
-        case .project(.worktree), .project(.worktreeToggle): HomeRowHeights.worktree(width: width)
-        case .project(.bot), .project(.task), .project(.archived): HomeRowHeights.projectChat(width: width)
+        let card = HomeCardLayout.contentWidth(width)
+        return switch item {
+        case .project(.project): HomeRowHeights.projectCard(width: card)
+        case .project(.worktree), .project(.worktreeToggle): HomeRowHeights.worktree(width: card)
+        case .project(.bot), .project(.task), .project(.archived): HomeRowHeights.projectChat(width: card)
+        case .flat(.dayHeader), .project(.section), .project(.archiveHeader): HomeRowHeights.gap
         default: nil
         }
     }
@@ -343,17 +340,12 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         switch item {
         case .flat(.session(let row)):
             .flatSession(workspace: row.workspaceName != nil, changes: row.changes != nil)
-        case .flat(.dayHeader(let age)):
-            .dayHeader(label: dayTitle(age))
         case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
             .archiveToggle(label: hidden ? Strings.Sidebar.showArchived : Strings.Sidebar.hideArchived, banded: !grouped)
         case .project(.machine(_, let name)):
             .machineHeader(name: name)
-        case .project(.section(_, let label)):
-            .section(label: Strings.Home.section(label))
-        case .project(.archiveHeader(let age)):
-            .section(label: dayTitle(age))
-        case .project(.project), .project(.worktree), .project(.worktreeToggle), .project(.bot), .project(.task), .project(.archived):
+        case .flat(.dayHeader), .project(.section), .project(.archiveHeader), .project(.project), .project(.worktree),
+             .project(.worktreeToggle), .project(.bot), .project(.task), .project(.archived):
             nil
         }
     }
@@ -441,20 +433,21 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         switch item {
         case .flat(.session): SessionRowCell.reuseIdentifier
         case .flat(.archiveToggle), .project(.archiveToggle): ArchiveToggleCell.reuseIdentifier
-        case .flat(.dayHeader): SessionDayHeaderCell.reuseIdentifier
+        case .flat(.dayHeader), .project(.section), .project(.archiveHeader): HomeGapCell.reuseIdentifier
         case .project(.machine): ProjectMachineHeaderCell.reuseIdentifier
-        case .project(.section), .project(.archiveHeader): ProjectSectionCell.reuseIdentifier
         case .project(.project): ProjectCardCell.reuseIdentifier
         case .project(.worktree), .project(.worktreeToggle): WorktreeCell.reuseIdentifier
         case .project(.bot), .project(.task), .project(.archived): ProjectChatCell.reuseIdentifier
         }
     }
 
-    /// One configuration for every live cell.
-    private func configure(_ cell: UITableViewCell, _ item: Item) {
+    /// One configuration for every live cell; `place` is the row's in its
+    /// card.
+    private func configure(_ cell: UITableViewCell, _ item: Item, place: HomeCardPlace?) {
         if let cell = cell as? SessionRowCell { cell.avatar.pictures = session.avatarPictures }
         if let cell = cell as? ProjectCardCell { cell.avatar.pictures = session.avatarPictures }
         if let cell = cell as? ProjectChatCell { cell.avatar.pictures = session.avatarPictures }
+        (cell as? HomeCardCell)?.place = place
         switch item {
         case .flat(.session(let row)):
             guard let cell = cell as? SessionRowCell else { return }
@@ -463,16 +456,11 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
             guard let cell = cell as? ArchiveToggleCell else { return }
             cell.banded = !grouped
-            cell.backgroundColor = UIColor(grouped ? Palette.groupedBackground : Palette.flatListBackground)
             cell.configure(hidden: hidden)
-        case .flat(.dayHeader(let age)):
-            (cell as? SessionDayHeaderCell)?.configure(age)
+        case .flat(.dayHeader), .project(.section), .project(.archiveHeader):
+            break
         case .project(.machine(_, let name)):
             (cell as? ProjectMachineHeaderCell)?.configure(name: name)
-        case .project(.section(_, let label)):
-            (cell as? ProjectSectionCell)?.configure(Strings.Home.section(label))
-        case .project(.archiveHeader(let age)):
-            (cell as? ProjectSectionCell)?.configure(Self.dayTitle(age))
         case .project(.project(let entry)):
             guard let cell = cell as? ProjectCardCell else { return }
             cell.configure(entry, style: model.avatarStyle, monochrome: model.avatarMonochrome)

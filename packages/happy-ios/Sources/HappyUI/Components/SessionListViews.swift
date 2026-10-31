@@ -3,11 +3,12 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// One session in the flat home list (components/FlatSessionRow.tsx). It
-/// measures its labels and applies `FlatSessionRowLayout`, its rows as
-/// tall as `lines`: the designed ones, or those a list that follows the
-/// text size worked out off the main thread for the size its labels draw.
-final class SessionRowCell: UITableViewCell {
+/// One session in the flat home list (components/FlatSessionRow.tsx), in
+/// its card with a card's smaller avatar. It measures its labels and
+/// applies `FlatSessionRowLayout`, its rows as tall as `lines`: the
+/// designed ones, or those a list that follows the text size worked out
+/// off the main thread for the size its labels draw.
+final class SessionRowCell: HomeCardCell {
     static let reuseIdentifier = "session"
 
     let avatar = AvatarView()
@@ -21,6 +22,7 @@ final class SessionRowCell: UITableViewCell {
     let changes = GitChangesView(approximateStyle: TextStyles.sessionLineChanges, countStyle: TextStyles.sessionLineChanges)
     /// `workspaceMeta`'s draft glyph, ahead of the counts.
     let draftIcon = IconView(.ionicons("create-outline"), size: FlatSessionRowLayout.Metrics.draftIconSize, tint: Palette.textSecondary)
+    /// The plain row's hairline (not `carded`); a card draws its own.
     let divider = UIView()
     private(set) var row: SessionRow?
     var lines: FlatSessionRowLayout.Lines = .designed {
@@ -29,22 +31,22 @@ final class SessionRowCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        backgroundColor = UIColor(Palette.flatListBackground)
-        let selected = UIView()
-        selected.backgroundColor = UIColor(Palette.surfaceSelected)
-        selectedBackgroundView = selected
         branchIcon.tintColor = UIColor(Palette.textSecondary)
         branchIcon.contentMode = .center
         divider.backgroundColor = UIColor(Palette.legacyDivider)
         for view in [avatar, titleLabel, timestampLabel, dot, projectLabel, workspaceLabel, branchIcon, draftIcon, changes, divider] {
-            contentView.addSubview(view)
+            card.addSubview(view)
         }
         isAccessibilityElement = true
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
+    override var separatorX: CGFloat {
+        FlatSessionRowLayout.Metrics.contentX(avatar: avatarSize)
+    }
+
+    /// A card's smaller avatar, or the plain list's.
+    private var avatarSize: CGFloat {
+        carded ? HomeCardLayout.Metrics.sessionAvatar : FlatSessionRowLayout.Metrics.avatarSize
     }
 
     func configure(_ row: SessionRow, style: AvatarStyle, monochrome: Bool) {
@@ -69,7 +71,6 @@ final class SessionRowCell: UITableViewCell {
         changes.changes = row.changes
         changes.isHidden = row.changes == nil
         draftIcon.isHidden = !row.hasDraft
-        divider.isHidden = !row.showsDivider
         accessibilityLabel = [
             row.title ?? Strings.Session.newChat, cornerAccessibility(row), row.projectName, row.workspaceName,
             row.changes == nil ? nil : changes.spoken, row.timestamp,
@@ -88,6 +89,7 @@ final class SessionRowCell: UITableViewCell {
         }
     }
 
+    /// The row's content in a card `width` wide.
     func layout(width: CGFloat) -> FlatSessionRowLayout {
         FlatSessionRowLayout(.init(
             width: width,
@@ -98,18 +100,19 @@ final class SessionRowCell: UITableViewCell {
             branchIcon: branchIcon.sizeThatFits(.zero),
             changes: row?.changes == nil ? nil : changes.sizeThatFits(.zero),
             draftIcon: row?.hasDraft == true ? draftIcon.sizeThatFits(.zero) : nil,
-            showsDivider: row?.showsDivider ?? false,
-            lines: lines
+            showsDivider: !carded && row?.showsDivider == true,
+            lines: lines,
+            avatarSize: avatarSize
         ))
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
-        layout(width: size.width).size
+        CGSize(width: size.width, height: layout(width: contentWidth(size.width)).size.height)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = layout(width: contentView.bounds.width)
+        let layout = layout(width: card.bounds.width)
         avatar.setLayoutFrame(layout.avatar)
         titleLabel.setLayoutFrame(layout.title)
         timestampLabel.setLayoutFrame(layout.timestamp)
@@ -120,6 +123,7 @@ final class SessionRowCell: UITableViewCell {
         if let frame = layout.branchIcon { branchIcon.setLayoutFrame(frame) }
         if let frame = layout.changes { changes.setLayoutFrame(frame) }
         if let frame = layout.draftIcon { draftIcon.setLayoutFrame(frame) }
+        divider.isHidden = layout.divider == nil
         if let frame = layout.divider { divider.setLayoutFrame(frame) }
     }
 
@@ -211,45 +215,7 @@ final class LegacyShimmerLabel: UIView {
     }
 }
 
-/// "Today", "Yesterday", "3 days ago" over archived rows.
-final class SessionDayHeaderCell: UITableViewCell {
-    static let reuseIdentifier = "day"
-
-    let label = StyledLabel(style: TextStyles.sessionDayHeader, color: Palette.groupedSectionTitle, lines: 1)
-
-    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-        super.init(style: style, reuseIdentifier: reuseIdentifier)
-        backgroundColor = UIColor(Palette.flatListBackground)
-        selectionStyle = .none
-        contentView.addSubview(label)
-        label.accessibilityTraits = .header
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    func configure(_ age: SessionList.DayAge) {
-        switch age {
-        case .today: label.string = Strings.SessionHistory.today
-        case .yesterday: label.string = Strings.SessionHistory.yesterday
-        case .daysAgo(let count): label.string = Strings.SessionHistory.daysAgo(count)
-        }
-        setNeedsLayout()
-    }
-
-    override func sizeThatFits(_ size: CGSize) -> CGSize {
-        SessionDayHeaderLayout(width: size.width, label: label.measurable).size
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        label.setLayoutFrame(SessionDayHeaderLayout(width: contentView.bounds.width, label: label.measurable).label)
-    }
-}
-
-/// "── Show archived ──".
+/// "── Show archived ──", on the page between the cards.
 final class ArchiveToggleCell: UITableViewCell {
     static let reuseIdentifier = "archive"
 
@@ -259,10 +225,10 @@ final class ArchiveToggleCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        backgroundColor = UIColor(Palette.flatListBackground)
+        backgroundColor = UIColor(Palette.groupedGround)
         selectionStyle = .none
         for line in [leading, trailing] {
-            line.backgroundColor = UIColor(Palette.legacyDivider)
+            line.backgroundColor = UIColor(Palette.groupedSeparator)
             contentView.addSubview(line)
         }
         contentView.addSubview(label)
@@ -273,6 +239,16 @@ final class ArchiveToggleCell: UITableViewCell {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// False rules it in the flat list's divider colour, for a list
+    /// without cards.
+    var carded = true {
+        didSet {
+            for line in [leading, trailing] {
+                line.backgroundColor = UIColor(carded ? Palette.groupedSeparator : Palette.legacyDivider)
+            }
+        }
     }
 
     func configure(hidden: Bool) {

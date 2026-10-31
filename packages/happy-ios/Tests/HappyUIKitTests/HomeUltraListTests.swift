@@ -71,18 +71,21 @@ final class HomeUltraListTests: XCTestCase {
             let environment = await HomeTextEnvironment.make(text)
             for workspace in [nil, "fix-login"] {
                 let row = HomeRowMeasurerTests.session(workspace: workspace, changes: HomeRowMeasurerTests.changes)
-                for width in [CGFloat(320), 393, 430] {
-                    let plan = await Task.detached { HomeRowDrawing.make(.flat(.session(row)), width: width, grouped: false, selected: false, environment: environment, dark: false) }.value
+                // Home's card, and the tablet's full-width row.
+                for (width, carded) in [CGFloat(320), 393, 430].flatMap({ [($0, true), ($0, false)] }) {
+                    let plan = await Task.detached { HomeRowDrawing.make(.flat(.session(row)), width: width, grouped: false, selected: false, carded: carded, environment: environment, dark: false) }.value
                     let cell = SessionRowCell(style: .default, reuseIdentifier: nil)
+                    cell.carded = carded
                     cell.traitOverrides.followsTextSize = true
                     cell.traitOverrides.preferredContentSizeCategory = category
                     cell.traitOverrides.displayScale = 3
                     cell.lines = environment.rows.sessionLines
                     cell.configure(row, style: .gradient, monochrome: false)
                     cell.updateTraitsIfNeeded()
-                    let layout = cell.layout(width: width)
-                    XCTAssertEqual(plan.size, layout.size)
-                    XCTAssertEqual(plan.avatarFrame, layout.avatar)
+                    let layout = cell.layout(width: cell.contentWidth(width))
+                    let side = carded ? HomeCardLayout.Metrics.side : 0
+                    XCTAssertEqual(plan.size, CGSize(width: width, height: layout.size.height), "\(width) carded \(carded)")
+                    XCTAssertEqual(plan.avatarFrame, layout.avatar.offsetBy(dx: side, dy: 0), "\(width) carded \(carded)")
                     XCTAssertTrue(plan.accessibilityLabel.contains("+1.2k"))
                     XCTAssertTrue(plan.accessibilityLabel.contains("-7"))
                 }

@@ -22,6 +22,7 @@ public struct HomeArchiveModels: Equatable, Sendable {
         var hidden = shown
         hidden.ids = Array(shown.ids.prefix(toggle + 1))
         hidden.rows = Array(shown.rows.prefix(toggle + 1))
+        hidden.places = Array(shown.places.prefix(toggle + 1))
         hidden.rows[toggle] = shown.grouped ? .project(.archiveToggle(hidden: true)) : .flat(.archiveToggle(hidden: true))
         return HomeArchiveModels(hidden: hidden, shown: shown)
     }

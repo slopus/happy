@@ -31,17 +31,16 @@ final class ApplyPerfClockTests: XCTestCase {
         HomeDerivation.derive(HomeDerivation.Input(snapshot: snapshot, clock: clock(date)), applied: applied)
     }
 
-    func testCrossingMidnightReconfiguresOnlyTheHeading() throws {
+    /// The archive is one card with no day headings, and a stamp stays a
+    /// time for a day: midnight changes nothing home draws.
+    func testCrossingMidnightChangesNoHeading() throws {
         let snapshot = Self.snapshot()
         let before = try XCTUnwrap(Self.derive(snapshot, at: Self.midnight - 60, after: .init())).state
         // Between boundaries the rows are the same rows.
         XCTAssertNil(Self.derive(snapshot, at: Self.midnight - 30, after: before))
-
-        let after = try XCTUnwrap(Self.derive(snapshot, at: Self.midnight + 60, after: before)).output
-        let list = try XCTUnwrap(after.content.list)
-        let heading = try XCTUnwrap(list.ids.firstIndex(of: .day(0)))
-        XCTAssertEqual(after.changeset, RowChangeset(reconfigures: [heading]))
-        XCTAssertEqual(list.rows[heading], .flat(.dayHeader(.yesterday)))
+        let list = try XCTUnwrap(before.content?.list)
+        XCTAssertFalse(list.rows.contains { if case .flat(.dayHeader) = $0 { true } else { false } })
+        XCTAssertNil(Self.derive(snapshot, at: Self.midnight + 60, after: before))
     }
 
     func testTheNextBoundaryIsMidnightOrTheFirstStampToFlip() {

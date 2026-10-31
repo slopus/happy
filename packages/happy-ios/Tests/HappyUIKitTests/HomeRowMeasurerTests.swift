@@ -46,11 +46,6 @@ final class HomeRowMeasurerTests: XCTestCase {
                     )
                 }
 
-                let day = SessionDayHeaderCell(style: .default, reuseIdentifier: nil)
-                check(day, .dayHeader(label: ""))
-                day.configure(.today)
-                check(day, .dayHeader(label: Strings.SessionHistory.today))
-
                 for banded in [true, false] {
                     let toggle = ArchiveToggleCell(style: .default, reuseIdentifier: nil)
                     toggle.banded = banded
@@ -62,11 +57,6 @@ final class HomeRowMeasurerTests: XCTestCase {
                 check(machine, .machineHeader(name: ""))
                 machine.configure(name: "MacBook Pro")
                 check(machine, .machineHeader(name: "MacBook Pro"))
-
-                let section = ProjectSectionCell(style: .default, reuseIdentifier: nil)
-                check(section, .section(label: ""))
-                section.configure("Projects")
-                check(section, .section(label: "Projects"))
 
                 for workspace in [nil, "fix-login"] {
                     for changes in [nil, Self.changes] {
@@ -122,7 +112,6 @@ final class HomeRowMeasurerTests: XCTestCase {
         let twoX = await self.environment(2)
         XCTAssertEqual(environment, again)
         XCTAssertNotEqual(twoX, environment)
-        XCTAssertEqual(environment.rows.dayHeaderLine, 18)
         XCTAssertEqual(environment.bannerTitleLine, 22)
         XCTAssertEqual(environment.rows.hairline, 1.0 / 3, accuracy: 0.0001)
         // The designed lines, but the counts' 14.3, which no style fixes,
@@ -134,10 +123,11 @@ final class HomeRowMeasurerTests: XCTestCase {
     /// configured with, and leaves the constant rows to their layouts.
     func testTheSessionListMeasuresHeadingsAsItsCellsShowThem() {
         typealias List = SessionListViewController
-        XCTAssertEqual(List.kind(.flat(.dayHeader(.today)), grouped: false), .dayHeader(label: Strings.SessionHistory.today))
+        // Headings are gaps between cards now, the same at every size.
+        XCTAssertNil(List.kind(.flat(.dayHeader(.today)), grouped: false))
+        XCTAssertNil(List.kind(.project(.archiveHeader(.daysAgo(3))), grouped: true))
         XCTAssertEqual(List.kind(.flat(.archiveToggle(hidden: true)), grouped: false), .archiveToggle(label: Strings.Sidebar.showArchived, banded: true))
         XCTAssertEqual(List.kind(.project(.archiveToggle(hidden: false)), grouped: true), .archiveToggle(label: Strings.Sidebar.hideArchived, banded: false))
-        XCTAssertEqual(List.kind(.project(.archiveHeader(.daysAgo(3))), grouped: true), .section(label: Strings.SessionHistory.daysAgo(3)))
         XCTAssertEqual(List.kind(.flat(.session(Self.session(workspace: "fix-login"))), grouped: false), .flatSession(workspace: true, changes: false))
         XCTAssertEqual(List.kind(.flat(.session(Self.session(workspace: nil))), grouped: false), .flatSession(workspace: false, changes: false))
         XCTAssertEqual(

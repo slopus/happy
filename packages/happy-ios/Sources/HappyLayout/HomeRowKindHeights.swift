@@ -10,15 +10,11 @@ public enum HomeRowKind: Hashable, Sendable {
     /// A session in the flat list; with a workspace it has the third line,
     /// and with line counts their line ends it.
     case flatSession(workspace: Bool, changes: Bool)
-    /// A day over the flat archive ("Today", "3 days ago").
-    case dayHeader(label: String)
     /// "── Show archived ──": banded in the flat list, dividing the page in
     /// the project list.
     case archiveToggle(label: String, banded: Bool)
     /// The computer heading its bots and projects.
     case machineHeader(name: String)
-    /// "BOTS", "PROJECTS", or a day over the project list's archive.
-    case section(label: String)
     case projectCard
     /// A worktree under its project, or the toggle that ends the list.
     case worktree
@@ -32,14 +28,10 @@ public enum HomeRowKind: Hashable, Sendable {
 /// the screen, so a different font, text size or scale gives different
 /// heights.
 public struct HomeRowMetrics: Hashable, Sendable {
-    /// One line of `TextStyles.sessionDayHeader`.
-    public var dayHeaderLine: CGFloat
     /// One line of `TextStyles.archiveToggle`.
     public var archiveToggleLine: CGFloat
     /// One line of `TextStyles.projectMachine`.
     public var machineLine: CGFloat
-    /// One line of `TextStyles.projectSection`.
-    public var sectionLine: CGFloat
     /// The desktop glyph's box beside a computer's name.
     public var machineIcon: CGSize
     /// One device pixel.
@@ -50,19 +42,15 @@ public struct HomeRowMetrics: Hashable, Sendable {
     public var branchIcon: CGSize
 
     public init(
-        dayHeaderLine: CGFloat,
         archiveToggleLine: CGFloat,
         machineLine: CGFloat,
-        sectionLine: CGFloat,
         machineIcon: CGSize,
         hairline: CGFloat,
         sessionLines: FlatSessionRowLayout.Lines = .designed,
         branchIcon: CGSize = CGSize(width: FlatSessionRowLayout.Metrics.branchIconSize, height: FlatSessionRowLayout.Metrics.branchIconSize)
     ) {
-        self.dayHeaderLine = dayHeaderLine
         self.archiveToggleLine = archiveToggleLine
         self.machineLine = machineLine
-        self.sectionLine = sectionLine
         self.machineIcon = machineIcon
         self.hairline = hairline
         self.sessionLines = sessionLines
@@ -85,10 +73,9 @@ extension HomeRowHeights {
                 lines: metrics.sessionLines,
                 workspace: workspace,
                 changes: changes,
-                branchIcon: metrics.branchIcon.height
+                branchIcon: metrics.branchIcon.height,
+                avatarSize: HomeCardLayout.Metrics.sessionAvatar
             )
-        case .dayHeader(let label):
-            return SessionDayHeaderLayout(width: width, label: line(label, metrics.dayHeaderLine)).size.height
         case .archiveToggle(let label, let banded):
             let text = line(label, metrics.archiveToggleLine)
             return banded
@@ -102,12 +89,9 @@ extension HomeRowHeights {
         case .machineHeader(let name):
             return MachineHeaderLayout(
                 width: width,
-                hairline: metrics.hairline,
                 icon: metrics.machineIcon,
                 name: line(name, metrics.machineLine)
             ).size.height
-        case .section(let label):
-            return ProjectSectionLayout(width: width, label: line(label, metrics.sectionLine)).size.height
         case .projectCard:
             return projectCard(width: width)
         case .worktree:

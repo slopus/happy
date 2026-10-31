@@ -35,10 +35,8 @@ struct HomeTextEnvironment: Equatable, Sendable {
         }
         self.text = text
         rows = HomeRowMetrics(
-            dayHeaderLine: line(TextStyles.sessionDayHeader),
             archiveToggleLine: line(TextStyles.archiveToggle),
             machineLine: line(TextStyles.projectMachine),
-            sectionLine: line(TextStyles.projectSection),
             machineIcon: icon("desktop-outline", 12),
             hairline: 1 / max(scale, 1),
             sessionLines: FlatSessionRowLayout.Lines(

@@ -98,12 +98,11 @@ final class HomeProjectListTests: XCTestCase {
             record("wt", path: "/src/happy/.dev/worktree/gdansk", at: ago(hours: 0.5)),
         ], machines: [machine("m1", name: "Studio")])
         XCTAssertEqual(shape(home.rows(expanded: [])), [
-            "machine:Studio",
             "section:projects",
             "project:happy(1)",
             "worktree:gdansk:last",
         ])
-        guard case .project(let card) = home.rows(expanded: [])[2] else { return XCTFail("no card") }
+        guard case .project(let card) = home.rows(expanded: [])[1] else { return XCTFail("no card") }
         XCTAssertEqual(card.sessionId, "own", "the card opens its own checkout, even when a worktree is newer")
         XCTAssertEqual(card.origin?.path, "/src/happy")
         XCTAssertEqual(card.origin?.machineId, "m1")
@@ -116,7 +115,7 @@ final class HomeProjectListTests: XCTestCase {
         }
         let home = data(sessions, machines: [machine("m1", name: "Studio")])
         XCTAssertEqual(shape(home.rows(expanded: [])), [
-            "machine:Studio", "section:projects", "project:app(5)",
+            "section:projects", "project:app(5)",
             "worktree:w1", "worktree:w2", "worktree:w3", "toggle:+2",
         ])
         let projectId = home.sections[0].projects[0].id
@@ -169,7 +168,31 @@ final class HomeProjectListTests: XCTestCase {
             record("chat", path: "/src/app"),
         ], machines: [machine("m1", name: "Studio")])
         XCTAssertEqual(shape(home.rows(expanded: [])), [
-            "machine:Studio", "section:bots", "bot:bot", "section:projects", "project:app(0)",
+            "section:bots", "bot:bot", "section:projects", "project:app(0)",
+        ])
+    }
+
+    /// A computer heads its rows only when the account has more than one,
+    /// or there are chats on more than one.
+    func testAComputerHeadsItsRowsOnlyBesideAnother() {
+        let one = data([record("a", path: "/src/app")], machines: [machine("m1", name: "Studio")])
+        XCTAssertFalse(one.showsMachines)
+        XCTAssertEqual(shape(one.rows(expanded: [])), ["section:projects", "project:app(0)"])
+
+        // A second computer with nothing on it yet.
+        let two = data([record("a", path: "/src/app")], machines: [machine("m1", name: "Studio"), machine("m2", name: "Laptop")])
+        XCTAssertTrue(two.showsMachines)
+        XCTAssertEqual(shape(two.rows(expanded: [])), ["machine:Studio", "section:projects", "project:app(0)"])
+
+        // One computer, and chats that name none.
+        let unknown = data([
+            record("a", path: "/src/app"),
+            record("b", machine: nil, path: "/src/site", at: ago(hours: 2)),
+        ], machines: [machine("m1", name: "Studio")])
+        XCTAssertTrue(unknown.showsMachines)
+        XCTAssertEqual(shape(unknown.rows(expanded: [])), [
+            "machine:Studio", "section:projects", "project:app(0)",
+            "machine:<unknown>", "section:projects", "project:site(0)",
         ])
     }
 
@@ -181,7 +204,7 @@ final class HomeProjectListTests: XCTestCase {
         let project = home.sections[0].projects[0]
         XCTAssertEqual(project.id, "p")
         XCTAssertEqual(project.checkouts.map(\.id), ["", "w1"], "the primary checkout leads")
-        guard case .project(let card) = home.rows(expanded: [])[2] else { return XCTFail("no card") }
+        guard case .project(let card) = home.rows(expanded: [])[1] else { return XCTFail("no card") }
         XCTAssertEqual(card.origin?.projectId, "p")
         XCTAssertNil(card.origin?.path)
     }
@@ -211,7 +234,7 @@ final class HomeProjectListTests: XCTestCase {
                 "changedFiles": .number(3), "countsExact": .bool(false), "insertions": .number(1234), "deletions": .number(7),
             ])]),
         ])
-        guard case .project(let card) = home.rows(expanded: [])[2] else { return XCTFail("no card") }
+        guard case .project(let card) = home.rows(expanded: [])[1] else { return XCTFail("no card") }
         XCTAssertEqual(card.changes, GitLineChanges(approximate: true, insertions: 1234, deletions: 7))
         XCTAssertEqual(GitLineChanges.compact(999), "999")
         XCTAssertEqual(GitLineChanges.compact(1234), "1.2k")

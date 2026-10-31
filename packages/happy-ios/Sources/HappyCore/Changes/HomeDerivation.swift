@@ -31,15 +31,73 @@ public enum HomeListRow: Equatable, Sendable {
         default: nil
         }
     }
+
+    /// A row of a card, as opposed to a computer's heading, the gap
+    /// between two cards or the archive toggle.
+    public var isCardRow: Bool {
+        switch self {
+        case .flat(.session), .project(.bot), .project(.task), .project(.project), .project(.worktree),
+             .project(.worktreeToggle), .project(.archived):
+            true
+        case .flat(.dayHeader), .flat(.archiveToggle), .project(.machine), .project(.section), .project(.archiveToggle),
+             .project(.archiveHeader):
+            false
+        }
+    }
+
+    /// A worktree or the toggle ending them: on its project's tree line.
+    var hangsOnTree: Bool {
+        switch self {
+        case .project(.worktree), .project(.worktreeToggle): true
+        default: false
+        }
+    }
+}
+
+/// Where a row stands in home's inset cards, the modern home's: rows run
+/// together into one card until a heading, a gap or the archive toggle.
+/// The first rounds the card's top corners, the last its bottom ones.
+public struct HomeCardPlace: Hashable, Sendable {
+    public var first: Bool
+    public var last: Bool
+    /// A hairline under the row: between any two rows of a card except
+    /// along a project's tree line, which joins them already.
+    public var separated: Bool
+
+    public init(first: Bool, last: Bool, separated: Bool) {
+        self.first = first
+        self.last = last
+        self.separated = separated
+    }
+
+    /// Each row's place; nil for a row outside the cards.
+    public static func places(_ rows: [HomeListRow]) -> [HomeCardPlace?] {
+        rows.indices.map { index in
+            guard rows[index].isCardRow else { return nil }
+            let last = index + 1 == rows.count || !rows[index + 1].isCardRow
+            return HomeCardPlace(
+                first: index == 0 || !rows[index - 1].isCardRow,
+                last: last,
+                separated: !last && !rows[index + 1].hangsOnTree
+            )
+        }
+    }
 }
 
 /// What home's session list shows: the rows, each with its identity, and
 /// what draws all of them. Only values a cell renders are here: a row's
 /// `lastActivityAt` orders the list but is drawn as `timestamp`, so it is
 /// cleared and a new activity in the same minute redraws nothing.
+///
+/// The rows stand in inset cards as the modern home's do, with no titles:
+/// a section's heading is only the gap between its card and the one above,
+/// and the archive is one card under its toggle.
 public struct HomeListModel: Equatable, Sendable {
     public var ids: [HomeListRow.ID]
     public var rows: [HomeListRow]
+    /// Each row's place in its card (`HomeCardPlace.places`), kept with the
+    /// rows: whoever cuts the rows cuts these the same.
+    public var places: [HomeCardPlace?]
     public var avatarStyle: AvatarStyle
     public var avatarMonochrome: Bool
     /// Grouped by project rather than flat.
@@ -52,6 +110,7 @@ public struct HomeListModel: Equatable, Sendable {
     public init(ids: [HomeListRow.ID], rows: [HomeListRow], avatarStyle: AvatarStyle, avatarMonochrome: Bool, grouped: Bool, offline: [MachineChoice]?) {
         self.ids = ids
         self.rows = rows
+        places = HomeCardPlace.places(rows)
         self.avatarStyle = avatarStyle
         self.avatarMonochrome = avatarMonochrome
         self.grouped = grouped
@@ -63,14 +122,14 @@ public struct HomeListModel: Equatable, Sendable {
     public init(_ list: SessionList, offline: [MachineChoice]?, expandedProjects: Set<String>, draftSessionIds: Set<String> = []) {
         var ids: [HomeListRow.ID] = []
         var rows: [HomeListRow] = []
-        var dayIndex = 0
         if let projects = list.projects {
             for row in projects.rows(expanded: expandedProjects) {
                 switch row {
+                // The archive is one card.
+                case .archiveHeader: continue
+                // A section's gap only parts its card from the one above.
+                case .section where rows.last?.isCardRow != true: continue
                 case .archiveToggle: ids.append(.projectArchiveToggle)
-                case .archiveHeader:
-                    ids.append(.projectDay(dayIndex))
-                    dayIndex += 1
                 default: ids.append(.project(row.key))
                 }
                 rows.append(.project(Self.rendered(row)))
@@ -89,9 +148,7 @@ public struct HomeListModel: Equatable, Sendable {
                     ids.append(.archiveToggle)
                     rows.append(.flat(item))
                 case .dayHeader:
-                    ids.append(.day(dayIndex))
-                    dayIndex += 1
-                    rows.append(.flat(item))
+                    continue
                 }
             }
         }
@@ -263,9 +320,11 @@ public enum HomeDerivation {
         let before = applied.content?.list
         let after = content.list ?? .empty
         let rows = before?.rows ?? []
+        let places = before?.places ?? []
+        // A row whose card grew or shrank around it redraws its corners.
         let changeset = content == applied.content
             ? RowChangeset()
-            : RowChangeset(oldIds: before?.ids ?? [], newIds: after.ids) { rows[$0] != after.rows[$1] }
+            : RowChangeset(oldIds: before?.ids ?? [], newIds: after.ids) { rows[$0] != after.rows[$1] || places[$0] != after.places[$1] }
         let update = HomeUpdate(
             content: content,
             contentChanged: content != applied.content,

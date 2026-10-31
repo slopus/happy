@@ -53,6 +53,7 @@ final class SecondaryTextSizeTests: XCTestCase {
                             let session = HomeRowMeasurerTests.session(workspace: workspace, changes: changes)
                             let cell = SessionRowCell(style: .default, reuseIdentifier: nil)
                             // As the grouped list configures it.
+                            cell.carded = false
                             cell.lines = metrics.sessionLines
                             cell.configure(session, style: .gradient, monochrome: false)
                             follow(cell, scale: scale, category: category)

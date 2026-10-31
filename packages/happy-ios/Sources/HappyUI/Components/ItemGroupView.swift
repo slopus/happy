@@ -50,10 +50,21 @@ final class GroupCardView: UIView {
         if !safeAreaCalls.isSafeAreaChange(safeAreaInsets) { onRowChange?() }
     }
 
+    /// The modern home's quiet card (`GroupedSidebarMetrics`): its colour
+    /// and corners, no border.
+    var isQuiet = false {
+        didSet {
+            guard isQuiet != oldValue else { return }
+            backgroundColor = UIColor(isQuiet ? Palette.groupedCard : Palette.surface)
+            layer.cornerRadius = isQuiet ? GroupedSidebarMetrics.radius : ItemGroupLayout.Metrics.cardCornerRadius
+            updateBorder()
+        }
+    }
+
     private func updateBorder() {
         // CGColor does not follow appearance changes by itself.
         layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
-        layer.borderWidth = 1 / max(traitCollection.displayScale, 1)
+        layer.borderWidth = isQuiet ? 0 : 1 / max(traitCollection.displayScale, 1)
     }
 }
 

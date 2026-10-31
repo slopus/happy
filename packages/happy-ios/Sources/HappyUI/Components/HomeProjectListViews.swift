@@ -4,19 +4,47 @@ import HappyIcons
 import HappyLayout
 import UIKit
 
-/// A project-list cell whose press highlight fades rather than flips
-/// (ProjectHomeList.tsx `RowPressable`): up in 70ms, gone over 240ms.
-class ProjectListCell: UITableViewCell {
+/// A home row in its inset card (`HomeCardLayout`): the cell is the page's
+/// ground and `card` the row's part of the card, its content laid out at
+/// the card's width. A press fills the row's part of the card, fading
+/// rather than flipping (ProjectHomeList.tsx `RowPressable`): up in 70ms,
+/// gone over 240ms. The open chat's row stays filled (the tablet's).
+class HomeCardCell: UITableViewCell {
+    let card = UIView()
     let highlight = UIView()
+    let separator = UIView()
+
+    /// Nil draws a card of its own.
+    var place: HomeCardPlace? {
+        didSet { if place != oldValue { setNeedsLayout() } }
+    }
+
+    /// False draws the row full width on the flat list's ground, as the
+    /// tablet's grouped list still does.
+    var carded = true {
+        didSet {
+            guard carded != oldValue else { return }
+            backgroundColor = UIColor(carded ? Palette.groupedGround : Palette.flatListBackground)
+            card.backgroundColor = UIColor(carded ? Palette.groupedCard : Palette.flatListBackground)
+            highlight.backgroundColor = UIColor(carded ? Palette.groupedCellHighlight : Palette.surfaceSelected)
+            setNeedsLayout()
+        }
+    }
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        backgroundColor = UIColor(Palette.groupedBackground)
+        backgroundColor = UIColor(Palette.groupedGround)
         selectionStyle = .none
-        highlight.backgroundColor = UIColor(Palette.surfacePressed)
+        card.backgroundColor = UIColor(Palette.groupedCard)
+        card.layer.cornerCurve = .continuous
+        card.clipsToBounds = true
+        highlight.backgroundColor = UIColor(Palette.groupedCellHighlight)
         highlight.alpha = 0
         highlight.isUserInteractionEnabled = false
-        contentView.addSubview(highlight)
+        separator.backgroundColor = UIColor(Palette.groupedSeparator)
+        card.addSubview(highlight)
+        card.addSubview(separator)
+        contentView.addSubview(card)
     }
 
     @available(*, unavailable)
@@ -24,18 +52,61 @@ class ProjectListCell: UITableViewCell {
         fatalError("init(coder:) is not supported")
     }
 
-    /// The pressable area: the whole cell, or the card under its margin.
-    var highlightFrame: CGRect { contentView.bounds }
+    /// Where the row's text starts in the card, and its hairline.
+    var separatorX: CGFloat { ProjectListMetrics.nameX }
 
+    /// The width the row's content is laid out at in a cell this wide.
+    func contentWidth(_ width: CGFloat) -> CGFloat {
+        carded ? HomeCardLayout.contentWidth(width) : width
+    }
+
+    func cardLayout() -> HomeCardLayout {
+        guard carded else {
+            return HomeCardLayout(width: contentView.bounds.width, height: contentView.bounds.height, roundsTop: false, roundsBottom: false, separatorX: nil, hairline: hairline, side: 0)
+        }
+        return HomeCardLayout(
+            width: contentView.bounds.width,
+            height: contentView.bounds.height,
+            roundsTop: place?.first ?? true,
+            roundsBottom: place?.last ?? true,
+            separatorX: place?.separated == true ? separatorX : nil,
+            hairline: hairline
+        )
+    }
+
+    /// Places the card; a subclass lays its content out in `card.bounds`
+    /// after this.
     override func layoutSubviews() {
         super.layoutSubviews()
-        highlight.frame = highlightFrame
+        let layout = cardLayout()
+        card.setLayoutFrame(layout.card)
+        var corners: CACornerMask = []
+        if layout.roundsTop { corners.formUnion([.layerMinXMinYCorner, .layerMaxXMinYCorner]) }
+        if layout.roundsBottom { corners.formUnion([.layerMinXMaxYCorner, .layerMaxXMaxYCorner]) }
+        card.layer.cornerRadius = corners.isEmpty ? 0 : HomeCardLayout.Metrics.radius
+        card.layer.maskedCorners = corners
+        highlight.frame = card.bounds
+        separator.isHidden = layout.separator == nil
+        if let frame = layout.separator { separator.frame = frame }
+        card.bringSubviewToFront(separator)
     }
 
     override func setHighlighted(_ highlighted: Bool, animated: Bool) {
         super.setHighlighted(highlighted, animated: animated)
-        UIView.animate(withDuration: highlighted ? RowHighlight.fadeIn : RowHighlight.fadeOut, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
-            self.highlight.alpha = highlighted ? 1 : 0
+        showHighlight(animated: true)
+    }
+
+    override func setSelected(_ selected: Bool, animated: Bool) {
+        super.setSelected(selected, animated: animated)
+        showHighlight(animated: false)
+    }
+
+    private func showHighlight(animated: Bool) {
+        let shown: CGFloat = isHighlighted || isSelected ? 1 : 0
+        guard highlight.alpha != shown else { return }
+        guard animated else { highlight.alpha = shown; return }
+        UIView.animate(withDuration: shown > 0 ? RowHighlight.fadeIn : RowHighlight.fadeOut, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+            self.highlight.alpha = shown
         }
     }
 }
@@ -136,20 +207,18 @@ final class ActivityDotView: UIView {
     }
 }
 
-/// The computer heading its bots and projects.
+/// The computer heading its bots and projects, when there is more than one.
 final class ProjectMachineHeaderCell: UITableViewCell {
     static let reuseIdentifier = "project-machine"
 
     let icon = IconView(.ionicons("desktop-outline"), size: 12, tint: Palette.textSecondary)
     let nameLabel = StyledLabel(style: TextStyles.projectMachine, color: Palette.textSecondary, lines: 1)
-    let rule = UIView()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        backgroundColor = UIColor(Palette.groupedBackground)
+        backgroundColor = UIColor(Palette.groupedGround)
         selectionStyle = .none
-        rule.backgroundColor = UIColor(Palette.textSecondary)
-        for view in [icon, nameLabel, rule] { contentView.addSubview(view) }
+        for view in [icon, nameLabel] { contentView.addSubview(view) }
         isAccessibilityElement = true
         accessibilityTraits = .header
     }
@@ -166,7 +235,7 @@ final class ProjectMachineHeaderCell: UITableViewCell {
     }
 
     private func layout(width: CGFloat) -> MachineHeaderLayout {
-        MachineHeaderLayout(width: width, hairline: hairline, icon: icon.sizeThatFits(.zero), name: nameLabel.measurable)
+        MachineHeaderLayout(width: width, icon: icon.sizeThatFits(.zero), name: nameLabel.measurable)
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
@@ -178,22 +247,19 @@ final class ProjectMachineHeaderCell: UITableViewCell {
         let layout = layout(width: contentView.bounds.width)
         icon.setLayoutFrame(layout.icon)
         nameLabel.setLayoutFrame(layout.name)
-        rule.setLayoutFrame(layout.rule)
     }
 }
 
-/// "BOTS", "PROJECTS", or a day over the archive.
-final class ProjectSectionCell: UITableViewCell {
-    static let reuseIdentifier = "project-section"
-
-    let label = StyledLabel(style: TextStyles.projectSection, color: Palette.groupedSectionTitle, lines: 1)
+/// The room between two cards, where a section's or a day's heading stood:
+/// nothing but the page (`HomeRowHeights.gap`).
+final class HomeGapCell: UITableViewCell {
+    static let reuseIdentifier = "home-gap"
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        backgroundColor = UIColor(Palette.groupedBackground)
+        backgroundColor = UIColor(Palette.groupedGround)
         selectionStyle = .none
-        contentView.addSubview(label)
-        label.accessibilityTraits = .header
+        isAccessibilityElement = false
     }
 
     @available(*, unavailable)
@@ -201,23 +267,13 @@ final class ProjectSectionCell: UITableViewCell {
         fatalError("init(coder:) is not supported")
     }
 
-    func configure(_ text: String) {
-        label.string = text
-        setNeedsLayout()
-    }
-
     override func sizeThatFits(_ size: CGSize) -> CGSize {
-        ProjectSectionLayout(width: size.width, label: label.measurable).size
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        label.setLayoutFrame(ProjectSectionLayout(width: contentView.bounds.width, label: label.measurable).label)
+        CGSize(width: size.width, height: HomeRowHeights.gap)
     }
 }
 
-/// A project's card: avatar, name, activity, line changes and the `+`.
-final class ProjectCardCell: ProjectListCell {
+/// A project's row: avatar, name, activity, line changes and the `+`.
+final class ProjectCardCell: HomeCardCell {
     static let reuseIdentifier = "project-card"
 
     let avatar = AvatarView()
@@ -237,7 +293,7 @@ final class ProjectCardCell: ProjectListCell {
             guard let self, let entry else { return }
             onCreateWorkspace?(entry)
         }, for: .primaryActionTriggered)
-        for view in [avatar, stem, nameLabel, dot, changes, addButton] { contentView.addSubview(view) }
+        for view in [avatar, stem, nameLabel, dot, changes, addButton] { card.addSubview(view) }
         isAccessibilityElement = false
         nameLabel.isAccessibilityElement = true
         nameLabel.accessibilityTraits = .button
@@ -272,17 +328,13 @@ final class ProjectCardCell: ProjectListCell {
         ))
     }
 
-    override var highlightFrame: CGRect {
-        CGRect(x: 0, y: ProjectListMetrics.projectMarginTop, width: contentView.bounds.width, height: ProjectListMetrics.projectRowHeight)
-    }
-
     override func sizeThatFits(_ size: CGSize) -> CGSize {
-        layout(width: size.width).size
+        CGSize(width: size.width, height: layout(width: contentWidth(size.width)).size.height)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = layout(width: contentView.bounds.width)
+        let layout = layout(width: card.bounds.width)
         avatar.setLayoutFrame(layout.avatar)
         if let frame = layout.stem { stem.setLayoutFrame(frame) }
         nameLabel.setLayoutFrame(layout.name)
@@ -293,7 +345,7 @@ final class ProjectCardCell: ProjectListCell {
 }
 
 /// A worktree on the tree line, or the row that ends it.
-final class WorktreeCell: ProjectListCell {
+final class WorktreeCell: HomeCardCell {
     static let reuseIdentifier = "project-worktree"
 
     let trunk = UIView()
@@ -309,7 +361,7 @@ final class WorktreeCell: ProjectListCell {
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         for line in [trunk, elbow] { line.backgroundColor = UIColor(Palette.textSecondary) }
-        for view in [trunk, elbow, chevron, nameLabel, toggleLabel, dot, changes] { contentView.addSubview(view) }
+        for view in [trunk, elbow, chevron, nameLabel, toggleLabel, dot, changes] { card.addSubview(view) }
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
@@ -359,12 +411,12 @@ final class WorktreeCell: ProjectListCell {
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
-        layout(width: size.width).size
+        CGSize(width: size.width, height: layout(width: contentWidth(size.width)).size.height)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = layout(width: contentView.bounds.width)
+        let layout = layout(width: card.bounds.width)
         trunk.setLayoutFrame(layout.trunk)
         elbow.setLayoutFrame(layout.elbow)
         if let frame = layout.chevron { chevron.setLayoutFrame(frame) }
@@ -376,7 +428,7 @@ final class WorktreeCell: ProjectListCell {
 
 /// A bot's standing chat or an archived chat: avatar, name, and the time
 /// or a dot.
-final class ProjectChatCell: ProjectListCell {
+final class ProjectChatCell: HomeCardCell {
     static let reuseIdentifier = "project-chat"
 
     let avatar = AvatarView()
@@ -387,7 +439,7 @@ final class ProjectChatCell: ProjectListCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        for view in [avatar, nameLabel, timestampLabel, dot] { contentView.addSubview(view) }
+        for view in [avatar, nameLabel, timestampLabel, dot] { card.addSubview(view) }
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
@@ -405,7 +457,8 @@ final class ProjectChatCell: ProjectListCell {
         timestampLabel.isHidden = showsDot
         dot.isHidden = !showsDot
         dot.backgroundColor = UIColor(row.corner == .blockedDot ? Palette.sessionBlockedDot : Palette.sessionReadyDot)
-        contentView.alpha = archived ? 0.6 : 1
+        // The content fades; the card stays.
+        for view in [avatar, nameLabel, timestampLabel, dot] as [UIView] { view.alpha = archived ? 0.6 : 1 }
         accessibilityLabel = nameLabel.string
         setNeedsLayout()
     }
@@ -420,12 +473,12 @@ final class ProjectChatCell: ProjectListCell {
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
-        layout(width: size.width).size
+        CGSize(width: size.width, height: layout(width: contentWidth(size.width)).size.height)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = layout(width: contentView.bounds.width)
+        let layout = layout(width: card.bounds.width)
         avatar.setLayoutFrame(layout.avatar)
         nameLabel.setLayoutFrame(layout.name)
         timestampLabel.setLayoutFrame(layout.corner)

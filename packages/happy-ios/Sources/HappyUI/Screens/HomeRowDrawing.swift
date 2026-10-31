@@ -21,17 +21,27 @@ struct HomeRowDrawing: Sendable {
         /// No feedback: headings, and the tablet's cells.
         case none
         /// A fill behind the content: a flat session's selected background
-        /// (SessionRowCell), a project row's pressed one (ProjectListCell).
+        /// (SessionRowCell), a project row's pressed one (HomeCardCell).
         case fill(ColorToken)
         /// The content at half strength over an unchanged background
         /// (ArchiveToggleCell).
         case dim
     }
 
+    /// A home row's part of its inset card (`HomeCardLayout`): drawn by the
+    /// row view under the press fill, which fills only this.
+    struct Card: Sendable, Equatable {
+        var frame: CGRect
+        var roundsTop: Bool
+        var roundsBottom: Bool
+        var color: ColorToken
+    }
+
     var size: CGSize = .zero
     /// The row's page colour. It is the row view's own layer, not a mark, so
     /// the press fill sits between it and the content.
     var background: ColorToken?
+    var card: Card?
     var press = Press.none
     var marks: [Mark] = []
     var avatar: SessionAvatar?
@@ -116,9 +126,16 @@ struct HomeRowDrawing: Sendable {
         UIColor(dark ? token.dark : token.light)
     }
 
-    nonisolated static func make(_ row: HomeListRow, width: CGFloat, grouped: Bool, selected: Bool, environment: HomeTextEnvironment, dark: Bool, catalog: TranslationCatalog = .english, deferArchiveText: Bool = false) -> HomeRowDrawing {
+    /// `carded` draws home's rows in their inset cards (`HomeCardLayout`),
+    /// the row at `place` in its card; otherwise as the tablet's list draws
+    /// them, full width.
+    nonisolated static func make(_ row: HomeListRow, width: CGFloat, grouped: Bool, selected: Bool, place: HomeCardPlace? = nil, carded: Bool = false, environment: HomeTextEnvironment, dark: Bool, catalog: TranslationCatalog = .english, deferArchiveText: Bool = false) -> HomeRowDrawing {
         var plan = HomeRowDrawing(environment: environment, dark: dark)
         let deferred = deferArchiveText && canDeferArchiveText(row)
+        let inCard = carded && row.isCardRow
+        // A card's row is laid out at the card's width and moved into it.
+        let rowWidth = inCard ? HomeCardLayout.contentWidth(width) : width
+        var separatorX: CGFloat = ProjectListMetrics.nameX
         func measured(_ value: String, _ style: TextStyle) -> Measurable {
             if deferred { return .fixed(.zero) }
             return Measurable { HomeRowMeasurer.measure(value, style: style, in: environment.text, width: $0, maxLines: 1) }
@@ -159,7 +176,7 @@ struct HomeRowDrawing: Sendable {
             plan.contentAlpha = archived || (!grouped && row.faded) ? 0.6 : 1
             if grouped {
                 plan.accessibilityLabel = [name, row.timestamp].joined(separator: ", ")
-                let layout = ProjectChatRowLayout(width: width, name: measured(name, TextStyles.projectName), corner: row.corner == .timestamp ? measured(row.timestamp, TextStyles.projectTimestamp) : .fixed(width: ProjectListMetrics.chatDotSize, height: ProjectListMetrics.chatDotSize))
+                let layout = ProjectChatRowLayout(width: rowWidth, name: measured(name, TextStyles.projectName), corner: row.corner == .timestamp ? measured(row.timestamp, TextStyles.projectTimestamp) : .fixed(width: ProjectListMetrics.chatDotSize, height: ProjectListMetrics.chatDotSize))
                 plan.size = layout.size
                 plan.avatarFrame = layout.avatar
                 title(name, style: TextStyles.projectName, frame: layout.name, working: row.shimmersTitle)
@@ -168,7 +185,10 @@ struct HomeRowDrawing: Sendable {
             } else {
                 let parts = changes(row.changes, flat: true)
                 let draftBox = Icon.ionicons("create-outline").layout(size: FlatSessionRowLayout.Metrics.draftIconSize, scale: environment.text.displayScale)?.size ?? CGSize(width: 13, height: 13)
-                let layout = FlatSessionRowLayout(.init(width: width, title: measured(name, TextStyles.sessionTitle), timestamp: measured(row.timestamp, TextStyles.sessionTimestamp), project: measured(row.projectName, TextStyles.sessionProject), workspace: row.workspaceName.map { measured($0, TextStyles.sessionWorkspace) }, branchIcon: environment.rows.branchIcon, changes: row.changes == nil ? nil : changesSize(parts).size, draftIcon: row.hasDraft ? draftBox : nil, showsDivider: row.showsDivider, lines: environment.rows.sessionLines))
+                let avatarSize = inCard ? HomeCardLayout.Metrics.sessionAvatar : FlatSessionRowLayout.Metrics.avatarSize
+                separatorX = FlatSessionRowLayout.Metrics.contentX(avatar: avatarSize)
+                // In a card, the card draws the hairline.
+                let layout = FlatSessionRowLayout(.init(width: rowWidth, title: measured(name, TextStyles.sessionTitle), timestamp: measured(row.timestamp, TextStyles.sessionTimestamp), project: measured(row.projectName, TextStyles.sessionProject), workspace: row.workspaceName.map { measured($0, TextStyles.sessionWorkspace) }, branchIcon: environment.rows.branchIcon, changes: row.changes == nil ? nil : changesSize(parts).size, draftIcon: row.hasDraft ? draftBox : nil, showsDivider: !inCard && row.showsDivider, lines: environment.rows.sessionLines, avatarSize: avatarSize))
                 plan.size = layout.size
                 plan.avatarFrame = layout.avatar
                 plan.avatarAlpha = row.faded ? 0.5 : 1
@@ -189,51 +209,33 @@ struct HomeRowDrawing: Sendable {
         case .flat(.session(let row)): session(row, archived: false)
         case .project(.bot(let row)), .project(.task(let row)): session(row, archived: false)
         case .project(.archived(let row)): session(row, archived: true)
-        case .flat(.dayHeader(let age)), .project(.archiveHeader(let age)):
-            let value = dayTitle(age, catalog: catalog)
-            let style = grouped ? TextStyles.projectSection : TextStyles.sessionDayHeader
-            if grouped {
-                let layout = ProjectSectionLayout(width: width, label: measured(value, style))
-                plan.size = layout.size; text(value, style, Palette.groupedSectionTitle, layout.label)
-            } else {
-                let layout = SessionDayHeaderLayout(width: width, label: measured(value, style))
-                plan.size = layout.size; text(value, style, Palette.groupedSectionTitle, layout.label)
-            }
-            plan.accessibilityLabel = value; plan.isHeading = true
+        case .flat(.dayHeader), .project(.section), .project(.archiveHeader):
+            // Only the room between two cards.
+            plan.size = CGSize(width: width, height: HomeRowHeights.gap)
         case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
             let value = catalog(hidden ? "sidebar.showArchived" : "sidebar.hideArchived")
             let layout = ArchiveToggleLayout(width: width, label: measured(value, TextStyles.archiveToggle), paddingTop: grouped ? ArchiveToggleLayout.unbanded.top : ArchiveToggleLayout.Metrics.paddingTop, paddingBottom: grouped ? ArchiveToggleLayout.unbanded.bottom : ArchiveToggleLayout.Metrics.paddingBottom)
             plan.size = layout.size
             text(value, TextStyles.archiveToggle, Palette.textSecondary, layout.label)
-            fill(Palette.legacyDivider, layout.leadingLine); fill(Palette.legacyDivider, layout.trailingLine)
+            let line = carded ? Palette.groupedSeparator : Palette.legacyDivider
+            fill(line, layout.leadingLine); fill(line, layout.trailingLine)
             plan.accessibilityLabel = value
         case .project(.machine(_, let name)):
-            let layout = MachineHeaderLayout(width: width, hairline: environment.rows.hairline, icon: environment.rows.machineIcon, name: measured(name, TextStyles.projectMachine))
+            let layout = MachineHeaderLayout(width: width, icon: environment.rows.machineIcon, name: measured(name, TextStyles.projectMachine))
             plan.size = layout.size
             text(name, TextStyles.projectMachine, Palette.textSecondary, layout.name)
             plan.marks.append(.icon("desktop-outline", 12, Palette.textSecondary, layout.icon))
-            fill(Palette.textSecondary, layout.rule)
             plan.accessibilityLabel = name; plan.isHeading = true
-        case .project(.section(_, let section)):
-            let value = switch section {
-            case .bots: catalog("sidebar.bots")
-            case .tasks: Strings.Tasks.heading
-            case .projects: catalog("sidebar.projects")
-            }
-            let layout = ProjectSectionLayout(width: width, label: measured(value, TextStyles.projectSection))
-            plan.size = layout.size
-            text(value, TextStyles.projectSection, Palette.groupedSectionTitle, layout.label)
-            plan.accessibilityLabel = value; plan.isHeading = true
         case .project(.project(let entry)):
             let parts = changes(entry.changes, flat: false)
-            let layout = ProjectCardLayout(.init(width: width, hairline: environment.rows.hairline, name: measured(entry.name, TextStyles.projectName), showsDot: entry.activity.blocked || entry.activity.unread, changes: entry.changes == nil ? nil : .fixed(changesSize(parts).size), showsAdd: entry.origin != nil, showsTree: entry.worktreeCount > 0))
+            let layout = ProjectCardLayout(.init(width: rowWidth, hairline: environment.rows.hairline, name: measured(entry.name, TextStyles.projectName), showsDot: entry.activity.blocked || entry.activity.unread, changes: entry.changes == nil ? nil : .fixed(changesSize(parts).size), showsAdd: entry.origin != nil, showsTree: entry.worktreeCount > 0))
             plan.size = layout.size; plan.avatar = entry.avatar; plan.avatarFrame = layout.avatar; plan.addFrame = layout.add
             title(entry.name, style: TextStyles.projectName, frame: layout.name, working: entry.activity.working)
             fill(Palette.textSecondary, layout.stem); activity(entry.activity, frame: layout.dot)
             drawChanges(parts, at: layout.changes); plan.accessibilityLabel = entry.name
         case .project(.worktree(let worktree, let last)):
             let parts = changes(worktree.changes, flat: false)
-            let layout = WorktreeRowLayout(.init(width: width, hairline: environment.rows.hairline, label: measured(worktree.title, TextStyles.worktreeName), showsDot: worktree.activity.blocked || worktree.activity.unread, changes: worktree.changes == nil ? nil : .fixed(changesSize(parts).size), last: last))
+            let layout = WorktreeRowLayout(.init(width: rowWidth, hairline: environment.rows.hairline, label: measured(worktree.title, TextStyles.worktreeName), showsDot: worktree.activity.blocked || worktree.activity.unread, changes: worktree.changes == nil ? nil : .fixed(changesSize(parts).size), last: last))
             plan.size = layout.size
             title(worktree.title, style: TextStyles.worktreeName, frame: layout.label, working: worktree.activity.working)
             fill(Palette.textSecondary, layout.trunk); fill(Palette.textSecondary, layout.elbow)
@@ -241,7 +243,7 @@ struct HomeRowDrawing: Sendable {
             plan.accessibilityLabel = worktree.title
         case .project(.worktreeToggle(let toggle)):
             let value = toggle.expanded ? catalog("sidebar.showFewerWorkspaces") : catalog("sidebar.showAllWorkspaces", ["count": .number(toggle.worktreeCount)])
-            let layout = WorktreeRowLayout(.init(width: width, hairline: environment.rows.hairline, label: measured(value, TextStyles.worktreeToggle), chevron: environment.rows.branchIcon, showsDot: toggle.activity.blocked || toggle.activity.unread, changes: nil, last: true))
+            let layout = WorktreeRowLayout(.init(width: rowWidth, hairline: environment.rows.hairline, label: measured(value, TextStyles.worktreeToggle), chevron: environment.rows.branchIcon, showsDot: toggle.activity.blocked || toggle.activity.unread, changes: nil, last: true))
             plan.size = layout.size
             text(value, TextStyles.worktreeToggle, Palette.textSecondary, layout.label)
             fill(Palette.textSecondary, layout.trunk); fill(Palette.textSecondary, layout.elbow)
@@ -250,20 +252,63 @@ struct HomeRowDrawing: Sendable {
             plan.accessibilityLabel = value; plan.accessibilityValue = toggle.expanded ? "expanded" : "collapsed"
         }
         switch row {
-        case .flat(.session): plan.press = .fill(Palette.surfaceSelected)
-        case .project(.project), .project(.worktree), .project(.worktreeToggle), .project(.bot), .project(.task), .project(.archived):
-            plan.press = .fill(Palette.surfacePressed)
+        case .flat(.session) where !carded: plan.press = .fill(Palette.surfaceSelected)
+        case .flat(.session), .project(.project), .project(.worktree), .project(.worktreeToggle), .project(.bot), .project(.task), .project(.archived):
+            plan.press = .fill(carded ? Palette.groupedCellHighlight : Palette.surfacePressed)
         case .flat(.archiveToggle), .project(.archiveToggle): plan.press = .dim
         case .flat(.dayHeader), .project(.machine), .project(.section), .project(.archiveHeader): plan.press = .none
         }
-        plan.background = selected ? Palette.surfaceSelected : grouped ? Palette.groupedBackground : Palette.flatListBackground
+        if carded {
+            plan.background = Palette.groupedGround
+            if inCard {
+                let layout = HomeCardLayout(
+                    width: width,
+                    height: plan.size.height,
+                    roundsTop: place?.first ?? true,
+                    roundsBottom: place?.last ?? true,
+                    separatorX: place?.separated == true ? separatorX : nil,
+                    hairline: environment.rows.hairline
+                )
+                fill(Palette.groupedSeparator, layout.separator)
+                plan.offset(by: layout.card.minX)
+                plan.size.width = width
+                plan.card = Card(
+                    frame: layout.card,
+                    roundsTop: layout.roundsTop,
+                    roundsBottom: layout.roundsBottom,
+                    color: selected ? Palette.groupedCellHighlight : Palette.groupedCard
+                )
+            }
+        } else {
+            plan.background = selected ? Palette.surfaceSelected : grouped ? Palette.groupedBackground : Palette.flatListBackground
+        }
         if deferred {
             plan.marks = []
             plan.deferredDrawing = {
-                make(row, width: width, grouped: grouped, selected: selected, environment: environment, dark: dark, catalog: catalog)
+                make(row, width: width, grouped: grouped, selected: selected, place: place, carded: carded, environment: environment, dark: dark, catalog: catalog)
             }
         }
         return plan
+    }
+
+    /// Moves everything drawn `dx` to the right: a card's row, laid out at
+    /// the card's width, into the card.
+    private mutating func offset(by dx: CGFloat) {
+        func moved(_ frame: CGRect) -> CGRect { frame.offsetBy(dx: dx, dy: 0) }
+        marks = marks.map { mark in
+            switch mark {
+            case .text(let value, let style, let color, let frame): .text(value, style, color, moved(frame))
+            case .fill(let color, let frame, let round): .fill(color, moved(frame), round: round)
+            case .icon(let name, let size, let color, let frame): .icon(name, size, color, moved(frame))
+            case .card(let frame, let radius, let top, let bottom, let selection): .card(moved(frame), radius: radius, top: top, bottom: bottom, selection: selection.map(moved))
+            case .clip(let frame): .clip(moved(frame))
+            }
+        }
+        avatarFrame = moved(avatarFrame)
+        addFrame = addFrame.map(moved)
+        shimmer = shimmer.map { ($0.0, $0.1, moved($0.2)) }
+        pulsingDots = pulsingDots.map { ($0.0, moved($0.1)) }
+        provider = provider.map { ($0.0, moved($0.1)) }
     }
 
     nonisolated static func canDeferArchiveText(_ row: HomeListRow) -> Bool {

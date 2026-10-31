@@ -121,10 +121,6 @@ final class HomeListTextSizeTests: XCTestCase {
                         }
                     }
 
-                    let day = SessionDayHeaderCell(style: .default, reuseIdentifier: nil)
-                    day.configure(.today)
-                    check(day, .dayHeader(label: Strings.SessionHistory.today))
-
                     for banded in [true, false] {
                         let toggle = ArchiveToggleCell(style: .default, reuseIdentifier: nil)
                         toggle.banded = banded
@@ -136,15 +132,11 @@ final class HomeListTextSizeTests: XCTestCase {
                     machine.configure(name: "MacBook Pro")
                     check(machine, .machineHeader(name: "MacBook Pro"))
 
-                    let section = ProjectSectionCell(style: .default, reuseIdentifier: nil)
-                    section.configure(Strings.Home.projects)
-                    check(section, .section(label: Strings.Home.projects))
-
-                    // RN's fixed `height`s: 52 + 8, 48, 48 at every size.
+                    // Fixed heights at every size: 52, 48, 48.
                     check(ProjectCardCell(style: .default, reuseIdentifier: nil), .projectCard)
                     check(WorktreeCell(style: .default, reuseIdentifier: nil), .worktree)
                     check(ProjectChatCell(style: .default, reuseIdentifier: nil), .chat)
-                    XCTAssertEqual(HomeRowMeasurer.height(.projectCard, width: width, environment: environment), 60, at)
+                    XCTAssertEqual(HomeRowMeasurer.height(.projectCard, width: width, environment: environment), 52, at)
                     XCTAssertEqual(HomeRowMeasurer.height(.worktree, width: width, environment: environment), 48, at)
                     XCTAssertEqual(HomeRowMeasurer.height(.chat, width: width, environment: environment), 48, at)
                 }

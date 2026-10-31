@@ -46,6 +46,8 @@ final class HomeListHeaderView: UIView {
         let group = ItemGroupView(rows: [row])
         group.untitledPaddingTop = 4
         group.paddingBottom = 16
+        // As the rows' cards under it.
+        group.card.isQuiet = true
         return group
     }
 

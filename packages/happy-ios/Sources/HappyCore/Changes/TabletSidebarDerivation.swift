@@ -173,7 +173,7 @@ public enum TabletSidebarDerivation {
         switch frame.content {
         case .list(let after):
             let before = applied.list ?? .empty
-            changeset = RowChangeset(oldIds: before.ids, newIds: after.ids) { before.rows[$0] != after.rows[$1] }
+            changeset = RowChangeset(oldIds: before.ids, newIds: after.ids) { before.rows[$0] != after.rows[$1] || before.places[$0] != after.places[$1] }
             state.list = after
         case .grouped(let after):
             let before = applied.grouped ?? .empty

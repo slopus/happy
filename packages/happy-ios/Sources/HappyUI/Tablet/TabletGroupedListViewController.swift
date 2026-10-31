@@ -313,6 +313,7 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
             // Home's row, drawn here at the person's text size, with the
             // lines its height was measured with.
             cell.traitOverrides.followsTextSize = true
+            cell.carded = false
             cell.lines = headings.metrics?.sessionLines ?? .designed
             cell.configure(session, style: model.avatarStyle, monochrome: model.avatarMonochrome)
         case .machine(let id, let name):
@@ -328,6 +329,7 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
             // Home's cell, drawn here at the person's text size.
             cell.traitOverrides.followsTextSize = true
             cell.banded = false
+            cell.carded = false
             cell.backgroundColor = UIColor(Palette.groupedBackground)
             cell.configure(hidden: hidden)
         case .archived(let archived):

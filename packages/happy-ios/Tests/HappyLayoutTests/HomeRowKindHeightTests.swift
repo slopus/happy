@@ -12,10 +12,8 @@ final class HomeRowKindHeightTests: XCTestCase {
     /// The styles' lines, the desktop glyph at 12 on a 3x screen
     /// ((454 + 71) / 512 × 12, up to a third), a 3x hairline.
     private let metrics = HomeRowMetrics(
-        dayHeaderLine: TextStyles.sessionDayHeader.lineHeight!,
         archiveToggleLine: TextStyles.archiveToggle.lineHeight!,
         machineLine: TextStyles.projectMachine.lineHeight!,
-        sectionLine: TextStyles.projectSection.lineHeight!,
         machineIcon: CGSize(width: 12, height: 37.0 / 3),
         hairline: 1.0 / 3
     )
@@ -25,31 +23,23 @@ final class HomeRowKindHeightTests: XCTestCase {
     }
 
     func testTheStylesAreOneFixedLine() {
-        XCTAssertEqual(metrics.dayHeaderLine, 18)
         XCTAssertEqual(metrics.archiveToggleLine, 18)
         XCTAssertEqual(metrics.machineLine, 14)
-        XCTAssertEqual(metrics.sectionLine, 14)
     }
 
     func testHeadings() {
-        // 20 above, a line, 8 below.
-        XCTAssertEqual(height(.dayHeader(label: "Today")), 46)
         // Banded: 24 and 8; dividing the page: 20 and 12.
         XCTAssertEqual(height(.archiveToggle(label: "Show archived", banded: true)), 50)
         XCTAssertEqual(height(.archiveToggle(label: "Show archived", banded: false)), 50)
-        // 14 above, the name's line over the glyph, 2 below.
-        XCTAssertEqual(height(.machineHeader(name: "MacBook Pro")), 30, accuracy: 0.0001)
-        // 18 above, a line, 6 below.
-        XCTAssertEqual(height(.section(label: "Projects")), 38)
+        // 20 above, the name's line over the glyph, 8 below.
+        XCTAssertEqual(height(.machineHeader(name: "MacBook Pro")), 42, accuracy: 0.0001)
     }
 
     func testAnEmptyLabelHasNoLine() {
-        XCTAssertEqual(height(.dayHeader(label: "")), 28)
         XCTAssertEqual(height(.archiveToggle(label: "", banded: true)), 32)
         XCTAssertEqual(height(.archiveToggle(label: "", banded: false)), 32)
         // Only the glyph is left to hold the row open.
-        XCTAssertEqual(height(.machineHeader(name: "")), 14 + 37.0 / 3 + 2, accuracy: 0.0001)
-        XCTAssertEqual(height(.section(label: "")), 24)
+        XCTAssertEqual(height(.machineHeader(name: "")), 20 + 37.0 / 3 + 8, accuracy: 0.0001)
     }
 
     func testAFlatSessionIsItsLines() {
@@ -100,7 +90,8 @@ final class HomeRowKindHeightTests: XCTestCase {
                             branchIcon: scaled.branchIcon,
                             changes: changes ? CGSize(width: 64, height: lines.changes) : nil,
                             showsDivider: true,
-                            lines: lines
+                            lines: lines,
+                            avatarSize: HomeCardLayout.Metrics.sessionAvatar
                         ))
                         XCTAssertEqual(
                             height(.flatSession(workspace: workspace, changes: changes), width: width, metrics: scaled),
@@ -119,44 +110,37 @@ final class HomeRowKindHeightTests: XCTestCase {
             XCTAssertEqual(height(.worktree, width: width), HomeRowHeights.worktree(width: width))
             XCTAssertEqual(height(.chat, width: width), HomeRowHeights.projectChat(width: width))
         }
-        XCTAssertEqual(height(.projectCard), 60)
+        XCTAssertEqual(height(.projectCard), 52)
         XCTAssertEqual(height(.worktree), 48)
         XCTAssertEqual(height(.chat), 48)
     }
 
     func testNoHeightDependsOnWidthOrText() {
         let kinds: [HomeRowKind] = [
-            .dayHeader(label: "3 days ago"),
             .archiveToggle(label: "Hide archived", banded: true),
             .archiveToggle(label: "Hide archived", banded: false),
             .machineHeader(name: String(repeating: "Long name ", count: 20)),
-            .section(label: "Bots"),
         ]
         for kind in kinds {
             for width in widths {
                 XCTAssertEqual(height(kind, width: width), height(kind), "\(kind) at \(width)")
             }
         }
-        XCTAssertEqual(height(.dayHeader(label: "Today")), height(.dayHeader(label: String(repeating: "x", count: 200))))
     }
 
     /// A bigger font or another screen moves the heights: nothing here is
     /// fixed to today's styles.
     func testTheMetricsAreWhatTheHeightsAreMadeOf() {
         var larger = metrics
-        larger.dayHeaderLine = 24
         larger.archiveToggleLine = 22
         larger.machineLine = 20
-        larger.sectionLine = 17
-        XCTAssertEqual(height(.dayHeader(label: "Today"), metrics: larger), 52)
         XCTAssertEqual(height(.archiveToggle(label: "Show", banded: true), metrics: larger), 54)
         XCTAssertEqual(height(.archiveToggle(label: "Show", banded: false), metrics: larger), 54)
-        XCTAssertEqual(height(.machineHeader(name: "Mac"), metrics: larger), 36)
-        XCTAssertEqual(height(.section(label: "Bots"), metrics: larger), 41)
+        XCTAssertEqual(height(.machineHeader(name: "Mac"), metrics: larger), 48)
 
         var tallGlyph = metrics
         tallGlyph.machineIcon = CGSize(width: 30, height: 30)
-        XCTAssertEqual(height(.machineHeader(name: "Mac"), metrics: tallGlyph), 46)
+        XCTAssertEqual(height(.machineHeader(name: "Mac"), metrics: tallGlyph), 58)
     }
 
     // MARK: Notices

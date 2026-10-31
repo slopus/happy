@@ -20,14 +20,14 @@ final class ProjectListLayoutTests: XCTestCase {
             showsAdd: true,
             showsTree: true
         ))
-        assertSize(layout.size, CGSize(width: 393, height: 60))
-        assertFrame(layout.avatar, rect(16, 20, 28, 28))
-        // The stem drops from under the avatar to the cell's foot.
-        assertFrame(layout.stem, rect(29.667, 48, 0.667, 12))
-        assertFrame(layout.add, rect(349, 18, 28, 32))
-        assertFrame(layout.changes, rect(281, 25, 60, 18))
-        assertFrame(layout.dot, rect(266, 30.5, 7, 7))
-        assertFrame(layout.name, rect(56, 23, 202, 22))
+        assertSize(layout.size, CGSize(width: 393, height: 52))
+        assertFrame(layout.avatar, rect(16, 12, 28, 28))
+        // The stem drops from under the avatar to the row's foot.
+        assertFrame(layout.stem, rect(29.667, 40, 0.667, 12))
+        assertFrame(layout.add, rect(349, 10, 28, 32))
+        assertFrame(layout.changes, rect(281, 17, 60, 18))
+        assertFrame(layout.dot, rect(266, 22.5, 7, 7))
+        assertFrame(layout.name, rect(56, 15, 202, 22))
     }
 
     func testABareProjectCardGivesTheNameTheRow() {
@@ -44,7 +44,7 @@ final class ProjectListLayoutTests: XCTestCase {
         XCTAssertNil(layout.dot)
         XCTAssertNil(layout.changes)
         XCTAssertNil(layout.add)
-        assertFrame(layout.name, rect(56, 23, 321, 22))
+        assertFrame(layout.name, rect(56, 15, 321, 22))
     }
 
     func testWorktreeBranchesOffTheTrunk() {
@@ -130,34 +130,25 @@ final class ProjectListLayoutTests: XCTestCase {
         assertFrame(layout.name, rect(56, 13, 303, 22))
     }
 
-    func testSectionLabel() {
-        let layout = ProjectSectionLayout(width: 393, label: text("PROJECTS", lineHeight: 14))
-        assertFrame(layout.label, rect(16, 18, 365, 14))
-        assertSize(layout.size, CGSize(width: 393, height: 38))
-    }
-
-    func testMachineHeaderRunsARuleToTheEdge() {
+    func testMachineHeaderStandsOverItsCardInLineWithTheAvatars() {
         let layout = MachineHeaderLayout(
             width: 393,
-            hairline: hairline,
             icon: CGSize(width: 13, height: 13),
             name: text("MacBook Pro", lineHeight: 14, maxLines: 1)
         )
-        assertFrame(layout.icon, rect(16, 14.5, 13, 13))
-        assertFrame(layout.name, rect(35, 14, 88, 14))
-        assertFrame(layout.rule, rect(129, 20.667, 248, 0.667))
-        assertSize(layout.size, CGSize(width: 393, height: 30))
+        assertFrame(layout.icon, rect(32, 20.5, 13, 13))
+        assertFrame(layout.name, rect(51, 20, 88, 14))
+        assertSize(layout.size, CGSize(width: 393, height: 42))
     }
 
-    func testAMachineNameStopsAtSixtyPercent() {
+    func testAMachineNameStopsAtTheCardsInset() {
         let layout = MachineHeaderLayout(
             width: 393,
-            hairline: hairline,
             icon: CGSize(width: 13, height: 13),
-            name: text("A very long machine name for this test", lineHeight: 14, maxLines: 1)
+            name: text(String(repeating: "x", count: 50), lineHeight: 14, maxLines: 1)
         )
-        assertFrame(layout.name, rect(35, 14, 216.6, 14))
-        assertFrame(layout.rule, rect(257.6, 20.667, 119.4, 0.667))
+        // 393 - 32 - 32 - 13 - 6.
+        assertFrame(layout.name, rect(51, 20, 310, 14))
     }
 
     func testGitChangesSitOnOneCentreLine() {
@@ -233,3 +224,4 @@ final class SessionListIconBoxTests: XCTestCase {
         assertFrame(layout.description, rect(64.5, 479.335, 264, 22))
     }
 }
+
