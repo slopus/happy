@@ -56,7 +56,8 @@ final class FixtureAttachLibrary: AttachLibrary {
     func load(_ done: @escaping @MainActor () -> Void) {
         let size = access == .limited ? min(total, 7) : total
         items = access.reads ? (0..<size).map { index in
-            AttachLibraryItem(id: "fixture-\(index)", duration: index % 4 == 1 ? TimeInterval(7 + index * 13) : nil)
+            let duration: TimeInterval? = index % 4 == 1 ? TimeInterval(7 + index * 13) : nil
+            return AttachLibraryItem(id: "fixture-\(index)", duration: duration)
         } : []
         Task { @MainActor in done() }
     }
