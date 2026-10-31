@@ -1312,6 +1312,33 @@ public actor Conversation {
         if asking?.question.id == question.id { return }
         asking = ChatItem.Ask(question: question, phase: .pending)
         publish()
+        // Answered here before a relaunch and not yet taken: still sending.
+        guard let persistence else { return }
+        Task {
+            guard let answers = await persistence.pendingAnswer(question.id),
+                  let kept = await persistence.intents.pending().first(where: { $0.kind == .answer && $0.target == question.id }),
+                  self.asking?.question.id == question.id, self.asking?.phase == .pending else { return }
+            self.asking?.phase = .submitting
+            publish()
+            await settleAnswer(kept, question: question, answers: answers, persistence: persistence)
+        }
+    }
+
+    /// Waits for the computer to take or refuse an answer on its way.
+    private func settleAnswer(_ kept: Intent, question: AgentWire.Question, answers: [String: [String]], persistence: SyncEngine) async {
+        // The person waits on it: tried at once, then kept until it goes.
+        Task { await persistence.intents.attempt(kept.id) }
+        let taken = await persistence.intents.outcome(kept.id)
+        guard self.asking?.question.id == question.id else { return }
+        if taken {
+            var question = question
+            question.status = "answered"
+            question.answers = answers
+            settle(question: question)
+        } else {
+            self.asking?.phase = .failed("")
+            publish()
+        }
     }
 
     /// Someone answered it, here or elsewhere, or the run stopped needing it.
@@ -1348,6 +1375,16 @@ public actor Conversation {
         asking.phase = .submitting
         self.asking = asking
         publish()
+        if let persistence {
+            // Kept and sent as one, offline or not; shown as sending until
+            // the computer takes it, and through a relaunch.
+            guard let kept = await persistence.answer(asking.question.id, agentId: agentId, answers: answers) else {
+                if self.asking?.question.id == asking.question.id { self.asking?.phase = .failed(""); publish() }
+                return
+            }
+            await settleAnswer(kept, question: asking.question, answers: answers, persistence: persistence)
+            return
+        }
         do {
             let returned = try await client.answerQuestion(agentId, questionId: asking.question.id, answers: answers, mutationId: ClientID.make())
             // What was asked stays as it was asked; the reply may carry only its outcome.
@@ -1369,9 +1406,15 @@ public actor Conversation {
         }
     }
 
+    /// Read at once on this phone, and kept until the computer hears
+    /// (`SyncEngine.markRead`); standalone, asked directly.
     private func markRead() {
         let client = client
         let agentId = agentId
+        if let persistence {
+            Task { await persistence.markRead(agentId) }
+            return
+        }
         Task { try? await client.markRead(agentId) }
     }
 

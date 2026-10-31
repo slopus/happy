@@ -56,6 +56,9 @@ final class Session {
     private(set) var home = HomeSnapshot()
     private var homeWatchers: [UUID: (HomeSnapshot) -> Void] = [:]
     private var connectionStatus: ConnectionStatus = .connecting
+    /// Whether the phone has a way out at all (`NetworkPath`).
+    private var networkPath = NetworkPath.shared.isSatisfied
+    private var networkWatch: NetworkPathWatch?
     private var headerWatchers: [UUID: (Strings.HeaderStatus.State) -> Void] = [:]
     private(set) var headerState: Strings.HeaderStatus.State = .connecting
 
@@ -146,6 +149,16 @@ final class Session {
                 for watcher in self.watchers.values { watcher(snapshot) }
             }
         }
+        networkWatch = NetworkPath.shared.watch { [weak self, engine] satisfied in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let back = satisfied && !self.networkPath
+                self.networkPath = satisfied
+                self.updateHeaderState()
+                // Back from airplane mode: reconnect, and send what waited, now.
+                if back { Task { await engine.reconnect() } }
+            }
+        }
         connectionObservation = account.observeAccounts { [weak self, weak account] _ in
             guard let self, let account else { return }
             computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? computerName
@@ -170,7 +183,9 @@ final class Session {
         return Watch { [weak self] in self?.watchers.removeValue(forKey: id) }
     }
 
-    static func headerState(status: ConnectionStatus, snapshot: HomeSnapshot) -> Strings.HeaderStatus.State {
+    static func headerState(status: ConnectionStatus, snapshot: HomeSnapshot, network: Bool = true) -> Strings.HeaderStatus.State {
+        // No way out at all: nothing to connect to yet, whatever was last heard.
+        if !network, status != .revoked { return .waitingForNetwork }
         switch status {
         case .paused, .revoked: return .offline
         case .retrying: return .connecting
@@ -182,7 +197,7 @@ final class Session {
     }
 
     private func updateHeaderState() {
-        let next = Self.headerState(status: connectionStatus, snapshot: home)
+        let next = Self.headerState(status: connectionStatus, snapshot: home, network: networkPath)
         guard next != headerState else { return }
         headerState = next
         for watch in headerWatchers.values { watch(next) }

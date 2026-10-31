@@ -92,6 +92,9 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         registerForTraitChanges([TabletLayoutTrait.self]) { (self: Self, _) in self.updateNavigation(animated: false) }
         // The stream ends when the session stops.
         let statusUpdates = session.statusUpdates
+        networkWatch = NetworkPath.shared.watch { [weak self] satisfied in
+            MainActor.assumeIsolated { self?.networkPath = satisfied }
+        }
         Task { @MainActor [weak self] in
             for await status in statusUpdates {
                 self?.status = status
@@ -308,6 +311,8 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
             // The account's name is the bar's title; the connection hangs under it.
             let headerState: Strings.HeaderStatus.State = switch status {
             case .connected: .online
+            // No way out at all: Telegram's "waiting for network…".
+            case _ where !networkPath: .waitingForNetwork
             case .connecting: .connecting
             case .disconnected, .error: .offline
             }
@@ -367,6 +372,12 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     var status: RealtimeStatus = HomeConnectionStatus.initial {
         didSet { if status != oldValue { updateNavigation(animated: false) } }
     }
+
+    /// Whether the phone has a way out at all (`NetworkPath`).
+    var networkPath = NetworkPath.shared.isSatisfied {
+        didSet { if networkPath != oldValue { updateNavigation(animated: false) } }
+    }
+    private var networkWatch: NetworkPathWatch?
 
     private lazy var settingsItem = HeaderBar.settingsItem { [weak self] in self?.openSettings() }
 

@@ -191,16 +191,18 @@ public final class AgentClient: Sendable {
         return names
     }
 
-    public func renameTask(_ taskId: String, name: String) async throws {
-        try await rename("/v0/tasks/\(Self.escape(taskId))", key: "task", name: name)
+    /// `mutationId`: the same for every try of one rename, so the computer
+    /// does it once (an intent's ID, `IntentOutbox`).
+    public func renameTask(_ taskId: String, name: String, mutationId: String = ClientID.make()) async throws {
+        try await rename("/v0/tasks/\(Self.escape(taskId))", key: "task", name: name, mutationId: mutationId)
     }
 
-    public func renameBot(_ botId: String, name: String) async throws {
-        try await rename("/v0/bots/\(Self.escape(botId))", key: "bot", name: name)
+    public func renameBot(_ botId: String, name: String, mutationId: String = ClientID.make()) async throws {
+        try await rename("/v0/bots/\(Self.escape(botId))", key: "bot", name: name, mutationId: mutationId)
     }
 
-    public func leaveTask(_ taskId: String) async throws {
-        _ = try await send("POST", "/v0/tasks/\(Self.escape(taskId))/leave", json: .object(["mutationId": .string(ClientID.make())]))
+    public func leaveTask(_ taskId: String, mutationId: String = ClientID.make()) async throws {
+        _ = try await send("POST", "/v0/tasks/\(Self.escape(taskId))/leave", json: .object(["mutationId": .string(mutationId)]))
     }
 
     public func archiveTask(_ taskId: String) async throws {
@@ -212,8 +214,8 @@ public final class AgentClient: Sendable {
     }
 
     /// A subtask's conversation (`POST /v0/agents/:agentId/archive`).
-    public func archiveAgent(_ agentId: String) async throws {
-        _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/archive", json: .object(["mutationId": .string(ClientID.make())]))
+    public func archiveAgent(_ agentId: String, mutationId: String = ClientID.make()) async throws {
+        _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/archive", json: .object(["mutationId": .string(mutationId)]))
     }
 
     /// Archival names the version it archives (`If-Match`).
@@ -224,8 +226,7 @@ public final class AgentClient: Sendable {
 
     /// A rename names the version it renames (`If-Match`); one that lost a
     /// race reads the newer version and renames that.
-    private func rename(_ path: String, key: String, name: String) async throws {
-        let mutationId = ClientID.make()
+    private func rename(_ path: String, key: String, name: String, mutationId: String) async throws {
         for attempt in 0..<2 {
             guard let version = try await decode(JSONValue.self, "GET", path)[key]?["version"]?.stringValue else { throw AgentClientError.invalidResponse }
             do {
@@ -240,8 +241,8 @@ public final class AgentClient: Sendable {
     // MARK: Surfaces
 
     /// Takes a Surface out of the reader's sidebar; its content stays for everyone.
-    public func leaveSurface(_ surfaceId: String) async throws {
-        _ = try await send("POST", "/v0/surfaces/\(Self.escape(surfaceId))/leave", json: .object(["mutationId": .string(ClientID.make())]))
+    public func leaveSurface(_ surfaceId: String, mutationId: String = ClientID.make()) async throws {
+        _ = try await send("POST", "/v0/surfaces/\(Self.escape(surfaceId))/leave", json: .object(["mutationId": .string(mutationId)]))
     }
 
     /// The joined Surfaces; nil where the daemon serves none (`404`, `501`).

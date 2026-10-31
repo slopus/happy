@@ -51,6 +51,10 @@ public actor SyncStorage {
         migrator.registerMigration("direct-v2-outbox") { db in
             try db.execute(sql: "CREATE TABLE outbox (id TEXT PRIMARY KEY NOT NULL, value BLOB NOT NULL)")
         }
+        migrator.registerMigration("direct-v3-intents") { db in
+            // One pending action per slot (docs/offline-first.md).
+            try db.execute(sql: "CREATE TABLE intent (slot TEXT PRIMARY KEY NOT NULL, id TEXT NOT NULL UNIQUE, value BLOB NOT NULL)")
+        }
         try migrator.migrate(database)
     }
 
@@ -202,5 +206,38 @@ public actor SyncStorage {
     public func acknowledgeMessage(_ id: String) throws {
         try checkOpen()
         try database.write { try $0.execute(sql: "DELETE FROM outbox WHERE id = ?", arguments: [id]) }
+    }
+}
+
+extension SyncStorage: IntentStorage {
+    public func intents() throws -> [Intent] {
+        try checkOpen()
+        return try database.read { db in
+            try GRDB.Row.fetchAll(db, sql: "SELECT value FROM intent").compactMap {
+                try? JSONDecoder().decode(Intent.self, from: $0["value"] as Data)
+            }
+        }
+    }
+
+    public func saveIntent(_ intent: Intent) throws {
+        try checkOpen()
+        let data = try JSONEncoder().encode(intent)
+        try database.write { db in
+            try db.execute(sql: """
+                INSERT INTO intent(slot, id, value) VALUES (?, ?, ?)
+                ON CONFLICT(slot) DO UPDATE SET id = excluded.id, value = excluded.value
+                """, arguments: [intent.slot, intent.id, data])
+        }
+    }
+
+    public func updateIntent(_ intent: Intent) throws {
+        try checkOpen()
+        let data = try JSONEncoder().encode(intent)
+        try database.write { try $0.execute(sql: "UPDATE intent SET value = ? WHERE id = ?", arguments: [data, intent.id]) }
+    }
+
+    public func removeIntent(id: String) throws {
+        try checkOpen()
+        try database.write { try $0.execute(sql: "DELETE FROM intent WHERE id = ?", arguments: [id]) }
     }
 }

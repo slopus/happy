@@ -281,12 +281,12 @@ final class HostedHeaderSteadyTests: XCTestCase {
         for state in Strings.HeaderStatus.State.allCases where state != .online {
             XCTAssertEqual(Strings.HeaderStatus.text(state, activity: thinking, loaded: true), Strings.HeaderStatus.text(state))
         }
-        XCTAssertEqual(Strings.HeaderStatus.text(.online, activity: thinking, loaded: false), "syncing")
+        XCTAssertEqual(Strings.HeaderStatus.text(.online, activity: thinking, loaded: false), "updating…")
         XCTAssertEqual(Strings.HeaderStatus.text(.online, activity: thinking, loaded: true), "Thinking")
         XCTAssertEqual(Strings.HeaderStatus.text(.online, activity: nil, loaded: true), "online")
         XCTAssertEqual(Strings.HeaderStatus.text(.online, activity: Activity(phase: .awaitingAnswer, startedAt: nil), loaded: true), "Waiting for your answer")
         XCTAssertEqual(Set(Strings.HeaderStatus.translations.keys), Set(AppLanguage.supported.map(\.code)))
-        for text in Strings.HeaderStatus.translations.values { XCTAssertEqual(text.count, 7); XCTAssertTrue(text.allSatisfy { !$0.isEmpty }) }
+        for text in Strings.HeaderStatus.translations.values { XCTAssertEqual(text.count, 8); XCTAssertTrue(text.allSatisfy { !$0.isEmpty }) }
         var snapshot = HomeSnapshot()
         XCTAssertEqual(Session.headerState(status: .connecting, snapshot: snapshot), .connecting)
         XCTAssertEqual(Session.headerState(status: .connected, snapshot: snapshot), .syncing)

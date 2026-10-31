@@ -28,6 +28,25 @@ private actor SyncFixture: AgentTransport {
     var bootstrapFailures = 0
     var sends: [JSONValue] = []
     var loseSendAck = false
+    /// Intents heard: `read:<agent>`, `archive:<task>`.
+    var acts: [String] = []
+    var refuseArchive = false
+
+    func heardActs() -> [String] { acts }
+    func refuseArchives() { refuseArchive = true }
+    /// The computer says the task's agent has something unread, as a
+    /// bootstrap read that hasn't caught up with this phone would.
+    func setUnread(task taskId: String, _ unread: Bool) {
+        var object = value.objectValue!
+        object["tasks"] = .array(object["tasks"]!.arrayValue!.map { task in
+            guard task["id"]?.stringValue == taskId, var whole = task.objectValue, var agent = whole["agent"]?.objectValue else { return task }
+            agent["unread"] = unread ? .object(["reason": .string("finished")]) : nil
+            whole["agent"] = .object(agent)
+            return .object(whole)
+        })
+        value = .object(object)
+        emit(.object(["type": .string("agent.updated"), "payload": .object([:])]))
+    }
 
     func configure(online: Bool) { self.online = online }
     func writeCount() -> Int { writes.count }
@@ -81,6 +100,18 @@ private actor SyncFixture: AgentTransport {
                 setProjectsHidden(request["value"]?["projectsHidden"] == .bool(true), stamp: request["updatedAt"]!.numberValue!)
             }
             return .init(status: 200, body: try JSONEncoder().encode(JSONValue.object(["setting": value["userSettings"]!.arrayValue!.first!])))
+        }
+        if method == "POST", path.hasPrefix("/v0/agents/"), path.hasSuffix("/read") {
+            acts.append("read:" + path.split(separator: "/")[2])
+            return .init(status: 200, body: Data("{}".utf8))
+        }
+        if method == "GET", path.hasPrefix("/v0/tasks/") {
+            return .init(status: 200, body: Data(#"{"task":{"version":"v1"}}"#.utf8))
+        }
+        if method == "POST", path.hasPrefix("/v0/tasks/"), path.hasSuffix("/archive") {
+            if refuseArchive { return .init(status: 403, body: Data(#"{"error":"Only its owner may archive it."}"#.utf8)) }
+            acts.append("archive:" + path.split(separator: "/")[2])
+            return .init(status: 200, body: Data("{}".utf8))
         }
         if method == "POST", path.hasSuffix("/send") {
             sends.append(try JSONDecoder().decode(JSONValue.self, from: body!))
@@ -237,6 +268,88 @@ final class SyncEngineTests: XCTestCase {
         await transport.setProjectsHidden(true, stamp: Date().timeIntervalSince1970 * 1000 + 1000)
         await engine.start()
         _ = try await wait(engine) { $0.live && DesktopSettingKeys.projectsHidden($0.settings) }
+        await engine.stop()
+    }
+
+    /// A chat opened offline is read at once; a task archived offline is
+    /// gone at once. Both stay so through a kill and an offline relaunch,
+    /// whatever the cached bootstrap says, and go to the computer once it
+    /// is reachable, each once.
+    func testPendingReadAndArchiveSurviveARelaunchOfflineThenFlush() async throws {
+        let directory = folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transport = SyncFixture()
+        await transport.setUnread(task: "last", true)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        await engine.start()
+        let first = try await wait(engine) { $0.live && $0.loaded }
+        XCTAssertEqual(first.rows.first { $0.label == "Last created" }?.unread, true)
+        await engine.pause()
+        await transport.configure(online: false)
+
+        await engine.markRead("last-agent")
+        let read = try await wait(engine) { $0.rows.first { $0.label == "Last created" }?.unread == false }
+        XCTAssertFalse(read.live)
+        await engine.archive(kind: "task", id: "first")
+        _ = try await wait(engine) { !$0.rows.contains { $0.label == "First created" } }
+        await engine.stop()
+
+        // Killed and opened again, still offline: as the person left it.
+        let reopened = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        await reopened.start()
+        let offline = try await wait(reopened) { $0.loaded }
+        XCTAssertFalse(offline.live)
+        XCTAssertEqual(offline.rows.first { $0.label == "Last created" }?.unread, false, "the dot came back from the cache")
+        XCTAssertFalse(offline.rows.contains { $0.label == "First created" }, "the archived task came back from the cache")
+        let pending = await reopened.intents.pending().map(\.kind)
+        XCTAssertEqual(pending, [.read, .archive])
+        let heardOffline = await transport.heardActs()
+        XCTAssertEqual(heardOffline, [])
+
+        await reopened.pause()
+        await transport.configure(online: true)
+        await reopened.start()
+        _ = try await wait(reopened) { $0.live }
+        for _ in 0..<200 where await !reopened.intents.pending().isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        let heard = await transport.heardActs()
+        XCTAssertEqual(heard, ["read:last-agent", "archive:first"])
+        await reopened.stop()
+    }
+
+    /// The computer still says unread (a bootstrap read before it heard):
+    /// the dot stays off while the read waits.
+    func testAStaleReadDoesNotBringTheDotBack() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && $0.loaded }
+        await engine.pause()
+        await engine.markRead("last-agent")
+        await transport.setUnread(task: "last", true)
+        await transport.configure(online: true)
+        // A read of the computer that predates the read: offline delivery
+        // is held so only the stale bootstrap lands.
+        await engine.intents.setDeliver { _ in throw URLError(.notConnectedToInternet) }
+        await engine.start()
+        let stale = try await wait(engine) { $0.live && $0.loaded }
+        XCTAssertEqual(stale.rows.first { $0.label == "Last created" }?.unread, false)
+        await engine.stop()
+    }
+
+    /// A refused archive rolls back: the row is back, and the list says why.
+    func testARefusedArchiveRollsBackWithANotice() async throws {
+        let transport = SyncFixture()
+        await transport.refuseArchives()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && $0.loaded }
+        let kept = await engine.archive(kind: "task", id: "first")
+        let intent = try XCTUnwrap(kept)
+        let taken = await engine.intents.outcome(intent.id)
+        XCTAssertFalse(taken)
+        let back = try await wait(engine) { $0.notice != nil }
+        XCTAssertEqual(back.notice, "Only its owner may archive it.")
+        XCTAssertTrue(back.rows.contains { $0.label == "First created" })
         await engine.stop()
     }
 

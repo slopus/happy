@@ -26,6 +26,9 @@ final class HomeViewController: UIViewController {
     private var snapshot = Snapshot()
     private var agentHome = HomeSnapshot()
     private var connectionWatch: Task<Void, Never>?
+    private var headerWatch: Watch?
+    /// No network at all: the header says so, so the list doesn't too.
+    private var waitingForNetwork = false
     /// A new task on its way to the screen: a second tap meanwhile opens nothing more.
     private var opening = false
     /// Search, in the bar, while it is open.
@@ -150,6 +153,7 @@ final class HomeViewController: UIViewController {
         // Another computer's sidebar: what was searched was the last one's.
         endSearch(animated: false)
         connectionWatch?.cancel(); connectionWatch = nil
+        headerWatch = nil; waitingForNetwork = false
         session = id.flatMap { Session.session(for: $0, context: context) }
         sidebar.images = session?.images
         resultsView.list.images = session?.images
@@ -162,6 +166,11 @@ final class HomeViewController: UIViewController {
                     guard !Task.isCancelled, let self else { return }
                     self.applyConnection(snapshot)
                 }
+            }
+            headerWatch = session.watchHeader { [weak self] state in
+                guard let self, waitingForNetwork != (state == .waitingForNetwork) else { return }
+                waitingForNetwork = state == .waitingForNetwork
+                applyConnection(agentHome)
             }
             // New work opens on the computer's models: read ahead of compose.
             session.models.load()
@@ -180,7 +189,8 @@ final class HomeViewController: UIViewController {
         snapshot.live = agentHome.live
         snapshot.rows = agentHome.rows
         snapshot.allRows = agentHome.allRows
-        snapshot.error = agentHome.error
+        // A refused action says why for a moment, where a lost connection would.
+        snapshot.error = (waitingForNetwork ? nil : agentHome.error) ?? agentHome.notice.map { $0.isEmpty ? Strings.refused : $0 }
         onSnapshot?(snapshot)
         if previous != snapshot.rows { sidebar.apply(snapshot.rows) }
         if search != nil { showResults() }
