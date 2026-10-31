@@ -351,12 +351,21 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
  * Earlier Happy Agent daemons answered a refused catalog spawn with `message`
  * instead, which this read as an alert with nothing in it. Nothing here parses
  * the payload otherwise, so the one field the flow reads is settled here.
+ *
+ * When the happy-cli daemon's spawn handler throws (a session webhook timeout,
+ * a failed spawn), its RPC layer answers with a bare `{ error }` and no `type`;
+ * that message is shown instead of an unreadable-answer alert.
  */
 export function normalizeSpawnSessionResult(result: unknown): SpawnSessionResult {
-    if (typeof result !== 'object' || result === null || typeof (result as { type?: unknown }).type !== 'string') {
+    if (typeof result !== 'object' || result === null) {
         return { type: 'error', errorMessage: 'The machine answered with something Happy could not read.' };
     }
-    const answer = result as Record<string, unknown> & { type: string };
+    const answer = result as Record<string, unknown>;
+    if (typeof answer.type !== 'string') {
+        return typeof answer.error === 'string' && answer.error.length > 0
+            ? { type: 'error', errorMessage: answer.error }
+            : { type: 'error', errorMessage: 'The machine answered with something Happy could not read.' };
+    }
     if (answer.type !== 'error') return answer as SpawnSessionResult;
     const errorMessage = [answer.errorMessage, answer.message].find(
         (value): value is string => typeof value === 'string' && value.length > 0,
