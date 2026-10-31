@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_agent_page.xml in ru: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="agent_page_started">Начало</string>
+    <string name="agent_page_media">Медиа</string>
+    <string name="agent_page_links">Ссылки</string>
+    <string name="agent_page_family">Семья</string>
+    <string name="agent_page_show_more">Показать ещё</string>
+    <string name="agent_page_completed">Завершённые</string>
+    <string name="agent_page_subtask">Подзадача</string>
+    <string name="agent_page_subagent">Субагент</string>
+    <string name="agent_page_awaiting_answer">Ждёт ответа</string>
+    <string name="agent_page_started_today">Сегодня, %1$s</string>
+    <string name="agent_page_started_yesterday">Вчера, %1$s</string>
+    <string name="agent_page_age_just_now">Только что</string>
+    <string name="agent_page_status_closed">закрыт</string>
+    <string name="agent_page_status_done">готово</string>
+    <string name="agent_page_status_thinking">думает</string>
+    <string name="agent_page_status_running_tools">запускает инструменты</string>
+    <string name="agent_page_status_working">работает</string>
+    <string name="agent_page_terminal_running">запущен</string>
+    <string name="agent_page_tokens">%1$s токенов</string>
+    <string name="agent_page_details">Подробности</string>
+    <string name="agent_page_provider">Провайдер</string>
+    <string name="agent_page_parent">Запущен из</string>
+    <string name="agent_page_context">Контекст</string>
+    <string name="agent_page_context_value">%1$s из %2$s</string>
+    <string name="agent_page_expanded">Развёрнуто</string>
+    <string name="agent_page_collapsed">Свёрнуто</string>
+    <plurals name="agent_page_age_minutes">
+        <item quantity="one">%1$d мин</item>
+        <item quantity="few">%1$d мин</item>
+        <item quantity="many">%1$d мин</item>
+        <item quantity="other">%1$d мин</item>
+    </plurals>
+    <plurals name="agent_page_age_hours">
+        <item quantity="one">%1$d час</item>
+        <item quantity="few">%1$d часа</item>
+        <item quantity="many">%1$d часов</item>
+        <item quantity="other">%1$d часа</item>
+    </plurals>
+    <plurals name="agent_page_age_days">
+        <item quantity="one">%1$d день</item>
+        <item quantity="few">%1$d дня</item>
+        <item quantity="many">%1$d дней</item>
+        <item quantity="other">%1$d дня</item>
+    </plurals>
+    <plurals name="agent_page_age_months">
+        <item quantity="one">%1$d месяц</item>
+        <item quantity="few">%1$d месяца</item>
+        <item quantity="many">%1$d месяцев</item>
+        <item quantity="other">%1$d месяца</item>
+    </plurals>
+    <plurals name="agent_page_age_years">
+        <item quantity="one">%1$d год</item>
+        <item quantity="few">%1$d года</item>
+        <item quantity="many">%1$d лет</item>
+        <item quantity="other">%1$d года</item>
+    </plurals>
+</resources>

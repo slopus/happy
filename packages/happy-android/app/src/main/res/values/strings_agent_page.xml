@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  An agent's page (ui/conversation/AgentPage.kt), iOS's conversation
+  detail. Not in happy-app's catalogs. Translated in values-*/
+  (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="agent_page_started">Started</string>
+    <string name="agent_page_media">Media</string>
+    <string name="agent_page_links">Links</string>
+    <string name="agent_page_family">Family</string>
+    <string name="agent_page_show_more">Show more</string>
+    <string name="agent_page_completed">Completed</string>
+    <string name="agent_page_subtask">Subtask</string>
+    <string name="agent_page_subagent">Subagent</string>
+    <string name="agent_page_awaiting_answer">Waiting for answer</string>
+    <string name="agent_page_started_today">Today, %1$s</string>
+    <string name="agent_page_started_yesterday">Yesterday, %1$s</string>
+    <string name="agent_page_age_just_now">Just now</string>
+    <string name="agent_page_status_closed">closed</string>
+    <string name="agent_page_status_done">done</string>
+    <string name="agent_page_status_thinking">thinking</string>
+    <string name="agent_page_status_running_tools">running tools</string>
+    <string name="agent_page_status_working">working</string>
+    <string name="agent_page_terminal_running">running</string>
+    <string name="agent_page_tokens">%1$s tokens</string>
+    <string name="agent_page_details">Details</string>
+    <string name="agent_page_provider">Provider</string>
+    <string name="agent_page_parent">Started by</string>
+    <string name="agent_page_context">Context</string>
+    <string name="agent_page_context_value">%1$s of %2$s</string>
+    <string name="agent_page_expanded">Expanded</string>
+    <string name="agent_page_collapsed">Collapsed</string>
+    <plurals name="agent_page_age_minutes">
+        <item quantity="one">%1$d min</item>
+        <item quantity="other">%1$d min</item>
+    </plurals>
+    <plurals name="agent_page_age_hours">
+        <item quantity="one">%1$d hour</item>
+        <item quantity="other">%1$d hours</item>
+    </plurals>
+    <plurals name="agent_page_age_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <plurals name="agent_page_age_months">
+        <item quantity="one">%1$d month</item>
+        <item quantity="other">%1$d months</item>
+    </plurals>
+    <plurals name="agent_page_age_years">
+        <item quantity="one">%1$d year</item>
+        <item quantity="other">%1$d years</item>
+    </plurals>
+    <!-- Nothing recorded yet. -->
+    <string name="agent_page_none" translatable="false">—</string>
+</resources>

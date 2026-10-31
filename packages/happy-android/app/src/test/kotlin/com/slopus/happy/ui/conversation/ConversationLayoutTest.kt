@@ -543,11 +543,4 @@ class ConversationLayoutTest {
         tallQuestion()
         assertQuestionLeavesRoom(411, "question-cap-411")
     }
-
-    @Test fun `details list the agent and its mode`() {
-        rule.setHappyContent { ConversationDetailsScreen(agent.copy(subagentsRunning = 1), mode, null) {} }
-        rule.onNodeWithText("anthropic/opus-5").assertIsDisplayed()
-        rule.onNodeWithText("1 running of 2").assertIsDisplayed()
-        shot("details")
-    }
 }

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_agent_page.xml in pl: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="agent_page_started">Rozpoczęto</string>
+    <string name="agent_page_media">Multimedia</string>
+    <string name="agent_page_links">Linki</string>
+    <string name="agent_page_family">Rodzina</string>
+    <string name="agent_page_show_more">Pokaż więcej</string>
+    <string name="agent_page_completed">Ukończone</string>
+    <string name="agent_page_subtask">Podzadanie</string>
+    <string name="agent_page_subagent">Subagent</string>
+    <string name="agent_page_awaiting_answer">Czeka na odpowiedź</string>
+    <string name="agent_page_started_today">Dziś, %1$s</string>
+    <string name="agent_page_started_yesterday">Wczoraj, %1$s</string>
+    <string name="agent_page_age_just_now">Przed chwilą</string>
+    <string name="agent_page_status_closed">zamknięte</string>
+    <string name="agent_page_status_done">gotowe</string>
+    <string name="agent_page_status_thinking">myśli</string>
+    <string name="agent_page_status_running_tools">uruchamia narzędzia</string>
+    <string name="agent_page_status_working">pracuje</string>
+    <string name="agent_page_terminal_running">działa</string>
+    <string name="agent_page_tokens">%1$s tokenów</string>
+    <string name="agent_page_details">Szczegóły</string>
+    <string name="agent_page_provider">Dostawca</string>
+    <string name="agent_page_parent">Uruchomione przez</string>
+    <string name="agent_page_context">Kontekst</string>
+    <string name="agent_page_context_value">%1$s z %2$s</string>
+    <string name="agent_page_expanded">Rozwinięte</string>
+    <string name="agent_page_collapsed">Zwinięte</string>
+    <plurals name="agent_page_age_minutes">
+        <item quantity="one">%1$d min</item>
+        <item quantity="few">%1$d min</item>
+        <item quantity="many">%1$d min</item>
+        <item quantity="other">%1$d min</item>
+    </plurals>
+    <plurals name="agent_page_age_hours">
+        <item quantity="one">%1$d godzina</item>
+        <item quantity="few">%1$d godziny</item>
+        <item quantity="many">%1$d godzin</item>
+        <item quantity="other">%1$d godziny</item>
+    </plurals>
+    <plurals name="agent_page_age_days">
+        <item quantity="one">%1$d dzień</item>
+        <item quantity="few">%1$d dni</item>
+        <item quantity="many">%1$d dni</item>
+        <item quantity="other">%1$d dnia</item>
+    </plurals>
+    <plurals name="agent_page_age_months">
+        <item quantity="one">%1$d miesiąc</item>
+        <item quantity="few">%1$d miesiące</item>
+        <item quantity="many">%1$d miesięcy</item>
+        <item quantity="other">%1$d miesiąca</item>
+    </plurals>
+    <plurals name="agent_page_age_years">
+        <item quantity="one">%1$d rok</item>
+        <item quantity="few">%1$d lata</item>
+        <item quantity="many">%1$d lat</item>
+        <item quantity="other">%1$d roku</item>
+    </plurals>
+</resources>

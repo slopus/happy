@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.conversation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,10 +40,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.Crossfade
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
@@ -95,6 +98,8 @@ object ConversationScreenTags {
     const val SCREEN = "conversation.screen"
     const val BAR = "conversation.bar"
     const val TITLE = "conversation.bar.title"
+    /** The title and status together: a tap opens the agent page. */
+    const val TITLE_BUTTON = "conversation.bar.titleButton"
     const val SUBTITLE = "conversation.bar.subtitle"
     const val STATUS = "conversation.bar.status"
     const val BACK = "conversation.bar.back"
@@ -151,7 +156,8 @@ class ConversationScreenActions(
  * One conversation with a paired agent, in Android's own forms: a Material 3
  * top app bar in the transcript's surface colour, scrolled or not (back
  * arrow; the chat's title, or "New chat" before its first send, with the
- * connection or activity state always under it, never in the content;
+ * connection or activity state always under it, never in the content, a
+ * tap on either opening the agent's page ([AgentPageScreen]);
  * compose, then a three-dot menu for permissions and chat details), the transcript newest at
  * the bottom, and the dock above the keyboard and navigation bar: the open
  * question ([ConversationQuestionCard]), then [ConversationComposer]. A
@@ -254,47 +260,60 @@ fun ConversationScreen(
                     // While work runs (not on a question) the title and the status shimmer, as desktop's busy
                     // tab and working line do; both keep their colours, with the sheen wiping through.
                     val running = activityShimmers(state.activity)
-                    TitleWithStatus(
-                        status = BarStatus(
-                            connection ?: if (syncing) stringResource(R.string.status_syncing)
-                            else working ?: stringResource(R.string.status_online),
-                            dot,
-                            connection == null && (syncing || state.activity != null),
-                            shimmer = connection == null && !syncing && running,
-                        ),
-                        statusStyle = style,
-                        title = {
-                            // An existing chat is never "New chat", not even before it's read: blank until then.
-                            ShimmerText(
-                                state.title ?: when {
-                                    !state.created -> stringResource(R.string.session_new_chat)
-                                    state.loaded -> stringResource(R.string.conversation_untitled)
-                                    else -> ""
-                                },
-                                style = LocalTextStyle.current,
-                                baseColor = colors.text,
-                                highlightColor = ShimmerSpec.sheen(colors.text, colors.surface),
-                                shimmering = running,
-                                modifier = Modifier.testTag(ConversationScreenTags.TITLE),
+                    // The title opens the agent's page, as iOS's header capsule and Telegram's do.
+                    Box(
+                        Modifier
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable(
+                                enabled = state.created,
+                                role = Role.Button,
+                                onClickLabel = stringResource(R.string.conversation_details),
+                                onClick = actions.onDetails,
                             )
-                        },
-                    ) { status ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier
-                                .testTag(ConversationScreenTags.SUBTITLE)
-                                .semantics { liveRegion = LiveRegionMode.Polite },
-                        ) {
-                            status.dot?.let { StatusDot(it, pulsing = status.pulsing) }
-                            ShimmerText(
-                                status.text,
-                                style = style,
-                                baseColor = colors.textSecondary,
-                                highlightColor = ShimmerSpec.sheen(colors.textSecondary, colors.surface),
-                                shimmering = status.shimmer,
-                                modifier = Modifier.testTag(ConversationScreenTags.STATUS),
-                            )
+                            .testTag(ConversationScreenTags.TITLE_BUTTON),
+                    ) {
+                        TitleWithStatus(
+                            status = BarStatus(
+                                connection ?: if (syncing) stringResource(R.string.status_syncing)
+                                else working ?: stringResource(R.string.status_online),
+                                dot,
+                                connection == null && (syncing || state.activity != null),
+                                shimmer = connection == null && !syncing && running,
+                            ),
+                            statusStyle = style,
+                            title = {
+                                // An existing chat is never "New chat", not even before it's read: blank until then.
+                                ShimmerText(
+                                    state.title ?: when {
+                                        !state.created -> stringResource(R.string.session_new_chat)
+                                        state.loaded -> stringResource(R.string.conversation_untitled)
+                                        else -> ""
+                                    },
+                                    style = LocalTextStyle.current,
+                                    baseColor = colors.text,
+                                    highlightColor = ShimmerSpec.sheen(colors.text, colors.surface),
+                                    shimmering = running,
+                                    modifier = Modifier.testTag(ConversationScreenTags.TITLE),
+                                )
+                            },
+                        ) { status ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .testTag(ConversationScreenTags.SUBTITLE)
+                                    .semantics { liveRegion = LiveRegionMode.Polite },
+                            ) {
+                                status.dot?.let { StatusDot(it, pulsing = status.pulsing) }
+                                ShimmerText(
+                                    status.text,
+                                    style = style,
+                                    baseColor = colors.textSecondary,
+                                    highlightColor = ShimmerSpec.sheen(colors.textSecondary, colors.surface),
+                                    shimmering = status.shimmer,
+                                    modifier = Modifier.testTag(ConversationScreenTags.STATUS),
+                                )
+                            }
                         }
                     }
                 },

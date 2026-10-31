@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
@@ -77,11 +78,12 @@ fun Screen(
  * Material top app bar every agent screen has (home's, its settings'): the
  * arrow in the navigation slot on the 16 keyline, the title in Material's
  * title large, [actions] at the end, held to the content width. On a
- * [Screen] it is glass.
+ * [Screen] it is glass. [titleAlpha] is read while drawing, for a page
+ * whose own large name fades the bar's title in as it scrolls under it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StackHeader(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
+fun StackHeader(title: String, onBack: () -> Unit, titleAlpha: (() -> Float)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     val colors = HappyTheme.colors
     Box(Modifier.fillMaxWidth().then(if (LocalBarOnGlass.current) Modifier else Modifier.background(colors.grouped.background))) {
         TopAppBar(
@@ -107,7 +109,10 @@ fun StackHeader(title: String, onBack: () -> Unit, actions: @Composable RowScope
                     style = MaterialTheme.typography.titleLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.testTag(HeaderTags.TITLE).semantics { heading() },
+                    modifier = Modifier
+                        .testTag(HeaderTags.TITLE)
+                        .semantics { heading() }
+                        .then(if (titleAlpha != null) Modifier.graphicsLayer { alpha = titleAlpha() } else Modifier),
                 )
             },
             actions = actions,

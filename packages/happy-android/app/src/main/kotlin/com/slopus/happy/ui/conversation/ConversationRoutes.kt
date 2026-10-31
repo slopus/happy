@@ -8,12 +8,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -29,14 +29,12 @@ import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.chat.obj
-import com.slopus.happy.conversation.AgentInfo
 import com.slopus.happy.conversation.AgentRequest
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.ConversationApiException
 import com.slopus.happy.conversation.ConversationSignal
 import com.slopus.happy.conversation.MediaItem
-import com.slopus.happy.conversation.Mode
 import com.slopus.happy.conversation.NewTask
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.conversation.WorkChoice
@@ -68,7 +66,7 @@ import kotlinx.serialization.Serializable
 /** The connection's Chief of Staff chat, found when opened, with [prefix] waiting in its composer. */
 @Serializable data class ChiefOfStaffRoute(val connectionId: String, val prefix: String)
 
-/** A conversation's details. */
+/** A conversation's agent page ([AgentPageEntry]). */
 @Serializable data class ConversationDetailsRoute(val connectionId: String, val agentId: String)
 
 /** The conversation screens. HappyApp's NavHost calls this once. */
@@ -83,7 +81,7 @@ fun NavGraphBuilder.conversationRoutes(graph: AppGraph, nav: NavHostController) 
     }
     composable<ConversationDetailsRoute> { entry ->
         val route = entry.toRoute<ConversationDetailsRoute>()
-        ConversationDetails(graph, nav, route)
+        AgentPageEntry(graph, nav, route)
     }
 }
 
@@ -116,6 +114,25 @@ fun NavHostController.composeConversation(connectionId: String) {
     }
 }
 
+/**
+ * The chat of [agentId] held on this back stack, if its screen's state is
+ * still kept there: a page over it reads what it already shows instead of
+ * waiting for the computer. Never makes one.
+ */
+internal fun NavHostController.heldConversation(agentId: String): Conversation? {
+    val none = object : ViewModelProvider.Factory {}
+    return currentBackStack.value.asReversed().asSequence()
+        .filter { it.destination.hasRoute<ConversationRoute>() }
+        .mapNotNull { entry ->
+            try {
+                ViewModelProvider.create(entry.viewModelStore, none)["conversation", ConversationHolder::class].conversation
+            } catch (_: Exception) {
+                null
+            }
+        }
+        .firstOrNull { it.agentId == agentId }
+}
+
 /** The agent connection's client as a conversation asks it: refusals become [ConversationApiException]. */
 internal fun AgentSession.conversationRequest(): AgentRequest = { method, path, body ->
     try {
@@ -142,7 +159,7 @@ internal fun Flow<AgentEvent>.signalsFor(agentId: String): Flow<ConversationSign
  * message, it is the connection's unsent work, which the next compose opens
  * as it was left (iOS's Store `unsent`).
  */
-private class ConversationHolder(private val session: AgentSession, route: ConversationRoute, private val saved: SavedStateHandle) : ViewModel() {
+internal class ConversationHolder(private val session: AgentSession, route: ConversationRoute, private val saved: SavedStateHandle) : ViewModel() {
     /** Not viewModelScope: a send or draft save in flight finishes after the screen goes. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -242,7 +259,10 @@ internal fun linkStatusText(status: AgentLinkStatus?, syncing: Boolean = false):
 private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: ConversationRoute) {
     val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
     if (session == null) {
-        ConversationDetailsScreen(null, null, stringResource(R.string.conversation_unavailable)) { nav.popBackStack() }
+        AgentPageScreen(
+            AgentPageState(route.agentId.orEmpty(), reading = false, error = stringResource(R.string.conversation_unavailable)),
+            AgentPageActions(onBack = { nav.popBackStack() }),
+        )
         return
     }
     val holder = viewModel(key = "conversation") { ConversationHolder(session, route, createSavedStateHandle()) }
@@ -309,29 +329,6 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
         HappyAlert(Alert(title, it, listOf(AlertButton(ok))), onDismiss = conversation::dismissAlert)
     }
 }
-
-@Composable
-private fun ConversationDetails(graph: AppGraph, nav: NavHostController, route: ConversationDetailsRoute) {
-    val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
-    val unavailable = stringResource(R.string.conversation_unavailable)
-    val resources = LocalResources.current
-    val read by produceState<Triple<AgentInfo?, Mode?, String?>>(Triple(null, null, null), session, route.agentId, resources) {
-        value = if (session == null) {
-            Triple(null, null, unavailable)
-        } else {
-            try {
-                val start = ConversationApi(session.conversationRequest()).bootstrap(route.agentId)
-                Triple(start.agent, start.draft?.mode ?: start.mode, null)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Triple(null, null, resources.problemText(Conversation.describe(e)))
-            }
-        }
-    }
-    ConversationDetailsScreen(read.first, read.second, read.third) { nav.popBackStack() }
-}
-
 
 /**
  * Finds the connection's Chief of Staff ([ConversationApi.chiefOfStaffAgentId])

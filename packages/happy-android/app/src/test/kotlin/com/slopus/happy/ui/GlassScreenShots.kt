@@ -14,13 +14,13 @@ import com.slopus.happy.chat.ChatReduction
 import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatSnapshot
 import com.slopus.happy.chat.ChatState
-import com.slopus.happy.conversation.AgentInfo
-import com.slopus.happy.conversation.Mode
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.ui.chat.ChatScreen
 import com.slopus.happy.ui.chat.ChatScreenActions
 import com.slopus.happy.ui.conversation.ChiefOfStaffScreen
-import com.slopus.happy.ui.conversation.ConversationDetailsScreen
+import com.slopus.happy.ui.conversation.AgentPageScreen
+import com.slopus.happy.ui.conversation.AgentPageActions
+import com.slopus.happy.ui.conversation.AgentPageFixtures
 import com.slopus.happy.ui.troubleshoot.TroubleshootComputer
 import com.slopus.happy.ui.troubleshoot.TroubleshootScreen
 import org.junit.Assume.assumeTrue
@@ -34,7 +34,7 @@ import java.io.File
 /**
  * Screens under a glass top bar, for review, written only when
  * HAPPY_SHOTS_DIR is set: the legacy chat with its transcript running under
- * the bar, a conversation's details and the troubleshooting page scrolled
+ * the bar, an agent's page and the troubleshooting page scrolled
  * under theirs, and the Chief of Staff lookup; light and dark.
  */
 @RunWith(AndroidJUnit4::class)
@@ -89,10 +89,7 @@ class GlassScreenShots {
         )
     }
 
-    private val agent = AgentInfo("a1", "w1", null, "Fix the login redirect", "idle", null, null, 1_755_300_000_000, 1_755_400_000_000, 1, 2)
-    private val mode = Mode("claude", "anthropic/opus-5", "high", null, "auto")
-
-    private fun details(dark: Boolean) = shot("glass-details", dark, scroll = true) { ConversationDetailsScreen(agent, mode, null) {} }
+    private fun details(dark: Boolean) = shot("glass-details", dark, scroll = true) { AgentPageScreen(AgentPageFixtures.page, AgentPageActions(), now = AgentPageFixtures.NOW) }
 
     private fun chief(dark: Boolean) = shot("glass-chief", dark) { ChiefOfStaffScreen("There's no Chief of Staff on this computer.", onRetry = {}, onBack = {}) }
 

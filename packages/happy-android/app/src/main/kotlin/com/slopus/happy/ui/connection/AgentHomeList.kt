@@ -203,15 +203,16 @@ val LocalAgentPictures = staticCompositionLocalOf<AgentPictures?> { null }
  * (SidebarRows.swift, RowView.swift): the person's Happy wears Happy's
  * mark; a bot its picture over its ThumbHash; a bot without one, and every
  * task, the placeholder its own ID picks, a rounded square like a picture,
- * moving with Animated Avatars on.
+ * moving with Animated Avatars on. [radius] rounds a picture's and a
+ * placeholder's corners.
  */
 @Composable
-internal fun ConversationMark(row: AgentFeedRow.Conversation, size: Dp) {
+internal fun ConversationMark(row: AgentFeedRow.Conversation, size: Dp, radius: Dp = AgentHomeSpec.tileRadius) {
     val picture = row.picture
     when {
         row.happy -> HappyMark(size)
-        picture != null -> AgentPicture(picture, row.thumbhash, size)
-        else -> PlaceholderAvatar(row.seed ?: row.agentId, size, shape = RoundedCornerShape(AgentHomeSpec.tileRadius))
+        picture != null -> AgentPicture(picture, row.thumbhash, size, radius)
+        else -> PlaceholderAvatar(row.seed ?: row.agentId, size, shape = RoundedCornerShape(radius))
     }
 }
 
@@ -236,7 +237,7 @@ internal fun FolderMarkView(mark: FolderMark, size: Dp) {
 
 /** A picture the agent serves, read once ([AgentPictures]), a rounded square over its ThumbHash. */
 @Composable
-private fun AgentPicture(path: String, thumbhash: String?, size: Dp) {
+private fun AgentPicture(path: String, thumbhash: String?, size: Dp, radius: Dp = AgentHomeSpec.tileRadius) {
     val pictures = LocalAgentPictures.current
     val bytes by produceState(pictures?.kept(path, thumbhash), pictures, path, thumbhash) {
         value = pictures?.kept(path, thumbhash) ?: try {
@@ -251,7 +252,7 @@ private fun AgentPicture(path: String, thumbhash: String?, size: Dp) {
     RemoteImage(
         model = bytes,
         contentDescription = null,
-        modifier = Modifier.size(size).clip(RoundedCornerShape(AgentHomeSpec.tileRadius)),
+        modifier = Modifier.size(size).clip(RoundedCornerShape(radius)),
         background = HappyTheme.colors.surfaceHighest,
         cacheKey = pictures?.key(path, thumbhash),
         placeholder = rememberThumbHash(thumbhash),

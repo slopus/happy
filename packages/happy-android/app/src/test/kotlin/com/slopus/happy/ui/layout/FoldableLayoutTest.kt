@@ -68,6 +68,10 @@ import com.slopus.happy.ui.connection.AgentPlacesTags
 import com.slopus.happy.ui.connection.PlaceRead
 import com.slopus.happy.ui.connection.SurfaceBody
 import com.slopus.happy.ui.connection.SurfaceScreen
+import com.slopus.happy.ui.conversation.AgentPageActions
+import com.slopus.happy.ui.conversation.AgentPageFixtures
+import com.slopus.happy.ui.conversation.AgentPageScreen
+import com.slopus.happy.ui.conversation.AgentPageTags
 import com.slopus.happy.ui.conversation.ConversationComposerTags
 import com.slopus.happy.ui.conversation.ConversationScreen
 import com.slopus.happy.ui.conversation.ConversationScreenActions
@@ -401,6 +405,17 @@ abstract class FoldableLayoutTest(
         assertOnKeylines("settings", glyph(HeaderTags.LEFT, 24.dp), null, card)
         assertRestsBelowFeather("settings")
         shot("settings")
+    }
+
+    @Test
+    fun agentPage() {
+        show { AgentPageScreen(AgentPageFixtures.page, AgentPageActions(), now = AgentPageFixtures.NOW) }
+        assertOnKeylines("agent page", glyph(HeaderTags.LEFT, 24.dp), null, first(AgentPageTags.TILES))
+        assertOnKeylines("agent page's family", null, null, first(AgentPageTags.FAMILY))
+        val mark = first(AgentPageTags.MARK)
+        assertDp("agent page: the mark is centred on the window", window / 2, (mark.left + mark.right) / 2)
+        assertRestsBelowFeather("agent page")
+        shot("agent-page")
     }
 }
 

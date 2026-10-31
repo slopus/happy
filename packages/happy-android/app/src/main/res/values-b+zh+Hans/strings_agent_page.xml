@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_agent_page.xml in b+zh+Hans: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="agent_page_started">开始</string>
+    <string name="agent_page_media">媒体</string>
+    <string name="agent_page_links">链接</string>
+    <string name="agent_page_family">家族</string>
+    <string name="agent_page_show_more">显示更多</string>
+    <string name="agent_page_completed">已完成</string>
+    <string name="agent_page_subtask">子任务</string>
+    <string name="agent_page_subagent">子代理</string>
+    <string name="agent_page_awaiting_answer">等待回答</string>
+    <string name="agent_page_started_today">今天 %1$s</string>
+    <string name="agent_page_started_yesterday">昨天 %1$s</string>
+    <string name="agent_page_age_just_now">刚刚</string>
+    <string name="agent_page_status_closed">已关闭</string>
+    <string name="agent_page_status_done">已完成</string>
+    <string name="agent_page_status_thinking">思考中</string>
+    <string name="agent_page_status_running_tools">运行工具中</string>
+    <string name="agent_page_status_working">工作中</string>
+    <string name="agent_page_terminal_running">运行中</string>
+    <string name="agent_page_tokens">%1$s 个 token</string>
+    <string name="agent_page_details">详情</string>
+    <string name="agent_page_provider">提供方</string>
+    <string name="agent_page_parent">启动者</string>
+    <string name="agent_page_context">上下文</string>
+    <string name="agent_page_context_value">%1$s / %2$s</string>
+    <string name="agent_page_expanded">已展开</string>
+    <string name="agent_page_collapsed">已折叠</string>
+    <plurals name="agent_page_age_minutes">
+        <item quantity="other">%1$d 分钟</item>
+    </plurals>
+    <plurals name="agent_page_age_hours">
+        <item quantity="other">%1$d 小时</item>
+    </plurals>
+    <plurals name="agent_page_age_days">
+        <item quantity="other">%1$d 天</item>
+    </plurals>
+    <plurals name="agent_page_age_months">
+        <item quantity="other">%1$d 个月</item>
+    </plurals>
+    <plurals name="agent_page_age_years">
+        <item quantity="other">%1$d 年</item>
+    </plurals>
+</resources>
