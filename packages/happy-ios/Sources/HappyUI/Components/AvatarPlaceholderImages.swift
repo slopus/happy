@@ -101,10 +101,22 @@ enum AvatarPlaceholderImages {
 
 /// One view's placeholder: shown at once when it is already decoded, else
 /// when it lands, unless the view has moved on to another seed by then.
+/// With Animated Avatars on (`LiveAvatars`) it also moves, as its shader,
+/// over the picture in `liveHost`, until the view shows something else.
 @MainActor
 final class AvatarPlaceholderSlot {
     private var task: Task<Void, Never>?
     private var shown: String?
+    /// The view the live placeholder fills; it clips it to its shape.
+    weak var liveHost: UIView? {
+        didSet { LiveAvatars.slots.add(self); updateLive() }
+    }
+    /// Covered by a real picture: nothing to animate.
+    var liveSuppressed = false {
+        didSet { if liveSuppressed != oldValue { updateLive() } }
+    }
+    private var liveSeed: (seed: String, monochrome: Bool)?
+    private(set) var live: LiveAvatarView?
 
     /// Hands `apply` the picture for `seed`; nil (now) for no seed.
     func show(seed: String?, side: CGFloat, monochrome: Bool = false, _ apply: @escaping @MainActor (UIImage?) -> Void) {
@@ -113,6 +125,8 @@ final class AvatarPlaceholderSlot {
         task?.cancel()
         task = nil
         shown = key
+        liveSeed = seed.map { ($0, monochrome) }
+        updateLive()
         guard let seed, side > 0 else { apply(nil); return }
         if let image = AvatarPlaceholderImages.cached(seed: seed, side: side, monochrome: monochrome) {
             apply(image)
@@ -131,6 +145,34 @@ final class AvatarPlaceholderSlot {
         task?.cancel()
         task = nil
         shown = nil
+        liveSeed = nil
+        updateLive()
+    }
+
+    /// Only the live placeholder for `seed` (none for nil), where the
+    /// still picture comes from elsewhere.
+    func animate(seed: String?, monochrome: Bool = false) {
+        task?.cancel()
+        task = nil
+        shown = nil
+        liveSeed = seed.map { ($0, monochrome) }
+        updateLive()
+    }
+
+    /// Puts the live placeholder in `liveHost`, or takes it out.
+    func updateLive() {
+        guard let host = liveHost, let liveSeed, !liveSuppressed, LiveAvatars.isEnabled, AvatarShaderRenderer.shared != nil else {
+            live?.removeFromSuperview()
+            live = nil
+            return
+        }
+        let view = live ?? LiveAvatarView(frame: host.bounds)
+        live = view
+        if view.superview !== host {
+            view.frame = host.bounds
+            host.addSubview(view)
+        }
+        view.show(index: AvatarPlaceholder.index(seed: liveSeed.seed), monochrome: liveSeed.monochrome)
     }
 
     deinit { task?.cancel() }

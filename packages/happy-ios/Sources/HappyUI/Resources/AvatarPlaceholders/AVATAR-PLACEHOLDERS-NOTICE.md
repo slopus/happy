@@ -16,6 +16,14 @@ Its license asks that the notice go with copies of substantial portions of
 the software, so `LICENSE-craftedstudios-shaders.txt` beside this file is the
 package's own and travels with the pictures. The site states no other terms.
 
+With Animated Avatars on (Settings › Appearance) the same placeholders move.
+`Sources/HappyUI/Components/AvatarShaderSource.swift` is the package's avatar
+shader (`src/shader.js`) ported to Metal, and
+`Sources/HappyLayout/AvatarShaderTable.swift` holds what it draws each picture
+with, made by the package's own `resolve` and `angleOf` for the seed and effect
+below (`scripts/generate-avatar-shader-table.mjs`). Both are under the same MIT
+license. At its phase the shader draws the picture's own frame.
+
 | File | Seed | Effect |
 | --- | --- | --- |
 | `avatar-placeholder-001.webp` | `0b7ttho` | linear |

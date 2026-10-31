@@ -100,6 +100,7 @@ final class RowView: UIView {
         picture.contentMode = .scaleAspectFill
         picture.clipsToBounds = true
         picture.layer.cornerCurve = .continuous
+        placeholder.liveHost = picture
         trailing.contentMode = .center
         chevron.contentMode = .center
         rule.backgroundColor = UIColor(Palette.divider)

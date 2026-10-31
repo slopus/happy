@@ -224,6 +224,7 @@ final class StoriesCircleView: UIControl {
         avatar.layer.cornerRadius = geometry.avatar.width / 2
         avatar.backgroundColor = UIColor(Palette.storiesAvatarFill)
         avatar.isUserInteractionEnabled = false
+        placeholder.liveHost = avatar
         content.addSubview(avatar)
         for ring in [seenRing, unseenRing] {
             ring.fillColor = nil

@@ -328,6 +328,7 @@ final class StoriesViewerCell: UITableViewCell {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         avatar.clipsToBounds = true
         avatar.layer.cornerRadius = StoryViewersRowLayout.Metrics.avatar / 2
+        placeholder.liveHost = avatar
         avatar.contentMode = .scaleAspectFill
         avatar.backgroundColor = UIColor(Palette.storiesAvatarFill)
         name.font = Self.titleFont

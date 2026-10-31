@@ -58,6 +58,7 @@ public final class AvatarView: UIView {
         addSubview(disc)
         disc.addSubview(glyph)
         disc.addSubview(photo)
+        placeholder.liveHost = glyph
         addSubview(badge)
         badge.addSubview(badgeGlyph)
         isUserInteractionEnabled = false
@@ -122,10 +123,12 @@ public final class AvatarView: UIView {
         imageOwner = pictures
         photo.image = nil
         photo.isHidden = true
+        placeholder.liveSuppressed = false
         guard let source, let pictures else { return }
         if let image = pictures.cached(source) as? UIImage {
             photo.image = image
             photo.isHidden = false
+            placeholder.liveSuppressed = true
             return
         }
         let generation = imageGeneration
@@ -135,6 +138,7 @@ public final class AvatarView: UIView {
                   self.imageSource == source, self.pictures === pictures, let image else { return }
             self.photo.image = image
             self.photo.isHidden = false
+            self.placeholder.liveSuppressed = true
             self.badge.isHidden = self.content?.avatar.harness == nil
         }
     }

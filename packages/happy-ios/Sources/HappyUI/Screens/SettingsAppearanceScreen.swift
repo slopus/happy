@@ -10,7 +10,8 @@ import UIKit
 /// (Enter to send, command palette) are left out, as on an iPhone. So is
 /// Avatar Style: every avatar without a picture wears its placeholder
 /// (`AvatarPlaceholder`) whichever style is set, so only Black & White
-/// Avatars changes how they look.
+/// Avatars changes how they look, and this app's own Animated Avatars
+/// (`LiveAvatars`, off by default), which moves them.
 public final class SettingsAppearanceViewController: UIViewController {
     private enum Dropdown {
         case bubbleColor
@@ -194,7 +195,15 @@ public final class SettingsAppearanceViewController: UIViewController {
             subtitle: Strings.SettingsAppearance.avatarMonochromeDescription,
             icon: "contrast-outline",
             tint: connecting
-        )]))
+        ), toggles.row(
+            LiveAvatars.key,
+            title: Strings.LiveAvatars.title,
+            subtitle: Strings.LiveAvatars.description,
+            icon: ItemIcon(.ionicons("sparkles-outline"), tint: purple),
+            isOn: LiveAvatars.isEnabled
+        ) { on in
+            LiveAvatars.isEnabled = on
+        }]))
 
         let contextSize = toggle(
             "alwaysShowContextSize",

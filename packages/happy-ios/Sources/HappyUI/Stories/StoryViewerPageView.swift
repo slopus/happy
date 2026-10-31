@@ -57,6 +57,7 @@ final class StoryViewerPageView: UIView {
         avatar.contentMode = .scaleAspectFill
         avatar.backgroundColor = UIColor(Palette.storiesAvatarFill)
         avatar.layer.cornerRadius = StoryViewerLayout.Metrics.avatar / 2
+        placeholder.liveHost = avatar
         addSubview(avatar)
         nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         nameLabel.textColor = UIColor(Palette.storiesViewerText)

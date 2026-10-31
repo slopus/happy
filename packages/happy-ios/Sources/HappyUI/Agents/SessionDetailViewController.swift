@@ -952,6 +952,7 @@ final class DetailMarkView: UIView {
         super.init(frame: frame)
         picture.contentMode = .scaleAspectFit
         picture.clipsToBounds = true
+        placeholder.liveHost = picture
         addSubview(seedling)
         addSubview(picture)
         isAccessibilityElement = false

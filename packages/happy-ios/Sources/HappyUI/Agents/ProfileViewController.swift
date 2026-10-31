@@ -16,6 +16,7 @@ final class ProfileViewController: UIViewController, UITextFieldDelegate, PHPick
     private let source: ProfileSource
     private let scroll = UIScrollView()
     private let avatar = UIImageView()
+    private let livePlaceholder = AvatarPlaceholderSlot()
     private let changePhoto = UIButton(type: .system)
     /// Where the name is typed, over its card's row.
     let nameField = UITextField()
@@ -52,6 +53,7 @@ final class ProfileViewController: UIViewController, UITextFieldDelegate, PHPick
         avatar.clipsToBounds = true
         avatar.layer.cornerRadius = ProfileLayout.Metrics.avatar / 2
         avatar.accessibilityIdentifier = "profile-avatar"
+        livePlaceholder.liveHost = avatar
         avatar.isUserInteractionEnabled = true
         avatar.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(pickPhoto)))
         scroll.addSubview(avatar)
@@ -102,6 +104,7 @@ final class ProfileViewController: UIViewController, UITextFieldDelegate, PHPick
         ImageFade.show(picture, in: avatar, fade: avatar.image != nil)
         avatar.contentMode = .scaleAspectFill
         avatar.backgroundColor = picture == nil ? UIColor(Palette.settingsAddFill) : nil
+        livePlaceholder.animate(seed: source.photo == nil ? source.placeholderSeed : nil)
         // Never under the person's fingers.
         if !nameField.isFirstResponder, nameField.text != state.name { nameField.text = state.name }
         var rows: [[SettingsRow]] = [[SettingsRow(id: "profile-name", title: "", accessory: .none, action: { [weak self] in self?.nameField.becomeFirstResponder() })]]
