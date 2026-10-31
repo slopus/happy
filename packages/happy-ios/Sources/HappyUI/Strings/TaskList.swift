@@ -1,8 +1,7 @@
 import Foundation
 
-// Rich tasks' words, as the desktop's proposal has them (task_174 mock v3).
-// happy-app has no tasks, so en.ts has none of these; they stay English, as
-// the tasks' other words do.
+// Rich tasks' words, as the desktop's proposal has them. happy-app has no
+// tasks, so en.ts has none of these; they stay English.
 extension Strings {
     enum TaskList {
         /// Under a card's sub-rows, or in its corner when every child is hidden.

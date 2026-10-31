@@ -200,7 +200,7 @@ private extension UIView {
     }
 }
 
-private extension UIColor {
+extension UIColor {
     func mixed(with other: UIColor, _ t: CGFloat) -> UIColor {
         var (r1, g1, b1, a1, r2, g2, b2, a2): (CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0, 0, 0, 0, 0)
         getRed(&r1, green: &g1, blue: &b1, alpha: &a1)

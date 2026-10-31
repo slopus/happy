@@ -5,116 +5,138 @@ import CoreGraphics
 @testable import HappyLayout
 import XCTest
 
-/// Rich tasks against the proposal's redlines (task_174 mock v3, corner B),
-/// measured in Chrome with Happy's stylesheet and Figtree at 304 wide.
+/// Rich tasks against the iPhone sizing spec (task_174 `design/ios-sizing.md`),
+/// in a 361 grouped card (a 393 screen), Figtree at Large.
 final class TaskListLayoutTests: XCTestCase {
     typealias L = TaskListLayout
-    let text = L.Text.figtree
+    typealias M = TaskListMetrics
+    let text = L.Text.figtree, width: CGFloat = 361
 
-    /// The proposal's list: Priorities, its six cards and their sub-rows, Small bugs, then two folded sections.
+    /// The proposal's Priorities: its six cards and their sub-rows.
     func mockList() -> [L.Item] {
         let card = L.Item.card(.init(timeWidth: 20, signal: .dot))
         let sub = L.Item.subRow(metaWidth: 0, working: false)
-        return [.header(collapsed: false), card, sub, sub, sub, card, sub, sub, sub, .more, card, sub, sub, .more, card, card, card,
-                .header(collapsed: false), card, sub, card, card, .header(collapsed: true), .header(collapsed: true)]
+        return [card, sub, sub, sub, card, sub, sub, sub, .more, card, sub, sub, .more, card, card, card]
     }
 
-    func testRowsStandWhereTheMocksDo() {
-        let result = L.layout(mockList(), width: 304)
-        XCTAssertEqual(result.frames.map(\.box.minY), [12, 40, 108, 138, 168, 198, 266, 296, 326, 356, 380, 448, 478, 508, 532, 600, 668, 744, 772, 840, 870, 938, 1008, 1038])
-        XCTAssertEqual(result.height, 1076)
-        // Cards and sub-rows 3 in from the list; headers across it.
-        XCTAssertEqual(result.frames[1].box, CGRect(x: 3, y: 40, width: 298, height: 68))
-        XCTAssertEqual(result.frames[2].box, CGRect(x: 3, y: 108, width: 298, height: 30))
-        XCTAssertEqual(result.frames[0].box, CGRect(x: 0, y: 12, width: 304, height: 28))
-        // A header's title 14 in, its baseline 18 down; "+N more" where the text starts, 16 down.
-        XCTAssertEqual(result.frames[0].label.minX, 14)
-        XCTAssertEqual(result.frames[0].baseline, 12 + 18)
-        XCTAssertEqual(result.frames[9].label.minX, 70)
-        XCTAssertEqual(result.frames[9].baseline, 356 + 16)
+    func testRowsStandWhereTheSpecDoes() {
+        let result = L.layout(mockList(), width: width)
+        // Cards 72 apart (Telegram's 68 row lit), sub-rows 44, "+N more" 40.
+        let heights: [CGFloat] = mockList().map { if case .card = $0 { 72 } else if case .more = $0 { 40 } else { 44 } }
+        XCTAssertEqual(result.frames.map(\.box.height), heights)
+        XCTAssertEqual(result.frames.map(\.box.minY), heights.indices.map { L.room + heights[..<$0].reduce(0, +) })
+        XCTAssertEqual(result.height, L.room * 2 + heights.reduce(0, +), accuracy: 1e-9)
+        // The highlights 16 − e in from the grouped card's every side.
+        XCTAssertEqual(result.frames[0].highlight.minX, 16 - M.edge, accuracy: 1e-9)
+        XCTAssertEqual(result.frames[0].highlight.minY, 16 - M.edge, accuracy: 1e-9)
+        XCTAssertEqual(result.frames[0].highlight.maxX, width - 16 + M.edge, accuracy: 1e-9)
+        // Text at 86; "+N more"'s x-height on its row's middle.
+        let more = result.frames[8]
+        XCTAssertEqual(more.label.minX, 86, accuracy: 1e-9)
+        XCTAssertEqual(more.baseline - text.more.xHeight / 2, more.box.midY, accuracy: 1e-9)
     }
 
-    func testTheCardsCapTopStandsAsFarInAsItsLastBaseline() {
-        let frame = L.layout([.card(.init(timeWidth: 23.86, signal: .braille))], width: 304).frames[0]
-        let hl = frame.highlight
-        XCTAssertEqual(hl, CGRect(x: 3, y: 6, width: 298, height: 64))
-        XCTAssertEqual(frame.disc, CGRect(x: 10, y: 13, width: 50, height: 50))
-        XCTAssertEqual(frame.icon, CGRect(x: 15, y: 18, width: 40, height: 40))
-        XCTAssertEqual(frame.label.minX, 70)
-        // A story's ring on the disc's edge, its fill 2 clear inside it.
-        let story = L.layout([.card(.init(story: true))], width: 304).frames[0]
-        XCTAssertEqual([story.ring, story.disc, story.icon], [frame.disc, CGRect(x: 14, y: 17, width: 42, height: 42), CGRect(x: 18, y: 21, width: 34, height: 34)])
+    func testTheCardsInsetIsEOnEverySide() {
+        let frame = L.layout([.card(.init(timeWidth: 23.86, signal: .braille))], width: width).frames[0]
+        let hl = frame.highlight, e = M.edge
+        XCTAssertEqual(hl.height, 68, accuracy: 1e-9)
+        // The 60 disc 16 from the grouped card, centred; the text 10 past it.
+        XCTAssertEqual(frame.disc, CGRect(x: 16, y: hl.midY - 30, width: 60, height: 60))
+        XCTAssertEqual(frame.icon, CGRect(x: 22, y: hl.midY - 24, width: 48, height: 48))
+        XCTAssertEqual(frame.label.minX, 86, accuracy: 1e-9)
+        // A story's ring on the disc's edge, its fill 4 inside it, its art 42.
+        let story = L.layout([.card(.init(story: true))], width: width).frames[0]
+        XCTAssertEqual(story.ring, frame.disc)
+        XCTAssertEqual(story.disc, frame.disc?.insetBy(dx: 4, dy: 4))
+        XCTAssertEqual(story.icon?.width ?? 0, 42, accuracy: 1e-9)
+        // The cap top `e` under the top, the last baseline `e` over the bottom, the time and the status `e` in.
         let last = try! XCTUnwrap(frame.lastBaseline)
-        let capTop = frame.baseline - text.title.capHeight
-        // The equality the proposal is built on, and its measured value (10.81 there, its H a hair taller).
-        XCTAssertEqual(capTop - hl.minY, hl.maxY - last, accuracy: 1e-9)
-        XCTAssertEqual(text.edge, 10.81, accuracy: 0.02)
-        XCTAssertEqual(frame.baseline - hl.minY, 21.67, accuracy: 0.02)
-        XCTAssertEqual(last - hl.minY, 53.17, accuracy: 0.02)
-        // The time ends `e` in, its cap top on the title's.
-        let time = try! XCTUnwrap(frame.time)
-        XCTAssertEqual(time.maxX, hl.maxX - text.edge, accuracy: 1e-9)
-        XCTAssertEqual(time.minY + text.time.ascender - text.time.capHeight, capTop, accuracy: 1e-9)
-        XCTAssertEqual(frame.label.maxX, time.minX - 8, accuracy: 1e-9)
-        // Two status lines: the second's baseline the last, the first running to 12 in.
-        let status = try! XCTUnwrap(frame.status)
-        XCTAssertEqual(status.minY + text.statusBaseline + 16, last, accuracy: 1e-9)
-        XCTAssertEqual(status.maxX, hl.maxX - 12, accuracy: 1e-9)
+        XCTAssertEqual(frame.baseline - text.title.capHeight - hl.minY, e, accuracy: 1e-9)
+        XCTAssertEqual(hl.maxY - last, e, accuracy: 1e-9)
+        let time = try! XCTUnwrap(frame.time), status = try! XCTUnwrap(frame.status)
+        XCTAssertEqual(time.maxX, hl.maxX - e, accuracy: 1e-9)
+        XCTAssertEqual(time.minY + text.time.ascender - text.time.capHeight, frame.baseline - text.title.capHeight, accuracy: 1e-9)
+        XCTAssertEqual(frame.label.maxX, time.minX - M.timeGap, accuracy: 1e-9)
+        // Two status lines: 18 under the title, then 20 apart, the first running to `e` in.
+        XCTAssertEqual(status.minY + text.statusBaseline, frame.baseline + M.titleToStatus, accuracy: 1e-9)
+        XCTAssertEqual(status.minY + text.statusBaseline + M.statusLine, last, accuracy: 1e-9)
+        XCTAssertEqual(status.maxX, hl.maxX - e, accuracy: 1e-9)
     }
 
     func testTheCornerItemsAreCentredOnTheLastLinesXHeight() {
-        let frame = L.layout([.card(.init(timeWidth: 20, moreWidth: 47.53, faces: 2, signal: .dot))], width: 304).frames[0]
-        let hl = frame.highlight, last = try! XCTUnwrap(frame.lastBaseline)
-        let middle = last - text.status.xHeight / 2
-        XCTAssertEqual(middle - hl.minY, 49.67, accuracy: 0.02)
+        let frame = L.layout([.card(.init(timeWidth: 20, moreWidth: 60, faces: 2, signal: .dot))], width: width).frames[0]
+        let hl = frame.highlight, last = try! XCTUnwrap(frame.lastBaseline), middle = last - text.status.xHeight / 2
         let chips = [try! XCTUnwrap(frame.signal)] + frame.faces
         for chip in chips {
             XCTAssertEqual(chip.midY, middle, accuracy: 1e-9)
-            XCTAssertEqual(chip.height, 14)
+            XCTAssertEqual(chip.height, M.chip)
         }
-        // Right to left from `e` in, 6 apart: the dot, the faces (each over the last by 30%), the text button.
+        // Right to left from `e` in, 6 apart: the dot, the faces (each over the last by 30%), the words.
         let dot = chips[0], faces = frame.faces
-        XCTAssertEqual(dot.maxX, hl.maxX - text.edge, accuracy: 1e-9)
-        XCTAssertEqual(dot.width, 14)
-        XCTAssertEqual(faces[1].maxX, dot.minX - 6, accuracy: 1e-9)
-        XCTAssertEqual(faces[1].minX - faces[0].minX, 9.8, accuracy: 1e-9)
-        // "+N more" is words on the last line: its baseline is the line's.
+        XCTAssertEqual(dot.maxX, hl.maxX - M.edge, accuracy: 1e-9)
+        XCTAssertEqual(dot.width, M.chip)
+        XCTAssertEqual(faces[1].maxX, dot.minX - M.cornerGap, accuracy: 1e-9)
+        XCTAssertEqual(faces[1].minX - faces[0].minX, M.chip * M.faceStep, accuracy: 1e-9)
         let more = try! XCTUnwrap(frame.more)
         XCTAssertEqual(more.minY + text.more.ascender, last, accuracy: 1e-9)
-        XCTAssertEqual(more.maxX, faces[0].minX - 6, accuracy: 1e-9)
+        XCTAssertEqual(more.maxX, faces[0].minX - M.cornerGap, accuracy: 1e-9)
         // Only the second status line makes room for the corner, 6 before it.
-        XCTAssertEqual(try! XCTUnwrap(frame.statusEnd), more.minX - 6, accuracy: 1e-9)
-        // The braille: 6 wide, on the same middle and edge.
-        let busy = L.layout([.card(.init(signal: .braille))], width: 304).frames[0]
-        XCTAssertEqual(busy.signal, CGRect(x: hl.maxX - text.edge - 6, y: middle - 7, width: 6, height: 14))
+        XCTAssertEqual(try! XCTUnwrap(frame.statusEnd), more.minX - M.cornerGap, accuracy: 1e-9)
+        let busy = L.layout([.card(.init(signal: .braille))], width: width).frames[0]
+        XCTAssertEqual(busy.signal, CGRect(x: hl.maxX - M.edge - 7.5, y: middle - 9, width: 7.5, height: 18))
     }
 
     func testASubRowEndsOnTheCardsRightEdge() {
-        let frames = L.layout([.card(.init(signal: .dot)), .subRow(metaWidth: 66.31, working: false), .subRow(metaWidth: 30, working: true), .more], width: 304).frames
+        let frames = L.layout([.card(.init(signal: .dot)), .subRow(metaWidth: 66.31, working: false), .subRow(metaWidth: 30, working: true), .more], width: width).frames
         let card = frames[0], meta = frames[1], busy = frames[2]
         for row in [meta, busy] {
-            XCTAssertEqual(row.highlight.maxX, card.highlight.maxX)
-            XCTAssertEqual(row.highlight.minX, 3 + 35)
+            // The 24 mark ends where the disc does, its highlight from 4 left of it; the text's x-height on the middle.
+            XCTAssertEqual(row.mark, CGRect(x: 52, y: row.box.minY + 10, width: 24, height: 24))
+            XCTAssertEqual(row.highlight, CGRect(x: 48, y: row.box.minY + 2, width: card.highlight.maxX - 48, height: 40))
             XCTAssertEqual(row.label.minX, card.label.minX)
-            // The 18 mark ends where the disc does; the text's baseline 19 down its 30 row.
-            XCTAssertEqual(row.mark, CGRect(x: 42, y: row.box.minY + 6, width: 18, height: 18))
-            XCTAssertEqual(row.baseline, row.box.minY + 19)
+            XCTAssertEqual(row.baseline, row.box.minY + 22 + text.row.xHeight / 2, accuracy: 1e-9)
         }
-        // The trail ends where the card's corner does.
         XCTAssertEqual(try! XCTUnwrap(meta.meta).maxX, try! XCTUnwrap(card.signal).maxX, accuracy: 1e-9)
         XCTAssertEqual(try! XCTUnwrap(busy.signal).maxX, try! XCTUnwrap(card.signal).maxX, accuracy: 1e-9)
-        XCTAssertEqual(try! XCTUnwrap(busy.meta).maxX, try! XCTUnwrap(busy.signal).minX - 6, accuracy: 1e-9)
-        XCTAssertEqual(busy.label.maxX, try! XCTUnwrap(busy.meta).minX - 8, accuracy: 1e-9)
+        XCTAssertEqual(try! XCTUnwrap(busy.meta).maxX, try! XCTUnwrap(busy.signal).minX - M.cornerGap, accuracy: 1e-9)
+        XCTAssertEqual(busy.label.maxX, try! XCTUnwrap(busy.meta).minX - M.trailGap, accuracy: 1e-9)
         XCTAssertEqual(meta.meta!.minY + text.time.ascender, meta.baseline, accuracy: 1e-9)
     }
 
-    func testHighlightsStandFourApart() {
+    func testHighlightsStandFourApartAndCardsAfterTheFirstWearAHairline() {
         let card = L.Item.card(.init())
-        let frames = L.layout([card, .subRow(metaWidth: 0, working: false), .subRow(metaWidth: 0, working: true), card, card], width: 390).frames
+        let frames = L.layout([card, .subRow(metaWidth: 0, working: false), .subRow(metaWidth: 0, working: true), card, card], width: width, hairline: 1 / 3).frames
         for (upper, lower) in zip(frames, frames.dropFirst()) {
-            XCTAssertEqual(lower.highlight.minY - upper.highlight.maxY, 4)
+            XCTAssertEqual(lower.highlight.minY - upper.highlight.maxY, 4, accuracy: 1e-9)
         }
-        XCTAssertEqual(frames.map(\.radius), [14, 8, 8, 14, 14])
-        XCTAssertEqual(frames[0].highlight.maxX, 387)
+        XCTAssertEqual(frames.map(\.radius), [14, 10, 10, 14, 14])
+        XCTAssertEqual(frames.map { $0.separator != nil }, [false, false, false, true, true])
+        XCTAssertEqual(frames[3].separator, CGRect(x: 86, y: frames[3].box.minY, width: width - 86, height: 1 / 3))
     }
+
+    /// xxxLarge (Callout 22, Subheadline 21): the spec's 87.4 highlight, 52 sub-rows and 48 "+N more".
+    func testTheRowsGrowWithTheTextSize() {
+        let big = L.Text(title: .figtree(22), time: .figtree(21), status: .figtree(21), row: .figtree(21), more: .figtree(21), scale: 1.4, disc: 60, statusBaseline: 28 - 0.25 * 21)
+        let frames = L.layout([.card(.init()), .subRow(metaWidth: 0, working: true), .more], width: width, text: big).frames
+        XCTAssertEqual(frames[0].highlight.height, 87.4, accuracy: 1e-9)
+        XCTAssertEqual(frames[1].box.height, 52, accuracy: 1e-9)
+        XCTAssertEqual(frames[2].box.height, 48, accuracy: 1e-9)
+        XCTAssertEqual(frames[1].signal?.size.height ?? 0, 25.2, accuracy: 1e-9)
+        XCTAssertEqual(frames[0].highlight.maxY - frames[0].lastBaseline!, M.edge, accuracy: 1e-9)
+    }
+}
+
+/// Figtree's own metrics, so the layout is tested without UIKit.
+extension TaskListLayout.Face {
+    static func figtree(_ size: CGFloat) -> Self { .init(ascender: 0.95 * size, capHeight: 0.7 * size, xHeight: 0.5 * size, lineHeight: 1.2 * size) }
+}
+
+extension TaskListLayout.Text {
+    /// At Large: Callout 16 and Subheadline 15 on 20 lines.
+    static let figtree = Self(title: .figtree(TaskListMetrics.titleSize), time: .figtree(15), status: .figtree(15), row: .figtree(15), more: .figtree(15),
+                              scale: 1, disc: TaskListMetrics.disc, statusBaseline: TaskListMetrics.statusLine - 0.25 * 15)
+}
+
+extension TaskListLayout {
+    static func layout(_ items: [Item], width: CGFloat, hairline: CGFloat = 1) -> Result { layout(items, width: width, text: .figtree, hairline: hairline) }
 }

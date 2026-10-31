@@ -20,7 +20,13 @@ private struct GroupedHomeSockets: WebSocketConnector {
 private actor GroupedHomeTransport: AgentTransport {
     /// The cloned repo's picture, as the daemon serves it.
     let avatar: Data
-    init(avatar: Data) { self.avatar = avatar }
+    /// A protocol-34 daemon with rich tasks and their sections on (`-rich`), serving the story artifacts' fixture's stories.
+    let rich: Bool
+    let stories: StoryArtifactsHarnessTransport
+    init(avatar: Data, rich: Bool, pictures: String?) {
+        (self.avatar, self.rich) = (avatar, rich)
+        stories = StoryArtifactsHarnessTransport(directory: pictures, seen: [], me: "me")
+    }
 
     /// Tasks and bots made here, newest first, the ones still to be named
     /// by their first message, and the events stream to tell of them.
@@ -69,22 +75,35 @@ private actor GroupedHomeTransport: AgentTransport {
     private func desktop() -> [String: Any] {
         [
             "cursor": "c1", "profile": ["userId": NSNull()],
-            "userSettings": [],
-            "bots": bots, "tasks": tasks,
-            "taskMemberships": tasks.map { ["taskId": $0["id"]!] },
+            "userSettings": rich ? [["key": "tasks.rich", "value": true, "version": "1"], ["key": "tasks.sections", "value": true, "version": "2"]] : [],
+            "bots": bots, "tasks": rich ? tasks.map(Self.enriched) : tasks,
+            "taskMemberships": tasks.map { ["taskId": $0["id"]!, "orderKey": Self.richOrder[$0["id"] as! String] ?? "a"] },
+            "taskSections": rich ? [["id": "now", "name": "Now", "orderKey": "m", "collapsed": false], ["id": "later", "name": "Later", "orderKey": "t", "collapsed": true]] : [],
+            "taskArtifacts": rich ? [["artifactId": "a1", "taskId": "crash", "title": "Crash report", "type": "markdown"]] : [],
             "surfaces": Self.surfaces,
             "projects": [
                 ["id": "p1", "name": "happy", "status": "active", "orderKey": "a", "avatar": ["url": "/v0/projects/p1/avatar", "width": 64, "height": 64], "agents": [Self.agent("root", "Root chat")]],
                 ["id": "p2", "name": "website", "status": "active", "orderKey": "b", "agents": []],
             ],
             "workspaces": [
-                ["id": "w1", "projectId": "p1", "parentId": "p1", "name": "ios-grouped-home", "kind": "worktree", "status": "active", "orderKey": "a", "agents": [Self.agent("w1-agent", "Grouped home", ago: 18)]],
+                ["id": "w1", "projectId": "p1", "parentId": "p1", "name": "ios-grouped-home", "kind": "worktree", "status": "active", "orderKey": "a", "creatorAgentId": "crash-agent", "agents": [Self.agent("w1-agent", "Grouped home", ago: 18)]],
             ],
         ]
     }
 
     private var tasks: [[String: Any]] { made + Self.tasks }
     private var bots: [[String: Any]] { madeBots + Self.bots }
+
+    /// With `-rich`: where each task stands among the sections, its icon, and who wrote to it.
+    static let richOrder = ["crash": "n", "report": "p", "onboarding": "u"]
+    static func enriched(_ task: [String: Any]) -> [String: Any] {
+        var task = task, agent = task["agent"] as? [String: Any] ?? [:]
+        let icons = ["landing": "ux", "crash": "crash", "report": "architecture", "onboarding": "deploy"]
+        task["icon"] = ["type": "library", "slug": icons[task["id"] as? String ?? ""] ?? "swift"]
+        if task["id"] as? String == "landing" { agent["unread"] = ["reason": "message", "since": now, "from": ["jordan", "steve"]] }
+        task["agent"] = agent
+        return task
+    }
 
     private func tell(_ type: String, _ payload: [String: Any]) {
         sequence += 1
@@ -95,6 +114,9 @@ private actor GroupedHomeTransport: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let route = path.split(separator: "?").first.map(String.init) ?? path
         if route == "/v0/projects/p1/avatar" { return .init(status: 200, body: avatar) }
+        if rich, route.hasPrefix("/v0/stories") || route.hasPrefix("/v0/users/") || route.hasPrefix("/v0/bots/system-health") {
+            return try await stories.request(method: method, path: path, credential: credential, body: body, headers: headers)
+        }
         let sent = body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         if method == "POST", route == "/v0/tasks" || route == "/v0/bots" {
             let bot = route == "/v0/bots"
@@ -136,7 +158,8 @@ private actor GroupedHomeTransport: AgentTransport {
         }
         let object: [String: Any]
         switch route {
-        case "/v0/health": object = ["ready": true, "version": ["protocol": 27], "capabilities": ["sidebarOperations": true]]
+        case "/v0/health": object = ["ready": true, "version": ["protocol": rich ? 34 : 27], "capabilities": ["sidebarOperations": true, "taskSections": rich, "stories": rich, "storyArtifacts": rich]]
+        case "/v0/users": object = ["users": StoryArtifactsHarnessTransport.people.map { ["id": $0.key, "name": $0.value.name, "photo": $0.value.hasPhoto ? ["url": "/v0/users/\($0.key)/photo"] as Any : NSNull()] }]
         case "/v0/config": object = ["config": [
             "node": ["name": "Personal MacBook Pro"],
             "defaults": ["providerId": "claude", "modelId": "anthropic/opus-5", "permissionMode": "auto"],
@@ -165,7 +188,7 @@ private actor GroupedHomeTransport: AgentTransport {
 /// Home as the person sees it, grouped (`-screen groupedHome`): the real
 /// home screen over a computer serving bots, tasks and Surfaces with
 /// nested conversations, and a cloned repo wearing its
-/// picture. With `-storyRows`, the story rows' list alone, grouped as home
+/// picture; with `-rich`, its tasks as rich cards in sections. With `-storyRows`, the story rows' list alone, grouped as home
 /// draws it.
 @MainActor
 final class GroupedHomeHarness {
@@ -188,9 +211,18 @@ final class GroupedHomeHarness {
             }
             return
         }
-        let bottom = arguments.contains("-bottom")
+        let bottom = arguments.contains("-bottom"), rich = arguments.contains("-rich")
+        // With `-rich`, the stories row too; `-mockImages <dir>` reads their pictures.
+        let pictures = arguments.firstIndex(of: "-mockImages").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+        UserDefaults.standard.set(true, forKey: StoriesHomeController.tooltipShownKey)
+        UserDefaults.standard.removeObject(forKey: StoriesHomeController.putAwayKey)
         Task {
-            await open(window: window)
+            await open(window: window, rich: rich, pictures: pictures)
+            // With `-search`, search open over it, the header kept.
+            if arguments.contains("-search") {
+                try? await Task.sleep(for: .seconds(1.5))
+                home?.search.begin()
+            }
             // With `-bottom`, the list's end, where the projects are.
             guard bottom else { return }
             try? await Task.sleep(for: .seconds(1.5))
@@ -212,8 +244,8 @@ final class GroupedHomeHarness {
         }
     }
 
-    private func open(window: UIWindow) async {
-        let transport = GroupedHomeTransport(avatar: Self.repoPicture())
+    private func open(window: UIWindow, rich: Bool, pictures: String?) async {
+        let transport = GroupedHomeTransport(avatar: Self.repoPicture(), rich: rich, pictures: pictures)
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/grouped-home",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,

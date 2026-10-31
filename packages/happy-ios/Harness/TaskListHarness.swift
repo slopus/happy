@@ -25,6 +25,7 @@ final class TaskListHarness {
             guard let directory, let file = pictures[key] else { return nil }
             return UIImage(contentsOfFile: "\(directory)/\(file)")
         }
+        list.people = ["steve": Person(name: "Steve", thumbhash: nil, hasPhoto: true), "jordan": Person(name: "Jordan", thumbhash: nil, hasPhoto: false)]
         list.rings = ["onboarding-agent": StoryRing(agentId: "onboarding-agent", storyIds: ["a", "b"], unseenCount: 1, latestPostedAt: nil)]
         list.apply(Self.model())
         list.selectedId = "task:onboarding/agent:install"
@@ -35,12 +36,19 @@ final class TaskListHarness {
             controller.view.backgroundColor = UIColor(Palette.groupedGround)
             let sidebar = SidebarView()
             sidebar.style = .grouped
-            sidebar.block = list
-            list.onResize = { [weak sidebar] in sidebar?.setNeedsLayout() }
+            sidebar.makeBlock = { [weak sidebar, list] id in
+                let block = TaskListView()
+                (block.block, block.picture, block.people, block.rings) = (id, list.picture, list.people, list.rings)
+                block.onResize = { [weak sidebar] in sidebar?.setNeedsLayout() }
+                block.apply(Self.model())
+                block.selectedId = "task:onboarding/agent:install"
+                block.pressedId = "task:onboarding/workspace:round13"
+                return block
+            }
             controller.view.addSubview(sidebar)
             DispatchQueue.main.async {
                 sidebar.frame = controller.view.bounds.inset(by: UIEdgeInsets(top: controller.view.safeAreaInsets.top, left: 0, bottom: 0, right: 0))
-                sidebar.apply(SidebarRows.withRichTasks(Self.classicRows(), RichTasks()))
+                sidebar.apply(SidebarRows.withRichTasks(Self.classicRows(), Self.model()))
             }
             return
         }

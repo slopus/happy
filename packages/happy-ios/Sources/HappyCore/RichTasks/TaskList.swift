@@ -1,13 +1,14 @@
 import Foundation
 import HappyWire
 
-/// The rich tasks as Home draws them, top to bottom: section headers, cards,
-/// the sub-rows under each card and its "+N more". What is opened out and
-/// what is folded is the screen's own, never written back.
+/// The rich tasks as Home draws them: one list of cards in the tasks' place
+/// and one under each section's heading, each card with its sub-rows and
+/// "+N more". What is opened out and what is folded is the screen's own,
+/// never written back.
 public enum TaskList {
     /// Sub-rows a card shows before "+N more".
     public static let shown = 3
-    /// The row in the classic rows the cards take the place of.
+    /// The row the cards above the first section are drawn in; a section's is `blockId:<id>`.
     public static let blockId = "rich:tasks"
 
     public enum Mark: Equatable, Sendable {
@@ -17,9 +18,7 @@ public enum TaskList {
     }
 
     public struct Card: Equatable, Sendable {
-        public var taskId: String
-        public var agentId: String
-        public var title: String
+        public var taskId, agentId, title: String
         public var iconSlug: String?
         /// The last activity, to the minute (ms).
         public var time: Double?
@@ -27,9 +26,8 @@ public enum TaskList {
         public var signal: Row.Corner
         /// The people who wrote to its agent since it was read, newest first.
         public var faces: [String]
-        /// A story on its disc: one segment per live story, the new ones coloured.
-        public var story = false
-        public var ring: StoryRing?
+        /// A story ring on its disc: one segment per live story, the new ones coloured.
+        public var story = false, ring: StoryRing?
         /// Who its faces are, as read; nil for one not read yet.
         public var people: [Person?] = []
         /// "+N more" in the corner: every child hidden, the card not opened out.
@@ -49,7 +47,6 @@ public enum TaskList {
     }
 
     public enum Item: Equatable, Sendable {
-        case header(id: String, name: String, collapsed: Bool)
         case card(Card)
         case subRow(SubRow)
         /// "+N more" under the sub-rows, or "hide" (`count` nil) once opened out.
@@ -57,7 +54,6 @@ public enum TaskList {
 
         public var id: String {
             switch self {
-            case .header(let id, _, _): "section:\(id)"
             case .card(let card): "task:\(card.taskId)"
             case .subRow(let row): "task:\(row.taskId)/\(row.ref.kind):\(row.ref.id)"
             case .more(let taskId, _): "more:\(taskId)"
@@ -65,27 +61,26 @@ public enum TaskList {
         }
     }
 
-    /// `tasks` as drawn, with the cards in `expanded` opened out and the
-    /// sections in `folded` folded or unfolded over what the daemon says.
-    /// It only picks among the cards as projected (`RichTasks.projected`).
-    public static func items(_ tasks: RichTasks, expanded: Set<String> = [], folded: [String: Bool] = [:]) -> [Item] {
+    /// The cards the list in row `block` draws; nil for every card.
+    public static func cards(_ tasks: RichTasks, block: String?) -> [RichTasks.Card] {
+        guard let block else { return tasks.cards }
+        return block == blockId ? tasks.unsectioned : tasks.sections.first { "\(blockId):\($0.id)" == block }?.cards ?? []
+    }
+
+    /// `cards` as drawn, with the ones in `expanded` opened out. It only
+    /// picks among the cards as projected (`RichTasks.projected`).
+    public static func items(_ cards: [RichTasks.Card], expanded: Set<String> = []) -> [Item] {
         var items: [Item] = []
-        func add(_ card: RichTasks.Card) {
-            guard var drawn = card.drawn else { return }
+        for card in cards {
+            guard var drawn = card.drawn else { continue }
             let open = expanded.contains(card.taskId)
             if card.subRows.isEmpty, !card.hidden.isEmpty, !open { drawn.more = card.hidden.count }
             items.append(.card(drawn))
-            if drawn.more != nil { return }
+            if drawn.more != nil { continue }
             let rows = open ? card.rows : Array(card.rows.prefix(min(shown, card.subRows.count)))
             items += rows.map(Item.subRow)
             if open { items.append(.more(taskId: card.taskId, count: nil)) }
             else if card.rows.count > rows.count { items.append(.more(taskId: card.taskId, count: card.rows.count - rows.count)) }
-        }
-        tasks.unsectioned.forEach(add)
-        for section in tasks.sections {
-            let collapsed = folded[section.id] ?? section.collapsed
-            items.append(.header(id: section.id, name: section.name, collapsed: collapsed))
-            if !collapsed { section.cards.forEach(add) }
         }
         return items
     }
@@ -102,29 +97,26 @@ public enum TaskList {
         let mark: Mark = switch row.ref.kind {
         case "agent": .glyph("hardware-chip-outline")
         case "workspace": child.picture.map(Mark.picture) ?? .glyph("git-branch-outline")
-        default: .glyph(glyph(artifact: child.type))
+        // An artifact's by its type, as desktop's artifact list draws it.
+        default: .glyph(["html": "globe-outline", "video": "play-circle-outline", "image": "image-outline", "image_series": "image-outline"][child.type ?? ""] ?? "document-text-outline")
         }
         return SubRow(taskId: taskId, ref: row.ref, title: child.title, mark: mark, working: child.working, dimmed: dimmed, detail: child.detail, changes: child.changes)
-    }
-
-    /// An artifact's glyph by its type, as desktop's artifact list draws it.
-    static func glyph(artifact type: String?) -> String {
-        switch type {
-        case "html": "globe-outline"
-        case "video": "play-circle-outline"
-        case "image", "image_series": "image-outline"
-        default: "document-text-outline"
-        }
     }
 }
 
 extension SidebarRows {
-    /// The classic rows with the tasks' rows (and the subtasks under them)
-    /// given over to one row the cards are drawn in; the rows unchanged
-    /// while there are no rich tasks.
-    public static func withRichTasks(_ rows: [Row], _ tasks: RichTasks?) -> [Row] {
-        guard tasks != nil, let start = rows.firstIndex(where: { $0.id == "direct:tasks" }) else { return rows }
+    /// The classic rows with the tasks' (and their subtasks') given over to the cards' list, then each section's heading
+    /// (`rich:section:<id>`, folded as `folded` says over the daemon) and its list; unchanged with no rich tasks.
+    public static func withRichTasks(_ rows: [Row], _ tasks: RichTasks?, folded: [String: Bool] = [:]) -> [Row] {
+        guard let tasks, let start = rows.firstIndex(where: { $0.id == "direct:tasks" }) else { return rows }
         let end = rows[(start + 1)...].firstIndex { $0.kind == .separator } ?? rows.endIndex
-        return Array(rows[...start]) + [Row(id: TaskList.blockId, nodeId: TaskList.blockId, kind: .widget, label: "")] + rows[end...]
+        func list(_ id: String) -> Row { Row(id: id, nodeId: id, kind: .widget, label: "") }
+        var rich = tasks.unsectioned.isEmpty ? [] : [list(TaskList.blockId)]
+        for section in tasks.sections {
+            let id = "rich:section:\(section.id)", collapsed = folded[id] ?? section.collapsed
+            rich.append(Row(id: id, nodeId: id, kind: .section, label: section.name, collapsed: collapsed))
+            if !collapsed, !section.cards.isEmpty { rich.append(list("\(TaskList.blockId):\(section.id)")) }
+        }
+        return Array(rows[...start]) + rich + rows[end...]
     }
 }

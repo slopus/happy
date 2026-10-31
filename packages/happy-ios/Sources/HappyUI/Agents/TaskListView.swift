@@ -3,21 +3,20 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// Rich tasks where Home's tasks were (`TaskListLayout`): section headers
-/// that fold, 3-line cards with corner B, the sub-rows under each and
-/// "+N more", which opens a card out for the screen's lifetime. Views and
-/// measurements are kept by item: an unchanged one is not touched, a changed
-/// one is reconfigured and measured again on its own. What is folded or
-/// opened out is this screen's own.
+/// Rich task cards (`TaskListLayout`) in one row of Home's grouped list, the
+/// unsectioned ones or a section's; "+N more" opens a card out for the
+/// screen's lifetime. Only an item that changed is reconfigured and measured.
 final class TaskListView: UIView {
+    private typealias M = TaskListMetrics
+    /// The row it draws (`TaskList.cards(_:block:)`); nil for every card.
+    var block: String?
     var onOpen: ((TaskList.Item) -> Void)?
     /// The list grew or shrank, or what the reader is on moved in it (`drift`).
     var onResize: (() -> Void)?
     /// Its part of a scrolling list on screen, in its own space; nil for all of it. Braille off it stands still.
     var viewport: CGRect? { didSet { if viewport != oldValue { showOnScreen() } } }
     /// How far the first item on screen moved since the list around last kept the reader's place.
-    var drift: CGFloat = 0
-    var images: Images?
+    var drift: CGFloat = 0, images: Images?
     /// A face's or a mark's picture at hand, by user id or path (the Harness's).
     var picture: ((String) -> UIImage?)?
     /// The story rings cards' discs wear, by agent; Stories fill it in.
@@ -32,20 +31,26 @@ final class TaskListView: UIView {
     /// Lit under a finger.
     var pressedId: String? { didSet { for (id, view) in views { view.pressed = id == pressedId } } }
 
-    private var model: RichTasks?
+    private var model: RichTasks? { didSet { if model != oldValue { refresh() } } }
     private var expanded = Set<String>()
-    private var folded: [String: Bool] = [:]
     private(set) var items: [TaskList.Item] = []
     private var views: [String: TaskRowView] = [:]
-    /// Each item as measured, until it or its time changes; and how many measurements were made.
+    /// Each item as measured, until it or its time changes; how many measurements were made; the width `result` is for.
     private var measured: [String: TaskListLayout.Item] = [:]
     private(set) var measures = 0
-    /// The width `result` is for; nil once the items changed.
     private var laidOut: CGFloat?
-    private(set) var result = TaskListLayout.Result(frames: [], height: 0)
+    /// The type at the reader's text size; a new size measures and lays out everything again.
+    private lazy var text = TaskListText(traitCollection)
+    private(set) lazy var result = TaskListLayout.layout([], width: 0, text: text.text)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
+            (self.text, self.measured, self.laidOut) = (TaskListText(self.traitCollection), [:], nil)
+            for item in self.items { self.views[item.id]?.configure(item, self.text) }
+            self.setNeedsLayout()
+            self.onResize?()
+        }
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
         let press = PressRecognizer(target: self, action: #selector(pressed(_:)))
         press.delegate = PressRecognizer.simultaneous
@@ -57,9 +62,7 @@ final class TaskListView: UIView {
     /// Shows `model`, touching only the items that changed.
     func apply(_ model: RichTasks?) {
         dispatchPrecondition(condition: .onQueue(.main))
-        guard model != self.model else { return }
         self.model = model
-        refresh()
     }
 
     var contentHeight: CGFloat { layout().height }
@@ -69,34 +72,26 @@ final class TaskListView: UIView {
         // The first item on screen, to keep under the reader's eye.
         let anchor = viewport.flatMap { rect in zip(items, old.frames).first { $0.1.box.maxY > rect.minY } }.map { (id: $0.0.id, y: $0.1.box.minY) }
         let previous = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        items = (model.map { TaskList.items($0, expanded: expanded, folded: folded) } ?? []).map { item in
+        items = TaskList.items(model.map { TaskList.cards($0, block: block) } ?? [], expanded: expanded).map { item in
             guard case .card(var card) = item else { return item }
             card.people = card.faces.map { people[$0] }
             if let ring = rings[card.agentId] { (card.story, card.ring) = (true, ring) }
             return .card(card)
         }
-        for item in items {
-            if let view = views[item.id] {
-                if previous[item.id] != item {
-                    view.configure(item)
-                    measured[item.id] = nil
-                }
-                continue
+        for item in items where previous[item.id] != item || views[item.id] == nil {
+            if views[item.id] == nil {
+                let view = TaskRowView()
+                (view.images, view.picture, view.ground, view.selected) = (images, picture, ground, item.id == selectedId)
+                addSubview(view)
+                views[item.id] = view
             }
-            let view = TaskRowView()
-            view.images = images
-            view.picture = picture
-            view.ground = ground
-            view.selected = item.id == selectedId
-            addSubview(view)
-            views[item.id] = view
-            view.configure(item)
+            views[item.id]?.configure(item, text)
+            measured[item.id] = nil
         }
         let live = Set(items.map(\.id))
         for (id, view) in views where !live.contains(id) {
             view.removeFromSuperview()
-            views.removeValue(forKey: id)
-            measured[id] = nil
+            (views[id], measured[id]) = (nil, nil)
         }
         laidOut = nil
         setNeedsLayout()
@@ -108,34 +103,29 @@ final class TaskListView: UIView {
     /// The frames, from each item as last measured: only what changed is measured.
     private func layout() -> TaskListLayout.Result {
         if laidOut == bounds.width { return result }
-        var input: [TaskListLayout.Item] = []
-        for item in items {
-            if measured[item.id] == nil {
-                measured[item.id] = TaskListText.input(item)
-                measures += 1
-            }
-            input.append(measured[item.id]!)
+        let input = items.map { item in
+            if let known = measured[item.id] { return known }
+            measures += 1
+            measured[item.id] = text.input(item)
+            return measured[item.id]!
         }
-        result = TaskListLayout.layout(input, width: bounds.width, text: TaskListText.text)
+        result = TaskListLayout.layout(input, width: bounds.width, text: text.text, hairline: 1 / max(1, traitCollection.displayScale))
         laidOut = bounds.width
         return result
     }
 
     /// The cards' times as the clock reads them now; one that changed is measured again.
     func tick() {
-        var changed = false
-        for (id, view) in views where view.refreshTime() {
-            measured[id] = nil
-            changed = true
-        }
-        guard changed else { return }
+        let changed = views.filter { $0.value.refreshTime() }.keys
+        guard !changed.isEmpty else { return }
+        changed.forEach { measured[$0] = nil }
         laidOut = nil
         setNeedsLayout()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        for (item, frame) in zip(items, layout().frames) { views[item.id]?.apply(frame) }
+        for (item, frame) in zip(items, layout().frames) { views[item.id]?.frames = frame }
         showOnScreen()
     }
 
@@ -143,31 +133,29 @@ final class TaskListView: UIView {
         for view in views.values { view.onScreen = viewport.map(view.frame.intersects) ?? true }
     }
 
+    /// The item under `point`; "+N more" takes the gutters around it, so its target is 44 tall.
     private func index(at point: CGPoint) -> Int? {
-        layout().frames.firstIndex { $0.box.contains(point) }
+        let frames = layout().frames
+        return frames.indices.first { if case .more = items[$0] { hit(frames[$0].box).contains(point) } else { false } } ?? frames.firstIndex { $0.box.contains(point) }
     }
+
+    /// `rect` grown to a finger's 44 each way.
+    private func hit(_ rect: CGRect) -> CGRect { rect.insetBy(dx: min(0, (rect.width - M.hit) / 2), dy: min(0, (rect.height - M.hit) / 2)) }
 
     @objc private func tapped(_ gesture: UITapGestureRecognizer) {
         let point = gesture.location(in: self)
         guard let index = index(at: point) else { return }
-        let item = items[index]
+        let item = items[index], frame = result.frames[index]
         switch item {
-        case .header(let id, _, let collapsed):
-            folded[id] = !collapsed
-            refresh()
         case .more(let taskId, _):
             toggle(taskId)
-        case .card(let card):
+        case .card(let card) where card.more != nil && frame.more.map(hit)?.contains(point) == true:
             // The corner's "+N more", with a finger's room around it.
-            if card.more != nil, let more = result.frames[index].more, more.insetBy(dx: -8, dy: -8).contains(point) {
-                toggle(card.taskId)
-            } else if card.story, let ring = result.frames[index].ring, ring.insetBy(dx: -4, dy: -4).contains(point), let view = views[item.id] {
-                // The ring is its stories; the rest of the card, its chat.
-                onOpenStory?(card, view.ringView)
-            } else {
-                onOpen?(item)
-            }
-        case .subRow:
+            toggle(card.taskId)
+        case .card(let card) where card.story && frame.ring?.contains(point) == true:
+            // The ring is its stories; the rest of the card, its chat.
+            if let view = views[item.id] { onOpenStory?(card, view.ringView) }
+        default:
             onOpen?(item)
         }
     }
@@ -179,13 +167,12 @@ final class TaskListView: UIView {
     }
 
     @objc private func pressed(_ gesture: PressRecognizer) {
-        let index = index(at: gesture.location(in: self))
-        let opens = index.map { if case .card = items[$0] { true } else if case .subRow = items[$0] { true } else { false } } ?? false
-        pressedId = opens && (gesture.state == .began || gesture.state == .changed) ? index.map { items[$0].id } : nil
+        let index = index(at: gesture.location(in: self)).flatMap { (index: Int) -> Int? in if case .more = items[index] { nil } else { index } }
+        pressedId = gesture.state == .began || gesture.state == .changed ? index.map { items[$0].id } : nil
     }
 }
 
-/// One item of the list: a header, a card, a sub-row or "+N more".
+/// One item of the list: a card, a sub-row or "+N more".
 final class TaskRowView: UIView {
     typealias M = TaskListMetrics
     var images: Images?
@@ -194,136 +181,83 @@ final class TaskRowView: UIView {
     var selected = false { didSet { if selected != oldValue { applyColors() } } }
     var pressed = false { didSet { if pressed != oldValue { applyColors() } } }
     /// Off screen, its braille stands still.
-    var onScreen = true { didSet { if onScreen != oldValue, corner == .braille { braille.running = onScreen } } }
+    var onScreen = true { didSet { braille.running = onScreen && !braille.isHidden } }
     private(set) var item: TaskList.Item?
-    private var frames: TaskListLayout.Frame?
-    private var corner = Row.Corner.none
+    var frames: TaskListLayout.Frame? { didSet { if let frames, frames != oldValue { frame = frames.box; setNeedsLayout() } } }
     private var job: Task<Void, Never>?
-
-    private let highlight = UIView()
-    private let label = UILabel()
-    private lazy var ring = add(UIView())
-    /// The story ring round the disc, which the viewer grows out of.
-    var ringView: UIView { ring }
-    /// The ring's arcs, seen and new, drawn as the stories row's.
+    private let highlight = UIView(), label = UILabel(), time = UILabel(), more = UILabel(), meta = UILabel()
+    /// The story ring round the disc, which the viewer grows out of, and its arcs, seen and new.
+    let ringView = UIView()
     private let seenArc = CAShapeLayer(), newArc = CAShapeLayer()
-    private lazy var disc = add(UIView())
-    private lazy var icon = add(UIImageView())
-    private lazy var time = add(UILabel())
-    private lazy var status = add(StatusTextView())
-    private lazy var more = add(UILabel())
-    private lazy var dot = add(UIView())
-    private lazy var braille = add(BrailleView())
-    private lazy var tile = add(UIView())
-    private lazy var mark = add(UIImageView())
-    private lazy var meta = add(UILabel())
-    private lazy var chevron = add(UILabel())
+    private let disc = UIView(), dot = UIView(), tile = UIView(), icon = UIImageView(), mark = UIImageView(), separator = UIView()
+    private let status = StatusTextView(), braille = BrailleView()
     private var faces: [FaceView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
-        highlight.isUserInteractionEnabled = false
-        addSubview(highlight)
-        addSubview(label)
-        for arc in [seenArc, newArc] { (arc.fillColor, arc.lineWidth) = (nil, M.storyRing) }
+        // The disc's ink over its icon, the tile under its mark; none takes a touch, as the row takes none.
+        [separator, highlight, label, icon, ringView, time, status, more, dot, braille, disc, tile, mark, meta].forEach(addSubview)
+        for arc in [seenArc, newArc] { (arc.fillColor, arc.lineWidth) = (nil, M.storyRing); ringView.layer.addSublayer(arc) }
+        (highlight.layer.cornerCurve, braille.tintColor, dot.backgroundColor) = (.continuous, UIColor(Palette.taskMuted), UIColor(Palette.taskMuted))
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyColors() }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    private func add<V: UIView>(_ view: V) -> V {
-        view.isUserInteractionEnabled = false
-        addSubview(view)
-        return view
-    }
-
-    func configure(_ item: TaskList.Item) {
+    func configure(_ item: TaskList.Item, _ text: TaskListText) {
         self.item = item
-        let muted = UIColor(Palette.taskMuted), ink = UIColor(Palette.taskText)
+        let muted = UIColor(Palette.taskMuted), ink = UIColor(Palette.taskText), s = text.text.scale
         switch item {
-        case .header(_, let name, let collapsed):
-            label.attributedText = NSAttributedString(string: name.uppercased(), attributes: [.font: TaskListText.headerFont, .foregroundColor: muted, .kern: M.headerTracking * M.headerSize])
-            chevron.attributedText = NSAttributedString(string: collapsed ? "›" : "⌄", attributes: [.font: TaskListText.headerFont, .foregroundColor: muted])
-            chevron.textAlignment = .right
         case .card(let card):
-            label.font = TaskListText.titleFont
-            label.textColor = ink
-            label.text = card.title
+            (label.font, label.textColor, label.text) = (text.title, ink, card.title)
             let clay = card.iconSlug.flatMap(ClayIconImages.image)
-            icon.image = clay ?? Glyphs.image("tasks", size: 26)
-            icon.contentMode = clay == nil ? .center : .scaleAspectFit
-            icon.tintColor = muted
-            ring.isHidden = !card.story
-            if seenArc.superlayer == nil { [seenArc, newArc].forEach(ring.layer.addSublayer) }
-            time.font = TaskListText.timeFont
-            time.textColor = muted
-            time.textAlignment = .right
+            (icon.image, icon.contentMode, icon.tintColor) = (clay ?? Glyphs.image("tasks", size: M.iconGlyph), clay == nil ? .center : .scaleAspectFit, muted)
+            ringView.isHidden = !card.story
+            (time.font, time.textColor, time.textAlignment) = (text.time, muted, .right)
             time.text = card.time.map { RowTime.text($0) }
-            status.text = TaskListText.status(card.status ?? "")
-            more.isHidden = card.more == nil
-            more.textAlignment = .right
-            more.attributedText = card.more.map { NSAttributedString(string: Strings.TaskList.more($0), attributes: [.font: TaskListText.moreFont, .foregroundColor: UIColor(Palette.taskAccent)]) }
+            (status.text, status.line) = (text.status(card.status ?? ""), M.statusLine * s)
+            (more.isHidden, more.textAlignment) = (card.more == nil, .right)
+            more.attributedText = card.more.map { NSAttributedString(string: Strings.TaskList.more($0), attributes: [.font: text.more, .foregroundColor: UIColor(Palette.taskAccent)]) }
             let ids = Array(card.faces.prefix(M.faces))
             while faces.count > ids.count { faces.removeLast().removeFromSuperview() }
-            while faces.count < ids.count { faces.append(add(FaceView())) }
+            while faces.count < ids.count { faces.append(FaceView()); addSubview(faces.last!) }
             for (index, (face, id)) in zip(faces, ids).enumerated() { face.show(id, person: card.people[index], picture: picture?(id), images: images) }
-            signal(card.signal)
+            dot.isHidden = card.signal != .dot
+            (braille.isHidden, braille.running) = (card.signal != .braille, onScreen && card.signal == .braille)
         case .subRow(let row):
-            let text = NSMutableAttributedString(string: row.title, attributes: [.font: TaskListText.rowFont, .foregroundColor: ink])
-            if let detail = row.detail { text.append(NSAttributedString(string: " · \(detail)", attributes: [.font: TaskListText.rowFont, .foregroundColor: muted])) }
-            label.attributedText = text
-            label.lineBreakMode = .byTruncatingTail
-            showMark(row.mark)
-            meta.textAlignment = .right
-            meta.attributedText = row.changes.map(TaskListText.meta)
-            signal(row.working ? .braille : .none)
-            alpha = row.dimmed ? M.dimmed : 1
+            // A hidden row, shown faded: its name in the muted ink, its mark at half.
+            let name = NSMutableAttributedString(string: row.title, attributes: [.font: text.status, .foregroundColor: row.dimmed ? muted : ink])
+            if let detail = row.detail { name.append(NSAttributedString(string: " · \(detail)", attributes: [.font: text.status, .foregroundColor: muted])) }
+            (label.attributedText, label.lineBreakMode) = (name, .byTruncatingTail)
+            showMark(row.mark, glyph: M.markGlyph * s)
+            (tile.alpha, mark.alpha) = row.dimmed ? (M.dimmed, M.dimmed) : (1, 1)
+            (meta.textAlignment, meta.attributedText) = (.right, row.changes.map(text.meta))
+            (dot.isHidden, braille.isHidden, braille.running) = (true, !row.working, onScreen && row.working)
         case .more(_, let count):
-            label.font = TaskListText.moreFont
-            label.textColor = UIColor(Palette.taskAccent)
+            (label.font, label.textColor) = (text.more, UIColor(Palette.taskAccent))
             label.text = count.map(Strings.TaskList.more) ?? Strings.TaskList.hide
         }
-        isAccessibilityElement = true
+        (isAccessibilityElement, accessibilityTraits) = (true, .button)
         accessibilityLabel = [label.text, time.text].compactMap { $0 }.joined(separator: ", ")
-        accessibilityTraits = if case .header = item { .header } else { .button }
         applyColors()
         setNeedsLayout()
     }
 
-    private func signal(_ signal: Row.Corner) {
-        corner = signal
-        if case .card = item {
-            dot.isHidden = signal != .dot
-            dot.backgroundColor = UIColor(Palette.taskMuted)
-        }
-        braille.isHidden = signal != .braille
-        braille.tintColor = UIColor(Palette.taskMuted)
-        braille.running = onScreen && signal == .braille
-    }
-
     /// The card's time as the clock reads it now; true when it changed.
     func refreshTime() -> Bool {
-        guard case .card(let card) = item else { return false }
-        let text = card.time.map { RowTime.text($0) }
-        guard text != time.text else { return false }
+        guard case .card(let card) = item, case let text = card.time.map({ RowTime.text($0) }), text != time.text else { return false }
         time.text = text
         return true
     }
 
-    private func showMark(_ shown: TaskList.Mark) {
+    private func showMark(_ shown: TaskList.Mark, glyph: CGFloat) {
         job?.cancel()
         switch shown {
         case .glyph(let name):
-            tile.isHidden = false
-            mark.contentMode = .center
-            mark.image = Glyphs.image(name, size: M.markGlyph)
-            mark.tintColor = UIColor(Palette.taskMuted)
+            (tile.isHidden, mark.contentMode, mark.image, mark.tintColor) = (false, .center, Glyphs.image(name, size: glyph), UIColor(Palette.taskMuted))
         case .picture(let path):
-            tile.isHidden = true
-            mark.contentMode = .scaleAspectFill
-            mark.clipsToBounds = true
-            mark.image = picture?(path)
+            (tile.isHidden, mark.contentMode, mark.clipsToBounds, mark.image) = (true, .scaleAspectFill, true, picture?(path))
             guard mark.image == nil, let images else { return }
             let pixels = Int(M.mark * traitCollection.displayScale)
             job = Task { [weak self] in
@@ -337,102 +271,71 @@ final class TaskRowView: UIView {
         let accent = UIColor(Palette.taskAccent).resolvedColor(with: traitCollection)
         let ink = UIColor(Palette.taskText).resolvedColor(with: traitCollection)
         highlight.backgroundColor = selected ? accent.withAlphaComponent(M.selectedAlpha) : pressed ? ink.withAlphaComponent(M.pressedAlpha) : nil
-        switch item {
-        case .card:
-            disc.backgroundColor = ink.withAlphaComponent(M.discInk)
-            newArc.strokeColor = accent.cgColor
-            seenArc.strokeColor = UIColor(Palette.storiesSeen).resolvedColor(with: traitCollection).cgColor
-            let around = selected ? TaskListText.blend(accent, M.selectedAlpha, over: ground.resolvedColor(with: traitCollection)) : ground
-            for face in faces {
-                face.ringColor = around
-                face.fill = ink.withAlphaComponent(M.discInk)
-            }
-        case .subRow(let row):
-            if case .glyph = row.mark { tile.backgroundColor = ink.withAlphaComponent(M.markInk) }
-        default: break
-        }
-    }
-
-    func apply(_ frames: TaskListLayout.Frame) {
-        guard frames != self.frames else { return }
-        self.frames = frames
-        frame = frames.box
-        setNeedsLayout()
+        disc.backgroundColor = ink.withAlphaComponent(M.discInk)
+        tile.backgroundColor = ink.withAlphaComponent(M.markInk)
+        separator.backgroundColor = UIColor(Palette.groupedSeparator)
+        newArc.strokeColor = accent.cgColor
+        seenArc.strokeColor = UIColor(Palette.storiesSeen).resolvedColor(with: traitCollection).cgColor
+        let around = selected ? ground.resolvedColor(with: traitCollection).mixed(with: accent, M.selectedAlpha) : ground
+        for face in faces { (face.ringColor, face.fill) = (around, ink.withAlphaComponent(M.discInk)) }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         guard let f = frames, let item else { return }
-        func local(_ rect: CGRect) -> CGRect { rect.offsetBy(dx: -f.box.minX, dy: -f.box.minY) }
-        highlight.frame = local(f.highlight)
+        func local(_ rect: CGRect?) -> CGRect { rect?.offsetBy(dx: -f.box.minX, dy: -f.box.minY) ?? .zero }
         highlight.layer.cornerRadius = f.radius
-        highlight.layer.cornerCurve = .continuous
-        label.frame = local(f.label)
-        switch item {
-        case .header:
-            chevron.frame = f.chevron.map(local) ?? .zero
-        case .card:
-            for (view, rect) in [(ring, f.ring), (disc, f.disc)] {
-                view.frame = rect.map(local) ?? .zero
-                view.layer.cornerRadius = view.bounds.width / 2
-            }
-            if case .card(let card) = item {
-                let arcs = StoriesCircleView.ring(card.ring?.storyIds.count ?? 0, new: card.ring?.unseenCount ?? 0, center: CGPoint(x: ring.bounds.midX, y: ring.bounds.midY), radius: (ring.bounds.width - M.storyRing) / 2)
-                (seenArc.path, newArc.path) = (arcs.seen, arcs.unseen)
-            }
-            icon.frame = f.icon.map(local) ?? .zero
-            time.frame = f.time.map(local) ?? .zero
-            status.frame = f.status.map(local) ?? .zero
-            status.lineEnd = f.statusEnd.map { $0 - (f.status?.minX ?? 0) }
-            more.frame = f.more.map(local) ?? .zero
-            for (face, rect) in zip(faces, f.faces) { face.frame = local(rect) }
-            dot.frame = f.signal.map(local) ?? .zero
-            dot.layer.cornerRadius = dot.bounds.height / 2
-            braille.frame = dot.frame
-        case .subRow(let row):
-            tile.frame = f.mark.map(local) ?? .zero
-            tile.layer.cornerRadius = M.markRadius
-            mark.frame = tile.frame
-            mark.layer.cornerRadius = if case .picture = row.mark { M.pictureRadius } else { 0 }
-            meta.frame = f.meta.map(local) ?? .zero
-            braille.frame = f.signal.map(local) ?? .zero
-        case .more: break
+        for (view, rect) in [(highlight, f.highlight), (label, f.label), (ringView, f.ring), (disc, f.disc), (icon, f.icon), (time, f.time), (status, f.status), (more, f.more), (dot, f.signal), (braille, f.signal), (tile, f.mark), (mark, f.mark), (meta, f.meta), (separator, f.separator)] as [(UIView, CGRect?)] {
+            view.frame = local(rect)
+        }
+        for view in [ringView, disc, dot] { view.layer.cornerRadius = view.bounds.width / 2 }
+        status.lineEnd = f.statusEnd.map { $0 - (f.status?.minX ?? 0) }
+        for (face, rect) in zip(faces, f.faces) { face.frame = local(rect) }
+        (tile.layer.cornerRadius, mark.layer.cornerRadius) = (M.markRadius * tile.bounds.width / M.mark, M.markRadius * tile.bounds.width / M.mark)
+        if case .card(let card) = item {
+            let arcs = StoriesCircleView.ring(card.ring?.storyIds.count ?? 0, new: card.ring?.unseenCount ?? 0, center: CGPoint(x: ringView.bounds.midX, y: ringView.bounds.midY), radius: (ringView.bounds.width - M.storyRing) / 2)
+            (seenArc.path, newArc.path) = (arcs.seen, arcs.unseen)
         }
     }
 }
 
-/// A face on a card, ringed in the ground as a box shadow rings it: the
-/// person's picture (`/v0/users/:id/photo`, as their stories show them), a
-/// plain disc until it comes or when they have none.
+/// A person's face, ringed in the ground: their picture (`/v0/users/:id/photo`),
+/// its thumbhash until it comes, else their initial on a colour of their own,
+/// a plain disc when there is no name either.
 final class FaceView: UIView {
-    private let ring = CALayer()
-    private let image = UIImageView()
+    private let ring = CALayer(), image = UIImageView(), initial = UILabel()
     private var job: Task<Void, Never>?
+    private var tint: ColorToken? { didSet { image.backgroundColor = tint.map { UIColor($0) } ?? fill } }
     var ringColor = UIColor.clear { didSet { ring.backgroundColor = ringColor.resolvedColor(with: traitCollection).cgColor } }
-    var fill = UIColor.clear { didSet { image.backgroundColor = fill } }
+    var fill = UIColor.clear { didSet { image.backgroundColor = tint.map { UIColor($0) } ?? fill } }
+    /// An initial's colours: main's tile inks, one picked by the person's id.
+    static let colors = [Palette.tileBlue, Palette.tileGreen, Palette.tileOrange, Palette.tileIndigo, Palette.tilePurple, Palette.tileRed, Palette.tileTeal]
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         layer.addSublayer(ring)
-        image.contentMode = .scaleAspectFill
-        image.clipsToBounds = true
-        addSubview(image)
+        (image.contentMode, image.clipsToBounds) = (.scaleAspectFill, true)
+        (initial.textColor, initial.textAlignment) = (.white, .center)
+        [image, initial].forEach(addSubview)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    /// `userId`'s face: `picture` when at hand, else theirs as read, its thumbhash first.
+    /// `userId`'s face: `picture` when at hand, else theirs as read, its thumbhash or their initial first.
     func show(_ userId: String, person: Person?, picture: UIImage?, images: Images?) {
         job?.cancel()
         let path = Person.photoPath(userId), pixels = Int(TaskListMetrics.chip * 3), thumbhash = person?.thumbhash
         let cached = picture ?? images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels)
         image.image = cached ?? ThumbHashImages.image(thumbhash)
+        let letter = image.image == nil ? person?.name.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } : nil
+        initial.text = letter
+        tint = letter.map { _ in Self.colors[userId.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xffff } % Self.colors.count] }
         guard cached == nil, person?.hasPhoto == true, let images else { return }
         job = Task { [weak self] in
             let read = await images.picture(path, thumbhash: thumbhash, pixels: pixels)
-            guard !Task.isCancelled, let read else { return }
-            self?.image.image = read
+            guard !Task.isCancelled, let read, let self else { return }
+            (image.image, initial.text, tint) = (read, nil, nil)
         }
     }
 
@@ -442,29 +345,24 @@ final class FaceView: UIView {
         ring.frame = bounds.insetBy(dx: -TaskListMetrics.faceRing, dy: -TaskListMetrics.faceRing)
         ring.cornerRadius = ring.bounds.width / 2
         CATransaction.commit()
-        image.frame = bounds
+        (image.frame, initial.frame) = (bounds, bounds)
         image.layer.cornerRadius = bounds.width / 2
+        initial.font = Fonts.ui(.semiBold, size: bounds.height * TaskListMetrics.initialScale)
     }
 }
 
-/// A card's status: two 16 lines, the second ending short of the corner (`lineEnd`).
+/// A card's status: two lines `line` apart, the second ending short of the corner (`lineEnd`).
 final class StatusTextView: UIView {
-    private let storage = NSTextStorage()
-    private let manager = NSLayoutManager()
-    private let container = NSTextContainer(size: .zero)
+    private let storage = NSTextStorage(), manager = NSLayoutManager(), container = NSTextContainer(size: .zero)
     var text = NSAttributedString() { didSet { storage.setAttributedString(text); setNeedsDisplay() } }
-    var lineEnd: CGFloat? { didSet { if lineEnd != oldValue { setNeedsLayout() } } }
+    var line: CGFloat = 0
+    var lineEnd: CGFloat? { didSet { setNeedsLayout() } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        isOpaque = false
-        backgroundColor = .clear
-        contentMode = .redraw
-        container.lineFragmentPadding = 0
-        container.maximumNumberOfLines = 2
-        container.lineBreakMode = .byWordWrapping
-        manager.addTextContainer(container)
-        storage.addLayoutManager(manager)
+        (isOpaque, backgroundColor, contentMode) = (false, .clear, .redraw)
+        (container.lineFragmentPadding, container.maximumNumberOfLines, container.lineBreakMode) = (0, 2, .byWordWrapping)
+        (manager.addTextContainer(container), storage.addLayoutManager(manager))
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -472,7 +370,6 @@ final class StatusTextView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         container.size = bounds.size
-        let line = TaskListMetrics.statusLine
         container.exclusionPaths = lineEnd.map { [UIBezierPath(rect: CGRect(x: $0, y: line, width: bounds.width + line, height: line))] } ?? []
         setNeedsDisplay()
     }
@@ -482,61 +379,51 @@ final class StatusTextView: UIView {
     }
 }
 
-/// The list's faces as drawn and measured.
+/// The list's type at the reader's text size: Figtree in Apple's text styles
+/// (`UIFontMetrics`), and what the layout needs to know of it.
 @MainActor
-enum TaskListText {
+struct TaskListText {
     typealias M = TaskListMetrics
-    static let titleFont = Fonts.ui(.semiBold, size: M.titleSize)
-    static let timeFont = Fonts.tabular(Fonts.ui(.regular, size: M.timeSize))
-    static let statusFont = Fonts.ui(.regular, size: M.statusSize)
-    static let rowFont = Fonts.ui(.regular, size: M.subRowSize)
-    static let moreFont = Fonts.ui(.semiBold, size: M.moreSize)
-    static let headerFont = Fonts.ui(.semiBold, size: M.headerSize)
+    let title, time, status, more: UIFont
+    let text: TaskListLayout.Text
 
-    static func face(_ font: UIFont) -> TaskListLayout.Face {
-        .init(ascender: font.ascender, descender: -font.descender, capHeight: font.capHeight, xHeight: font.xHeight, lineHeight: font.lineHeight)
+    init(_ traits: UITraitCollection) {
+        func styled(_ style: UIFont.TextStyle, _ font: UIFont) -> UIFont { UIFontMetrics(forTextStyle: style).scaledFont(for: font, compatibleWith: traits) }
+        func face(_ font: UIFont) -> TaskListLayout.Face { .init(ascender: font.ascender, capHeight: font.capHeight, xHeight: font.xHeight, lineHeight: font.lineHeight) }
+        (title, status) = (styled(.callout, Fonts.ui(.semiBold, size: M.titleSize)), styled(.subheadline, Fonts.ui(.regular, size: M.textSize)))
+        (time, more) = (Fonts.tabular(status), styled(.subheadline, Fonts.ui(.semiBold, size: M.textSize)))
+        let s = UIFontMetrics(forTextStyle: .subheadline).scaledValue(for: M.textSize, compatibleWith: traits) / M.textSize
+        // Telegram's: the disc shrinks with Body below Large and never grows past 60.
+        let disc = min(M.disc, (M.disc * UIFontMetrics(forTextStyle: .body).scaledValue(for: M.bodySize, compatibleWith: traits) / M.bodySize).rounded())
+        // TextKit puts a held line's extra room over its text: the baseline stands the descender over the line's foot.
+        text = .init(title: face(title), time: face(time), status: face(status), row: face(status), more: face(more), scale: s, disc: disc, statusBaseline: M.statusLine * s + status.descender)
     }
 
-    /// The status's baseline in its 16 line as TextKit sets it: the story rows' own, the same face on the same line.
-    static let text = TaskListLayout.Text(title: face(titleFont), time: face(timeFont), status: face(statusFont), row: face(rowFont),
-                                          more: face(moreFont), header: face(headerFont), statusBaseline: StoryRowText.text(1).statusBaseline)
-
-    static func status(_ text: String) -> NSAttributedString {
+    func status(_ text: String) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = M.statusLine
-        paragraph.maximumLineHeight = M.statusLine
-        return NSAttributedString(string: text, attributes: [.font: statusFont, .foregroundColor: UIColor(Palette.taskMuted), .paragraphStyle: paragraph])
+        (paragraph.minimumLineHeight, paragraph.maximumLineHeight) = (M.statusLine * self.text.scale, M.statusLine * self.text.scale)
+        return NSAttributedString(string: text, attributes: [.font: status, .foregroundColor: UIColor(Palette.taskMuted), .paragraphStyle: paragraph])
     }
 
     /// "+2.8k −453" in the diff's colours, or "merged".
-    static func meta(_ changes: Row.LineChanges) -> NSAttributedString {
-        guard !changes.isEmpty else { return NSAttributedString(string: Strings.TaskList.merged, attributes: [.font: timeFont, .foregroundColor: UIColor(Palette.taskMuted)]) }
-        let text = NSMutableAttributedString(string: "+\(StoryRowText.compactCount(changes.added))", attributes: [.font: timeFont, .foregroundColor: UIColor(Palette.taskAdded)])
-        text.append(NSAttributedString(string: " \u{2212}\(StoryRowText.compactCount(changes.deleted))", attributes: [.font: timeFont, .foregroundColor: UIColor(Palette.taskRemoved)]))
+    func meta(_ changes: Row.LineChanges) -> NSAttributedString {
+        guard !changes.isEmpty else { return NSAttributedString(string: Strings.TaskList.merged, attributes: [.font: time, .foregroundColor: UIColor(Palette.taskMuted)]) }
+        let text = NSMutableAttributedString(string: "+\(StoryRowText.compactCount(changes.added))", attributes: [.font: time, .foregroundColor: UIColor(Palette.taskAdded)])
+        text.append(NSAttributedString(string: " \u{2212}\(StoryRowText.compactCount(changes.deleted))", attributes: [.font: time, .foregroundColor: UIColor(Palette.taskRemoved)]))
         return text
     }
 
-    static func width(_ text: NSAttributedString) -> CGFloat { ceil(text.size().width) }
+    static func width(_ text: String, _ font: UIFont) -> CGFloat { ceil((text as NSString).size(withAttributes: [.font: font]).width) }
 
     /// What the layout needs to know of an item, measured.
-    static func input(_ item: TaskList.Item) -> TaskListLayout.Item {
+    func input(_ item: TaskList.Item) -> TaskListLayout.Item {
         switch item {
-        case .header(_, _, let collapsed): return .header(collapsed: collapsed)
         case .more: return .more
-        case .subRow(let row): return .subRow(metaWidth: row.changes.map { width(meta($0)) } ?? 0, working: row.working)
+        case .subRow(let row): return .subRow(metaWidth: row.changes.map { ceil(meta($0).size().width) } ?? 0, working: row.working)
         case .card(let card):
-            let time = card.time.map { width(NSAttributedString(string: RowTime.text($0), attributes: [.font: timeFont])) } ?? 0
-            let more = card.more.map { width(NSAttributedString(string: Strings.TaskList.more($0), attributes: [.font: moreFont])) }
-            return .card(.init(timeWidth: time, moreWidth: more, faces: card.faces.count, signal: SidebarLayout.Corner(card.signal), story: card.story))
+            return .card(.init(timeWidth: card.time.map { Self.width(RowTime.text($0), time) } ?? 0, moreWidth: card.more.map { Self.width(Strings.TaskList.more($0), more) },
+                               faces: card.faces.count, signal: card.signal == .dot ? .dot : card.signal == .braille ? .braille : .none, story: card.story))
         }
-    }
-
-    /// `top` at `alpha` over `base`, as one opaque colour.
-    static func blend(_ top: UIColor, _ alpha: CGFloat, over base: UIColor) -> UIColor {
-        var (r1, g1, b1, a1, r2, g2, b2, a2) = (CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0))
-        top.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
-        base.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
-        return UIColor(red: r2 + (r1 - r2) * alpha, green: g2 + (g1 - g2) * alpha, blue: b2 + (b1 - b2) * alpha, alpha: a2)
     }
 }
 #endif

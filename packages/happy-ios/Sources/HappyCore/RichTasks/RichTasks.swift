@@ -34,10 +34,11 @@ public struct RichTasks: Equatable, Sendable {
         public var rows: [TaskList.SubRow] = []
     }
 
+    /// Every card, top to bottom.
+    public var cards: [Card] { unsectioned + sections.flatMap(\.cards) }
+
     /// The card whose agent `agentId` is: its stories are the card's ring.
-    public func card(holding agentId: String) -> Card? {
-        (unsectioned + sections.flatMap(\.cards)).first { $0.agent.id == agentId }
-    }
+    public func card(holding agentId: String) -> Card? { cards.first { $0.agent.id == agentId } }
 
     /// What a sub-row draws for its ref: its name, and the kind of thing it is.
     public struct Child: Equatable, Sendable {
@@ -52,9 +53,6 @@ public struct RichTasks: Equatable, Sendable {
         /// The daemon sends neither yet: only fixtures fill them.
         public var detail: String?
         public var changes: Row.LineChanges?
-        public init(title: String, type: String? = nil, picture: String? = nil, working: Bool = false, detail: String? = nil, changes: Row.LineChanges? = nil) {
-            self.title = title; self.type = type; self.picture = picture; self.working = working; self.detail = detail; self.changes = changes
-        }
     }
 
     public struct SubRow: Equatable, Sendable {
@@ -121,13 +119,12 @@ public struct RichTasks: Equatable, Sendable {
     static func children(_ model: RichTasks, _ desktop: DesktopSnapshot) -> [TaskChild.Ref: Child] {
         var agents: [String: AgentWire.Agent] = [:]
         func index(_ agent: AgentWire.Agent) { agents[agent.id] = agent; (agent.subtasks ?? []).forEach(index) }
-        let cards = model.unsectioned + model.sections.flatMap(\.cards)
-        cards.forEach { index($0.agent) }
+        model.cards.forEach { index($0.agent) }
         let workspaces = Dictionary(desktop.workspaces.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let projects = Dictionary(desktop.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let artifacts = Dictionary((desktop.taskArtifacts ?? []).map { ($0.artifactId, $0) }, uniquingKeysWith: { first, _ in first })
         var children: [TaskChild.Ref: Child] = [:]
-        for ref in cards.flatMap({ ($0.subRows + $0.hidden).map(\.ref) }) where children[ref] == nil {
+        for ref in model.cards.flatMap({ ($0.subRows + $0.hidden).map(\.ref) }) where children[ref] == nil {
             switch ref.kind {
             case "agent":
                 let agent = agents[ref.id]

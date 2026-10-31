@@ -20,8 +20,8 @@ final class HomeViewController: UIViewController {
     /// The computer this screen always shows; nil to follow the choice.
     private let fixedAgentConnection: String?
     private let sidebar = SidebarView()
-    /// The tasks as rich cards, in the tasks' place in the list, while the daemon serves them and they are on.
-    private let tasks = TaskListView()
+    /// The rich tasks' sections folded or unfolded here, over what the daemon says.
+    private var folded: [String: Bool] = [:]
     private let banner = BannerView()
     private let empty = EmptyView()
     private var session: Session?
@@ -117,20 +117,24 @@ final class HomeViewController: UIViewController {
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
         sidebar.delegate = self
-        sidebar.block = tasks
-        tasks.onResize = { [weak self] in self?.sidebar.setNeedsLayout() }
-        tasks.onOpen = { [weak self] item in self?.open(item) }
+        // The tasks as rich cards, in the tasks' place, while the daemon serves them and they are on.
+        sidebar.makeBlock = { [weak self] id in
+            let list = TaskListView()
+            list.block = id
+            list.onResize = { [weak self] in self?.sidebar.setNeedsLayout() }
+            list.onOpen = { [weak self] item in self?.open(item) }
+            list.onOpenStory = { [weak self] card, ring in self?.stories.openRing(agentId: card.agentId, name: card.title, from: ring) }
+            self?.feed(list)
+            return list
+        }
+        sidebar.onFold = { [weak self] row in self?.folded[row.id] = row.collapsed != true; self?.showRows() }
         stories.onInsetChange = { [weak self] change in self?.storiesMoved(change) }
         // Agent stories turn the conversations' rows into story rows.
-        stories.onRings = { [weak self] _ in
-            self?.showRows()
-            self?.ringCards()
-        }
+        stories.onRings = { [weak self] _ in self?.showRows(); self?.feedTasks() }
         sidebar.onOpenStory = { [weak self] row, ring in
             guard let agentId = row.agentId else { return }
             self?.stories.openRing(agentId: agentId, name: row.label, from: ring)
         }
-        tasks.onOpenStory = { [weak self] card, ring in self?.stories.openRing(agentId: card.agentId, name: card.title, from: ring) }
         stories.poster = { [weak self] author in self?.poster(author) ?? author }
         stories.list = sidebar
         empty.onPair = { [weak self] in
@@ -155,7 +159,7 @@ final class HomeViewController: UIViewController {
         // conversation it opened (on iPad too it is pushed over), so there
         // is no open chat for a selection to show.
         sidebar.selectedRowId = nil
-        tasks.selectedId = nil
+        select(nil)
         if let store = session?.store { Task { await store.attentionVisibleUpdate(false) } }
     }
 
@@ -179,7 +183,6 @@ final class HomeViewController: UIViewController {
         stories.attach(session)
         sidebar.images = session?.images
         resultsView.list.images = session?.images
-        tasks.images = session?.images
         sidebar.apply([])
         snapshot = Snapshot()
         agentHome = HomeSnapshot()
@@ -199,16 +202,13 @@ final class HomeViewController: UIViewController {
     /// Connection snapshots may change the notice over the list. Its
     /// arrival never changes the rows' inset or screen positions.
     func applyConnection(_ home: HomeSnapshot) {
-        let rich = agentHome.richTasks != nil
+        let shown = shownRows
         let named = (agentHome.richTasks, agentHome.people) != (home.richTasks, home.people)
         agentHome = home
-        tasks.apply(home.richTasks)
-        tasks.people = home.people
         stories.session?.people = home.people
         stories.session?.gate(home.storyArtifacts, me: home.userId)
-        ringCards()
+        feedTasks()
         if named { stories.postersChanged() }
-        let previous = snapshot.rows
         snapshot = Snapshot()
         snapshot.availability = agentHome.loaded ? .available : .loading
         snapshot.live = agentHome.live
@@ -216,7 +216,7 @@ final class HomeViewController: UIViewController {
         snapshot.allRows = agentHome.allRows
         snapshot.error = agentHome.error
         onSnapshot?(snapshot)
-        if previous != snapshot.rows || rich != (home.richTasks != nil) { showRows() }
+        if shown != shownRows { showRows() }
         if search != nil { showResults() }
         warmUp()
         applyChrome()
@@ -280,10 +280,15 @@ final class HomeViewController: UIViewController {
         onSearchEnded?()
     }
 
-    /// The cards whose agent has a live story wear its ring.
-    private func ringCards() {
-        tasks.rings = stories.rings ?? [:]
+    /// The cards as last read, their faces and pictures; the ones whose agent has a live story wear its ring.
+    private func feed(_ list: TaskListView) {
+        (list.images, list.people, list.rings) = (session?.images, agentHome.people, stories.rings ?? [:])
+        list.apply(agentHome.richTasks)
     }
+
+    private func feedTasks() { sidebar.blocks.values.forEach(feed) }
+
+    private func select(_ id: String?) { sidebar.blocks.values.forEach { $0.selectedId = id } }
 
     /// A circle of the stories row: an agent's as its card is, a person's as
     /// `GET /v0/users` has them; a name the daemon sent (`poster.name`) stays.
@@ -307,7 +312,7 @@ final class HomeViewController: UIViewController {
     /// The rows the list draws: the list with the stories' rings, its tree
     /// kept, and its tasks as cards while there are rich tasks.
     private var shownRows: [Row] {
-        SidebarRows.withRichTasks(SidebarRows.withStories(snapshot.rows, rings: stories.rings), agentHome.richTasks)
+        SidebarRows.withRichTasks(SidebarRows.withStories(snapshot.rows, rings: stories.rings), agentHome.richTasks, folded: folded)
     }
 
     /// What answers the query, in the results over home: the rows that
@@ -501,29 +506,25 @@ final class HomeViewController: UIViewController {
         }
     }
 
-    /// A card opens its task as its classic row does; a sub-row its
-    /// subtask's chat or its artifact, and a workspace, which opens nothing
-    /// of its own, its task.
+    /// A card opens its task as its classic row does; a sub-row its subtask's
+    /// chat or its artifact, and a workspace, which opens nothing, its task.
     private func open(_ item: TaskList.Item) {
         guard let session else { return }
-        let taskId: String
+        var pushed: UIViewController?, taskId = ""
         switch item {
-        case .card(let card): taskId = card.taskId
         case .subRow(let row) where row.ref.kind == "agent":
-            tasks.selectedId = item.id
-            navigationController?.pushViewController(ChatViewController(session: session, agentId: row.ref.id, title: row.title, spaceId: nil, intro: nil), animated: true)
-            return
+            pushed = ChatViewController(session: session, agentId: row.ref.id, title: row.title, spaceId: nil, intro: nil)
         case .subRow(let row) where row.ref.kind == "artifact":
-            tasks.selectedId = item.id
             let type = agentHome.richTasks?.children[row.ref]?.type ?? ""
-            navigationController?.pushViewController(ArtifactViewController(session: session, artifact: Artifact(id: row.ref.id, version: 1, type: type, title: row.title, followsLatest: true)), animated: true)
-            return
+            pushed = ArtifactViewController(session: session, artifact: Artifact(id: row.ref.id, version: 1, type: type, title: row.title, followsLatest: true))
         case .subRow(let row): taskId = row.taskId
-        default: return
+        case .card(let card): taskId = card.taskId
+        case .more: return
         }
-        guard let row = snapshot.rows.first(where: { $0.id == "task:\(taskId)" }) else { return }
-        tasks.selectedId = item.id
-        open(row)
+        let task = snapshot.rows.first { $0.id == "task:\(taskId)" }
+        guard pushed != nil || task != nil else { return }
+        select(item.id)
+        if let pushed { navigationController?.pushViewController(pushed, animated: true) } else if let task { open(task) }
     }
 
     /// What a hold on a row shows over its menu: a conversation's newest

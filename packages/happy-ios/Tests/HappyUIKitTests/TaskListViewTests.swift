@@ -20,17 +20,17 @@ final class TaskListViewTests: XCTestCase {
         let list = TaskListView(frame: CGRect(x: 0, y: 0, width: 304, height: 0))
         list.apply(tasks(["One", "Two", "Three"]))
         let height = list.contentHeight
-        XCTAssertEqual(list.measures, 4, "the header and three cards")
+        XCTAssertEqual(list.measures, 3, "three cards")
         list.apply(tasks(["One", "Two, now longer", "Three"]))
         XCTAssertEqual(list.contentHeight, height)
-        XCTAssertEqual(list.measures, 5)
+        XCTAssertEqual(list.measures, 4)
         list.tick()
         XCTAssertEqual(list.contentHeight, height)
-        XCTAssertEqual(list.measures, 5, "times that read the same are not measured again")
+        XCTAssertEqual(list.measures, 4, "times that read the same are not measured again")
         // A card arriving above the one on screen: the list around is told how far that one moved.
         list.viewport = CGRect(x: 0, y: 100, width: 304, height: 400)
         list.apply(tasks(["Zero", "One", "Two, now longer", "Three"], first: -1))
-        XCTAssertEqual(list.drift, 68)
+        XCTAssertEqual(list.drift, list.result.frames[0].box.height, "a whole card")
     }
 }
 #endif
