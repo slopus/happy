@@ -67,9 +67,8 @@ final class HostedChatSeedTests: XCTestCase {
         let installed = try await until { chat.contentInstalled && chat.navigationItem.title == "chat-nav" }
         XCTAssertTrue(installed)
         XCTAssertEqual(chat.navigationItem.title, "chat-nav", "the header names the checkout")
-        let avatar = chat.navigationItem.rightBarButtonItems?.compactMap { $0.customView as? ChatHeaderAvatarControl }.first
-        XCTAssertEqual(avatar?.isHidden, false, "the avatar")
-        XCTAssertNotNil(avatar?.content)
+        // More has the avatar's old place (e64be983f); the title opens info.
+        XCTAssertTrue(chat.navigationItem.rightBarButtonItems?.contains { $0.accessibilityIdentifier == "chat-more" } == true, "More")
         let strip = try XCTUnwrap(Self.subview(ChatWorktreeTabStrip.self, in: chat.view))
         XCTAssertFalse(strip.isHidden, "the strip")
 

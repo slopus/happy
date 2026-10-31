@@ -51,14 +51,18 @@ public struct ChatScreenLayout: Equatable, Sendable {
     /// The height between those insets, which short content rests at the foot of.
     public var viewport: CGFloat
 
-    /// `keyboardTop` is the keyboard guide's top in the screen.
-    public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, cardHeight: (CGFloat) -> CGFloat) {
+    /// `keyboardTop` is the keyboard guide's top in the screen. `barHeight`
+    /// is the navigation bar's, 0 while it is hidden: the header's scrim
+    /// covers only what is above it, the status bar, as Telegram's chat
+    /// fades only there and lets the messages run on under its glass
+    /// capsules.
+    public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, barHeight: CGFloat = 0, cardHeight: (CGFloat) -> CGFloat) {
         typealias M = Metrics
         let width = max(0, size.width - 2 * M.paddingH)
         let height = cardHeight(width)
         let foot = min(keyboardTop, size.height - safeArea.bottom)
         card = CGRect(x: M.paddingH, y: foot - M.paddingBottom - height, width: width, height: height)
-        headerScrim = CGRect(x: 0, y: 0, width: size.width, height: max(0, safeArea.top) + M.headerOverhang)
+        headerScrim = CGRect(x: 0, y: 0, width: size.width, height: max(0, safeArea.top - max(0, barHeight)) + M.headerOverhang)
         listTop = safeArea.top
         listBottom = max(0, size.height - card.minY + M.listGap)
         viewport = max(0, size.height - listTop - listBottom)

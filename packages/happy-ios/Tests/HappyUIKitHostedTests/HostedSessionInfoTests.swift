@@ -20,7 +20,7 @@ private struct NoSockets: WebSocketConnector {
     }
 }
 
-/// Session info as the chat's avatar opens it, over a store holding the
+/// Session info as the chat's title opens it, over a store holding the
 /// session, in a window of a real scene: its groups must be on screen, and
 /// a long session's (an agent state of hundreds of requests, megabytes of
 /// raw JSON in Debug) must open without holding the main thread.
@@ -132,7 +132,7 @@ final class HostedSessionInfoTests: XCTestCase {
         return groups
     }
 
-    func testTheAvatarOpensSessionInfoWithItsGroupsOnScreen() async throws {
+    func testTheTitleOpensSessionInfoWithItsGroupsOnScreen() async throws {
         let (controller, _) = try await signedIn(agentState: .object(["controlledByUser": .bool(false)]))
         let context = AppContext(account: controller, variant: .development, version: "test")
         let (window, navigation, root) = try await hosted()
@@ -141,13 +141,13 @@ final class HostedSessionInfoTests: XCTestCase {
         let pushed = try await until { navigation.topViewController is LegacyChatViewController }
         XCTAssertTrue(pushed, "the chat was never pushed")
         let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
-        var avatar: ChatHeaderAvatarControl? {
-            chat.navigationItem.rightBarButtonItems?.compactMap { $0.customView as? ChatHeaderAvatarControl }.first
-        }
-        // In the bar once the chat is loaded, shown once its record is in.
-        let shown = try await until { chat.transitionCoordinator == nil && avatar.map { !$0.isHidden && $0.window != nil } == true }
-        XCTAssertTrue(shown, "the avatar never showed")
-        try XCTUnwrap(avatar).sendActions(for: .touchUpInside)
+        // The title capsule opens it now that More has the avatar's place
+        // (e64be983f): in the bar once the chat is loaded, enabled once its
+        // record is in.
+        var title: ChatHeaderTitleView? { chat.navigationItem.titleView as? ChatHeaderTitleView }
+        let shown = try await until { chat.transitionCoordinator == nil && title.map { $0.isEnabled && $0.window != nil } == true }
+        XCTAssertTrue(shown, "the title never showed")
+        try XCTUnwrap(title).sendActions(for: .touchUpInside)
         let info = try XCTUnwrap(navigation.topViewController as? SessionInfoViewController)
         let opened = try await until { !self.shownGroups(info, in: window).isEmpty }
         XCTAssertTrue(opened, "session info showed no groups")

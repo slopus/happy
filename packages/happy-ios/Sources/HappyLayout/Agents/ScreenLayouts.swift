@@ -246,7 +246,10 @@ public struct ChatTitleLayout: Equatable, Sendable {
         barWidth > 0 ? max(0, barWidth - 2 * sideClearance) : .greatestFiniteMagnitude
     }
 
-    public init(textWidth: CGFloat, maxWidth: CGFloat, editing: Bool) {
+    /// `room`, when set, is the frame its header handed it, which a
+    /// squeezed bar can make narrower than `maxWidth`: the text is cut to it.
+    public init(textWidth: CGFloat, maxWidth: CGFloat, editing: Bool, room: CGFloat? = nil) {
+        let maxWidth = min(maxWidth, room ?? .greatestFiniteMagnitude)
         let fitted = min(textWidth.rounded(.up), maxWidth)
         let width = editing && maxWidth < .greatestFiniteMagnitude ? maxWidth : fitted
         size = CGSize(width: max(0, width), height: Self.height)

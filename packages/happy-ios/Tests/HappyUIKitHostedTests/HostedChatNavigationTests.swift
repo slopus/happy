@@ -187,10 +187,10 @@ final class HostedChatNavigationTests: XCTestCase {
         print(String(format: "OPENING push ready after %.1f ms, missing %@", report.elapsed * 1000, report.missing.description))
         Self.assertStill(sampler.frames, report: report, "push")
         Self.assertSeeded(chat, report, "push")
-        // The header is whole: the capsule and the avatar, the strip.
+        // The header is whole: the capsule and More, the strip.
         let last = try XCTUnwrap(sampler.frames.last)
         XCTAssertGreaterThan(last.title.width, 40, "the title capsule")
-        XCTAssertTrue(last.avatar, "the avatar")
+        XCTAssertTrue(last.more, "More")
         XCTAssertNotNil(last.strip, "the strip")
         XCTAssertGreaterThan(last.rows, 0)
         await controller.signOut()
@@ -228,7 +228,7 @@ final class HostedChatNavigationTests: XCTestCase {
         freshFrames.stop()
         let opened = try XCTUnwrap(freshFrames.frames.last)
         XCTAssertEqual(afterSwitch.title, opened.title, "header")
-        XCTAssertEqual(afterSwitch.avatar, opened.avatar, "avatar")
+        XCTAssertEqual(afterSwitch.more, opened.more, "More")
         XCTAssertEqual(afterSwitch.strip, opened.strip, "strip")
         XCTAssertEqual(afterSwitch.list, opened.list, "list")
         XCTAssertEqual(afterSwitch.insets, opened.insets, "list insets")
@@ -395,7 +395,7 @@ final class HostedChatNavigationTests: XCTestCase {
             let at = String(format: "%@ at %.0f ms", label, (frame.time - first.time) * 1000)
             XCTAssertEqual(frame.animating, [], "\(at): animating", file: file, line: line)
             XCTAssertEqual(frame.title.size, first.title.size, "\(at): header", file: file, line: line)
-            XCTAssertEqual(frame.avatar, first.avatar, "\(at): avatar", file: file, line: line)
+            XCTAssertEqual(frame.more, first.more, "\(at): More", file: file, line: line)
             XCTAssertEqual(frame.strip, first.strip, "\(at): strip", file: file, line: line)
             XCTAssertEqual(frame.list, first.list, "\(at): list", file: file, line: line)
             XCTAssertEqual(frame.dock, first.dock, "\(at): dock", file: file, line: line)
@@ -427,7 +427,8 @@ struct ChatFrame {
     var ready: Bool
     /// The title capsule's frame in the bar.
     var title: CGRect
-    var avatar: Bool
+    /// More is in the bar, where the avatar was before e64be983f.
+    var more: Bool
     var strip: CGRect?
     var list: CGRect
     var insets: UIEdgeInsets
@@ -469,7 +470,7 @@ final class ChatFrameSampler: NSObject {
             return view.convert(view.bounds, to: root)
         }
         let title = chat.navigationItem.titleView
-        let avatar = chat.navigationItem.rightBarButtonItems?.compactMap { $0.customView as? ChatHeaderAvatarControl }.first
+        let more = chat.navigationItem.rightBarButtonItems?.contains { $0.accessibilityIdentifier == "chat-more" } ?? false
         let list = HostedChatNavigationTests.subview(ChatListView.self, in: root)
         let dock = HostedChatNavigationTests.subview(ChatDockView.self, in: root)
         let card = HostedChatNavigationTests.subview(AgentInputCardView.self, in: root)
@@ -488,7 +489,7 @@ final class ChatFrameSampler: NSObject {
             inWindow: root.window != nil,
             ready: chat.openingReport != nil,
             title: title.flatMap { $0.window == nil ? nil : $0.convert($0.bounds, to: navigation.navigationBar) } ?? .zero,
-            avatar: avatar.map { !$0.isHidden && $0.window != nil } ?? false,
+            more: more,
             strip: frame(strip),
             list: frame(list) ?? .zero,
             insets: collection?.contentInset ?? .zero,

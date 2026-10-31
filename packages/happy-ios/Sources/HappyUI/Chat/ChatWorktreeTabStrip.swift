@@ -5,7 +5,7 @@ import UIKit
 
 /// WorktreeTabStrip.tsx: grouped by project, a chat is one tab of its
 /// checkout, and this is where the checkout's other chats are reached. It
-/// hangs under the header in a capsule of the header's own glass (a solid
+/// hangs under the header in a capsule of the system's Liquid Glass (a solid
 /// surface on a tablet), scrolls sideways, and ends in a hairline and `+`.
 ///
 /// The screen owns what the tabs mean: a tap asks it to switch in place, a
@@ -72,7 +72,7 @@ final class ChatWorktreeTabStrip: UIView {
     }
     /// The last placement, for tests.
     private(set) var layout: WorktreeTabStripLayout?
-    private let glassView = HeaderGlassView()
+    private let glassView = GlassCapsuleView()
     private let solidView = UIView()
     private let clip = UIView()
     private let scroller = TabScroller()

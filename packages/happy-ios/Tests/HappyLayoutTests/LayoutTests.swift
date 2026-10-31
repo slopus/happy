@@ -205,6 +205,22 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(up.headerScrim, down.headerScrim)
     }
 
+    /// Under the glass header the scrim is the status bar's alone, 8 past
+    /// it, as Telegram's: the messages run on under the capsules. With the
+    /// bar hidden it is the same, all the safe area there is.
+    func testTheHeaderScrimCoversOnlyTheStatusBarAboveTheGlass() {
+        let size = CGSize(width: 402, height: 874)
+        let safe = LayoutInsets(top: 116, left: 0, bottom: 34, right: 0)
+        let shown = ChatScreenLayout(size: size, safeArea: safe, keyboardTop: 840, barHeight: 54) { _ in 60 }
+        XCTAssertEqual(shown.headerScrim, CGRect(x: 0, y: 0, width: 402, height: 70))
+        XCTAssertEqual(shown.listTop, 116, "the transcript still starts under the bar")
+        let hidden = ChatScreenLayout(size: size, safeArea: LayoutInsets(top: 62, left: 0, bottom: 34, right: 0), keyboardTop: 840, barHeight: 0) { _ in 60 }
+        XCTAssertEqual(hidden.headerScrim, shown.headerScrim)
+        // Sideways a phone has no status bar: only the overhang.
+        let sideways = ChatScreenLayout(size: CGSize(width: 874, height: 402), safeArea: LayoutInsets(top: 32, left: 62, bottom: 21, right: 62), keyboardTop: 402, barHeight: 32) { _ in 60 }
+        XCTAssertEqual(sideways.headerScrim, CGRect(x: 0, y: 0, width: 874, height: 8))
+    }
+
     func testShortConversationsRestOnTheComposer() {
         let short = ChatStackLayout(heights: [132, 50], width: 390, viewport: 600)
         XCTAssertEqual(short.frames, [CGRect(x: 0, y: 418, width: 390, height: 132), CGRect(x: 0, y: 550, width: 390, height: 50)])

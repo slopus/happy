@@ -138,6 +138,9 @@ final class ScreenLayoutTests: XCTestCase {
         // Before the bar is measured, the name is its own width.
         let unmeasured = ChatTitleLayout(textWidth: 41.3, maxWidth: ChatTitleLayout.maxWidth(barWidth: 0), editing: false)
         XCTAssertEqual(unmeasured.text, rect(0, 0, 42, 44))
+        // Its header squeezed into less room than the bar's widest: cut to it.
+        XCTAssertEqual(ChatTitleLayout(textWidth: 400, maxWidth: max, editing: false, room: 189).text, rect(0, 0, 189, 44))
+        XCTAssertEqual(ChatTitleLayout(textWidth: 41.3, maxWidth: max, editing: false, room: 189).text, rect(0, 0, 42, 44))
     }
 
     func testTheDockIsTheNewWorkComposerWithTheKeyboardDown() {

@@ -20,7 +20,8 @@ import UIKit
 /// capsule keeps RN's 44 and cuts text taller than that, as
 /// `mobileTitlePillGlass`'s `overflow: 'hidden'` does.
 final class ChatHeaderTitleView: UIControl {
-    private let glass = HeaderGlassView()
+    /// The system's Liquid Glass, as the bar's own buttons beside it.
+    private let glass = GlassCapsuleView()
     /// The capsule's inside, cut to its shape.
     private let content = UIView()
     private let title = ChatTextView()
@@ -60,7 +61,7 @@ final class ChatHeaderTitleView: UIControl {
         addSubview(glass)
         content.isUserInteractionEnabled = false
         content.clipsToBounds = true
-        glass.addSubview(content)
+        glass.contentView.addSubview(content)
         for view in [title, subtitle] {
             view.isAccessibilityElement = false
             content.addSubview(view)
@@ -188,8 +189,10 @@ final class ChatHeaderTitleView: UIControl {
         super.point(inside: point, with: event) || (!glass.isHidden && glass.frame.contains(point))
     }
 
+    /// The text dims, never the glass: a visual effect view's alpha
+    /// turns its material off.
     override var isHighlighted: Bool {
-        didSet { glass.alpha = isHighlighted ? 0.68 : 1 }
+        didSet { content.alpha = isHighlighted ? 0.68 : 1 }
     }
 }
 

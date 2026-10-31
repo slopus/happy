@@ -61,10 +61,12 @@ final class ChatTitleView: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    private var layout: ChatTitleLayout {
+    private func layout(room: CGFloat? = nil) -> ChatTitleLayout {
         let textWidth = label.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: ChatTitleLayout.height)).width
-        return ChatTitleLayout(textWidth: textWidth, maxWidth: maxWidth, editing: field != nil)
+        return ChatTitleLayout(textWidth: textWidth, maxWidth: maxWidth, editing: field != nil, room: room)
     }
+
+    private var layout: ChatTitleLayout { layout() }
 
     override var intrinsicContentSize: CGSize { layout.size }
 
@@ -72,7 +74,8 @@ final class ChatTitleView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = layout
+        // Its header's capsule may hand it less than its widest.
+        let layout = self.layout(room: bounds.width)
         label.frame = layout.text
         field?.frame = layout.text
     }

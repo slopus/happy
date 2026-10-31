@@ -201,6 +201,18 @@ final class HostedHeaderBarTests: XCTestCase {
                 return stride(from: 3, to: bytes.count, by: 4).contains { bytes[$0] > 0 }
             }
             XCTAssertTrue(visible, "the More glyph must draw visible pixels")
+            // The name and status sit on one capsule of the system's glass,
+            // the bar's 44 tall, inside the room the bar gave the title.
+            let header = try XCTUnwrap(chat.navigationItem.titleView as? ChatHeaderView)
+            XCTAssertTrue(header.capsule.effect is UIGlassEffect, "the title is on Liquid Glass, not a blur")
+            XCTAssertEqual(header.capsule.frame.height, ChatHeaderLayout.Metrics.height)
+            XCTAssertTrue(header.bounds.contains(header.capsule.frame), "the capsule runs past what the bar gave it")
+            // On the line of the bar's buttons, which sit at the top of its 54.
+            let capsule = header.capsule.convert(header.capsule.bounds, to: navigation.navigationBar)
+            XCTAssertEqual(capsule.midY, header.convert(header.bounds, to: navigation.navigationBar).midY, accuracy: 1, "the capsule is off the title's line")
+            XCTAssertTrue(navigation.navigationBar.bounds.contains(capsule), "the capsule leaves the bar")
+            XCTAssertGreaterThan(capsule.minX, 16 + 44, "the capsule runs under Back")
+            XCTAssertNotNil(Self.subview(UILabel.self, in: header.capsule.contentView) { $0.accessibilityIdentifier == "chat-status" }, "the status is on the glass")
             XCTAssertNil(chat.navigationItem.standardAppearance, "the bar's own, shared look")
             Self.assertClear(navigation.navigationBar)
             keep(window, "chat-\(name)")

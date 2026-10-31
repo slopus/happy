@@ -52,7 +52,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// A new task on its way to the screen from this one's compose.
     private var composing = false
     private let previewing: Bool
-    private let previewPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+    private let previewPill = GlassCapsuleView()
     /// The card's ground over the messages above the list, fading out under the capsule.
     private let previewFade = PreviewFadeView()
     private let previewTitle = UILabel()
@@ -182,7 +182,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// while it wasn't are asked for again when it is back.
     private var live = true
     private var preview: FilePreview?
-    /// The title in the navigation bar: the name, and the agent's status.
+    /// The title in the navigation bar: the name, and the agent's status,
+    /// on a glass capsule between the bar's own glass buttons.
     private let header = ChatHeaderView()
     private var titleView: ChatTitleView { header.titleView }
 
@@ -1187,9 +1188,11 @@ final class ChatViewController: UIViewController, ComposeHosting {
         // From where the keyboard rests, not the finger dragging it: the
         // card keeps its shape through a drag and changes once it settles.
         card.configuration.compact = compacts
+        // The scrim shades the status bar only; the bar's glass is its own.
+        let bar = navigationController.map { $0.isNavigationBarHidden ? 0 : $0.navigationBar.frame.height } ?? 0
         let screen = ChatScreenLayout(
             size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets),
-            keyboardTop: fingerOnKeyboard ? keyboardTracker.frame.minY : keyboardTop
+            keyboardTop: fingerOnKeyboard ? keyboardTracker.frame.minY : keyboardTop, barHeight: bar
         ) { [card] width in card.height(fitting: width) }
         card.setLayoutFrame(screen.card)
         picker?.follow()
@@ -1230,9 +1233,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         navigationItem.titleView = nil
         scrollView.isUserInteractionEnabled = false
         view.accessibilityIdentifier = "preview"
-        previewPill.layer.cornerRadius = PreviewLayout.Metrics.pillHeight / 2
-        previewPill.layer.cornerCurve = .continuous
-        previewPill.clipsToBounds = true
         previewPill.isAccessibilityElement = true
         previewPill.accessibilityTraits = .header
         previewPill.accessibilityIdentifier = "preview-title"
