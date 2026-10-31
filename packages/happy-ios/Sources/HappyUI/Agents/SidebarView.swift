@@ -8,11 +8,11 @@ import UIKit
 /// reconfigured in place, and a fold only moves the rows after it. Nothing
 /// here ever resets the scroll position.
 ///
-/// A hold on a row opens a preview of its conversation over the blurred
-/// screen with its menu under it, as Telegram's chat list does; moving on
-/// from the hold drops the preview and
-/// carries the row (its peers glide aside, the list scrolls at its edges,
-/// and a drop lands where the gap is). A row's title can turn into a field
+/// A hold on a row lifts it where it is, at its own size, over the blurred
+/// screen with its menu beside it; moving on from the hold carries that
+/// same card (its peers open a gap its height, the list scrolls at its
+/// edges, and a drop lands where the gap is). A row that can't be carried
+/// opens a preview of its conversation instead, as Telegram's chat list does. A row's title can turn into a field
 /// in place to be renamed.
 final class SidebarView: UIScrollView {
     var onSelect: ((Row) -> Void)?
@@ -557,14 +557,17 @@ final class SidebarView: UIScrollView {
 
     /// Telegram's hold: the screen blurs, the row's conversation grows out
     /// of it with the menu under it, and a light tap is felt.
-    private func openHold(at point: CGPoint) {
+    func openHold(at point: CGPoint) {
         guard hold == nil, !armed, carry?.link == nil, let window, let target = holdTarget(at: point) else { return }
         // Warmed as the hold begins: a carry may follow at once.
         Haptics.prepare(.lift)
         Haptics.prepare(.slot)
         Haptics.play(.hold)
         let row = target.row
-        let preview = preview?(row)
+        // A row that can be carried lifts as itself, at its own size, so
+        // moving on carries exactly what was lifted; only one that can't
+        // grows into its conversation.
+        let preview = carryable(row) == nil ? preview?(row) : nil
         let source = target.view.convert(target.view.bounds, to: window)
         // The row as it rests, not pressed.
         target.view.pressed = false
@@ -589,14 +592,12 @@ final class SidebarView: UIScrollView {
     func armReorder(_ rowId: String) {
         // A carry the lift warmed and never used is replaced.
         guard window != nil, !armed, carry?.link == nil, arranged == nil, editing == nil, let row = rows.first(where: { $0.id == rowId }),
-              let drag = beginDrag?(row) else { return }
-        let frames = SidebarLayout.layout(layoutRows(rows), width: bounds.width, scale: traitCollection.displayScale).frames
-        guard let last = drag.units.last?.last, last < frames.count else { return }
+              let (drag, heights) = carryable(row) else { return }
         let rect = heldFrame(order: rows, held: drag.held)
         guard !rect.isNull else { return }
         scrollRectToVisible(rect.insetBy(dx: 0, dy: -24), animated: false)
         let center = CGPoint(x: rect.midX, y: rect.midY)
-        carry = Carry(drag: drag, start: center, hand: convert(center, to: superview), to: drag.from, heights: heights(drag, frames: frames))
+        carry = Carry(drag: drag, start: center, hand: convert(center, to: superview), to: drag.from, heights: heights)
         // Lifted in place, holding still until a finger takes it.
         let home = convert(center, to: nil)
         float { _ in home }
@@ -643,7 +644,11 @@ final class SidebarView: UIScrollView {
         disarm()
     }
 
-    @objc private func reorderPanned(_ gesture: UIPanGestureRecognizer) {
+    /// The carried rows' card, as drawn under the finger, while one is lifted.
+    var liftedCard: UIView? { floating?.card.subviews.last }
+
+    /// The finger carrying an armed row (internal for the hosted tests, which play it).
+    @objc func reorderPanned(_ gesture: UIPanGestureRecognizer) {
         guard armed, var carry else { return }
         let point = gesture.location(in: self)
         switch gesture.state {
@@ -671,7 +676,7 @@ final class SidebarView: UIScrollView {
             unarm()
             guard let to = self.carry?.to, let drag = self.carry?.drag else { return land(in: nil, home: true) }
             drop()
-            land(in: drag.order(to: to), home: false)
+            land(in: order(drag, to: to), home: false)
         default:
             disarm()
         }
@@ -720,9 +725,25 @@ final class SidebarView: UIScrollView {
 
     // MARK: Carry
 
+    /// A carry for `row` over exactly the rows drawn: its order and its
+    /// peers' indices are this list's, so the gap it opens is the carried
+    /// rows as drawn, and nothing else changes size. Nil for a drag made
+    /// from other rows (a story row's sessions, which are never drawn).
+    private func carryable(_ row: Row) -> (drag: Drag, heights: [Double])? {
+        guard let drag = beginDrag?(row), drag.order(to: drag.from) == rows else { return nil }
+        let frames = SidebarLayout.layout(layoutRows(rows), width: bounds.width, scale: traitCollection.displayScale).frames
+        return (drag, heights(drag, frames: frames))
+    }
+
+    /// Each peer's pitch as drawn: from its top to the next peer's, the
+    /// gap between them included (story rows, headings and plain rows each
+    /// keep their own).
     private func heights(_ drag: Drag, frames: [SidebarLayout.Frame]) -> [Double] {
-        drag.units.map { unit in
-            Double(frames[unit.last!].box.maxY - frames[unit.first!].box.minY + Metrics.rowGap)
+        drag.units.indices.map { index in
+            let top = frames[drag.units[index].first!].box.minY
+            if index + 1 < drag.units.count { return Double(frames[drag.units[index + 1].first!].box.minY - top) }
+            let gap = index > 0 ? top - frames[drag.units[index - 1].last!].box.maxY : Metrics.rowGap
+            return Double(frames[drag.units[index].last!].box.maxY - top + gap)
         }
     }
 
@@ -740,10 +761,17 @@ final class SidebarView: UIScrollView {
         guard to != carry.to else { return }
         carry.to = to
         self.carry = carry
-        let order = carry.drag.order(to: to)
-        arranged = order
-        place(order, animated: true)
+        let next = order(carry.drag, to: to)
+        arranged = next
+        place(next, animated: true)
         Haptics.play(.slot)
+    }
+
+    /// The rows in the order a drop in slot `to` leaves them, each as this
+    /// list draws it now (a row may have changed since the carry began).
+    private func order(_ drag: Drag, to: Int) -> [Row] {
+        let current = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return drag.order(to: to).map { current[$0.id] ?? $0 }
     }
 
     /// Scrolls while the hand is near an edge: faster the closer it is.
@@ -803,13 +831,11 @@ extension SidebarView: UIDragInteractionDelegate {
         let point = session.location(in: self)
         // Asked at the lift, which may only ever show the menu: a carry not
         // yet under way is replaced.
-        guard !armed, carry?.link == nil, editing == nil, let view = row(at: point), let row = view.row,
-              let drag = beginDrag?(row) else { return [] }
         // The carry's indices are the document's drawn rows: measured on
         // those, never on an order still held from a drop.
-        let frames = SidebarLayout.layout(layoutRows(rows), width: bounds.width, scale: traitCollection.displayScale).frames
-        guard arranged == nil, let last = drag.units.last?.last, last < frames.count else { return [] }
-        carry = Carry(drag: drag, start: point, hand: convert(point, to: superview), to: drag.from, heights: heights(drag, frames: frames))
+        guard !armed, carry?.link == nil, editing == nil, arranged == nil, let view = row(at: point), let row = view.row,
+              let (drag, heights) = carryable(row) else { return [] }
+        carry = Carry(drag: drag, start: point, hand: convert(point, to: superview), to: drag.from, heights: heights)
         let item = UIDragItem(itemProvider: NSItemProvider())
         item.localObject = row.id
         return [item]
@@ -947,7 +973,7 @@ extension SidebarView: UIDragInteractionDelegate {
         onDragging?(true)
         for row in carry.drag.held { views[row.id]?.isHidden = true }
         arrangedUntil?.cancel()
-        arranged = carry.drag.order(to: carry.to)
+        arranged = order(carry.drag, to: carry.to)
         let link = CADisplayLink(target: self, selector: #selector(autoscroll(_:)))
         link.add(to: .main, forMode: .common)
         carry.link = link
@@ -1012,7 +1038,7 @@ extension SidebarView: UIDropInteractionDelegate {
         let drag = carry.drag
         let to = carry.to
         // Held as dropped until the document says the same.
-        arranged = drag.order(to: to)
+        arranged = order(drag, to: to)
         arrangedUntil?.cancel()
         arrangedUntil = Task { [weak self] in
             try? await Task.sleep(for: .seconds(2))

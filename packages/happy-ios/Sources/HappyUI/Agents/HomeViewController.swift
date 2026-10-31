@@ -644,7 +644,9 @@ final class HomeViewController: UIViewController {
         // Classic: among its own section's rows, or its siblings (`ClassicDrag`).
         if !usesSpaces { return search == nil ? ClassicDrag.drag(holding: row.id, rows: shownRows) : nil }
         guard search == nil, let document = snapshot.document else { return nil }
-        return Drag(holding: row.id, drawn: Self.drawn(snapshot.rows), all: snapshot.allRows, document: document)
+        // The rows as the list draws them: as story rows, without the
+        // sessions they hide, when stories are on.
+        return Drag(holding: row.id, drawn: sidebar.rows, all: snapshot.allRows, document: document)
     }
 
     private func drop(_ drag: Drag, to: Int) {
