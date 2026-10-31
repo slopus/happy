@@ -1,7 +1,21 @@
 import Foundation
 
+/// How a Happy account came to be here.
+public enum AccountOrigin: String, Codable, Equatable, Sendable {
+    /// One that exists elsewhere: carried over from the RN app, restored
+    /// from its secret key, or linked from another device. Its key can be
+    /// shown and handed on, as happy-app does.
+    case legacy
+    /// Made here for a computer's code (`addAccount(approvingTerminal:)`).
+    /// It lives on that computer and this phone only: its key is never
+    /// shown or handed to another device, and it goes by the computer's
+    /// name.
+    case madeForComputer
+}
+
 /// One secret-free registry record. Old native entries predate the server
-/// confirmation flag and are treated as already confirmed when decoded.
+/// confirmation flag and are treated as already confirmed when decoded,
+/// and predate the origin, so they are legacy.
 public struct AccountRegistryEntry: Codable, Equatable, Sendable {
     public var id: String
     public var serverURL: URL
@@ -9,19 +23,21 @@ public struct AccountRegistryEntry: Codable, Equatable, Sendable {
     public var addedOrder: Int
     public var serverConfirmed: Bool = true
     public var display: AccountDisplay?
+    public var origin: AccountOrigin = .legacy
 
     private enum CodingKeys: String, CodingKey {
-        case id, serverURL, location, addedOrder, serverConfirmed, display
+        case id, serverURL, location, addedOrder, serverConfirmed, display, origin
     }
 
     public init(id: String, serverURL: URL, location: CredentialLocation, addedOrder: Int,
-                serverConfirmed: Bool = true, display: AccountDisplay? = nil) {
+                serverConfirmed: Bool = true, display: AccountDisplay? = nil, origin: AccountOrigin = .legacy) {
         self.id = id
         self.serverURL = serverURL
         self.location = location
         self.addedOrder = addedOrder
         self.serverConfirmed = serverConfirmed
         self.display = display
+        self.origin = origin
     }
 
     public init(from decoder: Decoder) throws {
@@ -32,6 +48,7 @@ public struct AccountRegistryEntry: Codable, Equatable, Sendable {
         addedOrder = try container.decode(Int.self, forKey: .addedOrder)
         serverConfirmed = try container.decodeIfPresent(Bool.self, forKey: .serverConfirmed) ?? true
         display = try container.decodeIfPresent(AccountDisplay.self, forKey: .display)
+        origin = try container.decodeIfPresent(AccountOrigin.self, forKey: .origin) ?? .legacy
     }
 
     var isValid: Bool {

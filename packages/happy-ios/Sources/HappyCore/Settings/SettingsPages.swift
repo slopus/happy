@@ -220,7 +220,8 @@ public struct AccountSwitcherEntry: Equatable, Sendable {
         _ accounts: [AccountSummary],
         activeProfile: AccountProfile?,
         defaultServer: URL,
-        fallbackTitle: String
+        fallbackTitle: String,
+        agentTitle: String = "Agent"
     ) -> [AccountSwitcherEntry] {
         accounts.map { account in
             var name = account.name
@@ -235,7 +236,10 @@ public struct AccountSwitcherEntry: Equatable, Sendable {
                     thumbhash = profile.avatar?.thumbhash
                 }
             }
-            let title = name ?? username.map { "@\($0)" } ?? "\(fallbackTitle) \(account.id.prefix(8))"
+            // One made for a computer goes by the computer; before it has
+            // one, it is an agent, never a legacy account.
+            let title = (account.isLegacy ? nil : account.computerName) ?? name ?? username.map { "@\($0)" }
+                ?? "\(account.isLegacy || account.isAgentConnection ? fallbackTitle : agentTitle) \(account.id.prefix(8))"
             var details: [String] = []
             if name != nil, let username { details.append("@\(username)") }
             if account.isAgentConnection { details.append("Agent"); if let status = account.connectionStatus { details.append(status) } }

@@ -129,12 +129,13 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
             self?.linkDevice()
         }
         link.showsChevron = false
+        // Only a legacy account is handed to another device (its secret
+        // goes with it); one made for a computer stays there and here.
         sections.append(ItemGroupView(title: Strings.SettingsAccount.accountInformation, rows: [
             ItemRowView(title: Strings.SettingsAccount.status, detail: Strings.SettingsAccount.statusActive),
             analyticsID,
             publicID,
-            disabled(link, linkingDevice),
-        ]))
+        ] + (isLegacy ? [disabled(link, linkingDevice)] : [])))
 
         if page.showsProfile {
             var rows: [UIView] = []
@@ -184,20 +185,23 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
             }))
         }
 
-        let secret = ItemRowView(
-            title: Strings.SettingsAccount.secretKey,
-            subtitle: revealsSecret ? Strings.SettingsAccount.tapToHide : Strings.SettingsAccount.tapToReveal,
-            icon: ItemIcon(.ionicons(revealsSecret ? "eye-off-outline" : "eye-outline"), tint: Palette.iconOrange)
-        ) { [weak self] in
-            self?.toggleSecret()
-        }
-        secret.showsChevron = false
-        sections.append(ItemGroupView(title: Strings.SettingsAccount.backup, footer: Strings.SettingsAccount.backupDescription, rows: [secret]))
-        if revealsSecret {
-            let card = SecretKeyCardView(formattedKey: SecretKeyBackup.format(secret: session.keys.secret))
-            card.copiedRecently = copiedRecently
-            card.onCopy = { [weak self] in self?.copySecret() }
-            sections.append(ItemGroupView(rows: [card]))
+        // The secret key, likewise legacy only: it is the account.
+        if isLegacy {
+            let secret = ItemRowView(
+                title: Strings.SettingsAccount.secretKey,
+                subtitle: revealsSecret ? Strings.SettingsAccount.tapToHide : Strings.SettingsAccount.tapToReveal,
+                icon: ItemIcon(.ionicons(revealsSecret ? "eye-off-outline" : "eye-outline"), tint: Palette.iconOrange)
+            ) { [weak self] in
+                self?.toggleSecret()
+            }
+            secret.showsChevron = false
+            sections.append(ItemGroupView(title: Strings.SettingsAccount.backup, footer: Strings.SettingsAccount.backupDescription, rows: [secret]))
+            if revealsSecret {
+                let card = SecretKeyCardView(formattedKey: SecretKeyBackup.format(secret: session.keys.secret))
+                card.copiedRecently = copiedRecently
+                card.onCopy = { [weak self] in self?.copySecret() }
+                sections.append(ItemGroupView(rows: [card]))
+            }
         }
 
         let optOut = AccountSettings(snapshot).analyticsOptOut
@@ -225,6 +229,14 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
             },
         ]))
         list.sections = sections
+    }
+
+    /// Whether this page's account is a legacy one, whose key can be shown
+    /// and handed to another device.
+    private var isLegacy: Bool { isLegacy(session.keys.anonID) }
+
+    private func isLegacy(_ id: AccountSummary.ID) -> Bool {
+        context.account.accounts.first { $0.id == id }?.isLegacy ?? true
     }
 
     /// Item.tsx's `disabled`: half opacity and no taps.
@@ -364,7 +376,7 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         Task { @MainActor in
             let confirmed = await Alerts.confirm(
                 Strings.AccountSwitcher.signOut,
-                Strings.AccountSwitcher.signOutConfirm(entry.title),
+                isLegacy(entry.id) ? Strings.AccountSwitcher.signOutConfirm(entry.title) : Strings.AccountSwitcher.signOutMadeForComputer(entry.title),
                 confirmTitle: Strings.AccountSwitcher.signOut,
                 destructive: true,
                 on: self
@@ -725,7 +737,7 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         Task { @MainActor in
             let confirmed = await Alerts.confirm(
                 Strings.Common.logout,
-                Strings.SettingsAccount.logoutConfirm,
+                isLegacy ? Strings.SettingsAccount.logoutConfirm : Strings.AccountSwitcher.signOutMadeForComputer(context.account.accounts.first { $0.id == session.keys.anonID }?.shownName ?? Strings.agentConnection),
                 confirmTitle: Strings.Common.logout,
                 destructive: true,
                 on: self

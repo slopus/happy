@@ -114,15 +114,25 @@ public final class AccountController {
         return nil
     }
 
+    /// Whether the signed-in account is a legacy one, whose key can be
+    /// shown and handed to another device; false with none signed in.
+    public var sessionIsLegacy: Bool {
+        guard let id = session?.keys.anonID else { return false }
+        return registry.entries.first { $0.id == id }?.origin != .madeForComputer
+    }
+
     public var accounts: [AccountSummary] {
         let legacy = registry.entries.sorted { $0.addedOrder < $1.addedOrder }.map { entry in
             let display = entry.display
-            return AccountSummary(id: entry.id, serverURL: entry.serverURL,
+            var summary = AccountSummary(id: entry.id, serverURL: entry.serverURL,
                            name: display?.name, username: display?.username,
                            avatarURL: display?.avatarURL, avatarThumbhash: display?.avatarThumbhash,
                            isActive: session?.keys.anonID == entry.id,
                            usesSharedItem: entry.location == .shared,
                            serverConfirmed: entry.serverConfirmed)
+            summary.origin = entry.origin
+            summary.computerName = display?.computerName
+            return summary
         }
         guard showsAgentConnections else { return legacy }
         return legacy + agentConnections.accounts.sorted { $0.addedAt < $1.addedAt }.map { account in
@@ -341,7 +351,9 @@ public final class AccountController {
     }
 
     /// Adds/reauthenticates and activates; other signed-in accounts survive.
-    public func signIn(_ credentials: Credentials) async throws {
+    /// `origin` is how a new account came here; one signed in again keeps
+    /// the origin it had.
+    public func signIn(_ credentials: Credentials, origin: AccountOrigin = .legacy) async throws {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
         defer { finishOperation() }
@@ -352,7 +364,8 @@ public final class AccountController {
         guard existing?.serverConfirmed != false else { throw AccountSwitchError.serverNeedsConfirmation }
         let location = try existing?.location ?? (accountCredentialStore.sharedIsEmpty() ? .shared : .own)
         let entry = AccountRegistryEntry(id: id, serverURL: authenticationServerURL, location: location,
-                                         addedOrder: existing?.addedOrder ?? nextOrder, display: existing?.display)
+                                         addedOrder: existing?.addedOrder ?? nextOrder, display: existing?.display,
+                                         origin: existing?.origin ?? origin)
         let next = try await makeSession(credentials, entry: entry)
         try accountCredentialStore.save(StoredAccountCredentials(credentials: credentials, serverURL: entry.serverURL), id: id, location: location)
         var updated = registry
@@ -380,7 +393,7 @@ public final class AccountController {
         let api = HappyAPI(serverURL: serverConfig.serverURL, clientID: clientID, transport: transport, token: credentials.token)
         let outcome = try await LegacyPairingService(api: api, keys: AccountKeys(secret: secret)).approve(.terminal(publicKey: publicKey))
         guard outcome == .terminalConnected else { return outcome }
-        try await signIn(credentials)
+        try await signIn(credentials, origin: .madeForComputer)
         kept = true
         return outcome
     }
@@ -610,7 +623,7 @@ public final class AccountController {
         var displays: [String: AccountDisplay?] = [:]
         for entry in entries {
             if let store = stores[entry.id] {
-                displays[entry.id] = .some(try store.profile().map(AccountDisplay.init))
+                displays[entry.id] = .some(try AccountDisplay.read(store))
             } else if let directory {
                 // A temporary read failure keeps the cached presentation.
                 do { displays[entry.id] = .some(try AccountDisplay.read(directory: directory, id: entry.id)) }
@@ -769,17 +782,37 @@ public final class AccountController {
     private func observeProfile(of session: AccountSession) {
         profileObservationGeneration += 1
         let generation = profileObservationGeneration
-        let task = Task.detached { [weak self] in
-            var previous: AccountDisplay??
+        let profiles = Task.detached { [weak self] in
+            var previous: AccountProfile??
             for await snapshot in session.settingsFeed.snapshots() {
                 guard !Task.isCancelled else { break }
-                let display = snapshot.profile.map(AccountDisplay.init)
-                guard previous != .some(display) else { continue }
-                previous = .some(display)
-                await self?.applyProfileDisplay(display, session: session, generation: generation)
+                guard previous != .some(snapshot.profile) else { continue }
+                previous = .some(snapshot.profile)
+                let profile = snapshot.profile
+                await self?.applyProfileDisplay(session: session, generation: generation) { current in
+                    AccountDisplay.combined(profile, computerName: current?.computerName)
+                }
             }
         }
-        cancelProfileObservation = { task.cancel() }
+        // The first computer names an account made for one.
+        let computers = Task.detached { [weak self] in
+            var previous: String??
+            for await snapshot in session.machinesFeed.snapshots() {
+                guard !Task.isCancelled else { break }
+                let name = AccountDisplay.firstComputer(snapshot.machines)
+                guard previous != .some(name) else { continue }
+                previous = .some(name)
+                await self?.applyProfileDisplay(session: session, generation: generation) { current in
+                    guard var display = current else { return AccountDisplay.combined(nil, computerName: name) }
+                    display.computerName = name
+                    return display
+                }
+            }
+        }
+        cancelProfileObservation = {
+            profiles.cancel()
+            computers.cancel()
+        }
     }
 
     private func stopProfileObservation() {
@@ -788,10 +821,11 @@ public final class AccountController {
         cancelProfileObservation = nil
     }
 
-    private func applyProfileDisplay(_ display: AccountDisplay?, session source: AccountSession, generation: UInt64) {
+    private func applyProfileDisplay(session source: AccountSession, generation: UInt64, _ change: (AccountDisplay?) -> AccountDisplay?) {
         guard !Task.isCancelled, generation == profileObservationGeneration, session === source,
-              let index = registry.entries.firstIndex(where: { $0.id == source.keys.anonID }),
-              registry.entries[index].display != display else { return }
+              let index = registry.entries.firstIndex(where: { $0.id == source.keys.anonID }) else { return }
+        let display = change(registry.entries[index].display)
+        guard registry.entries[index].display != display else { return }
         registry.entries[index].display = display
         profileGeneration += 1
         profileGenerations[source.keys.anonID] = profileGeneration

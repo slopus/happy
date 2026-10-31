@@ -46,6 +46,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         var id: String
         var name: String
         var subtitle: String
+        /// What kind it is: an agent, or a legacy account.
+        var kind: String = Strings.agentConnection
         var isAgentConnection: Bool
         var isActive: Bool
     }
@@ -63,6 +65,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     /// What the page shows now, card by card, and where the profiles'
     /// strip is: for the tests, which read the page rather than the screen.
     var shownRowIDs: [[String]] { rows.map { $0.map(\.id) } }
+    var shownRowTitles: [[String]] { rows.map { $0.map(\.title) } }
     var stripFrame: CGRect { settingsLayout.strip }
     /// The ids of the rows drawn with a tick.
     var tickedRowIDs: [String] { rows.joined().filter { $0.value == "✓" }.map(\.id) }
@@ -225,8 +228,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             if account.isAgentConnection, let computer = direct.first(where: { $0.id == account.id }) {
                 return Profile(id: account.id, name: computer.name, subtitle: computer.status.title, isAgentConnection: true, isActive: account.isActive)
             }
-            let name = account.name ?? account.username ?? Strings.happyAccount
-            return Profile(id: account.id, name: name, subtitle: account.username.map { "@\($0)" } ?? Strings.happyAccount, isAgentConnection: false, isActive: account.isActive)
+            return Profile(id: account.id, name: account.shownName, subtitle: account.username.map { "@\($0)" } ?? account.kindName, kind: account.kindName, isAgentConnection: false, isActive: account.isActive)
         }
         // With none left, the window's root is the link screen and this
         // page goes with the old one (`AppCoordinator.install`).
@@ -506,7 +508,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func searchRows(_ query: String) -> [SettingsRow] {
         var found: [SettingsRow] = []
         for (index, profile) in profiles.enumerated() where profile.name.localizedCaseInsensitiveContains(query) {
-            found.append(SettingsRow(id: "profile:\(profile.id)", title: profile.name, icon: (profile.isAgentConnection ? "desktop-outline" : "person-outline", .blue), value: profile.isAgentConnection ? Strings.agentConnection : Strings.happyAccount, action: { [weak self] in
+            found.append(SettingsRow(id: "profile:\(profile.id)", title: profile.name, icon: (profile.isAgentConnection ? "desktop-outline" : "person-outline", .blue), value: profile.kind, action: { [weak self] in
                 self?.endSearch()
                 self?.choose(index)
             }))
@@ -720,7 +722,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         Task { [weak self] in
             guard let self else { return }
             defer { busy = false }
-            guard await Alerts.confirm(direct ? Strings.disconnectTitle : Strings.signOutTitle, Strings.removeDetail, confirmTitle: direct ? Strings.disconnect : Strings.signOut, destructive: true, on: self) else { return }
+            // An account made for a computer has no key to bring it back.
+            let account = context.account.accounts.first { $0.id == id }
+            let detail = account.map { !direct && !$0.isLegacy ? Strings.AccountSwitcher.signOutMadeForComputer($0.shownName) : Strings.removeDetail } ?? Strings.removeDetail
+            guard await Alerts.confirm(direct ? Strings.disconnectTitle : Strings.signOutTitle, detail, confirmTitle: direct ? Strings.disconnect : Strings.signOut, destructive: true, on: self) else { return }
             do {
                 try await context.account.signOut(accountID: id)
                 if direct { Session.forget(id) }

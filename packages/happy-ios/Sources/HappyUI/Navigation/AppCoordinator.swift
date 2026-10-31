@@ -177,7 +177,7 @@ public final class AppCoordinator {
     private func openPendingLink() {
         guard accountRestored, let text = pendingLink, let top = linkHost else { return }
         pendingLink = nil
-        let route = ScanRoute.route(HappyCode(text), intent: .connect, hasAccount: context.account.session != nil)
+        let route = ScanRoute.route(HappyCode(text), intent: .connect, hasAccount: context.account.session != nil, canShareAccount: context.account.sessionIsLegacy)
         Task { @MainActor in
             switch route {
             case .connectComputer, .newAccountForComputer, .linkDevice:

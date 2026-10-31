@@ -38,6 +38,18 @@ final class ScanRouteTests: XCTestCase {
         XCTAssertEqual(route("happy:///account?" + keyText, .connect, account: false), .problem(.deviceNeedsAccount))
     }
 
+    /// An account made for a computer never hands its secret to another
+    /// device: only a legacy one can be linked, and the scan says why not.
+    func testOnlyALegacyAccountIsLinkedToAnotherDevice() {
+        for intent in [ScanIntent.connect, .addAccount] {
+            XCTAssertEqual(ScanRoute.route(HappyCode("happy:///account?" + keyText), intent: intent, hasAccount: true, canShareAccount: false), .problem(.accountNotShareable))
+            XCTAssertEqual(ScanRoute.route(HappyCode("happy:///account?" + keyText), intent: intent, hasAccount: true, canShareAccount: true), .linkDevice(publicKey: key))
+            // A computer's code is unaffected.
+            XCTAssertEqual(ScanRoute.route(HappyCode("happy://terminal?" + keyText), intent: intent, hasAccount: true, canShareAccount: false),
+                           intent == .connect ? .connectComputer(publicKey: key) : .newAccountForComputer(publicKey: key))
+        }
+    }
+
     func testAnAgentPairingCodePairsFromAnywhere() throws {
         let text = try direct()
         for intent in [ScanIntent.connect, .addAccount] {

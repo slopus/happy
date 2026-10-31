@@ -59,7 +59,7 @@ enum HappyScan {
         start: PairingStart,
         busy: (Bool) -> Void = { _ in }
     ) async -> Result {
-        let route = ScanRoute.route(HappyCode(text), intent: intent, hasAccount: context.account.session != nil)
+        let route = ScanRoute.route(HappyCode(text), intent: intent, hasAccount: context.account.session != nil, canShareAccount: context.account.sessionIsLegacy)
         log.debug("code \(describe(text), privacy: .public) → \(String(describing: route).prefix(40), privacy: .public)")
         switch route {
         case .connectAgent:
@@ -181,6 +181,8 @@ enum HappyScan {
             Alerts.show("Could not pair", error.localizedDescription, on: controller)
         case .deviceNeedsAccount:
             Alerts.show(Strings.Scan.deviceNeedsAccountTitle, Strings.Scan.deviceNeedsAccount, on: controller)
+        case .accountNotShareable:
+            Alerts.show(Strings.Scan.accountNotShareableTitle, Strings.Scan.accountNotShareable, on: controller)
         }
     }
 

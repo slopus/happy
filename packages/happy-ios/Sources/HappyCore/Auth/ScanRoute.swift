@@ -26,15 +26,18 @@ public enum ScanRoute: Equatable, Sendable {
     case problem(ScanProblem)
 
     /// `hasAccount`: a Happy (relay) account is in use, not only a
-    /// directly paired computer.
-    public static func route(_ code: HappyCode, intent: ScanIntent, hasAccount: Bool) -> ScanRoute {
+    /// directly paired computer. `canShareAccount`: that account is a legacy
+    /// one, whose secret may go to another device; one made for a computer
+    /// never leaves it and this phone.
+    public static func route(_ code: HappyCode, intent: ScanIntent, hasAccount: Bool, canShareAccount: Bool = true) -> ScanRoute {
         switch code {
         case .agentConnection(let link):
             return .connectAgent(link)
         case .terminal(let key):
             return hasAccount && intent == .connect ? .connectComputer(publicKey: key) : .newAccountForComputer(publicKey: key)
         case .account(let key):
-            return hasAccount ? .linkDevice(publicKey: key) : .problem(.deviceNeedsAccount)
+            guard hasAccount else { return .problem(.deviceNeedsAccount) }
+            return canShareAccount ? .linkDevice(publicKey: key) : .problem(.accountNotShareable)
         case .invalid(.terminal):
             return .problem(.invalidTerminal)
         case .invalid(.account):
@@ -54,4 +57,7 @@ public enum ScanProblem: Equatable, Sendable {
     case agentConnection(PairingError)
     /// Another device's account link, with no Happy account here to give.
     case deviceNeedsAccount
+    /// Another device's account link, while the account in use was made
+    /// for a computer: its secret is never handed on.
+    case accountNotShareable
 }

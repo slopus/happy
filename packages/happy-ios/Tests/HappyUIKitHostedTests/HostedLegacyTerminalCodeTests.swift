@@ -2,6 +2,7 @@
 import Foundation
 import HappyCore
 import HappyCrypto
+import HappyStore
 @testable import HappyUI
 import HappyWire
 import UIKit
@@ -180,7 +181,62 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
             XCTAssertEqual(settings.tickedRowIDs, ["account:\(newID)"], "\(here)")
             XCTAssertEqual(settings.shownRowIDs.first?.filter { $0.hasPrefix("account:") }.count, before.count + 1, "\(here): \(settings.shownRowIDs)")
         }
+
+        // Named after the first computer paired with it, once that turns
+        // up; an agent until then, never "Legacy Account" or "Happy account".
+        let page = settings ?? {
+            let page = SettingsViewController(context: context, computer: nil)
+            navigation.pushViewController(page, animated: false)
+            page.view.layoutIfNeeded()
+            return page
+        }()
+        XCTAssertEqual(title(of: newID, in: page), Strings.agentConnection, "\(here)")
+        try session.store.upsertMachine(MachineRecord(id: "mac", seq: 0, createdAt: 1, updatedAt: 1, active: true, activeAt: 1,
+            metadataVersion: 1, metadataCipher: "c", metadata: .object(["host": .string("mbp.local"), "displayName": .string("Steve’s MacBook")]),
+            daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: "k", decryptable: true))
+        let named = try await until { self.title(of: newID, in: page) == "Steve’s MacBook" }
+        XCTAssertTrue(named, "\(here): still \(String(describing: title(of: newID, in: page)))")
+        XCTAssertEqual(account.accounts.first { $0.id == newID }?.shownName, "Steve’s MacBook")
+        for old in before where !old.isAgentConnection && old.resolvedName == nil {
+            XCTAssertEqual(title(of: old.id, in: page), Strings.legacyAccount, "\(here)")
+        }
+
+        // Its Account page offers no key to show and no device to link.
+        let accountPage = SettingsAccountViewController(context: context, session: session)
+        accountPage.loadViewIfNeeded()
+        let rows = rowTitles(accountPage)
+        XCTAssertFalse(rows.contains(Strings.SettingsAccount.secretKey), "\(here): \(rows)")
+        XCTAssertFalse(rows.contains(Strings.SettingsAccount.linkNewDevice), "\(here): \(rows)")
+        XCTAssertTrue(rows.contains(Strings.SettingsAccount.logout), "\(here): \(rows)")
         withExtendedLifetime(coordinator) {}
+    }
+
+    private func title(of id: String, in settings: SettingsViewController) -> String? {
+        zip(settings.shownRowIDs.joined(), settings.shownRowTitles.joined()).first { $0.0 == "account:\(id)" }?.1
+    }
+
+    /// Every row title on a grouped page, group by group.
+    private func rowTitles(_ controller: UIViewController) -> [String] {
+        let sections = (controller.view as? GroupedListView)?.sections ?? []
+        return sections.compactMap { $0 as? ItemGroupView }.flatMap(\.rows).compactMap { ($0 as? ItemRowView)?.title }
+    }
+
+    /// A legacy account's Account page keeps its key and Link New Device.
+    func testALegacyAccountKeepsItsKey() async throws {
+        let account = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: Relay(terminal: Data()), connector: NoSockets())
+        try await account.signIn(Credentials(token: "existing", secret: Data(repeating: 7, count: 32)))
+        let context = AppContext(account: account, variant: .preview, version: "test")
+        let page = SettingsAccountViewController(context: context, session: try XCTUnwrap(account.session))
+        page.loadViewIfNeeded()
+        let rows = rowTitles(page)
+        XCTAssertTrue(rows.contains(Strings.SettingsAccount.secretKey), "\(rows)")
+        XCTAssertTrue(rows.contains(Strings.SettingsAccount.linkNewDevice), "\(rows)")
+        XCTAssertEqual(account.accounts.first?.shownName, Strings.legacyAccount)
+        await account.signOut()
     }
 
     func testWithNothingHere() async throws { try await run(.nothing) }

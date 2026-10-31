@@ -190,6 +190,22 @@ final class AccountSwitcherEntryTests: XCTestCase {
         XCTAssertNil(entries[1].avatarURL, "another account's profile is not this one's")
         XCTAssertEqual(entries.map(\.isActive), [true, false, false, false])
     }
+
+    /// One made for a computer goes by the computer, even over a profile
+    /// name; before it has one it is an agent, never a legacy account.
+    func testAnAccountMadeForAComputerGoesByIt() {
+        let base = ServerConfig.defaultServerURL
+        var named = AccountSummary(id: "aaaaaaaaaaaaaaaa", serverURL: base, name: "Ada", isActive: true, usesSharedItem: false)
+        named.origin = .madeForComputer
+        named.computerName = "Steve’s MacBook"
+        var unnamed = AccountSummary(id: "bbbbbbbbbbbbbbbb", serverURL: base, isActive: false, usesSharedItem: false)
+        unnamed.origin = .madeForComputer
+        var legacy = AccountSummary(id: "cccccccccccccccc", serverURL: base, isActive: false, usesSharedItem: true)
+        legacy.computerName = "Old Mac"
+        let entries = AccountSwitcherEntry.entries([named, unnamed, legacy], activeProfile: nil, defaultServer: base, fallbackTitle: "Legacy Account")
+        XCTAssertEqual(entries.map(\.title), ["Steve’s MacBook", "Agent bbbbbbbb", "Legacy Account cccccccc"])
+        XCTAssertEqual([named, unnamed, legacy].map(\.resolvedName), ["Steve’s MacBook", nil, nil])
+    }
 }
 
 /// changelog/storage.ts and changelog.tsx `parseSummary`.

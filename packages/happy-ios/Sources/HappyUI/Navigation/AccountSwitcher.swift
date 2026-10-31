@@ -45,7 +45,7 @@ final class AccountSwitcher: NSObject {
         if account.isAgentConnection, let connection = context.account.agentConnections.accounts.first(where: { $0.id == account.id }) {
             return connection.name
         }
-        return account.name ?? account.username ?? Strings.happyAccount
+        return account.shownName
     }
 
     /// The one account the switcher calls current. A signed-in Happy

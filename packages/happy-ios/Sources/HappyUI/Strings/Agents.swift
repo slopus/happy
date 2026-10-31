@@ -224,7 +224,9 @@ extension Strings {
     public static let signOut = "Sign out"
     public static let addHappyAccount = "Add Happy account"
     public static let agentConnection = "Agent"
-    public static let happyAccount = "Happy account"
+    /// A Happy account carried over or restored from elsewhere, with no
+    /// name of its own yet. One made for a computer goes by the computer.
+    public static let legacyAccount = "Legacy Account"
     public static let disconnectTitle = "Disconnect agent?"
     public static let signOutTitle = "Sign out?"
     public static let removeDetail = "This removes the connection and its credentials from this phone."

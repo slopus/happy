@@ -2,6 +2,7 @@ import Foundation
 import XCTest
 @testable import HappyCore
 import HappyCrypto
+import HappyStore
 import HappyWire
 
 /// The relay as happy-server answers a computer's code: the query read by
@@ -77,10 +78,9 @@ final class LegacyTerminalCodeTests: XCTestCase {
         return url
     }
 
-    private func controller(_ relay: Relay) throws -> AccountController {
-        let backend = AccountsKeychain()
-        return AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
-            credentialStore: SecureStoreCredentialStore(backend: backend), storeDirectory: try directory(),
+    private func controller(_ relay: Relay, backend: AccountsKeychain = AccountsKeychain(), directory: URL? = nil) throws -> AccountController {
+        AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: SecureStoreCredentialStore(backend: backend), storeDirectory: try directory ?? self.directory(),
             accountCredentialStore: KeychainAccountCredentialStore(backend: backend),
             agentConnectionCredentialStore: KeychainAgentConnectionCredentialStore(backend: backend),
             agentTransport: { _ in IdentityTransport() },
@@ -165,6 +165,77 @@ final class LegacyTerminalCodeTests: XCTestCase {
         XCTAssertTrue(account.accounts.contains { $0.id == connection && $0.isAgentConnection })
         try await account.switchAccount(to: connection)
         XCTAssertEqual(account.agentConnections.activeID, connection)
+    }
+
+    private func machine(_ id: String, created: Int64, name: String?, host: String = "host.local", rig: Bool = false) -> MachineRecord {
+        var metadata: [String: JSONValue] = ["host": .string(host)]
+        if let name { metadata["displayName"] = .string(name) }
+        if rig { metadata["machineKind"] = "rig" }
+        return MachineRecord(id: id, seq: 0, createdAt: created, updatedAt: created, active: true, activeAt: 1_000 - created,
+            metadataVersion: 1, metadataCipher: "c", metadata: .object(metadata),
+            daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: "k", decryptable: true)
+    }
+
+    private func until(_ condition: () -> Bool) async throws {
+        for _ in 0..<200 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    /// The account made for a computer is no legacy account: it goes by the
+    /// first computer paired with it, keeps that across launches, and only
+    /// the legacy one beside it may show or hand on its key.
+    func testTheNewAccountGoesByTheFirstComputer() async throws {
+        let computer = try terminal()
+        let relay = Relay(terminal: computer.publicKey)
+        let backend = AccountsKeychain()
+        let directory = try directory()
+        let account = try controller(relay, backend: backend, directory: directory)
+        await account.restore()
+        let existing = Credentials(token: "existing", secret: Data(repeating: 7, count: 32))
+        try await account.signIn(existing)
+        XCTAssertTrue(account.sessionIsLegacy)
+        try await scan(computer, into: account, relay: relay)
+        XCTAssertFalse(account.sessionIsLegacy)
+        let session = try XCTUnwrap(account.session)
+        let newID = session.keys.anonID
+        func summary(_ id: String) -> AccountSummary? { account.accounts.first { $0.id == id } }
+        let existingID = try AccountKeys(secret: XCTUnwrap(existing.secretData)).anonID
+        XCTAssertEqual(summary(newID)?.origin, .madeForComputer)
+        XCTAssertEqual(summary(existingID)?.isLegacy, true)
+        XCTAssertNil(summary(newID)?.resolvedName, "nothing names it before its computer arrives")
+
+        // The first paired, not the most recently active, and a later one
+        // doesn't rename it.
+        try session.store.upsertMachine(machine("later", created: 20, name: "Studio"))
+        try session.store.upsertMachine(machine("first", created: 10, name: "Steve’s MacBook"))
+        try await until { summary(newID)?.resolvedName == "Steve’s MacBook" }
+        XCTAssertEqual(summary(newID)?.resolvedName, "Steve’s MacBook")
+        // Happy Agent's display name only tells it from its sibling: the host.
+        try session.store.upsertMachine(machine("agent", created: 5, name: "Mac (Happy Agent)", host: "macbook.local", rig: true))
+        try await until { summary(newID)?.resolvedName == "macbook.local" }
+        XCTAssertEqual(summary(newID)?.resolvedName, "macbook.local")
+
+        // A legacy account never goes by a computer.
+        try await account.switchAccount(to: existingID)
+        try XCTUnwrap(account.session).store.upsertMachine(machine("m", created: 1, name: "Old Mac"))
+        try await until { summary(existingID)?.computerName == "Old Mac" }
+        XCTAssertNil(summary(existingID)?.resolvedName)
+
+        // Both kept across a launch, from the registry and the stores.
+        await account.flushProfilePersistence()
+        let relaunched = try controller(relay, backend: backend, directory: directory)
+        await relaunched.restore()
+        XCTAssertEqual(relaunched.accounts.first { $0.id == newID }?.origin, .madeForComputer)
+        XCTAssertEqual(relaunched.accounts.first { $0.id == newID }?.resolvedName, "macbook.local")
+        XCTAssertEqual(relaunched.accounts.first { $0.id == existingID }?.isLegacy, true)
+    }
+
+    /// Entries from before the origin existed are legacy.
+    func testAnOldRegistryEntryIsLegacy() throws {
+        let json = #"{"id":"0123456789abcdef","serverURL":"https://api.cluster-fluster.com","location":"shared","addedOrder":0}"#
+        let entry = try JSONDecoder().decode(AccountRegistryEntry.self, from: Data(json.utf8))
+        XCTAssertEqual(entry.origin, .legacy)
+        let made = AccountRegistryEntry(id: "0123456789abcdef", serverURL: ServerConfig.defaultServerURL, location: .own, addedOrder: 1, origin: .madeForComputer)
+        XCTAssertEqual(try JSONDecoder().decode(AccountRegistryEntry.self, from: JSONEncoder().encode(made)).origin, .madeForComputer)
     }
 
     /// A code already answered keeps nothing and changes nothing: the alert

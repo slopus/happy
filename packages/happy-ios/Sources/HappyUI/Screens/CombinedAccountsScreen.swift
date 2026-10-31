@@ -30,13 +30,13 @@ final class CombinedAccountsViewController: UIViewController {
             loadImage(account)
             let icon = images[account.id].map { ItemIcon(.image($0), round: true) } ?? ItemIcon(.ionicons(account.isAgentConnection ? "desktop-outline" : "person-circle-outline"), tint: Palette.iconBlue)
             let status = account.connectionStatus ?? (account.isActive ? "Active" : "Signed in")
-            let row = ItemRowView(title: account.name ?? account.username ?? "Happy account", subtitle: "\(account.isAgentConnection ? "Agent" : account.serverURL.host ?? "Happy") · \(status)", icon: icon) { [weak self] in
+            let row = ItemRowView(title: account.shownName, subtitle: "\(account.isAgentConnection ? "Agent" : account.serverURL.host ?? "Happy") · \(status)", icon: icon) { [weak self] in
                 self?.select(account)
             }
             row.showsChevron = false
             if account.isActive { row.trailingView = SettingsCheckmark.view(tint: Palette.iconBlue) }
             rows.append(row)
-            let remove = ItemRowView(title: account.isAgentConnection ? "Disconnect \(account.name ?? "agent")" : "Sign out \(account.name ?? "account")", icon: ItemIcon(.ionicons("log-out-outline"), tint: Palette.textSecondary)) { [weak self] in self?.remove(account) }
+            let remove = ItemRowView(title: account.isAgentConnection ? "Disconnect \(account.name ?? "agent")" : "Sign out \(account.shownName)", icon: ItemIcon(.ionicons("log-out-outline"), tint: Palette.textSecondary)) { [weak self] in self?.remove(account) }
             remove.showsChevron = false
             rows.append(remove)
         }
