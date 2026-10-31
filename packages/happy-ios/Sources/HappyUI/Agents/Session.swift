@@ -27,8 +27,11 @@ final class Session {
     /// The person's settings for this phone, the transcript's renderer
     /// among them (`LocalSettings.chatListRenderer`).
     let localSettings: LocalSettings
+    /// What this computer's placeholder picture is picked by, when it has
+    /// none of its own (`AvatarPlaceholder`).
+    let placeholderSeed: String
     /// The person's own name and picture on this computer.
-    private(set) lazy var profile = ProfileSource(client: client, engine: engine)
+    private(set) lazy var profile = ProfileSource(client: client, engine: engine, placeholderSeed: "person:" + placeholderSeed)
     private(set) var snapshot = Snapshot()
     private var watchers: [UUID: (Snapshot) -> Void] = [:]
     /// Readable, not settable, so a test can say the follow was let go of
@@ -104,6 +107,7 @@ final class Session {
     private init(accountID: String, engine: SyncEngine, account: AccountController) {
         self.accountID = accountID
         computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? "agent connection"
+        placeholderSeed = account.agentConnections.placeholderSeed(for: accountID) ?? accountID
         self.engine = engine
         self.localSettings = account.localSettings
         let client = engine.client

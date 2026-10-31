@@ -35,7 +35,7 @@ public enum SidebarRows {
             let children = (agent.subtasks ?? []).filter { $0.archivedAt == nil }
             // A subtask or a project's session has no mark, as on desktop.
             var row = Row(id: id, nodeId: id, kind: owner == nil ? .session : .space, depth: depth,
-                label: label ?? agent.title ?? "Untitled", mark: owner == nil ? .none : owner?.systemKey == "chief_of_staff" ? .happy : .glyph(kind == "bot" ? "agents" : "tasks"),
+                label: label ?? agent.title ?? "Untitled", mark: owner == nil ? .none : owner?.systemKey == "chief_of_staff" ? .happy : .placeholder(seed: owner?.id ?? agent.id),
                 status: muted ? .none : status(agent), unread: !muted && agent.unread != nil,
                 isHappy: owner?.systemKey == "chief_of_staff", agentId: agent.id, workspaceId: agent.workspaceId, targetKind: kind)
             row.targetId = owner?.id

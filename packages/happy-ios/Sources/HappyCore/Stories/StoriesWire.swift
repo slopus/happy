@@ -609,6 +609,9 @@ public struct StoryFeedAuthor: Equatable, Sendable, Codable {
 
     /// Its circle's key in the row: the user, or the one person.
     public var key: String { isSelf ? "self" : (userId ?? "self") }
+    /// What the author's placeholder picture is picked by, without a photo
+    /// (`AvatarPlaceholder`): who they are, the same on every phone.
+    public var placeholderSeed: String { userId ?? name }
 
     /// An agent's ring played as an author (`StoriesRow.ringAuthor`): its agent.
     public var ringAgentId: String? {

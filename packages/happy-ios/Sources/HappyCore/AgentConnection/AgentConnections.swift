@@ -36,6 +36,9 @@ public final class AgentConnections {
         return engine
     }
     func credential(for id: String) -> AgentConnectionCredentials? { credentials[id] }
+    /// What the connection's placeholder picture is picked by: its
+    /// computer's address, the same on every phone paired with it.
+    public func placeholderSeed(for id: String) -> String? { credentials[id].map { "agent:\($0.address)" } }
     func configureStorage(_ directory: URL?) async { await storage.configureDirectory(directory) }
 
     public func restore() async throws {

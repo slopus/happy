@@ -32,7 +32,18 @@ final class HomeRendererHarness {
         Task {
             let controller = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/home-renderer-harness", credentialStore: InMemoryCredentialStore(), storeDirectory: nil, rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, localSettingsFactory: { UserDefaultsStore(suiteName: "home-renderer-harness.\($0)") }, transport: HomeHarnessOffline(), connector: HomeHarnessNoSocket())
             do {
+                // `-accountMix`: the switcher lists one of each kind, an
+                // account made for a computer, this legacy one and an agent
+                // connection, none with a picture of its own.
+                if arguments.contains("-accountMix") {
+                    try await controller.signIn(Credentials(token: "home-harness-made", secret: Data(repeating: 23, count: 32)), origin: .madeForComputer)
+                }
                 try await controller.signIn(Credentials(token: "home-harness", secret: Data(repeating: 19, count: 32)))
+                if arguments.contains("-accountMix") {
+                    await controller.agentConnections.setForeground(false)
+                    let credentials = try JSONDecoder().decode(AgentConnectionCredentials.self, from: Data(#"{"address":"account-mix","port":1,"deviceID":"account-mix","deviceToken":"fixture"}"#.utf8))
+                    _ = try await controller.agentConnections.add(credentials, name: "Studio Mac")
+                }
                 guard let session = controller.session else { fatalError("Home harness missing session") }
                 self.account = controller
                 if !restoreRenderer {

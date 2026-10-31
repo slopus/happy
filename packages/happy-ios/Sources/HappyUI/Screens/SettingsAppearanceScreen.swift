@@ -7,11 +7,13 @@ import UIKit
 
 /// Settings › Appearance (app/(app)/settings/appearance.tsx), iOS rows only:
 /// theme, language, chat, avatars, input and display. The web-only rows
-/// (Enter to send, command palette) are left out, as on an iPhone.
+/// (Enter to send, command palette) are left out, as on an iPhone. So is
+/// Avatar Style: every avatar without a picture wears its placeholder
+/// (`AvatarPlaceholder`) whichever style is set, so only Black & White
+/// Avatars changes how they look.
 public final class SettingsAppearanceViewController: UIViewController {
     private enum Dropdown {
         case bubbleColor
-        case avatarStyle
     }
 
     private let context: AppContext
@@ -186,48 +188,13 @@ public final class SettingsAppearanceViewController: UIViewController {
         // `showDivider={open}`: the line under the row only while it is open.
         bubbleRow.showsDivider = bubbleOpen
 
-        let avatarStyle = settings.avatarStyle
-        let monochrome = settings.avatarMonochrome
-        let avatarOpen = openDropdown == .avatarStyle
-        let avatarValue = DropdownValueView(
-            preview: avatarPreview(avatarStyle, monochrome: monochrome),
-            previewSize: Self.avatarPreviewSize,
-            text: Strings.SettingsAppearance.avatarStyleName(avatarStyle.rawValue)
-        )
-        avatarValue.isExpanded = avatarOpen
-        let avatarRow = ItemRowView(
-            title: Strings.SettingsAppearance.avatarStyle,
-            icon: ItemIcon(.ionicons("person-circle-outline"), tint: connecting)
-        ) { [weak self] in
-            self?.toggleDropdown(.avatarStyle)
-        }
-        avatarRow.trailingView = avatarValue
-        var avatarRows: [UIView] = [avatarRow]
-        if avatarOpen {
-            avatarRows.append(OptionListView(options: AvatarStyle.allCases.map { style in
-                OptionRowView(
-                    preview: avatarPreview(style, monochrome: monochrome),
-                    previewSize: Self.avatarPreviewSize,
-                    title: Strings.SettingsAppearance.avatarStyleName(style.rawValue),
-                    selected: style == avatarStyle
-                ) { [weak self] in
-                    self?.openDropdown = nil
-                    self?.set("avatarStyle", .string(style.rawValue))
-                    self?.rebuild()
-                }
-            }))
-        }
-        avatarRows.append(toggle(
+        sections.append(ItemGroupView(title: Strings.SettingsAppearance.avatars, rows: [toggle(
             "avatarMonochrome",
             title: Strings.SettingsAppearance.avatarMonochrome,
             subtitle: Strings.SettingsAppearance.avatarMonochromeDescription,
             icon: "contrast-outline",
             tint: connecting
-        ))
-        sections.append(ItemGroupView(title: Strings.SettingsAppearance.avatars, footer: Strings.SettingsAppearance.avatarsDescription, rows: avatarRows))
-        // `showDivider={open}` here too: closed, the style row has no line
-        // above Black & White Avatars in happy-app.
-        avatarRow.showsDivider = avatarOpen
+        )]))
 
         let contextSize = toggle(
             "alwaysShowContextSize",
@@ -297,18 +264,7 @@ public final class SettingsAppearanceViewController: UIViewController {
         list.sections = sections
     }
 
-    /// AvatarStylePreview: every style drawn from one fixed id, so the three
-    /// compare like for like.
-    private static let avatarPreviewID = "avatar-style-preview"
-    private static let avatarPreviewSize = CGSize(width: 28, height: 28)
-
-    private func avatarPreview(_ style: AvatarStyle, monochrome: Bool) -> UIView {
-        let view = AvatarView(frame: CGRect(origin: .zero, size: Self.avatarPreviewSize))
-        view.content = AvatarView.Content(avatar: SessionAvatar(seed: Self.avatarPreviewID), style: style, monochrome: monochrome)
-        return view
-    }
-
-    /// Opening one dropdown closes the other.
+    /// Opens the dropdown, or closes it when it is open.
     private func toggleDropdown(_ dropdown: Dropdown) {
         openDropdown = openDropdown == dropdown ? nil : dropdown
         rebuild()

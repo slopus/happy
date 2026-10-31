@@ -101,7 +101,7 @@ final class HostedThumbHashPlaceholderTests: XCTestCase {
     func testAStoryCircleHasItsThumbhash() async throws {
         let (host, _) = try await host()
         let circle = StoriesCircleView(frame: CGRect(origin: CGPoint(x: 12, y: 500), size: StoriesRowLayout.Metrics.item))
-        let item = StoriesRowItem(id: "u2", title: "Ada", isSelf: false, photo: "/v0/users/u2/photo", thumbhash: Self.landscape, initials: "AL", segments: 1, unseen: 1)
+        let item = StoriesRowItem(id: "u2", title: "Ada", isSelf: false, photo: "/v0/users/u2/photo", thumbhash: Self.landscape, initials: "AL", placeholderSeed: "u2", segments: 1, unseen: 1)
         circle.configure(item, images: images)
         assertShape(circle.avatarImage, of: Self.landscape, "story circle")
         // With nothing to read it with yet, the hash still shows.

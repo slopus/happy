@@ -68,7 +68,7 @@ final class PrivateAvatarViewTests: XCTestCase {
         view.content = .init(avatar: SessionAvatar(seed: "first", isBot: true, harness: .rig, image: source("first")), style: .brutalist, monochrome: false)
         let firstTask = view.imageTask
         await http.untilStarted("first")
-        XCTAssertTrue(view.photo.isHidden, "bot fallback stays while loading")
+        XCTAssertTrue(view.photo.isHidden, "the bot's placeholder stays while loading")
         view.content = .init(avatar: SessionAvatar(seed: "second", harness: .codex, image: source("second")), style: .brutalist, monochrome: true, square: true)
         let secondTask = view.imageTask
         await http.untilStarted("second")
@@ -95,7 +95,7 @@ final class PrivateAvatarViewTests: XCTestCase {
         await cache.close()
     }
 
-    func testMissingOrInvalidImageKeepsGeneratedFallback() async throws {
+    func testMissingOrInvalidImageKeepsThePlaceholder() async throws {
         let keys = try AccountKeys(secret: Data(repeating: 1, count: 32))
         let cache = AvatarPictures(owner: keys.anonID, directory: nil,
             api: HappyAPI(serverURL: URL(string: "https://server.test")!, clientID: "test", transport: HeldAvatarHTTP(), token: "token"), keys: keys)
@@ -105,8 +105,10 @@ final class PrivateAvatarViewTests: XCTestCase {
         view.content = .init(avatar: SessionAvatar(seed: "identity", harness: .claude, image: source), style: .pixelated, monochrome: false)
         await view.imageTask?.value
         XCTAssertTrue(view.photo.isHidden)
-        XCTAssertFalse(view.pixels.isHidden)
-        XCTAssertEqual(view.pixels.colors.count, 64)
+        view.layoutIfNeeded()
+        let deadline = ContinuousClock.now + .seconds(5)
+        while view.glyph.image == nil, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNotNil(view.glyph.image, "the placeholder stays")
         XCTAssertFalse(view.badge.isHidden)
         view.content = nil
         XCTAssertTrue(view.photo.isHidden)

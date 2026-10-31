@@ -207,22 +207,6 @@ public final class RemoteImageView: UIImageView {
     }
 }
 
-/// A generated avatar as a picture, for a row's 29pt icon slot.
-@MainActor
-enum AvatarSnapshot {
-    static func image(_ content: AvatarView.Content, size: CGFloat, traits: UITraitCollection) -> UIImage {
-        let view = AvatarView(frame: CGRect(x: 0, y: 0, width: size, height: size))
-        view.content = content
-        view.layoutIfNeeded()
-        let format = UIGraphicsImageRendererFormat(for: traits)
-        return UIGraphicsImageRenderer(size: view.bounds.size, format: format).image { context in
-            traits.performAsCurrent {
-                view.layer.render(in: context.cgContext)
-            }
-        }
-    }
-}
-
 /// The revealed secret key under Settings › Account › Backup: tap to copy.
 public final class SecretKeyCardView: UIControl {
     let label = StyledLabel(style: TextStyles.secretKeyLabel, color: Palette.textSecondary, lines: 1)

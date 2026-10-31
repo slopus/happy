@@ -12,8 +12,6 @@ public struct AgentEditButtonLayout: Equatable, Sendable {
         public static let avatar: CGFloat = 100
         public static let badge: CGFloat = 32
         public static let pencil: CGFloat = 16
-        /// The fallback glyph in a circle without a picture.
-        public static let fallbackGlyph: CGFloat = 48
     }
 
     public var size: CGSize

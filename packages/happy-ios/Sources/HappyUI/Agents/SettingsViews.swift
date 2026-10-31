@@ -264,8 +264,11 @@ struct SettingsRow {
     var id: String
     var title: String
     var icon: (glyph: String, tile: Tile)?
-    /// An account's or connection's own picture, drawn round in the icon's
-    /// place; the icon is the fallback for one that hasn't come yet.
+    /// An account's or connection's row: `image` round in the icon's
+    /// place, an empty circle until it comes, never a glyph.
+    var avatar = false
+    /// Its picture, drawn round in the icon's place; the icon is the
+    /// fallback for one that hasn't come yet.
     var image: UIImage?
     var value: String?
     var accessory: SettingsLayout.Accessory = .chevron
@@ -274,6 +277,9 @@ struct SettingsRow {
     var isOn = false
     var action: (() -> Void)?
     var toggled: ((Bool) -> Void)?
+
+    /// Whether it takes the icon's lane.
+    var hasIcon: Bool { icon != nil || avatar }
 }
 
 /// A grouped card of rows, Telegram's inset style: a coloured square with a
@@ -361,13 +367,13 @@ final class SettingsCardView: UIView {
             tile.isHidden = frames.icon == nil
             if let frame = frames.icon {
                 tile.frame = local(frame)
-                if let picture = row.image {
+                if row.image != nil || row.avatar {
                     // Its own picture, round, filling the square an icon
                     // would have had: the rows read as the accounts they are.
-                    tile.backgroundColor = .clear
+                    tile.backgroundColor = row.image == nil ? UIColor(Palette.settingsAddFill) : .clear
                     tile.layer.cornerRadius = frame.height / 2
                     // The picture over the thumbhash it had: dissolved in.
-                    ImageFade.show(picture, in: glyph, fade: previous?.id == row.id && previous?.image != nil)
+                    ImageFade.show(row.image, in: glyph, fade: previous?.id == row.id && previous?.image != nil)
                     glyph.contentMode = .scaleAspectFill
                     glyph.clipsToBounds = true
                     glyph.frame = tile.bounds
@@ -445,9 +451,21 @@ final class SettingsCardView: UIView {
 }
 
 /// A profile's picture: a computer's own bytes, an account's from its
-/// server, else the placeholder its thumbhash makes; decoded off main.
+/// server, else the placeholder its thumbhash makes, else the one its ID
+/// picks (`AvatarPlaceholder`); decoded off main.
 @MainActor
 enum ProfilePictures {
+    /// The largest an account's placeholder is drawn: Settings' agent
+    /// picture.
+    static let placeholderSide = AgentEditButtonLayout.Metrics.avatar
+
+    /// What the account's placeholder is picked by: an agent connection's
+    /// computer, else the account's own ID (derived from its secret), so
+    /// it is the same on every phone.
+    static func placeholderSeed(_ account: AccountSummary, context: AppContext) -> String {
+        context.account.agentConnections.placeholderSeed(for: account.id) ?? account.id
+    }
+
     static func key(_ account: AccountSummary, context: AppContext) -> String {
         let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
         return direct.map { "\($0.avatarETag ?? ""):\($0.avatar?.count ?? 0):\($0.thumbhash ?? "")" } ?? account.avatarURL?.absoluteString ?? account.avatarThumbhash ?? ""
@@ -460,7 +478,14 @@ enum ProfilePictures {
         return ThumbHashImages.image(direct.map { $0.thumbhash } ?? account.avatarThumbhash)
     }
 
+    /// Nil only when the placeholder isn't bundled.
     static func load(_ account: AccountSummary, context: AppContext) async -> UIImage? {
+        if let picture = await picture(account, context: context) { return picture }
+        return await AvatarPlaceholderImages.image(seed: placeholderSeed(account, context: context), side: placeholderSide)
+    }
+
+    /// The account's own picture or its thumbhash, or nil.
+    private static func picture(_ account: AccountSummary, context: AppContext) async -> UIImage? {
         let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
         let bytes = direct?.avatar
         var image = await Task.detached { () -> UIImage? in

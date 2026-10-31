@@ -63,7 +63,7 @@ final class SettingsPageViewController: UIViewController {
         let width = view.bounds.width
         scroll.frame = view.bounds
         let specs = rows.map { card in
-            card.map { SettingsLayout.RowSpec(hasIcon: $0.icon != nil, valueWidth: SettingsCardView.valueWidth($0.value), accessory: $0.accessory) }
+            card.map { SettingsLayout.RowSpec(hasIcon: $0.hasIcon, valueWidth: SettingsCardView.valueWidth($0.value), accessory: $0.accessory) }
         }
         let layout = SettingsLayout(width: width, nameHeight: 0, subtitleHeight: 0, cards: specs, searching: true)
         settingsLayout = layout

@@ -38,6 +38,7 @@ final class RowView: UIView {
     private let empty = EmptyMarkView(frame: .zero)
     private let corner = CornerView()
     private var pictureJob: Task<Void, Never>?
+    private let placeholder = AvatarPlaceholderSlot()
 
     private(set) var row: Row?
     var images: Images?
@@ -210,6 +211,7 @@ final class RowView: UIView {
 
     private func applyMark(_ mark: Row.Mark) {
         pictureJob?.cancel(); pictureJob = nil
+        placeholder.cancel()
         seedling.seed = nil
         seedling.isHidden = true
         picture.isHidden = true
@@ -245,6 +247,13 @@ final class RowView: UIView {
             picture.isHidden = false
             picture.contentMode = .center
             picture.image = Glyphs.image(name, size: Metrics.glyph)
+        case .placeholder(let seed):
+            // Drawn as a picture is, decoded at the size it is drawn.
+            picture.isHidden = false
+            picture.contentMode = .scaleAspectFill
+            picture.layer.cornerRadius = row?.story != nil ? StoryRowMetrics.disc / 2 : grouped ? GroupedSidebarMetrics.tileRadius : Metrics.pictureRadius
+            picture.layer.cornerCurve = .continuous
+            placeholder.show(seed: seed, side: row?.story != nil ? StoryRowMetrics.disc : Metrics.mark) { [weak self] in self?.picture.image = $0 }
         case .image(let path, let thumbhash):
             // A picture is a rounded square; in a story ring, a circle.
             picture.isHidden = false

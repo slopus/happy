@@ -404,86 +404,14 @@ final class SessionListChromeLayoutTests: XCTestCase {
     }
 }
 
-/// Seeds hashed by node with happy-app's `hashCode`.
-final class GeneratedAvatarTests: XCTestCase {
-    func testHashMatchesJavaScript() {
-        XCTAssertEqual(GeneratedAvatar.hashCode("avatar-style-preview"), 2_011_298_248)
-        XCTAssertEqual(GeneratedAvatar.hashCode("avatar-style-previewcolor"), 2_095_860_779)
-        XCTAssertEqual(GeneratedAvatar.hashCode("m1:/Users/steve/happy"), 1_073_159_556)
-        XCTAssertEqual(GeneratedAvatar.hashCode("abc"), 96_354)
-        XCTAssertEqual(GeneratedAvatar.hashCode(""), 0)
-        XCTAssertEqual(GeneratedAvatar.hashCode("machine:bot:b1"), 1_899_767_499)
-        XCTAssertEqual(GeneratedAvatar.hashCode("😀x"), 54_959_989, "UTF-16 code units, as charCodeAt")
-    }
-
-    func testBrutalistPicks() {
-        let preview = GeneratedAvatar.brutalist(seed: "avatar-style-preview", monochrome: false)
-        XCTAssertEqual(preview.imageName, "Abstract-149")
-        XCTAssertEqual(preview.tint, RGBA(hex: "#84E600"))
-        XCTAssertEqual(preview.background, RGBA(hex: "#C026D3"))
-        XCTAssertEqual(GeneratedAvatar.brutalist(seed: "m1:/Users/steve/happy", monochrome: false).imageName, "Brutalism-35")
-        XCTAssertEqual(GeneratedAvatar.brutalist(seed: "m1:/Users/steve/happy", monochrome: false).background, RGBA(hex: "#047857"))
-        XCTAssertEqual(GeneratedAvatar.brutalist(seed: "machine:bot:b1", monochrome: false).imageName, "Brutalism-98")
-        XCTAssertEqual(GeneratedAvatar.brutalist(seed: "", monochrome: false).imageName, "Abstract-1")
-
-        let mono = GeneratedAvatar.brutalist(seed: "abc", monochrome: true)
-        XCTAssertEqual(mono.imageName, "Abstract-175")
-        XCTAssertEqual(mono.tint, RGBA(hex: "#999999"))
-        XCTAssertEqual(mono.background, RGBA(hex: "#F0F0F0"))
-    }
-
-    func testBrutalistImageOrder() {
-        XCTAssertEqual(GeneratedAvatar.brutalistImageName(261), "Abstract-262")
-        XCTAssertEqual(GeneratedAvatar.brutalistImageName(262), "Bauhaus-1")
-        XCTAssertEqual(GeneratedAvatar.brutalistImageName(301), "Bauhaus-40")
-        XCTAssertEqual(GeneratedAvatar.brutalistImageName(302), "Brutalism-1")
-        XCTAssertEqual(GeneratedAvatar.brutalistImageName(419), "Brutalism-118")
-    }
-
-    func testGradientPicks() {
-        XCTAssertEqual(GeneratedAvatar.gradientImageName(seed: "avatar-style-preview"), "gradient-49")
-        XCTAssertEqual(GeneratedAvatar.gradientImageName(seed: ""), "gradient-01")
-        XCTAssertEqual(GeneratedAvatar.gradientImageName(seed: "machine:bot:b1"), "gradient-100")
-        XCTAssertEqual(GeneratedAvatar.gradientImageName(seed: "😀x"), "gradient-90")
-    }
-
-    func testPixels() {
-        let palette = ["#0a0310", "#49007e", "#ff005b", "#ff7d10", "#ffb238"].map { RGBA(hex: $0)! }
-        let cells = GeneratedAvatar.pixels(seed: "abc", monochrome: false)
-        XCTAssertEqual(cells.count, 64)
-        // node: [0,0,0,2,4,0,1,2]
-        XCTAssertEqual(Array(cells.prefix(8)), [0, 0, 0, 2, 4, 0, 1, 2].map { palette[$0] })
-        XCTAssertEqual(GeneratedAvatar.pixels(seed: "abc", monochrome: true).first, RGBA(hex: "#070707"))
-        let frames = GeneratedAvatar.pixelFrames(size: 60)
-        assertFrame(frames[9], rect(7.5, 7.5, 7.5, 7.5))
-        assertFrame(frames[63], rect(52.5, 52.5, 7.5, 7.5))
-    }
-
-    func testGlyphsAndBadge() {
-        assertFrame(GeneratedAvatar.brutalistGlyphFrame(avatarSize: 60), rect(6, 6, 48, 48))
-        assertFrame(GeneratedAvatar.botGlyphFrame(avatarSize: 60), rect(13.5, 13.5, 33, 33))
-        let badge = GeneratedAvatar.badge(avatarSize: 60, glyphRatio: GeneratedAvatar.badgeGlyphRatio(harness: "claude"))
+/// The harness badge on a session avatar (Avatar.tsx `harnessBadgeSizes`).
+final class AvatarBadgeTests: XCTestCase {
+    func testBadge() {
+        let badge = AvatarBadge.badge(avatarSize: 60, glyphRatio: AvatarBadge.badgeGlyphRatio(harness: "claude"))
         // round(60 × 0.42) = 25, hanging 2 past the bottom-right corner.
         assertFrame(badge.circle, rect(37, 37, 25, 25))
         assertFrame(badge.glyph, rect(39.5, 39.5, 20, 20))
-        XCTAssertEqual(GeneratedAvatar.badgeGlyphRatio(harness: "rig"), 0.26)
-        XCTAssertEqual(GeneratedAvatar.badgeGlyphRatio(harness: "agy"), 0.42)
-    }
-
-    /// Every image a seed can pick ships in HappyUI's resources.
-    func testEveryAvatarImageIsBundled() {
-        let resources = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("../../Sources/HappyUI/Resources/Avatars")
-            .standardizedFileURL
-        for index in 0..<GeneratedAvatar.brutalistImageCount {
-            let name = GeneratedAvatar.brutalistImageName(index)
-            let path = resources.appendingPathComponent("Brutalist/\(name).png").path
-            XCTAssertTrue(FileManager.default.fileExists(atPath: path), "missing \(path)")
-        }
-        for index in 1...GeneratedAvatar.gradientImageCount {
-            let path = resources.appendingPathComponent(String(format: "Gradients/gradient-%02d.png", index)).path
-            XCTAssertTrue(FileManager.default.fileExists(atPath: path), "missing \(path)")
-        }
+        XCTAssertEqual(AvatarBadge.badgeGlyphRatio(harness: "rig"), 0.26)
+        XCTAssertEqual(AvatarBadge.badgeGlyphRatio(harness: "agy"), 0.42)
     }
 }

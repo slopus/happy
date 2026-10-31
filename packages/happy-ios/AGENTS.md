@@ -31,6 +31,9 @@ nothing here is wired to the release skill or to EAS.
 6. **No icon fonts.** Icons are happy-app's glyphs as vector outlines
    (`HappyIcons`), drawn as template images. Keep the fonts' license
    notices in `Sources/HappyIcons/LICENSES.md`.
+   The avatar placeholders are Crafted Studios' shaders (MIT); their
+   license and notice sit beside them in
+   `Sources/HappyUI/Resources/AvatarPlaceholders`.
 7. **Telegram-iOS is a reference, never a source.** It is GPL-2.0. Study
    its techniques (async text layout, bubble animations, keyboard
    handling) and reimplement them; never copy its code, and don't depend

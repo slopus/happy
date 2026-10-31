@@ -105,7 +105,7 @@ final class HostedThumbHashEvidenceTests: XCTestCase {
         viewer.backgroundColor = .black
         viewer.frame = CGRect(x: 16, y: 300, width: 220, height: 300)
         let story = StoriesCircleView(frame: CGRect(origin: CGPoint(x: 260, y: 320), size: StoriesRowLayout.Metrics.item))
-        story.configure(StoriesRowItem(id: "u2", title: "Ada", isSelf: false, photo: "/v0/users/u2/photo", thumbhash: Self.square, initials: "AL", segments: 1, unseen: 1), images: images)
+        story.configure(StoriesRowItem(id: "u2", title: "Ada", isSelf: false, photo: "/v0/users/u2/photo", thumbhash: Self.square, initials: "AL", placeholderSeed: "u2", segments: 1, unseen: 1), images: images)
         let settings = RemoteImageView(size: SettingsProfileHeaderLayout.Metrics.avatarSize)
         settings.show(URL(string: "https://example.com/\(UUID().uuidString).png")!, thumbhash: Self.square, from: pictures)
         settings.frame = CGRect(x: 260, y: 440, width: 90, height: 90)

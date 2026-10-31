@@ -29,7 +29,7 @@ final class StoryViewerPageView: UIView {
     private let strip = UIView()
     private var segments: [StoryProgressSegment] = []
     private let avatar = UIImageView()
-    private let initials = UILabel()
+    private let placeholder = AvatarPlaceholderSlot()
     private let nameLabel = UILabel()
     private let timeLabel = UILabel()
     /// Shades the side of the cube turned away.
@@ -57,10 +57,6 @@ final class StoryViewerPageView: UIView {
         avatar.contentMode = .scaleAspectFill
         avatar.backgroundColor = UIColor(Palette.storiesAvatarFill)
         avatar.layer.cornerRadius = StoryViewerLayout.Metrics.avatar / 2
-        initials.font = .systemFont(ofSize: 13, weight: .semibold)
-        initials.textColor = UIColor(Palette.storiesAvatarText)
-        initials.textAlignment = .center
-        avatar.addSubview(initials)
         addSubview(avatar)
         nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         nameLabel.textColor = UIColor(Palette.storiesViewerText)
@@ -136,7 +132,6 @@ final class StoryViewerPageView: UIView {
         let changedAuthor = self.author?.key != author.key
         self.author = author
         nameLabel.text = author.isSelf ? Strings.Stories.myStory : author.name
-        initials.text = StoriesRow.initials(author.name)
         loadPhoto(author, images: images)
         if segments.count != frames.count || changedAuthor {
             segments.forEach { $0.removeFromSuperview() }
@@ -227,32 +222,35 @@ final class StoryViewerPageView: UIView {
             // An agent wears its row's icon.
             photoKey = nil
             loading?.cancel()
+            placeholder.cancel()
             avatar.image = authorImage
             avatar.contentMode = .scaleAspectFit
-            initials.isHidden = true
             return
         }
         avatar.contentMode = .scaleAspectFill
-        let key = images == nil ? nil : author.photo.map { "\($0)#\(author.thumbhash ?? "")" }
+        let key = (images == nil ? nil : author.photo.map { "\($0)#\(author.thumbhash ?? "")" }) ?? "placeholder:\(author.placeholderSeed)"
         guard key != photoKey else { return }
         photoKey = key
         loading?.cancel()
-        avatar.image = nil
-        initials.isHidden = false
-        guard let path = author.photo, let images else { return }
+        placeholder.cancel()
+        // Without a photo, the placeholder the author's ID picks.
+        let showPlaceholder = { [weak self] in
+            self?.placeholder.show(seed: author.placeholderSeed, side: StoryViewerLayout.Metrics.avatar) { self?.avatar.image = $0 }
+        }
+        guard let path = author.photo, let images else {
+            showPlaceholder()
+            return
+        }
         let pixels = Int(StoryViewerLayout.Metrics.avatar * 3)
         if let cached = images.cachedPicture(path, thumbhash: author.thumbhash, pixels: pixels) {
             avatar.image = cached
-            initials.isHidden = true
             return
         }
         avatar.image = ThumbHashImages.image(author.thumbhash)
-        initials.isHidden = avatar.image != nil
         loading = Task { [weak self] in
             let image = await images.picture(path, thumbhash: author.thumbhash, pixels: pixels)
-            guard let self, !Task.isCancelled, photoKey == key, let image else { return }
-            ImageFade.show(image, in: avatar, fade: true)
-            initials.isHidden = true
+            guard let self, !Task.isCancelled, photoKey == key else { return }
+            if let image { ImageFade.show(image, in: avatar, fade: true) } else if avatar.image == nil { showPlaceholder() }
         }
     }
 
@@ -272,7 +270,6 @@ final class StoryViewerPageView: UIView {
         strip.frame = bounds
         for (segment, frame) in zip(segments, StoryViewerLayout.segments(segments.count, in: layout.strip)) { segment.frame = frame }
         place(avatar, layout.avatar)
-        initials.frame = avatar.bounds
         let lineHeight: CGFloat = 17
         // Without a more button the sound button takes its place.
         let titleWidth = layout.titleWidth(withSound: !soundButton.isHidden && !moreButton.isHidden)

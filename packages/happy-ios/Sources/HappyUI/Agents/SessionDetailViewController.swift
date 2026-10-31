@@ -909,7 +909,7 @@ final class DetailActivityCardView: UIView {
 }
 
 /// The detail's mark, large: the seedling, its clay icon, Happy's own,
-/// a picture, or a glyph on a tile.
+/// a picture or placeholder, or a glyph on a tile.
 final class DetailMarkView: UIView {
     var images: Images?
     var mark: Row.Mark = .none {
@@ -918,6 +918,7 @@ final class DetailMarkView: UIView {
     private let seedling = MarkView()
     private let picture = UIImageView()
     private var job: Task<Void, Never>?
+    private let placeholder = AvatarPlaceholderSlot()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -936,10 +937,12 @@ final class DetailMarkView: UIView {
         picture.frame = bounds
         if case .glyph = mark { picture.layer.cornerRadius = bounds.width * 0.28 }
         if case .image = mark { picture.layer.cornerRadius = bounds.width * 0.22 }
+        if case .placeholder = mark { picture.layer.cornerRadius = bounds.width * 0.22 }
     }
 
     private func apply() {
         job?.cancel(); job = nil
+        placeholder.cancel()
         seedling.isHidden = true
         seedling.seed = nil
         picture.isHidden = false
@@ -968,6 +971,9 @@ final class DetailMarkView: UIView {
                     ImageFade.show(image, in: picture, fade: true)
                 }
             }
+        case .placeholder(let seed):
+            picture.contentMode = .scaleAspectFill
+            placeholder.show(seed: seed, side: SessionDetailLayout.Metrics.mark) { [weak self] in self?.picture.image = $0 }
         case .glyph(let name):
             picture.contentMode = .center
             picture.backgroundColor = UIColor(Palette.settingsTilePurple)

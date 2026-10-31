@@ -4,10 +4,17 @@ import HappyLayout
 import UIKit
 
 /// Home's left bar item, alone there on both homes: the active account's
-/// picture and name on one line, and a chevron. A tap opens the native menu: every account and agent
-/// connection (the active one ticked; another switches to it), then Add
-/// (`AccountAdding`) and Manage Accounts. Adding or a failed
-/// switch leaves the active account as it was.
+/// picture and name on one line, and a chevron. A tap opens the native
+/// menu: every account and agent connection (the active one ticked; another
+/// switches to it), then Add (`AccountAdding`) and Manage Accounts. Adding
+/// or a failed switch leaves the active account as it was.
+///
+/// Every kind of account is one row in the menu: a legacy account, one made
+/// for a computer and an agent connection differ only in their name and
+/// picture. Each picture is the account's own or its placeholder
+/// (`ProfilePictures`), drawn as the same round bitmap at the same size
+/// and scale; none has a subtitle. UIKit lays a symbol and a bitmap, or a
+/// row with a subtitle and one without, out differently.
 @MainActor
 final class AccountSwitcher: NSObject {
     private let context: AppContext
@@ -16,6 +23,8 @@ final class AccountSwitcher: NSObject {
     private let item: UIBarButtonItem
     private var observation: AccountsObservation?
     private var images: [String: UIImage] = [:]
+    /// Accounts whose picture or placeholder has arrived, for tests.
+    var loadedPictureIDs: Set<String> { Set(images.keys) }
     private var imageKeys: [String: String] = [:]
     private var jobs: [String: Task<Void, Never>] = [:]
     private var switching = false
@@ -80,14 +89,13 @@ final class AccountSwitcher: NSObject {
         )
     }
 
-    /// Made once each, so showing one again is no change for the button to fade.
-    private static let fallbacks = ["desktopcomputer", "person.crop.circle.fill"].map {
-        UIImage(systemName: $0)?.withTintColor(UIColor(Palette.textSecondary), renderingMode: .alwaysOriginal)
+    /// Until its picture is decoded: an empty circle the same size.
+    private static func fallback(_ account: AccountSummary) -> UIImage? {
+        AvatarPlaceholderImages.pending(side: menuPicture)
     }
 
-    private static func fallback(_ account: AccountSummary) -> UIImage? {
-        fallbacks[account.isAgentConnection ? 0 : 1]
-    }
+    /// The side every account's picture is drawn at, in the bar and the menu.
+    static let menuPicture = AccountSwitcherLayout.Metrics.picture
 
     private func loadImage(_ account: AccountSummary) {
         let key = ProfilePictures.key(account, context: context)
@@ -96,12 +104,12 @@ final class AccountSwitcher: NSObject {
         jobs[account.id]?.cancel()
         // Its thumbhash at once, the picture when it comes.
         if let placeholder = ProfilePictures.placeholder(account, context: context) {
-            images[account.id] = Self.round(placeholder, side: 28)
+            images[account.id] = Self.round(placeholder, side: Self.menuPicture)
         }
         jobs[account.id] = Task { [weak self, context] in
             let image = await ProfilePictures.load(account, context: context)
             guard !Task.isCancelled, let self, imageKeys[account.id] == key else { return }
-            images[account.id] = image.map { Self.round($0, side: 28) }
+            images[account.id] = image.map { Self.round($0, side: Self.menuPicture) }
             show()
         }
     }

@@ -3,10 +3,9 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// components/Avatar.tsx for generated session avatars: brutalist (a tinted
-/// glyph on a coloured disc), gradient, or an 8×8 pixel grid, a chip for a
-/// bot without a picture, and the optional harness badge. Every pick comes
-/// from `GeneratedAvatar`, so a session has the same face in both apps.
+/// components/Avatar.tsx: a session, bot or task avatar, its picture when it
+/// has one and otherwise the placeholder its seed picks (`AvatarPlaceholder`),
+/// whatever avatar style is set, with the optional harness badge.
 public final class AvatarView: UIView {
     public struct Content: Equatable {
         public var avatar: SessionAvatar
@@ -36,15 +35,17 @@ public final class AvatarView: UIView {
     private var imageGeneration: UInt64 = 0
 
     let disc = UIView()
+    /// The seed's placeholder, under the picture.
     let glyph = UIImageView()
-    let pixels = PixelGridView()
+    private let placeholder = AvatarPlaceholderSlot()
     let badge = UIView()
     let badgeGlyph = UIImageView()
 
     public override init(frame: CGRect) {
         super.init(frame: frame)
         disc.clipsToBounds = true
-        glyph.contentMode = .scaleAspectFit
+        disc.backgroundColor = UIColor(Palette.surface)
+        glyph.contentMode = .scaleAspectFill
         photo.contentMode = .scaleAspectFill
         photo.clipsToBounds = true
         photo.isHidden = true
@@ -55,7 +56,6 @@ public final class AvatarView: UIView {
         badge.layer.shadowOffset = CGSize(width: 0, height: 1)
         badgeGlyph.contentMode = .scaleAspectFit
         addSubview(disc)
-        disc.addSubview(pixels)
         disc.addSubview(glyph)
         disc.addSubview(photo)
         addSubview(badge)
@@ -76,23 +76,12 @@ public final class AvatarView: UIView {
         disc.layer.cornerRadius = size / 2
         if content?.square == true { disc.layer.cornerRadius = 0 }
         photo.setLayoutFrame(disc.bounds)
-        pixels.setLayoutFrame(disc.bounds)
+        glyph.setLayoutFrame(disc.bounds)
         if let content {
-            if content.avatar.isBot || content.avatar.isTask {
-                // Avatar.tsx: hardware-chip-outline at round(size * 0.55),
-                // centred in the disc. Drawn here, where the size is known.
-                // A task wears a checkbox the same way.
-                let iconSize = GeneratedAvatar.botGlyphFrame(avatarSize: size).width
-                let name = content.avatar.isTask ? "checkbox-outline" : "hardware-chip-outline"
-                glyph.image = .icon(.ionicons(name), size: iconSize)
-                glyph.setLayoutFrame(disc.bounds)
-            } else if content.style == .brutalist {
-                glyph.setLayoutFrame(GeneratedAvatar.brutalistGlyphFrame(avatarSize: size))
-            } else {
-                glyph.setLayoutFrame(disc.bounds)
-            }
+            // Decoded at the size it is drawn, which is known here.
+            placeholder.show(seed: content.avatar.seed, side: size, monochrome: content.monochrome) { [weak self] in self?.glyph.image = $0 }
             if let harness = content.avatar.harness {
-                let frames = GeneratedAvatar.badge(avatarSize: size, glyphRatio: GeneratedAvatar.badgeGlyphRatio(harness: harness.rawValue))
+                let frames = AvatarBadge.badge(avatarSize: size, glyphRatio: AvatarBadge.badgeGlyphRatio(harness: harness.rawValue))
                 badge.setLayoutFrame(frames.circle)
                 badge.layer.cornerRadius = frames.circle.width / 2
                 badgeGlyph.setLayoutFrame(frames.glyph.offsetBy(dx: -frames.circle.minX, dy: -frames.circle.minY))
@@ -103,39 +92,13 @@ public final class AvatarView: UIView {
     private func apply() {
         updateImage()
         guard let content else {
+            placeholder.cancel()
             glyph.image = nil
-            pixels.colors = []
             badge.isHidden = true
             return
         }
-        let seed = content.avatar.seed
-        pixels.isHidden = true
-        glyph.isHidden = false
-        if content.avatar.isBot || content.avatar.isTask {
-            disc.backgroundColor = UIColor(Palette.surface)
-            glyph.image = nil
-            glyph.contentMode = .center
-            glyph.tintColor = UIColor(content.monochrome ? Palette.textSecondary : Palette.text)
-            setNeedsLayout()
-        } else {
-            glyph.contentMode = .scaleAspectFit
-            switch content.style {
-            case .brutalist:
-                let pick = GeneratedAvatar.brutalist(seed: seed, monochrome: content.monochrome)
-                disc.backgroundColor = UIColor(pick.background)
-                glyph.image = AvatarImages.brutalist(pick.imageName)
-                glyph.tintColor = UIColor(pick.tint)
-            case .gradient:
-                disc.backgroundColor = nil
-                let name = GeneratedAvatar.gradientImageName(seed: seed)
-                glyph.image = content.monochrome ? AvatarImages.grayscaleGradient(name) : AvatarImages.gradient(name)
-                glyph.tintColor = nil
-            case .pixelated:
-                disc.backgroundColor = nil
-                glyph.isHidden = true
-                pixels.isHidden = false
-                pixels.colors = GeneratedAvatar.pixels(seed: seed, monochrome: content.monochrome).map { UIColor($0) }
-            }
+        if bounds.width > 0 {
+            placeholder.show(seed: content.avatar.seed, side: bounds.width, monochrome: content.monochrome) { [weak self] in self?.glyph.image = $0 }
         }
         badge.isHidden = content.avatar.harness == nil || ((content.avatar.isBot || content.avatar.isTask) && photo.image == nil)
         if let harness = content.avatar.harness {
@@ -179,62 +142,9 @@ public final class AvatarView: UIView {
     deinit { imageTask?.cancel() }
 }
 
-/// The pixelated avatar: 64 cells drawn at `GeneratedAvatar.pixelFrames`.
-final class PixelGridView: UIView {
-    var colors: [UIColor] = [] {
-        didSet { setNeedsDisplay() }
-    }
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        isOpaque = false
-        contentMode = .redraw
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    override func draw(_ rect: CGRect) {
-        guard let context = UIGraphicsGetCurrentContext() else { return }
-        for (frame, color) in zip(GeneratedAvatar.pixelFrames(size: bounds.width), colors) {
-            context.setFillColor(color.cgColor)
-            // A hair of overlap so neighbouring cells never show a seam.
-            context.fill(frame.insetBy(dx: -0.25, dy: -0.25))
-        }
-    }
-}
-
-/// The bundled avatar artwork, decoded once.
+/// The harness marks.
 @MainActor
 enum AvatarImages {
-    private static let cache = NSCache<NSString, UIImage>()
-
-    static func brutalist(_ name: String) -> UIImage? {
-        cached("b:" + name) {
-            UIImage.happy(name)?.withRenderingMode(.alwaysTemplate)
-        }
-    }
-
-    static func gradient(_ name: String) -> UIImage? {
-        cached("g:" + name) { UIImage.happy(name) }
-    }
-
-    /// AvatarGradient.tsx drains the colour with a grey sheet in saturation
-    /// blend mode; luminosity over grey is the same result, baked once.
-    static func grayscaleGradient(_ name: String) -> UIImage? {
-        cached("gm:" + name) {
-            guard let source = UIImage.happy(name) else { return nil }
-            let renderer = UIGraphicsImageRenderer(size: source.size, format: .init(for: source.traitCollection))
-            return renderer.image { context in
-                UIColor(white: 0.5, alpha: 1).setFill()
-                context.fill(CGRect(origin: .zero, size: source.size))
-                source.draw(at: .zero, blendMode: .luminosity, alpha: 1)
-            }
-        }
-    }
-
     static func harness(_ harness: SessionAvatar.Harness) -> UIImage? {
         switch harness {
         case .claude: UIImage.happy("icon-claude")
@@ -242,13 +152,6 @@ enum AvatarImages {
         case .agy: UIImage.happy("icon-agy")
         case .rig: UIImage.happy("logo-black")
         }
-    }
-
-    private static func cached(_ key: String, _ make: () -> UIImage?) -> UIImage? {
-        if let image = cache.object(forKey: key as NSString) { return image }
-        guard let image = make() else { return nil }
-        cache.setObject(image, forKey: key as NSString)
-        return image
     }
 }
 #endif

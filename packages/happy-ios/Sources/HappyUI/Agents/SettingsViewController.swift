@@ -363,9 +363,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         guard let id, let session = Session.session(for: id, context: context) else { return }
         let source = session.profile
         profileWatch = (id, source.watch { [weak self, weak source] in
-            guard let self, let source, profileName != source.state.name || profilePhoto !== source.photo else { return }
+            let photo = source?.photo ?? source?.placeholder
+            guard let self, let source, profileName != source.state.name || profilePhoto !== photo else { return }
             profileName = source.state.name
-            profilePhoto = source.photo
+            profilePhoto = photo
             rebuild(animated: false)
         })
         source.refresh()
@@ -376,7 +377,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     /// Every account and agent connection this phone has, in one card, the
     /// active one ticked, with Connect Agent under them. Tapping one makes
     /// it the active one, as its circle used to; there is no selector, no
-    /// selector and no second Add anywhere on the page.
+    /// selector and no second Add anywhere on the page. Every kind is one
+    /// row: its picture (or the placeholder its ID picks) round, its name,
+    /// and the tick, as the switcher's menu draws them. No row has a line
+    /// of its own; the chosen one's is under its name at the top.
     private func accountRows() -> [SettingsRow] {
         typealias Row = SettingsRow
         // A signed-in Happy account and an open agent connection both
@@ -389,11 +393,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             Row(
                 id: "account:\(profile.id)",
                 title: profile.name,
-                icon: (profile.isAgentConnection ? "desktop-outline" : "person-circle-outline", profile.isAgentConnection ? .blue : .gray),
+                avatar: true,
                 image: images[profile.id],
-                // An account with no username is named "Happy account" and
-                // its line says the same: the row would say it twice.
-                value: profile.id == active ? "✓" : (profile.subtitle == profile.name ? nil : profile.subtitle),
+                value: profile.id == active ? "✓" : nil,
                 accessory: .none,
                 action: { [weak self] in self?.choose(index, closing: true) }
             )
@@ -510,7 +512,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func searchRows(_ query: String) -> [SettingsRow] {
         var found: [SettingsRow] = []
         for (index, profile) in profiles.enumerated() where profile.name.localizedCaseInsensitiveContains(query) {
-            found.append(SettingsRow(id: "profile:\(profile.id)", title: profile.name, icon: (profile.isAgentConnection ? "desktop-outline" : "person-outline", .blue), value: profile.kind, action: { [weak self] in
+            found.append(SettingsRow(id: "profile:\(profile.id)", title: profile.name, avatar: true, image: images[profile.id], value: profile.kind, action: { [weak self] in
                 self?.endSearch()
                 self?.choose(index)
             }))
@@ -578,7 +580,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         // Under the bar, whose row is in the safe area: the cards scroll under it.
         scroll.frame = view.bounds
         let specs = rows.map { card in
-            card.map { SettingsLayout.RowSpec(hasIcon: $0.icon != nil, valueWidth: SettingsCardView.valueWidth($0.value), accessory: $0.accessory) }
+            card.map { SettingsLayout.RowSpec(hasIcon: $0.hasIcon, valueWidth: SettingsCardView.valueWidth($0.value), accessory: $0.accessory) }
         }
         let picture = shown?.isAgentConnection == true ? agentButton.intrinsicContentSize.width : nil
         let layout = SettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, searching: searching, showsStrip: false, picture: picture)

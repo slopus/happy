@@ -270,6 +270,17 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
     }
 
 
+    /// The placeholder `seed` picks if it is decoded, else an empty circle
+    /// while it is decoded off the main thread.
+    private func avatarPlaceholder(_ seed: String, monochrome: Bool) -> UIImage {
+        let side = ItemRowLayout.Metrics.iconSize
+        if let image = AvatarPlaceholderImages.cached(seed: seed, side: side, monochrome: monochrome) { return image }
+        rebuildWhenLoaded("placeholder \(seed) \(monochrome)") {
+            await AvatarPlaceholderImages.image(seed: seed, side: side, monochrome: monochrome) != nil
+        }
+        return AvatarPlaceholderImages.pending(side: side)
+    }
+
     /// Runs `load` once at a time per key, and rebuilds the page if it
     /// left something to draw.
     private func rebuildWhenLoaded(_ key: String, _ load: @escaping @MainActor () async -> Bool) {
@@ -299,8 +310,8 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
             if let url = entry.avatarURL, let picture = image(url, of: entry.id) ?? ThumbHashImages.image(entry.avatarThumbhash) {
                 icon = ItemIcon(.image(picture), round: true)
             } else {
-                let content = AvatarView.Content(avatar: SessionAvatar(seed: entry.id), style: settings.avatarStyle, monochrome: settings.avatarMonochrome)
-                icon = ItemIcon(.image(AvatarSnapshot.image(content, size: ItemRowLayout.Metrics.iconSize, traits: traitCollection)))
+                // Without one, the placeholder its ID picks, as everywhere.
+                icon = ItemIcon(.image(avatarPlaceholder(entry.id, monochrome: settings.avatarMonochrome)), round: true)
             }
             let row = ItemRowView(title: entry.title, subtitle: entry.subtitle, icon: icon)
             if !entry.isActive {

@@ -81,6 +81,10 @@ public struct Row: Equatable, Sendable, Identifiable {
         case clay(String)
         /// A picture read from the daemon, drawn as a rounded square.
         case image(path: String, thumbhash: String?)
+        /// A bot, task or agent with no picture or icon of its own: the
+        /// placeholder its ID picks (`AvatarPlaceholder`), drawn as a
+        /// picture is.
+        case placeholder(seed: String)
         /// A plain glyph: "search", "compose", "tasks", "agents", "doc",
         /// "calendar", "pulse" or "users".
         case glyph(String)
@@ -297,7 +301,7 @@ public enum Rows {
             guard row.kind == .space || row.kind == .session else { return row }
             row.collapsed = nil
             row.hasHiddenSessions = false
-            if row.mark == .none { row.mark = .glyph(row.kind == .session ? "agents" : "tasks") }
+            if row.mark == .none { row.mark = .placeholder(seed: row.targetId ?? row.agentId ?? row.id) }
             // A session row shows no ring; its stories roll up into its task's.
             let ring = row.kind == .space ? row.agentId.flatMap { rings[$0] } : nil
             row.story = Row.StoryRowState(segments: ring?.storyIds.count ?? 0, unseen: min(ring?.unseenCount ?? 0, ring?.storyIds.count ?? 0))
@@ -412,7 +416,9 @@ public enum Rows {
 
     /// `happyAgentSpaceMark`: Happy's logo; the seedling while the work takes
     /// shape; the chosen clay icon or picture; a face; then the seedling for
-    /// unnamed work or the plain glyph of what it is.
+    /// unnamed work. Past that a bot, task or agent wears its placeholder
+    /// where desktop draws the plain glyph of what it is; a Surface keeps
+    /// its glyph.
     static func mark(_ space: AgentWire.Space, places: Places) -> Row.Mark {
         if places.isHappy(space) { return .happy }
         switch space.icon {
@@ -429,7 +435,7 @@ public enum Rows {
         if space.title == nil { return .seedling(seed: space.id) }
         switch space.target.kind {
         case "surface": return .glyph(surfaceGlyph(places.surface(space.target.id)?.type))
-        case "task": return .glyph("tasks")
+        case "task", "bot", "agent": return .placeholder(seed: space.target.id)
         default: return .glyph("agents")
         }
     }

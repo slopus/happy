@@ -9,8 +9,10 @@ public struct StoriesRowItem: Equatable, Sendable, Identifiable {
     /// A daemon-relative path, read with the same bearer token.
     public var photo: String?
     public var thumbhash: String?
-    /// Drawn without a photo.
+    /// The author's initials.
     public var initials: String
+    /// What the placeholder drawn without a photo is picked by.
+    public var placeholderSeed: String
     /// One ring segment per story, the unseen ones last and coloured.
     public var segments: Int
     public var unseen: Int
@@ -39,7 +41,7 @@ public enum StoriesRow {
     static func item(_ author: StoryFeedAuthor, myStory: String) -> StoriesRowItem {
         StoriesRowItem(
             id: author.key, title: author.isSelf ? myStory : firstName(author.name), isSelf: author.isSelf,
-            photo: author.photo, thumbhash: author.thumbhash, initials: initials(author.name),
+            photo: author.photo, thumbhash: author.thumbhash, initials: initials(author.name), placeholderSeed: author.placeholderSeed,
             segments: author.storyIds.count, unseen: author.isSelf ? 0 : min(author.unseenCount, author.storyIds.count)
         )
     }

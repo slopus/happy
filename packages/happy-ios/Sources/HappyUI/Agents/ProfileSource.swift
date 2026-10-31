@@ -15,6 +15,12 @@ import UIKit
 final class ProfileSource {
     private let client: AgentClient
     private let engine: SyncEngine
+    /// What the person's placeholder picture is picked by, while they have
+    /// no picture of their own.
+    let placeholderSeed: String
+    /// That placeholder, decoded once someone watches.
+    private(set) var placeholder: UIImage?
+    private var placeholderJob: Task<Void, Never>?
     private(set) var state = ProfileState()
     /// The picture to show: one picked here, the computer's, or its
     /// ThumbHash until the bytes come.
@@ -30,9 +36,10 @@ final class ProfileSource {
     private var reading: Task<Void, Never>?
     private var readAgain = false
 
-    init(client: AgentClient, engine: SyncEngine) {
+    init(client: AgentClient, engine: SyncEngine, placeholderSeed: String) {
         self.client = client
         self.engine = engine
+        self.placeholderSeed = placeholderSeed
     }
 
     /// Calls `watch` now and whenever what shows changes. The computer's
@@ -41,11 +48,22 @@ final class ProfileSource {
         let id = UUID()
         watchers[id] = watch
         if following == nil { follow() }
+        if placeholder == nil, placeholderJob == nil { loadPlaceholder() }
         watch()
         return Watch { [weak self] in
             guard let self else { return }
             watchers.removeValue(forKey: id)
             if watchers.isEmpty { following?.cancel(); following = nil }
+        }
+    }
+
+    private func loadPlaceholder() {
+        let seed = placeholderSeed
+        placeholderJob = Task { [weak self] in
+            let image = await AvatarPlaceholderImages.image(seed: seed, side: ProfileLayout.Metrics.avatar)
+            guard let self else { return }
+            placeholder = image
+            publish()
         }
     }
 

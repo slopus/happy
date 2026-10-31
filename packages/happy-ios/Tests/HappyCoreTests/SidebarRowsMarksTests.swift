@@ -4,8 +4,9 @@ import XCTest
 import HappyWire
 
 /// What the classic list's rows wear, as desktop's sidebar draws them: a
-/// bot or a task its glyph, a subtask or a project's session nothing, a
-/// cloned repo its picture and any other project or worktree nothing.
+/// bot or a task without a picture its placeholder (where desktop draws
+/// its glyph), a subtask or a project's session nothing, a cloned repo its
+/// picture and any other project or worktree nothing.
 final class SidebarRowsMarksTests: XCTestCase {
     private static let fixture = #"""
     {"cursor":"c1","profile":{"userId":null},"userSettings":[],
@@ -28,10 +29,10 @@ final class SidebarRowsMarksTests: XCTestCase {
         return Dictionary(SidebarRows.make(desktop, settings: [:]).map { ($0.label, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
-    func testOnlyTopLevelRowsWearAGlyph() throws {
+    func testOnlyTopLevelRowsWearAMark() throws {
         let rows = try rows()
-        XCTAssertEqual(rows["Research"]?.mark, .glyph("agents"))
-        XCTAssertEqual(rows["One"]?.mark, .glyph("tasks"))
+        XCTAssertEqual(rows["Research"]?.mark, .placeholder(seed: "research"))
+        XCTAssertEqual(rows["One"]?.mark, .placeholder(seed: "t1"))
         XCTAssertEqual(rows["Artifacts"]?.mark, .glyph("doc"))
         XCTAssertEqual(rows["Sub"]?.mark, Row.Mark.none)
         XCTAssertEqual(rows["Root chat"]?.mark, Row.Mark.none)

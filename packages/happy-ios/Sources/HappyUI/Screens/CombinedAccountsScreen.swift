@@ -28,7 +28,8 @@ final class CombinedAccountsViewController: UIViewController {
         var rows: [UIView] = []
         for account in context.account.accounts {
             loadImage(account)
-            let icon = images[account.id].map { ItemIcon(.image($0), round: true) } ?? ItemIcon(.ionicons(account.isAgentConnection ? "desktop-outline" : "person-circle-outline"), tint: Palette.iconBlue)
+            // Every kind alike: its picture or placeholder (`ProfilePictures`).
+            let icon = ItemIcon(.image(images[account.id] ?? AvatarPlaceholderImages.pending(side: ItemRowLayout.Metrics.iconSize)), round: true)
             let status = account.connectionStatus ?? (account.isActive ? "Active" : "Signed in")
             let row = ItemRowView(title: account.shownName, subtitle: "\(account.isAgentConnection ? "Agent" : account.serverURL.host ?? "Happy") · \(status)", icon: icon) { [weak self] in
                 self?.select(account)
@@ -77,18 +78,15 @@ final class CombinedAccountsViewController: UIViewController {
         catch { Alerts.show("Could not remove account", error.localizedDescription, on: self) }
     }
     private func loadImage(_ account: AccountSummary) {
-        let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
-        let key = direct.map { "\($0.avatarETag ?? ""):\($0.avatar?.count ?? 0)" } ?? account.avatarURL?.absoluteString ?? account.avatarThumbhash ?? ""
+        let key = ProfilePictures.key(account, context: context)
         guard imageKeys[account.id] != key else { return }
         imageKeys[account.id] = key; jobs[account.id]?.cancel()
-        // Its thumbhash at once, the picture when it comes.
+        // Its thumbhash at once; its picture, or the placeholder its ID
+        // picks, when that is decoded.
         let placeholder = ProfilePictures.placeholder(account, context: context)
         if let placeholder { images[account.id] = placeholder }
-        let pictures = context.account.pictures(for: account.id)
-        jobs[account.id] = Task { [weak self] in
-            var image: UIImage?
-            if let bytes = direct?.avatar { image = await Task.detached { AccountPictureImages.decode(bytes)?.picture as? UIImage }.value }
-            else if let url = account.avatarURL { image = await pictures?.image(url) }
+        jobs[account.id] = Task { [weak self, context] in
+            let image = await ProfilePictures.load(account, context: context)
             guard !Task.isCancelled, let self, imageKeys[account.id] == key else { return }
             images[account.id] = image ?? placeholder; update()
         }

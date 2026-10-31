@@ -311,7 +311,7 @@ final class StoriesViewerCell: UITableViewCell {
     private static let titleFont = UIFont.systemFont(ofSize: StoryViewersRowLayout.Metrics.titleSize, weight: .semibold)
     private static let subtitleFont = UIFont.systemFont(ofSize: StoryViewersRowLayout.Metrics.subtitleSize)
     private let avatar = UIImageView()
-    private let initials = UILabel()
+    private let placeholder = AvatarPlaceholderSlot()
     private let name = UILabel()
     private let time = UILabel()
     private let reaction = UILabel()
@@ -330,12 +330,6 @@ final class StoriesViewerCell: UITableViewCell {
         avatar.layer.cornerRadius = StoryViewersRowLayout.Metrics.avatar / 2
         avatar.contentMode = .scaleAspectFill
         avatar.backgroundColor = UIColor(Palette.storiesAvatarFill)
-        initials.font = .systemFont(ofSize: 16, weight: .semibold)
-        initials.textColor = UIColor(Palette.storiesAvatarText)
-        initials.textAlignment = .center
-        // The name says who it is; the initials would only repeat it.
-        initials.isAccessibilityElement = false
-        avatar.addSubview(initials)
         name.font = Self.titleFont
         name.textColor = UIColor(Palette.storiesViewerText)
         time.font = Self.subtitleFont
@@ -353,39 +347,43 @@ final class StoriesViewerCell: UITableViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         loading?.cancel()
+        placeholder.cancel()
         key = nil
         avatar.image = nil
-        initials.isHidden = false
     }
 
     func configure(_ viewer: StoryViewer, last: Bool, images: Images) {
         name.text = viewer.name
         time.text = viewer.reactedAt.map { Strings.Stories.when($0, now: Int64(Date().timeIntervalSince1970 * 1000)) }
         reaction.text = viewer.reaction
-        initials.text = StoriesRow.initials(viewer.name)
         separator.isHidden = last
         self.viewer = viewer
         accessibilityIdentifier = "story-viewer:\(viewer.name)"
         setNeedsLayout()
-        let key = viewer.photo.map { "\($0)#\(viewer.thumbhash ?? "")" }
+        let key = viewer.photo.map { "\($0)#\(viewer.thumbhash ?? "")" } ?? "placeholder:\(viewer.userId)"
         guard key != self.key else { return }
         self.key = key
         loading?.cancel()
+        placeholder.cancel()
         avatar.image = nil
-        initials.isHidden = false
-        guard let path = viewer.photo else { return }
+        // Without a photo, the placeholder the viewer's ID picks; with one,
+        // its thumbhash until it comes.
+        let showPlaceholder = { [weak self] in
+            self?.placeholder.show(seed: viewer.userId, side: StoryViewersRowLayout.Metrics.avatar) { self?.avatar.image = $0 }
+        }
+        guard let path = viewer.photo else {
+            showPlaceholder()
+            return
+        }
         if let cached = images.cachedPicture(path, thumbhash: viewer.thumbhash, pixels: 120) {
             avatar.image = cached
-            initials.isHidden = true
             return
         }
         avatar.image = ThumbHashImages.image(viewer.thumbhash)
-        initials.isHidden = avatar.image != nil
         loading = Task { [weak self] in
             let image = await images.picture(path, thumbhash: viewer.thumbhash, pixels: 120)
-            guard let self, !Task.isCancelled, self.key == key, let image else { return }
-            ImageFade.show(image, in: avatar, fade: true)
-            initials.isHidden = true
+            guard let self, !Task.isCancelled, self.key == key else { return }
+            if let image { ImageFade.show(image, in: avatar, fade: true) } else if avatar.image == nil { showPlaceholder() }
         }
     }
 
@@ -395,7 +393,6 @@ final class StoriesViewerCell: UITableViewCell {
         let bounds = contentView.bounds
         let row = Self.layout(viewer, width: bounds.width)
         avatar.frame = row.avatar
-        initials.frame = avatar.bounds
         name.frame = row.title
         time.frame = row.subtitle ?? .zero
         time.isHidden = row.subtitle == nil
