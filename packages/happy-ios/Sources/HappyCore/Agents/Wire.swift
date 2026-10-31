@@ -126,6 +126,12 @@ extension AgentWire {
             public var stickers: Bool?
             /// Agents' stories, their rings and status lines.
             public var agentStories: Bool?
+            /// Protocol 34 (API.md "Rich tasks"): task icons, hidden memberships,
+            /// sections and children; story artifacts; inline actions; chat onboarding.
+            public var taskSections: Bool?
+            public var storyArtifacts: Bool?
+            public var chatActions: Bool?
+            public var chatOnboarding: Bool?
         }
         public var ready: Bool
         public var capabilities: Capabilities?
@@ -134,6 +140,8 @@ extension AgentWire {
     public struct AgentUnread: Equatable, Sendable, Codable {
         public var reason: String?
         public var since: Double?
+        /// The people whose messages arrived since, newest first (protocol 34).
+        @LenientList public var from: [String]?
     }
 
     public struct AgentWait: Equatable, Sendable, Codable {

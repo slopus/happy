@@ -49,6 +49,9 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
         public var status: String
         public var orderKey: String
         public var agents: [AgentWire.Agent]
+        /// The agent that made it, and the subtask living in it: what puts it under a task.
+        @Lenient public var creatorAgentId: String?
+        @Lenient public var subtaskAgentId: String?
     }
     public struct Owner: Codable, Equatable, Sendable {
         public var id: String
@@ -58,9 +61,15 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
         public var agent: AgentWire.Agent?
         public var avatar: AgentWire.Avatar?
         public var canArchive: Bool?
+        /// A task's picture and the choices about what shows under it (protocol 34).
+        @Lenient public var icon: TaskIcon?
+        @LenientList public var children: [TaskChild]?
     }
     public struct Membership: Codable, Equatable, Sendable {
         public var taskId: String
+        /// The person's place for it, one key with the section headers' (protocol 34).
+        @Lenient public var orderKey: String?
+        @Lenient public var hidden: Bool?
     }
     public struct Profile: Codable, Equatable, Sendable { public var userId: String? }
     public struct Surface: Codable, Equatable, Sendable {
@@ -80,6 +89,10 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
     public var bots: [Owner]?
     public var tasks: [Owner]?
     public var taskMemberships: [Membership]?
+    /// The person's section headers, from `GET /v0/tasks` when the bootstrap lacks them,
+    /// and what the tasks' agents made.
+    @LenientList public var taskSections: [TaskSection]?
+    @LenientList public var taskArtifacts: [TaskArtifact]?
     public var surfaces: [Surface]?
     public var profile: Profile?
     public var userSettings: [UserSetting]?

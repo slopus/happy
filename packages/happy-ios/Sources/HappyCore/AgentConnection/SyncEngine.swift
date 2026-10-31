@@ -10,6 +10,8 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var rows: [Row] = []
     public var allRows: [Row] = []
     public var settings: [String: JSONValue] = [:]
+    /// The tasks as rich cards, for the tasks part of `rows`; nil shows the classic rows.
+    public var richTasks: RichTasks?
     public var error: String?
     public init() {}
 }
@@ -25,6 +27,12 @@ public actor SyncEngine {
     private let url: URL?
     private var storage: SyncStorage?
     private var desktop: DesktopSnapshot?
+    /// What the daemon serves: as last kept until this connection's health
+    /// answers (`checked`), and none once a read finds it unanswered.
+    private var capabilities: AgentWire.Health.Capabilities?
+    private var checked = false
+    private var capabilityRead: Task<Void, Never>?
+    private var keptCapabilities: AgentWire.Health.Capabilities?
     private var snapshot = HomeSnapshot()
     private var listeners: [UUID: AsyncStream<HomeSnapshot>.Continuation] = [:]
     private var runner: Task<Void, Never>?
@@ -101,8 +109,8 @@ public actor SyncEngine {
         generation += 1
         verified = false
         let pausedGeneration = generation
-        let tasks = [runner, refresh, delivery, messageDelivery].compactMap { $0 }
-        runner = nil; refresh = nil; delivery = nil; messageDelivery = nil
+        let tasks = [runner, refresh, delivery, messageDelivery, capabilityRead].compactMap { $0 }
+        runner = nil; refresh = nil; delivery = nil; messageDelivery = nil; capabilityRead = nil
         tasks.forEach { $0.cancel() }
         for task in tasks { await task.value }
         guard generation == pausedGeneration else { return }
@@ -139,6 +147,10 @@ public actor SyncEngine {
                 desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(cached.value))
                 cursor = cached.cursor
             }
+            if capabilities == nil, let cached = try await database.checkpoint("capabilities") {
+                capabilities = try? JSONDecoder().decode(AgentWire.Health.Capabilities.self, from: JSONEncoder().encode(cached.value))
+                keptCapabilities = capabilities
+            }
             snapshot.settings = try await database.settings()
             guard current(generation) else { return }
             derive()
@@ -154,6 +166,9 @@ public actor SyncEngine {
                 sidebarSyncing = false
                 snapshot.syncing = true
                 publish()
+                checked = false
+                capabilityRead?.cancel()
+                capabilityRead = Task { await self.readCapabilities(generation) }
                 try await reconcile(generation)
                 beginDelivery(generation)
                 beginMessageDelivery(generation)
@@ -189,6 +204,8 @@ public actor SyncEngine {
                     if let type = event["type"]?.stringValue,
                        ["project.", "workspace.", "bot.", "task.", "agent.", "surface.", "user_settings."].contains(where: type.hasPrefix),
                        type != "agent.draft.updated" { scheduleReconcile(generation) }
+                    // Cards list what their agents made (`taskArtifacts`); the classic list doesn't.
+                    if snapshot.richTasks != nil, event["type"]?.stringValue?.hasPrefix("artifact.") == true { scheduleReconcile(generation) }
                 }
             } catch AgentClientError.revoked {
                 snapshot.live = false; snapshot.error = "This device was disconnected. Pair it again."
@@ -207,6 +224,25 @@ public actor SyncEngine {
     }
 
     private func current(_ generation: Int) -> Bool { !stopped && !Task.isCancelled && self.generation == generation }
+
+    /// Asked once a connection beside the bootstrap, so a daemon updated or
+    /// rolled back in between is met as it is now; the classic list never waits for it.
+    private func readCapabilities(_ generation: Int) async {
+        guard let health = try? await client.health(), current(generation) else { return }
+        capabilities = health.capabilities ?? .init()
+        checked = true
+        await keepCapabilities()
+        derive()
+        if desktop?.taskSections == nil, RichTasks.showsSections(capabilities, settings: snapshot.settings) { scheduleReconcile(generation) }
+    }
+
+    /// Kept for the next offline start once this connection both answered and proved its owner.
+    private func keepCapabilities() async {
+        guard checked, verified, let capabilities, capabilities != keptCapabilities,
+              let value = try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(capabilities)) else { return }
+        keptCapabilities = capabilities
+        try? await database().commit(.init(value: value, cursor: nil), named: "capabilities")
+    }
 
     private func resyncSidebar(_ generation: Int) async throws {
         sidebarSyncing = true
@@ -252,8 +288,8 @@ public actor SyncEngine {
         let revision = revision
         let database = try database()
         let settingRevision = await database.confirmedSettingsRevision()
-        let value = try await client.decode(JSONValue.self, "GET", "/v0/bootstrap/desktop")
-        let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(value))
+        var value = try await client.decode(JSONValue.self, "GET", "/v0/bootstrap/desktop")
+        var desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(value))
         guard current(generation) else { throw CancellationError() }
         // A device token is paired to one owner. A replacement daemon must
         // never receive the previous owner's pending writes or cached state.
@@ -262,7 +298,9 @@ public actor SyncEngine {
             if let bound, bound != owner {
                 let message = "This connection belongs to a different person. Pair it again."
                 stopped = true; verified = false; self.generation += 1
-                [runner, refresh, delivery, messageDelivery].forEach { $0?.cancel() }
+                [runner, refresh, delivery, messageDelivery, capabilityRead].forEach { $0?.cancel() }
+                capabilities = nil
+                try? await database.commit(.init(value: .null, cursor: nil), named: "capabilities")
                 snapshot.live = false; snapshot.error = message; publish()
                 await client.close()
                 throw AgentClientError.status(409, code: "account_identity_changed", message: message)
@@ -270,6 +308,21 @@ public actor SyncEngine {
             if bound == nil { try await database.commit(.init(value: owner, cursor: nil), named: "owner") }
         } else if desktop.userSettings != nil {
             throw AgentClientError.invalidResponse
+        }
+        // Rich tasks follow this connection's health: someone who had them on
+        // waits for it, and an unanswered one means none.
+        let settings = (desktop.userSettings ?? []).reduce(into: snapshot.settings) { $0[$1.key] = $1.value }
+        if !checked, RichTasks.isOn(capabilities, settings: settings) { await capabilityRead?.value }
+        if !checked { capabilities = nil }
+        // Section headers come with the task list; kept in this checkpoint as
+        // if the bootstrap held them, the last ones read when it can't be.
+        if desktop.taskSections == nil, checked, RichTasks.showsSections(capabilities, settings: settings), var object = value.objectValue {
+            let read = (try? await client.decode(JSONValue.self, "GET", "/v0/tasks?scope=joined"))?["sections"].flatMap { $0.arrayValue != nil ? $0 : nil }
+            if let sections = read ?? self.desktop?.taskSections.flatMap({ try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode($0)) }) {
+                object["taskSections"] = sections; value = .object(object)
+                desktop.taskSections = try? JSONDecoder().decode(LenientList<TaskSection>.self, from: JSONEncoder().encode(sections)).wrappedValue
+            }
+            guard current(generation) else { throw CancellationError() }
         }
         // An event during the read may be newer than part of this composed
         // snapshot. The coalesced next read owns that invalidation.
@@ -280,6 +333,7 @@ public actor SyncEngine {
         verified = true
         cursor = desktop.cursor
         snapshot.settings = try await database.settings()
+        await keepCapabilities()
         derive()
     }
 
@@ -360,6 +414,7 @@ public actor SyncEngine {
         if let desktop {
             snapshot.allRows = SidebarRows.make(desktop, settings: snapshot.settings)
             snapshot.rows = Rows.visible(snapshot.allRows)
+            snapshot.richTasks = RichTasks.make(desktop, capabilities: capabilities, settings: snapshot.settings)
         }
         publish()
     }
