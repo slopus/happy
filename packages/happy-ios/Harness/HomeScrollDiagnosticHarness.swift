@@ -29,6 +29,7 @@ final class HomeScrollDiagnosticHarness: NSObject {
         mode = argument("-diagnosticMode", fallback: "none")
         phase = argument("-diagnosticPhase", fallback: "drag")
         super.init()
+        list.style = argument("-diagnosticStyle", fallback: "plain") == "grouped" ? .grouped : .plain
         let controller = UIViewController()
         controller.view.backgroundColor = UIColor(Palette.surface)
         controller.view.addSubview(list)
@@ -103,6 +104,11 @@ final class HomeScrollDiagnosticHarness: NSObject {
         let offset = list.contentOffset.y
         let anchor = list.visibleRows.first?.id
         switch mode {
+        case "statusOnly", "titleOnly":
+            if let anchor, let index = rows.firstIndex(where: { $0.id == anchor }) {
+                if mode == "statusOnly" { rows[index].status = .working }
+                else { rows[index].label += " updated" }
+            }
         case "statusSingle", "foldSingle":
             if let anchor, let index = rows.firstIndex(where: { $0.id == anchor }) {
                 rows[index].status = .working
@@ -124,9 +130,15 @@ final class HomeScrollDiagnosticHarness: NSObject {
                 let row = rows.remove(at: index)
                 rows.insert(row, at: min(index + 8, rows.count))
             }
+        case "swapAnchor":
+            if let anchor, let index = rows.firstIndex(where: { $0.id == anchor }), rows.indices.contains(index + 1) {
+                rows.swapAt(index, index + 1)
+            }
         default: break
         }
+        let applyStarted = CACurrentMediaTime()
         list.apply(rows)
+        let configuredAt = CACurrentMediaTime()
         list.layoutIfNeeded()
         let appliedAt = CACurrentMediaTime()
         let after = visible(presentation: false)
@@ -134,6 +146,7 @@ final class HomeScrollDiagnosticHarness: NSObject {
         events.append([
             "time": CACurrentMediaTime(), "mode": mode, "phase": phase,
             "started": started, "applyDurationMs": (appliedAt - started) * 1000,
+            "configureMs": (configuredAt - applyStarted) * 1000, "layoutMs": (appliedAt - configuredAt) * 1000,
             "anchor": anchor ?? "", "offsetBefore": offset, "offsetAfter": list.contentOffset.y,
             "medianVisibleJump": jumps.isEmpty ? 0 : jumps[jumps.count / 2],
             "dragging": list.isDragging, "decelerating": list.isDecelerating,
@@ -141,7 +154,7 @@ final class HomeScrollDiagnosticHarness: NSObject {
     }
 
     private func json() -> String {
-        let data = try? JSONSerialization.data(withJSONObject: ["mode": mode, "phase": phase, "frames": frames, "events": events,
+        let data = try? JSONSerialization.data(withJSONObject: ["mode": mode, "phase": phase, "style": list.style == .grouped ? "grouped" : "plain", "frames": frames, "events": events,
             "contentSizeCategory": list.traitCollection.preferredContentSizeCategory.rawValue,
             "labelSize": Metrics.labelSize, "sectionLabelSize": Metrics.sectionLabelSize])
         return data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"

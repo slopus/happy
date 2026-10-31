@@ -6,10 +6,16 @@ final class HomeScrollDiagnosticUITests: XCTestCase {
 
     func testHeldFingerUpdateMatrix() throws { try run(phase: "drag") }
     func testDecelerationUpdateMatrix() throws { try run(phase: "momentum") }
+    func testGroupedHeldFingerUpdateMatrix() throws {
+        try run(phase: "drag", modes: ["none", "statusOnly", "titleOnly", "statusSingle", "status", "resizeAbove", "insertAbove", "deleteAbove", "deleteAnchor", "reorderAnchor", "swapAnchor"], style: "grouped")
+    }
+    func testGroupedDecelerationUpdateMatrix() throws {
+        try run(phase: "momentum", modes: ["none", "statusOnly", "titleOnly", "statusSingle", "status", "resizeAbove", "insertAbove", "deleteAbove", "deleteAnchor", "reorderAnchor", "swapAnchor"], style: "grouped")
+    }
     func testUpdateDuringFoldAnimation() throws { try run(phase: "fold") }
     func testSingleRowStatusDuringScrolling() throws {
-        try run(phase: "drag", modes: ["none", "statusSingle", "status"])
-        try run(phase: "momentum", modes: ["none", "statusSingle", "status"])
+        try run(phase: "drag", modes: ["none", "statusOnly", "titleOnly", "statusSingle", "status"])
+        try run(phase: "momentum", modes: ["none", "statusOnly", "titleOnly", "statusSingle", "status"])
     }
     func testSingleRowStatusDuringFoldAnimation() throws {
         try run(phase: "fold", modes: ["foldControl", "foldSingle", "foldOverlap"])
@@ -37,11 +43,11 @@ final class HomeScrollDiagnosticUITests: XCTestCase {
         app.terminate()
     }
 
-    private func run(phase: String, modes requestedModes: [String]? = nil) throws {
-        let modes = requestedModes ?? (phase == "fold" ? ["foldControl", "foldOverlap"] : ["none", "status", "resizeAbove", "insertAbove", "deleteAbove", "deleteAnchor", "reorderAnchor"])
+    private func run(phase: String, modes requestedModes: [String]? = nil, style: String = "plain") throws {
+        let modes = requestedModes ?? (phase == "fold" ? ["foldControl", "foldOverlap"] : ["none", "status", "resizeAbove", "insertAbove", "deleteAbove", "deleteAnchor", "reorderAnchor", "swapAnchor"])
         for mode in modes {
             let app = XCUIApplication()
-            app.launchArguments = ["-homeScrollDiagnostic", "-diagnosticMode", mode, "-diagnosticPhase", phase]
+            app.launchArguments = ["-homeScrollDiagnostic", "-diagnosticMode", mode, "-diagnosticPhase", phase, "-diagnosticStyle", style]
             app.launch()
             let list = app.scrollViews["home-diagnostic-list"]
             XCTAssertTrue(list.waitForExistence(timeout: 20))
@@ -60,10 +66,21 @@ final class HomeScrollDiagnosticUITests: XCTestCase {
             let events = try XCTUnwrap(result["events"] as? [[String: Any]])
             XCTAssertEqual(events.count, 1, "\(mode): the intended gesture phase was not observed")
             let trace = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
-            trace.name = "home-diagnostic-\(phase)-\(mode)"; trace.lifetime = .keepAlways; add(trace)
+            trace.name = "home-diagnostic-\(style)-\(phase)-\(mode)"; trace.lifetime = .keepAlways; add(trace)
             let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             shot.name = "home-diagnostic-\(phase)-\(mode)"; shot.lifetime = .keepAlways; add(shot)
-            print("HOME_DIAGNOSTIC \(phase) \(mode) \(events)")
+            print("HOME_DIAGNOSTIC \(style) \(phase) \(mode) \(events)")
+            let event = try XCTUnwrap(events.first)
+            let jump = try XCTUnwrap(event["medianVisibleJump"] as? Double)
+            XCTAssertEqual(jump, 0, accuracy: 0.5, "\(phase) \(mode): the update displaced the surviving visible rows")
+            if ["none", "statusOnly", "titleOnly", "statusSingle", "status", "foldControl", "foldSingle", "foldOverlap"].contains(mode) {
+                XCTAssertEqual(try XCTUnwrap(event["offsetBefore"] as? Double), try XCTUnwrap(event["offsetAfter"] as? Double), "\(phase) \(mode): unchanged row geometry must not change the scroll offset")
+            }
+            if phase == "drag" {
+                XCTAssertEqual(event["dragging"] as? Bool, true, "\(mode): update must run during the drag")
+            } else if phase == "momentum" {
+                XCTAssertEqual(event["decelerating"] as? Bool, true, "\(mode): update must run during deceleration")
+            }
             app.terminate()
         }
     }

@@ -374,12 +374,18 @@ final class SidebarView: UIScrollView {
     /// Lays `shown` out and moves each row to its place, gliding when asked.
     private func place(_ shown: [Row], animated: Bool) {
         let input = layoutRows(shown)
+        let result = layout(input)
+        // A working indicator can change a row's internal frames without
+        // changing any row's size or position. Such updates must never touch
+        // the scroll offset, including while UIKit is dragging or bouncing.
+        let samePlacement = placed == shown.map(\.id)
+            && layoutResult?.contentHeight == result.contentHeight
+            && layoutResult?.frames.map(\.box) == result.frames.map(\.box)
         // Where the reader is, before the new places are known.
-        let anchor = anchor()
+        let anchor = samePlacement ? nil : anchor(in: shown, nextFrames: result.frames)
         let offset = contentOffset.y
         let oldBottom = max(-contentInset.top, contentSize.height + contentInset.bottom - bounds.height)
         let overscroll = max(0, offset - oldBottom)
-        let result = layout(input)
         layoutResult = result
         laidOut = (bounds.width, input)
         placedWidth = bounds.width
@@ -388,7 +394,7 @@ final class SidebarView: UIScrollView {
         let move = {
             for (key, frame) in cardFrames { self.cards[key]?.frame = frame }
             for (row, frame) in zip(shown, result.frames) {
-                guard let view = self.views[row.id] else { continue }
+                guard let view = self.views[row.id], view.frames != frame else { continue }
                 view.bounds = CGRect(origin: .zero, size: frame.box.size)
                 view.center = CGPoint(x: frame.box.midX, y: frame.box.midY)
                 view.frames = frame
@@ -408,7 +414,7 @@ final class SidebarView: UIScrollView {
         CATransaction.commit()
         let size = CGSize(width: bounds.width, height: result.contentHeight)
         if contentSize != size { contentSize = size }
-        keep(anchor, in: shown, result, offset: offset, overscroll: overscroll)
+        if !samePlacement { keep(anchor, in: shown, result, offset: offset, overscroll: overscroll) }
     }
 
     /// The cards `result` draws, by what heads each: a card that is new
@@ -493,14 +499,15 @@ final class SidebarView: UIScrollView {
         leaving = [:]
     }
 
-    /// The first row on screen and where it sits in the content: what the
-    /// reader is looking at. Nil at the very top, where new rows are meant
+    /// An unchanged row on screen and where it sits in the content:
+    /// deleting or moving the old first row must not drag its neighbors with
+    /// it. Nil at the very top, where new rows are meant
     /// to be seen arriving, or before a layout.
-    private func anchor() -> (id: String, y: CGFloat)? {
+    private func anchor(in shown: [Row], nextFrames: [SidebarLayout.Frame]) -> (id: String, y: CGFloat)? {
         guard scrolls, let frames = layoutResult?.frames, frames.count == placed.count else { return nil }
         guard contentOffset.y > -contentInset.top + 0.5 else { return nil }
         let window = bounds.inset(by: contentInset)
-        guard let index = frames.firstIndex(where: { $0.box.intersects(window) }) else { return nil }
+        guard let index = SidebarScrollAnchor.index(previous: placed, next: shown.map(\.id), boxes: frames.map(\.box), nextBoxes: nextFrames.map(\.box), viewport: window) else { return nil }
         return (placed[index], frames[index].box.minY)
     }
 

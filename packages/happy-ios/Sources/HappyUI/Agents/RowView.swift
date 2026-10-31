@@ -141,7 +141,9 @@ final class RowView: UIView {
             applyMark(row.mark)
             if case .seedling(let seed) = previous?.mark, case .clay(let slug) = row.mark, let image = ClayIconImages.image(slug) { hatch(seed: seed, into: image) }
         }
-        applyText(row)
+        // Ordinary titles are applied by applyState with their final weight
+        // and colors. Don't assign and measure the same title twice.
+        if row.kind == .section || row.kind == .separator { applyText(row) }
         applyTrailing(row)
         applyStory(row)
         applyState()
@@ -638,24 +640,28 @@ final class ShimmerLabel: UIView {
 
     var attributedText: NSAttributedString? {
         didSet {
-            base.attributedText = attributedText
-            highlight.attributedText = attributedText
+            guard attributedText != oldValue else { return }
             applyColors()
             setNeedsLayout()
         }
     }
 
     var textColor: UIColor = .label {
-        didSet { applyColors() }
+        didSet { if textColor != oldValue { applyColors() } }
     }
 
     /// What the band goes toward: the surface behind the text.
     var ground: UIColor = UIColor(Palette.surface) {
-        didSet { applyColors() }
+        didSet { if ground != oldValue { applyColors() } }
     }
 
     var shimmering = false {
-        didSet { if shimmering != oldValue { update() } }
+        didSet {
+            if shimmering != oldValue {
+                setNeedsLayout()
+                update()
+            }
+        }
     }
 
     /// False where whatever holds the text has it scrolled out of sight.
@@ -700,14 +706,17 @@ final class ShimmerLabel: UIView {
     @objc private func foregrounded() { backgrounded = false; update() }
 
     private func applyColors() {
+        guard let text = attributedText, text.length > 0 else {
+            base.attributedText = nil
+            highlight.attributedText = nil
+            return
+        }
         let ink = textColor.resolvedColor(with: traitCollection)
         let pale = Self.mix(ink, into: ground.resolvedColor(with: traitCollection), keeping: Metrics.sheenInk)
-        if let text = attributedText, text.length > 0 {
-            for (label, color) in [(base, ink), (highlight, pale)] {
-                let colored = NSMutableAttributedString(attributedString: text)
-                colored.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: colored.length))
-                label.attributedText = colored
-            }
+        for (label, color) in [(base, ink), (highlight, pale)] {
+            let colored = NSMutableAttributedString(attributedString: text)
+            colored.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: colored.length))
+            label.attributedText = colored
         }
     }
 
@@ -725,6 +734,9 @@ final class ShimmerLabel: UIView {
         super.layoutSubviews()
         base.frame = bounds
         highlight.frame = bounds
+        // Sidebar titles do not shimmer. Measuring text for an invisible
+        // gradient would force synchronous text layout on every title update.
+        guard shimmering else { return }
         let width = max(1, min(bounds.width, base.intrinsicContentSize.width))
         guard width != sweptWidth || band.bounds.height != bounds.height else { return }
         sweptWidth = width
