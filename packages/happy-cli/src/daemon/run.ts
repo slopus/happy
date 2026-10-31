@@ -275,6 +275,19 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
+    function resolveAgentCommand(agent: SpawnSessionOptions['agent']): string {
+      switch (agent) {
+        case undefined: return 'claude';
+        case 'claude': return 'claude';
+        case 'codex': return 'codex';
+        case 'gemini': return 'gemini';
+        case 'openclaw': return 'openclaw';
+        case 'agy': return 'agy';
+        case 'copilot': return 'copilot';
+        default: throw new Error(`Unsupported agent type: '${agent}'. Please update your CLI to the latest version.`);
+      }
+    }
+
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
 
@@ -342,6 +355,8 @@ export async function startDaemon(): Promise<void> {
 
             // Set the environment variable for Codex
             authEnv.CODEX_HOME = codexHomeDir.name;
+          } else if (options.agent === 'copilot') {
+            // copilot CLI manages its own auth — no token injection needed
           } else { // Assuming claude
             authEnv.CLAUDE_CODE_OAUTH_TOKEN = options.token;
           }
@@ -435,8 +450,15 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, gemini, openclaw, and agy
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : (options.agent === 'agy' ? 'agy' : 'claude')));
+          let agent: string;
+          try {
+            agent = resolveAgentCommand(options.agent);
+          } catch (e: any) {
+            return {
+              type: 'error',
+              errorMessage: e.message,
+            };
+          }
           const resumeId = agent === 'claude'
             ? options.resumeClaudeSessionId
             : (agent === 'codex' ? options.resumeCodexThreadId : undefined);
@@ -531,30 +553,14 @@ export async function startDaemon(): Promise<void> {
         if (!useTmux) {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, and gemini
           let agentCommand: string;
-          switch (options.agent) {
-            case 'claude':
-            case undefined:
-              agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
-              break;
-            case 'gemini':
-              agentCommand = 'gemini';
-              break;
-            case 'openclaw':
-              agentCommand = 'openclaw';
-              break;
-            case 'agy':
-              agentCommand = 'agy';
-              break;
-            default:
-              return {
-                type: 'error',
-                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
-              };
+          try {
+            agentCommand = resolveAgentCommand(options.agent);
+          } catch (e: any) {
+            return {
+              type: 'error',
+              errorMessage: e.message,
+            };
           }
           const args = [
             agentCommand,
