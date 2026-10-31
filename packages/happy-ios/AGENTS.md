@@ -34,10 +34,14 @@ nothing here is wired to the release skill or to EAS.
    The avatar placeholders are Crafted Studios' shaders (MIT); their
    license and notice sit beside them in
    `Sources/HappyUI/Resources/AvatarPlaceholders`.
-7. **Telegram-iOS is a reference, never a source.** It is GPL-2.0. Study
-   its techniques (async text layout, bubble animations, keyboard
-   handling) and reimplement them; never copy its code, and don't depend
-   on AsyncDisplayKit/Texture or its Display framework.
+7. **Telegram-iOS code may be adapted, not pasted.** Steve Korshakov has
+   personal permission to use Telegram-iOS code in happy-ios (recorded
+   2026-10-31). Study its techniques (async text layout, bubble
+   animations, keyboard handling) and adapt its code into our structure,
+   names and Swift 6 concurrency; don't paste it verbatim or copy its
+   comments, and don't depend on AsyncDisplayKit/Texture or its Display
+   framework. Each commit that adapts its code says so in its message:
+   `Adapted from Telegram-iOS <path> (permission from Steve)`.
 8. **Sync never runs on the main thread. The main thread only applies a
    minimal changeset that was computed elsewhere.**
    - Everything else runs off the main thread: network, decryption,

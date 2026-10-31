@@ -1,8 +1,11 @@
 # Telegram-iOS: what the chat borrows, and what it does instead
 
 Telegram-iOS is GPL-2.0. These notes describe techniques in our own words so
-the chat can reimplement them in plain UIKit. No code was copied, and nothing
-here depends on AsyncDisplayKit/Texture or Telegram's `Display` framework.
+the chat can reimplement them in plain UIKit. Nothing here depends on
+AsyncDisplayKit/Texture or Telegram's `Display` framework. Since 2026-10-31
+Steve Korshakov has personal permission to use Telegram-iOS code in
+happy-ios, so code may now be adapted from it (see rule 7 in
+`../AGENTS.md`); commits that do so name the path they adapt.
 
 ## What was read
 
