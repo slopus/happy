@@ -70,13 +70,13 @@ class ComposerPopupTest {
         kept()
         rule.onNodeWithText("Read only").performClick()
         kept()
-        rule.node(ConversationComposerTags.MORE).performClick()
-        kept()
-        assertTrue(screenBounds(ConversationComposerTags.MENU).bottom > screenBounds(ConversationComposerTags.PILL).top)
-        rule.node(ConversationComposerTags.PASTE).assertExists()
-        rule.node(ConversationComposerTags.ATTACH).assertExists()
-        rule.node(ConversationModeTags.PERMISSION).assertDoesNotExist()
         assertEquals(listOf(mode.copy(effort = "low"), mode.copy(permissionMode = "read_only")), picks)
+        // [+] is the attachment sheet; the draft stays with the composer.
+        rule.node(ConversationComposerTags.MORE).performClick()
+        rule.waitForIdle()
+        rule.node(com.slopus.happy.ui.attach.AttachTags.SHEET).assertExists()
+        rule.node(ConversationModeTags.PERMISSION).assertDoesNotExist()
+        assertEquals(draft, rule.node(ConversationComposerTags.INPUT).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
     }
 
     @Test fun `panels mirror with RTL and clamp to small window edges`() {

@@ -5,7 +5,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.clickable
@@ -26,6 +27,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.attachments.AttachAccepts
 import com.slopus.happy.attachments.AttachmentNotice
 import com.slopus.happy.attachments.AttachmentServices
 import com.slopus.happy.attachments.AttachmentSendPlan
@@ -41,7 +43,7 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.PickerSheetSection
 import com.slopus.happy.ui.components.PickerSheetSpec
-import com.slopus.happy.ui.conversation.ConversationPopup
+import com.slopus.happy.ui.attach.AttachSheet
 import com.slopus.happy.ui.theme.HappyTheme
 import android.content.res.Resources
 
@@ -73,42 +75,30 @@ fun ComposerAttachmentStrip() {
     AttachmentStrip(picker.images, onRemove = picker::remove)
 }
 
-/** A 280 dp floating chooser at the add-image button, with 48 dp actions and a scrollable list. */
+/**
+ * The add button: the attachment sheet ([AttachSheet]) with what this
+ * session takes ([accepts]), the draft as its caption. Its Send puts the
+ * picks with the images waiting and sends the draft ([onSend]), the way the
+ * send button does.
+ */
 @Composable
-fun ComposerAddImageButton() {
+fun ComposerAddImageButton(accepts: AttachAccepts, caption: String, onCaptionChange: (String) -> Unit, onSend: () -> Unit) {
     val picker = LocalComposerImages.current ?: return
-    var open by remember(picker) { mutableStateOf(false) }
-    var anchorCenterY by remember { mutableIntStateOf(0) }
-    val title = stringResource(R.string.image_upload_attach_title)
-    Box(Modifier.onGloballyPositioned { anchorCenterY = it.boundsInWindow().center.y.toInt() }) {
-        AddImageButton(attached = picker.images.isNotEmpty(), onClick = { open = !open })
-        ConversationPopup(open, title, onDismiss = { open = false }, anchorCenterY = anchorCenterY, alignEnd = false, width = 280.dp) {
-            Column(Modifier.testTag(ComposerAttachmentTags.MENU).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-                PickerSheetSection("attachments", title, separated = false)
-                AttachmentMenuAction(ComposerAttachmentTags.PASTE, stringResource(R.string.image_upload_paste_from_clipboard)) {
-                    open = false
-                    picker.paste()
-                }
-                AttachmentMenuAction(ComposerAttachmentTags.LIBRARY, stringResource(R.string.image_upload_choose_from_library)) {
-                    open = false
-                    picker.pick()
-                }
-            }
-        }
-    }
-}
-
-object ComposerAttachmentTags {
-    const val MENU = "composer.attachments.menu"
-    const val PASTE = "composer.attachments.paste"
-    const val LIBRARY = "composer.attachments.library"
-}
-
-@Composable
-private fun AttachmentMenuAction(tag: String, label: String, action: () -> Unit) {
-    Text(label, style = PickerSheetSpec.label, color = HappyTheme.colors.text,
-        modifier = Modifier.testTag(tag).fillMaxWidth().heightIn(min = 48.dp)
-            .clickable(role = Role.Button, onClick = action).padding(horizontal = 24.dp, vertical = 14.dp))
+    var open by rememberSaveable { mutableStateOf(false) }
+    val send by rememberUpdatedState(onSend)
+    AddImageButton(attached = picker.images.isNotEmpty(), onClick = { open = true })
+    AttachSheet(
+        open = open,
+        accepts = accepts,
+        caption = caption,
+        onCaptionChange = onCaptionChange,
+        onSend = { staged ->
+            picker.state.images.addAll(staged.take(picker.state.remaining.coerceAtLeast(0)))
+            send()
+        },
+        onClosed = { open = false },
+        room = picker.state.remaining,
+    )
 }
 
 /** Whether images wait to be sent: the send button is live with images and no text. */

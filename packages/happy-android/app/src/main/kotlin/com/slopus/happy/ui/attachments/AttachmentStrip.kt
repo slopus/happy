@@ -106,7 +106,11 @@ private fun AttachmentThumbnail(image: AttachmentPreview, onRemove: (String) -> 
                 .clip(shape)
                 .border(AttachmentStripSpec.border, colors.divider, shape),
         ) {
-            RemoteImage(image.uri, contentDescription = image.name, contentScale = ContentScale.Crop, modifier = Modifier.size(AttachmentStripSpec.thumb))
+            if (image.mimeType.startsWith("image/")) {
+                RemoteImage(image.uri, contentDescription = image.name, contentScale = ContentScale.Crop, modifier = Modifier.size(AttachmentStripSpec.thumb))
+            } else {
+                com.slopus.happy.ui.attach.AttachedFileTile(image.name, Modifier.size(AttachmentStripSpec.thumb))
+            }
         }
         val interaction = remember { MutableInteractionSource() }
         val removeLabel = stringResource(R.string.chat_remove_image, image.name)

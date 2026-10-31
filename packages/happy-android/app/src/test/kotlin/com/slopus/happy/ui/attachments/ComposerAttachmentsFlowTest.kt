@@ -25,7 +25,9 @@ import com.slopus.happy.crypto.AccountEncryption
 import com.slopus.happy.crypto.decryptBlob
 import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
+import com.slopus.happy.attachments.AttachTabKind
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.attach.AttachTags
 import com.slopus.happy.ui.chat.ComposerTags
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.chat.chatRoutes
@@ -125,16 +127,23 @@ class ComposerAttachmentsFlowTest {
         rule.node(AttachmentStripTags.ADD).assertDoesNotExist()
     }
 
+    /** The add button's sheet: its File tab pastes the clipboard's image, picked and ready to send. */
+    private fun pasteInSheet() {
+        rule.node(AttachmentStripTags.ADD).performClick()
+        rule.waitUntilAtLeastOneExists(hasTestTag(AttachTags.tab(AttachTabKind.Files)), 5_000)
+        rule.node(AttachTags.tab(AttachTabKind.Files)).performClick()
+        rule.node(AttachTags.PASTE).performClick()
+    }
+
     @Test
     fun aPastedImageIsUploadedAndSentAheadOfTheText() {
         open("claude")
         copyImageToClipboard()
-        rule.node(AttachmentStripTags.ADD).performClick()
-        rule.onNodeWithText("Paste from Clipboard").performClick()
-        rule.waitUntilAtLeastOneExists(hasTestTag(AttachmentStripTags.THUMB), 10_000)
-
-        rule.node(ComposerTags.INPUT).performTextInput("what is this?")
-        rule.node(ComposerTags.PRIMARY).performClick()
+        pasteInSheet()
+        rule.waitUntilAtLeastOneExists(hasTestTag(AttachTags.SEND), 10_000)
+        // The caption is the draft.
+        rule.node(AttachTags.CAPTION).performTextInput("what is this?")
+        rule.node(AttachTags.SEND).performClick()
         rule.waitUntil(10_000) { sent.isNotEmpty() }
 
         val message = sent.single()
@@ -157,10 +166,9 @@ class ComposerAttachmentsFlowTest {
     fun anImageAloneCanBeSent() {
         open("claude")
         copyImageToClipboard()
-        rule.node(AttachmentStripTags.ADD).performClick()
-        rule.onNodeWithText("Paste from Clipboard").performClick()
-        rule.waitUntilAtLeastOneExists(hasTestTag(AttachmentStripTags.THUMB), 10_000)
-        rule.node(ComposerTags.PRIMARY).performClick()
+        pasteInSheet()
+        rule.waitUntilAtLeastOneExists(hasTestTag(AttachTags.SEND), 10_000)
+        rule.node(AttachTags.SEND).performClick()
         rule.waitUntil(10_000) { sent.isNotEmpty() }
         assertEquals("", sent.single().text)
         assertEquals(1, sent.single().attachments.size)
@@ -169,8 +177,7 @@ class ComposerAttachmentsFlowTest {
     @Test
     fun anEmptyClipboardSaysSo() {
         open("claude")
-        rule.node(AttachmentStripTags.ADD).performClick()
-        rule.onNodeWithText("Paste from Clipboard").performClick()
+        pasteInSheet()
         rule.waitUntilAtLeastOneExists(hasText("Nothing to Paste"), 5_000)
     }
 }

@@ -170,10 +170,10 @@ class ImagePicker internal constructor(
 }
 
 /**
- * [ImagePicker] for this screen. The Android photo picker needs no storage
- * permission (happy-app blocks READ_MEDIA_IMAGES); images are normalized
- * into the cache directory, where the upload reads them. Shows its own
- * alerts while composed.
+ * [ImagePicker] for this screen: the images waiting in the composer, put
+ * there by the attachment sheet ([com.slopus.happy.ui.attach.AttachSheet])
+ * or the photo picker. Images are normalized into the cache directory,
+ * where the upload reads them. Shows its own alerts while composed.
  */
 @Composable
 fun rememberImagePicker(): ImagePicker {

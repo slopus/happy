@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The attachment sheet (ui/attach/), Telegram's port. Not in happy-app's
+  catalogs; translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="attach_title">Attach</string>
+    <string name="attach_tab_gallery">Gallery</string>
+    <string name="attach_tab_files">File</string>
+    <string name="attach_photo_label">Photo</string>
+    <string name="attach_video_label">Video, %1$s</string>
+    <string name="attach_pick">Select</string>
+    <string name="attach_unpick">Deselect</string>
+    <string name="attach_access_title">Your photos and videos</string>
+    <string name="attach_access_message">Allow access to show your recent photos and videos here.</string>
+    <string name="attach_access_blocked">Access to photos and videos is off. Turn it on for Happy in Settings.</string>
+    <string name="attach_access_allow">Allow access</string>
+    <string name="attach_access_settings">Open Settings</string>
+    <string name="attach_partial_message">Happy can see only the photos and videos you chose.</string>
+    <string name="attach_partial_manage">Manage</string>
+    <string name="attach_gallery_empty">No photos or videos yet</string>
+    <string name="attach_files_browse">Browse</string>
+    <string name="attach_files_browse_detail">Send a file from this phone</string>
+    <string name="attach_files_gallery">Gallery</string>
+    <string name="attach_files_gallery_detail">Send photos and videos as files</string>
+    <string name="attach_files_paste">Paste</string>
+    <string name="attach_files_paste_detail">Send the image on the clipboard</string>
+    <string name="attach_files_recent">Recent files</string>
+    <string name="attach_caption_hint">Add a caption…</string>
+    <string name="attach_send">Send</string>
+    <string name="attach_limit_message">You can send up to %1$d items at once.</string>
+    <string name="attach_unsupported_title">Can\'t Send This File</string>
+    <string name="attach_unsupported_message">\"%1$s\" is a type of file this chat doesn\'t take.</string>
+    <string name="attach_unreadable_message">\"%1$s\" could not be read and was not sent.</string>
+    <plurals name="attach_selected">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+</resources>

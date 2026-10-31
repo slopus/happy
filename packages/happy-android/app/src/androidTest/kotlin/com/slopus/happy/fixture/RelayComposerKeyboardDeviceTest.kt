@@ -31,7 +31,7 @@ import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.ui.attachments.AttachmentStripTags
-import com.slopus.happy.ui.attachments.ComposerAttachmentTags
+import com.slopus.happy.ui.attach.AttachTags
 import com.slopus.happy.ui.attachments.LocalComposerImages
 import com.slopus.happy.ui.attachments.rememberComposerImages
 import com.slopus.happy.ui.chat.ChatScreen
@@ -135,17 +135,16 @@ class RelayComposerKeyboardDeviceTest {
         node(ComposerPickerTags.MODEL).performClick()
         dismissWithBack(PickerSheetTags.PANEL)
         kept("model Back")
-        node(AttachmentStripTags.ADD).performClick()
-        node(ComposerAttachmentTags.PASTE).assertExists()
-        node(ComposerAttachmentTags.LIBRARY).assertExists()
-        kept("attachment open")
-        dismissWithBack(ComposerAttachmentTags.MENU)
-        kept("attachment Back")
-        node(AttachmentStripTags.ADD).performClick()
-        val field = node(ComposerTags.INPUT).fetchSemanticsNode()
-        device.click(2, (field.positionOnScreen.y + field.size.height / 2).toInt())
-        rule.waitUntil(5_000) { rule.onAllNodesWithTag(ComposerAttachmentTags.MENU, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
-        kept("attachment outside")
         assertEquals(listOf(AgentModeField.PERMISSION_MODE to full.key, AgentModeField.MODEL_MODE to second.key, AgentModeField.EFFORT_LEVEL to high.key), picks)
+        // The add button is the attachment sheet, a window of its own: Back closes it, the draft kept.
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val target = InstrumentationRegistry.getInstrumentation().targetContext.packageName
+        for (permission in com.slopus.happy.attachments.GalleryAccess.permissions()) runCatching { automation.grantRuntimePermission(target, permission) }
+        node(AttachmentStripTags.ADD).performClick()
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag(AttachTags.SHEET, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        device.waitForIdle()
+        device.pressBack()
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag(AttachTags.SHEET, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+        assertEquals(initialDraft, node(ComposerTags.INPUT).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
     }
 }

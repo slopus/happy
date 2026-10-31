@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_attach.xml in it. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="attach_title">Allega</string>
+    <string name="attach_tab_gallery">Galleria</string>
+    <string name="attach_tab_files">File</string>
+    <string name="attach_photo_label">Foto</string>
+    <string name="attach_video_label">Video, %1$s</string>
+    <string name="attach_pick">Seleziona</string>
+    <string name="attach_unpick">Deseleziona</string>
+    <string name="attach_access_title">Le tue foto e i tuoi video</string>
+    <string name="attach_access_message">Consenti l\'accesso per vedere qui le foto e i video recenti.</string>
+    <string name="attach_access_blocked">L\'accesso a foto e video è disattivato. Attivalo per Happy nelle Impostazioni.</string>
+    <string name="attach_access_allow">Consenti accesso</string>
+    <string name="attach_access_settings">Apri Impostazioni</string>
+    <string name="attach_partial_message">Happy vede solo le foto e i video che hai scelto.</string>
+    <string name="attach_partial_manage">Gestisci</string>
+    <string name="attach_gallery_empty">Ancora nessuna foto o video</string>
+    <string name="attach_files_browse">Sfoglia</string>
+    <string name="attach_files_browse_detail">Invia un file da questo telefono</string>
+    <string name="attach_files_gallery">Galleria</string>
+    <string name="attach_files_gallery_detail">Invia foto e video come file</string>
+    <string name="attach_files_paste">Incolla</string>
+    <string name="attach_files_paste_detail">Invia l\'immagine negli appunti</string>
+    <string name="attach_files_recent">File recenti</string>
+    <string name="attach_caption_hint">Aggiungi una didascalia…</string>
+    <string name="attach_send">Invia</string>
+    <string name="attach_limit_message">Puoi inviare fino a %1$d elementi alla volta.</string>
+    <string name="attach_unsupported_title">Impossibile inviare il file</string>
+    <string name="attach_unsupported_message">Questa chat non accetta file come \"%1$s\".</string>
+    <string name="attach_unreadable_message">Impossibile leggere \"%1$s\": non è stato inviato.</string>
+    <plurals name="attach_selected">
+        <item quantity="one">%1$d selezionato</item>
+        <item quantity="many">%1$d selezionati</item>
+        <item quantity="other">%1$d selezionati</item>
+    </plurals>
+</resources>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_attach.xml in b+zh+Hans. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="attach_title">附件</string>
+    <string name="attach_tab_gallery">相册</string>
+    <string name="attach_tab_files">文件</string>
+    <string name="attach_photo_label">照片</string>
+    <string name="attach_video_label">视频，%1$s</string>
+    <string name="attach_pick">选择</string>
+    <string name="attach_unpick">取消选择</string>
+    <string name="attach_access_title">你的照片和视频</string>
+    <string name="attach_access_message">允许访问后，最近的照片和视频会显示在这里。</string>
+    <string name="attach_access_blocked">照片和视频访问已关闭。请在设置中为 Happy 开启。</string>
+    <string name="attach_access_allow">允许访问</string>
+    <string name="attach_access_settings">打开设置</string>
+    <string name="attach_partial_message">Happy 只能看到你选择的照片和视频。</string>
+    <string name="attach_partial_manage">管理</string>
+    <string name="attach_gallery_empty">还没有照片或视频</string>
+    <string name="attach_files_browse">浏览</string>
+    <string name="attach_files_browse_detail">从这部手机发送文件</string>
+    <string name="attach_files_gallery">相册</string>
+    <string name="attach_files_gallery_detail">以文件形式发送照片和视频</string>
+    <string name="attach_files_paste">粘贴</string>
+    <string name="attach_files_paste_detail">发送剪贴板中的图片</string>
+    <string name="attach_files_recent">最近的文件</string>
+    <string name="attach_caption_hint">添加说明…</string>
+    <string name="attach_send">发送</string>
+    <string name="attach_limit_message">一次最多可发送 %1$d 项。</string>
+    <string name="attach_unsupported_title">无法发送此文件</string>
+    <string name="attach_unsupported_message">此聊天不接受“%1$s”这类文件。</string>
+    <string name="attach_unreadable_message">无法读取“%1$s”，未发送。</string>
+    <plurals name="attach_selected">
+        <item quantity="other">已选择 %1$d 项</item>
+    </plurals>
+</resources>

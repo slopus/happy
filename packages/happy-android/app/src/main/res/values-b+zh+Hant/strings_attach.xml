@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_attach.xml in b+zh+Hant. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="attach_title">附件</string>
+    <string name="attach_tab_gallery">相簿</string>
+    <string name="attach_tab_files">檔案</string>
+    <string name="attach_photo_label">照片</string>
+    <string name="attach_video_label">影片，%1$s</string>
+    <string name="attach_pick">選取</string>
+    <string name="attach_unpick">取消選取</string>
+    <string name="attach_access_title">你的照片和影片</string>
+    <string name="attach_access_message">允許存取後，最近的照片和影片會顯示在這裡。</string>
+    <string name="attach_access_blocked">照片和影片的存取權已關閉。請在設定中為 Happy 開啟。</string>
+    <string name="attach_access_allow">允許存取</string>
+    <string name="attach_access_settings">開啟設定</string>
+    <string name="attach_partial_message">Happy 只能看到你選擇的照片和影片。</string>
+    <string name="attach_partial_manage">管理</string>
+    <string name="attach_gallery_empty">還沒有照片或影片</string>
+    <string name="attach_files_browse">瀏覽</string>
+    <string name="attach_files_browse_detail">從這支手機傳送檔案</string>
+    <string name="attach_files_gallery">相簿</string>
+    <string name="attach_files_gallery_detail">以檔案形式傳送照片和影片</string>
+    <string name="attach_files_paste">貼上</string>
+    <string name="attach_files_paste_detail">傳送剪貼簿中的圖片</string>
+    <string name="attach_files_recent">最近的檔案</string>
+    <string name="attach_caption_hint">新增說明…</string>
+    <string name="attach_send">傳送</string>
+    <string name="attach_limit_message">一次最多可傳送 %1$d 項。</string>
+    <string name="attach_unsupported_title">無法傳送此檔案</string>
+    <string name="attach_unsupported_message">此聊天不接受「%1$s」這類檔案。</string>
+    <string name="attach_unreadable_message">無法讀取「%1$s」，未傳送。</string>
+    <plurals name="attach_selected">
+        <item quantity="other">已選取 %1$d 項</item>
+    </plurals>
+</resources>

@@ -862,10 +862,23 @@ Verify focus, recording and communication mode on a device after changes.
   policy, then upload; a failed image is counted, not fatal), and handed to
   `ChatActions.send(..., attachments = fileEventRecords(uploaded))`, which
   queues sync.ts's `file` session events ahead of the text.
-- **Picking**: the Android photo picker (`PickVisualMedia`), so no storage
-  permission (happy-app blocks READ_MEDIA_IMAGES); paste reads an image
-  URI from the clipboard. The add button always asks Paste or Library, as
-  useImagePicker does. No thumbhash on Android, as on happy-app native.
+- **Picking**: the add button and the conversation's [+] open the
+  attachment sheet (`ui/attach/`), Telegram's ChatAttachAlert ported with
+  its numbers (`research/attachment-menu.md`, pinned by `AttachSpecTest`):
+  a gallery of recent photos and videos read from MediaStore
+  (`attachments/MediaGallery`, so the app asks READ_MEDIA_IMAGES/VIDEO as
+  the sheet opens; Android 14's partial access lists what was chosen and
+  offers Manage), numbered multi-select, a caption that is the draft, and a
+  File tab (Browse through the system picker, the system photo picker as
+  files, Paste, and the files sent from here before, `RecentFiles`). Picks
+  are copied into the cache on Send (`AttachmentStaging`: photos normalized
+  as below, the rest as they are). What a chat offers is `AttachAccepts`:
+  a Happy Agent conversation takes photos, videos and files (pictures
+  inline, the rest written into the agent's workspace first,
+  `conversation/WorkspaceUploads`, as iOS does); a relay session takes
+  pictures only, since happy-cli reads only images from `file` events,
+  unless a rig v1 policy lists more. No thumbhash on Android, as on
+  happy-app native.
 - **Showing**: `file` tool rows render `FileMessageView`, which downloads
   and decrypts on demand through `AttachmentTransfers` (50-entry LRU of
   decrypted blobs, one download per ref).

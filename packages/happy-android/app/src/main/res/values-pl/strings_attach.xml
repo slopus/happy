@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_attach.xml in pl. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="attach_title">Załącz</string>
+    <string name="attach_tab_gallery">Galeria</string>
+    <string name="attach_tab_files">Plik</string>
+    <string name="attach_photo_label">Zdjęcie</string>
+    <string name="attach_video_label">Wideo, %1$s</string>
+    <string name="attach_pick">Zaznacz</string>
+    <string name="attach_unpick">Odznacz</string>
+    <string name="attach_access_title">Twoje zdjęcia i filmy</string>
+    <string name="attach_access_message">Zezwól na dostęp, aby widzieć tu ostatnie zdjęcia i filmy.</string>
+    <string name="attach_access_blocked">Dostęp do zdjęć i filmów jest wyłączony. Włącz go dla Happy w Ustawieniach.</string>
+    <string name="attach_access_allow">Zezwól na dostęp</string>
+    <string name="attach_access_settings">Otwórz ustawienia</string>
+    <string name="attach_partial_message">Happy widzi tylko wybrane przez Ciebie zdjęcia i filmy.</string>
+    <string name="attach_partial_manage">Zarządzaj</string>
+    <string name="attach_gallery_empty">Brak zdjęć i filmów</string>
+    <string name="attach_files_browse">Przeglądaj</string>
+    <string name="attach_files_browse_detail">Wyślij plik z tego telefonu</string>
+    <string name="attach_files_gallery">Galeria</string>
+    <string name="attach_files_gallery_detail">Wyślij zdjęcia i filmy jako pliki</string>
+    <string name="attach_files_paste">Wklej</string>
+    <string name="attach_files_paste_detail">Wyślij obraz ze schowka</string>
+    <string name="attach_files_recent">Ostatnie pliki</string>
+    <string name="attach_caption_hint">Dodaj podpis…</string>
+    <string name="attach_send">Wyślij</string>
+    <string name="attach_limit_message">Jednorazowo możesz wysłać do %1$d elementów.</string>
+    <string name="attach_unsupported_title">Nie można wysłać pliku</string>
+    <string name="attach_unsupported_message">Ten czat nie przyjmuje plików typu „%1$s”.</string>
+    <string name="attach_unreadable_message">Nie udało się odczytać „%1$s”, plik nie został wysłany.</string>
+    <plurals name="attach_selected">
+        <item quantity="one">Wybrano %1$d element</item>
+        <item quantity="few">Wybrano %1$d elementy</item>
+        <item quantity="many">Wybrano %1$d elementów</item>
+        <item quantity="other">Wybrano %1$d elementu</item>
+    </plurals>
+</resources>

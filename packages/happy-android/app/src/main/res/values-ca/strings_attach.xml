@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_attach.xml in ca. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="attach_title">Adjunta</string>
+    <string name="attach_tab_gallery">Galeria</string>
+    <string name="attach_tab_files">Fitxer</string>
+    <string name="attach_photo_label">Foto</string>
+    <string name="attach_video_label">Vídeo, %1$s</string>
+    <string name="attach_pick">Selecciona</string>
+    <string name="attach_unpick">Desselecciona</string>
+    <string name="attach_access_title">Les teves fotos i vídeos</string>
+    <string name="attach_access_message">Permet l\'accés per veure aquí les fotos i vídeos recents.</string>
+    <string name="attach_access_blocked">L\'accés a fotos i vídeos està desactivat. Activa\'l per a Happy a Configuració.</string>
+    <string name="attach_access_allow">Permet l\'accés</string>
+    <string name="attach_access_settings">Obre Configuració</string>
+    <string name="attach_partial_message">Happy només veu les fotos i vídeos que has triat.</string>
+    <string name="attach_partial_manage">Gestiona</string>
+    <string name="attach_gallery_empty">Encara no hi ha fotos ni vídeos</string>
+    <string name="attach_files_browse">Explora</string>
+    <string name="attach_files_browse_detail">Envia un fitxer d\'aquest telèfon</string>
+    <string name="attach_files_gallery">Galeria</string>
+    <string name="attach_files_gallery_detail">Envia fotos i vídeos com a fitxers</string>
+    <string name="attach_files_paste">Enganxa</string>
+    <string name="attach_files_paste_detail">Envia la imatge del porta-retalls</string>
+    <string name="attach_files_recent">Fitxers recents</string>
+    <string name="attach_caption_hint">Afegeix un peu…</string>
+    <string name="attach_send">Envia</string>
+    <string name="attach_limit_message">Pots enviar fins a %1$d elements alhora.</string>
+    <string name="attach_unsupported_title">No es pot enviar el fitxer</string>
+    <string name="attach_unsupported_message">Aquest xat no accepta fitxers com \"%1$s\".</string>
+    <string name="attach_unreadable_message">No s\'ha pogut llegir \"%1$s\" i no s\'ha enviat.</string>
+    <plurals name="attach_selected">
+        <item quantity="one">%1$d seleccionat</item>
+        <item quantity="many">%1$d seleccionats</item>
+        <item quantity="other">%1$d seleccionats</item>
+    </plurals>
+</resources>

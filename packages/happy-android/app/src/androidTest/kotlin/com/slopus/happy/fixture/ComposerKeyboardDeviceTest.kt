@@ -33,6 +33,7 @@ import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.conversation.ModeCatalog
 import com.slopus.happy.conversation.ModelChoice
+import com.slopus.happy.ui.attach.AttachTags
 import com.slopus.happy.ui.conversation.ConversationComposerTags
 import com.slopus.happy.ui.conversation.ConversationModeTags
 import com.slopus.happy.ui.conversation.ConversationScreen
@@ -78,7 +79,7 @@ class ComposerKeyboardDeviceTest {
         val minimumTouch = 48 * rule.activity.resources.displayMetrics.density
         if (imeTop - bar.bottom >= minimumTouch) assertTrue("$step 48dp touch surface", card.height >= minimumTouch)
         assertTrue("$step field within composer: $field / $card", field.top >= card.top && field.bottom <= card.bottom)
-        val menu = listOf(ConversationModeTags.PICKER, ConversationComposerTags.MENU, ConversationScreenTags.MENU).flatMap {
+        val menu = listOf(ConversationModeTags.PICKER, ConversationScreenTags.MENU).flatMap {
             rule.onAllNodesWithTag(it, useUnmergedTree = true).fetchSemanticsNodes()
         }.firstOrNull()?.let { Rect(it.positionOnScreen, it.size.toSize()) }
         if (menu != null) assertTrue("$step panel within window", menu.left >= 0 && menu.top >= 0 && menu.right <= device.displayWidth && menu.bottom <= device.displayHeight)
@@ -157,14 +158,6 @@ class ComposerKeyboardDeviceTest {
         back("model Back", ConversationModeTags.PICKER)
         node(ConversationModeTags.MODEL).performClick()
         outside("model outside", ConversationModeTags.PICKER)
-        node(ConversationComposerTags.MORE).performClick()
-        kept("attachment open")
-        node(ConversationComposerTags.ATTACH).assertExists()
-        node(ConversationComposerTags.PASTE).assertExists()
-        node(ConversationModeTags.PERMISSION).assertDoesNotExist()
-        back("attachment Back", ConversationComposerTags.MENU)
-        node(ConversationComposerTags.MORE).performClick()
-        outside("attachment outside", ConversationComposerTags.MENU)
         val permissions = listOf("read_only" to "Read only", "workspace_write" to "Workspace write", "auto" to "Auto", "full_access" to "Full access")
         for ((key, name) in permissions) {
             node(ConversationScreenTags.MORE).performClick()
@@ -196,6 +189,24 @@ class ComposerKeyboardDeviceTest {
             node(ConversationScreenTags.MORE).performClick()
             node(ConversationScreenTags.DETAILS).performClick()
             assertEquals(1, details)
+        }
+        // [+] is the attachment sheet, a window of its own: Back closes it first, the draft kept.
+        grantGallery()
+        node(ConversationComposerTags.MORE).performClick()
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag(AttachTags.SHEET, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        node(ConversationModeTags.PERMISSION).assertDoesNotExist()
+        device.waitForIdle()
+        device.pressBack()
+        closed(AttachTags.SHEET)
+        assertEquals(draft, node(ConversationComposerTags.INPUT).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+    }
+
+    /** The sheet asks for the gallery as it opens; granted here, no system dialog takes the Back. */
+    private fun grantGallery() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val target = InstrumentationRegistry.getInstrumentation().targetContext.packageName
+        for (permission in com.slopus.happy.attachments.GalleryAccess.permissions()) {
+            runCatching { automation.grantRuntimePermission(target, permission) }
         }
     }
 }

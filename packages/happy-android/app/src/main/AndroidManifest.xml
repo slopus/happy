@@ -11,6 +11,12 @@
          A phone without one still installs; the scan then asks for the link. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- The attachment sheet's gallery of recent photos and videos (ui/attach/), asked for as it
+         opens; Android 14 may give only some (READ_MEDIA_VISUAL_USER_SELECTED). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- Removal markers are absent from the merged manifest; lint still inspects them. -->
     <!-- ElevenLabs uses audio only; remove LiveKit's unused screen capture. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" tools:node="remove" />

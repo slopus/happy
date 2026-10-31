@@ -37,6 +37,10 @@ private class FakeAgent {
     var gate: CompletableDeferred<Unit>? = null
     /** What `messages?after=` answers; null answers [page], as a daemon that ignores `after` would. */
     var afterPage: String? = null
+    /** What `PUT /v0/workspaces/:id/file` wrote, by workspace and path. */
+    val written = LinkedHashMap<String, ByteArray>()
+    /** The next file writes refused with this status. */
+    var refuseFiles = 0
 
     val request: AgentRequest = { method, path, body ->
         requests += Triple(method, path, body as? JsonObject)
@@ -47,6 +51,18 @@ private class FakeAgent {
             route == "/v0/bots" -> ok("""{"bot":{"id":${(body as JsonObject)["id"]},"agent":{"id":"${body["agentId"]!!.toString().trim('"')}","workspaceId":"w","status":"idle"}}}""")
             route == "/v0/tasks" -> ok("""{"task":{"id":${(body as JsonObject)["id"]},"agent":{"id":"${(body as JsonObject)["agentId"]!!.toString().trim('"')}","workspaceId":"w","status":"idle"}},"membership":{}}""")
             route.endsWith("/bootstrap") -> { beforeBootstrap(); ok(bootstrap) }
+            method == "PUT" && route.startsWith("/v0/workspaces/") && route.endsWith("/file") -> {
+                val o = body as JsonObject
+                val key = route.removePrefix("/v0/workspaces/").removeSuffix("/file") + ":" + o["path"]!!.toString().trim('"')
+                val bytes = java.util.Base64.getDecoder().decode(o["content"]!!.toString().trim('"'))
+                fun hash(b: ByteArray) = java.security.MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
+                val existing = written[key]
+                when {
+                    refuseFiles > 0 -> { refuseFiles--; TransportResponse(403, body = """{"error":"denied","code":"denied"}""".toByteArray()) }
+                    existing != null -> TransportResponse(409, body = """{"code":"hash_mismatch","hash":"${hash(existing)}"}""".toByteArray())
+                    else -> { written[key] = bytes; ok("""{"hash":"${hash(bytes)}"}""") }
+                }
+            }
             route.endsWith("/messages") && failOlder && "before=" in path -> TransportResponse(503, body = "{}".toByteArray())
             route.endsWith("/messages") && "after=" in path && afterPage != null -> ok(afterPage!!)
             route.endsWith("/messages") -> ok(page)
@@ -96,6 +112,7 @@ class ConversationTest {
         initialChoice = choice,
         onTaskCreated = created,
         lane = StandardTestDispatcher(testScheduler),
+        io = StandardTestDispatcher(testScheduler),
         now = { 1000 },
         retryDelayMillis = 1,
         keeper = keeper,
@@ -626,7 +643,7 @@ class ConversationTest {
         val agent = FakeAgent()
         val chat = conversation(agent)
         advanceUntilIdle()
-        val files = listOf(java.io.File("a.jpg"))
+        val files = listOf(preview("a.jpg", "image/jpeg", 10))
         assertTrue(chat.send("Look", files) { list -> list.map { Block.Image("image/jpeg", it.name) } })
         chat.send("After")
         advanceUntilIdle()
@@ -639,11 +656,67 @@ class ConversationTest {
         val agent = FakeAgent()
         val chat = conversation(agent)
         advanceUntilIdle()
-        chat.send("Look", listOf(java.io.File("gone.jpg"))) { throw java.io.IOException("gone") }
+        chat.send("Look", listOf(preview("gone.jpg", "image/jpeg", 10))) { throw java.io.IOException("gone") }
         advanceUntilIdle()
         assertTrue(agent.requests.none { it.second.endsWith("/send") })
         assertEquals("Look", chat.state.value.draft)
         assertEquals(Problem.PicturesUnreadable, chat.state.value.alert)
+    }
+
+    @Test fun `files go into the workspace first and the message names them`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val video = java.io.File(dir, "clip.mp4").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        val attachments = listOf(
+            preview("a.jpg", "image/jpeg", 10),
+            preview(video.toURI().toString(), "video/mp4", 3, name = "clip.mp4"),
+            preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"),
+        )
+        assertTrue(chat.send("Look", attachments) { list -> list.map { Block.Image("image/jpeg", it.name) } })
+        advanceUntilIdle()
+        val send = agent.requests.last { it.second.endsWith("/send") }
+        val id = send.third!!["id"]!!.toString().trim('"')
+        assertEquals(listOf("w1:.happy-uploads/$id/1-clip.mp4", "w1:.happy-uploads/$id/2-notes.pdf"), agent.written.keys.toList())
+        assertEquals(listOf<Byte>(1, 2, 3), agent.written.values.first().toList())
+        val puts = agent.requests.indexOfFirst { it.first == "PUT" }
+        assertTrue("uploads before the send", puts < agent.requests.indexOf(send))
+        assertEquals(
+            "Look\n\nAttached files:\n- ./.happy-uploads/$id/1-clip.mp4\n- ./.happy-uploads/$id/2-notes.pdf",
+            (send.third!!["text"] as kotlinx.serialization.json.JsonPrimitive).content,
+        )
+        assertEquals(1, (send.third!!["content"] as kotlinx.serialization.json.JsonArray).size)
+        val row = chat.state.value.rows.filterIsInstance<ConversationRow.User>().first()
+        assertTrue(row.text.contains("./.happy-uploads/$id/1-clip.mp4"))
+    }
+
+    @Test fun `a refused upload fails the send and a retry writes only what is missing`() = runTest {
+        val agent = FakeAgent()
+        agent.refuseFiles = 1
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.txt").apply { writeText("hi") }
+        assertTrue(chat.send("", listOf(preview(doc.toURI().toString(), "text/plain", 2, name = "notes.txt"))))
+        advanceUntilIdle()
+        assertTrue(agent.requests.none { it.second.endsWith("/send") })
+        val failed = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single()
+        assertTrue(failed.delivery is Delivery.Failed)
+        chat.retrySend(failed.messageId)
+        advanceUntilIdle()
+        assertEquals(1, agent.written.size)
+        assertEquals(1, agent.requests.count { it.second.endsWith("/send") })
+    }
+
+    @Test fun `a lost upload answer counts as written when the same bytes are there`() = runTest {
+        val agent = FakeAgent()
+        val api = ConversationApi(agent.request)
+        api.uploadFile("w1", "a.txt", "hi".toByteArray())
+        api.uploadFile("w1", "a.txt", "hi".toByteArray())
+        val refused = runCatching { api.uploadFile("w1", "a.txt", "other".toByteArray()) }.exceptionOrNull()
+        assertTrue(refused is ConversationApiException && refused.status == 409)
     }
 
     @Test fun `pictures fit one message up to the inline limits`() {
@@ -777,3 +850,6 @@ class ConversationTest {
         assertEquals(kept, KeptConversation.parse(Json.parseToJsonElement(kept.json().toString()).jsonObject))
     }
 }
+
+private fun preview(uri: String, mimeType: String, size: Long, name: String = uri.substringAfterLast('/')) =
+    com.slopus.happy.attachments.AttachmentPreview(id = uri, uri = uri, width = 0, height = 0, mimeType = mimeType, size = size, name = name)

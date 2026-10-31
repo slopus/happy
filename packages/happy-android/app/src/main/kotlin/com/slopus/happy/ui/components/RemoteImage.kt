@@ -31,6 +31,7 @@ import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.slopus.happy.ui.attach.GalleryThumbFetcher
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -54,7 +55,12 @@ object HappyImageLoader {
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
         return ImageLoader.Builder(context)
-            .components { add(OkHttpNetworkFetcherFactory(callFactory = { client })) }
+            .components {
+                add(OkHttpNetworkFetcherFactory(callFactory = { client }))
+                // The attachment sheet's grid: the system's thumbnails of the gallery.
+                add(GalleryThumbFetcher.Factory())
+                add(GalleryThumbFetcher.Key())
+            }
             .memoryCache { MemoryCache.Builder().maxSizePercent(context, 0.2).build() }
             .diskCache { DiskCache.Builder().directory(imageCacheDir(context)).maxSizeBytes(128L * 1024 * 1024).build() }
             .crossfade(FADE_MS)

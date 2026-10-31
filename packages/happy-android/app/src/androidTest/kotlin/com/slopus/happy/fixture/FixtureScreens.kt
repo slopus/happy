@@ -60,6 +60,7 @@ fun FixtureScreens(transport: FixtureTransport, scope: CoroutineScope, onConvers
                     ConversationScreenActions(
                         onBack = {},
                         onDraftChange = conversation::setDraft,
+                        onSend = { words, attachments -> conversation.send(words, attachments) },
                         onAnswer = conversation::answer,
                         onOpenArtifact = { row -> nav.navigate("artifact/${row.artifactId}") },
                         onRetryLoad = conversation::retryLoad,

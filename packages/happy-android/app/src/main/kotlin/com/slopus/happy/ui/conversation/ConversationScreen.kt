@@ -128,7 +128,7 @@ class ConversationScreenActions(
     val onDetails: () -> Unit = {},
     val onDraftChange: (String) -> Unit = {},
     /** The words and the attached pictures' files; true when the message was taken (the composer then clears). */
-    val onSend: (String, List<File>) -> Boolean = { _, _ -> false },
+    val onSend: (String, List<com.slopus.happy.attachments.AttachmentPreview>) -> Boolean = { _, _ -> false },
     /** The composer picked another model, effort or permission mode. */
     val onModeChange: (Mode) -> Unit = {},
     val onStop: () -> Unit = {},

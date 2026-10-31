@@ -98,6 +98,33 @@ object MaterialSymbols {
     }
     val PlayArrow: ImageVector by lazy { icon("PlayArrow", "M8,5v14l11,-7z") }
     val Pause: ImageVector by lazy { icon("Pause", "M6,19h4V5H6v14zm8,-14v14h4V5h-4z") }
+    val PhotoLibrary: ImageVector by lazy {
+        icon(
+            "PhotoLibrary",
+            "M22,16V4c0,-1.1 -0.9,-2 -2,-2H8c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2zM11,12l2.03,2.71L16,11l4,5H8l3,-4zM2,6v14c0,1.1 0.9,2 2,2h14v-2H4V6H2z",
+        )
+    }
+    val PhotoLibraryOutlined: ImageVector by lazy {
+        icon(
+            "PhotoLibraryOutlined",
+            "M20,4v12H8V4h12m0,-2H8c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2zM11.5,11.67l1.69,2.26 2.48,-3.1L19,15H9zM2,6v14c0,1.1 0.9,2 2,2h14v-2H4V6H2z",
+        )
+    }
+    val InsertDriveFile: ImageVector by lazy {
+        icon("InsertDriveFile", "M6,2c-1.1,0 -1.99,0.9 -1.99,2L4,20c0,1.1 0.89,2 1.99,2H18c1.1,0 2,-0.9 2,-2V8l-6,-6H6zM13,9V3.5L18.5,9H13z")
+    }
+    val InsertDriveFileOutlined: ImageVector by lazy {
+        icon("InsertDriveFileOutlined", "M14,2H6c-1.1,0 -1.99,0.9 -1.99,2L4,20c0,1.1 0.89,2 1.99,2H18c1.1,0 2,-0.9 2,-2V8l-6,-6zM6,20V4h7v5h5v11H6z")
+    }
+    val Folder: ImageVector by lazy {
+        icon("Folder", "M10,4H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V8c0,-1.1 -0.9,-2 -2,-2h-8l-2,-2z")
+    }
+    val ContentPaste: ImageVector by lazy {
+        icon(
+            "ContentPaste",
+            "M19,2h-4.18C14.4,0.84 13.3,0 12,0c-1.3,0 -2.4,0.84 -2.82,2H5c-1.1,0 -2,0.9 -2,2v16c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2zM12,2c0.55,0 1,0.45 1,1s-0.45,1 -1,1 -1,-0.45 -1,-1 0.45,-1 1,-1zM19,20H5V4h2v3h10V4h2v16z",
+        )
+    }
 
     private fun icon(name: String, path: String, mirrored: Boolean = false): ImageVector =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f, autoMirror = mirrored)

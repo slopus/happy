@@ -378,7 +378,7 @@ class ConversationLayoutTest {
         rule.node(ConversationComposerTags.MORE).performClick()
         rule.waitForIdle()
         rule.node(ConversationModeTags.PERMISSION).assertDoesNotExist()
-        rule.node(ConversationComposerTags.ATTACH).assertIsDisplayed()
+        rule.node(com.slopus.happy.ui.attach.AttachTags.SHEET).assertExists()
     }
 
     @Test fun `the header permission picker lists the four modes`() {

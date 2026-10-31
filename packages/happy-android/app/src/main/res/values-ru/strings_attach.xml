@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_attach.xml in ru. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="attach_title">Прикрепить</string>
+    <string name="attach_tab_gallery">Галерея</string>
+    <string name="attach_tab_files">Файл</string>
+    <string name="attach_photo_label">Фото</string>
+    <string name="attach_video_label">Видео, %1$s</string>
+    <string name="attach_pick">Выбрать</string>
+    <string name="attach_unpick">Отменить выбор</string>
+    <string name="attach_access_title">Ваши фото и видео</string>
+    <string name="attach_access_message">Разрешите доступ, чтобы видеть здесь недавние фото и видео.</string>
+    <string name="attach_access_blocked">Доступ к фото и видео выключен. Включите его для Happy в Настройках.</string>
+    <string name="attach_access_allow">Разрешить доступ</string>
+    <string name="attach_access_settings">Открыть настройки</string>
+    <string name="attach_partial_message">Happy видит только выбранные вами фото и видео.</string>
+    <string name="attach_partial_manage">Изменить</string>
+    <string name="attach_gallery_empty">Пока нет фото и видео</string>
+    <string name="attach_files_browse">Обзор</string>
+    <string name="attach_files_browse_detail">Отправить файл с телефона</string>
+    <string name="attach_files_gallery">Галерея</string>
+    <string name="attach_files_gallery_detail">Отправить фото и видео файлами</string>
+    <string name="attach_files_paste">Вставить</string>
+    <string name="attach_files_paste_detail">Отправить изображение из буфера обмена</string>
+    <string name="attach_files_recent">Недавние файлы</string>
+    <string name="attach_caption_hint">Добавить подпись…</string>
+    <string name="attach_send">Отправить</string>
+    <string name="attach_limit_message">За раз можно отправить не больше %1$d файлов.</string>
+    <string name="attach_unsupported_title">Нельзя отправить файл</string>
+    <string name="attach_unsupported_message">Этот чат не принимает файлы такого типа: «%1$s».</string>
+    <string name="attach_unreadable_message">Не удалось прочитать «%1$s», файл не отправлен.</string>
+    <plurals name="attach_selected">
+        <item quantity="one">Выбран %1$d файл</item>
+        <item quantity="few">Выбрано %1$d файла</item>
+        <item quantity="many">Выбрано %1$d файлов</item>
+        <item quantity="other">Выбрано %1$d файла</item>
+    </plurals>
+</resources>

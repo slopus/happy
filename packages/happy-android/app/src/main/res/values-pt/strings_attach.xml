@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_attach.xml in pt. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="attach_title">Anexar</string>
+    <string name="attach_tab_gallery">Galeria</string>
+    <string name="attach_tab_files">Arquivo</string>
+    <string name="attach_photo_label">Foto</string>
+    <string name="attach_video_label">Vídeo, %1$s</string>
+    <string name="attach_pick">Selecionar</string>
+    <string name="attach_unpick">Desmarcar</string>
+    <string name="attach_access_title">Suas fotos e vídeos</string>
+    <string name="attach_access_message">Permita o acesso para ver aqui suas fotos e vídeos recentes.</string>
+    <string name="attach_access_blocked">O acesso a fotos e vídeos está desativado. Ative-o para o Happy nas Configurações.</string>
+    <string name="attach_access_allow">Permitir acesso</string>
+    <string name="attach_access_settings">Abrir Configurações</string>
+    <string name="attach_partial_message">O Happy vê apenas as fotos e vídeos que você escolheu.</string>
+    <string name="attach_partial_manage">Gerenciar</string>
+    <string name="attach_gallery_empty">Ainda não há fotos nem vídeos</string>
+    <string name="attach_files_browse">Procurar</string>
+    <string name="attach_files_browse_detail">Enviar um arquivo deste telefone</string>
+    <string name="attach_files_gallery">Galeria</string>
+    <string name="attach_files_gallery_detail">Enviar fotos e vídeos como arquivos</string>
+    <string name="attach_files_paste">Colar</string>
+    <string name="attach_files_paste_detail">Enviar a imagem da área de transferência</string>
+    <string name="attach_files_recent">Arquivos recentes</string>
+    <string name="attach_caption_hint">Adicione uma legenda…</string>
+    <string name="attach_send">Enviar</string>
+    <string name="attach_limit_message">Você pode enviar até %1$d itens de uma vez.</string>
+    <string name="attach_unsupported_title">Não é possível enviar o arquivo</string>
+    <string name="attach_unsupported_message">Este chat não aceita arquivos como \"%1$s\".</string>
+    <string name="attach_unreadable_message">Não foi possível ler \"%1$s\", e ele não foi enviado.</string>
+    <plurals name="attach_selected">
+        <item quantity="one">%1$d selecionado</item>
+        <item quantity="many">%1$d selecionados</item>
+        <item quantity="other">%1$d selecionados</item>
+    </plurals>
+</resources>

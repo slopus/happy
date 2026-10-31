@@ -65,6 +65,9 @@ import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.InlinePictures
 import com.slopus.happy.conversation.Mode
+import com.slopus.happy.attachments.AttachAccepts
+import com.slopus.happy.ui.attach.AttachSheet
+import com.slopus.happy.ui.attach.AttachedFileTile
 import com.slopus.happy.ui.attachments.rememberComposerImages
 import com.slopus.happy.ui.attachments.ImagePicker
 import com.slopus.happy.ui.chat.PrimaryAction
@@ -90,12 +93,11 @@ object ConversationComposerTags {
     const val PILL = "conversation.composer.pill"
     const val INPUT = "conversation.composer.input"
     const val PRIMARY = "conversation.composer.primary"
-    /** The [+] that opens the attachment menu. */
+    /** The [+] that opens the attachment sheet ([AttachSheet]). */
     const val MORE = "conversation.composer.more"
     const val COUNT = "conversation.composer.attachmentCount"
+    /** Compact with pictures waiting, [+] opens this menu: them, and Add to open the sheet. */
     const val MENU = "conversation.composer.menu"
-    const val PASTE = "conversation.composer.paste"
-    /** The menu's "Add picture". */
     const val ATTACH = "conversation.composer.attach"
     const val PICTURES = "conversation.composer.pictures"
     const val PICTURE_REMOVE = "conversation.composer.pictures.remove"
@@ -126,23 +128,24 @@ private object Slot {
  * pictures waiting to go, the words on top (up to eight lines, then it
  * scrolls), and under them [+], the model and effort as one label
  * ([ConversationModeLabel]) and send, which becomes Stop while the agent
- * works and nothing is typed. [+] opens a menu: paste an image, Add picture
- * (the system photo picker). Both composer menus float above
- * the composer and keyboard, keeping the draft and caret in place. The pill is glass over [backdrop] (the
- * transcript under it), its tint alone where nothing blurs. With Reduce
- * Motion it changes shape at once. Pictures that together pass what one
- * message carries ([InlinePictures]) are refused with an alert, keeping text
- * and pictures. When the available height cannot fit the open card it uses
- * one row, retaining [+], an internally scrolling field, model/effort and
- * send. Its vertical margins shrink to preserve a 48 dp surface where it
- * fits; picture previews and removal move into [+] while space is short.
+ * works and nothing is typed. [+] opens the attachment sheet ([AttachSheet]):
+ * the gallery's recent photos and videos and the File tab; its Send sends the
+ * picks with the draft as their caption, pictures inline and the rest through
+ * the agent's workspace ([com.slopus.happy.conversation.WorkspaceUploads]).
+ * The model menu floats above the composer and keyboard, keeping the draft
+ * and caret in place. The pill is glass over [backdrop] (the transcript under
+ * it), its tint alone where nothing blurs. With Reduce Motion it changes shape
+ * at once. When the available height cannot fit the open card it uses one
+ * row, retaining [+], an internally scrolling field, model/effort and send.
+ * Its vertical margins shrink to preserve a 48 dp surface where it fits;
+ * picture previews hide while space is short, their count on [+].
  */
 @Composable
 internal fun ConversationComposer(
     state: ConversationState,
     text: String,
     onTextChange: (String) -> Unit,
-    onSend: (String, List<File>) -> Boolean,
+    onSend: (String, List<AttachmentPreview>) -> Boolean,
     onSent: () -> Unit,
     onStop: () -> Unit,
     onModeChange: (Mode) -> Unit,
@@ -153,7 +156,6 @@ internal fun ConversationComposer(
     focusAsks: Int = 0,
 ) {
     val colors = HappyTheme.colors
-    var tooLarge by remember { mutableStateOf(false) }
     val attached = pictures?.images.orEmpty()
     val hasContent = text.isNotBlank() || attached.isNotEmpty()
     val primary = primaryActionOf(hasContent, state)
@@ -164,13 +166,25 @@ internal fun ConversationComposer(
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var focused by remember { mutableStateOf(false) }
+    var attaching by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var picker by rememberSaveable { mutableStateOf<ModePicker?>(null) }
     var moreCenterY by remember { mutableIntStateOf(0) }
     var modelCenterY by remember { mutableIntStateOf(0) }
     fun openPicker(which: ModePicker) {
+        attaching = false
         menu = false
         picker = which
+    }
+
+    // The draft and what waits go together; new work keeps them until it is made.
+    fun submit(extra: List<AttachmentPreview> = emptyList()) {
+        if (onSend(text, attached + extra)) {
+            pictures?.clear()
+            onSent()
+        } else if (extra.isNotEmpty()) {
+            pictures?.state?.images?.addAll(extra)
+        }
     }
 
     // New work's first message goes once the task or bot is made: only then does it take the
@@ -215,7 +229,7 @@ internal fun ConversationComposer(
             }
             ComposerLayout(open, compact, if (compact || !open) minimumCompact else minimumActions) {
                 Box(Modifier.layoutId(Slot.MORE)) {
-                    IconButton(onClick = { picker = null; menu = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)
+                    IconButton(onClick = { picker = null; if (showCount) menu = true else attaching = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)
                         .semantics { contentDescription = moreLabel }
                         .onGloballyPositioned { moreCenterY = it.boundsInWindow().center.y.toInt() }) {
                         BadgedBox(badge = {
@@ -269,14 +283,7 @@ internal fun ConversationComposer(
                     FilledIconButton(
                         onClick = {
                             when (primary) {
-                                PrimaryAction.Send -> {
-                                    if (!InlinePictures.fit(attached.map { it.size })) {
-                                        tooLarge = true
-                                    } else if (onSend(text, attached.mapNotNull { Uri.parse(it.uri).path?.let(::File) })) {
-                                        pictures?.clear()
-                                        onSent()
-                                    }
-                                }
+                                PrimaryAction.Send -> submit()
                                 PrimaryAction.Stop -> if (!state.stopping) onStop()
                                 else -> Unit
                             }
@@ -313,26 +320,26 @@ internal fun ConversationComposer(
             modifier = Modifier.testTag(ConversationComposerTags.MENU),
         ) {
             LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
-                if (compact && attached.isNotEmpty()) {
-                    item { ComposerPictures(attached, onRemove = { pictures?.remove(it) }) }
-                }
+                item { ComposerPictures(attached, onRemove = { pictures?.remove(it) }) }
                 item {
                     HappyMenuItem(
-                        label = stringResource(R.string.image_upload_paste_from_clipboard),
-                        onClick = { menu = false; pictures?.paste() },
-                        modifier = Modifier.testTag(ConversationComposerTags.PASTE),
-                    )
-                }
-                item {
-                    HappyMenuItem(
-                        label = stringResource(R.string.conversation_attach_picture),
-                        leading = { Icon(MaterialSymbols.Image, contentDescription = null, Modifier.size(MenuSpec.icon)) },
-                        onClick = { menu = false; pictures?.pick() },
+                        label = stringResource(R.string.attach_title),
+                        leading = { Icon(MaterialSymbols.Add, contentDescription = null, Modifier.size(MenuSpec.icon)) },
+                        onClick = { menu = false; attaching = true },
                         modifier = Modifier.testTag(ConversationComposerTags.ATTACH),
                     )
                 }
             }
         }
+        AttachSheet(
+            open = attaching,
+            accepts = AttachAccepts.Agent,
+            caption = text,
+            onCaptionChange = onTextChange,
+            onSend = { staged -> submit(staged) },
+            onClosed = { attaching = false },
+            room = AttachAccepts.Agent.maxItems - attached.size,
+        )
         ConversationModePicker(picker, onClose = { picker = null }, catalog = state.catalog, mode = state.mode, onModeChange = onModeChange, anchorCenterY = modelCenterY)
         // The viewport subcomposes its content during measurement. Request
         // focus here, after its editor exists, rather than in the parent.
@@ -347,16 +354,6 @@ internal fun ConversationComposer(
             focus.requestFocus()
             keyboard?.show()
         }
-    }
-    if (tooLarge) {
-        HappyAlert(
-            Alert(
-                stringResource(R.string.conversation_pictures_too_large_title),
-                stringResource(R.string.conversation_pictures_too_large_message),
-                listOf(AlertButton(stringResource(R.string.common_ok))),
-            ),
-            onDismiss = { tooLarge = false },
-        )
     }
 }
 
@@ -427,7 +424,11 @@ private fun ComposerPictures(images: List<AttachmentPreview>, onRemove: (String)
     ) {
         items(images, key = { it.id }) { picture ->
             Box(Modifier.size(64.dp)) {
-                RemoteImage(picture.uri, contentDescription = picture.name, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp).clip(MaterialTheme.shapes.medium))
+                if (picture.mimeType.startsWith("image/")) {
+                    RemoteImage(picture.uri, contentDescription = picture.name, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp).clip(MaterialTheme.shapes.medium))
+                } else {
+                    AttachedFileTile(picture.name, Modifier.size(64.dp).clip(MaterialTheme.shapes.medium))
+                }
                 FilledTonalIconButton(
                     onClick = { onRemove(picture.id) },
                     modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(24.dp).testTag(ConversationComposerTags.PICTURE_REMOVE),

@@ -299,7 +299,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onCompose = { nav.composeConversation(route.connectionId) },
                     onDetails = { nav.navigate(ConversationDetailsRoute(route.connectionId, conversation.agentId)) },
                     onDraftChange = conversation::setDraft,
-                    onSend = { words, files -> conversation.send(words, files) },
+                    onSend = { words, attachments -> conversation.send(words, attachments) },
                     onModeChange = conversation::setMode,
                     onStop = conversation::stop,
                     onRetrySend = conversation::retrySend,

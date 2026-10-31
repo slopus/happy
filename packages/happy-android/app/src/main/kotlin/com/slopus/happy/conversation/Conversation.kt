@@ -1,6 +1,7 @@
 package com.slopus.happy.conversation
 
 import androidx.compose.runtime.Immutable
+import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.long
 import com.slopus.happy.chat.num
@@ -130,6 +131,8 @@ class Conversation(
     /** The answer to `POST /v0/tasks` or `/v0/bots`, so home lists it at once. */
     private val onTaskCreated: (JsonObject) -> Unit = {},
     private val lane: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
+    /** Where a send's files are read before they go up. */
+    private val io: CoroutineContext = Dispatchers.IO,
     private val now: () -> Long = System::currentTimeMillis,
     private val draftDebounceMillis: Long = 300,
     private val retryDelayMillis: Long = 600,
@@ -139,7 +142,22 @@ class Conversation(
     private val disk: CoroutineContext = Dispatchers.IO,
     private val keepDelayMillis: Long = 1_000,
 ) {
-    private class Outgoing(val id: String, val text: String, val images: List<Block.Image>, var accepted: Boolean = false, var failure: Problem? = null)
+    /**
+     * A send on its way: the person's [text], its pictures inline and its
+     * [files] for the workspace; [wire] is the text that goes, naming the
+     * files ([WorkspaceUploads.text]), and the one drawn, so the message
+     * reads the same before and after the computer has it.
+     */
+    private class Outgoing(
+        val id: String,
+        val text: String,
+        val images: List<Block.Image>,
+        val files: List<OutgoingFile> = emptyList(),
+        var accepted: Boolean = false,
+        var failure: Problem? = null,
+    ) {
+        val wire: String = WorkspaceUploads.text(text, files)
+    }
 
     private val _state = MutableStateFlow(
         ConversationState(
@@ -573,7 +591,7 @@ class Conversation(
         val trimmed = text.trim()
         if (trimmed.isEmpty() && images.isEmpty()) return false
         if (!created) {
-            startWork(trimmed) { images }
+            startWork(ConversationApi.clientId(), trimmed, emptyList()) { images }
             return false
         }
         val id = ConversationApi.clientId()
@@ -587,28 +605,36 @@ class Conversation(
     }
 
     /**
-     * [send] with the pictures in [files], read in order with the sends
-     * around it. Pictures that can't be read send nothing: the words go
-     * back to an empty composer and an alert says why.
+     * [send] with [attachments] (staged copies on this phone): pictures the
+     * model reads go inline, read in order with the sends around it; the
+     * rest are written into the agent's workspace before the message goes
+     * ([WorkspaceUploads]). Pictures that can't be read send nothing: the
+     * words go back to an empty composer and an alert says why.
      */
-    fun send(text: String, files: List<File>, readPictures: (List<File>) -> List<Block.Image> = InlinePictures::read): Boolean {
-        if (files.isEmpty()) return send(text)
+    fun send(
+        text: String,
+        attachments: List<AttachmentPreview>,
+        readPictures: (List<File>) -> List<Block.Image> = InlinePictures::read,
+    ): Boolean {
+        if (attachments.isEmpty()) return send(text)
         val trimmed = text.trim()
+        val id = ConversationApi.clientId()
+        val (inline, files) = WorkspaceUploads.split(id, attachments)
+        val pictures = inline.map { WorkspaceUploads.localFile(it.uri) }
         if (!created) {
-            startWork(trimmed) { readPictures(files) }
+            startWork(id, trimmed, files) { if (pictures.isEmpty()) emptyList() else readPictures(pictures) }
             return false
         }
-        val id = ConversationApi.clientId()
         scope.launch(lane) {
             val images = try {
-                readPictures(files)
+                if (pictures.isEmpty()) emptyList() else readPictures(pictures)
             } catch (e: Exception) {
                 val restore = draft.isBlank() && trimmed.isNotEmpty()
                 if (restore) setDraftNow(trimmed)
                 publish { it.copy(draftArrivals = it.draftArrivals + if (restore) 1 else 0, alert = Problem.PicturesUnreadable) }
                 return@launch
             }
-            outgoing += Outgoing(id, trimmed, images)
+            outgoing += Outgoing(id, trimmed, images, files)
             setDraftNow("")
             publish()
             pump()
@@ -623,7 +649,7 @@ class Conversation(
      * stay in the composer, and a refusal leaves them there and says why. A
      * send while it is being made is dropped, as the button can't send then.
      */
-    private fun startWork(text: String, pictures: () -> List<Block.Image>) {
+    private fun startWork(id: String, text: String, files: List<OutgoingFile>, pictures: () -> List<Block.Image>) {
         scope.launch(lane) {
             if (created || making) return@launch
             val images = try {
@@ -645,7 +671,7 @@ class Conversation(
                 return@launch
             }
             making = false
-            outgoing += Outgoing(ConversationApi.clientId(), text, images)
+            outgoing += Outgoing(id, text, images, files)
             setDraftNow("")
             publish { it.copy(taken = ComposerTaken((it.taken?.serial ?: 0) + 1, text)) }
             pump()
@@ -722,7 +748,8 @@ class Conversation(
                 try {
                     ensureCreated()
                     val mode = sendingMode() ?: throw IllegalStateException("No model is set up on this computer.")
-                    val message = withRetries { api.send(agentId, next.id, next.text, next.images, mode) }
+                    upload(next.files)
+                    val message = withRetries { api.send(agentId, next.id, next.wire, next.images, mode) }
                     next.accepted = true
                     if (message != null && message.id !in messages) {
                         messages[message.id] = message
@@ -738,6 +765,23 @@ class Conversation(
                 }
                 publish()
             }
+        }
+    }
+
+    /**
+     * Writes a send's [files] into the agent's workspace, each once: a retry
+     * skips what went up, and the same bytes again count as written.
+     */
+    private suspend fun upload(files: List<OutgoingFile>) {
+        if (files.all { it.uploaded }) return
+        val workspaceId = agent?.workspaceId
+            ?: withRetries { api.bootstrap(agentId) }.agent.workspaceId
+            ?: throw IllegalStateException("This chat has no folder on the computer to put files in.")
+        for (file in files) {
+            if (file.uploaded) continue
+            val bytes = withContext(io) { file.file.readBytes() }
+            withRetries { api.uploadFile(workspaceId, file.path, bytes) }
+            file.uploaded = true
         }
     }
 
@@ -985,7 +1029,7 @@ class Conversation(
         for (id in pending) messages[id]?.let { rows += builder.rows(it, agentId, parentAgentId, false) }
         for (send in outgoing) {
             val delivery = send.failure?.let(Delivery::Failed) ?: if (send.accepted) Delivery.Pending else Delivery.Sending
-            rows += ConversationRow.User("${send.id}:user", send.id, send.text, com.slopus.happy.chat.markdown.parseMarkdown(send.text), send.images, delivery)
+            rows += ConversationRow.User("${send.id}:user", send.id, send.wire, com.slopus.happy.chat.markdown.parseMarkdown(send.wire), send.images, delivery)
         }
         builder.forget(messages.keys)
         val produced = lastRun != null && running &&

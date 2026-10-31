@@ -8,6 +8,7 @@ import com.slopus.happy.connection.TransportResponse
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -120,6 +121,26 @@ open class ConversationApi(private val request: AgentRequest) {
             put("mode", mode.json())
         }
         return Message.parse(call("POST", "/v0/agents/${escape(agentId)}/send", body)["message"])
+    }
+
+    /**
+     * Writes [bytes] at [path] in the workspace, new only (`expectedHash:
+     * null`). The same bytes already there, a retry whose answer was lost,
+     * count as written (iOS `AttachmentRules.upload`).
+     */
+    open suspend fun uploadFile(workspaceId: String, path: String, bytes: ByteArray) {
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val body = buildJsonObject {
+            put("path", path)
+            put("content", java.util.Base64.getEncoder().encodeToString(bytes))
+            put("expectedHash", JsonNull)
+        }
+        val response = request("PUT", "/v0/workspaces/${escape(workspaceId)}/file", body)
+        if (response.status == 409) {
+            val answer = runCatching { json.parseToJsonElement(response.text).obj }.getOrNull()
+            if (answer?.get("code").str == "hash_mismatch" && answer?.get("hash").str == hash) return
+        }
+        if (decode(response)["hash"].str != hash) throw invalid()
     }
 
     open suspend fun abort(agentId: String) {

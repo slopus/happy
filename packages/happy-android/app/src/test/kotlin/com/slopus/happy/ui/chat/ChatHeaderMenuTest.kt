@@ -28,7 +28,8 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.attachments.AttachmentStripTags
-import com.slopus.happy.ui.attachments.ComposerAttachmentTags
+import com.slopus.happy.ui.attach.AttachTags
+import com.slopus.happy.attachments.AttachTabKind
 import com.slopus.happy.ui.attachments.LocalComposerImages
 import com.slopus.happy.ui.attachments.rememberComposerImages
 import com.slopus.happy.ui.components.PickerSheetTags
@@ -89,15 +90,16 @@ class ChatHeaderMenuTest {
         rule.node(ChatScreenTags.MENU).assertDoesNotExist()
     }
 
-    @Test fun initialAttachmentChooserHasTwoActionsAndPreservesEditor() {
+    @Test fun theAddButtonOpensTheAttachmentSheetWithPicturesOnly() {
         show()
-        rule.node(ComposerTags.INPUT).performClick().performTextInputSelection(TextRange(5))
         rule.node(AttachmentStripTags.ADD).performClick()
-        val panel = rule.node(ComposerAttachmentTags.MENU).bounds
-        assertDp("attachment panel width", 280, panel.width)
-        assertTrue("paste touch target", rule.node(ComposerAttachmentTags.PASTE).bounds.height >= 48.dp)
-        assertTrue("photo touch target", rule.node(ComposerAttachmentTags.LIBRARY).bounds.height >= 48.dp)
-        rule.node(ComposerTags.INPUT).assertIsFocused()
-        assertEquals(TextRange(5), rule.node(ComposerTags.INPUT).fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        rule.waitForIdle()
+        rule.node(AttachTags.SHEET).assertExists()
+        // A relay session's CLI reads pictures alone: the gallery, and the File tab for the system picker and paste.
+        rule.node(AttachTags.tab(AttachTabKind.Gallery)).assertExists()
+        rule.node(AttachTags.tab(AttachTabKind.Files)).performClick()
+        rule.waitForIdle()
+        rule.node(AttachTags.BROWSE).assertDoesNotExist()
+        rule.node(AttachTags.PASTE).assertExists()
     }
 }

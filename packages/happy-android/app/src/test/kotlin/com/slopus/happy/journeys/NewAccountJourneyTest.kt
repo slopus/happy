@@ -13,7 +13,8 @@ import com.slopus.happy.ui.HappyApp
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.attachments.AttachmentStripTags
-import com.slopus.happy.ui.attachments.ComposerAttachmentTags
+import com.slopus.happy.attachments.AttachTabKind
+import com.slopus.happy.ui.attach.AttachTags
 import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.chat.ComposeChatTags
 import com.slopus.happy.ui.chat.ComposerTags
@@ -94,13 +95,14 @@ class NewAccountJourneyTest {
         rule.node(HomeTags.COMPOSE).performClick()
         rule.waitFor(ComposeChatTags.TARGET)
         rule.waitFor(ComposerTags.INPUT)
+        // The attachment sheet: its File tab pastes, the caption is the draft, its Send sends both.
         copyImageToClipboard()
         rule.node(AttachmentStripTags.ADD).performClick()
-        rule.node(ComposerAttachmentTags.PASTE).performClick()
-        rule.waitFor(AttachmentStripTags.THUMB)
-        rule.node(ComposerTags.INPUT).performTextInput("Explain this screenshot")
-        rule.assertActionsLabelled()
-        rule.node(ComposerTags.PRIMARY).performClick()
+        rule.node(AttachTags.tab(AttachTabKind.Files)).performClick()
+        rule.node(AttachTags.PASTE).performClick()
+        rule.waitFor(AttachTags.SEND)
+        rule.node(AttachTags.CAPTION).performTextInput("Explain this screenshot")
+        rule.node(AttachTags.SEND).performClick()
 
         // The same screen becomes the new session's chat, with the message delivered.
         rule.waitFor(MessageTags.USER, 15_000)

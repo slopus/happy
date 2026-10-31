@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +37,9 @@ import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.sync.rigCanAbort
+import com.slopus.happy.attachments.AttachAccepts
 import com.slopus.happy.ui.attachments.ComposerAddImageButton
+import com.slopus.happy.ui.attachments.canUseAttachments
 import com.slopus.happy.ui.attachments.ComposerAttachmentStrip
 import com.slopus.happy.ui.attachments.hasComposerImages
 import com.slopus.happy.ui.autocomplete.ComposerSuggestions
@@ -138,6 +141,8 @@ private fun ChatComposerFor(
 ) {
     val sessionState = state.sessionState
     val metadata = session.metadata
+    val latestDraft by rememberUpdatedState(draft)
+    val latestSend by rememberUpdatedState(actions.onSend)
     val showAbort = showsAbort(sessionState)
     var aborting by remember { mutableStateOf(false) }
     // A local acknowledgement: the status update can trail the abort RPC.
@@ -211,7 +216,12 @@ private fun ChatComposerFor(
         middle = {
             // [+] [... model · effort]: permissions live in the header overflow.
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ComposerSpec.actionRowGap)) {
-                ComposerAddImageButton()
+                ComposerAddImageButton(
+                    accepts = if (state.session == null) AttachAccepts.RelayPictures else AttachAccepts.relay(metadata, canUseAttachments(metadata)),
+                    caption = draft,
+                    onCaptionChange = actions.onDraftChange,
+                    onSend = { latestSend(latestDraft) },
+                )
                 ComposerModeChips(modes, metadata, actions.onModeChange, Modifier.weight(1f))
             }
         },

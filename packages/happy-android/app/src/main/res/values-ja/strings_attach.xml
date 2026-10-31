@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_attach.xml in ja. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="attach_title">添付</string>
+    <string name="attach_tab_gallery">ギャラリー</string>
+    <string name="attach_tab_files">ファイル</string>
+    <string name="attach_photo_label">写真</string>
+    <string name="attach_video_label">動画、%1$s</string>
+    <string name="attach_pick">選択</string>
+    <string name="attach_unpick">選択解除</string>
+    <string name="attach_access_title">写真と動画</string>
+    <string name="attach_access_message">アクセスを許可すると、最近の写真と動画がここに表示されます。</string>
+    <string name="attach_access_blocked">写真と動画へのアクセスがオフになっています。設定で Happy に許可してください。</string>
+    <string name="attach_access_allow">アクセスを許可</string>
+    <string name="attach_access_settings">設定を開く</string>
+    <string name="attach_partial_message">Happy は選択した写真と動画のみ表示できます。</string>
+    <string name="attach_partial_manage">管理</string>
+    <string name="attach_gallery_empty">写真や動画はまだありません</string>
+    <string name="attach_files_browse">参照</string>
+    <string name="attach_files_browse_detail">このスマートフォンからファイルを送信</string>
+    <string name="attach_files_gallery">ギャラリー</string>
+    <string name="attach_files_gallery_detail">写真と動画をファイルとして送信</string>
+    <string name="attach_files_paste">貼り付け</string>
+    <string name="attach_files_paste_detail">クリップボードの画像を送信</string>
+    <string name="attach_files_recent">最近のファイル</string>
+    <string name="attach_caption_hint">キャプションを追加…</string>
+    <string name="attach_send">送信</string>
+    <string name="attach_limit_message">一度に送信できるのは %1$d 件までです。</string>
+    <string name="attach_unsupported_title">ファイルを送信できません</string>
+    <string name="attach_unsupported_message">このチャットは「%1$s」のような種類のファイルを受け付けません。</string>
+    <string name="attach_unreadable_message">「%1$s」を読み込めなかったため、送信されませんでした。</string>
+    <plurals name="attach_selected">
+        <item quantity="other">%1$d 件選択</item>
+    </plurals>
+</resources>
