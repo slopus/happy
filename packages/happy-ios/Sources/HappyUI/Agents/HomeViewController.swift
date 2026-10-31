@@ -92,8 +92,10 @@ final class HomeViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // The conversation's own ground, light and dark.
-        view.backgroundColor = UIColor(Palette.surface)
+        // The conversation's own ground, light and dark; the list on it is
+        // grouped, a quiet card per section, Happy's own card first.
+        view.backgroundColor = UIColor(Palette.groupedGround)
+        sidebar.style = .grouped
         view.addSubview(sidebar)
         view.addSubview(storiesBand)
         stories.install(in: storiesBand)

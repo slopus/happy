@@ -14,6 +14,11 @@ import UIKit
 /// edges, and a drop lands where the gap is). A row that can't be carried
 /// opens a preview of its conversation instead, as Telegram's chat list does. A row's title can turn into a field
 /// in place to be renamed.
+///
+/// Home draws it grouped (`style`): each section a quiet card under its
+/// heading, as iOS's inset grouped lists are. The cards are views of their
+/// own under the rows, keyed by what heads them, so a fold or a carry moves
+/// and resizes them with the rows, and a carried row's gap is the card's.
 final class SidebarView: UIScrollView {
     var onSelect: ((Row) -> Void)?
     /// A story row's ring was tapped: its agent's stories, not its conversation.
@@ -41,6 +46,16 @@ final class SidebarView: UIScrollView {
     var scrolls = true {
         didSet { isScrollEnabled = scrolls }
     }
+    /// Desktop's column, or iOS's inset grouped cards (home's).
+    var style: SidebarLayout.Style = .plain {
+        didSet {
+            guard style != oldValue else { return }
+            for view in views.values { view.grouped = style == .grouped }
+            connectors.isHidden = style == .grouped
+            laidOut = nil
+            setNeedsLayout()
+        }
+    }
 
     /// The row drawn selected: on home, the one whose screen is coming in.
     var selectedRowId: String? {
@@ -52,6 +67,8 @@ final class SidebarView: UIScrollView {
 
     private(set) var rows: [Row] = []
     private var views: [String: RowView] = [:]
+    /// A grouped list's cards, by the heading or separator over each ("top" for the first, unheaded one).
+    private var cards: [String: UIView] = [:]
     private let connectors = CAShapeLayer()
     private var laidOut: (width: CGFloat, rows: [SidebarLayout.Row])?
     /// The row IDs `layoutResult`'s frames are for, in its order.
@@ -259,6 +276,7 @@ final class SidebarView: UIScrollView {
     private func makeRow() -> RowView {
         let view = RowView()
         view.images = images
+        view.grouped = style == .grouped
         addSubview(view)
         let tap = UITapGestureRecognizer(target: self, action: #selector(rowTapped(_:)))
         view.addGestureRecognizer(tap)
@@ -376,6 +394,14 @@ final class SidebarView: UIScrollView {
         Self.layoutRows(rows, textScale: StoryRowText.scale(traitCollection))
     }
 
+    /// `input` laid out at this list's width, room and style.
+    private func layout(_ input: [SidebarLayout.Row]) -> SidebarLayout.Result {
+        let grouped = style == .grouped
+        let top = padding?.top ?? (grouped ? GroupedSidebarMetrics.contentTop : Metrics.contentTop)
+        let bottom = padding?.bottom ?? (grouped ? GroupedSidebarMetrics.contentBottom : Metrics.contentBottom)
+        return SidebarLayout.layout(input, width: bounds.width, top: top, bottom: bottom, scale: traitCollection.displayScale, style: style)
+    }
+
     /// The rows as the layout needs them; story rows measured at `textScale`.
     nonisolated static func layoutRows(_ rows: [Row], textScale: CGFloat = 1) -> [SidebarLayout.Row] {
         rows.map { row in
@@ -422,12 +448,14 @@ final class SidebarView: UIScrollView {
         let offset = contentOffset.y
         let oldBottom = max(-contentInset.top, contentSize.height + contentInset.bottom - bounds.height)
         let overscroll = max(0, offset - oldBottom)
-        let result = SidebarLayout.layout(input, width: bounds.width, top: padding?.top ?? Metrics.contentTop, bottom: padding?.bottom ?? Metrics.contentBottom, scale: traitCollection.displayScale)
+        let result = layout(input)
         layoutResult = result
         laidOut = (bounds.width, input)
         placedWidth = bounds.width
         placed = shown.map(\.id)
+        let cardFrames = placeCards(shown, result, animated: animated)
         let move = {
+            for (key, frame) in cardFrames { self.cards[key]?.frame = frame }
             for (row, frame) in zip(shown, result.frames) {
                 guard let view = self.views[row.id] else { continue }
                 view.bounds = CGRect(origin: .zero, size: frame.box.size)
@@ -452,6 +480,42 @@ final class SidebarView: UIScrollView {
         keep(anchor, in: shown, result, offset: offset, overscroll: overscroll)
     }
 
+    /// The cards `result` draws, by what heads each: a card that is new
+    /// opens down from its top when the rows glide (a section unfolding)
+    /// and is simply there otherwise; one that went closes up into its top
+    /// and goes. Returns where each card goes.
+    private func placeCards(_ shown: [Row], _ result: SidebarLayout.Result, animated: Bool) -> [(String, CGRect)] {
+        let frames = result.groups.map { group in
+            (group.rows.lowerBound > 0 ? shown[group.rows.lowerBound - 1].id : "top", group.frame)
+        }
+        let live = Set(frames.map(\.0))
+        for (key, card) in cards where !live.contains(key) {
+            cards.removeValue(forKey: key)
+            guard animated else {
+                card.removeFromSuperview()
+                continue
+            }
+            UIView.animate(withDuration: 0.16, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+                card.frame.size.height = 0
+                card.alpha = 0
+            } completion: { _ in card.removeFromSuperview() }
+        }
+        for (key, frame) in frames where cards[key] == nil {
+            let card = UIView()
+            card.isUserInteractionEnabled = false
+            card.backgroundColor = UIColor(Palette.groupedCard)
+            card.layer.cornerRadius = GroupedSidebarMetrics.radius
+            card.layer.cornerCurve = .continuous
+            card.frame = animated ? CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: 0) : frame
+            insertSubview(card, at: 0)
+            cards[key] = card
+        }
+        return frames
+    }
+
+    /// The cards drawn now, top first, for the hosted tests.
+    var cardFrames: [CGRect] { cards.values.map(\.frame).sorted { $0.minY < $1.minY } }
+
     /// A fold's rows: the ones it brought are put where they belong at once
     /// and fade in there, the others glide to their new places as desktop's
     /// do, and the ones it took away fade where they stood while the rows
@@ -462,7 +526,7 @@ final class SidebarView: UIScrollView {
         let arriving = entering.filter { id in views[id]?.frames == nil }
         if !arriving.isEmpty {
             let input = layoutRows(shown)
-            let result = SidebarLayout.layout(input, width: bounds.width, top: padding?.top ?? Metrics.contentTop, bottom: padding?.bottom ?? Metrics.contentBottom, scale: traitCollection.displayScale)
+            let result = layout(input)
             UIView.performWithoutAnimation {
                 for (row, frame) in zip(shown, result.frames) where arriving.contains(row.id) {
                     guard let view = views[row.id] else { continue }
@@ -731,7 +795,7 @@ final class SidebarView: UIScrollView {
     /// from other rows (a story row's sessions, which are never drawn).
     private func carryable(_ row: Row) -> (drag: Drag, heights: [Double])? {
         guard let drag = beginDrag?(row), drag.order(to: drag.from) == rows else { return nil }
-        let frames = SidebarLayout.layout(layoutRows(rows), width: bounds.width, scale: traitCollection.displayScale).frames
+        let frames = layout(layoutRows(rows)).frames
         return (drag, heights(drag, frames: frames))
     }
 
@@ -749,7 +813,7 @@ final class SidebarView: UIScrollView {
 
     /// The drawn order's frames for the carried rows, and their union.
     private func heldFrame(order: [Row], held: [Row]) -> CGRect {
-        let result = SidebarLayout.layout(layoutRows(order), width: bounds.width, scale: traitCollection.displayScale)
+        let result = layout(layoutRows(order))
         let ids = Set(held.map(\.id))
         return zip(order, result.frames).reduce(CGRect.null) { union, pair in ids.contains(pair.0.id) ? union.union(pair.1.box) : union }
     }
@@ -849,7 +913,7 @@ extension SidebarView: UIDragInteractionDelegate {
         for row in carry.drag.held { views[row.id]?.pressed = false }
         guard !rect.isNull, let snapshot = resizableSnapshotView(from: rect, afterScreenUpdates: true, withCapInsets: .zero) else { return nil }
         let card = UIView(frame: CGRect(origin: .zero, size: rect.size))
-        card.backgroundColor = UIColor(Palette.background)
+        card.backgroundColor = UIColor(style == .grouped ? Palette.groupedCard : Palette.background)
         card.layer.cornerRadius = Metrics.cornerRadius
         card.layer.cornerCurve = .continuous
         card.clipsToBounds = true

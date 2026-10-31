@@ -159,8 +159,11 @@ public enum SidebarLayout {
         public var draft: CGRect?
         /// A story row's empty mark, on its last line, on whole pixels.
         public var empty: CGRect?
+        /// In a grouped list, the row's place in its card; nil in a plain
+        /// list, and for a heading or a separator.
+        public var cell: Cell?
 
-        public init(box: CGRect, mark: CGRect? = nil, label: CGRect = .zero, trailing: CGRect? = nil, chevron: CGRect? = nil, chevronGlyph: CGRect? = nil, rule: CGRect? = nil, ring: CGRect? = nil, subtitle: CGRect? = nil, corner: CGRect? = nil, signalLane: CGRect? = nil, time: CGRect? = nil, draft: CGRect? = nil, empty: CGRect? = nil) {
+        public init(box: CGRect, mark: CGRect? = nil, label: CGRect = .zero, trailing: CGRect? = nil, chevron: CGRect? = nil, chevronGlyph: CGRect? = nil, rule: CGRect? = nil, ring: CGRect? = nil, subtitle: CGRect? = nil, corner: CGRect? = nil, signalLane: CGRect? = nil, time: CGRect? = nil, draft: CGRect? = nil, empty: CGRect? = nil, cell: Cell? = nil) {
             self.box = box
             self.mark = mark
             self.label = label
@@ -175,6 +178,7 @@ public enum SidebarLayout {
             self.time = time
             self.draft = draft
             self.empty = empty
+            self.cell = cell
         }
     }
 
@@ -183,6 +187,8 @@ public enum SidebarLayout {
         /// The tree's lines: vertical stems and the elbows into nested rows, `line` wide.
         public var connectors: [CGRect]
         public var contentHeight: CGFloat
+        /// A grouped list's cards, top first; none in a plain list.
+        public var groups: [Group] = []
     }
 
     public static func height(_ row: Row) -> CGFloat {
@@ -221,6 +227,12 @@ public enum SidebarLayout {
     }
 
     public static func layout(_ rows: [Row], width: CGFloat, top: CGFloat = Metrics.contentTop, bottom: CGFloat = Metrics.contentBottom, scale: CGFloat = 3) -> Result {
+        layout(rows, width: width, top: top, bottom: bottom, scale: scale, style: .plain)
+    }
+
+    /// `rows` in `style`: desktop's column, or iOS's inset grouped cards.
+    public static func layout(_ rows: [Row], width: CGFloat, top: CGFloat, bottom: CGFloat, scale: CGFloat = 3, style: Style) -> Result {
+        if style == .grouped { return grouped(rows, width: width, top: top, bottom: bottom, scale: scale) }
         typealias M = Metrics
         var frames: [Frame] = []
         frames.reserveCapacity(rows.count)
@@ -312,9 +324,15 @@ public enum SidebarLayout {
     /// the status ends the lane's room before it, whatever the lane holds.
     static func storyRow(_ story: StoryRow, hasMark: Bool, y: CGFloat, width: CGFloat, scale: CGFloat) -> Frame {
         typealias S = StoryRowMetrics
+        let box = CGRect(x: S.cardInset, y: y, width: max(0, width - 2 * S.cardInset), height: storyHeight(story.text.scale))
+        return storyRow(story, hasMark: hasMark, in: box, scale: scale)
+    }
+
+    /// A story row whose card is `box`.
+    static func storyRow(_ story: StoryRow, hasMark: Bool, in box: CGRect, scale: CGFloat) -> Frame {
+        typealias S = StoryRowMetrics
         func pixel(_ value: CGFloat) -> CGFloat { (value * max(1, scale)).rounded() / max(1, scale) }
         let text = story.text
-        let box = CGRect(x: S.cardInset, y: y, width: max(0, width - 2 * S.cardInset), height: storyHeight(text.scale))
         var frame = Frame(box: box)
         let disc = CGRect(x: box.minX + S.pad, y: pixel(box.midY - S.disc / 2), width: S.disc, height: S.disc)
         if hasMark {

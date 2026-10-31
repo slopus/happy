@@ -65,6 +65,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var stories: StoriesHarness?
     private var homeControllerScroll: HomeControllerScrollHarness?
     private var homeScrollDiagnostic: HomeScrollDiagnosticHarness?
+    private var groupedHome: GroupedHomeHarness?
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -111,6 +112,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "agentList" {
             agentList = AgentListScrollHarness(window: window, arguments: arguments)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "groupedHome" {
+            groupedHome = GroupedHomeHarness(window: window, arguments: arguments)
             return
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "storyRows" {

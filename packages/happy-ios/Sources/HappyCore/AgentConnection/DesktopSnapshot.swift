@@ -19,6 +19,26 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
         public var status: String
         public var orderKey: String
         public var agents: [AgentWire.Agent]
+        /// The repository's picture, which the daemon has only for a repo it
+        /// cloned (desktop's `HappyAgentProjectAvatar`); one it can't read is none.
+        public var avatar: Avatar?
+
+        public struct Avatar: Codable, Equatable, Sendable {
+            /// Daemon-relative, read with the same bearer token.
+            public var url: String
+        }
+
+        enum CodingKeys: String, CodingKey { case id, name, status, orderKey, agents, avatar }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            status = try container.decode(String.self, forKey: .status)
+            orderKey = try container.decode(String.self, forKey: .orderKey)
+            agents = try container.decode([AgentWire.Agent].self, forKey: .agents)
+            avatar = try? container.decodeIfPresent(Avatar.self, forKey: .avatar)
+        }
     }
     public struct Workspace: Codable, Equatable, Sendable {
         public var id: String

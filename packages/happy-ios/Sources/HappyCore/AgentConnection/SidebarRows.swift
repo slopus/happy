@@ -20,16 +20,20 @@ public enum SidebarRows {
         func heading(_ id: String, _ title: String, depth: Int = 0, mark: Row.Mark = .none) {
             rows.append(Row(id: id, nodeId: id, kind: .section, depth: depth, label: title, mark: mark, collapsed: collapsed.contains(id)))
         }
-        func folder(_ id: String, _ title: String, depth: Int, kind: String) {
-            rows.append(Row(id: id, nodeId: id, kind: .space, depth: depth, label: title, mark: .glyph("folder"), collapsed: collapsed.contains(id), targetKind: kind))
+        // As desktop draws them: a repo wears its own picture when it has one
+        // (a cloned repo), and a project without one or a worktree nothing.
+        func folder(_ id: String, _ title: String, depth: Int, kind: String, avatar: DesktopSnapshot.Project.Avatar? = nil) {
+            let mark: Row.Mark = avatar.flatMap { $0.url.hasPrefix("/v0/") ? .image(path: $0.url, thumbhash: nil) : nil } ?? .none
+            rows.append(Row(id: id, nodeId: id, kind: .space, depth: depth, label: title, mark: mark, collapsed: collapsed.contains(id), targetKind: kind))
         }
         func status(_ agent: AgentWire.Agent) -> Row.Status { Rows.activity(agent) }
         func agentRow(_ agent: AgentWire.Agent, depth: Int, label: String? = nil, owner: DesktopSnapshot.Owner? = nil, kind: String? = nil, muted: Bool = false) {
             guard agent.archivedAt == nil else { return }
             let id = owner.map { "\(kind ?? "agent"):\($0.id)" } ?? "session:\(agent.id)"
             let children = (agent.subtasks ?? []).filter { $0.archivedAt == nil }
+            // A subtask or a project's session has no mark, as on desktop.
             var row = Row(id: id, nodeId: id, kind: owner == nil ? .session : .space, depth: depth,
-                label: label ?? agent.title ?? "Untitled", mark: owner?.systemKey == "chief_of_staff" ? .happy : .glyph(kind == "bot" ? "agents" : "tasks"),
+                label: label ?? agent.title ?? "Untitled", mark: owner == nil ? .none : owner?.systemKey == "chief_of_staff" ? .happy : .glyph(kind == "bot" ? "agents" : "tasks"),
                 status: muted ? .none : status(agent), unread: !muted && agent.unread != nil, collapsed: children.isEmpty ? nil : collapsed.contains(id),
                 isHappy: owner?.systemKey == "chief_of_staff", agentId: agent.id, workspaceId: agent.workspaceId, targetKind: kind)
             row.targetId = owner?.id
@@ -75,7 +79,7 @@ public enum SidebarRows {
             heading("direct:projects", "Projects")
             let projects = desktop.projects.filter { $0.status != "archived" }.sorted { ($0.orderKey, $0.id) < ($1.orderKey, $1.id) }
             for project in projects {
-                folder("project:\(project.id)", project.name, depth: 0, kind: "project")
+                folder("project:\(project.id)", project.name, depth: 0, kind: "project", avatar: project.avatar)
                 for agent in project.agents where agent.parentAgentId == nil { agentRow(agent, depth: 1) }
                 let workspaces = desktop.workspaces.filter {
                     $0.projectId == project.id && $0.id != project.id && $0.status != "archived" && $0.status != "archiving" && !descendants.contains($0.id)
