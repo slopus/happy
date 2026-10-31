@@ -4,11 +4,10 @@ import UIKit
 import UltraView
 
 /// The screen a transcript's rows belong to: it planned them, and a row's
-/// cards, media and what VoiceOver reads of it are still its to set, as
-/// they are for the rows it mounts itself.
+/// cards, media and what VoiceOver reads of it are still its to set.
 @MainActor
 protocol AgentChatTranscriptHost: AnyObject {
-    /// `view` is to show `plan`, exactly as a mounted row shows it.
+    /// `view` is to show `plan`.
     func show(_ plan: ChatRowPlan, in view: ChatPlanView)
     /// A tall row's chunks came or went: what is over them, and what
     /// VoiceOver reads of them, is to be placed again.
@@ -21,14 +20,13 @@ protocol AgentChatTranscriptHost: AnyObject {
     func transcriptHeld(_ action: ChatRowAction, in view: UIView, frame: CGRect, at point: CGPoint)
 }
 
-/// The agents' transcript on UltraList, in place of the rows the screen
-/// mounts in a scroll view of its own. Each row is drawn by the same
-/// `ChatPlanView` as before, with the same plan, so its cards, media, hit
-/// testing and VoiceOver are what they were: what changes is who keeps
-/// the rows near the screen and who moves them.
+/// The agents' transcript on UltraList. Each row is drawn by a
+/// `ChatPlanView` from its plan, which the screen shows (`show`), so its
+/// cards, media, hit testing and VoiceOver are the screen's; the library
+/// keeps the rows near the screen and moves them.
 ///
 /// The list is turned upside down, as the library's own chat is and as the
-/// sessions' chat is (`ChatUltraListAdapter`): rows go in newest first,
+/// sessions' chat is (`ChatListView`): rows go in newest first,
 /// which reads as the newest at the foot, resting on the composer. The
 /// screen keeps planning them oldest first and hands them over that way.
 @MainActor
@@ -40,9 +38,8 @@ final class AgentChatUltraList: UIView {
     var onReachedOldest: (() -> Void)?
     private(set) var isActive = true
     private var rows: [String: AgentChatRow] = [:]
-    /// Where each row starts, measured up from the newest end, as the
-    /// mounted transcript's stack measures it: the list keeps only a
-    /// window of rows, so their places are worked out here.
+    /// Where each row starts, measured up from the newest end: the list
+    /// keeps only a window of rows, so their places are worked out here.
     private var starts: [String: CGFloat] = [:]
     private var revision: UInt64 = 0
     private var insets = UIEdgeInsets.zero
@@ -50,13 +47,16 @@ final class AgentChatUltraList: UIView {
     private var contentHeight: CGFloat = 0
     /// The newest row is at the foot and the reader is on it.
     private(set) var followsNewest = true
-    /// As close to the newest row as the mounted transcript counts as on
-    /// it (`ChatViewController`'s own 24pt), not the sessions' 200.
+    /// A preview's: the newest row, taller than the room it has, shows
+    /// from its start rather than its end.
+    var showsNewestFromItsStart = false
+    /// As close to the newest row as counts as on it, 24pt, not the
+    /// sessions' 200.
     static let followThreshold: CGFloat = 24
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        list.contentView.transform = ChatCollectionLayout.flip
+        list.contentView.transform = ChatListView.flip
         list.keyboardDismissMode = .interactive
         list.accessibilityIdentifier = "transcript"
         list.onScroll = { [weak self] _ in self?.scrolled() }
@@ -119,9 +119,8 @@ final class AgentChatUltraList: UIView {
     /// whose plan has not changed keeps the view it had, drawn as it was:
     /// only a new plan is shown again.
     ///
-    /// The intro goes in last, which is at the top: where the mounted
-    /// transcript puts it, scrolling away as the rows under it fill the
-    /// screen (`ChatStackLayout(pinsFirst:)`).
+    /// The intro goes in last, which is at the top, scrolling away as the
+    /// rows under it fill the screen.
     /// `animated` eases rows in while the newest is followed; `moves` eases
     /// a turn opening or folding wherever the reader is, the rows they see
     /// staying put.
@@ -154,9 +153,18 @@ final class AgentChatUltraList: UIView {
         }
         contentHeight = start
         let follows = followsNewest && !list.isTracking && !list.isDragging && !list.isDecelerating
+        let target: ListScrollTarget?
+        if showsNewestFromItsStart {
+            // Upside down, a row's place is its newest end's: one taller
+            // than the room goes up until its start meets the far edge.
+            let room = Double(viewportHeight)
+            target = .init(index: 0, identity: items.first?.identity, resolve: { height, _ in min(0, room - height) })
+        } else {
+            target = follows ? .init(index: 0, identity: items.first?.identity) : nil
+        }
         list.applyChanges(items: items, newSize: viewportSize,
                           newInsets: .init(top: insets.top, bottom: insets.bottom),
-                          scrollTo: follows ? .init(index: 0, identity: items.first?.identity) : nil,
+                          scrollTo: target,
                           anchorMode: .preserveVisibleContent,
                           transition: (animated && follows || moves) && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
     }
@@ -242,7 +250,7 @@ private final class AgentChatIntroView: ListRowView {
         self.content = content
         self.height = height
         super.init(frame: .zero)
-        transform = ChatCollectionLayout.flip
+        transform = ChatListView.flip
         content.transform = .identity
         addSubview(content)
     }
@@ -281,9 +289,9 @@ final class AgentChatRow: ListRow {
 @MainActor
 final class AgentChatRowView: ListRowView, UIGestureRecognizerDelegate {
     private(set) var row: AgentChatRow
-    /// The row's own view, as the mounted transcript's rows are: it draws
-    /// the plan's marks itself, keeps its media and cards, and is what is
-    /// read out.
+    /// The row's own view: it draws the plan's marks itself, keeps its
+    /// media and cards, and is what is read out.
+
     let canvas = ChatPlanView()
     private let hold = UILongPressGestureRecognizer()
 
@@ -291,7 +299,7 @@ final class AgentChatRowView: ListRowView, UIGestureRecognizerDelegate {
         self.row = row
         super.init(frame: .zero)
         // The list is upside down; each row stands the right way up in it.
-        transform = ChatCollectionLayout.flip
+        transform = ChatListView.flip
         clipsToBounds = true
         canvas.drawsStaticContent = true
         canvas.cutsTallPlans = true

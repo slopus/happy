@@ -476,8 +476,11 @@ final class ChatFrameSampler: NSObject {
         let card = HostedChatNavigationTests.subview(AgentInputCardView.self, in: root)
         let composer = HostedChatNavigationTests.subview(SessionComposerView.self, in: root)
         let strip = HostedChatNavigationTests.subview(ChatWorktreeTabStrip.self, in: root)
-        let collection = list?.collectionView
-        let lowest = collection?.visibleCells.max { $0.frame.minY < $1.frame.minY }
+        // The newest row drawn, lowest on screen, in the list's own
+        // coordinates (it moves only if the conversation does).
+        let lowest = list?.ultra.list.loadedItemViews
+            .filter { $0.isDisplayReady && ($0 as? ChatUltraRowView)?.row.identity.hasPrefix("chat:message:") == true }
+            .max { $0.convert($0.bounds, to: root).maxY < $1.convert($1.bounds, to: root).maxY }
         var animating: [String] = []
         let watched: [(String, UIView?)] = [("strip", strip), ("list", list), ("dock", dock), ("card", card), ("row", lowest), ("title", title)]
         for (name, view) in watched where !(view?.layer.animationKeys() ?? []).isEmpty {
@@ -487,14 +490,15 @@ final class ChatFrameSampler: NSObject {
             chat: chat,
             time: link.timestamp,
             inWindow: root.window != nil,
-            ready: chat.openingReport != nil,
+            ready: chat.openingReport != nil && list?.isDisplayReady == true,
             title: title.flatMap { $0.window == nil ? nil : $0.convert($0.bounds, to: navigation.navigationBar) } ?? .zero,
             compose: compose,
             strip: frame(strip),
             list: frame(list) ?? .zero,
-            insets: collection?.contentInset ?? .zero,
-            rows: collection?.numberOfItems(inSection: 0) ?? 0,
-            row: lowest?.frame,
+            insets: list?.contentInsets ?? .zero,
+            rows: list?.plans.count ?? 0,
+            row: list.flatMap { list in lowest.map { $0.convert($0.bounds, to: list) } },
+
             dock: frame(dock) ?? .zero,
             card: frame(card) ?? .zero,
             composerShown: (card?.alpha ?? 0) > 0 && (composer?.alpha ?? 0) > 0,

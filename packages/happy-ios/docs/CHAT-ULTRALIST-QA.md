@@ -15,26 +15,24 @@ For runs without XCUITest, `-qaScript send` drives fixture sends, streamed
 replies, a failed send and its retry; `-qaScript live` observes the live
 fixture. Add `-qaProbe -qaRows -qaRun <name>` to record each row's presented
 frame and opacity to `Documents/qa/<name>-rows.jsonl`, beside script marks
-and the frame ledger. Without `-chatUltraList` this checks the default
-UICollectionView renderer. `-qaFilm` records window snapshots at 30 fps;
+and the frame ledger. `-qaFilm` records window snapshots at 30 fps;
 measure frame timing in a separate run because snapshots add work.
 
 | Test | Covers |
 | --- | --- |
 | `testSmokeLongFling` | Device, signing and capture work: a 1500-turn chat, one fling each way |
 | `testC1LongKeyboardAndHistory` | The keyboard up on open, three typed lines, a partial and an interactive keyboard dismiss, pulling past the newest message, six flings back, jump to newest |
-| `testL1LegacyLongKeyboardAndHistory` | C1 on UICollectionView, for comparison |
 | `testC2LiveStreamHistoryAndSend` | Dragging and flinging while a reply streams, jump to newest, sending with the keyboard up, copying the reply |
 | `testC3ToolsPermissionsDiffs` | Allowing and denying permissions, opening a tool group, opening and closing each tool on screen where it opened, a diff's Show more when one of its diffs holds lines back (the tool opened again and followed down to the bar; no diff in this fixture does, so it is recorded as not covered and left to C10), panning a strip (a diff's lines count) sideways, catching momentum |
 | `testC10DiffShowMore` | The `showMore` fixture: a newest Write of 301 added lines, 280 shown and 21 held back. Opening it, tapping Show more, the row growing with nothing held back, and the reader's place kept: the newest edge at the newest message, the tapped row's top away from it. Records whether the row draws on the native canvas |
 | `testC4MarkdownLinksCopyPictures` | Copying, the long-press menu or selection screen, options, attached and web pictures, panning code or a table, links |
 | `testC5QuestionsAndSending` | Inline question answers, the question sheet, a failed send and its retry |
 | `testC6DiagramsAndGiantMessage` | Mermaid diagrams and their web views, one 350-paragraph message, and messages either side of the 4096-point tile limit |
-| `testC7HomeOpensChatsDetailsAndSetting` | Cold and warm opens from Home, header avatar to Details, worktree tabs, the renderer setting and its persistence |
+| `testC7HomeOpensChatsAndDetails` | Cold and warm opens from Home, header avatar to Details, worktree tabs |
 | `testN1NavigationBarOwnership` | Which screen has the navigation bar: none on Home, the bar on a chat in portrait, in landscape none on a phone layout and the bar beside the sidebar on a window at least 768 points wide (a tablet layout, as an iPhone 12 is), the chat with its bar after an attempted back swipe let go early, and the ordinary bar on Settings. Checked at rest only: whether the swipe began and turned back, and any bar flash during a push, need a recorded pass |
 | `testC8DarkLargeTextRotationAccessibility` | Dark appearance, Accessibility XL text with an accessibility audit, rotation with the keyboard up |
 | `testC9ComposerControlsAndVoiceEntry` | The composer's chips and add menu (opened and closed, nothing chosen), and the voice button changing to Send when text is typed |
-| `testL2LegacyAndUltraScreens` | The same screens on both renderers, for pixel comparison |
+| `testL2Screens` | The newest and history screens of four fixtures, for pixel comparison |
 | `testR1RealAccountReadOnly` | Opt-in: the TEST account, read only (below) |
 
 When a fixture contains a feature, the test must find it, act on it and
@@ -46,12 +44,10 @@ it asks for the microphone and fetches voice credentials from the server.
 
 ## Harness flags
 
-- `-fixture <name> -chatUltraList`: opens a fixture chat on UltraList.
-  Leave out `-chatUltraList` to use UICollectionView.
+- `-fixture <name>`: opens a fixture chat.
 - `-screen home -renderer UITableView -grouping flat -sessionCount 0
-  -archiveCount 0 -chatUltraList`: opens the seeded Home, which pushes
-  chats through normal navigation. `-renderer stored` keeps the stored
-  renderer choices.
+  -archiveCount 0`: opens the seeded Home, which pushes chats through
+  normal navigation. `-renderer stored` keeps the stored Home renderer.
 - `-qaProbe`: installs the probe. `-qaRun <name>` names its files, and
   `-qaDark` shows the window in dark appearance.
 - `-giantParagraphs N` (1…1000): sets the size of the `giant` fixture's message.

@@ -27,8 +27,7 @@ final class Session {
     let syntax = CodeSyntaxService()
     /// The conversations read ahead and kept, so they open drawn.
     let warm: WarmChats
-    /// The person's settings for this phone, the transcript's renderer
-    /// among them (`LocalSettings.chatListRenderer`).
+    /// The person's settings for this phone.
     let localSettings: LocalSettings
     /// What this computer's placeholder picture is picked by, when it has
     /// none of its own (`AvatarPlaceholder`).

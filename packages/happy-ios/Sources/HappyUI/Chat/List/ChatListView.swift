@@ -17,95 +17,35 @@ protocol ChatListViewDelegate: AnyObject {
     func chatList(_ list: ChatListView, hold action: ChatRowAction, frame: CGRect, at point: CGPoint)
 }
 
-/// The chat's message list: a flipped UICollectionView whose rows were all
-/// measured before they were handed over (`ChatRowPlan`), so every frame
-/// is exact and nothing jumps. The rows, their geometry and their changes
+/// The chat's message list, on UltraList (`ChatUltraListAdapter`): turned
+/// upside down, so row 0, the newest, rests at the foot. Every row was
+/// measured before it was handed over (`ChatRowPlan`), so every frame is
+/// exact and nothing jumps. The rows, their geometry and their changes
 /// arrive worked out (`ChatListUpdate`); the list only applies them.
 ///
-/// An update keeps the reader's place (`ChatScrollAnchor`): a reader at the
-/// newest message is carried along as rows arrive and grow, animated; a
-/// reader further back keeps the row they are looking at exactly where it
-/// is, with no animation, whatever changed around it.
-final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDelegate, UIGestureRecognizerDelegate {
+/// An update keeps the reader's place: a reader at the newest message is
+/// carried along as rows arrive and grow, animated; a reader further back
+/// keeps the row they are looking at where it is, whatever changed around
+/// it.
+final class ChatListView: UIView {
+    /// Turns the list upside down, and each row the right way up in it.
+    static let flip = CGAffineTransform(scaleX: 1, y: -1)
+
     weak var delegate: (any ChatListViewDelegate)?
 
-    private var collection: UICollectionView?
-    var collectionView: UICollectionView {
-        if let collection { return collection }
-        let view = makeCollection()
-        collection = view
-        return view
-    }
-    private(set) var renderer: ChatListRenderer
-    private(set) var ultra: ChatUltraListAdapter?
+    let ultra: ChatUltraListAdapter
     private var latest: ChatListUpdate?
     private var edgeInsets = UIEdgeInsets.zero
-    private let layout = ChatCollectionLayout()
+    private var model = ChatListLayout(width: 0, heights: [])
     private(set) var plans: [ChatRowPlan] = []
-    private var ids: [String] = []
-    private var hasContent = false
-    private let holdRecognizer = UILongPressGestureRecognizer()
 
-    /// ChatFooter, just past the newest message: it scrolls with the rows,
-    /// as the inverted list's header does in happy-app.
-    private let footer = ChatPlanView()
     /// OlderEnd, past the oldest message, in the slot the layout keeps for
     /// it (`ChatListLayout.olderEndFrame`): the inverted list's footer.
     let olderEnd = ChatOlderEndView()
 
-    init(frame: CGRect = .zero, renderer: ChatListRenderer = .collectionView) {
-        self.renderer = renderer
+    override init(frame: CGRect = .zero) {
+        ultra = ChatUltraListAdapter(olderEnd: olderEnd)
         super.init(frame: frame)
-        if renderer == .ultraList { installUltra() }
-        else { addSubview(collectionView) }
-    }
-
-    private func makeCollection() -> UICollectionView {
-        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.transform = ChatCollectionLayout.flip
-        collectionView.backgroundColor = .clear
-        collectionView.contentInsetAdjustmentBehavior = .never
-        // No scroll indicator, as Telegram's chat list draws none: nothing
-        // at the edge to press and drag (docs/telegram-notes.md).
-        collectionView.showsVerticalScrollIndicator = false
-        collectionView.keyboardDismissMode = .interactive
-        collectionView.alwaysBounceVertical = true
-        collectionView.showsHorizontalScrollIndicator = false
-        // Rows are measured before they arrive; there is nothing to prefetch.
-        collectionView.isPrefetchingEnabled = false
-        if #available(iOS 26.0, *) {
-            // The screen draws its own scrims under the bar and behind the
-            // dock; and to the system, this flipped list's ends are swapped.
-            collectionView.topEdgeEffect.isHidden = true
-            collectionView.bottomEdgeEffect.isHidden = true
-        }
-        collectionView.register(ChatRowCell.self, forCellWithReuseIdentifier: ChatRowCell.reuseIdentifier)
-        collectionView.dataSource = self
-        collectionView.delegate = self
-        footer.transform = ChatCollectionLayout.flip
-        footer.isUserInteractionEnabled = false
-        collectionView.addSubview(footer)
-        olderEnd.transform = ChatCollectionLayout.flip
-        collectionView.addSubview(olderEnd)
-
-        let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
-        tap.cancelsTouchesInView = false
-        tap.delegate = self
-        collectionView.addGestureRecognizer(tap)
-        // Starts only over a long-press target, so a slow tap elsewhere is
-        // still a tap; a tap waits for it, which costs nothing, as it fails
-        // the moment the finger lifts.
-        holdRecognizer.addTarget(self, action: #selector(held(_:)))
-        holdRecognizer.minimumPressDuration = CopyMenuLayout.Metrics.pressDuration
-        holdRecognizer.delegate = self
-        collectionView.addGestureRecognizer(holdRecognizer)
-        tap.require(toFail: holdRecognizer)
-        collectionView.accessibilityIdentifier = "chat.collectionview"
-        return collectionView
-    }
-
-    private func installUltra() {
-        let ultra = ChatUltraListAdapter(olderEnd: olderEnd)
         ultra.onScroll = { [weak self] in self?.reportScroll() }
         ultra.onAction = { [weak self] action in
             guard let self else { return }
@@ -119,41 +59,11 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
             guard let self else { return }
             self.delegate?.chatList(self, hold: action, frame: view.convert(frame, to: self), at: view.convert(point, to: self))
         }
-        self.ultra = ultra
         ultra.list.frame = bounds
         addSubview(ultra.list)
         // Resolve UltraView's measurement environment before its first
-        // asynchronous collection. A switch can submit content before the
-        // next normal layout turn, unlike the initial screen construction.
+        // asynchronous collection.
         ultra.list.layoutIfNeeded()
-    }
-
-    func setRenderer(_ renderer: ChatListRenderer) {
-        guard renderer != self.renderer else { return }
-        let current = visibleMinY
-        self.renderer = renderer
-        ultra?.deactivate()
-        ultra = nil
-        collection?.removeFromSuperview()
-        if renderer == .ultraList {
-            installUltra()
-            ultra?.setViewport(size: bounds.size, insets: edgeInsets)
-            if let latest { ultra?.apply(latest, target: current, animated: false) }
-        } else {
-            addSubview(collectionView)
-            footer.transform = ChatCollectionLayout.flip
-            olderEnd.transform = ChatCollectionLayout.flip
-            collectionView.addSubview(footer)
-            collectionView.addSubview(olderEnd)
-            collectionView.bounds = CGRect(origin: collectionView.bounds.origin, size: bounds.size)
-            collectionView.center = CGPoint(x: bounds.midX, y: bounds.midY)
-            collectionView.contentInset = edgeInsets
-            if let latest { install(latest) }
-            collectionView.reloadData()
-            collectionView.layoutIfNeeded()
-            setVisibleMinY(current)
-        }
-        setNeedsLayout()
     }
 
     @available(*, unavailable)
@@ -163,51 +73,30 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        if let ultra {
-            ultra.list.frame = bounds
-            ultra.setViewport(size: bounds.size, insets: edgeInsets)
-            return
-        }
-        // A transformed view is placed by bounds and center, never frame.
-        if collectionView.bounds.size != bounds.size {
-            collectionView.bounds = CGRect(origin: collectionView.bounds.origin, size: bounds.size)
-        }
-        collectionView.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        ultra.list.frame = bounds
+        ultra.setViewport(size: bounds.size, insets: edgeInsets)
     }
 
     /// The width the current rows were measured at.
-    var measuredWidth: CGFloat { layout.model.width }
+    var measuredWidth: CGFloat { model.width }
 
     // MARK: Position
 
     /// The content y at the newest edge of the visible area; 0 when the
     /// newest message is showing.
-    var visibleMinY: CGFloat {
-        ultra?.visibleMinY ?? (collectionView.contentOffset.y + collectionView.contentInset.top)
-    }
+    var visibleMinY: CGFloat { ultra.visibleMinY }
 
-    var isTracking: Bool { ultra?.list.isTracking ?? collectionView.isTracking }
-    var isDragging: Bool { ultra?.list.isDragging ?? collectionView.isDragging }
-    var isDecelerating: Bool { ultra?.list.isDecelerating ?? collectionView.isDecelerating }
+    var isTracking: Bool { ultra.list.isTracking }
+    var isDragging: Bool { ultra.list.isDragging }
+    var isDecelerating: Bool { ultra.list.isDecelerating }
     var contentInsets: UIEdgeInsets { edgeInsets }
-    var contentHeight: CGFloat { layout.model.contentHeight }
-    var scrollGestureView: UIView { ultra?.list.scrollGestureHostView ?? collectionView }
+    var contentHeight: CGFloat { model.contentHeight }
+    var scrollGestureView: UIView { ultra.list.scrollGestureHostView }
     var scrollOffset: CGFloat { visibleMinY - edgeInsets.top }
-    var maximumVisibleMinY: CGFloat { maxVisibleMinY(layout.model) }
-    var isDisplayReady: Bool {
-        guard let ultra else { return !plans.isEmpty }
-        return ultra.isDisplayReady
-    }
+    var maximumVisibleMinY: CGFloat { max(0, model.contentHeight + edgeInsets.top + edgeInsets.bottom - bounds.height) }
+    var isDisplayReady: Bool { ultra.isDisplayReady }
 
-    func setVisibleMinY(_ distance: CGFloat) {
-        if let ultra { ultra.setVisibleMinY(distance) }
-        else { collectionView.contentOffset.y = distance - edgeInsets.top }
-    }
-
-    private func maxVisibleMinY(_ model: ChatListLayout) -> CGFloat {
-        let inset = edgeInsets
-        return max(0, model.contentHeight + inset.top + inset.bottom - bounds.height)
-    }
+    func setVisibleMinY(_ distance: CGFloat) { ultra.setVisibleMinY(distance) }
 
     var distanceFromNewest: CGFloat { max(0, visibleMinY) }
 
@@ -215,247 +104,41 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     /// navigation bar. What the reader sees at the newest edge stays put,
     /// so a rising keyboard carries the conversation up with the composer;
     /// under the reader's finger, as in an interactive dismiss, the
-    /// conversation stays with the finger
-    /// (`ChatScrollAnchor.visibleMinY(afterNewestInsetChange:…)`).
-    /// `keyboard` is UltraList's keyboard move, which the UICollectionView
-    /// renderer never sees.
+    /// conversation stays with the finger. `keyboard` is UltraList's own
+    /// keyboard move (`ChatUltraKeyboard`).
     func setEdgeInsets(newest: CGFloat, oldest: CGFloat, keyboard: ChatUltraKeyboard.Change? = nil) {
         // On the pixels the header and the dock were snapped to, or the
         // offset lands between them.
         let scale = window?.screen.scale ?? traitCollection.displayScale
         let newest = PixelGrid.round(newest, scale: scale)
         let oldest = PixelGrid.round(oldest, scale: scale)
-        // Flipped: the collection view's top is the screen's bottom.
-        let inset = UIEdgeInsets(top: newest, left: 0, bottom: oldest, right: 0)
-        if let ultra {
-            edgeInsets = inset
-            ultra.setViewport(size: bounds.size, insets: inset, keyboard: keyboard)
-            return
-        }
-        edgeInsets = inset
-        guard collectionView.contentInset != inset else { return }
-        let current = visibleMinY
-        let delta = newest - collectionView.contentInset.top
-        collectionView.contentInset = inset
-        let target = ChatScrollAnchor.visibleMinY(
-            afterNewestInsetChange: delta, from: current, maxVisibleMinY: maxVisibleMinY(layout.model), tracking: collectionView.isTracking
-        )
-        if collectionView.contentOffset.y != target - newest {
-            collectionView.contentOffset.y = target - newest
-        }
+        // Flipped: the list's top is the screen's bottom.
+        edgeInsets = UIEdgeInsets(top: newest, left: 0, bottom: oldest, right: 0)
+        ultra.setViewport(size: bounds.size, insets: edgeInsets, keyboard: keyboard)
     }
 
-    func scrollToNewest(animated: Bool) {
-        if let ultra { ultra.scrollToNewest(animated: animated); return }
-        collectionView.setContentOffset(CGPoint(x: 0, y: -collectionView.contentInset.top), animated: animated)
-    }
+    func scrollToNewest(animated: Bool) { ultra.scrollToNewest(animated: animated) }
 
     // MARK: Updates
 
     /// Shows `update`'s rows (newest first) under its footer, all measured
-    /// at the list's width. Only the rows its changeset names are touched:
-    /// deleted, inserted, moved, or given their new plan if on screen.
-    /// `update.pinning` is a row the reader just opened or closed: its top
-    /// stays where it is on screen. Returns how many rows it touched.
+    /// at the list's width. Rows whose plan is unchanged keep their views
+    /// and drawings. `update.pinning` is a row the reader just opened or
+    /// closed: its end stays where it is on screen. Returns how many rows
+    /// the changeset touched.
     @discardableResult
     func apply(_ update: ChatListUpdate, animated: Bool) -> Int {
         var complete = update
         complete.footer = update.footer ?? latest?.footer
         latest = complete
-        if let ultra {
-            plans = update.plans
-            ids = update.ids
-            layout.model = update.model
-            hasContent = !plans.isEmpty
-            ultra.apply(complete, animated: animated)
-            return update.changeset.touchedRows
-        }
-        let model = update.model
-        guard hasContent, !plans.isEmpty else {
-            hasContent = !update.plans.isEmpty
-            install(update)
-            layout.invalidateLayout()
-            collectionView.reloadData()
-            collectionView.layoutIfNeeded()
-            scrollToNewest(animated: false)
-            scrollViewDidScroll(collectionView)
-            return update.plans.count
-        }
-
-        let oldIds = ids
-        let newIds = update.ids
-        let changeset = update.changeset
-        let current = visibleMinY
-        // Never snap to the newest edge under the reader's finger or while
-        // the list coasts.
-        let moving = collectionView.isTracking || collectionView.isDecelerating
-        let pinned = update.pinning.flatMap { id in
-            newIds.contains(id) ? ChatScrollAnchor.pinning(id, layout: layout.model, ids: oldIds, visibleMinY: current) : nil
-        }
-        let anchor = pinned ?? ChatScrollAnchor.capture(layout: layout.model, ids: oldIds, visibleMinY: current, follow: !moving)
-        let target = anchor.visibleMinY(in: model, ids: newIds, current: current, maxVisibleMinY: maxVisibleMinY(model))
-
-        // Rows whose content changed, by id: on screen they take their new
-        // plan in place; off screen, `cellForItemAt` reads it later.
-        let changed = Dictionary(changeset.reconfigures.map { (newIds[$0], update.plans[$0]) }, uniquingKeysWith: { first, _ in first })
-        // UIKit resizes a growing cell and moves its neighbours with
-        // different animations. Apply small follows without those per-row
-        // animations, then slide the whole collection as one block. Slides
-        // stack when another streamed line arrives before the last settles.
-        // Taller changes need UIKit to lay out rows beyond the far edge.
-        let follows = animated && !UIAccessibility.isReduceMotionEnabled && abs(current) <= 0.5 && anchor.kind == .newest
-        let arrivals = follows ? ChatFollowMotion.newestInserts(old: oldIds, new: newIds) : nil
-        let shift = arrivals == nil ? nil : ChatFollowMotion.shift(
-            from: layout.model, ids: oldIds, to: model, ids: newIds,
-            visibleHeight: bounds.height - edgeInsets.top - edgeInsets.bottom
-        )
-        let slides = shift.map { abs($0) <= edgeInsets.bottom } ?? false
-        layout.arrivalShift = slides ? nil : arrivals.flatMap { $0.isEmpty ? nil : shift }
-        let apply = {
-            self.collectionView.performBatchUpdates {
-                self.install(update)
-                self.layout.anchoredVisibleMinY = target
-                self.collectionView.deleteItems(at: changeset.deletes.map { IndexPath(item: $0, section: 0) })
-                self.collectionView.insertItems(at: changeset.inserts.map { IndexPath(item: $0, section: 0) })
-                for move in changeset.moves {
-                    self.collectionView.moveItem(at: IndexPath(item: move.from, section: 0), to: IndexPath(item: move.to, section: 0))
-                }
-                if !changeset.isStructural {
-                    self.layout.invalidateLayout()
-                }
-                // Inside the same transaction, so a growing message animates
-                // with its frame.
-                guard !changed.isEmpty else { return }
-                for cell in self.collectionView.visibleCells {
-                    guard let cell = cell as? ChatRowCell, let id = cell.plan?.id, let plan = changed[id] else { continue }
-                    cell.apply(plan)
-                }
-            }
-            self.layout.anchoredVisibleMinY = nil
-            let offset = target - self.collectionView.contentInset.top
-            if abs(self.collectionView.contentOffset.y - offset) > 0.5 {
-                self.collectionView.contentOffset.y = offset
-            }
-        }
-        // Only a reader at the newest edge sees rows move; anyone else is
-        // held still, and an animation would only show the correction.
-        if slides, let shift {
-            UIView.performWithoutAnimation(apply)
-            slide(by: shift)
-        } else if follows {
-            UIView.animate(withDuration: ChatFollowMotion.duration, delay: 0, options: [.curveEaseOut, .allowUserInteraction], animations: apply)
-        } else if animated, case .newest = anchor.kind {
-            apply()
-        } else {
-            UIView.performWithoutAnimation(apply)
-        }
-        layout.arrivalShift = nil
-        hasContent = !update.plans.isEmpty
-        // A short window may not reach a screen back; let the delegate page.
-        scrollViewDidScroll(collectionView)
-        return changeset.touchedRows
-    }
-
-    private var followSlides = 0
-
-    /// An additive bounds animation carries the rows as a single block.
-    private func slide(by shift: CGFloat) {
-        guard abs(shift) > 0.5 else { return }
-        let animation = CABasicAnimation(keyPath: "bounds.origin.y")
-        animation.fromValue = shift
-        animation.toValue = 0
-        animation.isAdditive = true
-        animation.duration = ChatFollowMotion.duration
-        let points = ChatFollowMotion.controlPoints
-        animation.timingFunction = CAMediaTimingFunction(controlPoints: Float(points.x1), Float(points.y1), Float(points.x2), Float(points.y2))
-        followSlides &+= 1
-        collectionView.layer.add(animation, forKey: "chat.follow.\(followSlides)")
-    }
-
-    private func install(_ update: ChatListUpdate) {
         plans = update.plans
-        ids = update.ids
-        layout.model = update.model
-        if let footerPlan = update.footer { footer.apply(footerPlan) }
-        // Flipped like the cells; a transformed view is placed by bounds
-        // and center.
-        let frame = update.model.newerEndFrame
-        footer.bounds = CGRect(origin: .zero, size: frame.size)
-        footer.center = CGPoint(x: frame.midX, y: frame.midY)
-        let older = update.model.olderEndFrame
-        olderEnd.bounds = CGRect(origin: .zero, size: older.size)
-        olderEnd.center = CGPoint(x: older.midX, y: older.midY)
-    }
-
-    // MARK: UICollectionViewDataSource
-
-    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        plans.count
-    }
-
-    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: ChatRowCell.reuseIdentifier, for: indexPath)
-        if let cell = cell as? ChatRowCell, indexPath.item < plans.count {
-            cell.apply(plans[indexPath.item])
-            cell.onAction = { [weak self] action in
-                guard let self else { return }
-                self.delegate?.chatList(self, perform: action)
-            }
-        }
-        return cell
-    }
-
-    // MARK: Scrolling and taps
-
-    func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        reportScroll()
+        model = update.model
+        ultra.apply(complete, animated: animated)
+        return update.changeset.touchedRows
     }
 
     private func reportScroll() {
-        let remaining = maxVisibleMinY(layout.model) - visibleMinY
-        delegate?.chatList(self, didScroll: distanceFromNewest, distanceFromOldest: remaining)
-    }
-
-    /// A control inside a row (a diff's "Show N more lines") handles its
-    /// own taps; the row's hits never see them.
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        var view = touch.view
-        while let current = view, current !== collectionView {
-            if current is UIControl { return false }
-            view = current.superview
-        }
-        return true
-    }
-
-    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard gestureRecognizer === holdRecognizer else { return super.gestureRecognizerShouldBegin(gestureRecognizer) }
-        return holdTarget(at: gestureRecognizer.location(in: collectionView)) != nil
-    }
-
-    /// The long-press target under `point` (in the collection view), with
-    /// its frame in this view's coordinates.
-    private func holdTarget(at point: CGPoint) -> (action: ChatRowAction, frame: CGRect)? {
-        guard let indexPath = collectionView.indexPathForItem(at: point),
-              let cell = collectionView.cellForItem(at: indexPath) as? ChatRowCell,
-              let hit = cell.hold(at: cell.convert(point, from: collectionView)) else { return nil }
-        return (hit.action, cell.convert(hit.frame, to: self))
-    }
-
-    @objc private func held(_ recognizer: UILongPressGestureRecognizer) {
-        guard recognizer.state == .began, let target = holdTarget(at: recognizer.location(in: collectionView)) else { return }
-        delegate?.chatList(self, hold: target.action, frame: target.frame, at: recognizer.location(in: self))
-    }
-
-    @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
-        let point = recognizer.location(in: collectionView)
-        guard let indexPath = collectionView.indexPathForItem(at: point),
-              let cell = collectionView.cellForItem(at: indexPath) as? ChatRowCell else { return }
-        let local = cell.convert(point, from: collectionView)
-        if let url = cell.link(at: local) {
-            delegate?.chatList(self, openLink: url)
-        } else if let action = cell.action(at: local) {
-            delegate?.chatList(self, perform: action)
-        }
+        delegate?.chatList(self, didScroll: distanceFromNewest, distanceFromOldest: maximumVisibleMinY - visibleMinY)
     }
 }
 #endif

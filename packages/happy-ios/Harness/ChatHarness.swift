@@ -164,7 +164,6 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         guard let account = controller.session else { fatalError("harness has no session") }
         self.controller = controller
-        controller.localSettings.chatListRenderer = ProcessInfo.processInfo.arguments.contains("-chatUltraList") ? .ultraList : .collectionView
         let context = AppContext(account: controller, variant: .development, version: "harness")
         let chat = LegacyChatViewController(context: context, session: account, sessionId: FixtureScenarios.prefix + fixture)
         let home = UIViewController()
@@ -384,8 +383,7 @@ final class ChatScrollProbe: NSObject {
     }
 
     /// Who moves the keyboard: UltraView's controller, the list's system
-    /// interactive dismissal on UltraList, or the layout guide on
-    /// UICollectionView.
+    /// interactive dismissal, or the layout guide while docked.
     private func keyboardDriver(_ chat: UIViewController) -> String {
         guard let keyboard = (chat as? LegacyChatViewController)?.ultraKeyboard else { return "guide" }
         return keyboard.isAvailable ? "controller" : "system"
@@ -503,7 +501,7 @@ final class ChatScrollProbe: NSObject {
         value["maxDistance"] = list.maximumVisibleMinY
         value["contentHeight"] = list.contentHeight
         value["rows"] = list.isDisplayReady ? list.plans.count : 0
-        value["renderer"] = list.renderer.rawValue
+        value["renderer"] = "UltraList"
         value["newestInset"] = inset.top
         value["oldestInset"] = inset.bottom
         let safe = chat.view.safeAreaInsets

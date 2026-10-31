@@ -333,17 +333,11 @@ final class ChatUltraQAProbe: NSObject {
     }
 
     /// The row views the list shows, with the identity the adapter gives
-    /// them (`chat:message:<id>`), for either renderer.
+    /// them (`chat:message:<id>`).
     private func rowViews(_ list: ChatListView) -> [(identity: String, view: UIView, ready: Bool)] {
-        if let ultra = list.ultra {
-            return ultra.list.loadedItemViews.map { view -> (identity: String, view: UIView, ready: Bool) in
-                let identity = (view as? ChatUltraRowView)?.row.identity ?? "chat:older-end"
-                return (identity: identity, view: view, ready: view.isDisplayReady)
-            }
-        }
-        return list.collectionView.visibleCells.compactMap { cell -> (identity: String, view: UIView, ready: Bool)? in
-            guard let cell = cell as? ChatRowCell, let plan = cell.plan else { return nil }
-            return (identity: "chat:message:\(plan.id)", view: cell, ready: true)
+        list.ultra.list.loadedItemViews.map { view -> (identity: String, view: UIView, ready: Bool) in
+            let identity = (view as? ChatUltraRowView)?.row.identity ?? "chat:older-end"
+            return (identity: identity, view: view, ready: view.isDisplayReady)
         }
     }
 
@@ -560,7 +554,7 @@ final class ChatUltraQAProbe: NSObject {
         if !seenLists.contains(identity) {
             seenLists.insert(identity)
             if chat == nil, lastRelease > 0 {
-                var progress = Opening(renderer: list.renderer.rawValue, mountMs: (link.targetTimestamp - lastRelease) * 1000)
+                var progress = Opening(renderer: "UltraList", mountMs: (link.targetTimestamp - lastRelease) * 1000)
                 progress.turnMaxMs = turnSinceRelease
                 progress.applyMaxMs = applySinceRelease
                 if let delivered, delivered.release == lastRelease {
@@ -576,16 +570,10 @@ final class ChatUltraQAProbe: NSObject {
         if list.isTracking { flags |= QAFlags.tracking }
         if list.isDragging { flags |= QAFlags.dragging }
         if list.isDecelerating { flags |= QAFlags.decelerating }
-        let offset: Double
-        let presented: Double
-        if let ultra = list.ultra {
-            if ultra.list.isScrollFlightActive { flags |= QAFlags.flight }
-            offset = ultra.list.currentScrollOffset
-            presented = Double((ultra.list.contentView.layer.presentation() ?? ultra.list.contentView.layer).bounds.origin.y)
-        } else {
-            offset = Double(list.collectionView.contentOffset.y)
-            presented = Double((list.collectionView.layer.presentation() ?? list.collectionView.layer).bounds.origin.y)
-        }
+        let ultra = list.ultra
+        if ultra.list.isScrollFlightActive { flags |= QAFlags.flight }
+        let offset = ultra.list.currentScrollOffset
+        let presented = Double((ultra.list.contentView.layer.presentation() ?? ultra.list.contentView.layer).bounds.origin.y)
         if appliedSinceFrame { flags |= QAFlags.apply }
         let dockY = dock.map { Double(presentedFrame($0, in: screen).minY) } ?? -1
         if let previousDockY, abs(previousDockY - dockY) > 0.01 { flags |= QAFlags.dock }
@@ -880,8 +868,8 @@ final class ChatUltraQAProbe: NSObject {
         var value: [String: Any] = [:]
         value["run"] = run
         value["listInWindow"] = true
-        value["renderer"] = list.renderer.rawValue
-        value["ultraMounted"] = list.ultra.map { $0.list.window != nil && $0.list.isDescendant(of: list) && $0.list.accessibilityIdentifier == "chat.ultralist" } ?? false
+        value["renderer"] = "UltraList"
+        value["ultraMounted"] = list.ultra.list.window != nil && list.ultra.list.isDescendant(of: list) && list.ultra.list.accessibilityIdentifier == "chat.ultralist"
         value["collectionViews"] = collections.count
         value["rows"] = list.plans.count
         value["displayReady"] = list.isDisplayReady
@@ -890,7 +878,7 @@ final class ChatUltraQAProbe: NSObject {
         value["windowCount"] = windowCount
         value["visibleMinY"] = Double(list.visibleMinY)
         value["maxVisibleMinY"] = Double(list.maximumVisibleMinY)
-        value["moving"] = list.isTracking || list.isDragging || list.isDecelerating || (list.ultra?.list.isScrollFlightActive ?? false)
+        value["moving"] = list.isTracking || list.isDragging || list.isDecelerating || list.ultra.list.isScrollFlightActive
         value["files"] = ["qa/\(run)-frames.csv", "qa/\(run)-windows.json"]
         value["opens"] = openingsObject()
         value["firstVisuals"] = firstVisualsObject()
@@ -908,7 +896,8 @@ final class ChatUltraQAProbe: NSObject {
         value["memoryPeakMB"] = memoryPeakMB
         value["redacted"] = redacted
         value["notReadyLast"] = lastNotes
-        if let ultra = list.ultra, !list.isDisplayReady { value["ultraNotReady"] = ultraState(ultra) }
+        if !list.isDisplayReady { value["ultraNotReady"] = ultraState(list.ultra) }
+
         #if DEBUG
         value["build"] = "Debug"
         #else
@@ -1037,7 +1026,7 @@ final class ChatUltraQAProbe: NSObject {
             }
         }
         var value: [String: Any] = [:]
-        value["renderer"] = list.renderer.rawValue
+        value["renderer"] = "UltraList"
         value["list"] = rect(bounds)
         if let dock { value["dock"] = rect(dock.convert(dock.bounds, to: window)) }
         value["rows"] = rows

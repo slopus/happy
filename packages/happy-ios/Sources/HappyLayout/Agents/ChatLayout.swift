@@ -107,41 +107,10 @@ public struct ChatScreenLayout: Equatable, Sendable {
     }
 }
 
-/// The conversation's rows stacked in a scroll view: newest last, resting
-/// on the composer while they are shorter than the screen, as a chat does.
-/// A conversation that opens on its intro (desktop's leading header) keeps
-/// it pinned under the bar instead, and its rows fill in under it.
-///
-/// A send is a row like any other: it is stacked at the end, and no room
-/// is held above or under it for the reply (`SendFollow`). Short content
-/// resting on the composer slides up by the new row's height, as it does
-/// for any row; content past the viewport keeps the frames it had.
-public struct ChatStackLayout: Equatable, Sendable {
-    public var frames: [CGRect]
-    public var contentHeight: CGFloat
-
-    /// `heights` top to bottom; `viewport` is the height between the top
-    /// inset and the composer, which short content rests at the foot of.
-    /// `pinsFirst`: the first row is the intro, at the top whatever follows.
-    public init(heights: [CGFloat], width: CGFloat, viewport: CGFloat, pinsFirst: Bool = false) {
-        let total = heights.reduce(0, +)
-        var starts: [CGFloat] = []
-        starts.reserveCapacity(heights.count)
-        var end: CGFloat = 0
-        for height in heights {
-            starts.append(end)
-            end += height
-        }
-        let lead = pinsFirst ? 0 : max(0, viewport - total)
-        frames = zip(starts, heights).map { CGRect(x: 0, y: lead + $0, width: width, height: $1) }
-        contentHeight = max(viewport, lead + total)
-    }
-}
-
-/// The transcript's rows that are views, as desktop's virtualised list
-/// keeps only what is near the screen (Message.tsx's overscan): every
-/// row's frame is planned, but a long conversation has views only for the
-/// rows within a screen of the one shown. A row comes in a screen away
+/// The parts of a row that are views, as desktop's virtualised list keeps
+/// only what is near the screen (Message.tsx's overscan): every part's
+/// frame is planned, but a long row has views only for the parts within a
+/// screen of the one shown. A row comes in a screen away
 /// (`mount`) and goes only two screens away (`keep`), so one near the edge
 /// doesn't come and go as the scroll wavers.
 public struct ChatMountedRows: Equatable, Sendable {
@@ -261,83 +230,6 @@ public struct SendFollow: Equatable, Sendable {
             follows = following || distanceFromEnd <= Metrics.follow
         }
     }
-}
-
-/// The transcript's scroll while a finger drives it, or it bounces past an
-/// end on its own: nothing the screen lays out moves it then. A new content
-/// height that would take the scroll past an end, or bring it back inside
-/// one, waits; following the newest row waits too. Both are given once the
-/// finger lets go, the bounce is back inside, or the scroll is at rest. A
-/// height or an offset written mid-pull moves the content under the finger,
-/// and a reply streaming in lays the screen out many times a second.
-public struct ChatScrollHold: Equatable, Sendable {
-    /// The scroll view as it stands, in its own coordinates.
-    public struct Scroll: Equatable, Sendable {
-        public var offset: CGFloat
-        public var insetTop: CGFloat
-        public var insetBottom: CGFloat
-        public var contentHeight: CGFloat
-        public var viewport: CGFloat
-        /// A finger is on it.
-        public var tracking: Bool
-        /// It moves on its own: momentum, or a bounce back from an end.
-        public var decelerating: Bool
-
-        public init(offset: CGFloat, insetTop: CGFloat, insetBottom: CGFloat, contentHeight: CGFloat, viewport: CGFloat, tracking: Bool, decelerating: Bool) {
-            self.offset = offset
-            self.insetTop = insetTop
-            self.insetBottom = insetBottom
-            self.contentHeight = contentHeight
-            self.viewport = viewport
-            self.tracking = tracking
-            self.decelerating = decelerating
-        }
-
-        /// The offset that shows the end, at `contentHeight` or its own.
-        public func end(contentHeight: CGFloat? = nil) -> CGFloat {
-            max(-insetTop, (contentHeight ?? self.contentHeight) + insetBottom - viewport)
-        }
-
-        /// Past either end, at `contentHeight` or its own.
-        public func stretched(contentHeight: CGFloat? = nil) -> Bool {
-            offset < -insetTop - 0.5 || offset > end(contentHeight: contentHeight) + 0.5
-        }
-
-        /// Driven by a finger or by its own motion.
-        public var moving: Bool { tracking || decelerating }
-    }
-
-    /// A height laid out and not yet given.
-    public private(set) var held: CGFloat?
-
-    public init() {}
-
-    /// Laid out at `height`: the height to give the scroll view now, or nil
-    /// to keep what it has (holding `height` when it would move the content).
-    public mutating func laidOut(_ height: CGFloat, scroll: Scroll) -> CGFloat? {
-        if height == scroll.contentHeight {
-            held = nil
-            return nil
-        }
-        if scroll.moving, scroll.stretched() || scroll.stretched(contentHeight: height) {
-            held = height
-            return nil
-        }
-        held = nil
-        return height
-    }
-
-    /// The held height, once nothing holds it: the finger is off and the
-    /// scroll isn't bouncing past an end with it.
-    public mutating func release(scroll: Scroll) -> CGFloat? {
-        guard let height = held, !scroll.tracking else { return nil }
-        if scroll.decelerating, scroll.stretched() || scroll.stretched(contentHeight: height) { return nil }
-        held = nil
-        return height == scroll.contentHeight ? nil : height
-    }
-
-    /// Following the newest row moves the offset only while nothing else does.
-    public static func follows(_ scroll: Scroll) -> Bool { !scroll.moving }
 }
 
 /// One message of a V2 conversation, as desktop's `Message` sets

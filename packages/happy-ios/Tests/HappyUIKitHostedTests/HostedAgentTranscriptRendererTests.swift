@@ -28,8 +28,8 @@ private struct RendererUnreachable: AgentTransport {
     func close() async {}
 }
 
-/// Which transcript the agents' chat opens on, and that the UI tests can
-/// still find it either way.
+/// The agents' chat transcript on UltraList, and that the UI tests can find
+/// it.
 @MainActor
 final class HostedAgentTranscriptRendererTests: XCTestCase {
     private func session() async throws -> (AccountController, Session) {
@@ -69,34 +69,16 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         return nil
     }
 
-    /// With nothing stored, which is UltraList now, the transcript is the
-    /// list, and it carries the identifier the UI tests look for.
+    /// The transcript is the list, and it carries the identifier the UI
+    /// tests look for.
     func testTheChatOpensOnUltraListAndKeepsTheTranscriptIdentifier() async throws {
         let (_, session) = try await self.session()
-        XCTAssertEqual(session.localSettings.chatListRenderer, .ultraList)
         let chat = self.chat(session)
         let list = try XCTUnwrap(find(UltraListView.self, in: chat.view), "no UltraList in the chat")
         XCTAssertEqual(list.accessibilityIdentifier, "transcript")
         XCTAssertNotNil(chat.view.subviews.compactMap { $0 as? HeaderScrimView }.first { $0.edge == .top })
         XCTAssertNil(find(UIScrollView.self, in: chat.view)?.accessibilityIdentifier,
                      "a scroll view also claimed to be the transcript")
-    }
-
-    /// The collection renderer, still in Appearance, keeps the scroll view
-    /// the screen fills itself, with the same identifier on it, and the
-    /// same header scrim as UltraList's instead of the system's soft edge.
-    func testThePickedCollectionRendererKeepsTheScrollView() async throws {
-        let (_, session) = try await self.session()
-        session.localSettings.chatListRenderer = .collectionView
-        addTeardownBlock { @MainActor in session.localSettings.chatListRenderer = .ultraList }
-        let chat = self.chat(session)
-        XCTAssertNil(find(UltraListView.self, in: chat.view))
-        let scrim = try XCTUnwrap(chat.view.subviews.compactMap { $0 as? HeaderScrimView }.first { $0.edge == .top })
-        XCTAssertEqual(scrim.peak, HeaderScrim.topPeak)
-        XCTAssertEqual(scrim.frame.height, chat.view.safeAreaInsets.top + HeaderScrim.barOverhang)
-        let scroll = try XCTUnwrap(find(UIScrollView.self, in: chat.view))
-        XCTAssertEqual(scroll.accessibilityIdentifier, "transcript")
-        XCTAssertTrue(scroll.topEdgeEffect.isHidden, "the system's soft edge under the screen's own scrim")
     }
 
     func testASendReadsTheUltraListDistanceInHistoryAndNearTheEnd() async throws {
@@ -180,14 +162,43 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         XCTFail("transcript did not reach its requested position", file: file, line: line)
     }
 
-    /// A preview keeps the scroll view whatever the setting says: its fade
-    /// and its title are measured against that scroll's own offset.
-    func testAPreviewKeepsTheScrollViewOnEitherRenderer() async throws {
+    /// A preview draws on the same list, untouchable and without the
+    /// header scrim.
+    func testAPreviewDrawsOnTheUntouchableList() async throws {
         let (_, session) = try await self.session()
         let preview = chat(session, previewing: true)
-        XCTAssertNil(find(UltraListView.self, in: preview.view), "a preview was given the list")
-        XCTAssertNotNil(find(UIScrollView.self, in: preview.view))
+        let transcript = try XCTUnwrap(find(AgentChatUltraList.self, in: preview.view), "a preview has no list")
+        XCTAssertFalse(transcript.isUserInteractionEnabled)
+        XCTAssertTrue(transcript.showsNewestFromItsStart)
+        XCTAssertNil(find(UIScrollView.self, in: preview.view)?.accessibilityIdentifier)
         XCTAssertFalse(preview.view.subviews.compactMap { $0 as? HeaderScrimView }.contains { $0.edge == .top })
+    }
+
+    /// Showing the newest row from its start, as a preview does: a row
+    /// taller than the room puts its start at the top, and the room's foot
+    /// partway down it.
+    func testTheNewestRowCanShowFromItsStart() async throws {
+        let transcript = AgentChatUltraList(frame: CGRect(x: 0, y: 0, width: 393, height: 600))
+        transcript.showsNewestFromItsStart = true
+        let host = UIViewController()
+        host.view.addSubview(transcript)
+        let scene = try await hostedActiveScene()
+        let window = hostedKeyWindow(in: scene, root: host)
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        transcript.setViewport(size: transcript.bounds.size, insets: UIEdgeInsets(top: 100, left: 0, bottom: 50, right: 0))
+        let tall = transcript.viewportHeight + 300
+        transcript.apply([ChatRowPlan(id: "older", size: CGSize(width: 393, height: 80), items: []),
+                          ChatRowPlan(id: "tall", size: CGSize(width: 393, height: tall), items: [])])
+        try await until { transcript.list.loadedItemView(at: 0) != nil && abs(transcript.distanceFromNewest - 300) < 1 }
+        XCTAssertEqual(transcript.distanceFromOldest, 80, accuracy: 1)
+        let row = try XCTUnwrap(transcript.list.loadedItemView(at: 0))
+        XCTAssertEqual(row.convert(row.bounds, to: transcript).minY, 50, accuracy: 1, "the newest row's start sits at the top inset")
+
+        // A shorter newest row rests on the composer as ever.
+        transcript.apply([ChatRowPlan(id: "older", size: CGSize(width: 393, height: 80), items: []),
+                          ChatRowPlan(id: "short", size: CGSize(width: 393, height: 120), items: [])])
+        try await until { abs(transcript.distanceFromNewest) < 1 }
     }
 }
 #endif

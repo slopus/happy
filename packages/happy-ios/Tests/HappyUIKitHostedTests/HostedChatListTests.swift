@@ -19,10 +19,10 @@ private struct NoSockets: WebSocketConnector {
     }
 }
 
-/// The chat list in a window of a real scene, as on a phone: it shows no
-/// scroll indicator, as Telegram's chat list shows none, and the reader
-/// keeps their place as the keyboard and the dock change its insets and as
-/// older rows join.
+/// The chat list (UltraList) in a window of a real scene, as on a phone: it
+/// shows no scroll indicator, as Telegram's chat list shows none, and the
+/// reader keeps their place as the keyboard and the dock change its insets
+/// and as older rows join.
 @MainActor
 final class HostedChatListTests: XCTestCase {
     private let renderServices = RenderServices.isolated()
@@ -31,12 +31,13 @@ final class HostedChatListTests: XCTestCase {
         LegacyFonts.registerBundledFonts()
     }
 
-    /// UIKit's vertical indicators in the list, shown or not.
+    /// UIKit's vertical indicators anywhere in the list, shown or not.
     private func shownIndicators(_ list: ChatListView) -> [UIView] {
-        let collection = list.collectionView
-        collection.flashScrollIndicators()
-        collection.layoutIfNeeded()
-        return collection.subviews.filter { view in
+        func all(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(all) }
+        let views = all(list)
+        for case let scroll as UIScrollView in views { scroll.flashScrollIndicators() }
+        list.layoutIfNeeded()
+        return all(list).filter { view in
             NSStringFromClass(type(of: view)).contains("ScrollIndicator")
                 && view.bounds.height > view.bounds.width
                 && !view.isHidden && view.alpha > 0
@@ -44,7 +45,9 @@ final class HostedChatListTests: XCTestCase {
     }
 
     private func assertNoIndicator(_ list: ChatListView, _ label: String, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertFalse(list.collectionView.showsVerticalScrollIndicator, "\(label): asked to show", file: file, line: line)
+        func all(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(all) }
+        let asked = all(list).compactMap { $0 as? UIScrollView }.filter(\.showsVerticalScrollIndicator)
+        XCTAssertEqual(asked.map(\.frame), [], "\(label): asked to show", file: file, line: line)
         XCTAssertEqual(shownIndicators(list).map(\.frame), [], "\(label): shown", file: file, line: line)
     }
 
@@ -93,7 +96,7 @@ final class HostedChatListTests: XCTestCase {
 
     /// A list over the whole window with the newest page of 600 messages,
     /// at the newest message.
-    private func listInWindow(renderer: ChatListRenderer = .collectionView) async throws -> ListUnderTest {
+    private func listInWindow() async throws -> ListUnderTest {
         let scene = try await hostedActiveScene()
         let hostWindow = scene.keyWindow
         let window = hostedKeyWindow(in: scene)
@@ -104,7 +107,7 @@ final class HostedChatListTests: XCTestCase {
         let root = try XCTUnwrap(window.rootViewController?.view)
         window.layoutIfNeeded()
         let layout = screen(root)
-        let list = ChatListView(frame: layout.list, renderer: renderer)
+        let list = ChatListView(frame: layout.list)
         root.addSubview(list)
         list.layoutIfNeeded()
         list.setEdgeInsets(newest: layout.newestEdgeInset, oldest: layout.oldestEdgeInset)
@@ -113,28 +116,27 @@ final class HostedChatListTests: XCTestCase {
         list.apply(try XCTUnwrap(derived.output.list), animated: false)
         list.layoutIfNeeded()
         let drawn = try await until { list.isDisplayReady }
-        XCTAssertTrue(drawn, "the selected renderer never drew its rows")
+        XCTAssertTrue(drawn, "the list never drew its rows")
         return ListUnderTest(window: window, root: root, list: list, applied: derived.state, messages: all)
     }
 
-    private func scroll(_ list: ChatListView, toDistance distance: CGFloat) {
-        list.collectionView.contentOffset.y = distance - list.collectionView.contentInset.top
-        list.layoutIfNeeded()
+    /// The reader at `distance` from the newest message, drawn there.
+    private func scroll(_ list: ChatListView, toDistance distance: CGFloat) async throws {
+        list.setVisibleMinY(distance)
+        let there = try await until { abs(list.visibleMinY - distance) < 0.5 && list.isDisplayReady }
+        XCTAssertTrue(there, "never reached \(distance): at \(list.visibleMinY)")
     }
 
-    private func maxDistance(_ list: ChatListView) -> CGFloat {
-        let collection = list.collectionView
-        return max(0, collection.contentSize.height + collection.contentInset.top + collection.contentInset.bottom - list.bounds.height)
-    }
+    private func maxDistance(_ list: ChatListView) -> CGFloat { list.maximumVisibleMinY }
 
     func testTheListNeverShowsAVerticalIndicator() async throws {
         let test = try await listInWindow()
         let list = test.list
         XCTAssertGreaterThan(maxDistance(list), list.bounds.height, "a few screens to scroll")
         assertNoIndicator(list, "newest")
-        scroll(list, toDistance: maxDistance(list) / 2)
+        try await scroll(list, toDistance: maxDistance(list) / 2)
         assertNoIndicator(list, "halfway")
-        scroll(list, toDistance: maxDistance(list))
+        try await scroll(list, toDistance: maxDistance(list))
         assertNoIndicator(list, "oldest")
     }
 
@@ -142,19 +144,19 @@ final class HostedChatListTests: XCTestCase {
         let test = try await listInWindow()
         let list = test.list
         let height = test.root.bounds.height
-        scroll(list, toDistance: maxDistance(list) / 3)
+        try await scroll(list, toDistance: maxDistance(list) / 3)
         let place = list.visibleMinY
 
         // A 336-tall keyboard comes up: the conversation rides up with the
         // dock.
         let typing = screen(test.root, keyboardTop: height - 336)
         list.setEdgeInsets(newest: typing.newestEdgeInset, oldest: typing.oldestEdgeInset)
-        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.001)
+        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
 
         // The composer grows to three lines.
         let grown = screen(test.root, keyboardTop: height - 336, composerHeight: 130)
         list.setEdgeInsets(newest: grown.newestEdgeInset, oldest: grown.oldestEdgeInset)
-        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.001)
+        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
 
         // Down again, in steps as the keyboard's frames come.
         var keyboardTop = height - 336
@@ -162,11 +164,11 @@ final class HostedChatListTests: XCTestCase {
             keyboardTop += 24
             let step = screen(test.root, keyboardTop: keyboardTop, composerHeight: 130)
             list.setEdgeInsets(newest: step.newestEdgeInset, oldest: step.oldestEdgeInset)
-            XCTAssertEqual(list.visibleMinY, place, accuracy: 0.001)
+            XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
         }
         let resting = screen(test.root, composerHeight: 130)
         list.setEdgeInsets(newest: resting.newestEdgeInset, oldest: resting.oldestEdgeInset)
-        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.001)
+        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
         assertNoIndicator(list, "after the keyboard")
     }
 
@@ -174,20 +176,20 @@ final class HostedChatListTests: XCTestCase {
         let test = try await listInWindow()
         let list = test.list
         // Near the oldest row, where the next page is asked for.
-        scroll(list, toDistance: maxDistance(list) - list.bounds.height / 2)
+        try await scroll(list, toDistance: maxDistance(list) - list.bounds.height / 2)
         let place = list.visibleMinY
-        let before = list.collectionView.contentSize.height
+        let before = list.contentHeight
         let grown = try XCTUnwrap(ChatRows.derive(input(test.messages, width: list.bounds.width, grows: 1), applied: test.applied, planner: planner))
         list.apply(try XCTUnwrap(grown.output.list), animated: false)
-        list.layoutIfNeeded()
-        XCTAssertGreaterThan(list.collectionView.contentSize.height, before, "a page joined")
+        let paged = try await until { list.isDisplayReady && list.contentHeight > before }
+        XCTAssertTrue(paged, "a page joined")
         // Older rows join past the oldest: nothing the reader sees moves.
         XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
         assertNoIndicator(list, "after a page joined")
     }
 
-    func testUltraListKeepsTheReaderThroughKeyboardDockAndOlderPages() async throws {
-        let test = try await listInWindow(renderer: .ultraList)
+    func testTheReaderStaysThroughKeyboardDockAndOlderPages() async throws {
+        let test = try await listInWindow()
         let list = test.list
         XCTAssertNil(list.subviews.first { $0 is UICollectionView })
         list.setVisibleMinY(list.maximumVisibleMinY / 3)
@@ -205,15 +207,10 @@ final class HostedChatListTests: XCTestCase {
         let paged = try await until { list.isDisplayReady && list.contentHeight > test.applied.model.contentHeight }
         XCTAssertTrue(paged)
         XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
-        list.setRenderer(.collectionView)
-        XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
-        list.setRenderer(.ultraList)
-        let switched = try await until { list.isDisplayReady && abs(list.visibleMinY - place) < 0.5 }
-        XCTAssertTrue(switched, "switching renderers preserves the reading position: expected \(place), actual \(list.visibleMinY), ready \(list.isDisplayReady), range \(String(describing: list.ultra?.list.loadedIndexRange)), views \(String(describing: list.ultra?.list.loadedItemViews.map { $0.isDisplayReady }))")
     }
 
-    func testUltraListFollowsAStreamWithinTheExisting200PointThreshold() async throws {
-        let test = try await listInWindow(renderer: .ultraList)
+    func testTheListFollowsAStreamWithinTheExisting200PointThreshold() async throws {
+        let test = try await listInWindow()
         let list = test.list
         list.setVisibleMinY(190)
         let positioned = try await until { abs(list.visibleMinY - 190) < 0.5 }
@@ -230,15 +227,15 @@ final class HostedChatListTests: XCTestCase {
         XCTAssertTrue(followed, "an idle reader 190 points from newest follows the stream")
     }
 
-    func testUltraListKeepsDisplayedRowsThroughAppearanceChanges() async throws {
-        let test = try await listInWindow(renderer: .ultraList)
+    func testTheListRedrawsDisplayedRowsThroughAppearanceChanges() async throws {
+        let test = try await listInWindow()
         let list = test.list
         for style in [UIUserInterfaceStyle.dark, .light] {
-            let revision = list.ultra?.list.items.first?.revision
+            let revision = list.ultra.list.items.first?.revision
             list.overrideUserInterfaceStyle = style
             list.setNeedsLayout()
             list.layoutIfNeeded()
-            let drawn = try await until { list.isDisplayReady && list.ultra?.list.items.first?.revision != revision }
+            let drawn = try await until { list.isDisplayReady && list.ultra.list.items.first?.revision != revision }
             XCTAssertTrue(drawn, "unchanged rows must redraw after appearance changes")
         }
     }
@@ -297,7 +294,7 @@ final class HostedChatListTests: XCTestCase {
         XCTAssertTrue(constructed)
         let list = try XCTUnwrap(subview(ChatListView.self, in: chat.view))
         let dock = try XCTUnwrap(subview(ChatDockView.self, in: chat.view))
-        let filled = try await until { list.collectionView.numberOfItems(inSection: 0) > 20 && maxDistance(list) > list.bounds.height }
+        let filled = try await until { list.plans.count > 20 && list.isDisplayReady && maxDistance(list) > list.bounds.height }
         XCTAssertTrue(filled, "the fixture's rows never landed")
         chat.view.layoutIfNeeded()
         assertNoIndicator(list, "resting")
@@ -315,7 +312,8 @@ final class HostedChatListTests: XCTestCase {
         }
 
         // Back in the history, then the keyboard goes.
-        scroll(list, toDistance: maxDistance(list) / 2)
+        try await scroll(list, toDistance: maxDistance(list) / 2)
+
         let place = list.visibleMinY
         assertNoIndicator(list, "halfway")
         chat.view.endEditing(true)

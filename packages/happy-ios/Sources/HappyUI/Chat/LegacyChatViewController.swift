@@ -18,8 +18,8 @@ import UltraView
 /// safe area while the keyboard is down, and follows the keyboard during an
 /// interactive dismiss: `keyboardTracker` is pinned to the keyboard layout
 /// guide, so every keyboard frame, animated or dragged, lays the screen out
-/// again, inside the keyboard's own animation when there is one. On the
-/// UltraList renderer with the floating dock (a phone in portrait),
+/// again, inside the keyboard's own animation when there is one. With the
+/// floating dock (a phone in portrait),
 /// UltraView's keyboard integration moves the keyboard instead
 /// (`ChatUltraKeyboard`), and the dock follows what it reports. Every frame
 /// comes from `LegacyChatScreenLayout`.
@@ -42,7 +42,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     private(set) var chatId: String
     private lazy var services = Self.services(account: account, context: context, sessionId: sessionId)
 
-    private lazy var list = ChatListView(renderer: context.account.localSettings.chatListRenderer)
+    private lazy var list = ChatListView()
     private lazy var scrim = ChatScrimView()
     private lazy var headerScrim = HeaderScrimView()
     /// The phone's header: the name and the session's status on one glass
@@ -492,7 +492,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             account.spawnRequests.release(sessionId: chatId)
         }
         if contentInstalled {
-            list.setRenderer(context.account.localSettings.chatListRenderer)
             updateUltraKeyboard()
             ultraKeyboard?.activate()
             updateHeaderVisibility(animated: animated)
@@ -853,17 +852,16 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         if let strip = screen.statusBarShadow { statusBarStrip.setLayoutFrame(strip) }
     }
 
-    /// One `ChatUltraKeyboard` for the UltraList the list renders with
-    /// under the floating dock, none otherwise.
+    /// One `ChatUltraKeyboard` for the list under the floating dock, none
+    /// otherwise.
     ///
     /// Docked (a tablet, a phone on its side) the list's own frame ends at
     /// the dock and changes height with the keyboard. UltraView has no
     /// public way yet to carry a list's frame or clip on its viewport
-    /// motion, so there the keyboard layout guide moves the screen, as on
-    /// UICollectionView.
+    /// motion, so there the keyboard layout guide moves the screen.
     private func updateUltraKeyboard() {
         // A layout after the chat has left its navigation makes none.
-        let current = floatingDock && parent != nil ? list.ultra?.list : nil
+        let current = floatingDock && parent != nil ? list.ultra.list : nil
         if let keyboard = ultraKeyboard, current != nil, keyboard.list === current { return }
         if let old = ultraKeyboard {
             // Its list may already be off screen: it keeps it for this.
@@ -894,7 +892,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// bottom, so its height moves too; the placeholder only moves, so its
     /// centred content glides.
     private func followUltraKeyboard(_ change: ChatUltraKeyboard.Change) {
-        guard let ultraList = list.ultra?.list else { return layoutScreen(keyboard: change) }
+        let ultraList = list.ultra.list
         let riders = dockRiders
         let drawn = riders.map { $0.layer.presentation()?.frame ?? $0.frame }
         let scrimHeight = scrim.layer.presentation()?.bounds.height ?? scrim.bounds.height

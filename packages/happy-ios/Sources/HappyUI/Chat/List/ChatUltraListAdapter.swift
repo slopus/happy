@@ -143,7 +143,7 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
         self.row = row
         drawing = row.node.makeView()
         super.init(frame: .zero)
-        transform = ChatCollectionLayout.flip
+        transform = ChatListView.flip
         clipsToBounds = true
         canvas.drawsStaticContent = row.usesNativeDrawing
         addSubview(drawing); addSubview(canvas)
@@ -228,7 +228,7 @@ private final class ChatOlderUltraView: ListRowView {
     init(content: ChatOlderEndView) {
         self.content = content
         super.init(frame: .zero)
-        transform = ChatCollectionLayout.flip
+        transform = ChatListView.flip
         content.transform = .identity
         addSubview(content)
     }
@@ -270,7 +270,7 @@ final class ChatUltraListAdapter {
     init(olderEnd: ChatOlderEndView, measurer: any NodeRowMeasuring = NodeRowMeasurer()) {
         self.olderEnd = olderEnd
         self.measurer = measurer
-        list.contentView.transform = ChatCollectionLayout.flip
+        list.contentView.transform = ChatListView.flip
         list.keyboardDismissMode = .interactive
         list.accessibilityIdentifier = "chat.ultralist"
         list.onScroll = { [weak self] _ in self?.onScroll?() }

@@ -18,9 +18,8 @@ import UltraView
 /// makes the library's controller, `deactivate()` once the screen has gone
 /// drops it, so nothing a covered screen lays out or hears brings it back.
 ///
-/// Only the UltraList renderer under the floating dock makes one (a phone
-/// in portrait). The UICollectionView renderer, and UltraList docked,
-/// follow the keyboard layout guide as they always have.
+/// Only the floating dock makes one (a phone in portrait). Docked, the
+/// list follows the keyboard layout guide.
 @MainActor
 final class ChatUltraKeyboard: NSObject {
     /// The keyboard moved: the screen lays itself out again at once, the

@@ -60,46 +60,24 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private let pictures: ComposerImagePicker
     private var acceptingSend = false
 
-    private let scrollView = UIScrollView()
-    /// The transcript on UltraList, where the renderer says so
-    /// (`LocalSettings.chatListRenderer`): the same rows, the same plans,
-    /// kept near the screen by the library instead of by hand. A preview
-    /// keeps the scroll view it fills itself, whose offset its fade and
-    /// its title measure.
-    private let ultra: AgentChatUltraList?
+    /// The transcript, on UltraList: the rows the library keeps near the
+    /// screen, each drawn from its plan. A preview reads it too, from the
+    /// start of the newest message.
+    private let ultra = AgentChatUltraList()
     private lazy var transcriptHeaderScrim = HeaderScrimView()
     private let introView = IntroView()
     /// New work's Task or Bot and name, until its first message shows.
     private let newWorkPanel: NewWorkPanel?
     /// The panel has gone, or is going, for good.
     private var newWorkPanelGone = false
-    /// The rows near the screen, the only ones that are views
-    /// (`ChatMountedRows`), by plan id.
-    private var rowViews: [String: ChatPlanView] = [:]
-    /// Rows gone from near the screen, hidden, for the next to come in.
-    private var spareRows: [ChatPlanView] = []
     /// The proposal cards each row on screen hosts.
     private var rowCards: [String: Set<String>] = [:]
     private(set) var plans: [ChatRowPlan] = []
     private var plansById: [String: ChatRowPlan] = [:]
-    /// The plans' rows as last laid out, top to bottom: their ids, their
-    /// frames, and where each id is in them.
-    private var stackedIds: [String] = []
-    private var stackedFrames: [CGRect] = []
-    private var stackedIndex: [String: Int] = [:]
-    /// The rows last mounted for: nothing to do while they stay the same.
-    private var mountedFor: ChatMountedRows?
-    private let working = WorkingView()
     /// The composer's scrim, in its frame and always there: one that came
     /// and went with the content under it flashed as a short transcript
     /// bounced off its top.
     private let composerScrim = HeaderScrimView(edge: .bottom)
-    /// Where the transcript's drawn content starts in it: what the header's
-    /// scrim measures how far it has gone under it by.
-    private var contentTop: CGFloat = 0
-    /// A jump to the newest message under way: layout moves its target
-    /// rather than cutting it short.
-    private var jumping = false
     /// Desktop's way back to the newest message.
     private let jump = ChatJumpButton()
     private var jumpShown = false
@@ -167,16 +145,12 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private var followsNewest = true {
         didSet {
             if followsNewest != oldValue {
-                let moving = ultra.map { $0.list.isTracking || $0.list.isDecelerating } ?? (scrollView.isTracking || gliding)
-                tellReadsNewest(moving: moving)
+                tellReadsNewest(moving: ultra.list.isTracking || ultra.list.isDecelerating)
             }
         }
     }
     /// What the conversation was last told by `tellReadsNewest`.
     private var toldReadsNewest: Bool?
-    /// How far the end has grown under a follower while the scroll moved and
-    /// nothing followed it: still following until at rest, however far.
-    private var grownUnfollowed: CGFloat = 0
     /// The steering last drawn under the working line.
     private var queuedShown = Set<String>()
     /// The composer's text full screen, while it is up.
@@ -189,9 +163,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private var showingDraft = false
     /// The last keystroke's stamp, never going back.
     private var lastDraftEdit: Double = 0
-    /// A content height laid out while a finger, or a bounce, holds the
-    /// transcript's scroll (`ChatScrollHold`).
-    private var scrollHold = ChatScrollHold()
     #if DEBUG
     private var probe: ScrollProbe?
     private var composeTrace: ComposeTrace?
@@ -211,7 +182,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         self.intro = intro
         self.previewing = previewing
         self.prefill = previewing ? nil : prefill
-        ultra = previewing || session.localSettings.chatListRenderer == .collectionView ? nil : AgentChatUltraList()
         self.newTask = newTask
         newWorkPanel = newTask == nil || previewing ? nil : NewWorkPanel(mode: .work)
         opensFocused = newTask != nil
@@ -265,26 +235,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.surface)
-        working.isHidden = true
         introView.accessibilityIdentifier = "intro"
-        if let ultra {
-            ultra.host = self
-            ultra.onReachedOldest = { [weak self] in self?.loadOlder() }
-            view.addSubview(ultra)
-        } else {
-            scrollView.alwaysBounceVertical = true
-            scrollView.keyboardDismissMode = .interactive
-            scrollView.contentInsetAdjustmentBehavior = .never
-            // The indicator insets set below are all of them; UIKit would add the safe area again.
-            scrollView.automaticallyAdjustsScrollIndicatorInsets = false
-            scrollView.delegate = self
-            view.addSubview(scrollView)
-            scrollView.addSubview(introView)
-            scrollView.addSubview(working)
-            HeaderBar.edge(scrollView, in: self)
-            // The screen's own scrim is the edge, as over UltraList.
-            scrollView.topEdgeEffect.isHidden = true
-        }
+        ultra.host = self
+        ultra.onReachedOldest = { [weak self] in self?.loadOlder() }
+        view.addSubview(ultra)
         if !previewing {
             // The header's own edge: the ground at the top, easing out
             // through the bar's foot (`HeaderScrim`).
@@ -342,11 +296,11 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
 
+        // The rows hear their own taps and presses; this one only ends a
+        // rename.
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         tap.cancelsTouchesInView = false
-        let scroller: UIView = ultra ?? scrollView
-        scroller.addGestureRecognizer(tap)
-        scroller.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(held(_:))))
+        ultra.addGestureRecognizer(tap)
 
         if previewing { setUpPreview() }
         #if DEBUG
@@ -469,7 +423,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
             headerWatch?.invalidate()
             proposals.stop()
             // The list lets go of its rows, and of this screen with them.
-            ultra?.deactivate()
+            ultra.deactivate()
             // Read ahead, it stays read for a quick way back.
             if let warm {
                 session.warm.release(warm.chat, token: warm.token, opened: !previewing)
@@ -494,11 +448,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     // MARK: Keyboard
 
-    /// Both transcript renderers follow the layout guide while the finger
-    /// can move the keyboard, until its next frame notification takes over.
+    /// The transcript follows the layout guide while the finger can move
+    /// the keyboard, until its next frame notification takes over.
     private func beginKeyboardDrag() {
         fingerOnKeyboard = true
-        jumping = false
         tellReadsNewest(moving: true)
     }
 
@@ -1034,76 +987,14 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     private func show(_ plans: [ChatRowPlan]) {
         #if DEBUG || HAPPY_FIXTURES
-        GymFrameMeter.noteApply(rows: plans.count, changed: plans.filter { plan in rowViews[plan.id].map { $0.plan !== plan } ?? false }.count)
+        GymFrameMeter.noteApply(rows: plans.count, changed: plans.filter { plan in plansById[plan.id].map { $0 !== plan } ?? false }.count)
         #endif
         self.plans = plans
         plansById = Dictionary(plans.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
         planShown = true
         showIntro()
-        // Only the rows near the screen are views: they show their new
-        // plans here, and layout brings in and sends off the others.
-        for id in Array(rowViews.keys) {
-            if let plan = plansById[id], let row = rowViews[id] { configure(row, plan) } else { unmount(id) }
-        }
-        mountedFor = nil
         layoutTranscript()
         timeShown()
-    }
-
-    /// Brings in the rows near the screen and sends off those gone far
-    /// from it (`ChatMountedRows`), as the transcript scrolls or
-    /// is laid out again.
-    private func mountRows() {
-        // What shows, in the transcript: a tall row has views only there.
-        let band = CGRect(x: 0, y: scrollView.contentOffset.y, width: scrollView.bounds.width, height: scrollView.bounds.height)
-        for row in rowViews.values { row.band = band.offsetBy(dx: 0, dy: -row.frame.minY) }
-        let rows = ChatMountedRows(frames: stackedFrames, top: band.minY, height: band.height)
-        guard rows != mountedFor else { return }
-        mountedFor = rows
-        for id in Array(rowViews.keys) where !(stackedIndex[id].map(rows.keep.contains) ?? false) {
-            unmount(id)
-        }
-        for index in rows.mount where rowViews[stackedIds[index]] == nil {
-            let id = stackedIds[index]
-            guard let plan = plansById[id] else { continue }
-            // A row that was this one, if it is still spare, has nothing to draw again.
-            let row = spareRows.firstIndex { $0.plan?.id == id }.map { spareRows.remove(at: $0) } ?? spareRows.popLast() ?? {
-                let row = ChatPlanView()
-                row.onChunksPlaced = { [weak self, weak row] in
-                    guard let self, let row, let plan = row.plan else { return }
-                    self.reads(row, plan)
-                }
-                row.drawsStaticContent = true
-                row.cutsTallPlans = true
-                row.drawsTextOffMain = true
-                row.isAccessibilityElement = true
-                row.accessibilityIdentifier = "message"
-                scrollView.addSubview(row)
-                return row
-            }()
-            row.isHidden = false
-            rowViews[id] = row
-            // Where it is first: a tall row then brings in only its chunks there.
-            row.setLayoutFrame(stackedFrames[index])
-            row.band = band.offsetBy(dx: 0, dy: -row.frame.minY)
-            configure(row, plan)
-        }
-    }
-
-    /// A row sent off: kept hidden for the next to come in, a few of them.
-    private func unmount(_ id: String) {
-        guard let row = rowViews.removeValue(forKey: id) else { return }
-        for key in rowCards.removeValue(forKey: id) ?? [] {
-            proposalViews.removeValue(forKey: key)?.removeFromSuperview()
-        }
-        // Off screen: none of a tall row's chunks.
-        row.band = .null
-        if spareRows.count < 8 {
-            row.isHidden = true
-            spareRows.append(row)
-        } else {
-            row.removeFromSuperview()
-        }
     }
 
     /// `row` shows `plan`, and reads as it.
@@ -1211,8 +1102,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
         replan()
         if firstFrame == nil {
             firstFrame = drawn
-            // The UI tests find the transcript by this, whichever drew it.
-            (ultra?.list ?? scrollView).accessibilityIdentifier = "transcript"
+            // The UI tests find the transcript by this.
+            ultra.list.accessibilityIdentifier = "transcript"
         }
         timeShown()
         header.maxWidth = ChatTitleLayout.maxWidth(barWidth: view.bounds.width)
@@ -1234,27 +1125,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let foot = ChatFootLayout(size: view.bounds.size, card: screen.card)
         composerScrim.setLayoutFrame(foot.scrim)
         jump.setLayoutFrame(foot.jump)
-        // The transcript starts under the navigation bar and scrolls under it.
-        let insets = UIEdgeInsets(top: view.safeAreaInsets.top, left: 0, bottom: screen.listBottom, right: 0)
-        if let ultra {
-            if ultra.frame != view.bounds { ultra.frame = view.bounds }
-            // The list is inverted: its top edge is the composer's edge.
-            let flipped = UIEdgeInsets(top: insets.bottom, left: 0, bottom: insets.top, right: 0)
-            ultra.setViewport(size: view.bounds.size, insets: flipped)
-            layoutTranscript()
-            updateHeaderEdge()
-            return
-        }
-        // Set again only when it changed: a scroll view given its frame,
-        // even the same one, while pulled past an end snaps its offset back.
-        if scrollView.frame != view.bounds { scrollView.frame = view.bounds }
-        if scrollView.contentInset != insets {
-            #if DEBUG
-            probe?.wrote("inset", insets.bottom)
-            #endif
-            scrollView.contentInset = insets
-            scrollView.verticalScrollIndicatorInsets = insets
-        }
+        // The transcript starts under the navigation bar and scrolls under
+        // it. The list is inverted: its top edge is the composer's edge.
+        if ultra.frame != view.bounds { ultra.frame = view.bounds }
+        ultra.setViewport(size: view.bounds.size, insets: UIEdgeInsets(top: screen.listBottom, left: 0, bottom: view.safeAreaInsets.top, right: 0))
         layoutTranscript()
         updateHeaderEdge()
     }
@@ -1265,7 +1139,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
         card.isHidden = true
         composerScrim.isHidden = true
         navigationItem.titleView = nil
-        scrollView.isUserInteractionEnabled = false
+        ultra.isUserInteractionEnabled = false
+        // Read from the start of the newest message, not its end.
+        ultra.showsNewestFromItsStart = true
         view.accessibilityIdentifier = "preview"
         previewPill.isAccessibilityElement = true
         previewPill.accessibilityTraits = .header
@@ -1286,114 +1162,45 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let layout = PreviewLayout(size: view.bounds.size, titleSize: previewTitle.sizeThatFits(view.bounds.size))
         previewPill.frame = layout.pill
         previewTitle.frame = layout.title.offsetBy(dx: -layout.pill.minX, dy: -layout.pill.minY)
-        scrollView.frame = view.bounds
-        let insets = UIEdgeInsets(top: layout.listTop, left: 0, bottom: layout.listBottom, right: 0)
-        if scrollView.contentInset != insets { scrollView.contentInset = insets }
+        ultra.frame = view.bounds
+        // Inverted: the list's top edge is the card's foot.
+        ultra.setViewport(size: view.bounds.size, insets: UIEdgeInsets(top: layout.listBottom, left: 0, bottom: layout.listTop, right: 0))
         layoutTranscript()
         previewFade.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: layout.fadeOpaque)
         previewFade.clearFrom = layout.fadeClear / max(1, layout.fadeOpaque)
+        updatePreviewFade()
     }
 
-    /// The newest message, taller than the card, shows from its start.
-    private func showNewestFromItsStart() {
+    /// Nothing scrolled under the title: nothing to fade, and the first
+    /// line stays whole.
+    private func updatePreviewFade() {
         guard previewing else { return }
-        let frames = [introView.frame] + plans.compactMap { plan in stackedIndex[plan.id].map { stackedFrames[$0] } }
-        if let newest = frames.last(where: { $0.height > 0 }), newest.minY - scrollView.contentOffset.y < scrollView.contentInset.top {
-            scrollView.contentOffset.y = newest.minY - scrollView.contentInset.top
-        }
-        // Nothing scrolled under the title: nothing to fade, and the first line stays whole.
-        previewFade.isHidden = scrollView.contentOffset.y <= -scrollView.contentInset.top + 0.5
+        previewFade.isHidden = ultra.distanceFromOldest <= 0.5
     }
 
     private func layoutTranscript() {
-        let width = view.bounds.width
-        let viewport = max(0, view.bounds.height - scrollView.contentInset.top - scrollView.contentInset.bottom)
-        var heights: [CGFloat] = []
         var introLayout: MakeStuffIntroLayout?
-        if intro != nil {
-            let layout = introView.layout(width: width)
-            introLayout = layout
-            heights.append(layout.size.height)
-        }
-        // Steering the turn hasn't taken waits under the working line, as
-        // next in the queue, with room under it for the line that follows
-        // it once taken (desktop's `conversationPendingSteering` and
-        // `footerReserveHeight`): taking it up moves nothing else.
+        if intro != nil { introLayout = introView.layout(width: view.bounds.width) }
+        // Steering the turn hasn't taken waits under the newest settled
+        // row, as next in the queue (desktop's
+        // `conversationPendingSteering`). What the agent is at is the
+        // header's (`header.status`): the transcript keeps no working line
+        // of its own.
         let queuedIds = plansQueued
         let settled = plans.filter { !queuedIds.contains($0.id) }
         let waiting = plans.filter { queuedIds.contains($0.id) }
-        heights += settled.map(\.size.height)
-        // What the agent is at is the header's (`header.status`): the
-        // transcript keeps no working line of its own.
-        heights.append(0)
-        heights += waiting.map(\.size.height)
-        // Steering taken up goes into the transcript above the line, moving
-        // there as the line moves under it.
+        // Steering taken up goes into the transcript above the queue,
+        // easing there.
         let wasTaken = !queuedShown.subtracting(queuedIds).isEmpty && view.window != nil
-        if let ultra {
-            queuedShown = queuedIds
-            var opening: (view: UIView, height: CGFloat)?
-            if let introLayout {
-                introView.place(introLayout)
-                opening = (view: introView, height: introLayout.size.height)
-            }
-            let folds = foldMoved && view.window != nil
-            foldMoved = false
-            ultra.apply(settled + waiting, intro: opening, animated: wasTaken, moves: folds)
-            updateJump()
-            return
-        }
-        // The intro stays under the bar, as desktop's leading header.
-        let pins = introLayout != nil && !previewing
-        let first = introLayout == nil ? 0 : 1
-        // The plans' rows in the stack, past the intro and, for those
-        // waiting, the working line.
-        let stackRows = settled.indices.map { first + $0 } + waiting.indices.map { first + settled.count + 1 + $0 }
-        let stackedIds = (settled + waiting).map(\.id)
-        let stackRow = Dictionary(zip(stackedIds, stackRows), uniquingKeysWith: { first, _ in first })
-        func row(_ id: String) -> Int? { stackRow[id] }
-        func stacked() -> ChatStackLayout {
-            ChatStackLayout(heights: heights, width: width, viewport: viewport, pinsFirst: pins)
-        }
-        let stack = stacked()
-        contentTop = stack.frames.first { $0.height > 0 }?.minY ?? 0
-        if let introLayout {
-            introView.setLayoutFrame(stack.frames[0])
-            introView.place(introLayout)
-        }
         queuedShown = queuedIds
-        let frames = stackRows.map { stack.frames[$0] }
-        if frames != stackedFrames || stackedIds != self.stackedIds { mountedFor = nil }
-        self.stackedIds = stackedIds
-        self.stackedFrames = frames
-        self.stackedIndex = Dictionary(zip(stackedIds, frames.indices), uniquingKeysWith: { first, _ in first })
-        let place = {
-            for (id, view) in self.rowViews {
-                if let index = row(id) { view.setLayoutFrame(stack.frames[index]) }
-            }
-            self.working.frame = stack.frames[first + settled.count]
+        var opening: (view: UIView, height: CGFloat)?
+        if let introLayout {
+            introView.place(introLayout)
+            opening = (view: introView, height: introLayout.size.height)
         }
-        if wasTaken {
-            UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: place)
-        } else {
-            place()
-        }
-        if scrollView.contentSize.width != width { scrollView.contentSize.width = width }
-        let previous = scrollView.contentSize.height
-        // Pulled or bouncing past an end, it keeps the height it has, and
-        // nothing follows the newest row: either would move the content
-        // under the finger. Both come once it is let go or at rest.
-        let scroll = scrollState
-        if let height = scrollHold.laidOut(stack.contentHeight, scroll: scroll) { setContentHeight(height) }
-        if jumping {
-            if previous != scrollView.contentSize.height, abs(scrollView.contentOffset.y - newestOffset) > 0.5 { scrollView.setContentOffset(CGPoint(x: 0, y: newestOffset), animated: true) }
-        } else if ChatScrollHold.follows(scroll), followsNewest ? scrollView.contentOffset.y != newestOffset : scrollView.contentOffset.y > newestOffset {
-            // Following, at the end; else shorter than the place it was read
-            // at (a section folded): no gap under the end.
-            setOffset(newestOffset)
-        }
-        showNewestFromItsStart()
-        mountRows()
+        let folds = foldMoved && view.window != nil
+        foldMoved = false
+        ultra.apply(settled + waiting, intro: opening, animated: wasTaken, moves: folds)
         updateJump()
     }
 
@@ -1419,86 +1226,11 @@ final class ChatViewController: UIViewController, ComposeHosting {
             print("HAPPY_OPEN \(warm) first=\(firstFrame) ms=\(ms) rows=\(plans.count)")
             #endif
             timing = "first=\(firstFrame) ms=\(ms) rows=\(plans.count)"
-            (ultra?.list ?? scrollView).accessibilityValue = timing
+            ultra.list.accessibilityValue = timing
             #if DEBUG
             probe?.report()
             #endif
         }
-    }
-
-    private var newestOffset: CGFloat {
-        max(-scrollView.contentInset.top, scrollView.contentSize.height + scrollView.contentInset.bottom - scrollView.bounds.height)
-    }
-
-    /// Gliding after a fling, or moved by the performance gym's scripted
-    /// scroll (`GymFrameMeter`), which stands for one.
-    private var gliding: Bool {
-        #if DEBUG || HAPPY_FIXTURES
-        if GymFrameMeter.scrolling { return true }
-        #endif
-        return scrollView.isDecelerating
-    }
-
-    private var scrollState: ChatScrollHold.Scroll {
-        ChatScrollHold.Scroll(
-            offset: scrollView.contentOffset.y, insetTop: scrollView.contentInset.top, insetBottom: scrollView.contentInset.bottom,
-            contentHeight: scrollView.contentSize.height, viewport: scrollView.bounds.height,
-            tracking: scrollView.isTracking, decelerating: gliding
-        )
-    }
-
-    private func setContentHeight(_ height: CGFloat, _ from: String = "size") {
-        #if DEBUG
-        probe?.wrote(from, height)
-        #endif
-        if followsNewest, scrollView.isTracking || gliding {
-            grownUnfollowed += max(0, height - scrollView.contentSize.height)
-        }
-        scrollView.contentSize.height = height
-    }
-
-    /// While the scroll moves, whether the reader is at the end, counting
-    /// what grew under them meanwhile as reached.
-    private func updateFollowing() {
-        followsNewest = scrollView.contentOffset.y >= newestOffset - grownUnfollowed - 24
-        if !followsNewest { grownUnfollowed = 0 }
-    }
-
-    private func setOffset(_ y: CGFloat) {
-        #if DEBUG
-        probe?.wrote("offset", y)
-        #endif
-        scrollView.contentOffset.y = y
-    }
-
-    /// Let go and at rest: a height held meanwhile is given, and a reader
-    /// following the newest row is taken to it, gliding, as the reply may
-    /// have grown a long way under the finger. A glide a finger stopped
-    /// ends with that finger still on it: nothing is given until it lifts.
-    private func settleScroll(lifted: Bool) {
-        var scroll = scrollState
-        if lifted { scroll.tracking = false }
-        scroll.decelerating = false
-        guard !scroll.tracking else {
-            // A finger that stopped a glide and lifts without dragging is
-            // told by nothing: look again until it is off.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                guard let self, !scrollView.isDragging, !scrollView.isDecelerating else { return }
-                settleScroll(lifted: false)
-            }
-            return
-        }
-        defer { tellReadsNewest(moving: false) }
-        if let height = scrollHold.release(scroll: scroll) { setContentHeight(height, "size-settle") }
-        grownUnfollowed = 0
-        // Shorter than where it rests (a section folded meanwhile): no gap under the end.
-        if !followsNewest, scrollView.contentOffset.y > newestOffset { setOffset(newestOffset) }
-        guard !jumping, followsNewest, abs(scrollView.contentOffset.y - newestOffset) > 0.5 else { return }
-        #if DEBUG
-        probe?.wrote("glide", newestOffset)
-        #endif
-        jumping = true
-        scrollView.setContentOffset(CGPoint(x: 0, y: newestOffset), animated: true)
     }
 
     /// The way back shows while the reader is more than a third of the
@@ -1506,16 +1238,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// shimmers while the working line spins: not on a question to the
     /// person or a scheduled wait, which show still.
     private func updateJump() {
-        let viewport: CGFloat
-        let distance: CGFloat
-        if let ultra {
-            viewport = ultra.viewportHeight
-            distance = ultra.distanceFromNewest
-        } else {
-            viewport = scrollView.bounds.height - scrollView.contentInset.top - scrollView.contentInset.bottom
-            distance = newestOffset - scrollView.contentOffset.y
-        }
-        let away = !previewing && ChatFootLayout.showsJump(distanceFromEnd: distance, viewport: viewport)
+        let away = !previewing && ChatFootLayout.showsJump(distanceFromEnd: ultra.distanceFromNewest, viewport: ultra.viewportHeight)
         // Hidden, it doesn't sweep.
         jump.working = away && ChatJumpButton.spins(chat.activity)
         guard away != jumpShown else { return }
@@ -1534,7 +1257,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// the runs above (desktop's `trimHistory` on a watched session), so
     /// nothing moves under a finger or a glide.
     private func tellReadsNewest(moving: Bool) {
-        let reads = followsNewest && !moving && !jumping
+        let reads = followsNewest && !moving
         guard reads != toldReadsNewest else { return }
         toldReadsNewest = reads
         let conversation = conversation
@@ -1543,19 +1266,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     /// Back to the newest message, following it from there.
     @objc private func jumpToLatest() {
-        if let ultra {
-            followsNewest = true
-            ultra.scrollToNewest(animated: true)
-            tellReadsNewest(moving: false)
-            return
-        }
-        // To the end as it is, not as it was held while the scroll moved.
-        var scroll = scrollState
-        (scroll.tracking, scroll.decelerating) = (false, false)
-        if let height = scrollHold.release(scroll: scroll) { setContentHeight(height, "size-jump") }
         followsNewest = true
-        jumping = true
-        scrollView.setContentOffset(CGPoint(x: 0, y: newestOffset), animated: true)
+        ultra.scrollToNewest(animated: true)
+        tellReadsNewest(moving: false)
     }
 
     // MARK: Acts
@@ -1569,7 +1282,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     /// A send follows the transcript the person is actually reading.
     var sendFollowsNewest: Bool {
-        let distance = ultra?.distanceFromNewest ?? (newestOffset - scrollView.contentOffset.y)
+        let distance = ultra.distanceFromNewest
         return SendFollow.Send(following: followsNewest, distanceFromEnd: distance).follows
     }
 
@@ -1599,7 +1312,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let id = ClientID.make()
         if sendFollowsNewest {
             followsNewest = true
-            ultra?.follow()
+            ultra.follow()
         }
         let conversation = conversation
         let store = session.store
@@ -1714,14 +1427,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         // A tap away from the name being edited keeps it, as in the sidebar.
         if titleView.isEditing {
             titleView.finishEditing()
-            return
-        }
-        for row in rowViews.values {
-            let point = recognizer.location(in: row)
-            guard row.bounds.contains(point) else { continue }
-            if let link = row.link(at: point) { open(link: link); return }
-            if let action = row.action(at: point) { act(action) }
-            return
         }
     }
 
@@ -1761,16 +1466,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let title = references.view(reference).label
         let chat = ChatViewController(session: session, agentId: entity.agentId, title: title, spaceId: row?.spaceId, intro: intro)
         navigationController?.pushViewController(chat, animated: true)
-    }
-
-    @objc private func held(_ recognizer: UILongPressGestureRecognizer) {
-        guard recognizer.state == .began else { return }
-        for row in rowViews.values {
-            let point = recognizer.location(in: row)
-            guard row.bounds.contains(point), let hit = row.hold(at: point) else { continue }
-            hold(hit.action)
-            return
-        }
     }
 
     private func loadOlder() {
@@ -1980,83 +1675,23 @@ private extension ChatDrawItem {
     }
 }
 
-extension ChatViewController: UIScrollViewDelegate {
-    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-        beginKeyboardDrag()
-    }
-
-    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
-        jumping = false
-        tellReadsNewest(moving: false)
-        view.setNeedsLayout()
-    }
-
-    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        endKeyboardDrag()
-        // Let go to glide or bounce, what is held waits until it is back
-        // inside its ends (`scrollViewDidScroll`) or at rest.
-        #if DEBUG
-        probe?.wrote("end-drag", decelerate ? 1 : 0)
-        #endif
-        if !decelerate { settleScroll(lifted: true) }
-    }
-
-    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-        #if DEBUG
-        probe?.wrote("end-decel", 0)
-        #endif
-        settleScroll(lifted: false)
-    }
-
-    func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        #if DEBUG || HAPPY_FIXTURES
-        GymFrameMeter.noteScroll()
-        #endif
-        mountRows()
-        updateJump()
-        updateHeaderEdge()
-        #if DEBUG
-        probe?.watch()
-        #endif
-        let moving = scrollView.isTracking || gliding
-        // At the end of the height on screen, before a held one is given.
-        if moving {
-            updateFollowing()
-            tellReadsNewest(moving: true)
-        }
-        // Back inside its ends after a bounce: what was held is given.
-        if scrollHold.held != nil, let height = scrollHold.release(scroll: scrollState) { setContentHeight(height, "size-scroll") }
-        guard moving else { return }
-        if scrollView.contentOffset.y < 200 - scrollView.contentInset.top { loadOlder() }
-    }
-}
-
 #if DEBUG
 extension ChatViewController {
-    /// For the UI tests (`V2_CHAT_PROBE`): every write of the transcript's
-    /// content height, inset and offset, logged with whether a finger held
-    /// it and whether it was past an end; and, as the transcript's value
-    /// after its timing, how many frames a finger held it stretched, how
-    /// often the content stepped back against the pull then, and how many
-    /// writes landed while it was held stretched. With `relayout` the
-    /// screen is laid out again on every frame, as a reply streaming in
-    /// lays it out.
+    /// For the UI tests (`V2_CHAT_PROBE`): as the transcript's value after
+    /// its timing, how the composer kept to a keyboard a finger held part
+    /// way down, how far a swipe back moved, and the sideways scrollers on
+    /// screen. With `relayout` the screen is laid out again on every
+    /// frame, as a reply streaming in lays it out.
     final class ScrollProbe: NSObject {
         weak var screen: ChatViewController?
         var link: CADisplayLink!
         private let relayout: Bool
-        private var last: CGFloat?
-        private var lastStretched = false
-        private var stretchedFrames = 0
-        private var backwards = 0
-        private var heldWrites = 0
         private var keyboardFrames = 0
         private var keyboardGap: CGFloat = 0
         private var edgeSamples = 0
         private var contentSamples = 0
         private var edgeTranslation: CGFloat = 0
         private var contentTranslation: CGFloat = 0
-        private let started = CACurrentMediaTime()
 
         @MainActor init(_ screen: ChatViewController, relayout: Bool) {
             self.screen = screen
@@ -2080,7 +1715,6 @@ extension ChatViewController {
                 keyboardGap = max(keyboardGap, abs(top - screen.card.frame.maxY - rest))
             }
             observePop()
-            watch()
             report()
         }
 
@@ -2102,38 +1736,11 @@ extension ChatViewController {
             }
         }
 
-        @MainActor func wrote(_ what: String, _ value: CGFloat) {
-            guard let screen else { return }
-            let scroll = screen.scrollState
-            let stretched = scroll.stretched()
-            if scroll.tracking, stretched, !what.hasPrefix("end-") { heldWrites += 1 }
-            NSLog("%@", String(format: "HAPPY_SCROLL t=%.3f %@=%.1f offset=%.1f end=%.1f size=%.1f bottom=%.1f tracking=%d decelerating=%d stretched=%d",
-                         CACurrentMediaTime() - started, what, value, scroll.offset, scroll.end(), scroll.contentHeight, scroll.insetBottom,
-                         scroll.tracking ? 1 : 0, scroll.decelerating ? 1 : 0, stretched ? 1 : 0))
-            report()
-        }
-
-        @MainActor func watch() {
-            guard let screen else { return }
-            let scroll = screen.scrollState
-            let y = scroll.offset
-            let stretched = scroll.stretched()
-            defer { (last, lastStretched) = (y, stretched) }
-            // A step from a stretch back inside counts too: a snap back is
-            // the jump.
-            guard scroll.tracking, stretched || lastStretched, let last else { return }
-            if stretched { stretchedFrames += 1 }
-            // Pulled past the top the offset falls, past the bottom it rises.
-            let atTop = y < (-scroll.insetTop + scroll.end()) / 2
-            if atTop ? y > last + 0.5 : y < last - 0.5 { backwards += 1 }
-            report()
-        }
-
         @MainActor func report() {
             guard let screen else { return }
-            let scroll = screen.scrollView
-            let bottom = screen.ultra.map { CGFloat($0.list.contentInsets.top) } ?? scroll.contentInset.bottom
-            (screen.ultra?.list ?? scroll).accessibilityValue = "\(screen.timing) stretched=\(stretchedFrames) backwards=\(backwards) held=\(heldWrites) top=\(Int(scroll.contentInset.top)) bottom=\(bottom) keyboardFrames=\(keyboardFrames) keyboardGap=\(keyboardGap) guide=\(screen.keyboardTracker.frame.minY) cardBottom=\(screen.card.frame.maxY) popEdge=\(edgeSamples) popContent=\(contentSamples) popEdgeX=\(edgeTranslation) popContentX=\(contentTranslation)\(horizontalScrollers())"
+            let list = screen.ultra.list
+            // Inverted: the list's top inset is the composer's end.
+            list.accessibilityValue = "\(screen.timing) top=\(Int(list.contentInsets.bottom)) bottom=\(CGFloat(list.contentInsets.top)) keyboardFrames=\(keyboardFrames) keyboardGap=\(keyboardGap) guide=\(screen.keyboardTracker.frame.minY) cardBottom=\(screen.card.frame.maxY) popEdge=\(edgeSamples) popContent=\(contentSamples) popEdgeX=\(edgeTranslation) popContentX=\(contentTranslation)\(horizontalScrollers())"
         }
 
         @MainActor private func horizontalScrollers() -> String {
@@ -2156,7 +1763,7 @@ extension ChatViewController {
                 }
                 for child in view.subviews { visit(child) }
             }
-            visit(screen.ultra?.list ?? screen.scrollView)
+            visit(screen.ultra.list)
             return " hFit=\(fitting ?? "none") hWide=\(wide ?? "none")"
         }
     }
@@ -2222,9 +1829,9 @@ extension ChatViewController: AgentChatTranscriptHost {
         #if DEBUG || HAPPY_FIXTURES
         GymFrameMeter.noteScroll()
         #endif
-        guard let ultra else { return }
         followsNewest = ultra.followsNewest
         updateHeaderEdge()
+        updatePreviewFade()
         updateJump()
         tellReadsNewest(moving: ultra.list.isTracking || ultra.list.isDecelerating)
     }
@@ -2237,11 +1844,12 @@ extension ChatViewController: AgentChatTranscriptHost {
         endKeyboardDrag()
     }
 
-    /// The header's scrim, none with nothing under the bar: either
-    /// renderer's distance past its oldest row.
+    /// The header's scrim, none with nothing under the bar: the
+    /// transcript's distance past its oldest row.
     private func updateHeaderEdge() {
         guard !previewing else { return }
-        let under = ultra?.distanceFromOldest ?? scrollView.contentOffset.y + scrollView.contentInset.top
+        let under = ultra.distanceFromOldest
+
         transcriptHeaderScrim.presence = HeaderScrim.presence(scrolledUnder: under)
     }
 

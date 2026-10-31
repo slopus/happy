@@ -265,46 +265,25 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(stops.last?.alpha, 0)
     }
 
-    func testShortConversationsRestOnTheComposer() {
-        let short = ChatStackLayout(heights: [132, 50], width: 390, viewport: 600)
-        XCTAssertEqual(short.frames, [CGRect(x: 0, y: 418, width: 390, height: 132), CGRect(x: 0, y: 550, width: 390, height: 50)])
-        XCTAssertEqual(short.contentHeight, 600)
-        let long = ChatStackLayout(heights: [400, 300], width: 390, viewport: 600)
-        XCTAssertEqual(long.frames, [CGRect(x: 0, y: 0, width: 390, height: 400), CGRect(x: 0, y: 400, width: 390, height: 300)])
-        XCTAssertEqual(long.contentHeight, 700)
-    }
-
-    /// Desktop's leading header: the intro stays under the bar and the
-    /// rows fill in under it, then scroll as any others once they don't fit.
-    func testAnIntroIsPinnedUnderTheBarAndTheRowsFillInUnderIt() {
-        let short = ChatStackLayout(heights: [116, 60, 0], width: 390, viewport: 600, pinsFirst: true)
-        XCTAssertEqual(short.frames, [CGRect(x: 0, y: 0, width: 390, height: 116), CGRect(x: 0, y: 116, width: 390, height: 60), CGRect(x: 0, y: 176, width: 390, height: 0)])
-        XCTAssertEqual(short.contentHeight, 600)
-        let long = ChatStackLayout(heights: [116, 400, 300], width: 390, viewport: 600, pinsFirst: true)
-        XCTAssertEqual(long.frames.map(\.minY), [0, 116, 516])
-        XCTAssertEqual(long.contentHeight, 816)
-    }
-
     /// Only rows within a screen of what shows are views; they stay until
     /// two screens away.
     func testOnlyRowsNearTheScreenAreViews() {
         // Ten rows of 300 under an intro of 116, on a screen of 600.
-        let stack = ChatStackLayout(heights: [116] + Array(repeating: 300, count: 10), width: 390, viewport: 600, pinsFirst: true)
-        XCTAssertEqual(stack.contentHeight, 3116)
+        let frames = [CGRect(x: 0, y: 0, width: 390, height: 116)] + (0..<10).map { CGRect(x: 0, y: 116 + CGFloat($0) * 300, width: 390, height: 300) }
         // At the top: the intro, and rows down to 1200, a screen below the screen.
-        let top = ChatMountedRows(frames: stack.frames, top: 0, height: 600)
+        let top = ChatMountedRows(frames: frames, top: 0, height: 600)
         XCTAssertEqual(top.mount, 0..<5)
         XCTAssertEqual(top.keep, 0..<7)
         // In the middle, 1316..1916 showing: from 716 to 2516.
-        let middle = ChatMountedRows(frames: stack.frames, top: 1316, height: 600)
+        let middle = ChatMountedRows(frames: frames, top: 1316, height: 600)
         XCTAssertEqual(middle.mount, 3..<9)
         XCTAssertEqual(middle.keep, 1..<11)
         // At the end: the last rows, and nothing past them.
-        let end = ChatMountedRows(frames: stack.frames, top: 2516, height: 600)
+        let end = ChatMountedRows(frames: frames, top: 2516, height: 600)
         XCTAssertEqual(end.mount, 7..<11)
         XCTAssertEqual(end.keep, 5..<11)
         // A row ending where the band starts, or starting where it ends, is out.
-        XCTAssertEqual(ChatMountedRows.rows(stack.frames, from: 416, to: 1016), 2..<4)
+        XCTAssertEqual(ChatMountedRows.rows(frames, from: 416, to: 1016), 2..<4)
         // Nothing to show: no rows.
         XCTAssertEqual(ChatMountedRows(frames: [], top: 0, height: 600).mount, 0..<0)
         // Rows of no height, the working line at rest, come in with their neighbours.
@@ -338,30 +317,6 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(short.chunks, [.init(items: 0..<2, frame: CGRect(x: 0, y: 0, width: 390, height: 2048))])
     }
 
-    /// A send is an appended row and nothing else: the stack is what it is
-    /// with that row on the end, and no room is held for the reply. A short
-    /// conversation resting on the composer does slide up, by exactly the
-    /// row's own height, as any append does. What is gone is the 30% lift,
-    /// which moved the rows much further than they grew.
-    func testASendAppendsARowAndHoldsNoRoom() {
-        // Short: the rows rest on the composer, the send among them.
-        let resting = ChatStackLayout(heights: [80, 60], width: 390, viewport: 600)
-        XCTAssertEqual(resting.frames.map(\.minY), [460, 540])
-        XCTAssertEqual(resting.contentHeight, 600)
-        // A 40pt send lands: the rows above slide up 40, the appended
-        // height, and no further. A lift put the send's top at 180.
-        let sent = ChatStackLayout(heights: [80, 60, 40], width: 390, viewport: 600)
-        XCTAssertEqual(sent.frames.map(\.minY), [420, 500, 560])
-        XCTAssertEqual(sent.contentHeight, 600, "no room is held under it")
-        // Past the viewport, where the reader is: the rows keep the frames
-        // they had and the content is its rows and nothing more.
-        let read = ChatStackLayout(heights: [400, 300], width: 390, viewport: 600)
-        let after = ChatStackLayout(heights: [400, 300, 40], width: 390, viewport: 600)
-        XCTAssertEqual(read.frames.map(\.minY), [0, 400])
-        XCTAssertEqual(after.frames.map(\.minY), [0, 400, 700])
-        XCTAssertEqual(after.contentHeight, read.contentHeight + 40)
-    }
-
     /// A send carries a reader at or near the end to it, and leaves one
     /// reading up in history where they are.
     func testASendFollowsOnlyAReaderNearTheEnd() {
@@ -374,48 +329,6 @@ final class LayoutTests: XCTestCase {
         XCTAssertTrue(follows(false, 80), "the threshold itself follows")
         XCTAssertFalse(follows(false, 81), "reading history: nothing moves")
         XCTAssertFalse(follows(false, 400))
-    }
-
-    /// A height laid out while a finger pulls past the end, or the scroll
-    /// bounces back from it, waits; the finger off and the scroll back
-    /// inside, it is given.
-    func testAHeightWaitsWhileTheScrollIsPastAnEnd() {
-        // 1000 high under a 600 viewport, insets 100 and 150: the end is at 550.
-        func scroll(_ offset: CGFloat, tracking: Bool = false, decelerating: Bool = false) -> ChatScrollHold.Scroll {
-            .init(offset: offset, insetTop: 100, insetBottom: 150, contentHeight: 1000, viewport: 600, tracking: tracking, decelerating: decelerating)
-        }
-        XCTAssertEqual(scroll(550).end(), 550)
-        XCTAssertFalse(scroll(550.5).stretched())
-        XCTAssertTrue(scroll(551).stretched())
-        XCTAssertTrue(scroll(-101).stretched())
-        // Past the end at the new height only: a shorter height would clamp it.
-        XCTAssertTrue(scroll(500).stretched(contentHeight: 900))
-
-        var hold = ChatScrollHold()
-        // At rest, given at once.
-        XCTAssertEqual(hold.laidOut(1024, scroll: scroll(550)), 1024)
-        // The same height: nothing to give.
-        XCTAssertNil(hold.laidOut(1000, scroll: scroll(580, tracking: true)))
-        XCTAssertNil(hold.held)
-        // Pulled past the end: held.
-        XCTAssertNil(hold.laidOut(1024, scroll: scroll(580, tracking: true)))
-        XCTAssertNil(hold.laidOut(1048, scroll: scroll(590, tracking: true)))
-        XCTAssertEqual(hold.held, 1048)
-        // Inside the ends, a finger on it: given, it moves nothing on screen.
-        var inside = ChatScrollHold()
-        XCTAssertEqual(inside.laidOut(1024, scroll: scroll(300, tracking: true)), 1024)
-        // Still pulled: kept.
-        XCTAssertNil(hold.release(scroll: scroll(590, tracking: true)))
-        // Let go, bouncing back past the end: kept.
-        XCTAssertNil(hold.release(scroll: scroll(560, decelerating: true)))
-        // Back inside: given, once.
-        XCTAssertEqual(hold.release(scroll: scroll(550, decelerating: true)), 1048)
-        XCTAssertNil(hold.held)
-        XCTAssertNil(hold.release(scroll: scroll(550)))
-        // Following the end waits while anything moves the scroll.
-        XCTAssertTrue(ChatScrollHold.follows(scroll(550)))
-        XCTAssertFalse(ChatScrollHold.follows(scroll(550, tracking: true)))
-        XCTAssertFalse(ChatScrollHold.follows(scroll(550, decelerating: true)))
     }
 
     /// An inline page sits under its artifact's card, across the column at its measured height.

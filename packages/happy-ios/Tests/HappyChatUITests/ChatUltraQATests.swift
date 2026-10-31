@@ -1,6 +1,6 @@
 import XCTest
 
-/// Device QA for the UltraList chat (`HappyChatHarness -chatUltraList
+/// Device QA for the chat (`HappyChatHarness
 /// -qaProbe`): each test drives fixture chats with synthesized touches,
 /// takes screenshots, and attaches the probe's action windows per step
 /// (`ChatUltraQAProbe`): frame gaps, not-ready rows and drift. Fixture
@@ -72,16 +72,16 @@ final class ChatUltraQATests: XCTestCase {
 
     private var pass: String { ProcessInfo.processInfo.environment["QA_PASS"] ?? "pass" }
 
-    private func launchChat(_ fixture: String, clip: String, ultra: Bool = true, extra: [String] = []) {
+    private func launchChat(_ fixture: String, clip: String, extra: [String] = []) {
         let app = XCUIApplication()
-        app.launchArguments = ["-fixture", fixture, "-qaProbe", "-qaRun", "\(pass)-\(clip)"] + (ultra ? ["-chatUltraList"] : []) + extra
+        app.launchArguments = ["-fixture", fixture, "-qaProbe", "-qaRun", "\(pass)-\(clip)"] + extra
         launch(app, clip: clip)
     }
 
-    private func launchHome(clip: String, renderer: String = "UITableView", grouping: String = "flat", ultra: Bool = true) {
+    private func launchHome(clip: String, renderer: String = "UITableView", grouping: String = "flat") {
         let app = XCUIApplication()
         app.launchArguments = ["-screen", "home", "-renderer", renderer, "-grouping", grouping, "-sessionCount", "0", "-archiveCount", "0",
-                               "-qaProbe", "-qaRun", "\(pass)-\(clip)"] + (ultra ? ["-chatUltraList"] : [])
+                               "-qaProbe", "-qaRun", "\(pass)-\(clip)"]
         launch(app, clip: clip)
     }
 
@@ -130,10 +130,10 @@ final class ChatUltraQATests: XCTestCase {
         return true
     }
 
-    /// The gate every clip starts with: the expected renderer, its list
-    /// mounted, no collection view in an UltraList chat, rows drawn. The
+    /// The gate every clip starts with: UltraList mounted, no collection
+    /// view in the chat, rows drawn. The
     /// windows so far (opening, first applies) are recorded as "ready".
-    private func assertReady(_ label: String, ultra: Bool = true, timeout: TimeInterval = 30) {
+    private func assertReady(_ label: String, timeout: TimeInterval = 30) {
         let ready = wait(timeout) {
             let s = state()
             return (s["listInWindow"] as? Bool) == true && (s["displayReady"] as? Bool) == true && int(s["rows"]) > 0
@@ -144,13 +144,9 @@ final class ChatUltraQATests: XCTestCase {
         if !ready, let data = try? JSONSerialization.data(withJSONObject: s["ultraNotReady"] ?? [:], options: [.prettyPrinted, .sortedKeys]) {
             attach("\(clip) \(label) UltraList not drawn", String(decoding: data, as: UTF8.self))
         }
-        if ultra {
-            XCTAssertEqual(s["renderer"] as? String, "UltraList", label)
-            XCTAssertEqual(s["ultraMounted"] as? Bool, true, label)
-            XCTAssertEqual(int(s["collectionViews"]), 0, label)
-        } else {
-            XCTAssertEqual(s["renderer"] as? String, "UICollectionView", label)
-        }
+        XCTAssertEqual(s["renderer"] as? String, "UltraList", label)
+        XCTAssertEqual(s["ultraMounted"] as? Bool, true, label)
+        XCTAssertEqual(int(s["collectionViews"]), 0, label)
         let frame = app.windows.firstMatch.frame
         if frame.width > 0 { size = frame.size }
         let all = windows()
@@ -498,19 +494,8 @@ final class ChatUltraQATests: XCTestCase {
     func testC1LongKeyboardAndHistory() {
         prepare()
         defer { finish() }
-        runLong(ultra: true, clip: "c1-long")
-    }
-
-    /// The same clip on the default renderer, for comparison.
-    func testL1LegacyLongKeyboardAndHistory() {
-        prepare()
-        defer { finish() }
-        runLong(ultra: false, clip: "l1-legacy-long")
-    }
-
-    private func runLong(ultra: Bool, clip: String) {
-        launchChat("long", clip: clip, ultra: ultra, extra: ["-keyboard"])
-        assertReady("open", ultra: ultra)
+        launchChat("long", clip: "c1-long", extra: ["-keyboard"])
+        assertReady("open")
         let keyboardUp = wait(10) { number(scrollProbe()["keyboardTop"]) < size.height - 150 }
         Thread.sleep(forTimeInterval: 1)
         step("keyboard shown", quiet: 0.5, requireWindow: false) {}
@@ -1204,7 +1189,7 @@ final class ChatUltraQATests: XCTestCase {
         }
     }
 
-    // MARK: C7 Home to chat, Details, renderer setting
+    // MARK: C7 Home to chat, Details
 
     private func row(_ title: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
@@ -1216,7 +1201,7 @@ final class ChatUltraQATests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.8)
     }
 
-    func testC7HomeOpensChatsDetailsAndSetting() {
+    func testC7HomeOpensChatsAndDetails() {
         prepare()
         defer { finish() }
         launchHome(clip: "c7-home")
@@ -1262,44 +1247,8 @@ final class ChatUltraQATests: XCTestCase {
         attach("\(clip) first visual responses", "\(state()["firstVisuals"] ?? [])")
         require("open chats from Home on UltraList", opens.count == 4 && opens.allSatisfy { ($0["renderer"] as? String) == "UltraList" && number($0["readyMs"]) > 0 },
                 "\(opens.count) openings: \(opens.map { "\($0["renderer"] ?? "") mount \($0["mountMs"] ?? "") visible \($0["visibleMs"] ?? "") ready \($0["readyMs"] ?? "") settled \($0["settledMs"] ?? "")" })")
-
-        func choose(_ renderer: String) {
-            app.buttons["Settings"].tap()
-            XCTAssertTrue(app.otherElements["settings"].waitForExistence(timeout: 10))
-            let appearance = row("Appearance,")
-            XCTAssertTrue(appearance.waitForExistence(timeout: 10)); appearance.tap()
-            let setting = row("Chat list renderer,")
-            XCTAssertTrue(setting.waitForExistence(timeout: 10)); setting.tap()
-            let choice = app.alerts.buttons[renderer]
-            XCTAssertTrue(choice.waitForExistence(timeout: 10)); choice.tap()
-            Thread.sleep(forTimeInterval: 0.8)
-            screenshot("setting-\(renderer)")
-            app.navigationBars["Appearance"].buttons.element(boundBy: 0).tap()
-            XCTAssertTrue(app.otherElements["settings"].waitForExistence(timeout: 10))
-            app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
-            XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 10))
-        }
-        choose("UICollectionView")
-        row("Scroll indicator").tap()
-        Thread.sleep(forTimeInterval: 2.5)
-        assertReady("after choosing UICollectionView", ultra: false)
-        screenshot("chat-collectionview")
-        backToHome()
-        choose("UltraList")
-        row("Scroll indicator").tap()
-        Thread.sleep(forTimeInterval: 2.5)
-        assertReady("after choosing UltraList")
-        screenshot("chat-ultralist-again")
         app.terminate()
 
-        launchHome(clip: "c7-home-relaunch", renderer: "stored", ultra: false)
-        let chat = row("Scroll indicator")
-        XCTAssertTrue(chat.waitForExistence(timeout: 20))
-        chat.tap()
-        Thread.sleep(forTimeInterval: 2.5)
-        assertReady("relaunch keeps UltraList")
-        screenshot("relaunch-ultralist")
-        app.terminate()
 
         // Worktree tabs: a chat shows its checkout's tabs only while Home is
         // grouped by project (`ChatServices.checkout`); the seeded worktree
@@ -1748,16 +1697,15 @@ final class ChatUltraQATests: XCTestCase {
         prepare()
         defer { finish() }
         var results: [String] = []
-        let sequence: [(String, Bool)] = [("question", true), ("question", true), ("question", false), ("question", true),
-                                          ("markdown", true), ("question", true), ("tools", true), ("question", true), ("question", true)]
-        for (index, (fixture, ultra)) in sequence.enumerated() {
-            launchChat(fixture, clip: "q0-\(index)-\(fixture)-\(ultra ? "ultra" : "legacy")", ultra: ultra)
+        let sequence = ["question", "question", "question", "markdown", "question", "tools", "question", "question"]
+        for (index, fixture) in sequence.enumerated() {
+            launchChat(fixture, clip: "q0-\(index)-\(fixture)")
             let ready = wait(12) {
                 let s = state()
                 return (s["listInWindow"] as? Bool) == true && (s["displayReady"] as? Bool) == true && int(s["rows"]) > 0
             }
             let s = state()
-            results.append("\(index) \(fixture) \(ultra ? "ultra" : "legacy"): \(ready ? "drawn" : "NOT DRAWN") rows \(s["rows"] ?? "")")
+            results.append("\(index) \(fixture): \(ready ? "drawn" : "NOT DRAWN") rows \(s["rows"] ?? "")")
             if !ready {
                 screenshot("not-drawn")
                 if let data = try? JSONSerialization.data(withJSONObject: s["ultraNotReady"] ?? [:], options: [.prettyPrinted, .sortedKeys]) {
@@ -1770,20 +1718,18 @@ final class ChatUltraQATests: XCTestCase {
         XCTAssertFalse(results.contains { $0.contains("NOT DRAWN") }, results.joined(separator: "; "))
     }
 
-    // MARK: Legacy screens for pixel comparison
+    // MARK: Screens
 
-    func testL2LegacyAndUltraScreens() {
+    func testL2Screens() {
         prepare()
         defer { finish() }
         for fixture in ["markdown", "tools", "question", "sending"] {
-            for ultra in [false, true] {
-                launchChat(fixture, clip: "l2-\(fixture)-\(ultra ? "ultra" : "legacy")", ultra: ultra)
-                assertReady("open", ultra: ultra)
-                Thread.sleep(forTimeInterval: fixture == "markdown" ? 2 : 1)
-                screenshot("newest")
-                step("held drag back", quiet: 1.5, expect: .scroll) { move(older: true, by: size.height * 0.5) }
-                screenshot("history")
-            }
+            launchChat(fixture, clip: "l2-\(fixture)")
+            assertReady("open")
+            Thread.sleep(forTimeInterval: fixture == "markdown" ? 2 : 1)
+            screenshot("newest")
+            step("held drag back", quiet: 1.5, expect: .scroll) { move(older: true, by: size.height * 0.5) }
+            screenshot("history")
         }
     }
 }

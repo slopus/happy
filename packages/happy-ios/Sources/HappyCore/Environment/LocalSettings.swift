@@ -46,13 +46,6 @@ public enum HomeListRenderer: String, CaseIterable, Sendable {
     case ultraList = "UltraList"
 }
 
-/// The local chat renderer. UltraList draws the transcript now; the
-/// collection renderer stays under Settings › Appearance, so a chat that
-/// draws wrong can be read on the renderer it was written against.
-public enum ChatListRenderer: String, CaseIterable, Sendable {
-    case collectionView = "UICollectionView"
-    case ultraList = "UltraList"
-}
 
 /// Device-only settings that belong to the signed-in account, like
 /// happy-app's `local-settings`. Logout clears them, as happy-app's
@@ -69,6 +62,11 @@ public final class LocalSettings: Sendable {
 
     public init(storage: KeyValueStore) {
         self.storage = storage
+        // Choices the app no longer offers: whatever was picked, the one
+        // way left is used, and the stored pick goes.
+        for key in Keys.retired where storage.string(forKey: key) != nil {
+            storage.set(nil, forKey: key)
+        }
     }
 
     public var linkComputerChecklist: LinkChecklist {
@@ -95,10 +93,6 @@ public final class LocalSettings: Sendable {
         set { storage.set(newValue.rawValue, forKey: Keys.homeListRenderer) }
     }
 
-    public var chatListRenderer: ChatListRenderer {
-        get { storage.string(forKey: Keys.chatListRenderer).flatMap(ChatListRenderer.init(rawValue:)) ?? .ultraList }
-        set { storage.set(newValue.rawValue, forKey: Keys.chatListRenderer) }
-    }
 
     /// Ten taps on Settings › Version.
     public var devModeEnabled: Bool {
@@ -166,7 +160,7 @@ public final class LocalSettings: Sendable {
     }
 
     public func clear() {
-        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.homeListRenderer, Keys.chatListRenderer, Keys.devModeEnabled, Keys.markdownCopyV2, Keys.expandedProjects, Keys.acknowledgedCliVersions, Keys.registeredPushToken, Keys.zenMode, NewSessionDraft.storageKey] {
+        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.homeListRenderer, Keys.devModeEnabled, Keys.markdownCopyV2, Keys.expandedProjects, Keys.acknowledgedCliVersions, Keys.registeredPushToken, Keys.zenMode, NewSessionDraft.storageKey] {
             storage.set(nil, forKey: key)
         }
     }
@@ -182,7 +176,10 @@ public final class LocalSettings: Sendable {
         static let linkComputerChecklist = "linkComputerChecklist"
         static let themePreference = "themePreference"
         static let homeListRenderer = "homeListRenderer"
-        static let chatListRenderer = "chatListRenderer"
+        /// The chat's renderer pick, from when Appearance offered
+        /// UICollectionView beside UltraList.
+        static let retired = ["chatListRenderer"]
+
         static let devModeEnabled = "devModeEnabled"
         static let markdownCopyV2 = "markdownCopyV2"
         static let expandedProjects = "expandedProjects"

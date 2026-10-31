@@ -3,61 +3,6 @@ import HappyIcons
 import HappyLayout
 import UIKit
 
-/// The one cell every row uses: a `ChatPlanView` that draws the row's
-/// plan. It measures nothing and lays out nothing of its own.
-final class ChatRowCell: UICollectionViewCell {
-    static let reuseIdentifier = "ChatRowCell"
-
-    private let canvas = ChatPlanView()
-
-    var plan: ChatRowPlan? { canvas.plan }
-
-    /// Actions from views inside the row that handle their own touches.
-    var onAction: ((ChatRowAction) -> Void)? {
-        get { canvas.onAction }
-        set { canvas.onAction = newValue }
-    }
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        contentView.backgroundColor = .clear
-        contentView.addSubview(canvas)
-        isAccessibilityElement = true
-        accessibilityTraits = .staticText
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        canvas.frame = contentView.bounds
-    }
-
-    func apply(_ plan: ChatRowPlan) {
-        canvas.apply(plan)
-        accessibilityLabel = plan.accessibilityLabel
-    }
-
-    /// What a tap at `point` (in this cell) does, if anything.
-    func action(at point: CGPoint) -> ChatRowAction? {
-        canvas.action(at: point)
-    }
-
-    /// The long-press target under `point` (in this cell), if any.
-    func hold(at point: CGPoint) -> ChatHit? {
-        canvas.hold(at: point)
-    }
-
-    /// The link under `point`, if the tap landed on one.
-    func link(at point: CGPoint) -> String? {
-        canvas.link(at: point)
-    }
-}
-
 /// Draws a `ChatRowPlan` with a pool of plain views (boxes, text, icons)
 /// it reuses from plan to plan: a list row, the footer past the newest
 /// message, or a whole tool on the message screen.

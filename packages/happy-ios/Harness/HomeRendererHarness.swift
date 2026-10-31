@@ -56,7 +56,6 @@ final class HomeRendererHarness {
                 self.account = controller
                 if !restoreRenderer {
                     controller.localSettings.homeListRenderer = renderer
-                    controller.localSettings.chatListRenderer = arguments.contains("-chatUltraList") ? .ultraList : .collectionView
                 }
                 let store = session.store
                 try await Task.detached {

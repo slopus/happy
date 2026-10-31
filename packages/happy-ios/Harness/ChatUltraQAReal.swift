@@ -112,7 +112,6 @@ final class ChatUltraQAReal {
             await session.sync.run(.projects)
             let snapshot = try await Task.detached { try session.store.homeSnapshot() }.value
             sessions = snapshot.sessions.count
-            controller.localSettings.chatListRenderer = .ultraList
             let context = AppContext(account: controller, variant: .preview, version: "chat-ultra-qa")
             let navigation = UINavigationController(rootViewController: LegacyHomeViewController(context: context, session: session))
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
