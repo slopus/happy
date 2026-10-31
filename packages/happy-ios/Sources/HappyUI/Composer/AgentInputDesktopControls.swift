@@ -78,7 +78,7 @@ final class AgentInputDesktopControlsView: UIView {
     /// `actionButtonsLeft`: clips what doesn't fit.
     private let left = UIView()
     private let settingsButton = DesktopSettingsButton()
-    private let stopButton = DesktopActionButton(icon: .octicons("stop"), size: M.actionIconSize, tint: Palette.buttonSecondaryTint)
+    private let stopButton = DesktopActionButton(glyph: StopGlyphView(glyphSize: M.actionIconSize), tint: Palette.buttonSecondaryTint)
     private let imageButton = DesktopActionButton(icon: .ionicons("image-outline"), size: M.actionIconSize, tint: Palette.buttonSecondaryTint)
     private let sendButton = DesktopSendButton()
 
@@ -197,7 +197,7 @@ class DesktopPressable: UIControl {
 
 /// Stop and image: a 16-point glyph 8 in from either side, or a spinner.
 final class DesktopActionButton: DesktopPressable {
-    private let iconView: IconView
+    private let iconView: UIView
     private let spinner = UIActivityIndicatorView(style: .medium)
 
     var tint: ColorToken {
@@ -216,8 +216,14 @@ final class DesktopActionButton: DesktopPressable {
 
     var glyphSize: CGSize { iconView.sizeThatFits(.zero) }
 
-    init(icon: Icon, size: CGFloat, tint: ColorToken) {
-        iconView = IconView(icon, size: size)
+    convenience init(icon: Icon, size: CGFloat, tint: ColorToken) {
+        self.init(glyph: IconView(icon, size: size), tint: tint)
+    }
+
+    /// `glyph` takes the button's bounds and centres itself in them, as an
+    /// `IconView` does; its fitting size is the glyph's box.
+    init(glyph: UIView, tint: ColorToken) {
+        iconView = glyph
         self.tint = tint
         super.init(frame: .zero)
         addSubview(iconView)

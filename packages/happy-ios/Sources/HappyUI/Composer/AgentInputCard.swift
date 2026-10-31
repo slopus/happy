@@ -55,8 +55,9 @@ public enum AgentInputControl: Sendable {
 
 /// How the round button is painted.
 public enum AgentInputPrimaryStyle: Sendable {
-    /// AgentInput.tsx's chat composer: send on `surfaceHighest`, stop black
-    /// (light) or #F5F5F5 (dark), idle grey.
+    /// AgentInput.tsx's chat composer: send and stop on `surfaceHighest`,
+    /// idle grey. (AgentInput.tsx paints stop black, or #F5F5F5 in dark;
+    /// here stop keeps send's button so only the glyph changes.)
     case standard
     /// HomeDock.tsx's focused composer: send and stop share the solid fill
     /// (`sendButtonActive`) with `primaryActionIconColor`; idle is
@@ -1768,10 +1769,13 @@ final class ComposerOptionsButton: UIButton {
 final class ComposerPrimaryButton: ComposerPressableButton {
     private let flashOverlay = UIView()
     private let iconView = IconView(size: AgentInputCardLayout.Metrics.primaryIconSize)
+    /// Stop's rounded square, in place of the icon.
+    let stopView = StopGlyphView(glyphSize: AgentInputCardLayout.Metrics.primaryIconSize)
     private let spinner = UIActivityIndicatorView(style: .medium)
     private var action: AgentInputPrimaryAction = .idle
     private var style: AgentInputPrimaryStyle = .standard
     private var busy = false
+    private var configured = false
 
     /// The refusal wash's alpha, drawn under the glyph on Stop only.
     var flash: CGFloat = 0 {
@@ -1784,6 +1788,8 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         flashOverlay.isUserInteractionEnabled = false
         addSubview(flashOverlay)
         addSubview(iconView)
+        stopView.isHidden = true
+        addSubview(stopView)
         spinner.hidesWhenStopped = true
         addSubview(spinner)
         isAccessibilityElement = true
@@ -1799,13 +1805,18 @@ final class ComposerPrimaryButton: ComposerPressableButton {
     }
 
     func configure(action: AgentInputPrimaryAction, style: AgentInputPrimaryStyle, busy: Bool, accessibilityLabel: String?) {
+        // Send to stop and back is the one button changing its glyph, so
+        // the glyph changes in place: the old one shrinks away as the new
+        // one grows in.
+        let wasStop = self.action == .stop
+        let glyphChanges = configured && !busy && !self.busy && wasStop != (action == .stop)
+        configured = true
         self.action = action
         self.style = style
         self.busy = busy
         switch action {
         case .stop:
-            iconView.icon = .octicons("stop")
-            iconView.size = AgentInputCardLayout.Metrics.primaryIconSize
+            break
         case .blocked:
             iconView.icon = .ionicons("lock-closed")
             iconView.size = AgentInputCardLayout.Metrics.lockIconSize
@@ -1822,13 +1833,50 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         isEnabled = !busy && action != .idle
         if busy {
             spinner.startAnimating()
-            iconView.isHidden = true
         } else {
             spinner.stopAnimating()
-            iconView.isHidden = false
         }
         self.accessibilityLabel = accessibilityLabel ?? (action == .stop ? Strings.Composer.stop : Strings.Composer.send)
-        applyColors()
+        if glyphChanges, window != nil {
+            showGlyph(from: wasStop ? stopView : iconView)
+        } else {
+            showGlyph(from: nil)
+            applyColors()
+        }
+    }
+
+    /// The icon, or stop's square: whichever the action draws. `from`, the
+    /// glyph going away, shrinks and fades out as the new one grows in,
+    /// and the fill changes with them.
+    private func showGlyph(from old: UIView?) {
+        let new: UIView = action == .stop ? stopView : iconView
+        guard let old, old !== new else {
+            for glyph in [iconView, stopView] {
+                glyph.layer.removeAllAnimations()
+                glyph.alpha = 1
+                glyph.transform = .identity
+                glyph.isHidden = busy || glyph !== new
+            }
+            return
+        }
+        let motion = AgentInputPrimaryGlyphMotion.self
+        let shrunk = UIAccessibility.isReduceMotionEnabled ? .identity : CGAffineTransform(scaleX: motion.scale, y: motion.scale)
+        new.isHidden = false
+        new.alpha = 0
+        new.transform = shrunk
+        UIView.animate(withDuration: motion.duration, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut]) {
+            new.alpha = 1
+            new.transform = .identity
+            old.alpha = 0
+            old.transform = shrunk
+            self.applyColors()
+        } completion: { _ in
+            // A later change may have made the old glyph the shown one again.
+            guard old !== (self.action == .stop ? self.stopView : self.iconView) else { return }
+            old.isHidden = true
+            old.alpha = 1
+            old.transform = .identity
+        }
     }
 
     private func applyColors() {
@@ -1840,6 +1888,7 @@ final class ComposerPrimaryButton: ComposerPressableButton {
             let filled = !busy && (action == .send || action == .stop)
             backgroundColor = UIColor(filled ? Palette.composerNewSessionPrimaryFill : Palette.surfaceHighest)
             iconView.tintColor = UIColor(filled ? Palette.composerNewSessionPrimaryIcon : Palette.textSecondary)
+            stopView.tintColor = iconView.tintColor
             spinner.color = UIColor(Palette.textSecondary)
             return
         }
@@ -1847,8 +1896,9 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         // blocked and abortable, and must not look locked.
         switch action {
         case .stop:
-            backgroundColor = UIColor(Palette.composerStopFill)
-            iconView.tintColor = UIColor(Palette.composerStopIcon)
+            // Send's fill and tint: the one button, its glyph changed.
+            backgroundColor = UIColor(Palette.surfaceHighest)
+            stopView.tintColor = UIColor(Palette.text)
         case .blocked:
             backgroundColor = UIColor(Palette.surfaceHigh)
             layer.borderWidth = 1
@@ -1861,10 +1911,7 @@ final class ComposerPrimaryButton: ComposerPressableButton {
             backgroundColor = UIColor(Palette.composerPrimaryInactive)
             iconView.tintColor = UIColor(Palette.textSecondary)
         }
-        // AgentInput.tsx: black on Stop in dark, the text colour otherwise.
-        spinner.color = action == .stop && traitCollection.userInterfaceStyle == .dark
-            ? .black
-            : UIColor(Palette.text)
+        spinner.color = UIColor(Palette.text)
     }
 
     private func applyFlash() {
@@ -1876,8 +1923,13 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         super.layoutSubviews()
         layer.cornerRadius = bounds.height / 2
         flashOverlay.frame = bounds
-        iconView.frame = bounds
-        spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        // Bounds and centre, not frame: a glyph may be mid-scale.
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        for glyph in [iconView, stopView] as [UIView] {
+            glyph.bounds = CGRect(origin: .zero, size: bounds.size)
+            glyph.center = center
+        }
+        spinner.center = center
     }
 }
 

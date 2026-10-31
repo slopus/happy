@@ -294,7 +294,21 @@ public final class AppCoordinator {
             presented == nil && (context.account.agentConnections.active != nil || session != nil) ? settings : nil
         }
         navigation.presentedViewController?.dismiss(animated: false)
-        navigation.setViewControllers([root] + [kept].compactMap { $0 }, animated: animated && kept == nil)
+        let stack = [root] + [kept].compactMap { $0 }
+        if animated, kept == nil, navigation.viewControllers.count == 1, navigation.view.window != nil {
+            // Home itself on screen: the new one dissolves in where it is, so
+            // the header and the toolbar stay put and only what's in them
+            // changes. A push here read as going somewhere, not as switching.
+            UIView.transition(with: navigation.view, duration: Self.rootCrossfade, options: [.transitionCrossDissolve, .allowUserInteraction]) {
+                UIView.performWithoutAnimation {
+                    self.navigation.setViewControllers(stack, animated: false)
+                    self.navigation.view.layoutIfNeeded()
+                }
+            }
+        } else {
+            // Under settings it swaps unseen; from deeper, back to the new home.
+            navigation.setViewControllers(stack, animated: animated && kept == nil)
+        }
         shell.rootDidChange() // Tablet: the sidebar follows the account.
         NotificationCenter.default.post(name: Self.rootDidChange, object: window)
         openPendingLink()
@@ -305,6 +319,10 @@ public final class AppCoordinator {
     /// are its root. Whatever was shown over the old ones went with them,
     /// so a flow that changed the account says what it did after this.
     static let rootDidChange = Notification.Name("AppCoordinator.rootDidChange")
+
+    /// How long one home takes to dissolve into the next on a switch. A
+    /// dissolve is already the reduced-motion form, so it stays.
+    static let rootCrossfade: TimeInterval = 0.28
 
     /// Where a link from outside opens: on top of the window's stack, with
     /// anything over it (a QR sheet, a scanner, an alert) put away so the
