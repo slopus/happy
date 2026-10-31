@@ -87,6 +87,8 @@ public actor StoriesStore {
     private var me: String?
     /// Each read of the feed; an answer to an older one is dropped.
     private var feedRevision = 0
+    /// Another artifact's entry, by "id@version": a recording or a picture is shown as that file, not as a page.
+    private var entries: [String: (path: String, kind: StoryFrame.Kind)?] = [:]
 
     public init(client: AgentClient, events: @escaping Events, offline: OfflineFile?, now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }, firstReadDelay: Duration = .seconds(1)) {
         self.client = client
@@ -230,7 +232,25 @@ public actor StoriesStore {
 
     private func artifactFeed() async throws -> StoryFeed {
         let read = try await client.storyArtifacts()
-        return StoryArtifacts.feed(read.stories, me: me, cursor: read.cursor)
+        var feed = StoryArtifacts.feed(read.stories, me: me, cursor: read.cursor)
+        await readEntries(Array(feed.stories.values))
+        feed.stories = feed.stories.mapValues(withEntries)
+        return feed
+    }
+
+    private func readEntries(_ stories: [Story]) async {
+        for case .artifact(let id, let version?) in stories.flatMap(\.frames).map(\.asset) where entries["\(id)@\(version)"] == nil {
+            if let file = try? await client.artifactVersion(id, version: version).entry { entries["\(id)@\(version)"] = .some(file.mimeType.hasPrefix("video/") ? (file.path, .video) : file.mimeType.hasPrefix("image/") ? (file.path, .image) : nil) }
+        }
+    }
+
+    private func withEntries(_ story: Story) -> Story {
+        var story = story
+        for (index, frame) in story.frames.enumerated() {
+            guard case .artifact(let id, let version?) = frame.asset, let entry = entries["\(id)@\(version)"] ?? nil else { continue }
+            (story.frames[index].asset, story.frames[index].kind) = (.storyFile(artifactId: id, version: version, path: entry.path, own: false), entry.kind)
+        }
+        return story
     }
 
     private func turnedOff(_ availability: StoriesSnapshot.Availability) {
@@ -335,7 +355,7 @@ public actor StoriesStore {
         case "story.changed":
             // Shown at once, even taken down under an open viewer; the order is the feed's, read after.
             guard artifacts, let wire = payload["story"].flatMap({ Self.decode(StoryArtifact.self, $0) }) else { return }
-            let story = StoryArtifacts.story(wire, me: me)
+            let story = withEntries(StoryArtifacts.story(wire, me: me))
             adopt(story)
             if story.status == .posted { place(story) } else { removed(story.id, version: nil) }
             if story.seen { markSeen(through: story.id) }
@@ -590,7 +610,8 @@ public actor StoriesStore {
             do { story = try await client.story(storyId) }
             catch AgentClientError.status(404, _, _) { notFound(storyId); return }
             catch { story = nil }
-            read(storyId, story)
+            if let story { await readEntries([story]) }
+            read(storyId, story.map(withEntries))
         }
     }
 

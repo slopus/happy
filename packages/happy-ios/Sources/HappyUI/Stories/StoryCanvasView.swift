@@ -427,9 +427,13 @@ final class StoryCanvasView: UIView {
 
     private func repostText(size: CGFloat) -> NSAttributedString {
         let text = NSMutableAttributedString(string: "\u{21BB} Reposted from ", attributes: [.font: UIFont.systemFont(ofSize: size), .foregroundColor: UIColor.white])
+        if roundLimit != nil, let icon = UIImage(systemName: "arrow.2.squarepath", withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .bold)) {
+            text.setAttributedString(NSAttributedString(attachment: NSTextAttachment(image: icon.withTintColor(.white, renderingMode: .alwaysOriginal))))
+            text.append(NSAttributedString(string: " Reposted from ", attributes: [.font: UIFont.systemFont(ofSize: size, weight: .semibold), .foregroundColor: UIColor.white]))
+        }
         let title = (repostOf?.title).flatMap { $0.isEmpty ? nil : $0 } ?? "an agent"
         text.append(NSAttributedString(string: title, attributes: [.font: UIFont.systemFont(ofSize: size, weight: .semibold), .foregroundColor: UIColor.white]))
-        if repostOf?.canOpen == true { text.append(NSAttributedString(string: " \u{203A}", attributes: [.font: UIFont.systemFont(ofSize: size), .foregroundColor: UIColor.white])) }
+        if repostOf?.canOpen == true, roundLimit == nil { text.append(NSAttributedString(string: " \u{203A}", attributes: [.font: UIFont.systemFont(ofSize: size), .foregroundColor: UIColor.white])) }
         return text
     }
 
@@ -589,14 +593,23 @@ final class StoryCanvasView: UIView {
                 captionScroll.contentOffset.y = caption.scrolls ? min(captionScroll.contentOffset.y, max(0, caption.content.height - caption.scroll.height)) : 0
             }
         }
-        // Over the caption's foot, when there is one.
+        // A story artifact's round video sits under its header, clear of its foot.
+        for case let round as StoryRoundVideoOverlayView in overlayViews.values {
+            guard let roundLimit else { break }
+            let frame = AgentStoryLayout.round(canvas: size, above: roundLimit)
+            (round.bounds.size, round.center, round.rimWidth) = (frame.size, CGPoint(x: frame.midX, y: frame.midY), 2)
+        }
+        // Over the caption's foot, when there is one; a story artifact's under its header.
         if !repostChip.isHidden {
-            let font = AgentStoryLayout.chip(textWidth: 0, canvas: size).fontSize
-            let text = repostText(size: font)
-            let chip = AgentStoryLayout.chip(textWidth: ceil(text.size().width), canvas: size, bottomInset: max(footInset, captionLabel.isHidden ? 0 : size.height - captionLabel.frame.minY))
+            let font = roundLimit == nil ? AgentStoryLayout.chip(textWidth: 0, canvas: size).fontSize : AgentStoryLayout.pill(textWidth: 0, canvas: size).fontSize
+            repostLabel.attributedText = repostText(size: font)
+            let width = ceil(repostLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: font * 2)).width)
+            let chip = roundLimit == nil ? AgentStoryLayout.chip(textWidth: width, canvas: size, bottomInset: max(footInset, captionLabel.isHidden ? 0 : size.height - captionLabel.frame.minY))
+                : AgentStoryLayout.pill(textWidth: width, canvas: size)
             repostChip.frame = chip.frame
+            // Over the page's top scrim, as the header is.
+            repostChip.layer.zPosition = roundLimit == nil ? 0 : 1
             repostChip.layer.cornerRadius = chip.frame.height / 2
-            repostLabel.attributedText = text
             repostLabel.lineBreakMode = .byTruncatingTail
             repostLabel.frame = CGRect(origin: .zero, size: chip.frame.size).insetBy(dx: chip.padding.width, dy: 0)
         }
@@ -607,6 +620,8 @@ final class StoryCanvasView: UIView {
 
     /// Room kept under the caption (the inline story's buttons).
     var captionInset: CGFloat = 16 { didSet { setNeedsLayout() } }
+    /// A story artifact's: how far down its round video may reach; its repost chip a pill under the header.
+    var roundLimit: CGFloat? { didSet { if roundLimit != oldValue { setNeedsLayout() } } }
 }
 
 /// A frame's media while it is only on the device.

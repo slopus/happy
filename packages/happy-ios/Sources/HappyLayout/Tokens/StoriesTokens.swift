@@ -22,9 +22,12 @@ extension Palette {
     public static let storiesViewerText = ColorToken("#FFFFFF")
     public static let storiesProgressTrack = ColorToken(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.3), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.3))
     public static let storiesProgressFill = ColorToken("#FFFFFF")
-    /// The reply field on an agent's story, solid so it reads over any
-    /// frame, a white one or a busy photo (the mockup's `.story .send`).
-    public static let storiesReplyFill = ColorToken("#2C2C2E")
+    /// A story artifact's reply bar over a blur (the mockup's `.sv .rbar`), its
+    /// send button, and the replies' drawer: ground, text, heading, times, lines, its field.
+    public static let storiesReplyFill = ColorToken("#1615188C"), storiesReplyBorder = ColorToken("#FFFFFF33"), storiesReplySend = ColorToken("#1683A3")
+    public static let storiesDrawerGround = ColorToken("#232226"), storiesDrawerText = ColorToken("#F4F3F6"), storiesDrawerHeading = ColorToken("#B9B4C0")
+    public static let storiesDrawerTime = ColorToken("#807B87"), storiesDrawerLine = ColorToken("#343238"), storiesDrawerHint = ColorToken("#A29DA9")
+    public static let storiesDrawerField = ColorToken("#FFFFFF0F")
     /// The editor (`MediaEditorScreen`, `DrawingEntitiesView`): Post's
     /// tinted glass, the snap lines, the angle line, a selection's handles.
     public static let storiesEditorPost = ColorToken("#0088FF")

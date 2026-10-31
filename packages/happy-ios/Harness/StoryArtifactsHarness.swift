@@ -5,14 +5,16 @@ import HappyLayout
 @testable import HappyUI
 import HappyWire
 import UIKit
+import AVFoundation
 
 /// Stories on rich tasks (`-screen storyArtifacts`): a protocol-34 daemon of
 /// the harness's own serving story artifacts (API.md "Stories"), the stories
 /// row open over the mockup's cards (`TaskListHarness.model`), and the cards
 /// whose agents posted wearing their ring. `-mockImages <dir>` reads the
-/// mockup's pictures; its `story-frame.jpg` is the white frame.
-/// `-storyOpen <taskId>` opens that card's ring; `-storyTyping` then types a
-/// reply, which lifts the bar onto the frame.
+/// mockup's pictures: `story-frame.jpg` the white frame, `story-wall.jpg` the busy one,
+/// `round-video.jpg` the face in Kirill's round video.
+/// `-storyOpen <taskId>` opens that card's ring; `-storyReplies` then opens
+/// the replies' drawer; `-storyTyping` types a reply, lifting the field over the keyboard.
 @MainActor
 final class StoryArtifactsHarness {
     private let home: StoryArtifactsHarnessHome
@@ -35,15 +37,15 @@ final class StoryArtifactsHarness {
         home = StoryArtifactsHarnessHome(session: session, directory: directory)
         window.rootViewController = home
         guard let index = arguments.firstIndex(of: "-storyOpen"), arguments.indices.contains(index + 1) else { return }
-        let taskId = arguments[index + 1], typing = arguments.contains("-storyTyping"), scroll = arguments.contains("-storyScroll")
+        let taskId = arguments[index + 1], typing = arguments.contains("-storyTyping"), drawer = arguments.contains("-storyReplies")
         Task { [home] in
             try? await Task.sleep(for: .seconds(1.5))
             home.open(taskId)
             try? await Task.sleep(for: .seconds(1))
             guard let viewer = home.presentedViewController as? StoryViewerViewController else { return }
-            // `-storyScroll`: the replies scrolled to their end.
-            if scroll, let panel = Self.find(UIScrollView.self, in: viewer.currentPage) {
-                panel.setContentOffset(CGPoint(x: 0, y: max(0, panel.contentSize.height - panel.bounds.height)), animated: false)
+            if drawer {
+                viewer.currentPage.peek.sendActions(for: .touchUpInside)
+                try? await Task.sleep(for: .seconds(1))
             }
             guard typing else { return }
             viewer.currentPage.feedbackField.becomeFirstResponder()
@@ -170,22 +172,26 @@ actor StoryArtifactsHarnessTransport: AgentTransport {
     private let me: String
     private var video: Data?
     private let now = Int64(Date().timeIntervalSince1970 * 1000)
-    private typealias Entry = (id: String, poster: String, minutesAgo: Int64, caption: String, media: String, round: String)
+    private typealias Entry = (id: String, poster: String, minutesAgo: Int64, caption: String, media: String, round: String, repostOf: String)
     private static let onboarding = #"{"kind":"agent","agentId":"onboarding-agent","taskId":"onboarding","botId":null}"#
+    private static let repost = #""s-onboarding-1""#
     private static let entries: [Entry] = [
-        ("s-steve", #"{"kind":"user","userId":"steve"}"#, 12, "Ship it", #"{"path":"busy.png"}"#, "null"),
-        ("s-kirill", #"{"kind":"user","userId":"kirill"}"#, 20, "The new onboarding, with what I think of it",
-         #"{"artifactId":"s-onboarding-1","version":1,"path":"white.jpg"}"#, #"{"path":"round.mp4"}"#),
-        ("s-jordan", #"{"kind":"user","userId":"jordan"}"#, 45, "Tried it on my phone", #"{"path":"busy.png"}"#, "null"),
-        ("s-onboarding-2", onboarding, 30, "Same flow over a busy photo: the reply bar stays readable", #"{"path":"busy.png"}"#, "null"),
-        ("s-onboarding-1", onboarding, 120, "Onboarding for the Projects sidebar: Happy adds your projects and drafts one first task", #"{"path":"white.jpg"}"#, "null"),
-        ("s-health", #"{"kind":"agent","agentId":"health-agent","taskId":null,"botId":"system-health","name":"System Health"}"#, 300, "All green", #"{"path":"white.jpg"}"#, "null"),
+        ("s-steve", #"{"kind":"user","userId":"steve"}"#, 12, "Ship it", #"{"path":"busy.png"}"#, "null", "null"),
+        ("s-kirill", #"{"kind":"user","userId":"kirill"}"#, 5, "Shipping this Monday. Tell me what’s off before then",
+         #"{"artifactId":"s-onboarding-1","version":1,"path":"white.jpg"}"#, #"{"path":"round.mp4"}"#, repost),
+        ("s-jordan", #"{"kind":"user","userId":"jordan"}"#, 45, "Tried it on my phone", #"{"path":"busy.png"}"#, "null", "null"),
+        ("s-onboarding-2", onboarding, 30, "Wall from today’s design review: every screen of the new onboarding, pinned up", #"{"path":"wall.jpg"}"#, "null", "null"),
+        ("s-onboarding-1", onboarding, 120, "Onboarding for the Projects sidebar: Happy adds your projects and drafts one first task", #"{"path":"white.jpg"}"#, "null", "null"),
+        ("s-health", #"{"kind":"agent","agentId":"health-agent","taskId":null,"botId":"system-health","name":"System Health"}"#, 300, "All green", #"{"path":"white.jpg"}"#, "null", "null"),
     ]
-    /// Who the people are, as `GET /v0/users` has them: Jordan without a photo.
+    /// Who the people are, as `GET /v0/users` has them: Jordan, Maya, Alex and Priya without a photo.
     static let people: [String: Person] = [
         "kirill": Person(name: "Kirill", thumbhash: nil, hasPhoto: true),
         "steve": Person(name: "Steve", thumbhash: nil, hasPhoto: true),
         "jordan": Person(name: "Jordan", thumbhash: nil, hasPhoto: false),
+        "maya": Person(name: "Maya", thumbhash: nil, hasPhoto: false),
+        "alex": Person(name: "Alex", thumbhash: nil, hasPhoto: false),
+        "priya": Person(name: "Priya", thumbhash: nil, hasPhoto: false),
     ]
 
     init(directory: String?, seen: [String], me: String) {
@@ -197,7 +203,7 @@ actor StoryArtifactsHarnessTransport: AgentTransport {
     private func story(_ entry: Entry) -> String {
         let posted = now - entry.minutesAgo * 60_000
         let seenBy = seen.contains(entry.id) ? #"[{"userId":"\#(me)","seenAt":\#(now)}]"# : "[]"
-        return #"{"artifactId":"\#(entry.id)","artifactVersion":1,"poster":\#(entry.poster),"replyAgentId":"\#(entry.id == "s-health" ? "health-agent" : "onboarding-agent")","audience":"team","caption":"\#(entry.caption)","media":\#(entry.media),"round":\#(entry.round),"repostOf":null,"postedAt":\#(posted),"expiresAt":\#(posted + 86_400_000),"state":"live","endedAt":null,"takenDownBy":null,"seenBy":\#(seenBy),"replies":2}"#
+        return #"{"artifactId":"\#(entry.id)","artifactVersion":1,"poster":\#(entry.poster),"replyAgentId":"\#(entry.id == "s-health" ? "health-agent" : "onboarding-agent")","audience":"team","caption":"\#(entry.caption)","media":\#(entry.media),"round":\#(entry.round),"repostOf":\#(entry.repostOf),"postedAt":\#(posted),"expiresAt":\#(posted + 86_400_000),"state":"live","endedAt":null,"takenDownBy":null,"seenBy":\#(seenBy),"replies":2}"#
     }
 
     private var feed: String { Self.entries.map(story).joined(separator: ",") }
@@ -213,12 +219,15 @@ actor StoryArtifactsHarnessTransport: AgentTransport {
         default: break
         }
         if method == "GET", path.hasPrefix("/v0/stories/s-onboarding") || path.hasPrefix("/v0/stories/s-kirill"), path.hasSuffix("/replies") {
-            func reply(_ id: String, _ userId: String, _ minutesAgo: Int64, _ text: String) -> String {
-                #"{"id":"\#(id)","metadata":{"userId":"\#(userId)"},"createdAt":\#(now - minutesAgo * 60_000),"content":[{"type":"text","text":"\#(text)"}]}"#
+            func reply(_ userId: String, _ minutesAgo: Int64, _ text: String) -> String {
+                #"{"id":"r\#(minutesAgo)","metadata":{"userId":"\#(userId)"},"createdAt":\#(now - minutesAgo * 60_000),"content":[{"type":"text","text":"\#(text)"}]}"#
             }
-            let replies = [reply("r2", "jordan", 3, "The “Use selected” button is hard to find, move it next to the table?"),
-                           reply("r1", "steve", 9, "Love that it drafts the first task. Ship it"),
-                           reply("r0", "steve", 15, "Can it pick the project from the open tab too?")]
+            // The mock's: newest first, as the daemon reads them; the white frame's last two only.
+            let agents = [reply("jordan", 4, "🔥 can we get this into the release notes video?"), reply("steve", 12, "looks good, ship it? one nit: “Use selected” is too far from the table"),
+                          reply("priya", 30, "Step 2 copy is a bit long, can we cut it in half?"), reply("alex", 48, "Love that it drafts the first task 👏"),
+                          reply("maya", 60, "Can the empty state show one example project?")]
+            let replies = path.contains("s-kirill") ? [reply("jordan", 1, "the round video is a nice touch"), reply("maya", 2, "Can I try the build today? I want to check the empty state first"),
+                                                       reply("steve", 3, "Monday works for me")] : path.contains("s-onboarding-1") ? Array(agents.prefix(2)) : agents
             return ok(#"{"agentId":"onboarding-agent","messages":[\#(replies.joined(separator: ","))],"hasMore":false}"#)
         }
         if method == "POST", path.hasSuffix("/seen"), let id = path.split(separator: "/").dropLast().last.map(String.init) {
@@ -231,7 +240,9 @@ actor StoryArtifactsHarnessTransport: AgentTransport {
             return HTTP1Response(status: 200, body: data)
         }
         if path.contains("/files/busy.png") { return HTTP1Response(status: 200, body: Self.busy()) }
+        if path.contains("/files/wall.jpg") { return directory.flatMap { FileManager.default.contents(atPath: "\($0)/story-wall.jpg") }.map { HTTP1Response(status: 200, body: $0) } ?? HTTP1Response(status: 200, body: Self.busy()) }
         if path.contains("/files/round.mp4") {
+            if video == nil, let face = directory.flatMap({ UIImage(contentsOfFile: "\($0)/round-video.jpg") }) { video = await Self.still(face) }
             if video == nil { video = await StoriesHarnessVideo.make(sound: false) }
             return HTTP1Response(status: 200, headers: ["content-type": "video/mp4"], body: video ?? Data())
         }
@@ -265,9 +276,33 @@ actor StoryArtifactsHarnessTransport: AgentTransport {
                 UIColor(hue: (sin(Double(index) * 1.3) * 0.5 + 0.5), saturation: 0.7, brightness: index % 3 == 0 ? 1 : 0.35, alpha: 0.85).setFill()
                 UIBezierPath(ovalIn: CGRect(x: x - side / 2, y: y - side / 2, width: side, height: side)).fill()
             }
-            UIColor.white.setFill()
-            context.fill(CGRect(x: 0, y: size.height - 360, width: size.width, height: 120))
         }.pngData() ?? Data()
+    }
+
+    /// A second of `image`, as a round video's recording.
+    private static func still(_ image: UIImage) async -> Data? {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("round-\(UUID().uuidString).mp4"), side = 320
+        defer { try? FileManager.default.removeItem(at: url) }
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mp4) else { return nil }
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: side, AVVideoHeightKey: side])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                                                                                                                kCVPixelBufferWidthKey as String: side, kCVPixelBufferHeightKey as String: side])
+        writer.add(input)
+        guard writer.startWriting() else { return nil }
+        writer.startSession(atSourceTime: .zero)
+        for index in 0..<15 {
+            while !input.isReadyForMoreMediaData { try? await Task.sleep(for: .milliseconds(5)) }
+            var buffer: CVPixelBuffer?
+            guard let pool = adaptor.pixelBufferPool, CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let buffer, let cg = image.cgImage else { return nil }
+            CVPixelBufferLockBaseAddress(buffer, [])
+            CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: side, height: side, bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: CGColorSpaceCreateDeviceRGB(),
+                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)?.draw(cg, in: CGRect(x: 0, y: 0, width: side, height: side))
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(index), timescale: 15))
+        }
+        input.markAsFinished()
+        await writer.finishWriting()
+        return try? Data(contentsOf: url)
     }
 
     func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {

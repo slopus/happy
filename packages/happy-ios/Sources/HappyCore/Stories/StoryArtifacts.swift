@@ -23,6 +23,8 @@ public struct StoryArtifact: Equatable, Sendable, Decodable {
     public var media: Media
     /// A repost's round video, a file of the story's own.
     public var round: File?
+    /// The reposted story's `artifactId`.
+    @Lenient public var repostOf: String?
     public var postedAt: Int64
     public var expiresAt, endedAt: Int64?
     /// `live`, or ended (`replaced`, `taken_down`, `expired`).
@@ -51,7 +53,7 @@ public enum StoryArtifacts {
             source: story.replyAgentId.map { StorySource(agentId: $0, toolCallId: "") }, caption: story.caption, frames: [frame],
             artifactVersion: story.artifactVersion, createdAt: story.postedAt, updatedAt: story.endedAt ?? story.postedAt, postedAt: story.postedAt,
             expiresAt: story.expiresAt, seen: story.seenBy.contains { $0.userId == me }, viewCount: nil, myReaction: nil, reactions: [],
-            version: version, author: agentId.map { .agent(agentId: $0) } ?? .user(userId: story.poster.userId), ringAgentId: agentId, endedAt: story.state == "live" ? nil : story.endedAt ?? story.postedAt
+            version: version, author: agentId.map { .agent(agentId: $0) } ?? .user(userId: story.poster.userId), ringAgentId: agentId, endedAt: story.state == "live" ? nil : story.endedAt ?? story.postedAt, repostOf: nil
         )
     }
 
@@ -61,7 +63,11 @@ public enum StoryArtifacts {
         var feed = StoryFeed(authors: [], rings: [], stories: [:], cursor: cursor)
         var circles: [String: [(poster: StoryArtifact.Poster, story: Story)]] = [:]
         for wire in stories.sorted(by: { $0.postedAt < $1.postedAt }) where wire.state == "live" {
-            let story = Self.story(wire, me: me)
+            var story = Self.story(wire, me: me)
+            // A repost names the story it reposts, by its poster, when that is here to read.
+            if let original = stories.first(where: { $0.artifactId == wire.repostOf }) {
+                story.repostOf = StoryRepostOf(storyId: original.artifactId, agentId: original.poster.agentId ?? "", title: original.poster.name, canOpen: original.poster.agentId != nil)
+            }
             feed.stories[story.id] = story
             circles[story.ringAgentId.map { StoriesRow.ringPrefix + $0 } ?? wire.poster.userId ?? "", default: []].append((wire.poster, story))
         }

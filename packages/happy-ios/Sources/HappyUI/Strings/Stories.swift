@@ -44,6 +44,11 @@ extension Strings {
         public static let noViewers = "No views yet"
         public static func views(_ count: Int) -> String { count == 1 ? "1 view" : "\(count) views" }
         public static let someone = "Someone"
+        /// A story artifact's replies: the drawer's heading, and the peek's way into it.
+        public static func replies(_ count: Int, to name: String) -> String { "\(count) \(count == 1 ? "REPLY" : "REPLIES") · SENT TO \(name.uppercased())" }
+        public static func viewAllReplies(_ count: Int) -> String { "View all \(count) replies" }
+        /// A person's repost: replies go to them.
+        public static func replyTo(_ name: String) -> String { "Reply to \(name)\u{2026}" }
         public static let react = "React"
         /// A recording's sound (Telegram's Story.TooltipVideoHasNoSound).
         public static let mute = "Mute"

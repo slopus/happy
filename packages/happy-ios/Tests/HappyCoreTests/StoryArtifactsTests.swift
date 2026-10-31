@@ -19,6 +19,7 @@ actor StoryArtifactsTransport: AgentTransport {
             "GET /v0/stories/feed": #"{"authors":[],"stories":{},"cursor":"c0"}"#,
             "GET /v0/stickers/recents": #"{"recents":[]}"#,
             "GET /v0/stories?scope=feed": #"{"stories":[\#(stories.joined(separator: ","))],"cursor":"c1"}"#,
+            "GET /v0/artifacts/m2/versions/1": #"{"version":{"artifactId":"m2","number":1,"title":"Demo","entry":{"path":"demo.mp4","mimeType":"video/mp4","size":1},"files":[]}}"#,
             "GET /v0/agents/a1/bootstrap": #"{"mode":{"providerId":"codex","modelId":"gpt","effort":"medium","serviceTier":null,"permissionMode":"auto"}}"#,
         ]
         guard let answer = answers["\(method) \(path)"] ?? (method == "POST" ? "{}" : nil) else { return HTTP1Response(status: 404, body: Data("{}".utf8)) }
@@ -63,7 +64,7 @@ final class StoryArtifactsTests: XCTestCase {
     func testTheFeedIsMainsStoriesOneCirclePerPosterPeopleThenBotsThenTasks() throws {
         let bot = #"{"kind":"agent","agentId":"b1","botId":"health","name":"System Health"}"#, steve = #"{"kind":"user","userId":"steve"}"#
         let stories = try [story("s1", seen: true), story("s2", at: 1_755_400_100_000), story("s3", state: "replaced"), story("h1", poster: bot),
-                           story("r1", poster: steve, more: #","round":{"path":"round.mp4"}"#)].map { try JSONDecoder().decode(StoryArtifact.self, from: Data($0.utf8)) }
+                           story("r1", poster: steve, more: #","round":{"path":"round.mp4"},"repostOf":"h1""#)].map { try JSONDecoder().decode(StoryArtifact.self, from: Data($0.utf8)) }
         let feed = StoryArtifacts.feed(stories, me: me, cursor: "c1")
         XCTAssertEqual(feed.authors.map { [$0.key, $0.name, $0.photo ?? ""] }, [["steve", "", ""], ["ring:b1", "System Health", "/v0/bots/health/avatar"], ["ring:a1", "", ""]])
         XCTAssertEqual(feed.rings?.last, StoryRing(agentId: "a1", storyIds: ["s1", "s2"], unseenCount: 1, latestPostedAt: 1_755_400_100_000))
@@ -72,6 +73,13 @@ final class StoryArtifactsTests: XCTestCase {
                        [StoryFrame.Kind.video, StoryAsset.storyFile(artifactId: "m1", version: 3, path: "demo.mp4", own: false), true, true, "a1"])
         guard case .roundVideo(_, .file(let round), _, _, _) = feed.stories["r1"]?.frames.first?.overlays.first else { return XCTFail("no round video") }
         XCTAssertEqual(AgentClient.path(round), "/v0/artifacts/r1/versions/1/files/round.mp4?type=story")
+        XCTAssertEqual(feed.stories["r1"]?.repostOf, StoryRepostOf(storyId: "h1", agentId: "b1", title: "System Health", canOpen: true))
+    }
+
+    func testARecordingArtifactsEntryPlaysAsAVideoNotAPage() async throws {
+        let (store, _) = await make([story("s1").replacingOccurrences(of: #""media":{"artifactId":"m1","version":3,"path":"demo.mp4"}"#, with: #""media":{"artifactId":"m2","version":1}"#)])
+        let frame = try await next(store) { $0.stories["s1"] != nil }.stories["s1"]?.frames.first
+        XCTAssertEqual([frame?.kind, frame?.asset] as [AnyHashable?], [StoryFrame.Kind.video, StoryAsset.storyFile(artifactId: "m2", version: 1, path: "demo.mp4", own: false)])
     }
 
     func testSeeingTheLaterStoryLeavesTheEarlierNewAndAReplyCarriesReplyTo() async throws {

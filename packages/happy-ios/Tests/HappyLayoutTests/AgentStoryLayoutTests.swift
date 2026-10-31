@@ -59,18 +59,48 @@ final class AgentStoryLayoutTests: XCTestCase {
         XCTAssertEqual(lifted.repost.minY, 468)
     }
 
-    func testAStoryArtifactsReplyBarIsTheFieldAloneCanvasWide() {
+    func testAStoryArtifactsReplyBarIs44Tall8OverTheBarsFoot() {
         let canvas = CGRect(x: 0, y: 59, width: 393, height: 699), under = CGRect(x: 0, y: 758, width: 393, height: 60)
-        let bar = AgentStoryLayout.bar(canvas: canvas, bar: under, barHeight: 52, replyOnly: true)
-        XCTAssertEqual(bar.field, CGRect(x: 10, y: 766, width: 373, height: 36))
-        // Over a keyboard it rises onto the frame, where only its solid fill keeps it readable.
-        let lifted = AgentStoryLayout.bar(canvas: canvas, bar: under, barHeight: 52, lift: 300, replyOnly: true)
-        XCTAssertEqual(lifted.field, CGRect(x: 10, y: 466, width: 373, height: 36))
-        XCTAssertEqual([Palette.storiesReplyFill.light.alpha, Palette.storiesReplyFill.dark.alpha], [1, 1])
-        // Its caption and replies sit under its picture, scrolling past 45% of the canvas.
-        let short = AgentStoryLayout.panel(canvas: canvas, text: 100), long = AgentStoryLayout.panel(canvas: canvas, text: 600)
-        XCTAssertEqual([short.media, short.box, short.text, CGRect(x: 0, y: 0, width: long.box.height, height: long.content)], [CGRect(x: 0, y: 59, width: 393, height: 567),
-                       CGRect(x: 0, y: 626, width: 393, height: 132), CGRect(x: 16, y: 16, width: 361, height: 100), CGRect(x: 0, y: 0, width: 314, height: 632)])
+        XCTAssertEqual(AgentStoryLayout.bar(canvas: canvas, bar: under, barHeight: 52, replyOnly: true).field, CGRect(x: 12, y: 766, width: 369, height: 44))
+        XCTAssertEqual(AgentStoryLayout.bar(canvas: canvas, bar: under, barHeight: 52, lift: 300, replyOnly: true).field, CGRect(x: 12, y: 466, width: 369, height: 44))
+        XCTAssertEqual(Palette.storiesReplyFill.dark.alpha, 0x8C / 255.0)
+        // The header on one line: the name 8 after the avatar, the time 8 after the name, a long name cut first.
+        let viewer = StoryViewerLayout(size: CGSize(width: 393, height: 852), safeArea: LayoutInsets(top: 59, left: 0, bottom: 34, right: 0))
+        let header = AgentStoryLayout.header(viewer, withSound: false, name: CGSize(width: 150, height: 17), time: CGSize(width: 20, height: 16))
+        XCTAssertEqual([header.name, header.time], [CGRect(x: 52, y: 84, width: 150, height: 18), CGRect(x: 210, y: 84, width: 20, height: 18)])
+        XCTAssertEqual(AgentStoryLayout.header(viewer, withSound: false, name: CGSize(width: 400, height: 17), time: CGSize(width: 20, height: 16)).time.maxX, viewer.more.minX)
+        XCTAssertEqual(AgentStoryLayout.pill(textWidth: 200, canvas: canvas.size).frame, CGRect(x: 52, y: 54, width: 218, height: 22))
+    }
+
+    func testAStoryArtifactsFootAndDrawerAreTheMocks() {
+        let canvas = CGRect(x: 0, y: 59, width: 393, height: 699), field = CGRect(x: 12, y: 766, width: 369, height: 44)
+        // Caption, 10, "View all", 6, two 28 rows 4 apart, 12 over the canvas's foot; the scrim from 72 over the caption.
+        let foot = AgentStoryLayout.foot(canvas: canvas, field: field, caption: { XCTAssertEqual($0, 369); return 40 }, rows: 2, all: true)
+        XCTAssertEqual([foot.scrim, foot.caption, foot.all] + foot.rows, [CGRect(x: 0, y: 538, width: 393, height: 220), CGRect(x: 12, y: 610, width: 369, height: 40),
+                       CGRect(x: 12, y: 660, width: 369, height: 20), CGRect(x: 12, y: 686, width: 369, height: 28), CGRect(x: 12, y: 718, width: 369, height: 28)])
+        XCTAssertEqual(AgentStoryLayout.foot(canvas: canvas, field: field, caption: { _ in 40 }, rows: 2, all: false).caption.minY, 636)
+        XCTAssertEqual(AgentStoryLayout.foot(canvas: canvas, field: field, caption: { _ in 40 }, rows: 0, all: false).caption.minY, 706)
+        let peek = AgentStoryLayout.replyRow(width: 369, text: nil), stacked = AgentStoryLayout.replyRow(width: 393, text: 40)
+        XCTAssertEqual([peek.face, peek.line, stacked.face, stacked.line, stacked.text], [CGRect(x: 0, y: 2, width: 24, height: 24), CGRect(x: 32, y: 5, width: 337, height: 18),
+                       CGRect(x: 16, y: 8, width: 32, height: 32), CGRect(x: 58, y: 8, width: 319, height: 18), CGRect(x: 58, y: 26, width: 319, height: 40)])
+        XCTAssertEqual([peek.height, stacked.height], [28, 74])
+        // The drawer, 562 tall: the heading's row, the rows at the list's foot, the field 8 over the home indicator.
+        let drawer = AgentStoryLayout.drawer(size: CGSize(width: 393, height: 562), bottom: 34, heights: [74, 54])
+        XCTAssertEqual([drawer.heading, drawer.close, drawer.list, drawer.field] + drawer.rows + drawer.lines, [CGRect(x: 16, y: 20.5, width: 337, height: 16),
+                       CGRect(x: 353, y: 12.5, width: 32, height: 32), CGRect(x: 0, y: 50, width: 393, height: 417), CGRect(x: 12, y: 476, width: 369, height: 44),
+                       CGRect(x: 0, y: 283, width: 393, height: 74), CGRect(x: 0, y: 357, width: 393, height: 54), CGRect(x: 0, y: 49, width: 393, height: 1), CGRect(x: 0, y: 467, width: 393, height: 1)])
+        XCTAssertEqual([drawer.content, AgentStoryLayout.drawer(size: CGSize(width: 393, height: 562), bottom: 34, heights: [300, 300]).content], [417, 612])
+    }
+
+    func testARoundVideoNeverTouchesTheReplyBarAKeyboardLifts() {
+        let canvas = CGRect(x: 0, y: 59, width: 393, height: 699), under = CGRect(x: 0, y: 758, width: 393, height: 60)
+        // Under the header, 0.3 of the canvas wide, clear of the foot.
+        XCTAssertEqual(AgentStoryLayout.round(canvas: canvas.size, above: 551), CGRect(x: 12, y: 86, width: 393 * 0.3, height: 393 * 0.3))
+        // A keyboard lifting the field this far shrinks it in place, its foot 8 over the field.
+        let field = AgentStoryLayout.bar(canvas: canvas, bar: under, barHeight: 52, lift: 600, replyOnly: true).field
+        let round = AgentStoryLayout.round(canvas: canvas.size, above: field.minY - canvas.minY)
+        XCTAssertEqual(round, CGRect(x: 12, y: 86, width: 13, height: 13))
+        XCTAssertLessThanOrEqual(round.maxY + canvas.minY, field.minY - 8)
     }
 
     func testTheEditorMakesRoomForTheRoundVideoButton() {

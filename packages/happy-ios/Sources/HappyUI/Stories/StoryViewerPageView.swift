@@ -37,12 +37,16 @@ final class StoryViewerPageView: UIView {
     private var chrome: [UIView] { [strip, avatar, nameLabel, timeLabel, closeButton, moreButton, soundButton, heartButton, viewsButton, feedbackField, repostButton] }
     /// The story shown is an agent's.
     private(set) var isAgents = false
-    /// A story artifact: its bar is the reply field alone, solid, and its
-    /// caption and replies sit under the picture (`AgentStoryLayout.panel`).
+    /// A story artifact: its bar is the reply field alone, and its caption and
+    /// last two replies sit over its foot on a scrim (`AgentStoryLayout.foot`).
     private var replyOnly = false
-    private let panel = UIScrollView()
-    private let panelText = UILabel()
-    private var caption: String?
+    /// Typing a reply: the frame dims and its foot hides.
+    var typing = false { didSet { if typing != oldValue { setNeedsLayout() } } }
+    /// The peek and "View all" open the replies' drawer; send is inside the field while typing.
+    let peek = UIControl(), viewAll = UIButton(type: .system), sendButton = UIButton(type: .custom)
+    private let peekRows = [StoryReplyRow(stacked: false), StoryReplyRow(stacked: false)], captionLabel = UILabel(), scrim = StoryScrimView(), dim = UIView()
+    private let fieldBlur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark)), sendBox = UIView(), fieldEnd = UIView(frame: CGRect(x: 0, y: 0, width: 10, height: 1))
+    private var replyCount = 0, hint = ""
     private var shownStory: String?
 
     private(set) var author: StoryFeedAuthor?
@@ -111,7 +115,7 @@ final class StoryViewerPageView: UIView {
         feedbackField.layer.borderWidth = 1
         feedbackField.leftView = UIView(frame: CGRect(x: 0, y: 0, width: 14, height: 1))
         feedbackField.leftViewMode = .always
-        feedbackField.rightView = UIView(frame: CGRect(x: 0, y: 0, width: 10, height: 1))
+        feedbackField.rightView = fieldEnd
         feedbackField.rightViewMode = .always
         feedbackField.accessibilityIdentifier = "story-feedback"
         feedbackField.isHidden = true
@@ -122,10 +126,24 @@ final class StoryViewerPageView: UIView {
         repostButton.accessibilityIdentifier = "story-repost"
         repostButton.isHidden = true
         addSubview(repostButton)
-        panelText.numberOfLines = 0
-        panel.addSubview(panelText)
-        panel.isHidden = true
-        addSubview(panel)
+        typealias V = AgentStoryLayout.Viewer
+        dim.backgroundColor = UIColor(white: 0, alpha: V.dim)
+        dim.layer.cornerRadius = StoryViewerLayout.Metrics.cornerRadius
+        [dim, scrim].reversed().forEach { insertSubview($0, aboveSubview: canvas) }
+        fieldBlur.clipsToBounds = true
+        insertSubview(fieldBlur, belowSubview: feedbackField)
+        captionLabel.numberOfLines = 2
+        var all = UIButton.Configuration.plain()
+        (all.image, all.imagePlacement, all.imagePadding, all.contentInsets) = (UIImage(systemName: "chevron.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .bold)), .trailing, 3, .zero)
+        all.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { $0.merging(AttributeContainer([.font: UIFont.systemFont(ofSize: 13, weight: .semibold)])) }
+        (viewAll.configuration, viewAll.tintColor, viewAll.contentHorizontalAlignment) = (all, UIColor(white: 1, alpha: 0.78), .leading)
+        sendButton.setImage(UIImage(systemName: "arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)), for: .normal)
+        (sendButton.tintColor, sendButton.backgroundColor, sendButton.frame, sendButton.layer.cornerRadius) = (.white, UIColor(Palette.storiesReplySend), CGRect(x: 0, y: 0, width: 32, height: 32), 16)
+        sendButton.accessibilityLabel = Strings.Stories.send
+        sendBox.frame = CGRect(x: 0, y: 0, width: 38, height: 32)
+        sendBox.addSubview(sendButton)
+        peek.accessibilityIdentifier = "story-replies-peek"
+        ([captionLabel, viewAll, peek] + peekRows).forEach { $0.storyTextShadow(); addSubview($0) }
         shade.backgroundColor = .black
         shade.alpha = 0
         shade.isUserInteractionEnabled = false
@@ -161,21 +179,26 @@ final class StoryViewerPageView: UIView {
         var drawn = story
         if replyOnly { drawn.caption = nil }
         canvas.show(drawn, frame: frame, media: media)
-        timeLabel.text = story.postedAt.map { Strings.Stories.ago(now - $0) }
+        // A story artifact's header is one line: "Onboarding redesign  2h".
+        timeLabel.text = story.postedAt.map { replyOnly ? RowTime.text(Double($0), now: Date(timeIntervalSince1970: Double(now) / 1000)) : Strings.Stories.ago(now - $0) }
         isAgents = story.isAgents
-        nameLabel.font = .systemFont(ofSize: replyOnly ? 17 : 14, weight: .semibold)
-        panel.isHidden = !replyOnly
-        caption = replyOnly ? story.caption : nil
-        if shownStory != story.id { showReplies([], person: { _ in nil }) }
+        let top = replyOnly ? AgentStoryLayout.Viewer.topScrim : [(0, 0.4), (96, 0)]
+        (topFade.colors, topFade.locations) = (top.map { UIColor(white: 0, alpha: $0.1).cgColor }, top.map { NSNumber(value: Double($0.0 / top[top.count - 1].0)) })
+        let line = NSMutableParagraphStyle()
+        (line.minimumLineHeight, line.maximumLineHeight, line.lineBreakMode) = (AgentStoryLayout.Viewer.captionLine, AgentStoryLayout.Viewer.captionLine, .byTruncatingTail)
+        captionLabel.attributedText = NSAttributedString(string: replyOnly ? story.caption ?? "" : "", attributes: [.font: UIFont.systemFont(ofSize: 15), .foregroundColor: UIColor.white, .paragraphStyle: line])
+        if shownStory != story.id { showReplies([], people: [:], images: nil) }
         shownStory = story.id
+        // Replies to a person's repost go to them; to an agent's story, to the agent.
+        hint = replyOnly && author.ringAgentId == nil ? Strings.Stories.replyTo(author.name) : Strings.Stories.feedbackPlaceholder
+        (feedbackField.rightView, feedbackField.rightViewMode) = replyOnly ? (sendBox, .whileEditing) : (fieldEnd, .always)
+        feedbackField.leftView?.frame.size.width = replyOnly ? 16 : 14
+        styleField()
         heartButton.isHidden = author.isSelf || replyOnly
         viewsButton.isHidden = !author.isSelf || replyOnly
         // Anything with somewhere for replies to go takes one: an agent's story, or a repost of one.
         feedbackField.isHidden = !(isAgents || replyOnly && story.source != nil)
         repostButton.isHidden = !isAgents || replyOnly
-        // Solid on a story artifact, so it reads over any frame.
-        feedbackField.backgroundColor = replyOnly ? UIColor(Palette.storiesReplyFill) : nil
-        feedbackField.layer.borderWidth = replyOnly ? 0 : 1
         // Others' stories offer only their conversation, when there is one.
         moreButton.isHidden = !author.isSelf && story.source == nil
         setHeart(story.myReaction)
@@ -225,22 +248,20 @@ final class StoryViewerPageView: UIView {
         heartButton.accessibilityValue = reaction
     }
 
-    /// A story artifact's caption, then its replies newest first: each the
-    /// person's name, the words and the time.
-    func showReplies(_ list: [StoryReply], person: (String) -> Person?) {
-        let text = NSMutableAttributedString(string: caption ?? "", attributes: [.font: UIFont.systemFont(ofSize: 17), .foregroundColor: UIColor.white])
-        let now = Int64(Date().timeIntervalSince1970 * 1000), white = UIColor.white
-        for reply in list {
-            let name = (text.length > 0 ? "\n" : "") + (reply.userId.flatMap(person)?.name ?? Strings.Stories.someone) + "  "
-            text.append(NSAttributedString(string: name, attributes: [.font: UIFont.systemFont(ofSize: 16, weight: .semibold), .foregroundColor: white]))
-            text.append(NSAttributedString(string: reply.text + "  ", attributes: [.font: UIFont.systemFont(ofSize: 16), .foregroundColor: white]))
-            text.append(NSAttributedString(string: Strings.Stories.ago(now - reply.createdAt), attributes: [.font: UIFont.systemFont(ofSize: 13), .foregroundColor: white.withAlphaComponent(0.5)]))
-        }
-        let spaced = NSMutableParagraphStyle()
-        spaced.paragraphSpacing = 12
-        text.addAttribute(.paragraphStyle, value: spaced, range: NSRange(location: 0, length: text.length))
-        panelText.attributedText = text
+    /// A story artifact's last two replies, newest nearest the field, and
+    /// "View all" past two; `list` is newest first, as the daemon reads it.
+    func showReplies(_ list: [StoryReply], people: [String: Person], images: Images?) {
+        replyCount = list.count
+        zip(peekRows, list.prefix(peekRows.count).reversed()).forEach { $0.show($1, people: people, images: images) }
+        viewAll.configuration?.title = Strings.Stories.viewAllReplies(list.count)
         setNeedsLayout()
+    }
+
+    /// The reply field as the viewer draws it; the replies' drawer draws it its own way while it holds it.
+    func styleField() {
+        feedbackField.backgroundColor = replyOnly ? UIColor(Palette.storiesReplyFill) : nil
+        feedbackField.layer.borderColor = replyOnly ? UIColor(Palette.storiesReplyBorder).cgColor : UIColor(white: 1, alpha: 0.3).cgColor
+        feedbackField.attributedPlaceholder = NSAttributedString(string: hint, attributes: [.foregroundColor: UIColor(white: 1, alpha: 0.7)])
     }
 
     static func emojiImage(_ emoji: String, size: CGFloat) -> UIImage {
@@ -304,40 +325,48 @@ final class StoryViewerPageView: UIView {
         layout = StoryViewerLayout(size: bounds.size, safeArea: LayoutInsets(top: safe.top, left: 0, bottom: safe.bottom, right: 0))
         // Placed by bounds and centre: opening and closing move them by
         // their transforms.
-        if replyOnly {
-            let width = layout.canvas.width - 2 * AgentStoryLayout.panelInset
-            let text = panelText.text?.isEmpty == false ? ceil(panelText.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height) : 0
-            let drawn = AgentStoryLayout.panel(canvas: layout.canvas, text: text)
-            place(canvas, drawn.media)
-            (panel.frame, panelText.frame) = (drawn.box, drawn.text)
-            panel.contentSize = CGSize(width: drawn.box.width, height: drawn.content)
-        } else {
-            place(canvas, layout.canvas)
-        }
+        place(canvas, layout.canvas)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        topFade.frame = CGRect(x: 0, y: 0, width: layout.canvas.width, height: 96)
+        topFade.frame = CGRect(x: 0, y: 0, width: layout.canvas.width, height: replyOnly ? AgentStoryLayout.Viewer.topScrim[3].0 : 96)
         CATransaction.commit()
         strip.frame = bounds
         for (segment, frame) in zip(segments, StoryViewerLayout.segments(segments.count, in: layout.strip)) { segment.frame = frame }
         place(avatar, layout.avatar)
-        let lineHeight: CGFloat = replyOnly ? 21 : 17
+        let lineHeight: CGFloat = 17
         // Without a more button the sound button takes its place.
         let titleWidth = layout.titleWidth(withSound: !soundButton.isHidden && !moreButton.isHidden)
         nameLabel.frame = CGRect(x: layout.titleOrigin.x, y: layout.titleOrigin.y, width: titleWidth, height: lineHeight)
         timeLabel.frame = CGRect(x: layout.titleOrigin.x, y: layout.titleOrigin.y + lineHeight, width: titleWidth, height: lineHeight)
+        if replyOnly {
+            let header = AgentStoryLayout.header(layout, withSound: !soundButton.isHidden && !moreButton.isHidden, name: nameLabel.intrinsicContentSize, time: timeLabel.intrinsicContentSize)
+            (nameLabel.frame, timeLabel.frame) = (header.name, header.time)
+        }
         closeButton.frame = layout.close
         moreButton.frame = layout.more
         soundButton.frame = moreButton.isHidden ? layout.more : layout.sound
+        let bar = AgentStoryLayout.bar(canvas: layout.canvas, bar: layout.bar, barHeight: StoryViewerLayout.Metrics.bar, lift: keyboardLift, replyOnly: replyOnly)
         if isAgents || replyOnly {
-            let bar = AgentStoryLayout.bar(canvas: layout.canvas, bar: layout.bar, barHeight: StoryViewerLayout.Metrics.bar, lift: keyboardLift, replyOnly: replyOnly)
             place(heartButton, bar.heart)
             place(repostButton, bar.repost)
-            place(feedbackField, bar.field)
-            feedbackField.layer.cornerRadius = bar.field.height / 2
+            // Unless the replies' drawer holds it.
+            if feedbackField.superview === self { place(feedbackField, bar.field) }
+            (fieldBlur.frame, fieldBlur.layer.cornerRadius, feedbackField.layer.cornerRadius) = (bar.field, bar.field.height / 2, bar.field.height / 2)
         } else {
             place(heartButton, layout.heart)
         }
+        // The foot: the caption, "View all", the peek, on the scrim; the round video stays above it, or above the field while typing.
+        let foot = AgentStoryLayout.foot(canvas: layout.canvas, field: bar.field, caption: { [captionLabel] in ceil(captionLabel.sizeThatFits(CGSize(width: $0, height: .greatestFiniteMagnitude)).height) },
+                                         rows: min(replyCount, peekRows.count), all: replyCount > peekRows.count)
+        (scrim.frame, captionLabel.frame, viewAll.frame, dim.frame) = (foot.scrim, foot.caption, foot.all, layout.canvas)
+        zip(peekRows, foot.rows).forEach { $0.frame = $1 }
+        peek.frame = foot.rows.first.map { $0.union(foot.rows[foot.rows.count - 1]) } ?? .zero
+        let shown = replyOnly && !typing
+        [scrim, captionLabel, peek].forEach { $0.isHidden = !shown }
+        viewAll.isHidden = !shown || foot.all.height == 0
+        for (index, row) in peekRows.enumerated() { row.isHidden = !shown || index >= foot.rows.count }
+        (dim.alpha, fieldBlur.isHidden) = (replyOnly && typing ? 1 : 0, !replyOnly || feedbackField.isHidden || feedbackField.superview !== self)
+        canvas.roundLimit = replyOnly ? (typing ? bar.field.minY : foot.caption.minY) - layout.canvas.minY : nil
         place(viewsButton, layout.views)
         shade.frame = bounds
         if let openingMask {

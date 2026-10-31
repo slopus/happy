@@ -236,6 +236,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
         page.heartButton.addTarget(self, action: #selector(heartTapped), for: .touchUpInside)
         page.soundButton.addTarget(self, action: #selector(soundTapped), for: .touchUpInside)
         page.repostButton.addTarget(self, action: #selector(repostTapped), for: .touchUpInside)
+        for control in [page.peek, page.viewAll] { control.addTarget(self, action: #selector(repliesTapped), for: .touchUpInside) }
+        page.sendButton.addAction(UIAction { [weak self] _ in self?.sendFeedback() }, for: .touchUpInside)
         page.feedbackField.delegate = self
         page.authorImage = ringImage
         // Live pages are the person's to use: touching one holds the story.
@@ -297,16 +299,40 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     }
 
     private var readingReplies: Task<Void, Never>?
+    private var replies: [StoryReply] = []
+    private weak var repliesSheet: StoryRepliesSheet?
 
-    /// A story artifact's replies under its caption, as `GET /v0/stories/:id/replies` has them.
+    /// A story artifact's replies over its foot and in the drawer, as
+    /// `GET /v0/stories/:id/replies` has them, their faces read first.
     private func readReplies(_ story: Story) {
         readingReplies?.cancel()
         guard story.isArtifact else { return }
         let session = session
         readingReplies = Task { [weak self] in
-            guard let read = try? await session.client.storyReplies(story.id), !Task.isCancelled, let self, current?.story.id == story.id else { return }
-            page.showReplies(read, person: { session.people[$0] })
+            guard let read = try? await session.client.storyReplies(story.id), !Task.isCancelled else { return }
+            for id in Set(read.compactMap(\.userId)) where session.people[id]?.hasPhoto == true {
+                _ = await session.images.picture(Person.photoPath(id), thumbhash: session.people[id]?.thumbhash, pixels: StoryReplyRow.pixels)
+            }
+            guard !Task.isCancelled, let self, current?.story.id == story.id else { return }
+            replies = read
+            page.showReplies(read, people: session.people, images: session.images)
+            repliesSheet?.show(read, to: page.author?.name ?? "", people: session.people, images: session.images)
         }
+    }
+
+    /// The peek opens every reply in a drawer, 0.66 of the screen over the frame,
+    /// dimmed and paused; the reply field moves into it while it's up.
+    @objc private func repliesTapped() {
+        guard presentedViewController == nil else { return }
+        pause(.sheet, true)
+        let sheet = StoryRepliesSheet(field: page.feedbackField, height: view.bounds.height * AgentStoryLayout.Viewer.drawerShare - view.safeAreaInsets.bottom)
+        sheet.show(replies, to: page.author?.name ?? "", people: session.people, images: session.images)
+        sheet.onClose = { [weak self, weak page = page] in
+            if let page { page.insertSubview(page.feedbackField, belowSubview: page.shade); page.styleField(); page.setNeedsLayout() }
+            self?.pause(.sheet, false)
+        }
+        repliesSheet = sheet
+        present(sheet, animated: true)
     }
 
     /// The page now shows `position`: its time starts, it is seen, and the
@@ -791,7 +817,8 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     private func keyboardChanged(end: CGRect?, hiding: Bool, duration: Double) {
         guard let end else { return }
         let local = view.convert(end, from: nil)
-        let hiding = hiding || local.minY >= view.bounds.maxY
+        // The replies' drawer keeps the field over the keyboard itself.
+        let hiding = hiding || local.minY >= view.bounds.maxY || page.feedbackField.superview !== page
         let bar = page.layout.bar
         let lift = hiding ? 0 : max(0, (bar.minY + min(bar.height, StoryViewerLayout.Metrics.bar)) - local.minY + 8)
         UIView.animate(withDuration: duration, delay: 0, options: [.beginFromCurrentState]) {
@@ -803,10 +830,12 @@ final class StoryViewerViewController: UIViewController, UIGestureRecognizerDele
     func textFieldDidBeginEditing(_ textField: UITextField) {
         note("typing")
         pause(.typing, true)
+        page.typing = true
     }
 
     func textFieldDidEndEditing(_ textField: UITextField) {
         pause(.typing, false)
+        page.typing = false
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {

@@ -182,6 +182,8 @@ final class StoryRoundVideoOverlayView: StoryOverlayView {
     private let video = StoryPlayerView()
     private let rim = CAShapeLayer()
     private(set) var player: AVPlayer?
+    /// A story artifact's: a rim this wide, and the mock's lighter shadow.
+    var rimWidth: CGFloat? { didSet { (layer.shadowOpacity, layer.shadowRadius, layer.shadowOffset) = (0.3, 5, CGSize(width: 0, height: 2)); setNeedsLayout() } }
 
     init(_ overlay: StoryOverlay, media: StoriesMedia?, storyId: String?, local: URL?) {
         super.init(overlay)
@@ -233,7 +235,7 @@ final class StoryRoundVideoOverlayView: StoryOverlayView {
         video.layer.cornerRadius = bounds.width / 2
         let mirrored: Bool = if case .roundVideo(_, _, _, let mirrored, _) = overlay { mirrored == true } else { false }
         video.transform = mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity
-        let width = max(1.5, bounds.width / 40)
+        let width = rimWidth ?? max(1.5, bounds.width / 40)
         rim.lineWidth = width
         rim.frame = bounds
         rim.path = UIBezierPath(ovalIn: bounds.insetBy(dx: width / 2, dy: width / 2)).cgPath
