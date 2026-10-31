@@ -27,8 +27,9 @@ class HappyApplication : Application() {
         thread(name = "app-graph") {
             try {
                 built.complete(graph)
-                // Home's push effect reads its preferences on the main thread; read them here first.
+                // What the first screens would otherwise read on the main thread: the push preferences, the glass switch.
                 PushServices.get(this)
+                com.slopus.happy.ui.components.glassBlurEnabled(this)
             } catch (e: Throwable) {
                 built.completeExceptionally(e)
             }

@@ -81,7 +81,8 @@ fun rememberNotificationPermission(): NotificationPermission {
     }
     return remember(context, launcher) {
         object : NotificationPermission {
-            private val prefs = context.getSharedPreferences(RegisteredPushTokenStore.PREFS_NAME, Context.MODE_PRIVATE)
+            // The application's: PushServices opened it off the main thread already, so nothing here reads the disk.
+            private val prefs by lazy { context.applicationContext.getSharedPreferences(RegisteredPushTokenStore.PREFS_NAME, Context.MODE_PRIVATE) }
 
             override fun info(): PushPermission {
                 if (NotificationManagerCompat.from(context).areNotificationsEnabled()) {

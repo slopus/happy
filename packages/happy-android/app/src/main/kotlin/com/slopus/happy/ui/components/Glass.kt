@@ -181,7 +181,10 @@ fun glassBlurs(sdk: Int = Build.VERSION.SDK_INT): Boolean = sdk >= Build.VERSION
  * so a fling can be measured with and without it on one install.
  */
 fun glassBlurEnabled(context: Context): Boolean =
-    glassBlurs() && !(BuildConfig.DEBUG && File(context.filesDir, "glass-off").exists())
+    glassBlurs() && !(BuildConfig.DEBUG && (glassOff ?: File(context.filesDir, "glass-off").exists().also { glassOff = it }))
+
+/** The `glass-off` file, looked for once per process; the app graph's thread looks first, so the main thread doesn't. */
+@Volatile private var glassOff: Boolean? = null
 
 /** Off to draw every glass as its tint alone; tests set it to reach that path on any API. */
 val LocalGlassBlur: ProvidableCompositionLocal<Boolean?> = compositionLocalOf { null }
