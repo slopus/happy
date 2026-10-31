@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.settings
 
+import com.slopus.happy.ui.page
 import android.content.ActivityNotFoundException
 import android.os.Build
 import android.provider.Settings
@@ -25,7 +26,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.slopus.happy.ui.components.ProvideRowReveal
 import com.slopus.happy.ui.voice.voicePageEntries
@@ -81,17 +81,17 @@ import com.slopus.happy.ui.voice.VoiceSettingsRoute
 /** Settings' screens; [SettingsRoute] itself is HappyApp's ([AccountSettings]). */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     voiceRoutes(graph, nav)
-    composable<AccountRoute> { entry -> ProvideRowReveal(entry.toRoute<AccountRoute>().reveal) { Account(graph, nav) } }
-    composable<BackupRoute> { entry -> ProvideRowReveal(entry.toRoute<BackupRoute>().reveal) { Backup(graph, nav) } }
-    composable<AppearanceRoute> { Appearance(graph, nav) }
-    composable<AgentsRoute> { Agents(graph, nav) }
-    composable<ConnectClaudeRoute> { ConnectClaudeScreen(onBack = { nav.popBackStack() }) }
-    composable<ChangelogRoute> {
+    page<AccountRoute> { entry -> ProvideRowReveal(entry.toRoute<AccountRoute>().reveal) { Account(graph, nav) } }
+    page<BackupRoute> { entry -> ProvideRowReveal(entry.toRoute<BackupRoute>().reveal) { Backup(graph, nav) } }
+    page<AppearanceRoute> { Appearance(graph, nav) }
+    page<AgentsRoute> { Agents(graph, nav) }
+    page<ConnectClaudeRoute> { ConnectClaudeScreen(onBack = { nav.popBackStack() }) }
+    page<ChangelogRoute> {
         val resources = LocalResources.current
         val changelog = remember(resources) { Changelog.bundled(resources) }
         ChangelogScreen(changelog, onViewed = graph.changelog::markViewed, onBack = { nav.popBackStack() })
     }
-    composable<LanguageRoute> { entry ->
+    page<LanguageRoute> { entry ->
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
         ProvideRowReveal(entry.toRoute<LanguageRoute>().reveal) {
             LanguageScreen(

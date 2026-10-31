@@ -1,12 +1,12 @@
 package com.slopus.happy.ui.voice
 
+import com.slopus.happy.ui.page
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
@@ -27,7 +27,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object VoiceLanguageRoute
 
 fun NavGraphBuilder.voiceRoutes(graph: AppGraph, nav: NavHostController) {
-    composable<VoiceSettingsRoute> { entry ->
+    page<VoiceSettingsRoute> { entry ->
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
         val purchases by graph.purchases.purchases.collectAsStateWithLifecycle()
         val alerts = remember { Alerts() }
@@ -45,7 +45,7 @@ fun NavGraphBuilder.voiceRoutes(graph: AppGraph, nav: NavHostController) {
         }
         alerts.Host()
     }
-    composable<VoiceLanguageRoute> {
+    page<VoiceLanguageRoute> {
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
         VoiceLanguageScreen(settings.voiceAssistantLanguage,
             onSelect = { code -> graph.settings.change { it.copy(voiceAssistantLanguage = code) } }, onBack = { nav.popBackStack() })

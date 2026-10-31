@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connect
 
+import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -7,7 +8,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.auth.TERMINAL_URL_PREFIX
@@ -23,7 +23,7 @@ import kotlinx.serialization.Serializable
 
 /** The signed-in connect screens. HappyApp's NavHost calls this once. */
 fun NavGraphBuilder.connectRoutes(graph: AppGraph, nav: NavHostController) {
-    composable<TerminalRoute> { entry ->
+    page<TerminalRoute> { entry ->
         val publicKey = entry.toRoute<TerminalRoute>().publicKey
         val scope = rememberCoroutineScope()
         val connect = rememberTerminalConnect(graph, onSuccess = { nav.popBackStack() })
@@ -36,7 +36,7 @@ fun NavGraphBuilder.connectRoutes(graph: AppGraph, nav: NavHostController) {
             onReject = { nav.popBackStack() },
         )
     }
-    composable<TerminalWebRoute> { TerminalWebScreen(onBack = { nav.popBackStack() }) }
+    page<TerminalWebRoute> { TerminalWebScreen(onBack = { nav.popBackStack() }) }
 }
 
 /**

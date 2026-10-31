@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
@@ -130,6 +129,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 TabletShell(graph, nav, signedIn = signedIn, onOpenSession = openSession, onTroubleshoot = troubleshoot) {
                     val start: Any = if (open == OpenAccount.None) StartRoute else HomeRoute
                     val motion = rememberNavMotion()
+                    CompositionLocalProvider(LocalPageDims provides motion.dims) {
                     NavHost(
                         navController = nav,
                         startDestination = start,
@@ -141,9 +141,9 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                         predictivePopEnterTransition = motion.predictivePopEnter,
                         predictivePopExitTransition = motion.predictivePopExit,
                     ) {
-                        composable<StartRoute> { Start(graph, nav, add) }
+                        page<StartRoute> { Start(graph, nav, add) }
                         // The open account's home; under Settings it changes with a switch made there.
-                        composable<HomeRoute> {
+                        page<HomeRoute> {
                             key(open.key) {
                                 when (val account = open) {
                                     is OpenAccount.Agent -> AgentHome(
@@ -162,11 +162,11 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                             }
                         }
                         // The open account's Settings, of either kind; a switch made here changes it in place.
-                        composable<SettingsRoute> { entry ->
+                        page<SettingsRoute> { entry ->
                             ProvideRowReveal(entry.toRoute<SettingsRoute>().reveal) { AccountSettings(graph, nav, open) }
                         }
-                        composable<ServerRoute> { Server(graph, nav) }
-                        composable<RestoreManualRoute> { RestoreManual(graph, nav) }
+                        page<ServerRoute> { Server(graph, nav) }
+                        page<RestoreManualRoute> { RestoreManual(graph, nav) }
                         homeRoutes(graph, nav, onOpenSession = openSession)
                         settingsRoutes(graph, nav)
                         onboardingRoutes(graph, nav, onOpenMachine = { id -> nav.navigate(MachineRoute(id)) })
@@ -176,6 +176,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                         agentConnectionRoutes(graph, nav)
                         agentHomeRoutes(graph, nav)
                         conversationRoutes(graph, nav)
+                    }
                     }
                 }
                 }

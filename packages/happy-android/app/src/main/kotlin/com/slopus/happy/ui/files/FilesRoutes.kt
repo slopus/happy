@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.files
 
+import com.slopus.happy.ui.page
 import android.content.ClipData
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,7 +17,6 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
@@ -70,19 +70,19 @@ fun toolPressRoute(sessionId: String, message: ChatMessage.ToolCallMessage): Any
 }
 
 fun NavGraphBuilder.filesRoutes(graph: AppGraph, nav: NavHostController) {
-    composable<SessionChangesRoute> { entry ->
+    page<SessionChangesRoute> { entry ->
         val route = entry.toRoute<SessionChangesRoute>()
         ChangesRouteScreen(graph, route.id, route.file, onBack = { nav.popBackStack() })
     }
-    composable<SessionFileRoute> { entry ->
+    page<SessionFileRoute> { entry ->
         val route = entry.toRoute<SessionFileRoute>()
         FileRouteScreen(graph, route, onBack = { nav.popBackStack() })
     }
-    composable<MessageDetailRoute> { entry ->
+    page<MessageDetailRoute> { entry ->
         val route = entry.toRoute<MessageDetailRoute>()
         MessageDetailRouteScreen(graph, route, onBack = { nav.popBackStack() })
     }
-    composable<TextSelectionRoute> { entry ->
+    page<TextSelectionRoute> { entry ->
         val route = entry.toRoute<TextSelectionRoute>()
         TextSelectionRouteScreen(route.textId, onBack = { nav.popBackStack() })
     }

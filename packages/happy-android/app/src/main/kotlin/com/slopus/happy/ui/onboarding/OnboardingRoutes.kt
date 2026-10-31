@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.onboarding
 
+import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -11,7 +12,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
 import com.slopus.happy.AppGraph
 import com.slopus.happy.auth.AccountLinkRequest
 import com.slopus.happy.data.HappyStore
@@ -51,8 +51,8 @@ fun NavGraphBuilder.onboardingRoutes(
     nav: NavHostController,
     onOpenMachine: (id: String) -> Unit = {},
 ) {
-    composable<RestoreRoute> { Restore(graph, nav) }
-    composable<OnboardingSettingsRoute> {
+    page<RestoreRoute> { Restore(graph, nav) }
+    page<OnboardingSettingsRoute> {
         val serverUrl by graph.serverConfig.url.collectAsStateWithLifecycle()
         OnboardingSettingsScreen(
             customServerLabel = remember(serverUrl) { graph.serverConfig.customHostLabel },
@@ -61,7 +61,7 @@ fun NavGraphBuilder.onboardingRoutes(
             onBack = { nav.popBackStack() },
         )
     }
-    composable<TroubleshootRoute> {
+    page<TroubleshootRoute> {
         val uriHandler = LocalUriHandler.current
         val changes by graph.store.changes.collectAsStateWithLifecycle()
         val input by produceState(TroubleshootInput(emptyList(), emptyList()), changes) {

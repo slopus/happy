@@ -13,8 +13,16 @@ import androidx.compose.animation.core.TwoWayConverter
 import androidx.compose.animation.core.VectorizedDurationBasedAnimationSpec
 import androidx.compose.animation.core.VectorizedFiniteAnimationSpec
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.draw.drawWithContent
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.compose.composable
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -51,8 +59,10 @@ private typealias NavScope = AnimatedContentTransitionScope<NavBackStackEntry>
  * runs on the same curve from where the finger left it (commit), or back to
  * the start (cancel), in the matching share of 450 ms. See [GestureEasing].
  *
- * The dim is the page beneath at 80% opacity over [backdrop]'s black, which
- * is drawn only while two pages are on screen.
+ * The dim is a black scrim over the page beneath, 20% at full cover
+ * ([PageDims], drawn by [page]): the same pixels as that page at 80% opacity
+ * over black, without the full-window offscreen layer a page's alpha costs
+ * the GPU on the first frame of every push (10 to 18 ms on the Fold).
  */
 @Immutable
 class NavMotion(
@@ -62,6 +72,8 @@ class NavMotion(
     val popExit: NavScope.() -> ExitTransition,
     val predictivePopEnter: NavScope.(Int) -> EnterTransition,
     val predictivePopExit: NavScope.(Int) -> ExitTransition,
+    /** The pages beneath a moving one, which [page] dims. */
+    val dims: PageDims = PageDims(),
 ) {
     companion object {
         const val DURATION_MILLIS = 450
@@ -80,18 +92,23 @@ class NavMotion(
         )
 
         fun pageSlide(dragging: () -> Boolean): NavMotion {
-            val pop = pop(easing, fromFirstFrame = true)
-            val gesture = pop(GestureEasing(dragging), fromFirstFrame = false)
+            val dims = PageDims()
+            val pop = pop(easing, fromFirstFrame = true, dims)
+            val gesture = pop(GestureEasing(dragging), fromFirstFrame = false, dims)
             return NavMotion(
-                enter = { slideIntoContainer(SlideDirection.Start, spec(easing, fromFirstFrame = true)) },
+                enter = {
+                    dims.top(targetState)
+                    slideIntoContainer(SlideDirection.Start, spec(easing, fromFirstFrame = true))
+                },
                 exit = {
-                    slideOutOfContainer(SlideDirection.Start, spec(easing, fromFirstFrame = true), ::parallax) +
-                        fadeOut(spec(easing, fromFirstFrame = true), targetAlpha = 1f - DIM)
+                    dims.beneath(initialState, spec(easing, fromFirstFrame = true))
+                    slideOutOfContainer(SlideDirection.Start, spec(easing, fromFirstFrame = true), ::parallax)
                 },
                 popEnter = { pop.first(this) },
                 popExit = { pop.second(this) },
                 predictivePopEnter = { gesture.first(this) },
                 predictivePopExit = { gesture.second(this) },
+                dims = dims,
             )
         }
 
@@ -100,15 +117,68 @@ class NavMotion(
         private fun <T> spec(easing: Easing, fromFirstFrame: Boolean): FiniteAnimationSpec<T> =
             tween<T>(DURATION_MILLIS, easing = easing).let { if (fromFirstFrame) FromFirstFrame(it) else it }
 
-        private fun pop(easing: Easing, fromFirstFrame: Boolean): Pair<NavScope.() -> EnterTransition, NavScope.() -> ExitTransition> =
+        private fun pop(easing: Easing, fromFirstFrame: Boolean, dims: PageDims): Pair<NavScope.() -> EnterTransition, NavScope.() -> ExitTransition> =
             Pair(
                 {
-                    slideIntoContainer(SlideDirection.End, spec(easing, fromFirstFrame), ::parallax) +
-                        fadeIn(spec(easing, fromFirstFrame), initialAlpha = 1f - DIM)
+                    dims.beneath(targetState, spec(easing, fromFirstFrame))
+                    slideIntoContainer(SlideDirection.End, spec(easing, fromFirstFrame), ::parallax)
                 },
-                { slideOutOfContainer(SlideDirection.End, spec(easing, fromFirstFrame)) },
+                {
+                    dims.top(initialState)
+                    slideOutOfContainer(SlideDirection.End, spec(easing, fromFirstFrame))
+                },
             )
     }
+}
+
+/**
+ * Which pages are beneath a moving one, each with the motion that moves it:
+ * NavMotion's transitions say, as they are chosen, and [page] draws the
+ * scrim from them. A page on top is not dimmed.
+ */
+@Stable
+class PageDims {
+    private val beneath = HashMap<String, FiniteAnimationSpec<Float>>()
+
+    internal fun beneath(entry: NavBackStackEntry, spec: FiniteAnimationSpec<Float>) {
+        beneath[entry.id] = spec
+    }
+
+    internal fun top(entry: NavBackStackEntry) {
+        beneath.remove(entry.id)
+    }
+
+    internal fun spec(entry: NavBackStackEntry): FiniteAnimationSpec<Float>? = beneath[entry.id]
+}
+
+/** The NavHost's [PageDims], for [page]; none outside one with [NavMotion]. */
+val LocalPageDims = staticCompositionLocalOf<PageDims?> { null }
+
+/**
+ * A destination whose page wears the dim while another moves over it
+ * ([DimmedPage]): every NavHost destination of the app is one.
+ */
+inline fun <reified T : Any> NavGraphBuilder.page(noinline content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit) {
+    composable<T> { entry -> DimmedPage(entry) { content(entry) } }
+}
+
+/**
+ * [content], with [NavMotion.DIM]'s black scrim over it in step with the
+ * motion while it is the page beneath ([PageDims]); nothing on top or at rest.
+ */
+@Composable
+fun AnimatedContentScope.DimmedPage(entry: NavBackStackEntry, content: @Composable () -> Unit) {
+    val dims = LocalPageDims.current
+    if (dims == null) return content()
+    val covered = transition.animateFloat(transitionSpec = { dims.spec(entry) ?: snap() }, label = "dim") { if (it == EnterExitState.Visible) 0f else 1f }
+    Box(
+        Modifier.drawWithContent {
+            drawContent()
+            val dim = if (dims.spec(entry) != null) covered.value * NavMotion.DIM else 0f
+            if (dim > 0f) drawRect(Color.Black, alpha = dim)
+        },
+        propagateMinConstraints = true,
+    ) { content() }
 }
 
 /**

@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.ui.page
 import com.slopus.happy.ui.components.ProvideRowReveal
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -49,7 +50,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
@@ -86,7 +86,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class AgentProfileRoute(val connectionId: String)
 
 internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostController) {
-    composable<AgentAppearanceRoute> { entry ->
+    page<AgentAppearanceRoute> { entry ->
         val route = entry.toRoute<AgentAppearanceRoute>()
         val id = route.connectionId
         val session = remember(id) { graph.agentSessions.session(id) }
@@ -102,9 +102,9 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
             )
         }
     }
-    composable<AgentProfileRoute> { entry ->
+    page<AgentProfileRoute> { entry ->
         val id = entry.toRoute<AgentProfileRoute>().connectionId
-        val source = remember(id) { graph.agentSessions.session(id)?.profile } ?: return@composable
+        val source = remember(id) { graph.agentSessions.session(id)?.profile } ?: return@page
         AgentProfile(source, id, onBack = { nav.popBackStack() })
     }
 }

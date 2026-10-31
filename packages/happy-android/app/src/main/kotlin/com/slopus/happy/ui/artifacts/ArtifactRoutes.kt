@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.artifacts
 
+import com.slopus.happy.ui.page
 import android.content.res.Resources
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,7 +17,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
@@ -64,9 +64,9 @@ fun NavHostController.openArtifact(connectionId: String, ref: ArtifactRef) {
 
 /** The artifact and browser screens. AgentConnectionRoutes registers them with the agent's other places. */
 fun NavGraphBuilder.artifactRoutes(graph: AppGraph, nav: NavHostController) {
-    composable<AgentArtifactsRoute> { entry -> AgentArtifacts(graph, nav, entry.toRoute()) }
-    composable<ArtifactRoute> { entry -> ArtifactEntry(graph, nav, entry.toRoute()) }
-    composable<BrowserRoute> { entry -> BrowserEntry(graph, nav, entry.toRoute()) }
+    page<AgentArtifactsRoute> { entry -> AgentArtifacts(graph, nav, entry.toRoute()) }
+    page<ArtifactRoute> { entry -> ArtifactEntry(graph, nav, entry.toRoute()) }
+    page<BrowserRoute> { entry -> BrowserEntry(graph, nav, entry.toRoute()) }
 }
 
 /** The connection's name as the browser shows it: "via Studio". */

@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.chat
 
+import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -18,7 +19,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
@@ -87,7 +87,7 @@ fun NavGraphBuilder.chatRoutes(
     actions: ChatActions = SyncChatActions { graph.account.value },
     onInfo: (sessionId: String) -> Unit = {},
 ) {
-    composable<SessionRoute> { entry ->
+    page<SessionRoute> { entry ->
         val route = entry.toRoute<SessionRoute>()
         // Each takes the chat the screen shows, which a compose chat's route id is not once it has started.
         ChatRoute(

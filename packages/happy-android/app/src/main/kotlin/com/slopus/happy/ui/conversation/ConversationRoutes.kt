@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.conversation
 
+import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -20,7 +21,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
@@ -71,15 +71,15 @@ import kotlinx.serialization.Serializable
 
 /** The conversation screens. HappyApp's NavHost calls this once. */
 fun NavGraphBuilder.conversationRoutes(graph: AppGraph, nav: NavHostController) {
-    composable<ConversationRoute> { entry ->
+    page<ConversationRoute> { entry ->
         val route = entry.toRoute<ConversationRoute>()
         ConversationEntry(graph, nav, route)
     }
-    composable<ChiefOfStaffRoute> { entry ->
+    page<ChiefOfStaffRoute> { entry ->
         val route = entry.toRoute<ChiefOfStaffRoute>()
         ChiefOfStaffEntry(graph, nav, route)
     }
-    composable<ConversationDetailsRoute> { entry ->
+    page<ConversationDetailsRoute> { entry ->
         val route = entry.toRoute<ConversationDetailsRoute>()
         AgentPageEntry(graph, nav, route)
     }

@@ -107,13 +107,29 @@ architectures comparable (local store, delta sync, crypto layer).
    of `ui/NavMotion`'s transitions and `Modifier.backdrop(nav)`: the new page
    slides across the whole pane over the old one in 450 ms on
    cubic-bezier(0.22, 0.4, 0, 1), the old one moves 26% the other way and
-   dims 20%, nothing fades. Toolbar back, system back and a gesture's commit
+   dims 20%, nothing fades. The dim is a black scrim over the page beneath
+   (`PageDims`, which every destination wears by being a `page<Route>`, not a
+   bare `composable`), never the page's alpha: a page at 0.8 alpha costs
+   HWUI a full-window offscreen layer, 10 to 18 ms of GPU allocation on the
+   first frame of every push on the Fold. Toolbar back, system back and a gesture's commit
    run the same pop. The predictive gesture is that pop held at the finger's
    progress, and it finishes or cancels on the curve from there. Mirrored in
    right-to-left; with animations off, none. Never leave a NavHost on
    navigation-compose's defaults (a 700 ms crossfade, and a scale on the
-   gesture), and never give a destination its own transitions. An account or
-   agent switch remounts the stack at once; it is not a push.
+   gesture), and never give a destination its own transitions.
+   **Switching accounts** is not a push (`ui/AccountSwitch.kt`, iOS's
+   12a4c4bc9): from home's account menu a new stack's home dissolves in over
+   the old one in 0.28 s (`Dissolve`, iOS's `rootCrossfade`); from
+   Settings' accounts card or search the stack is kept, Settings stays on top
+   where it was scrolled and home changes under it unseen (`HomeRoute` and
+   `SettingsRoute` show whichever account is open). A Happy account and an
+   agent connection have different pages, so a switch between kinds
+   dissolves Settings' scrolling part, the bar steady; one of the same kind
+   only changes the values. Signing out of or disconnecting the open account
+   from Settings keeps Settings too. The screens follow
+   `AppGraph.openAccount`, which changes once per switch (`whileSwitching`),
+   never through "none": a switch never shows the first screen
+   (`AccountSwitchTest`).
 4. **The local store is SQLite through the framework API**
    (`SQLiteOpenHelper`, WAL, hand-written SQL in `data/`). Why not a library:
    the schema is a handful of tables whose rows are mostly JSON documents

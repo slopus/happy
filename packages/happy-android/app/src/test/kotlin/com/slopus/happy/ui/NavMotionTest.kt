@@ -177,12 +177,12 @@ class NavMotionTest {
     }
 
     @Test
-    fun theDimIsTheBackdropThroughThePageBeneathNeverTheWindow() {
+    fun theDimIsAScrimOverThePageBeneathNeverTheWindow() {
         lateinit var nav: NavHostController
         rule.setContent {
             nav = rememberNavController()
             val motion = rememberNavMotion()
-            Box(Modifier.fillMaxSize().background(Color.Green)) {
+            Box(Modifier.fillMaxSize().background(Color.Green)) { CompositionLocalProvider(LocalPageDims provides motion.dims) {
                 NavHost(
                     navController = nav,
                     startDestination = "first",
@@ -192,10 +192,10 @@ class NavMotionTest {
                     popEnterTransition = motion.popEnter,
                     popExitTransition = motion.popExit,
                 ) {
-                    composable("first") { Box(Modifier.fillMaxSize().background(Color.Red)) }
-                    composable("second") { Box(Modifier.fillMaxSize().background(Color.Blue)) }
+                    composable("first") { entry -> DimmedPage(entry) { Box(Modifier.fillMaxSize().background(Color.Red)) } }
+                    composable("second") { entry -> DimmedPage(entry) { Box(Modifier.fillMaxSize().background(Color.Blue)) } }
                 }
-            }
+            } }
         }
         fun check(at: String) {
             rule.waitForIdle()

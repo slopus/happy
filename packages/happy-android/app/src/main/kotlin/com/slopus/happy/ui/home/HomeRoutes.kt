@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.home
 
+import com.slopus.happy.ui.page
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +19,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
@@ -120,7 +120,7 @@ fun NavGraphBuilder.homeRoutes(
     nav: NavHostController,
     onOpenSession: (sessionId: String) -> Unit = {},
 ) {
-    composable<NewSessionRoute> {
+    page<NewSessionRoute> {
         val dock = rememberNewSessionDock(
             graph,
             focused = true,
@@ -130,10 +130,10 @@ fun NavGraphBuilder.homeRoutes(
         )
         NewSessionScreen(dock, onBack = { nav.popBackStack() })
     }
-    composable<SessionInfoRoute> { entry ->
+    page<SessionInfoRoute> { entry ->
         SessionInfoRouteScreen(graph, entry.toRoute<SessionInfoRoute>().id, nav, onOpenSession)
     }
-    composable<MachineRoute> { entry ->
+    page<MachineRoute> { entry ->
         val id = entry.toRoute<MachineRoute>().id
         val services = remember(graph) { HomeServices.of(graph) }
         val snapshot by services.snapshots.collectAsStateWithLifecycle()
