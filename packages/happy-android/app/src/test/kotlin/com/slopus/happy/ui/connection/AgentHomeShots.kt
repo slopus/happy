@@ -56,7 +56,6 @@ class AgentHomeShots {
 
     @Test fun listLight() { show(feed); save("home-list-light") }
     @Test fun listDark() { show(feed, dark = true); save("home-list-dark") }
-    @Test fun subtasksOpen() { show(feed); rule.node(AgentHomeTags.toggle("ab1")).performClick(); save("home-subtasks-open") }
     @Test fun accountMenu() { show(feed); rule.node(AccountMenuTags.BUTTON).performClick(); save("home-account-menu") }
     @Test fun searchEmptyQuery() { show(feed); rule.node(AgentHomeTags.SEARCH).performClick(); save("search-open-empty") }
     @Test fun searchResults() { show(feed); rule.node(AgentHomeTags.SEARCH).performClick(); rule.node(AgentSearchTags.FIELD).performTextInput("re"); save("search-results") }

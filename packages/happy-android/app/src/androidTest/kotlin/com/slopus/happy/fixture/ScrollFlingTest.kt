@@ -22,7 +22,6 @@ import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.Modifier
@@ -121,12 +120,6 @@ class ScrollFlingTest {
         return checkNotNull(find(decor)) { "No Compose root" }
     }
 
-    private fun find(node: SemanticsNode, predicate: (SemanticsNode) -> Boolean): SemanticsNode? {
-        if (predicate(node)) return node
-        for (child in node.children) find(child, predicate)?.let { return it }
-        return null
-    }
-
     private fun log(line: String) = android.util.Log.i("ScrollEvidence", line)
 
     // ---- agent home ----
@@ -136,32 +129,32 @@ class ScrollFlingTest {
     /** 3 bots, 12 tasks, then 6 projects of 10; one in three with subtasks, some two deep. */
     private fun feed(extra: Int, random: Random): AgentFeed {
         val rows = ArrayList<AgentFeedRow>()
-        fun conversation(id: String, kind: ConversationKind, depth: Int, parent: String?, children: Int): AgentFeedRow.Conversation {
+        fun conversation(id: String, kind: ConversationKind, depth: Int, parent: String?): AgentFeedRow.Conversation {
             return AgentFeedRow.Conversation(
-                agentId = id, title = "Synthetic conversation $id about the login flow",
-                kind = kind, detail = if (id.hashCode() % 5 == 0) "workspace-$id" else null, depth = depth,
+                agentId = id, title = "Synthetic conversation $id about the login flow", kind = kind, depth = depth,
                 working = random.nextInt(6) == 0, unread = random.nextInt(5) == 0, blocked = random.nextInt(17) == 0,
-                activityAt = now - random.nextLong(3_600_000L * 48), parentId = parent, childCount = children,
+                activityAt = now - random.nextLong(3_600_000L * 48), parentId = parent,
             )
         }
-        fun withSubtasks(prefix: String, kind: ConversationKind, index: Int) {
+        fun withSubtasks(prefix: String, kind: ConversationKind, index: Int, depth: Int = 0) {
             val subtasks = if (index % 3 == 0) 2 + (if (index == 0 || index == 3) extra else 0) else 0
             val deep = if (index % 6 == 0) 1 else 0
-            val parent = conversation("$prefix-$index", kind, 0, null, subtasks + deep)
+            val parent = conversation("$prefix-$index", kind, depth, null)
             rows += parent
             repeat(subtasks) { i ->
-                val child = conversation("${parent.agentId}-child-$i", ConversationKind.Subtask, 1, parent.agentId, if (i == 0) deep else 0)
+                val child = conversation("${parent.agentId}-child-$i", ConversationKind.Subtask, depth + 1, parent.agentId)
                 rows += child
-                if (i == 0) repeat(deep) { rows += conversation("${child.agentId}-deep-$it", ConversationKind.Subtask, 2, child.agentId, 0) }
+                if (i == 0) repeat(deep) { rows += conversation("${child.agentId}-deep-$it", ConversationKind.Subtask, depth + 2, child.agentId) }
             }
         }
         rows += AgentFeedRow.Section(AgentFeedSection.Bots)
         repeat(3) { withSubtasks("bot", ConversationKind.Bot, it + 1) }
         rows += AgentFeedRow.Section(AgentFeedSection.Tasks)
         repeat(12) { withSubtasks("task", ConversationKind.Task, it) }
+        rows += AgentFeedRow.Section(AgentFeedSection.Projects)
         repeat(6) { p ->
-            rows += AgentFeedRow.Section(AgentFeedSection.Project("p$p", "Project $p", null, p == 0))
-            repeat(10) { withSubtasks("project-$p", ConversationKind.Project, it) }
+            rows += AgentFeedRow.Folder("p$p", "Project $p", 0)
+            repeat(10) { withSubtasks("project-$p", ConversationKind.Project, it, depth = 1) }
         }
         return AgentFeed(loaded = true, rows = rows)
     }
@@ -173,24 +166,10 @@ class ScrollFlingTest {
         content {
             HappyTheme { AgentHomeScreen("Fixture", feed, AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}), now = now) }
         }
-        // Open the parents on the first screen, so subtasks two deep are among the rows.
-        val opened = HashSet<String>()
-        repeat(4) {
-            instrumentation.runOnMainSync {
-                find(root().semanticsOwner.unmergedRootSemanticsNode) { node ->
-                    val tag = node.config.getOrNull(SemanticsProperties.TestTag)
-                    tag?.startsWith("agentHome.toggle.") == true && tag !in opened
-                }?.let { node ->
-                    opened += node.config[SemanticsProperties.TestTag]
-                    check(node.config[SemanticsActions.OnClick].action?.invoke() == true)
-                }
-            }
-            SystemClock.sleep(300)
-        }
-        log("home: opened ${opened.size} parents")
+        // Every subtask shows: nothing on home folds.
         log("home: ${feed.rows.size} feed rows")
         // A stress case: every 100ms all row indicators change, every 700ms
-        // expanded parents gain or lose subtasks. IDs survive those changes.
+        // parents gain or lose subtasks. IDs survive those changes.
         val random = Random(7)
         val churn = churn {
             var extra = 0
@@ -282,12 +261,11 @@ class ScrollFlingTest {
     /** Same starting key/offset, input and timed removal for placement A/B. */
     @Test fun home_removal_during_fling() {
         val initial = feed(2, Random(1))
-        val expanded = initial.conversations.filter { it.childCount > 0 }.map { it.agentId }.toSet()
         var current by mutableStateOf(initial)
         val list = LazyListState(firstVisibleItemIndex = 70, firstVisibleItemScrollOffset = 24)
         content {
             HappyTheme {
-                AgentHomeList(agentHomeItems(current, expanded), list, now, {}, {}, PaddingValues(0.dp), Modifier)
+                AgentHomeList(agentHomeItems(current), list, now, {}, PaddingValues(0.dp), Modifier)
             }
         }
         fun describe() = "first=${list.firstVisibleItemIndex}:${list.firstVisibleItemScrollOffset}, scrolling=${list.isScrollInProgress}, " +
@@ -320,12 +298,7 @@ class ScrollFlingTest {
                 val removed = current.conversations.filter { it.agentId.endsWith("-child-2") || it.agentId.endsWith("-child-3") }
                 event("before-removal ids=${removed.joinToString { it.agentId }}")
                 val ids = removed.map { it.agentId }.toSet()
-                val counts = removed.groupingBy { it.parentId }.eachCount()
-                current = current.copy(rows = current.rows.mapNotNull { row ->
-                    if (row is AgentFeedRow.Conversation) {
-                        if (row.agentId in ids) null else row.copy(childCount = row.childCount - (counts[row.agentId] ?: 0))
-                    } else row
-                })
+                current = current.copy(rows = current.rows.filterNot { it is AgentFeedRow.Conversation && it.agentId in ids })
                 event("removal-published")
             }
         })

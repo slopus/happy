@@ -233,8 +233,8 @@ fun AgentSearchResults(
                         result.key,
                         result.title,
                         { onOpenConversation(result.agentId) },
-                        // As on home: a task wears no mark, its title where one would be.
-                        AgentHomeSpec.markSize(result.row.kind)?.let { { ConversationMark(result.row, AgentSearchSpec.icon) } },
+                        // As on home: a subtask or a project's conversation wears no mark, its title where one would be.
+                        if (AgentHomeSpec.hasMark(result.row.kind)) ({ ConversationMark(result.row, AgentSearchSpec.icon) }) else null,
                     )
                     is AgentSearchResult.Entry -> ResultRow(result.key, result.entry.title, result.entry.run) {
                         Icon(result.entry.icon, 22.dp, colors.text)

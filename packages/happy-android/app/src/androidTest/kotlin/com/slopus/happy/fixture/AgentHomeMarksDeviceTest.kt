@@ -9,8 +9,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -22,7 +20,6 @@ import com.slopus.happy.agent.AgentPictures
 import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.ui.connection.AgentHomeActions
 import com.slopus.happy.ui.connection.AgentHomeScreen
-import com.slopus.happy.ui.connection.AgentHomeTags
 import com.slopus.happy.ui.connection.LocalAgentPictures
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuEntry
@@ -34,9 +31,10 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
- * Agent home on a device with bots, tasks, a project and their subtasks
- * open, captured to the test app's files under `device-evidence/` so a
- * review sees what each row wears before its title. Every row is synthetic.
+ * Agent home on a device with bots, tasks, a project and their subtasks,
+ * captured to the test app's files under `device-evidence/` so a review
+ * sees each section's card and what each row wears before its title. Every
+ * row is synthetic.
  */
 @RunWith(AndroidJUnit4::class)
 class AgentHomeMarksDeviceTest {
@@ -48,31 +46,32 @@ class AgentHomeMarksDeviceTest {
     private val evidence = File(app.filesDir, "device-evidence").apply { mkdirs() }
 
     private fun conversation(
-        agentId: String, title: String, kind: ConversationKind, depth: Int = 0, parentId: String? = null, childCount: Int = 0,
-        detail: String? = null, minutes: Long = 5, working: Boolean = false, unread: Boolean = false, blocked: Boolean = false,
-        picture: String? = null,
+        agentId: String, title: String, kind: ConversationKind, depth: Int = 0, parentId: String? = null,
+        minutes: Long = 5, working: Boolean = false, unread: Boolean = false, blocked: Boolean = false, picture: String? = null,
     ) = AgentFeedRow.Conversation(
-        agentId = agentId, title = title, kind = kind, detail = detail, depth = depth, picture = picture,
-        working = working, unread = unread, blocked = blocked, activityAt = NOW - minutes * 60_000, parentId = parentId, childCount = childCount,
+        agentId = agentId, title = title, kind = kind, depth = depth, picture = picture,
+        working = working, unread = unread, blocked = blocked, activityAt = NOW - minutes * 60_000, parentId = parentId,
     )
 
     private val feed = AgentFeed(
         loaded = true,
         rows = listOf(
             AgentFeedRow.Section(AgentFeedSection.Bots),
-            conversation("ab1", "Happy", ConversationKind.Bot, childCount = 1, minutes = 20, picture = "/v0/bots/b1/avatar"),
+            conversation("ab1", "Happy", ConversationKind.Bot, minutes = 20, picture = "/v0/bots/b1/avatar"),
             conversation("as1", "Review the PR", ConversationKind.Subtask, depth = 1, parentId = "ab1", working = true),
             conversation("ab2", "Research", ConversationKind.Bot, minutes = 180),
             AgentFeedRow.Section(AgentFeedSection.Tasks),
-            conversation("at1", "Fix login redirect", ConversationKind.Task, childCount = 2, minutes = 1),
+            conversation("at1", "Fix login redirect", ConversationKind.Task, minutes = 1),
             conversation("as2", "Trace the redirect loop", ConversationKind.Subtask, depth = 1, parentId = "at1", unread = true),
             conversation("as3", "Write the regression test", ConversationKind.Subtask, depth = 1, parentId = "at1", minutes = 12),
             conversation("at2", "Write release notes", ConversationKind.Task, unread = true, minutes = 40),
             conversation("at3", "Plan the sprint", ConversationKind.Task, blocked = true, minutes = 90),
-            AgentFeedRow.Section(AgentFeedSection.Project("p1", "happy", null, true)),
-            conversation("ap1", "Android home feed", ConversationKind.Project, childCount = 1, minutes = 2 * 1440),
-            conversation("as4", "Port the row marks", ConversationKind.Subtask, depth = 1, parentId = "ap1", minutes = 30),
-            conversation("aw1", "Scroll jumps", ConversationKind.Project, detail = "fix-scroll", minutes = 9 * 1440),
+            AgentFeedRow.Section(AgentFeedSection.Projects),
+            AgentFeedRow.Folder("p1", "happy", 0),
+            conversation("ap1", "Android home feed", ConversationKind.Project, depth = 1, minutes = 2 * 1440),
+            conversation("as4", "Port the row marks", ConversationKind.Subtask, depth = 2, parentId = "ap1", minutes = 30),
+            AgentFeedRow.Folder("w1", "fix-scroll", 1),
+            conversation("aw1", "Scroll jumps", ConversationKind.Project, depth = 2, minutes = 9 * 1440),
         ),
     )
 
@@ -86,7 +85,6 @@ class AgentHomeMarksDeviceTest {
                 HappyTheme { AgentHomeScreen("Studio", feed, AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}), now = NOW) }
             }
         }
-        for (parent in listOf("ab1", "at1", "ap1")) rule.onNodeWithTag(AgentHomeTags.toggle(parent), useUnmergedTree = true).performClick()
         rule.waitForIdle()
         SystemClock.sleep(800)
         device.takeScreenshot(File(evidence, "agent-home-marks.png"))

@@ -34,7 +34,11 @@ class AgentFeedTest {
     fun conversationsComeInTheAgentsOwnOrders() {
         val feed = AgentFeed.derive(catalog(sample))
         assertEquals(
-            listOf("section-bots", "agent-ab1", "agent-as1", "agent-as2", "agent-ab2", "section-tasks", "agent-at2", "agent-at1", "section-project-p1", "agent-ap1", "agent-aw1"),
+            listOf(
+                "section-bots", "agent-ab1", "agent-as1", "agent-as2", "agent-ab2",
+                "section-tasks", "agent-at2", "agent-at1",
+                "section-projects", "folder-p1", "agent-ap1", "folder-w1", "agent-aw1",
+            ),
             feed.rows.map { it.key },
         )
         val rows = feed.conversations.associateBy { it.agentId }
@@ -44,10 +48,11 @@ class AgentFeedTest {
         assertTrue(rows.getValue("at1").working)
         assertTrue(rows.getValue("at2").unread)
         assertTrue(rows.getValue("aw1").blocked)
-        assertEquals("fix-login", rows.getValue("aw1").detail)
-        assertEquals(2, rows.getValue("ab1").childCount)
-        assertEquals(1, rows.getValue("as1").childCount)
+        // A project's conversations a level under its folder, a worktree's two.
+        assertEquals(1, rows.getValue("ap1").depth)
+        assertEquals(2, rows.getValue("aw1").depth)
         assertEquals("as1", rows.getValue("as2").parentId)
+        assertEquals(listOf("rig" to 0, "fix-login" to 1), feed.rows.filterIsInstance<AgentFeedRow.Folder>().map { it.name to it.depth })
     }
 
     @Test
@@ -56,6 +61,21 @@ class AgentFeedTest {
         assertEquals("/v0/bots/b2/avatar", rows.getValue("ab2").picture)
         assertEquals("1QcSHQRnh493V4dIh4eXh1h4kJUI", rows.getValue("ab2").thumbhash)
         for (id in listOf("ab1", "as1", "at1", "ap1", "aw1")) assertEquals(id, null, rows.getValue(id).picture)
+    }
+
+    @Test
+    fun aClonedRepoWearsItsPictureAndASubtasksWorktreeIsListedOnce() {
+        val feed = AgentFeed.derive(catalog(Wire.bootstrap(
+            bots = listOf(Wire.bot("b1", "Happy", Wire.agent("ab1", subtasks = listOf(Wire.agent("as1", subtask = true, parent = "ab1", workspaceId = "w2"))))),
+            projects = listOf(
+                Wire.project("p1", "happy", emptyList(), avatarUrl = "/v0/projects/p1/avatar"),
+                Wire.project("p2", "site", emptyList(), orderKey = "2", avatarUrl = "https://example.com/a.png"),
+            ),
+            workspaces = listOf(Wire.workspace("w1", "p1", "feature", emptyList()), Wire.workspace("w2", "p1", "subtask-tree", emptyList(), orderKey = "2")),
+        )))
+        val folders = feed.rows.filterIsInstance<AgentFeedRow.Folder>()
+        assertEquals(listOf("happy", "feature", "site"), folders.map { it.name })
+        assertEquals(listOf("/v0/projects/p1/avatar", null, null), folders.map { it.picture })
     }
 
     @Test

@@ -105,14 +105,15 @@ class AgentHomeLayoutTest {
         rule.setHappyContent(dark) { AgentHomeScreen("Studio", feed, status, accounts, actions, now = 1_755_400_000_000L) }
 
     @Test
-    fun rowsHaveTheirKindsHeightAndNoComposer() {
+    fun rowsHaveTheirHeightAndNoComposer() {
         show(feed())
-        val section = rule.node(AgentHomeTags.row("section-bots")).bounds
-        assertDp("section height", 44, section.height)
+        val top = rule.node(AgentHomeTags.row("section-bots")).bounds
+        assertDp("room above the first card", 8, top.height)
         val bot = rule.node(AgentHomeTags.row("agent-ab1")).bounds
-        assertBox("bot row", bot, 0.dp, section.bottom, 411.dp, 48.dp)
+        assertBox("bot row", bot, 0.dp, top.bottom, 411.dp, 48.dp)
         rule.node(AgentHomeTags.row("agent-at1")).assertExists()
         assertDp("task row height", 48, rule.node(AgentHomeTags.row("agent-at1")).bounds.height)
+        assertDp("folder row height", 48, rule.node(AgentHomeTags.row("folder-p1")).bounds.height)
         // No text field anywhere on home.
         rule.onAllNodesWithTag(AgentSearchTags.FIELD, useUnmergedTree = true).assertCountEquals(0)
     }
@@ -144,10 +145,10 @@ class AgentHomeLayoutTest {
     }
 
     @Test
-    fun theBarAndPageAreTheGroupedBackground() {
+    fun theBarAndPageAreTheChatsSurface() {
         var surface = 0
         rule.setHappyContent(dark = true) {
-            surface = com.slopus.happy.ui.theme.HappyTheme.colors.grouped.background.toArgb()
+            surface = com.slopus.happy.ui.theme.HappyTheme.colors.surface.toArgb()
             AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions, now = 1L)
         }
         val bar = rule.node(AgentHomeTags.BAR).captureToImage().toPixelMap()
@@ -172,61 +173,55 @@ class AgentHomeLayoutTest {
     }
 
     @Test
-    fun subtasksShowAndHideUnderTheirParent() {
+    fun everySubtaskShowsUnderItsParentAndNothingFolds() {
         show(feed())
-        rule.onAllNodesWithTag(AgentHomeTags.row("agent-as1"), useUnmergedTree = true).assertCountEquals(0)
-        val research = rule.node(AgentHomeTags.row("agent-ab2")).bounds
-        rule.node(AgentHomeTags.toggle("ab1")).performClick()
-        rule.waitForIdle()
-        val sub = rule.node(AgentHomeTags.row("agent-as1")).bounds
         val parent = rule.node(AgentHomeTags.row("agent-ab1")).bounds
+        val sub = rule.node(AgentHomeTags.row("agent-as1")).bounds
         assertDp("subtask under its parent", parent.bottom, sub.top)
         assertDp("subtask row height", 48, sub.height)
-        val mark = rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true)[1].bounds
-        assertBox("subtask mark", mark, 16.dp + 16.dp + 28.dp, sub.top + 10.dp, 28.dp, 28.dp)
-        assertDp("the next bot moves down a row", research.top + 48.dp, rule.node(AgentHomeTags.row("agent-ab2")).bounds.top)
-        // Rapid toggling settles where the last tap left it.
-        repeat(5) { rule.node(AgentHomeTags.toggle("ab1")).performClick() }
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(AgentHomeTags.row("agent-as1"), useUnmergedTree = true).assertCountEquals(0)
-        assertEquals(research, rule.node(AgentHomeTags.row("agent-ab2")).bounds)
+        rule.onAllNodesWithText("1", useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test
-    fun onlyBotsAndSubtasksWearAMark() {
+    fun botsAndTasksWearAMarkAndSubtasksAndProjectConversationsNone() {
         show(feed())
-        rule.node(AgentHomeTags.toggle("ab1")).performClick()
-        rule.waitForIdle()
-        // The two bots and the bot's subtask; no task, nor the project's conversations.
-        rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(3)
+        // The two bots and the three tasks.
+        rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(5)
+        val bot = rule.node(AgentHomeTags.row("agent-ab1")).bounds
+        val mark = rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true)[0].bounds
+        // The card 16 in from the window, the mark 16 in from the card.
+        assertBox("bot mark", mark, 32.dp, bot.top + 9.dp, 30.dp, 30.dp)
         fun titleStart(title: String) = rule.onNodeWithText(title, useUnmergedTree = true).bounds.left
-        // Rows sit in a card 16 in from the window, their content 16 in from the card's edge.
-        assertDp("a bot's title follows its 28 mark", 16 + 16 + 28 + 16, titleStart("Happy"))
-        assertDp("a subtask's, its mark a level in", 16 + 16 + 28 + 28 + 16, titleStart("Review the PR"))
-        assertDp("a task's title starts where a mark would", 16 + 16, titleStart("Fix login redirect"))
-        assertDp("and a project conversation's", 16 + 16, titleStart("Android home feed"))
+        assertDp("a bot's title follows its mark", 32 + 30 + 12, titleStart("Happy"))
+        assertDp("a task's too", 32 + 30 + 12, titleStart("Fix login redirect"))
+        assertDp("a subtask's starts under its parent's title", 32 + 42, titleStart("Review the PR"))
+        assertDp("a project starts where a mark would", 32, titleStart("happy"))
+        assertDp("its conversation a level in", 32 + 42, titleStart("Android home feed"))
+        assertDp("a worktree a level in", 32 + 42, titleStart("fix-scroll"))
+        assertDp("and its conversation two", 32 + 84, titleStart("Scroll jumps"))
         val task = rule.node(AgentHomeTags.row("agent-at1")).bounds
         val dividers = rule.onAllNodesWithTag(AgentHomeTags.ROW_DIVIDER, useUnmergedTree = true).fetchSemanticsNodes().map {
             with(rule.density) { it.boundsInRoot.left.toDp() to it.boundsInRoot.bottom.toDp() }
         }
         val under = dividers.single { (_, bottom) -> (bottom - task.bottom).value in -0.5f..0.5f }
-        assertDp("the task's hairline runs from its title", 16 + 16, under.first)
+        assertDp("the task's hairline runs from its title", 32 + 30 + 12, under.first)
     }
 
     @Test
-    fun eachSectionIsOneCardOfSingleLineRows() {
+    fun eachSectionIsOneUntitledCardOfSingleLineRows() {
         show(feed())
         val single = with(rule.density) { AgentHomeSpec.TITLE_LINE.sp.toDp() }
         val titles = rule.onAllNodesWithTag(AgentHomeTags.ROW_TITLE, useUnmergedTree = true).fetchSemanticsNodes()
         assertTrue(titles.isNotEmpty())
         titles.forEach { assertDp("every title is one line", single, with(rule.density) { it.boundsInRoot.height.toDp() }) }
-        // What a row was, or what it is doing, is no longer said under its title.
-        rule.onAllNodesWithText("Task", useUnmergedTree = true).assertCountEquals(0)
-        rule.onAllNodesWithText("Waiting for your answer", useUnmergedTree = true).assertCountEquals(0)
-        // The tasks' card: three rows, back to back under their heading, a hairline between each and none under the last.
-        val heading = rule.node(AgentHomeTags.row("section-tasks")).bounds
+        // No section titles, and nothing said under a row's title.
+        for (text in listOf("Bots", "Tasks", "Task", "Waiting for your answer")) rule.onAllNodesWithText(text, useUnmergedTree = true).assertCountEquals(0)
+        // The tasks' card: 24 after the bots', three rows back to back, a hairline between each and none under the last.
+        val gap = rule.node(AgentHomeTags.row("section-tasks")).bounds
+        assertDp("cards stand 24 apart", 24, gap.height)
+        assertDp("after the bots' last row", rule.node(AgentHomeTags.row("agent-ab2")).bounds.bottom, gap.top)
         val rows = listOf("agent-at1", "agent-at2", "agent-at3").map { rule.node(AgentHomeTags.row(it)).bounds }
-        assertDp("the card starts under its heading", heading.bottom, rows[0].top)
+        assertDp("the card starts after its gap", gap.bottom, rows[0].top)
         rows.zipWithNext().forEach { (a, b) -> assertDp("rows touch", a.bottom, b.top) }
         val dividers = rule.onAllNodesWithTag(AgentHomeTags.ROW_DIVIDER, useUnmergedTree = true).fetchSemanticsNodes()
             .map { with(rule.density) { it.boundsInRoot.bottom.toDp() } }
@@ -252,6 +247,20 @@ class AgentHomeLayoutTest {
         rule.waitForIdle()
         assertEquals(listOf("/v0/bots/b1/avatar"), read)
         rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(2)
+    }
+
+    @Test
+    fun aClonedReposPictureIsReadToo() {
+        val read = mutableListOf<String>()
+        val pictures = AgentPictures("agent-connection-1") { path -> read += path; ByteArray(0) }
+        val bootstrap = Wire.bootstrap(projects = listOf(Wire.project("p1", "happy", emptyList(), avatarUrl = "/v0/projects/p1/avatar")))
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalAgentPictures provides pictures) {
+                AgentHomeScreen("Studio", feed(bootstrap), AgentLinkStatus.Connected, accounts, actions, now = NOW)
+            }
+        }
+        rule.waitForIdle()
+        assertEquals(listOf("/v0/projects/p1/avatar"), read)
     }
 
     @Test
@@ -404,17 +413,15 @@ class AgentHomeLayoutTest {
     @Test
     fun rowsGrowWithTheFontButStayFixed() {
         var row = 0.dp
-        var section = 0.dp
         rule.setHappyContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
-                row = AgentHomeSpec.conversationHeight()
-                section = AgentHomeSpec.sectionHeight()
+                row = AgentHomeSpec.rowHeight()
                 AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions, now = 1L)
             }
         }
-        // The lines scale as Android 14 scales them (non-linearly); the paddings don't.
+        // The line scales as Android 14 scales it (non-linearly); the paddings don't.
         assertTrue("taller than at 1.0", row > 56.dp)
         assertDp("conversation row", row, rule.node(AgentHomeTags.row("agent-ab1")).bounds.height)
-        assertDp("section row", section, rule.node(AgentHomeTags.row("section-bots")).bounds.height)
+        assertDp("folder row", row, rule.node(AgentHomeTags.row("folder-p1")).bounds.height)
     }
 }

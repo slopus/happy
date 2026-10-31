@@ -44,9 +44,11 @@ object Wire {
 
     fun membership(taskId: String, orderKey: String) = buildJsonObject { put("taskId", taskId); put("orderKey", orderKey) }
 
-    fun project(id: String, name: String, agents: List<JsonObject>, orderKey: String = "1", version: String = "01") = buildJsonObject {
+    fun project(id: String, name: String, agents: List<JsonObject>, orderKey: String = "1", version: String = "01", avatarUrl: String? = null) = buildJsonObject {
         put("id", id); put("name", name); put("version", version); put("orderKey", orderKey); put("status", "active")
         put("agents", JsonArray(agents))
+        // A repo the agent cloned: its picture, daemon-relative.
+        if (avatarUrl != null) put("avatar", buildJsonObject { put("url", avatarUrl) })
     }
 
     fun workspace(id: String, projectId: String, name: String, agents: List<JsonObject>, orderKey: String = "1") = buildJsonObject {

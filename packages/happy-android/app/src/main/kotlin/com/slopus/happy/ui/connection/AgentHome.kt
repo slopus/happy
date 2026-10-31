@@ -152,7 +152,6 @@ fun AgentHomeScreen(
     val colors = HappyTheme.colors
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    var expanded by rememberSaveable { mutableStateOf(listOf<String>()) }
     val listState = rememberLazyListState()
     val focus = LocalFocusManager.current
     val closeSearch = {
@@ -162,7 +161,7 @@ fun AgentHomeScreen(
     }
     BackHandler(enabled = searching, onBack = closeSearch)
 
-    val items = remember(feed, expanded) { agentHomeItems(feed, expanded.toSet()) }
+    val items = remember(feed) { agentHomeItems(feed) }
     val searchEntries = rememberSearchEntries(actions)
     val untitled = stringResource(R.string.session_new_chat)
     val headings = Triple(
@@ -174,8 +173,8 @@ fun AgentHomeScreen(
         agentSearchResults(feed, query, untitled, headings, searchEntries.first, searchEntries.second)
     }
 
-    // One ground under the bar and the page: the grouped background the section cards sit on.
-    val ground = colors.grouped.background
+    // One ground under the bar and the page, the chat's own (surface), light and dark; the cards sit on it, as on iOS.
+    val ground = colors.surface
     Column(modifier = Modifier.fillMaxSize().background(ground)) {
         if (searching) {
             AgentTopBar(
@@ -236,8 +235,7 @@ fun AgentHomeScreen(
                     state = listState,
                     now = now,
                     onOpen = actions.onOpenConversation,
-                    onToggle = { id -> expanded = if (id in expanded) expanded - id else expanded + id },
-                    contentPadding = PaddingValues(top = 4.dp),
+                    contentPadding = PaddingValues(),
                     header = statusMessage(status)?.let { text ->
                         { item(key = "banner", contentType = "banner") { Banner(text) } }
                     },
