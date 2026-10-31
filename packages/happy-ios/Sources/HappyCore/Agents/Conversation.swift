@@ -50,6 +50,8 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         /// A sidebar Prioritizing proposed (a `sidebar_proposal` artifact),
         /// drawn by the sidebar's own rows and answered where it stands.
         case sidebarProposal(artifactId: String)
+        /// An inline `<menu>`, or a question's prompt, as a ChoiceList.
+        case choices(ChoiceBlock)
     }
 
     /// A file of a message still on its way, by its piece's id
@@ -76,6 +78,8 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
     public var role: Role
     public var pieces: [Piece]
     public var delivery: Delivery
+    /// The story a person's message answers (`replyTo`), quoted above it.
+    public var storyReply: String?
 
     public init(id: String, role: Role, pieces: [Piece], delivery: Delivery) {
         self.id = id
@@ -244,6 +248,8 @@ public struct ChatSnapshot: Equatable, Sendable {
     /// hasn't taken yet: desktop draws it under the working line, as next
     /// in the queue, until the agent takes it up.
     public var queued = 0
+    /// The question's prompt the composer now answers, and which ("question/prompt").
+    public var answering: String?, answeringFor: String?
 
     public init() {}
 }
@@ -321,6 +327,15 @@ public actor Conversation {
     private var wait: AgentWire.AgentWait?
     private var retrying: AgentWire.AgentRetrying?
     private var question = false
+    private var actions = false
+    /// Presses sent, by "message/block", until `actionChoices` says so.
+    private var pressed: [String: Int] = [:]
+    /// The open question, what is ticked or typed for it, and the answers once sent.
+    private var asked: (id: String, context: String?, prompts: [AgentQuestion])?
+    private var questionRead = 0
+    private var picks: [String: [Int]] = [:]
+    private var typed: [String: String] = [:]
+    private var answers: [String: [String]]?
     private var subagentsRunning = 0
     /// The agent that manages this one: its messages are dialogue, never a collaborator's row.
     private var parentAgentId: String?
@@ -417,6 +432,14 @@ public actor Conversation {
     /// end may trim what is above, as nothing read is there.
     public func setReadsNewest(_ readsNewest: Bool) {
         self.readsNewest = readsNewest
+    }
+
+    /// `chatActions` with `tasks.rich` on: menus, questions and story quotes.
+    public func setActions(_ on: Bool) {
+        guard on != actions else { return }
+        actions = on
+        readQuestion()
+        publish()
     }
 
     /// desktop's `trimHistory`: a conversation nobody reads keeps only its
@@ -666,12 +689,14 @@ public actor Conversation {
             // Present and null clears; absent leaves it.
             if let value = changes["wait"] { wait = value == .null ? nil : Self.decode(AgentWire.AgentWait.self, value) }
             if let value = changes["retrying"] { retrying = value == .null ? nil : Self.decode(AgentWire.AgentRetrying.self, value) }
-            if let value = changes["pendingQuestionId"] { question = value.stringValue != nil }
+            if let value = changes["pendingQuestionId"] { question = value.stringValue != nil; readQuestion() }
             if let running = changes["subagents"]?["running"]?.numberValue { subagentsRunning = Int(running) }
             if let value = changes["title"] { snapshot.title = value.stringValue }
         case "agent.draft.updated":
             guard let draft = payload["draft"].flatMap({ Self.decode(AgentWire.Draft.self, $0) }) else { return }
             adoptDraft(draft, publishes: false)
+        case "question.created", "question.updated":
+            readQuestion()
         default:
             return
         }
@@ -757,8 +782,17 @@ public actor Conversation {
     /// task first: refused, nothing is drawn, `sendRefusal` says why, and
     /// false leaves the composer holding what it held.
     @discardableResult
-    public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = [], attachments: [OutgoingAttachment] = []) async -> Bool {
+    /// `answering` ("question/prompt", `answeringFor` when it was begun) answers
+    /// that prompt; false, keeping it, when the question is gone or the answer failed.
+    public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = [], attachments: [OutgoingAttachment] = [], answering: String? = nil) async -> Bool {
         guard !outgoing.contains(where: { $0.id == id }), messages[id] == nil else { return false }
+        if let answering {
+            guard let asked, answers == nil, let prompt = asked.prompts.first(where: { "\(asked.id)/\($0.id)" == answering }) else { return false }
+            (typed[prompt.id], picks[prompt.id]) = (text, prompt.multiSelect ? picks[prompt.id] : nil)
+            publish()
+            guard !asked.prompts.contains(where: \.multiSelect), !(await answer()) else { return true }
+            typed[prompt.id] = nil; publish(); return false
+        }
         sendRefusal = nil
         if let creation {
             do { agentId = try await creation.make() }
@@ -1228,6 +1262,75 @@ public actor Conversation {
         Task { try? await client.markRead(agentId) }
     }
 
+    // MARK: Choices
+
+    /// The open question, read while one is pending and choices are drawn;
+    /// an older read never replaces a newer one, and none clears it.
+    private func readQuestion() {
+        questionRead += 1
+        let read = questionRead
+        guard actions, question else { if asked != nil { (asked, picks, typed, answers) = (nil, [:], [:], nil); publish() }; return }
+        Task { [client, agentId] in
+            do {
+                let open = try await client.question(agentId)
+                guard read == questionRead else { return }
+                if open?.id != asked?.id { (picks, typed, answers) = ([:], [:], nil) }
+                asked = open
+                publish()
+            } catch {}
+        }
+    }
+
+    /// A menu's button sends an action message, drawn as the person's words;
+    /// a question's option is ticked, or answers it; nil is a submit.
+    public func choose(_ source: ChoiceBlock.Source, _ option: Int?) async {
+        guard actions else { return }
+        switch source {
+        case .menu(let messageId, let blockIndex, let buttons):
+            let key = "\(messageId)/\(blockIndex)"
+            guard let option, buttons.indices.contains(option), buttons[option].actionId == "reply", pressed[key] == nil,
+                  messages[messageId]?.actionChoices?[String(blockIndex)] == nil else { return }
+            let id = ClientID.make(), button = buttons[option]
+            func undo() { pressed[key] = nil; outgoing.removeAll { $0.id == id }; publish() }
+            pressed[key] = option
+            outgoing.append((id, button.text, [], true, nil))
+            publish()
+            // The words come back as the person's text message; the menu's choice, as `message.updated`.
+            do { if let message = try await client.press(agentId, id: id, action: ChatActions.press(button, messageId: messageId, blockIndex: blockIndex, controlIndex: option), mode: sendingMode()) {
+                receive(.object(["type": .string("message.created"), "payload": .object(["message": message])])) } }
+            catch AgentClientError.status(409, _, _) { undo(); reconcile() }
+            catch { snapshot.error = Store.describe(error); undo() }
+        case .question(let id, let promptId):
+            guard let asked, asked.id == id, answers == nil, let prompt = asked.prompts.first(where: { $0.id == promptId }) else { return }
+            if let option, ChatActions.offered(prompt).indices.contains(option) {
+                let had = picks[promptId] ?? []
+                picks[promptId] = !prompt.multiSelect ? [option] : had.contains(option) ? had.filter { $0 != option } : had + [option]
+                if !prompt.multiSelect { typed[promptId] = nil }
+                publish()
+            }
+            if option == nil || !asked.prompts.contains(where: \.multiSelect) { _ = await answer() }
+        case .answered:
+            break
+        }
+    }
+
+    /// Sends the answers once every prompt has one. Another client's first
+    /// (409): the question is read again, and the transcript shows theirs.
+    private func answer() async -> Bool {
+        guard let asked, answers == nil else { return false }
+        var given: [String: [String]] = [:]
+        for prompt in asked.prompts {
+            let values = (picks[prompt.id] ?? []).map { ChatActions.offered(prompt)[$0].label } + (typed[prompt.id].map { [$0] } ?? [])
+            guard !values.isEmpty else { return false }
+            given[prompt.id] = values
+        }
+        answers = given
+        publish()
+        do { try await client.answer(agentId, question: asked.id, answers: given); return true }
+        catch AgentClientError.status(409, _, _) { readQuestion(); return true }
+        catch { (answers, snapshot.error) = (nil, Store.describe(error)); publish(); return false }
+    }
+
     // MARK: Snapshot
 
     /// `columns` as the presentation asks, or 0 for desktop's justified
@@ -1300,6 +1403,13 @@ public actor Conversation {
             }
             items.append(ChatItem(id: send.id, role: .user, pieces: pieces, delivery: send.failure.map { .failed($0) } ?? (send.accepted ? .pending : .sending)))
         }
+        // The open question, last: a ChoiceList a prompt.
+        if let asked, actions { items.append(ChatItem(id: "question:\(asked.id)", role: .agent, pieces: asked.prompts.map { prompt in
+            .choices(ChatActions.question(prompt, source: .question(id: asked.id, prompt: prompt.id), answer: answers?[prompt.id], picked: picks[prompt.id] ?? [], typed: typed[prompt.id], context: prompt.id == asked.prompts.first?.id ? asked.context : nil))
+        }, delivery: .sent)) }
+        // The composer answers the first prompt offering no options or an "Other", not typed yet.
+        let open = answers == nil ? asked.flatMap { asked in asked.prompts.first { typed[$0.id] == nil && ChatActions.offered($0).count < max(1, $0.options.count) }.map { (asked.id, $0) } } : nil
+        (snapshot.answering, snapshot.answeringFor) = (open?.1.question, open.map { "\($0.0)/\($0.1.id)" })
         snapshot.items = items
         // Only steering for a run already going: a send that starts one is
         // its first message, not next in line.
@@ -1345,6 +1455,7 @@ public actor Conversation {
         wait = agent.wait
         retrying = agent.retrying
         question = agent.pendingQuestionId != nil
+        readQuestion()
         subagentsRunning = agent.subagents?.running ?? 0
         if agent.id == agentId {
             parentAgentId = agent.parentAgentId
@@ -1400,18 +1511,39 @@ public actor Conversation {
         default: return nil
         }
         var pieces: [ChatItem.Piece] = []
+        var blockIndex = 0
         for (index, block) in message.content.enumerated() {
             switch block {
             case .text(let text):
                 let trimmed = (manager.map { Self.inboundText(text, agentId: $0) } ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
-                pieces += role == .agent ? Self.pieces(trimmed, shown: shown, streaming: streaming || message.status == "streaming") : [.text(trimmed)]
+                let streams = streaming || message.status == "streaming"
+                guard role == .agent else { pieces.append(.text(trimmed)); continue }
+                for piece in Self.pieces(trimmed, shown: shown, streaming: streams) {
+                    guard actions, case .text(let markdown) = piece else { pieces.append(piece); continue }
+                    // `blockIndex` counts the message's menus, broken ones too, after media layouts, from 0.
+                    for segment in ChatActions.split(markdown, streaming: streams) {
+                        switch segment {
+                        case .text(let text): pieces.append(.text(text))
+                        case .broken(let text): pieces.append(.text(text)); blockIndex += 1
+                        case .menu(let buttons):
+                            pieces.append(.choices(ChatActions.choices(buttons, messageId: message.id, blockIndex: blockIndex, choice: message.actionChoices?[String(blockIndex)], pressed: pressed["\(message.id)/\(blockIndex)"])))
+                            blockIndex += 1
+                        }
+                    }
+                }
             case .image(let mimeType, let data):
                 let key = "\(message.id):\(index)"
                 if pictures[key] == nil { pictures[key] = Data(base64Encoded: data) }
                 if let bytes = pictures[key] { pieces.append(.picture(id: key, mimeType: mimeType, data: bytes)) }
             case .toolCall(let id, _, _, let presentation):
                 guard let presentation else { continue }
+                // A question answered: its prompts, chosen, where it was asked.
+                if actions, presentation.type == "user_input" {
+                    pieces += (presentation.questions ?? []).compactMap(AgentQuestion.init(json:)).map { prompt in
+                        .choices(ChatActions.question(prompt, source: .answered, answer: presentation.answers?[prompt.id]?.arrayValue?.compactMap(\.stringValue) ?? [])) }
+                    continue
+                }
                 if presentation.type == "artifact", let artifactId = presentation.artifactId, presentation.artifactType == "sidebar_proposal" {
                     // One card across every version: a revision redraws its rows.
                     if !pieces.contains(.sidebarProposal(artifactId: artifactId)) { pieces.append(.sidebarProposal(artifactId: artifactId)) }
@@ -1450,6 +1582,8 @@ public actor Conversation {
             }
         }
         guard !pieces.isEmpty else { return nil }
-        return ChatItem(id: message.id, role: role, pieces: pieces, delivery: role == .user && message.status == "pending" ? .pending : .sent)
+        var item = ChatItem(id: message.id, role: role, pieces: pieces, delivery: role == .user && message.status == "pending" ? .pending : .sent)
+        if actions, role == .user, message.replyTo?["kind"] == .string("story") { item.storyReply = message.replyTo?["artifactId"]?.stringValue }
+        return item
     }
 }

@@ -370,6 +370,29 @@ public final class AgentClient: Sendable {
         _ = try await send("POST", path, raw: body, sent: { progress(ranges.shares(sent: $0)) })
     }
 
+    /// A press: its one `action` block; the person's text message it is stored as comes back.
+    public func press(_ agentId: String, id: String, action: JSONValue, mode: AgentWire.Mode) async throws -> JSONValue? {
+        let body = try await send("POST", "/v0/agents/\(Self.escape(agentId))/send", json: .object([
+            "id": .string(id), "content": .array([action]), "delivery": .string("queue"),
+            "mode": try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode)),
+        ])).body
+        return try JSONDecoder().decode(JSONValue.self, from: body)["message"]
+    }
+
+    /// The open question, unless a secret or permission request (`GET /v0/agents/:id/question`).
+    public func question(_ agentId: String) async throws -> (id: String, context: String?, prompts: [AgentQuestion])? {
+        let question = try await decode(JSONValue.self, "GET", "/v0/agents/\(Self.escape(agentId))/question")["question"]
+        guard let question, let id = question["id"]?.stringValue, question["permissionRequest"] == nil,
+              let prompts = question["questions"]?.arrayValue, !prompts.contains(where: { $0["secretRequest"] != nil }) else { return nil }
+        return (id, question["context"]?.stringValue, prompts.compactMap(AgentQuestion.init(json:)))
+    }
+
+    public func answer(_ agentId: String, question questionId: String, answers: [String: [String]]) async throws {
+        _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/question/\(Self.escape(questionId))/answer", json: .object([
+            "answers": .object(answers.mapValues { .array($0.map { .string($0) }) }), "mutationId": .string(ClientID.make()),
+        ]))
+    }
+
     /// The composer's draft as the computer keeps it for this person.
     public func draft(_ agentId: String) async throws -> AgentWire.Draft {
         struct Response: Decodable { var draft: AgentWire.Draft }

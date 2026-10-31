@@ -106,6 +106,12 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// Desktop's way back to the newest message.
     private let jump = ChatJumpButton()
     private var jumpShown = false
+    /// Rich tasks on, as home has it: the way back sits at the right.
+    private var rich = false
+    private var homeWatch: Task<Void, Never>?
+    /// The composer's own placeholder, while it answers no question, and the
+    /// prompt its words answer, as it was when they were begun.
+    private var placeholder = "", answeringFor: String?
     private let card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.Composer.inputPlaceholder))
     private let keyboardTracker = UIView()
     /// The keyboard's top as its notifications last said (down: past any
@@ -327,6 +333,16 @@ final class ChatViewController: UIViewController, ComposeHosting {
         jump.alpha = 0
         jump.addTarget(self, action: #selector(jumpToLatest), for: .touchUpInside)
         view.addSubview(jump)
+        placeholder = card.configuration.placeholder
+        if !previewing {
+            homeWatch = Task { [weak self, engine = session.engine, conversation] in
+                for await home in await engine.snapshots() {
+                    guard let self, !Task.isCancelled else { return }
+                    if rich != (home.richTasks != nil) { rich.toggle(); view.setNeedsLayout() }
+                    await conversation.setActions(home.chatActions)
+                }
+            }
+        }
         view.addSubview(card)
         header.onOpen = { [weak self] in self?.openDetail() }
 
@@ -755,6 +771,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
         if !snapshot.items.isEmpty { dismissNewWorkPanel() }
         updatePrimary()
         updateChips()
+        // A question's prompt the composer answers reads in it.
+        if card.configuration.placeholder != snapshot.answering ?? placeholder { card.configuration.placeholder = snapshot.answering ?? placeholder }
+        if card.text.isEmpty { answeringFor = snapshot.answeringFor }
         replan()
         view.setNeedsLayout()
     }
@@ -1225,7 +1244,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         card.setLayoutFrame(screen.card)
         layoutNewWorkPanel(above: screen.card)
         picker?.follow()
-        let foot = ChatFootLayout(size: view.bounds.size, card: screen.card)
+        let foot = ChatFootLayout(size: view.bounds.size, card: screen.card, trailing: rich)
         composerScrim.setLayoutFrame(foot.scrim)
         jump.setLayoutFrame(foot.jump)
         // The transcript starts under the navigation bar and scrolls under it.
@@ -1591,7 +1610,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         newWorkPanel?.isLocked = true
         Task {
             await store.attentionInput()
-            let accepted = await conversation.send(id: id, text: text, attachments: picked)
+            let answering = answeringFor, accepted = await conversation.send(id: id, text: text, attachments: picked, answering: answering)
             acceptingSend = false
             if !accepted, !newWorkPanelGone { newWorkPanel?.isLocked = false }
             if accepted {
@@ -1601,7 +1620,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
                 staged.removeSent(pickedIDs)
             } else {
                 let refusal = await conversation.sendRefusal
-                let message = refusal.map { Strings.newWorkFailed(kind, $0) } ?? "The message could not be saved. Your text and attachments are still here."
+                // A question answered elsewhere first: the words stay, to send as a message next.
+                let stale = answering != nil && chat.answeringFor != answering
+                if stale { answeringFor = nil }
+                let message = refusal.map { Strings.newWorkFailed(kind, $0) } ?? (stale ? Strings.answeredElsewhere : "The message could not be saved. Your text and attachments are still here.")
                 let alert = UIAlertController(title: Strings.Common.error, message: message, preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
                 present(alert, animated: true)
@@ -1790,6 +1812,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
             navigationController?.pushViewController(ArtifactViewController(session: session, artifact: artifact), animated: true)
         case .toggleTool(let messageId):
             toggle(messageId)
+        case .choose(let source, let option):
+            Haptics.play(.send)
+            Task { [conversation] in await conversation.choose(source, option) }
         default:
             break
         }

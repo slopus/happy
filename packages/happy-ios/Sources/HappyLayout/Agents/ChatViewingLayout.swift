@@ -83,12 +83,14 @@ public struct ChatFootLayout: Equatable, Sendable {
     public var scrim: CGRect
     public var jump: CGRect
 
-    /// `card` is the composer's frame in a screen of `size`.
-    public init(size: CGSize, card: CGRect) {
+    /// `card` is the composer's frame in a screen of `size`. With rich
+    /// tasks (`trailing`) the circle sits bottom right instead, flush with the card's right.
+    public init(size: CGSize, card: CGRect, trailing: Bool = false) {
         typealias M = Metrics
         let top = max(0, card.minY - M.listGap)
         scrim = DockLayout.scrim(size: size, card: card)
-        jump = CGRect(x: ((size.width - M.jumpSize) / 2).rounded(), y: top - M.jumpGap - M.jumpSize, width: M.jumpSize, height: M.jumpSize)
+        let x = trailing ? card.maxX - M.jumpSize : ((size.width - M.jumpSize) / 2).rounded()
+        jump = CGRect(x: x, y: top - M.jumpGap - M.jumpSize, width: M.jumpSize, height: M.jumpSize)
     }
 
     /// Desktop shows the way back once the reader is more than a third of

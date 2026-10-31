@@ -196,8 +196,8 @@ final class StoryViewerPageView: UIView {
         styleField()
         heartButton.isHidden = author.isSelf || replyOnly
         viewsButton.isHidden = !author.isSelf || replyOnly
-        // Anything with somewhere for replies to go takes one: an agent's story, or a repost of one.
-        feedbackField.isHidden = !(isAgents || replyOnly && story.source != nil)
+        // Anything with somewhere for replies to go takes one: an agent's story, or a repost of one; ended, none.
+        feedbackField.isHidden = story.endedAt != nil || author.isSelf || !(isAgents || replyOnly && story.source != nil)
         repostButton.isHidden = !isAgents || replyOnly
         // Others' stories offer only their conversation, when there is one.
         moreButton.isHidden = !author.isSelf && story.source == nil

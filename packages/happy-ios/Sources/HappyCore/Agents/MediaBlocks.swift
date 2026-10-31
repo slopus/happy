@@ -23,7 +23,10 @@ public enum MediaBlocks {
     /// as JavaScript counts: Markdown and the layout blocks in it, in order;
     /// their texts joined are the input. A block holding no `<img` stays
     /// Markdown, and an incomplete block is always the last segment.
-    public static func split(_ text: String) -> [Segment] {
+    /// With `images` false any block of `roots` is kept (`ChatActions.split`).
+    public static func split(_ text: String) -> [Segment] { split(text, roots: roots, images: true) }
+
+    static func split(_ text: String, roots: [String], images: Bool) -> [Segment] {
         let units = Array(text.utf16)
         func string(_ range: Range<Int>) -> String { String(decoding: units[range], as: UTF16.self) }
         var segments: [Segment] = []
@@ -56,7 +59,7 @@ public enum MediaBlocks {
                 continue
             }
             if lineStart >= codeUntil {
-                if let (tag, tagStart) = blockStart(line) {
+                if let (tag, tagStart) = blockStart(line, roots: roots) {
                     let block = scanBlock(units, start: lineStart + tagStart, tag: tag)
                     pushMarkdown(markdownStart..<lineStart)
                     let html = string(lineStart..<block.end)
@@ -64,12 +67,12 @@ public enum MediaBlocks {
                         segments.append(.layout(Layout(raw: html, complete: false)))
                         return segments
                     }
-                    if block.image { segments.append(.layout(Layout(raw: html, complete: true))) } else { pushMarkdown(lineStart..<block.end) }
+                    if block.image || !images { segments.append(.layout(Layout(raw: html, complete: true))) } else { pushMarkdown(lineStart..<block.end) }
                     markdownStart = block.end
                     lineStart = block.end
                     continue
                 }
-                if newline == nil, isPartialStart(line) {
+                if newline == nil, isPartialStart(line, roots: roots) {
                     pushMarkdown(markdownStart..<lineStart)
                     segments.append(.layout(Layout(raw: String(decoding: line, as: UTF16.self), complete: false)))
                     return segments
@@ -99,7 +102,7 @@ public enum MediaBlocks {
 
     /// `BLOCK_START`: up to three spaces, `<` and a root tag, then a tab,
     /// newline, form feed, return, space, `/`, `>` or the end. The tag and where its `<` is.
-    static func blockStart(_ line: [UInt16]) -> (String, Int)? {
+    static func blockStart(_ line: [UInt16], roots: [String] = roots) -> (String, Int)? {
         var indent = 0
         while indent < line.count, indent < 4, line[indent] == space { indent += 1 }
         guard indent <= 3, indent < line.count, line[indent] == 0x3C else { return nil }
@@ -115,7 +118,7 @@ public enum MediaBlocks {
     }
 
     /// `PARTIAL_START`: a last line that is only `<` and the start of a root tag.
-    static func isPartialStart(_ line: [UInt16]) -> Bool {
+    static func isPartialStart(_ line: [UInt16], roots: [String] = roots) -> Bool {
         var indent = 0
         while indent < line.count, line[indent] == space { indent += 1 }
         guard indent <= 3, indent < line.count, line[indent] == 0x3C else { return false }

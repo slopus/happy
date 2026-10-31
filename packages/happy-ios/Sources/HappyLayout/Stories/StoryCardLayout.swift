@@ -53,4 +53,12 @@ public struct StoryCardLayout: Equatable, Sendable {
     }
 
     public static func size(width: CGFloat) -> CGSize { StoryCardLayout(width: width).size }
+
+    /// A story quoted over the reply to it (the mockup's 156 at 9:16), its poster named 8 in.
+    public static let quote = CGSize(width: 156, height: (156 / StoryCanvasLayout.aspect).rounded(.down))
+    /// Its caption, `height` tall, 9 over its foot on the viewer's foot scrim, which starts `scrimLead` above it.
+    public static func quote(size: CGSize, caption height: CGFloat) -> (name: CGRect, caption: CGRect, scrim: CGRect) {
+        let caption = CGRect(x: 8, y: size.height - 9 - height, width: max(0, size.width - 16), height: height), top = max(0, caption.minY - AgentStoryLayout.Viewer.scrimLead)
+        return (CGRect(x: 8, y: 8, width: caption.width, height: 18), caption, CGRect(x: 0, y: top, width: size.width, height: size.height - top))
+    }
 }

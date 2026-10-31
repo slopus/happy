@@ -40,7 +40,7 @@ final class Session {
     private var observers: [NSObjectProtocol] = []
     private var connectionObservation: AccountsObservation?
     private var connectionFollowing: Task<Void, Never>?
-    private var connectionSnapshot = HomeSnapshot()
+    private(set) var connectionSnapshot = HomeSnapshot()
     private var connectionStatus: ConnectionStatus = .connecting
     private var headerWatchers: [UUID: (Strings.HeaderStatus.State) -> Void] = [:]
     private(set) var headerState: Strings.HeaderStatus.State = .connecting

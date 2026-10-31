@@ -49,7 +49,7 @@ public enum StoryArtifacts {
         let frame = StoryFrame(id: "media", kind: kind, width: nil, height: nil, thumbhash: nil, durationMs: nil, asset: asset, available: true, overlays: round.map { [$0] } ?? [])
         let creator: StoryCreator = agentId.map { .agent(agentId: $0) } ?? .user(userId: story.poster.userId)
         return Story(
-            id: story.artifactId, status: story.state == "live" ? .posted : .deleted, authorUserId: agentId == nil ? story.poster.userId : nil, createdBy: creator,
+            id: story.artifactId, status: story.state == "taken_down" ? .deleted : .posted, authorUserId: agentId == nil ? story.poster.userId : nil, createdBy: creator,
             source: story.replyAgentId.map { StorySource(agentId: $0, toolCallId: "") }, caption: story.caption, frames: [frame],
             artifactVersion: story.artifactVersion, createdAt: story.postedAt, updatedAt: story.endedAt ?? story.postedAt, postedAt: story.postedAt,
             expiresAt: story.expiresAt, seen: story.seenBy.contains { $0.userId == me }, viewCount: nil, myReaction: nil, reactions: [],

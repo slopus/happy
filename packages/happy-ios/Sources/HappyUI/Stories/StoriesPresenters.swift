@@ -26,13 +26,19 @@ enum StoriesViewerPresenter {
     }
 
     /// Opens one posted story, from where it is drawn inline: among its
-    /// author's stories when the row has them, or on its own.
+    /// author's stories when the row has them, or on its own. Quoted
+    /// (`quoting`, its poster's name), an agent's opens on that agent's circle, even ended.
     @discardableResult
-    static func present(session: StoriesSession, story: Story, from host: UIViewController, origin: UIView?) -> StoryViewerViewController? {
+    static func present(session: StoriesSession, story: Story, from host: UIViewController, origin: UIView?, quoting: String? = nil) -> StoryViewerViewController? {
         let snapshot = session.snapshot
         if var feed = snapshot.feed, let index = feed.authors.firstIndex(where: { $0.storyIds.contains(story.id) }) {
             feed.stories = snapshot.stories
+            if let quoting, feed.authors[index].name.isEmpty { feed.authors[index].name = quoting }
             return present(session: session, feed: feed, authorIndex: index, storyId: story.id, from: host, origin: origin)
+        }
+        if let quoting, let agentId = story.ringAgentId {
+            let author = StoriesRow.ringAuthor(StoryRing(agentId: agentId, storyIds: [story.id], unseenCount: 0, latestPostedAt: story.postedAt), name: quoting)
+            return present(session: session, feed: StoryFeed(authors: [author], stories: [story.id: story], cursor: ""), authorIndex: 0, storyId: story.id, from: host, origin: origin)
         }
         let mine = snapshot.feed?.authors.first(where: \.isSelf)
         let isSelf = story.authorUserId == nil || story.authorUserId == mine?.userId

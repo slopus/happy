@@ -370,6 +370,7 @@ public struct MessageLayout: Equatable, Sendable {
         case page(height: CGFloat)
         /// A sidebar Prioritizing proposed, at the column's left.
         case proposal(SidebarProposalLayout.Input)
+        case choices(ChoiceListLayout.Input)
     }
 
     public enum Placed: Equatable, Sendable {
@@ -382,6 +383,7 @@ public struct MessageLayout: Equatable, Sendable {
         case page(CGRect)
         /// The card's frame; its insides are `layout`'s, from the frame's origin.
         case proposal(SidebarProposalLayout, frame: CGRect)
+        case choices(ChoiceListLayout, origin: CGPoint)
     }
 
     public var size: CGSize
@@ -396,6 +398,8 @@ public struct MessageLayout: Equatable, Sendable {
     /// The pictures the person sent, under the bubble at the right.
     public var pictures: [CGRect]
     public var status: CGRect?
+    /// The story a person's message answers, quoted above it at the right.
+    public var quote: CGRect?
 
     /// The first Markdown run, for an agent message that is only text.
     public var markdown: MarkdownLayout? {
@@ -449,6 +453,10 @@ public struct MessageLayout: Equatable, Sendable {
                 let proposal = SidebarProposalLayout(width: inner, input: input)
                 placed.append(.proposal(proposal, frame: CGRect(origin: CGPoint(x: left, y: y), size: proposal.size)))
                 y += proposal.size.height
+            case .choices(let input):
+                let choices = ChoiceListLayout(width: inner, input: input)
+                placed.append(.choices(choices, origin: CGPoint(x: left, y: y)))
+                y += choices.size.height
             }
         }
         return MessageLayout(size: CGSize(width: max(0, width), height: y + M.marginV), parts: placed, bubble: nil, text: nil, pictures: [], status: nil)
@@ -476,7 +484,7 @@ public struct MessageLayout: Equatable, Sendable {
     /// `showsStatus` keeps a line under the bubble for a refusal. `text` is
     /// nil for pictures sent alone; `pictures` are drawn as desktop draws a
     /// message's photos: justified, against the right, at most four.
-    public static func user(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable?, fold: Fold? = nil, pictures: [MediaFlow.Image] = [], showsStatus: Bool) -> MessageLayout {
+    public static func user(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable?, fold: Fold? = nil, pictures: [MediaFlow.Image] = [], showsStatus: Bool, quote: CGSize? = nil) -> MessageLayout {
         typealias M = Metrics
         let column = ChatColumn(rowWidth: width, maxContentWidth: maxContentWidth)
         let inner = max(0, column.width - 2 * M.marginH)
@@ -487,6 +495,8 @@ public struct MessageLayout: Equatable, Sendable {
         var textFrame: CGRect?
         var cut = false
         var foldControl: CGRect?
+        let quoted = quote.map { CGRect(x: right - $0.width, y: bottom, width: $0.width, height: $0.height) }
+        if let quoted { bottom = quoted.maxY + M.blockGap }
         if let text {
             let measure = max(0, maxBubble - 2 * M.bubblePaddingH)
             var textSize = text.size(fitting: measure)
@@ -533,7 +543,7 @@ public struct MessageLayout: Equatable, Sendable {
         }
         return MessageLayout(
             size: CGSize(width: max(0, width), height: bottom + M.marginV),
-            parts: [], bubble: bubble, text: textFrame, cut: cut, foldControl: foldControl, pictures: pictureFrames, status: status
+            parts: [], bubble: bubble, text: textFrame, cut: cut, foldControl: foldControl, pictures: pictureFrames, status: status, quote: quoted
         )
     }
 }

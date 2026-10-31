@@ -216,6 +216,10 @@ actor StoryArtifactsHarnessTransport: AgentTransport {
         case ("GET", "/v0/users/steve/photo"): return picture("steve.png")
         case ("GET", "/v0/users/kirill/photo"): return picture("kirill.png")
         case ("GET", "/v0/bots/system-health/avatar"): return picture("bot-health.webp")
+        // The wall, ended and gone from the feed: read by ID, as a reply's quote reads it.
+        case ("GET", "/v0/stories/s-ended"):
+            let wall = story(Self.entries.first { $0.id == "s-onboarding-2" }!).replacingOccurrences(of: "s-onboarding-2", with: "s-ended")
+            return ok(#"{"story":\#(wall.replacingOccurrences(of: #""state":"live","endedAt":null"#, with: #""state":"ended","endedAt":\#(now)"#))}"#)
         default: break
         }
         if method == "GET", path.hasPrefix("/v0/stories/s-onboarding") || path.hasPrefix("/v0/stories/s-kirill"), path.hasSuffix("/replies") {

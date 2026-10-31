@@ -323,8 +323,9 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(item)
                 order.append(view)
-            case .embed(.story(let id), let frame):
+            case .embed(.story(let id, let quote), let frame):
                 let view = take(&stories, &storyIndex) { StoryInlineView() }
+                view.quotes = quote
                 view.setLayoutFrame(frame)
                 view.apply(id)
                 order.append(view)

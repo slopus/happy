@@ -90,6 +90,7 @@ actor ChatPlanner {
                 case story(String)
                 case page(InlinePage)
                 case proposal(String)
+                case choices(ChoiceListPlan)
                 /// Words the planner writes, read but not selectable.
                 case line(MarkdownPiece)
             }
@@ -135,6 +136,11 @@ actor ChatPlanner {
                         parts.append(.markdown(markdown.blocks))
                         spoken.append(line)
                     }
+                case .choices(let block):
+                    let plan = ChoiceListPlan(block, environment: environment)
+                    drafts.append(.choices(plan))
+                    parts.append(.choices(plan.input))
+                    spoken.append(plan.spoken)
                 case .picture, .sentFile:
                     break
                 }
@@ -181,6 +187,9 @@ actor ChatPlanner {
                     items += markdown.draw(placed, origin: origin).items
                 case (.proposal(let layout, let frame), .proposal(let artifactId)):
                     proposals.append((artifactId, layout, frame))
+                case (.choices(let layout, let origin), .choices(let plan)):
+                    let drawn = plan.draw(layout, at: origin)
+                    (items, hits) = (items + drawn.items, hits + drawn.hits)
                 default:
                     break
                 }
@@ -217,10 +226,11 @@ actor ChatPlanner {
             let layout = MessageLayout.user(
                 width: width, maxContentWidth: key.maxContentWidth, text: body?.measurable,
                 fold: body.map { _ in .init(preview: preview.measurable, control: control.measurable, opened: opened, lineHeight: ChatTextStyles.text.lineHeight ?? 24) },
-                pictures: pictures.map(\.image), showsStatus: failure
+                pictures: pictures.map(\.image), showsStatus: failure, quote: item.storyReply.map { _ in StoryCardLayout.quote }
             )
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
+            if let id = item.storyReply, let frame = layout.quote { items.append(.embed(.story(id, quote: true), frame: frame)) }
             if let bubble = layout.bubble {
                 items.append(.box(ChatBox(frame: bubble, fill: Palette.userBubble, radius: M.bubbleRadius)))
                 if layout.foldControl != nil { hits.append(ChatHit(frame: bubble, action: .toggleTool(item.id))) }

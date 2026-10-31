@@ -1067,6 +1067,7 @@ final class ChatUltraQAProbe: NSObject {
         case .openMedia(let id): "media:\(id)"
         case .cancelUpload(let messageId, let piece): "cancelUpload:\(messageId):\(piece)"
         case .openArtifact(let artifact): "artifact:\(artifact.id)"
+        case .choose(_, let option): "choose:\(option ?? -1)"
         case .copyMenu: "copyMenu"
         case .selectable: "selectable"
         case .markdownSelectable: "markdownSelectable"

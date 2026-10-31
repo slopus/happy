@@ -72,6 +72,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var chatHeader: ChatHeaderHarness?
     private var pillShaders: PillShaderHarness?
     private var avatarSpeeds: AvatarSpeedHarness?
+    private var chatActions: ChatActionsHarness?
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -141,6 +142,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "chatHeader" {
             chatHeader = ChatHeaderHarness(window: window, arguments: arguments)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "chatActions" {
+            chatActions = ChatActionsHarness(window: window, arguments: arguments)
             return
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "richTasks" {

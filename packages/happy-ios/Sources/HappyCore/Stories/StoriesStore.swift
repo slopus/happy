@@ -357,7 +357,7 @@ public actor StoriesStore {
             guard artifacts, let wire = payload["story"].flatMap({ Self.decode(StoryArtifact.self, $0) }) else { return }
             let story = withEntries(StoryArtifacts.story(wire, me: me))
             adopt(story)
-            if story.status == .posted { place(story) } else { removed(story.id, version: nil) }
+            if story.status == .posted, story.endedAt == nil { place(story) } else { removed(story.id, version: nil) }
             if story.seen { markSeen(through: story.id) }
             reloadFeedSoon()
         case "user_settings.updated":
@@ -604,10 +604,12 @@ public actor StoriesStore {
     /// Reads a story the screens need and the store doesn't hold (a
     /// conversation's draft), once at a time.
     public func want(_ storyId: String) {
-        guard !artifacts, snapshot.stories[storyId] == nil, !snapshot.gone.contains(storyId), reading[storyId] == nil else { return }
+        guard snapshot.stories[storyId] == nil, !snapshot.gone.contains(storyId), reading[storyId] == nil else { return }
         reading[storyId] = Task {
             let story: Story?
-            do { story = try await client.story(storyId) }
+            // Story artifacts: by ID in any state, so a quoted one gone from the feed still shows.
+            do { story = !artifacts ? try await client.story(storyId) : try await client.decode(JSONValue.self, "GET", "/v0/stories/\(AgentClient.escape(storyId))")["story"]
+                .flatMap { Self.decode(StoryArtifact.self, $0) }.map { StoryArtifacts.story($0, me: me) } }
             catch AgentClientError.status(404, _, _) { notFound(storyId); return }
             catch { story = nil }
             if let story { await readEntries([story]) }

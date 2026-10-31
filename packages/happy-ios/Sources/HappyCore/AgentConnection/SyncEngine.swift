@@ -16,6 +16,8 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var people: [String: Person] = [:]
     /// Verified story artifacts and `tasks.rich` on: Stories read `/v0/stories`.
     public var storyArtifacts = false
+    /// Verified inline actions and `tasks.rich` on: chats draw menus and questions as choices.
+    public var chatActions = false
     /// The person this connection belongs to; nil on a standalone daemon.
     public var userId: String?
     public var error: String?
@@ -430,6 +432,7 @@ public actor SyncEngine {
             snapshot.richTasks = RichTasks.make(desktop, capabilities: capabilities, settings: snapshot.settings)
             snapshot.userId = desktop.profile?.userId
             snapshot.storyArtifacts = checked && capabilities?.storyArtifacts == true && snapshot.settings[RichTasks.richKey] == .bool(true)
+            snapshot.chatActions = checked && capabilities?.chatActions == true && snapshot.settings[RichTasks.richKey] == .bool(true)
             if let rich = snapshot.richTasks {
                 wantPeople((rich.unsectioned + rich.sections.flatMap(\.cards)).flatMap(\.faces) + (desktop.surfaces ?? []).flatMap { $0.members.compactMap(\.userId) })
             }

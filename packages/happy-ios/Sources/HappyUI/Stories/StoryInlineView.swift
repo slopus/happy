@@ -39,6 +39,9 @@ final class StoryInlineView: UIView {
     private var isAuthor = false
     /// Whether the store was asked for the story while it could answer.
     private var asked = false
+    /// Quoted over the reply to it: the canvas alone, its poster named; a tap opens it.
+    var quotes = false { didSet { if quotes != oldValue { setNeedsLayout(); render(session?.snapshot) } } }
+    private let poster = UILabel(), caption = UILabel(), scrim = StoryScrimView(), topFade = CAGradientLayer()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -76,6 +79,16 @@ final class StoryInlineView: UIView {
         status.textColor = UIColor(Palette.textSecondary)
         status.accessibilityIdentifier = "story-inline-status"
         addSubview(status)
+        (poster.font, poster.textColor) = (.systemFont(ofSize: 13, weight: .semibold), .white)
+        (poster.layer.shadowOpacity, poster.layer.shadowRadius, poster.layer.shadowOffset) = (0.4, 2, .zero)
+        addSubview(poster)
+        // The viewer's own scrims under the poster and the caption: over a white frame both read at 4.5:1 or more.
+        let top = AgentStoryLayout.Viewer.topScrim
+        (topFade.colors, topFade.locations) = (top.map { UIColor(white: 0, alpha: $0.1).cgColor }, top.map { NSNumber(value: Double($0.0 / top[top.count - 1].0)) })
+        (caption.font, caption.textColor, caption.numberOfLines) = (.systemFont(ofSize: 11), .white, 4)
+        caption.storyTextShadow()
+        canvas.layer.addSublayer(topFade)
+        [scrim, caption].forEach(canvas.addSubview)
         canvas.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(canvasTapped)))
         canvas.isUserInteractionEnabled = true
     }
@@ -163,7 +176,9 @@ final class StoryInlineView: UIView {
         canvas.isHidden = shown == nil
         placeholder.isHidden = shown != nil
         if let shown, let frame = shown.frames.first {
-            canvas.show(shown, frame: frame, media: session?.media, playsVideo: false)
+            var drawn = shown
+            if quotes { drawn.caption = nil }
+            canvas.show(drawn, frame: frame, media: session?.media, playsVideo: false)
         }
         if story?.status == .deleted, !off {
             message.text = Strings.Stories.deleted
@@ -175,18 +190,21 @@ final class StoryInlineView: UIView {
         if message.text == nil, shown == nil { spinner.startAnimating() } else { spinner.stopAnimating() }
         notice.isHidden = message.text == nil
         let isDraft = shown?.status == .draft
-        let mayPost = isDraft && isAuthor
+        let mayPost = isDraft && isAuthor && !quotes
         postButton.isHidden = !mayPost || posting
         editButton.isHidden = !mayPost
         editButton.isEnabled = !posting
         if mayPost, posting { postSpinner.startAnimating() } else { postSpinner.stopAnimating() }
-        status.isHidden = mayPost
+        status.isHidden = mayPost || quotes
+        (poster.isHidden, scrim.isHidden, caption.isHidden, topFade.isHidden, caption.text) = (!quotes || shown == nil, !quotes, !quotes, !quotes, shown?.caption)
+        poster.text = shown.flatMap { story in story.author?.agentId.flatMap { id in session?.v2?.connectionSnapshot.richTasks?.card(holding: id)?.name }
+            ?? snapshot?.feed?.authors.first { $0.userId == story.authorUserId }?.name }
         status.text = switch shown?.status {
         case .posted: Strings.Stories.posted
         case .draft: Strings.Stories.draft
         default: nil
         }
-        ring.isHidden = shown?.status != .posted
+        ring.isHidden = shown?.status != .posted || quotes
         // A story that changes state while in sight crossfades to it; the
         // placeholder drawn before the first snapshot is no state to leave.
         let state = mayPost && posting ? "posting" : shown.map(\.status.rawValue) ?? message.text ?? "loading"
@@ -201,9 +219,12 @@ final class StoryInlineView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = StoryCardLayout(width: bounds.width)
+        var layout = StoryCardLayout(width: bounds.width)
+        if quotes { layout.canvas = bounds }
         canvas.frame = layout.canvas
         placeholder.frame = layout.canvas
+        let quote = StoryCardLayout.quote(size: bounds.size, caption: caption.sizeThatFits(CGSize(width: max(0, bounds.width - 16), height: .greatestFiniteMagnitude)).height)
+        (poster.frame, caption.frame, scrim.frame, topFade.frame) = (quote.name, quote.caption, quote.scrim, CGRect(x: 0, y: 0, width: bounds.width, height: AgentStoryLayout.Viewer.topScrim[3].0))
         notice.frame = layout.notice
         if notice.isHidden {
             message.frame = placeholder.bounds.insetBy(dx: StoryCardLayout.Metrics.noticeInset, dy: 0)
@@ -262,7 +283,7 @@ final class StoryInlineView: UIView {
     @objc private func canvasTapped() {
         guard let story, let session, let host else { return }
         switch story.status {
-        case .posted: StoriesViewerPresenter.present(session: session, story: story, from: host, origin: canvas)
+        case .posted: StoriesViewerPresenter.present(session: session, story: story, from: host, origin: canvas, quoting: quotes ? poster.text ?? "" : nil)
         case .draft: if isAuthor { editTapped() }
         case .deleted: break
         }

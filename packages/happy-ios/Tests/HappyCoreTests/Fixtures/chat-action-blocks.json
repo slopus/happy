@@ -1,0 +1,108 @@
+[
+    {
+        "name": "a reply menu between paragraphs",
+        "markdown": "Ready to push?\n\n<menu>\n  <button data-action=\"reply\" data-emphasis>Push it</button>\n  <button data-action=\"reply\" data-text=\"Not yet, run the tests first\">Not yet</button>\n</menu>\n\nOr tell me what to change.",
+        "blocks": [
+            {
+                "kind": "menu",
+                "buttons": [
+                    {
+                        "label": "Push it",
+                        "action": { "id": "reply", "params": {}, "text": "Push it" }
+                    },
+                    {
+                        "label": "Not yet",
+                        "action": {
+                            "id": "reply",
+                            "params": { "text": "Not yet, run the tests first" },
+                            "text": "Not yet, run the tests first"
+                        }
+                    }
+                ]
+            }
+        ],
+        "stripped": "Ready to push?\n\nOr tell me what to change."
+    },
+    {
+        "name": "presentation attributes are not parameters, and entities are decoded",
+        "markdown": "<menu><button data-action=\"reply\" data-mark=\"claude\" data-icon=\"rocket\" data-emphasis>Use &amp; draft</button><button data-action=\"reply\" data-emphasis>Shorter</button></menu>\n",
+        "blocks": [
+            {
+                "kind": "menu",
+                "buttons": [
+                    {
+                        "label": "Use & draft",
+                        "action": { "id": "reply", "params": {}, "text": "Use & draft" }
+                    },
+                    {
+                        "label": "Shorter",
+                        "action": { "id": "reply", "params": {}, "text": "Shorter" }
+                    }
+                ]
+            }
+        ],
+        "stripped": ""
+    },
+    {
+        "name": "an unknown action is drawn but cannot be pressed",
+        "markdown": "<menu>\n  <button data-action=\"deploy\" data-env=\"prod\">Deploy</button>\n  <button>Nothing</button>\n</menu>\n",
+        "blocks": [
+            {
+                "kind": "menu",
+                "buttons": [{ "label": "Deploy" }, { "label": "Nothing" }]
+            }
+        ],
+        "stripped": ""
+    },
+    {
+        "name": "blocks are numbered across the message, and a broken one keeps its number",
+        "markdown": "<menu><button data-action=\"reply\">Go</button><a>Link</a></menu>\nThen:\n<menu><button data-action=\"reply\">Second</button></menu>\n",
+        "blocks": [
+            null,
+            {
+                "kind": "menu",
+                "buttons": [
+                    {
+                        "label": "Second",
+                        "action": { "id": "reply", "params": {}, "text": "Second" }
+                    }
+                ]
+            }
+        ],
+        "stripped": "Then:"
+    },
+    {
+        "name": "a menu with anything but buttons, a button with markup, or no buttons is text",
+        "markdown": "<menu><li>One</li></menu>\n\n<menu><button data-action=\"reply\"><b>Bold</b></button></menu>\n\n<menu></menu>\n",
+        "blocks": [null, null, null],
+        "stripped": ""
+    },
+    {
+        "name": "fenced code, code spans, and indented code are not blocks",
+        "markdown": "```html\n<menu><button data-action=\"reply\">No</button></menu>\n```\n\n`<menu>` is a tag.\n\n    <menu><button data-action=\"reply\">No</button></menu>\n",
+        "blocks": [],
+        "stripped": "```html\n<menu><button data-action=\"reply\">No</button></menu>\n```\n\n`<menu>` is a tag.\n\n    <menu><button data-action=\"reply\">No</button></menu>\n"
+    },
+    {
+        "name": "a menu still streaming is held back and not numbered",
+        "markdown": "Pick one:\n\n<menu>\n  <button data-action=\"reply\">A</button>\n",
+        "blocks": [],
+        "stripped": "Pick one:\n\n<menu>\n  <button data-action=\"reply\">A</button>\n"
+    },
+    {
+        "name": "a media layout figure stays a layout, and a menu after it is block 0",
+        "markdown": "<figure><img src=\"shot.png\"></figure>\n\n<menu><button data-action=\"reply\">Looks good</button></menu>\n",
+        "blocks": [
+            {
+                "kind": "menu",
+                "buttons": [
+                    {
+                        "label": "Looks good",
+                        "action": { "id": "reply", "params": {}, "text": "Looks good" }
+                    }
+                ]
+            }
+        ],
+        "stripped": "<figure><img src=\"shot.png\"></figure>"
+    }
+]

@@ -386,6 +386,9 @@ extension AgentWire {
         /// follows the artifact; anything else is that version.
         public var version: Int?
         public var shows: String?
+        /// A `user_input` presentation: what was asked, and the answers by prompt.
+        public var questions: [JSONValue]?
+        public var answers: JSONValue?
     }
 
     public enum Block: Equatable, Sendable, Codable {
@@ -444,6 +447,9 @@ extension AgentWire {
         /// failure (`failure`), kept as sent; `Failure` reads them.
         public var error: JSONValue?
         public var failure: JSONValue?
+        /// Protocol 34: inline action choices by block index; the story a person's message answers.
+        public var actionChoices: JSONValue?
+        public var replyTo: JSONValue?
 
         public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil, error: JSONValue? = nil, failure: JSONValue? = nil) {
             self.id = id

@@ -154,6 +154,9 @@ extension Strings {
     public static let jumpToLatest = "Jump to latest"
     public static let jumpWorking = "working"
     public static let jumpIdle = "idle"
+    /// A multi-select question's ChoiceList submit, en.ts's `tools.askUserQuestion.submit`.
+    public static let choicesSubmit = "Submit Answer"
+    public static let answeredElsewhere = "This question was already answered. Your text is still here."
     /// A tile's accessibility value, which UI tests wait on.
     public static let mediaLoading = "loading"
     public static let mediaLoaded = "loaded"

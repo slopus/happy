@@ -98,7 +98,7 @@ enum ChatDrawItem {
 /// What an embedded view shows.
 enum ChatEmbed: Equatable, Sendable {
     /// A story, by its ID (`StoryInlineView`).
-    case story(String)
+    case story(String, quote: Bool = false)
     /// An HTML artifact's page (`InlinePageView`).
     case page(InlinePage)
 }
@@ -186,6 +186,8 @@ enum ChatRowAction: Equatable, Sendable {
     case openMedia(String)
     /// A V2 artifact's card.
     case openArtifact(Artifact)
+    /// A ChoiceList's option, by index, or its submit (nil).
+    case choose(ChoiceBlock.Source, option: Int?)
 
     // Long presses
 
