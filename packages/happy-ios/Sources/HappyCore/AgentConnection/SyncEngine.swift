@@ -46,6 +46,14 @@ public actor SyncEngine {
     private var dirty = false
     private var revision = 0
     private var sidebarSyncing = false
+    /// The team members the listed tasks belong to, as last read, kept
+    /// beside the bootstrap (`TeamUser`); those asked for and not named,
+    /// left until the stream comes back; and those to read again.
+    private var users: [String: TeamUser] = [:]
+    private var usersMissing: Set<String> = []
+    private var usersAgain: Set<String> = []
+    private var usersDirty = false
+    private var usersRead: Task<Void, Never>?
 
     public init(client: AgentClient, directory: URL?) {
         self.client = client
@@ -101,8 +109,8 @@ public actor SyncEngine {
         generation += 1
         verified = false
         let pausedGeneration = generation
-        let tasks = [runner, refresh, delivery, messageDelivery].compactMap { $0 }
-        runner = nil; refresh = nil; delivery = nil; messageDelivery = nil
+        let tasks = [runner, refresh, delivery, messageDelivery, usersRead].compactMap { $0 }
+        runner = nil; refresh = nil; delivery = nil; messageDelivery = nil; usersRead = nil
         tasks.forEach { $0.cancel() }
         for task in tasks { await task.value }
         guard generation == pausedGeneration else { return }
@@ -139,6 +147,10 @@ public actor SyncEngine {
                 desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(cached.value))
                 cursor = cached.cursor
             }
+            if users.isEmpty, let kept = try await database.checkpoint("users"),
+               let list = try? JSONDecoder().decode([Lossy<TeamUser>].self, from: JSONEncoder().encode(kept.value)) {
+                users = Dictionary(list.compactMap(\.value).map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+            }
             snapshot.settings = try await database.settings()
             guard current(generation) else { return }
             derive()
@@ -170,13 +182,19 @@ public actor SyncEngine {
                         let hello = try JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8))
                         if hello["gap"] == .bool(true) { scheduleReconcile(generation) }
                         profileChanged()
+                        // Faces may have changed while away.
+                        usersMissing = []
+                        readAuthors(generation, again: Set(users.keys))
                         try await resyncSidebar(generation)
                         continue
                     }
                     guard let event = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8)) else { continue }
                     await spaces.externalEvent(event)
                     guard current(generation) else { return }
-                    if event["type"] == .string("profile.updated") { profileChanged() }
+                    if event["type"] == .string("profile.updated") {
+                        profileChanged()
+                        authorChanged(event["payload"]?["userId"]?.stringValue, generation)
+                    }
                     if event["type"] == .string("user_settings.updated"), let value = event["payload"]?["setting"],
                        let setting = try? JSONDecoder().decode(UserSetting.self, from: JSONEncoder().encode(value)) {
                         try await database().receiveSetting(setting.key, value: setting.value, version: setting.version)
@@ -281,6 +299,63 @@ public actor SyncEngine {
         cursor = desktop.cursor
         snapshot.settings = try await database.settings()
         derive()
+        readAuthors(generation)
+    }
+
+    // MARK: Authors
+
+    /// A member's name or picture changed (`profile.updated` names them in
+    /// a team): theirs is read again. The signed-in person's own comes with
+    /// the bootstrap.
+    private func authorChanged(_ id: String?, _ generation: Int) {
+        guard let id, let desktop, let me = desktop.profile?.userId else { return }
+        if id == me { return scheduleReconcile(generation) }
+        guard SidebarRows.authors(desktop).contains(id) else { return }
+        usersMissing.remove(id)
+        readAuthors(generation, again: [id])
+    }
+
+    /// Reads the members the listed tasks belong to that this phone doesn't
+    /// know yet, and `again` those that changed: one read at a time, an ask
+    /// made meanwhile read when it lands. None outside a team.
+    private func readAuthors(_ generation: Int, again: Set<String> = []) {
+        usersAgain.formUnion(again)
+        usersDirty = true
+        guard usersRead == nil else { return }
+        usersRead = Task {
+            while usersDirty && current(generation) {
+                usersDirty = false
+                guard let desktop else { break }
+                let authors = SidebarRows.authors(desktop)
+                let wanted = authors.filter { (users[$0] == nil && !usersMissing.contains($0)) || usersAgain.contains($0) }.sorted()
+                usersAgain.subtract(wanted)
+                guard !wanted.isEmpty else { continue }
+                var read: [TeamUser] = []
+                do {
+                    for start in stride(from: 0, to: wanted.count, by: 100) {
+                        read += try await client.teamUsers(Array(wanted[start..<min(start + 100, wanted.count)]))
+                    }
+                } catch {
+                    // Asked again when the stream comes back; meanwhile
+                    // they wear their placeholders.
+                    usersMissing.formUnion(wanted)
+                    continue
+                }
+                guard current(generation) else { break }
+                usersMissing.formUnion(Set(wanted).subtracting(read.map(\.id)))
+                // Members no listed task belongs to any more are let go.
+                var next = users.filter { authors.contains($0.key) }
+                for user in read { next[user.id] = user }
+                // A read that changed nothing redraws and writes nothing.
+                guard next != users else { continue }
+                users = next
+                let kept = try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(next.values.sorted { $0.id < $1.id }))
+                if let kept { try? await database().commit(.init(value: kept, cursor: nil), named: "users") }
+                guard current(generation) else { break }
+                derive()
+            }
+            if self.generation == generation { usersRead = nil }
+        }
     }
 
     public func setProjectsHidden(_ hidden: Bool) async throws {
@@ -358,7 +433,7 @@ public actor SyncEngine {
     private func derive() {
         snapshot.loaded = desktop != nil
         if let desktop {
-            snapshot.allRows = SidebarRows.make(desktop, settings: snapshot.settings)
+            snapshot.allRows = SidebarRows.make(desktop, settings: snapshot.settings, users: users)
             snapshot.rows = Rows.visible(snapshot.allRows)
         }
         publish()

@@ -37,6 +37,19 @@ person's or the one the daemon made, read at `/v0/projects/<id>/avatar`
 with its thumbhash first), the house for the home project, and while it has
 neither yet, the placeholder its id seeds (`SidebarRows.projectMark`).
 
+On a team computer (the bootstrap's `profile.userId` is set) a task wears
+the face of the member it belongs to, who made it (`task.ownerUserId`), in
+place of its placeholder (`SidebarRows.authorMark`): the person's own from
+the profile's photo, everyone else's from `GET /v0/users?ids=`, read at
+`/v0/users/<id>/photo` with the thumbhash first. A member without a picture,
+or not read yet, wears their own placeholder, seeded by their bare user ID
+as stories seed it. A task nobody owns, bots, Surfaces and projects are
+unchanged, and so is a standalone computer. The engine reads the authors it
+doesn't know after each bootstrap, again on reconnect and on a
+`profile.updated` naming one, and keeps them in a `users` checkpoint beside
+the bootstrap, so a relaunch draws them offline. A task's profile wears its
+home row's mark.
+
 The list is `SidebarList`, on UltraView: `SidebarLayout`'s grouped cards
 cut into one slot per row (`SidebarLayout.slots`), laid out and drawn off
 the main thread (`SidebarItemDrawing`), with the marks, rings, fills and

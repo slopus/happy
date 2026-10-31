@@ -71,11 +71,33 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
         public var agent: AgentWire.Agent?
         public var avatar: AgentWire.Avatar?
         public var canArchive: Bool?
+        /// A task's: the team member it belongs to, who made it; nil on a
+        /// standalone computer, for a bot, or when nobody was identified.
+        public var ownerUserId: String?
     }
     public struct Membership: Codable, Equatable, Sendable {
         public var taskId: String
     }
-    public struct Profile: Codable, Equatable, Sendable { public var userId: String? }
+    /// The person signed in: their team user (nil outside a team) and
+    /// their picture's ThumbHash.
+    public struct Profile: Codable, Equatable, Sendable {
+        public var userId: String?
+        public var photo: AgentWire.Profile.Photo?
+
+        public init(userId: String? = nil, photo: AgentWire.Profile.Photo? = nil) {
+            self.userId = userId
+            self.photo = photo
+        }
+
+        enum CodingKeys: String, CodingKey { case userId, photo }
+
+        /// A picture it can't read is none, never a lost bootstrap.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            userId = try container.decodeIfPresent(String.self, forKey: .userId)
+            photo = try? container.decodeIfPresent(AgentWire.Profile.Photo.self, forKey: .photo)
+        }
+    }
     public struct Surface: Codable, Equatable, Sendable {
         public struct Member: Codable, Equatable, Sendable {
             public var userId: String?

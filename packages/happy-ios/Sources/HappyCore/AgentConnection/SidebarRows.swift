@@ -6,7 +6,8 @@ import HappyWire
 /// Sections have no titles and nothing folds: each section is parted from
 /// the one before by a separator, and every nested row is shown.
 public enum SidebarRows {
-    public static func make(_ desktop: DesktopSnapshot, settings: [String: JSONValue]) -> [Row] {
+    /// `users`: the team members the tasks belong to, as last read, by ID.
+    public static func make(_ desktop: DesktopSnapshot, settings: [String: JSONValue], users: [String: TeamUser] = [:]) -> [Row] {
         var rows: [Row] = []
         var descendants = Set<String>()
         let tasksByID = Dictionary((desktop.tasks ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -46,6 +47,9 @@ public enum SidebarRows {
             row.activityTime = agent.activityAt.map(Rows.minute)
             if kind == "bot", let owner, let avatar = owner.avatar {
                 row.mark = .image(path: "/v0/bots/\(AgentClient.escape(owner.id))/avatar", thumbhash: avatar.thumbhash)
+            }
+            if kind == "task", let owner, let author = authorMark(owner, profile: desktop.profile, users: users) {
+                row.mark = author
             }
             rows.append(row)
             for child in children { agentRow(child, depth: depth + 1, muted: muted) }
@@ -119,6 +123,29 @@ public enum SidebarRows {
     public static func profileMark(_ row: Row?, agentId: String) -> Row.Mark {
         guard let mark = row?.mark, mark != .none else { return .placeholder(seed: agentId) }
         return mark
+    }
+
+    /// A team task's face, in place of its own placeholder: the member it
+    /// belongs to, who made it (the signed-in person for their own tasks).
+    /// Their picture over its ThumbHash; while they have none, or before
+    /// they are read, their own placeholder, picked by their user ID as
+    /// stories pick it, so they look the same on every phone. Nil outside a
+    /// team (no signed-in team user) or for a task nobody owns: it keeps its
+    /// own placeholder.
+    static func authorMark(_ task: DesktopSnapshot.Owner, profile: DesktopSnapshot.Profile?, users: [String: TeamUser]) -> Row.Mark? {
+        guard let me = profile?.userId, let author = task.ownerUserId else { return nil }
+        let photo = author == me ? profile?.photo : users[author]?.photo
+        guard let photo else { return .placeholder(seed: author) }
+        return .image(path: TeamUser.photoPath(author), thumbhash: photo.thumbhash)
+    }
+
+    /// The members whose faces the listed tasks wear, other than the
+    /// signed-in person, whose own is the profile's; none outside a team.
+    public static func authors(_ desktop: DesktopSnapshot) -> Set<String> {
+        guard let me = desktop.profile?.userId else { return [] }
+        let joined = Set((desktop.taskMemberships ?? []).map(\.taskId))
+        let listed = (desktop.tasks ?? []).filter { joined.contains($0.id) && $0.status != "archived" }
+        return Set(listed.compactMap(\.ownerUserId)).subtracting([me])
     }
 
     /// The rows while agent stories are on (`rings` set, keyed by agent):
