@@ -214,7 +214,6 @@ extension Strings {
     public static let searchSettings = "Search settings"
     public static let connectAgentTile = "Connect Agent"
     public static let more = "More"
-    public static let status = "Status"
     public static let account = "Account"
     public static let appearance = "Appearance"
     public static let language = "Language"

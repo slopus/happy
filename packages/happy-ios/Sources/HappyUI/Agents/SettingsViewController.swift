@@ -16,9 +16,10 @@ import UIKit
 /// keeps this page on top); tapping its circle makes it the active one and
 /// goes back to its home. "+" adds a computer in the link sheet.
 ///
-/// A computer's page: the person's own Profile there (`ProfileViewController`);
-/// asking its agent to change its name or picture (`ChiefOfStaffAsk`,
-/// nothing renamed here); its status; Appearance (the theme, which
+/// A computer's page: the agent's own picture over its name, whose menu
+/// asks it to change its picture or name (`AgentEditButton`,
+/// `ChiefOfStaffAsk`; nothing renamed here); the person's own Profile
+/// there (`ProfileViewController`); Appearance (the theme, which
 /// each profile keeps on this phone, and Hide projects); adding a computer
 /// or a Happy account; About; Disconnect. A Happy account's: its own pages
 /// (Account, Appearance, Language, Voice, Agents), its connected services,
@@ -27,9 +28,15 @@ import UIKit
 final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISearchResultsUpdating, UISearchControllerDelegate {
     /// Pushes settings over `controller`, on `computer`'s page (the active
     /// profile's when nil), showing the row `reveal` names if there is one.
-    /// Once: a second tap meanwhile does nothing.
+    /// Once: a second tap meanwhile does nothing. The agent's two asks,
+    /// found by home's search, run as its picture's menu runs them: Happy's
+    /// conversation opens over home with the words typed in.
     static func open(context: AppContext, computer: String?, reveal: String? = nil, from controller: UIViewController) {
         guard let navigation = controller.navigationController, navigation.topViewController === controller else { return }
+        let asks = [SettingsIndex.changeAgentName.id: ChatPrefill.agentName, SettingsIndex.changeAgentAvatar.id: ChatPrefill.agentAvatar]
+        if let ask = reveal.flatMap({ asks[$0] }), let computer, let session = Session.session(for: computer, context: context) {
+            return ChiefOfStaffAsk.open(ask, session: session, from: controller)
+        }
         let settings = SettingsViewController(context: context, computer: computer)
         settings.reveal = reveal
         navigation.pushViewController(settings, animated: true)
@@ -81,6 +88,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private var profileName = ""
     private var profilePhoto: UIImage?
     private var appeared = false
+    /// The agent's own picture over its name, on a connection's page.
+    let agentButton = AgentEditButton()
     /// The nested page open over this one, drawn again with it.
     private weak var page: SettingsPageViewController?
     /// The Happy account's own settings, while its page shows.
@@ -122,6 +131,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         subtitle.font = Fonts.ui(.regular, size: 17)
         subtitle.textColor = UIColor(Palette.settingsSecondary)
         subtitle.textAlignment = .center
+        agentButton.ask = { [weak self] in self?.ask($0) }
+        agentButton.isHidden = true
+        scroll.addSubview(agentButton)
         scroll.addSubview(name)
         scroll.addSubview(subtitle)
         empty.text = Strings.nothingFound
@@ -388,11 +400,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             return [
                 accountRows(),
                 [Row(Index.profile, image: profilePhoto, value: profileName.isEmpty ? nil : profileName, action: { [weak self] in self?.openProfile() })],
-                [
-                    Row(Index.changeAgentName, action: { [weak self] in self?.ask(.agentName) }),
-                    Row(Index.changeAgentAvatar, action: { [weak self] in self?.ask(.agentAvatar) }),
-                    Row(Index.status, value: profile.subtitle, accessory: .none),
-                ],
                 [Row(Index.appearance, action: { [weak self] in self?.open(.appearance) })],
                 aboutRows(),
                 [Row(id: "disconnect", title: Strings.disconnect, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) })],
@@ -498,6 +505,15 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 self?.choose(index)
             }))
         }
+        // The agent's two asks live in its picture's menu; found here, they run.
+        if let profile = shown, profile.isAgentConnection {
+            for (entry, ask) in [(SettingsIndex.changeAgentName, ChatPrefill.agentName), (SettingsIndex.changeAgentAvatar, ChatPrefill.agentAvatar)] where entry.title.localizedCaseInsensitiveContains(query) {
+                found.append(SettingsRow(entry, accessory: .none, action: { [weak self] in
+                    self?.endSearch()
+                    self?.ask(ask)
+                }))
+            }
+        }
         if let profile = shown {
             let pages = Page.allCases.filter { $0 != .appearance || profile.isAgentConnection }.flatMap { rows($0).joined() }
             found += (rowsFor(profile).joined() + pages).filter { $0.title.localizedCaseInsensitiveContains(query) && !$0.destructive }
@@ -519,6 +535,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         let searching = query != nil
         name.isHidden = searching
         subtitle.isHidden = searching
+        // A connection's page has the agent's picture over its name, the
+        // one the accounts card shows; a Happy account's has none.
+        agentButton.isHidden = searching || !profile.isAgentConnection
+        if profile.isAgentConnection { agentButton.picture = images[profile.id] }
         empty.isHidden = !(searching && !(query ?? "").isEmpty && rows.isEmpty)
         for (label, value) in [(name, profile.name), (subtitle, profile.subtitle)] where label.text != value {
             if animated {
@@ -550,8 +570,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         let specs = rows.map { card in
             card.map { SettingsLayout.RowSpec(hasIcon: $0.icon != nil, valueWidth: SettingsCardView.valueWidth($0.value), accessory: $0.accessory) }
         }
-        let layout = SettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, searching: searching, showsStrip: false)
+        let picture = shown?.isAgentConnection == true ? agentButton.intrinsicContentSize.width : nil
+        let layout = SettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, searching: searching, showsStrip: false, picture: picture)
         settingsLayout = layout
+        agentButton.frame = layout.picture
         name.frame = layout.name
         subtitle.frame = layout.subtitle
         empty.frame = layout.empty

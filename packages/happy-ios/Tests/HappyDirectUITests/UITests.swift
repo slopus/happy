@@ -2549,8 +2549,9 @@ final class UITests: XCTestCase {
         // picture, and the person's own profile has a page of its own.
         XCTAssertTrue(app.descendants(matching: .any)["settings-name"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.descendants(matching: .any)["settings:edit-name"].exists, "Edit name is still there")
-        XCTAssertTrue(app.descendants(matching: .any)["settings:change-agent-name"].exists, "no Change agent name")
-        XCTAssertTrue(app.descendants(matching: .any)["settings:change-agent-avatar"].exists, "no Change agent avatar")
+        XCTAssertFalse(app.descendants(matching: .any)["settings:change-agent-name"].exists, "Change agent name is still a row")
+        XCTAssertFalse(app.descendants(matching: .any)["settings:status"].exists, "Status is still there")
+        XCTAssertTrue(app.descendants(matching: .any)["settings-agent-menu"].exists, "no agent picture on the page")
         XCTAssertTrue(app.descendants(matching: .any)["settings:profile"].exists, "no Profile row")
         capture("settings-asks")
 

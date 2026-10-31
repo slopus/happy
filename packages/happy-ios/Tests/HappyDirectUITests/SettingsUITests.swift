@@ -181,13 +181,13 @@ final class SettingsUITests: XCTestCase {
         // renames in place, the heading included.
         XCTAssertTrue(element("settings-name").waitForExistence(timeout: 3))
         XCTAssertFalse(element("settings:edit-name").exists, "Edit name is still there")
-        XCTAssertTrue(row("change-agent-name").exists, "no Change agent name")
-        XCTAssertTrue(row("change-agent-avatar").exists, "no Change agent avatar")
+        XCTAssertFalse(element("settings:change-agent-name").exists, "Change agent name is still a row")
+        XCTAssertFalse(element("settings:status").exists, "Status is still there")
+        XCTAssertTrue(element("settings-agent-menu").exists, "no agent picture on the page")
         XCTAssertTrue(row("profile").exists, "no Profile row")
         element("settings-name").tap()
         XCTAssertFalse(app.textFields["settings-rename"].waitForExistence(timeout: 1), "tapping the name still renames in place")
         capture("settings-asks")
-        XCTAssertTrue(element("settings:status").exists, "no status row")
 
         let prioritizing = app.switches["settings-toggle:prioritizing"]
         XCTAssertTrue(prioritizing.waitForExistence(timeout: 10), "no Prioritizing switch")

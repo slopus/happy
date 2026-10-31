@@ -17,7 +17,6 @@ enum SettingsIndex {
     static var profile: Entry { Entry(id: "profile", title: Strings.Profile.title, glyph: "person-circle-outline", tile: .gray) }
     static var changeAgentName: Entry { Entry(id: "change-agent-name", title: Strings.changeAgentName, glyph: "create-outline", tile: .blue) }
     static var changeAgentAvatar: Entry { Entry(id: "change-agent-avatar", title: Strings.changeAgentAvatar, glyph: "image-outline", tile: .orange) }
-    static var status: Entry { Entry(id: "status", title: Strings.status, glyph: "desktop-outline", tile: .green) }
     static var hideProjects: Entry { Entry(id: "hide-projects", title: "Hide projects", glyph: "folder-outline", tile: .orange) }
     static var appearance: Entry { Entry(id: "appearance", title: Strings.Settings.appearance, glyph: "color-palette-outline", tile: .purple) }
     static var about: Entry { Entry(id: "about", title: Strings.Settings.about, glyph: "information-circle-outline", tile: .gray) }
@@ -31,11 +30,11 @@ enum SettingsIndex {
     static var eula: Entry { Entry(id: "eula", title: Strings.Settings.eula, glyph: "document-text-outline", tile: .gray) }
     static var version: Entry { Entry(id: "version", title: Strings.Common.version, glyph: "information-circle-outline", tile: .gray) }
 
-    /// What a computer's settings show, its pages' rows included, in their
-    /// order. Disconnect is left out: a search doesn't offer to take the
-    /// computer away.
+    /// What a computer's settings show, its pages' rows and the agent's
+    /// picture's menu (the two asks) included, in their order. Disconnect is left
+    /// out: a search doesn't offer to take the computer away.
     static var computer: [Entry] {
-        [profile, changeAgentName, changeAgentAvatar, status, appearance, hideProjects, connectAgent, addAccount] + aboutRows
+        [profile, changeAgentName, changeAgentAvatar, appearance, hideProjects, connectAgent, addAccount] + aboutRows
     }
 
     /// The About page's rows.

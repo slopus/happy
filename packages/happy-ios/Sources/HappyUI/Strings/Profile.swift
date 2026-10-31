@@ -17,4 +17,11 @@ extension Strings {
 
     static let changeAgentName = "Change agent name"
     static let changeAgentAvatar = "Change agent avatar"
+
+    // The menu on the agent's picture, on its connection's Settings.
+    enum AgentMenu {
+        static let button = "Edit agent"
+        static let changeAvatar = "Change avatar"
+        static let editName = "Edit name"
+    }
 }

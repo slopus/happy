@@ -92,7 +92,7 @@ private actor ProfileDaemon: AgentTransport {
 }
 
 /// Settings for an agent connection: the person's Profile row and page,
-/// and the two rows that ask the agent to change its own name or picture.
+/// and the agent's picture, whose menu asks it to change its name or picture.
 /// Pictures go to the repository's `.context/evidence/profile`.
 @MainActor
 final class HostedProfileSettingsTests: XCTestCase {
@@ -146,7 +146,7 @@ final class HostedProfileSettingsTests: XCTestCase {
         let computerID: String
     }
 
-    private func rig(photo: Bool = false) async throws -> Rig {
+    private func rig(photo: Bool = false, signedIn: Bool = false) async throws -> Rig {
         let daemon = ProfileDaemon(photo: photo ? Self.picture().jpegData(compressionQuality: 0.9) : nil)
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
@@ -155,6 +155,7 @@ final class HostedProfileSettingsTests: XCTestCase {
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
             transport: ProfileOffline(), connector: ProfileNoSocket()
         )
+        if signedIn { try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 1, count: 32))) }
         await controller.agentConnections.setForeground(false)
         let computer = try await controller.agentConnections.add(
             JSONDecoder().decode(AgentConnectionCredentials.self, from: Data(#"{"address":"profile-test","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"token"}"#.utf8)),
@@ -186,9 +187,10 @@ final class HostedProfileSettingsTests: XCTestCase {
 
     // MARK: Settings
 
-    /// Edit name is gone, and so is renaming by tapping the heading: the
-    /// two asks are in its place, under the person's Profile row, which
-    /// shows their name and opens their page. All three are found by search.
+    /// Edit name, the two ask rows and Status are gone, and so is renaming
+    /// by tapping the heading: the agent's asks live in its picture, and
+    /// the person's Profile row, which shows their name and opens their
+    /// page, sits under the accounts. All are found by search.
     func testSettingsAsksTheAgentAndOpensTheProfile() async throws {
         let rig = try await rig(photo: true)
         let settings = SettingsViewController(context: rig.context, computer: rig.computerID)
@@ -196,13 +198,15 @@ final class HostedProfileSettingsTests: XCTestCase {
         try await until { settings.shownRow("profile")?.value == "Alex Rivera" && settings.shownRow("profile")?.image != nil }
 
         let cards = settings.shownRowIDs
-        XCTAssertFalse(cards.joined().contains("edit-name"), "Edit name is still on the page")
+        for gone in ["edit-name", "change-agent-name", "change-agent-avatar", "status"] {
+            XCTAssertFalse(cards.joined().contains(gone), "\(gone) is still on the page: \(cards)")
+        }
         XCTAssertTrue(cards.contains(["profile"]), "the Profile row is not a card of its own: \(cards)")
-        XCTAssertTrue(cards.contains(["change-agent-name", "change-agent-avatar", "status"]), "the asks aren't where Edit name was: \(cards)")
         XCTAssertEqual(cards.firstIndex(of: ["profile"]), 1, "Profile is not right under the accounts")
-        XCTAssertEqual(settings.shownRow("change-agent-name")?.title, "Change agent name")
-        XCTAssertEqual(settings.shownRow("change-agent-avatar")?.title, "Change agent avatar")
+        XCTAssertEqual(cards[2], ["appearance"], "a card is left between Profile and Appearance: \(cards)")
         XCTAssertEqual(settings.shownRow("profile")?.title, "Profile")
+        XCTAssertTrue(settings.agentButton.isDescendant(of: settings.view) && !settings.agentButton.isHidden, "the agent's picture isn't on the page")
+        XCTAssertTrue(settings.navigationItem.rightBarButtonItems?.isEmpty ?? true, "the bar still has a button left of search")
 
         // The heading's name is only a name now.
         let heading = try XCTUnwrap(Self.subview(UILabel.self, in: settings.view) { $0.accessibilityIdentifier == "settings-name" })
@@ -214,6 +218,7 @@ final class HostedProfileSettingsTests: XCTestCase {
         let ids = SettingsIndex.computer.map(\.id)
         XCTAssertFalse(ids.contains("edit-name"))
         XCTAssertEqual(Array(ids.prefix(3)), ["profile", "change-agent-name", "change-agent-avatar"])
+        XCTAssertFalse(ids.contains("status"), "Status is still found by search")
         XCTAssertEqual(HappyCore.Search.ranked(SettingsIndex.computer, query: "profile") { $0.title }.first?.id, "profile")
         XCTAssertEqual(HappyCore.Search.ranked(SettingsIndex.computer, query: "agent avatar") { $0.title }.first?.id, "change-agent-avatar")
         let search = try XCTUnwrap(settings.navigationItem.searchController)
@@ -223,9 +228,12 @@ final class HostedProfileSettingsTests: XCTestCase {
         XCTAssertEqual(settings.shownRowIDs.first?.first, "profile", "Settings' search doesn't find Profile")
         search.searchBar.text = "agent name"
         settings.updateSearchResults(for: search)
-        XCTAssertTrue(settings.shownRowIDs.joined().contains("change-agent-name"))
+        XCTAssertTrue(settings.shownRowIDs.joined().contains("change-agent-name"), "Settings' search doesn't find the name ask")
+        search.searchBar.text = "Status"
+        settings.updateSearchResults(for: search)
+        XCTAssertTrue(settings.shownRowIDs.isEmpty, "Status is still found: \(settings.shownRowIDs)")
         settings.willDismissSearchController(search)
-        try await until { settings.shownRow("status") != nil }
+        try await until { settings.shownRow("appearance") != nil }
 
         settings.view.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(300))
@@ -356,26 +364,139 @@ final class HostedProfileSettingsTests: XCTestCase {
 
     // MARK: Asks
 
-    /// "Change agent name" changes nothing itself: with no Happy
-    /// conversation to be found, new work opens with the ask typed in,
-    /// the caret after it, the keyboard up, and nothing sent.
-    func testChangeAgentNameTypesTheAskIntoNewWork() async throws {
-        let rig = try await rig()
+    /// The agent's picture sits large and centred at the top of the page,
+    /// over its name: round, with a glass pencil badge on its rim,
+    /// unclipped. A press opens its own menu (no primary action), "Change
+    /// avatar" then "Edit name", each with its icon. The bar has nothing
+    /// left of search, and a Happy account's page has no picture.
+    func testTheAgentPictureIsCentredOverTheNameWithItsMenu() async throws {
+        let rig = try await rig(signedIn: true)
         let settings = SettingsViewController(context: rig.context, computer: rig.computerID)
         let (navigation, window) = try await host(settings)
-        try await until { settings.shownRow("change-agent-name") != nil }
-        settings.tapRow("change-agent-name")
+        let button = settings.agentButton
+        XCTAssertTrue(settings.navigationItem.rightBarButtonItems?.isEmpty ?? true, "the bar still has a button left of search")
+        XCTAssertTrue(button.showsMenuAsPrimaryAction, "a press runs an action instead of opening the menu")
+        let menu = try XCTUnwrap(button.menu)
+        let actions = menu.children.compactMap { $0 as? UIAction }
+        XCTAssertEqual(menu.children.count, 2)
+        XCTAssertEqual(actions.map(\.title), ["Change avatar", "Edit name"])
+        XCTAssertTrue(actions.allSatisfy { $0.image != nil }, "an action has no icon")
+        XCTAssertNil(button.picture, "a computer with no picture shows a picture")
+
+        // In the page's content, centred, over the name.
+        try await Task.sleep(for: .milliseconds(400))
+        window.layoutIfNeeded()
+        XCTAssertFalse(button.isHidden)
+        XCTAssertFalse(button.isDescendant(of: navigation.navigationBar), "the picture is in the bar")
+        let heading = try XCTUnwrap(Self.subview(UILabel.self, in: settings.view) { $0.accessibilityIdentifier == "settings-name" })
+        let buttonFrame = button.convert(button.bounds, to: window)
+        let headingFrame = heading.convert(heading.bounds, to: window)
+        XCTAssertEqual(buttonFrame.size, AgentEditButtonLayout().size)
+        XCTAssertEqual(buttonFrame.midX, window.bounds.midX, accuracy: 0.5, "the picture isn't centred")
+        XCTAssertLessThan(buttonFrame.maxY, headingFrame.minY, "the picture isn't over the name")
+        XCTAssertGreaterThanOrEqual(buttonFrame.minY, navigation.navigationBar.convert(navigation.navigationBar.bounds, to: window).maxY, "the picture is under the bar")
+
+        // The badge is the system's glass, and nothing that holds it clips it.
+        let badge = button.badgeView
+        XCTAssertTrue((badge as? UIVisualEffectView)?.effect is UIGlassEffect, "the badge isn't Liquid Glass")
+        let badgeFrame = badge.convert(badge.bounds, to: window)
+        var ancestor: UIView? = badge.superview
+        while let view = ancestor, view !== window {
+            if view.clipsToBounds {
+                let visible = view.convert(view.bounds, to: window)
+                XCTAssertTrue(visible.insetBy(dx: -0.01, dy: -0.01).contains(badgeFrame), "\(type(of: view)) clips the badge: \(visible) vs \(badgeFrame)")
+            }
+            ancestor = view.superview
+        }
+        // On the screen: the pencil's ink, inside the badge's circle, is
+        // the whole glyph where it should be, in the badge's middle.
+        let shot = try Pixels(screen(of: window))
+        let scale = window.screen.scale
+        let inner = (badgeFrame.width / 2 - 2) * scale
+        let ink = try XCTUnwrap(shot.dark(in: badgeFrame.applying(CGAffineTransform(scaleX: scale, y: scale)).integral, within: inner), "no pencil drawn in the badge")
+        let inkPoints = ink.applying(CGAffineTransform(scaleX: 1 / scale, y: 1 / scale))
+        let pencilFrame = AgentEditButtonLayout().pencil.offsetBy(dx: badgeFrame.minX, dy: badgeFrame.minY)
+        XCTAssertTrue(pencilFrame.insetBy(dx: -1, dy: -1).contains(inkPoints), "the pencil spills out of its place: \(inkPoints) vs \(pencilFrame)")
+        XCTAssertGreaterThanOrEqual(inkPoints.width, AgentEditButtonLayout.Metrics.pencil * 0.7, "the pencil is cut: \(inkPoints)")
+        XCTAssertGreaterThanOrEqual(inkPoints.height, AgentEditButtonLayout.Metrics.pencil * 0.7, "the pencil is cut: \(inkPoints)")
+        XCTAssertEqual(inkPoints.midX, badgeFrame.midX, accuracy: 1.5, "the pencil is off the badge's middle")
+        XCTAssertEqual(inkPoints.midY, badgeFrame.midY, accuracy: 1.5, "the pencil is off the badge's middle")
+
+        // The page, then the menu as it opens and once it has, light and dark.
+        let scene = try XCTUnwrap(window.windowScene)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            window.overrideUserInterfaceStyle = style
+            try await Task.sleep(for: .milliseconds(400))
+            captureScreen(scene, "settings-agent", style: style)
+            let interaction = try XCTUnwrap(button.contextMenuInteraction)
+            // The tap's own path: what the system does when the button is pressed.
+            interaction.perform(NSSelectorFromString("_presentMenuAtLocation:"), with: NSValue(cgPoint: CGPoint(x: buttonFrame.width / 2, y: buttonFrame.height / 2)))
+            try await Task.sleep(for: .milliseconds(90))
+            captureScreen(scene, "agent-menu-morph", style: style)
+            try await Task.sleep(for: .milliseconds(900))
+            captureScreen(scene, "agent-menu", style: style)
+            interaction.dismissMenu()
+            try await Task.sleep(for: .milliseconds(900))
+        }
+        // With a picture of its own.
+        button.picture = Self.picture()
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            window.overrideUserInterfaceStyle = style
+            try await Task.sleep(for: .milliseconds(400))
+            captureScreen(scene, "settings-agent-photo", style: style)
+        }
+        window.overrideUserInterfaceStyle = .light
+
+        // A Happy account's page: no picture at all.
+        let happyID = try XCTUnwrap(rig.controller.accounts.first { !$0.isAgentConnection }?.id)
+        let accountPage = SettingsViewController(context: rig.context, computer: happyID)
+        navigation.pushViewController(accountPage, animated: false)
+        accountPage.loadViewIfNeeded()
+        accountPage.view.layoutIfNeeded()
+        XCTAssertTrue(accountPage.agentButton.isHidden, "a Happy account's page has the agent's picture")
+        XCTAssertTrue(accountPage.navigationItem.rightBarButtonItems?.isEmpty ?? true)
+        withExtendedLifetime(rig.controller) {}
+    }
+
+    /// Each menu action changes nothing itself: it opens the ask typed in,
+    /// the caret after it, the keyboard up, and nothing sent. With no
+    /// Happy conversation to be found, that is new work.
+    func testEachMenuActionTypesItsAsk() async throws {
+        for (identifier, ask) in [("agent-edit-name", "Change your name to "), ("agent-change-avatar", "Change your avatar to ")] {
+            let rig = try await rig()
+            let settings = SettingsViewController(context: rig.context, computer: rig.computerID)
+            let (navigation, window) = try await host(settings)
+            let menu = try XCTUnwrap(settings.agentButton.menu)
+            let action = try XCTUnwrap(menu.children.compactMap { $0 as? UIAction }.first { $0.identifier.rawValue == identifier })
+            action.performWithSender(nil, target: nil)
+            try await until { navigation.topViewController is ChatViewController && navigation.transitionCoordinator == nil }
+            let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
+            let card = try XCTUnwrap(Self.subview(AgentInputCardView.self, in: chat.view) { _ in true })
+            try await until { card.textView.text == ask }
+            XCTAssertEqual(card.textView.selectedRange, NSRange(location: (ask as NSString).length, length: 0), "\(identifier): the caret isn't at the end")
+            try await until { card.textView.isFirstResponder }
+            try await Task.sleep(for: .milliseconds(300))
+            let sends = await rig.daemon.sent.filter { $0.path.hasSuffix("/send") }
+            XCTAssertTrue(sends.isEmpty, "\(identifier): the ask was sent")
+            XCTAssertEqual(card.textView.text, ask)
+            if identifier == "agent-edit-name" { capture(window, "ask-name") }
+            window.isHidden = true
+            withExtendedLifetime(rig.controller) {}
+        }
+    }
+
+    /// Home's search finds the asks; picking one runs it over home, as the
+    /// menu does, rather than opening Settings at a row that isn't there.
+    func testHomeSearchRunsTheAskDirectly() async throws {
+        let rig = try await rig()
+        let home = UIViewController()
+        let (navigation, _) = try await host(home)
+        SettingsViewController.open(context: rig.context, computer: rig.computerID, reveal: SettingsIndex.changeAgentAvatar.id, from: home)
         try await until { navigation.topViewController is ChatViewController && navigation.transitionCoordinator == nil }
+        XCTAssertFalse(navigation.viewControllers.contains { $0 is SettingsViewController }, "Settings was opened on the way")
         let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
         let card = try XCTUnwrap(Self.subview(AgentInputCardView.self, in: chat.view) { _ in true })
-        try await until { card.textView.text == "Change your name to " }
-        XCTAssertEqual(card.textView.selectedRange, NSRange(location: 20, length: 0), "the caret isn't at the end")
-        try await until { card.textView.isFirstResponder }
-        try await Task.sleep(for: .milliseconds(300))
-        let sends = await rig.daemon.sent.filter { $0.path.hasSuffix("/send") }
-        XCTAssertTrue(sends.isEmpty, "the ask was sent")
-        XCTAssertEqual(card.textView.text, "Change your name to ")
-        capture(window, "ask-name")
+        try await until { card.textView.text == "Change your avatar to " }
         withExtendedLifetime(rig.controller) {}
     }
 
@@ -393,6 +514,67 @@ final class HostedProfileSettingsTests: XCTestCase {
     }
 
     // MARK: Helpers
+
+    /// Every window of `scene` drawn in order, the menu's included.
+    private func screenImage(_ scene: UIWindowScene) -> UIImage {
+        let bounds = scene.screen.bounds
+        return UIGraphicsImageRenderer(bounds: bounds).image { _ in
+            for window in scene.windows.sorted(by: { $0.windowLevel < $1.windowLevel }) where !window.isHidden {
+                window.drawHierarchy(in: window.frame, afterScreenUpdates: false)
+            }
+        }
+    }
+
+    private func captureScreen(_ scene: UIWindowScene, _ name: String, style: UIUserInterfaceStyle) {
+        let image = screenImage(scene)
+        let file = "\(name)-\(style == .dark ? "dark" : "light")"
+        let attachment = XCTAttachment(image: image)
+        attachment.name = file
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if let folder = Self.evidence, let data = image.pngData() {
+            try? data.write(to: folder.appendingPathComponent("\(file).png"))
+        }
+    }
+
+    private func screen(of window: UIWindow) -> UIImage {
+        UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+    }
+
+    /// RGBA bytes of an image, drawn into a context of known layout.
+    private struct Pixels {
+        let width: Int, height: Int
+        let bytes: [UInt8]
+
+        init(_ image: UIImage) throws {
+            let cg = try XCTUnwrap(image.cgImage)
+            width = cg.width; height = cg.height
+            var bytes = [UInt8](repeating: 0, count: width * height * 4)
+            bytes.withUnsafeMutableBytes { buffer in
+                let context = CGContext(data: buffer.baseAddress, width: cg.width, height: cg.height, bitsPerComponent: 8, bytesPerRow: cg.width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                context?.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+            }
+            self.bytes = bytes
+        }
+
+        /// The box of the dark (ink) pixels within `rect`, and within
+        /// `radius` of its middle, in pixels.
+        func dark(in rect: CGRect, within radius: CGFloat) -> CGRect? {
+            var box: CGRect?
+            for y in max(0, Int(rect.minY))..<min(height, Int(rect.maxY)) {
+                for x in max(0, Int(rect.minX))..<min(width, Int(rect.maxX)) {
+                    guard hypot(CGFloat(x) + 0.5 - rect.midX, CGFloat(y) + 0.5 - rect.midY) <= radius else { continue }
+                    let i = (y * width + x) * 4
+                    let luma = (Int(bytes[i]) * 3 + Int(bytes[i + 1]) * 6 + Int(bytes[i + 2])) / 10
+                    guard luma < 60 else { continue }
+                    box = (box ?? CGRect(x: x, y: y, width: 1, height: 1)).union(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+            return box
+        }
+    }
 
     private static func subview<View: UIView>(_ type: View.Type, in view: UIView, where match: (View) -> Bool) -> View? {
         if let found = view as? View, match(found) { return found }

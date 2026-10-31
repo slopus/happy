@@ -132,6 +132,9 @@ public struct SettingsLayout: Equatable, Sendable {
     }
 
     public var strip: CGRect
+    /// The agent's own picture over its name, on a connection's page;
+    /// zero without one, or while searching.
+    public var picture: CGRect
     public var name: CGRect
     public var subtitle: CGRect
     public var cards: [Card]
@@ -142,12 +145,14 @@ public struct SettingsLayout: Equatable, Sendable {
     /// Searching, the strip and the name are hidden and the cards move up
     /// into the strip's place. Without a strip (the accounts are a card
     /// among the others, not a row of circles) the name starts where the
-    /// strip would have, and nothing else moves.
-    public init(width: CGFloat, nameHeight: CGFloat, subtitleHeight: CGFloat, cards specs: [[RowSpec]], searching: Bool = false, showsStrip: Bool = true) {
+    /// strip would have, and nothing else moves. A `picture` (its side)
+    /// is centred there instead, the name under it.
+    public init(width: CGFloat, nameHeight: CGFloat, subtitleHeight: CGFloat, cards specs: [[RowSpec]], searching: Bool = false, showsStrip: Bool = true, picture side: CGFloat? = nil) {
         typealias M = Metrics
         strip = showsStrip ? CGRect(x: 0, y: M.stripTop, width: width, height: ProfileCarousel.Metrics.height) : .zero
+        picture = !showsStrip && !searching ? side.map { CGRect(x: ((width - $0) / 2).rounded(), y: M.stripTop, width: $0, height: $0) } ?? .zero : .zero
         let textWidth = max(0, width - 2 * M.textSide)
-        let nameTop = showsStrip ? strip.maxY + M.nameGap : M.stripTop
+        let nameTop = showsStrip ? strip.maxY + M.nameGap : picture.isEmpty ? M.stripTop : picture.maxY + M.nameGap
         name = CGRect(x: M.textSide, y: nameTop, width: textWidth, height: nameHeight)
         subtitle = CGRect(x: M.textSide, y: name.maxY + M.subtitleGap, width: textWidth, height: subtitleHeight)
         let cardWidth = max(0, width - 2 * M.side)
