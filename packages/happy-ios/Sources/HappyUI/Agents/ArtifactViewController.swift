@@ -97,7 +97,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
             }
             self.version = version
             if let live = version.live, let url = URL(string: live.url) {
-                showBrowser(BrowserViewController(url: url, session: session, artifactID: artifact.id))
+                showBrowser(BrowserViewController(url: url, session: session, artifactID: artifact.id, page: try await BrowserPage.live(client: client, url: url, artifactID: artifact.id)))
                 return
             }
             guard let entry = version.entry else { return show(message: Strings.artifactUnavailable) }
