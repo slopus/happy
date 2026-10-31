@@ -98,10 +98,16 @@ final class HomeScrollDiagnosticHarness: NSObject {
     }
 
     private func applyUpdate() {
+        let started = CACurrentMediaTime()
         let before = visible(presentation: false)
         let offset = list.contentOffset.y
         let anchor = list.visibleRows.first?.id
         switch mode {
+        case "statusSingle", "foldSingle":
+            if let anchor, let index = rows.firstIndex(where: { $0.id == anchor }) {
+                rows[index].status = .working
+                rows[index].label += " updated"
+            }
         case "status", "foldOverlap":
             for index in rows.indices { rows[index].status = .working; rows[index].label += " updated" }
         case "resizeAbove":
@@ -122,10 +128,12 @@ final class HomeScrollDiagnosticHarness: NSObject {
         }
         list.apply(rows)
         list.layoutIfNeeded()
+        let appliedAt = CACurrentMediaTime()
         let after = visible(presentation: false)
         let jumps = after.compactMap { id, y in before[id].map { y - $0 } }.sorted()
         events.append([
             "time": CACurrentMediaTime(), "mode": mode, "phase": phase,
+            "started": started, "applyDurationMs": (appliedAt - started) * 1000,
             "anchor": anchor ?? "", "offsetBefore": offset, "offsetAfter": list.contentOffset.y,
             "medianVisibleJump": jumps.isEmpty ? 0 : jumps[jumps.count / 2],
             "dragging": list.isDragging, "decelerating": list.isDecelerating,

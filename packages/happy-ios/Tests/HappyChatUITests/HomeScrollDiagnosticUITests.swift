@@ -7,6 +7,13 @@ final class HomeScrollDiagnosticUITests: XCTestCase {
     func testHeldFingerUpdateMatrix() throws { try run(phase: "drag") }
     func testDecelerationUpdateMatrix() throws { try run(phase: "momentum") }
     func testUpdateDuringFoldAnimation() throws { try run(phase: "fold") }
+    func testSingleRowStatusDuringScrolling() throws {
+        try run(phase: "drag", modes: ["none", "statusSingle", "status"])
+        try run(phase: "momentum", modes: ["none", "statusSingle", "status"])
+    }
+    func testSingleRowStatusDuringFoldAnimation() throws {
+        try run(phase: "fold", modes: ["foldControl", "foldSingle", "foldOverlap"])
+    }
 
     func testTypographyMatchesLegacy() throws {
         let app = XCUIApplication()
@@ -30,8 +37,8 @@ final class HomeScrollDiagnosticUITests: XCTestCase {
         app.terminate()
     }
 
-    private func run(phase: String) throws {
-        let modes = phase == "fold" ? ["foldControl", "foldOverlap"] : ["none", "status", "resizeAbove", "insertAbove", "deleteAbove", "deleteAnchor", "reorderAnchor"]
+    private func run(phase: String, modes requestedModes: [String]? = nil) throws {
+        let modes = requestedModes ?? (phase == "fold" ? ["foldControl", "foldOverlap"] : ["none", "status", "resizeAbove", "insertAbove", "deleteAbove", "deleteAnchor", "reorderAnchor"])
         for mode in modes {
             let app = XCUIApplication()
             app.launchArguments = ["-homeScrollDiagnostic", "-diagnosticMode", mode, "-diagnosticPhase", phase]
