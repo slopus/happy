@@ -13,16 +13,11 @@ private struct GroupedHomeSockets: WebSocketConnector {
 }
 
 /// A computer with bots, tasks, Surfaces and a project, each with nested
-/// conversations, serving the classic sidebar (Stem Cells off) or, with
-/// `spaces`, a spaces document with its own sections.
+/// conversations.
 private actor GroupedHomeTransport: AgentTransport {
-    let spaces: Bool
     /// The cloned repo's picture, as the daemon serves it.
     let avatar: Data
-    init(spaces: Bool, avatar: Data) {
-        self.spaces = spaces
-        self.avatar = avatar
-    }
+    init(avatar: Data) { self.avatar = avatar }
 
     private static let now = Date().timeIntervalSince1970 * 1000
 
@@ -63,7 +58,7 @@ private actor GroupedHomeTransport: AgentTransport {
     private func desktop() -> [String: Any] {
         [
             "cursor": "c1", "profile": ["userId": NSNull()],
-            "userSettings": [["key": DesktopSettingKeys.v2, "value": spaces, "version": "1"]],
+            "userSettings": [],
             "bots": Self.bots, "tasks": Self.tasks,
             "taskMemberships": Self.tasks.map { ["taskId": $0["id"]!] },
             "surfaces": Self.surfaces,
@@ -77,34 +72,6 @@ private actor GroupedHomeTransport: AgentTransport {
         ]
     }
 
-    private static func space(_ id: String, _ title: String, kind: String, target: String, agentId: String?, icon: String) -> [String: Any] {
-        ["id": id, "title": title, "icon": ["type": "library", "slug": icon], "target": ["kind": kind, "id": target, "agentId": agentId as Any, "workspaceId": "w-\(agentId ?? target)"],
-         "orderKey": id, "placement": "placed", "visibility": "shown", "working": false, "version": 1, "createdAt": 1, "updatedAt": 1]
-    }
-
-    private func sidebar() -> [String: Any] {
-        let html = """
-        <nav><happy-search/><happy-create/><happy-space id="s-happy" expanded="true"><happy-space id="happy-sub1"/><happy-space id="happy-sub2"/></happy-space>\
-        <happy-section id="tasks" label="Tasks"/><happy-space id="s-landing"/><happy-space id="s-crash" expanded="true"><happy-space id="crash-sub1"/><happy-space id="crash-sub2"/></happy-space><happy-space id="s-report"/>\
-        <happy-section id="bots" label="Bots"/><happy-space id="s-research"/><happy-space id="s-release"/>\
-        <happy-separator id="surfaces"/><happy-space id="s-groceries"/><happy-space id="s-notes"/><happy-space id="s-calendar"/>\
-        <happy-section id="later" label="Later" collapsed="true"/><happy-space id="s-onboarding"/></nav>
-        """
-        let spaces = [
-            Self.space("s-happy", "Happy", kind: "bot", target: "happy", agentId: "happy-agent", icon: "navigation"),
-            Self.space("s-landing", "Landing page copy", kind: "task", target: "landing", agentId: "landing-agent", icon: "deploy"),
-            Self.space("s-crash", "Fix login crash", kind: "task", target: "crash", agentId: "crash-agent", icon: "testing"),
-            Self.space("s-report", "Quarterly report", kind: "task", target: "report", agentId: "report-agent", icon: "deploy"),
-            Self.space("s-research", "Research Assistant", kind: "bot", target: "research", agentId: "research-agent", icon: "testing"),
-            Self.space("s-release", "Release Bot", kind: "bot", target: "release", agentId: "release-agent", icon: "navigation"),
-            Self.space("s-groceries", "Groceries", kind: "surface", target: "groceries", agentId: nil, icon: "deploy"),
-            Self.space("s-notes", "Design notes", kind: "surface", target: "notes", agentId: nil, icon: "testing"),
-            Self.space("s-calendar", "Team calendar", kind: "surface", target: "calendar", agentId: nil, icon: "navigation"),
-            Self.space("s-onboarding", "Onboarding emails", kind: "task", target: "onboarding", agentId: "onboarding-agent", icon: "deploy"),
-        ]
-        return ["artifactId": "sidebar", "version": 1, "html": html, "spaces": spaces]
-    }
-
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let route = path.split(separator: "?").first.map(String.init) ?? path
         if route == "/v0/projects/p1/avatar" { return .init(status: 200, body: avatar) }
@@ -113,7 +80,6 @@ private actor GroupedHomeTransport: AgentTransport {
         case "/v0/health": object = ["ready": true, "version": ["protocol": 27], "capabilities": ["sidebarOperations": true]]
         case "/v0/config": object = ["config": ["node": ["name": "Personal MacBook Pro"]]]
         case "/v0/bootstrap/desktop": object = desktop()
-        case "/v0/spaces/sidebar": object = sidebar()
         case "/v0/bots": object = ["bots": Self.bots]
         case "/v0/tasks": object = ["tasks": Self.tasks, "memberships": Self.tasks.map { ["taskId": $0["id"]!] }]
         case "/v0/surfaces": object = ["surfaces": Self.surfaces.map { ["id": $0["id"]!, "name": $0["name"]!, "type": $0["type"]!] }]
@@ -133,9 +99,9 @@ private actor GroupedHomeTransport: AgentTransport {
 
 /// Home as the person sees it, grouped (`-screen groupedHome`): the real
 /// home screen over a computer serving bots, tasks and Surfaces with
-/// nested conversations. Classic by default, with Bots folded and a cloned repo wearing its picture; with
-/// `-spaces` the spaces document's own sections, "Later" folded. With
-/// `-storyRows`, the story rows' list alone, grouped as home draws it.
+/// nested conversations, and a cloned repo wearing its
+/// picture. With `-storyRows`, the story rows' list alone, grouped as home
+/// draws it.
 @MainActor
 final class GroupedHomeHarness {
     private var account: AccountController?
@@ -157,11 +123,10 @@ final class GroupedHomeHarness {
             }
             return
         }
-        let spaces = arguments.contains("-spaces")
         let bottom = arguments.contains("-bottom")
         Task {
-            await open(window: window, spaces: spaces)
-            // With `-bottom`, the list's end, where the folded section is.
+            await open(window: window)
+            // With `-bottom`, the list's end, where the projects are.
             guard bottom else { return }
             try? await Task.sleep(for: .seconds(1.5))
             guard let list = home?.view.firstSubview(of: SidebarView.self) else { return }
@@ -182,8 +147,8 @@ final class GroupedHomeHarness {
         }
     }
 
-    private func open(window: UIWindow, spaces: Bool) async {
-        let transport = GroupedHomeTransport(spaces: spaces, avatar: Self.repoPicture())
+    private func open(window: UIWindow) async {
+        let transport = GroupedHomeTransport(avatar: Self.repoPicture())
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/grouped-home",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -200,10 +165,6 @@ final class GroupedHomeHarness {
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
             window.rootViewController = navigation
             window.layoutIfNeeded()
-            guard !spaces, let engine = Session.session(for: connection.id, context: context)?.engine else { return }
-            // Bots folded, once the computer has answered.
-            for await snapshot in await engine.snapshots() where snapshot.loaded { break }
-            try? await engine.fold("direct:bots")
         } catch {
             print("GROUPED_HOME error: \(error)")
         }

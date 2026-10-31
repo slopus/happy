@@ -47,7 +47,6 @@ extension Strings {
     public static let archiveBot = "Archive bot"
     public static let archiveSubtask = "Archive subtask"
     public static let deleteSection = "Delete section"
-    public static let reorder = "Reorder"
 
     // A message from another agent (happy-desktop's AgentMessageActivity).
     public static let agentMessage = "Message"
@@ -58,8 +57,6 @@ extension Strings {
     public static let agentMessageOpenHint = "Shows the message"
     public static let agentMessageCloseHint = "Hides the message"
     /// A section's "+", for VoiceOver.
-    /// Said once a row is lifted from its menu.
-    public static let reorderHint = "Lifted. Drag to move it, or tap to put it back."
     /// The blurred screen behind a held row's menu, for VoiceOver.
     public static let closeMenu = "Close menu"
     public static let cancel = "Cancel"

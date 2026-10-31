@@ -23,18 +23,15 @@ private actor ScrollTraceTransport: AgentTransport {
     private var bootstrapDelay = false
     private var sent = 0
 
-    private func space(_ index: Int) -> AgentWire.Space {
-        AgentWire.Space(id: "s\(index)", title: "Conversation \(index)", icon: .seedling,
-                        target: .init(kind: "agent", id: "a\(index)", agentId: "a\(index)", workspaceId: "w\(index)"),
-                        orderKey: String(format: "%04d", index), working: working.contains(index), version: version,
-                        createdAt: 1, updatedAt: Double(version))
+    private func bot(_ index: Int) -> [String: Any] {
+        ["id": "b\(index)", "name": "Conversation \(index)", "status": "active",
+         "agent": ["id": "a\(index)", "workspaceId": "w\(index)", "title": "Conversation \(index)", "status": working.contains(index) ? "working" : "idle"]]
     }
 
     func flip(_ index: Int) throws {
         version += 1
         if working.contains(index) { working.remove(index) } else { working.insert(index) }
-        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(space(index)))
-        let data = try JSONSerialization.data(withJSONObject: ["type": "space.updated", "payload": ["space": encoded]])
+        let data = try JSONSerialization.data(withJSONObject: ["type": "bot.updated", "payload": ["bot": bot(index)]])
         let frame = Data("event: message\ndata: \(String(decoding: data, as: UTF8.self))\n\n".utf8)
         streams.forEach { $0.yield(frame) }
         sent += 1
@@ -62,15 +59,8 @@ private actor ScrollTraceTransport: AgentTransport {
         case "/v0/config": object = ["config": ["node": ["name": "Personal MacBook Pro"]]]
         case "/v0/bootstrap/desktop":
             if bootstrapDelay { try await Task.sleep(for: .milliseconds(450)) }
-            object = ["cursor": "c1", "profile": ["userId": NSNull()], "projects": [], "workspaces": [], "userSettings": [["key": DesktopSettingKeys.v2, "value": true, "version": "1"]]]
-        case "/v0/spaces/sidebar":
-            if bootstrapDelay { try await Task.sleep(for: .milliseconds(350)) }
-            let spaces = (0..<Self.count).map(space)
-            let html = "<nav><happy-search/><happy-create/>" + (0..<Self.count).map { "<happy-space id=\"s\($0)\"/>" }.joined() + "</nav>"
-            _ = try SpaceSidebar.parse(html)
-            object = ["artifactId": "sidebar", "version": 1,
-                      "html": html,
-                      "spaces": try JSONSerialization.jsonObject(with: JSONEncoder().encode(spaces))]
+            object = ["cursor": "c1", "profile": ["userId": NSNull()], "projects": [], "workspaces": [], "userSettings": [],
+                      "bots": (0..<Self.count).map(bot)]
         case "/v0/bots": object = ["bots": []]
         case "/v0/tasks": object = ["tasks": []]
         default: return .init(status: 404, body: Data("{}".utf8))
@@ -184,7 +174,7 @@ final class HomeControllerScrollHarness: NSObject {
                     do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
                     guard let self else { return }
                     let before = self.sample(event: "before-update")
-                    let ids = sidebar.visibleRows.compactMap { Int($0.id.replacingOccurrences(of: "space:", with: "").replacingOccurrences(of: "s", with: "")) }
+                    let ids = sidebar.visibleRows.compactMap { Int($0.id.replacingOccurrences(of: "bot:b", with: "")) }
                     let index = ids.isEmpty ? 40 : ids[iteration % ids.count]
                     try? await transport.flip(index)
                     if currentArm == "connection", iteration.isMultiple(of: 12) {
@@ -217,13 +207,11 @@ final class HomeControllerScrollHarness: NSObject {
         guard let sidebar else { return }
         if !ready, CACurrentMediaTime() - lastProbe > 1 {
             lastProbe = CACurrentMediaTime()
-            let snapshot = session?.snapshot
-            let info: [String: Any] = ["sidebarRows": sidebar.rows.count, "sessionRows": snapshot?.rows.count ?? -1,
-                                       "availability": String(describing: snapshot?.availability), "nodes": snapshot?.document?.items.count ?? -1]
+            let info: [String: Any] = ["sidebarRows": sidebar.rows.count, "bots": sidebar.rows.filter { $0.targetKind == "bot" }.count]
             probe.accessibilityValue = "setup:\(sidebar.rows.count)"
             if let path = Self.argument("-traceOutput"), let data = try? JSONSerialization.data(withJSONObject: info) { try? data.write(to: URL(fileURLWithPath: path + ".setup.json")) }
         }
-        if !ready, sidebar.rows.count == ScrollTraceTransport.count {
+        if !ready, sidebar.rows.filter({ $0.targetKind == "bot" }).count == ScrollTraceTransport.count {
             sidebar.setContentOffset(CGPoint(x: 0, y: 1800), animated: false)
             ready = true
         }

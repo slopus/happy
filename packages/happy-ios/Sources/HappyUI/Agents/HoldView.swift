@@ -67,7 +67,7 @@ final class HoldOverlay: UIView {
 
         let insets = window.safeAreaInsets
         let cardSize = preview?.preferredContentSize
-        let layout = HoldLayout(screen: window.bounds.size, top: insets.top, bottom: insets.bottom, source: source, card: cardSize, menu: menuView.layout.size)
+        let layout = HoldLayout(screen: window.bounds.size, top: insets.top, bottom: insets.bottom, source: source, card: cardSize, menu: items.isEmpty ? .zero : menuView.layout.size)
         card.frame = layout.card
         card.layer.cornerCurve = .continuous
         card.clipsToBounds = true
@@ -89,6 +89,8 @@ final class HoldOverlay: UIView {
             card.isUserInteractionEnabled = false
         }
         menuView.frame = layout.menu
+        // A preview with nothing to offer shows alone.
+        menuView.isHidden = items.isEmpty
         addSubview(card)
         addSubview(menuView)
         let container = host?.view ?? window

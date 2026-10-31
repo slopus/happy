@@ -46,10 +46,6 @@ final class StoriesHomeController {
     private(set) var rings: [String: StoryRing]?
     /// The list the stories open above.
     weak var list: UIScrollView?
-    /// A row is being carried: the list's own scrolling then is the carry's.
-    var carrying = false {
-        didSet { if !carrying, oldValue { listCameToRest() } }
-    }
     /// Home shows something else (no computer, one too old): no stories.
     var isSuppressed = false {
         didSet {
@@ -125,7 +121,7 @@ final class StoriesHomeController {
 
     private var listAtRest: Bool {
         guard let list else { return true }
-        return !list.isDragging && !list.isDecelerating && !carrying
+        return !list.isDragging && !list.isDecelerating
     }
 
     /// Puts the stories in `header`, the band under the bar, or takes
@@ -250,7 +246,7 @@ final class StoriesHomeController {
     }
 
     func listDidScroll() {
-        guard isShown, !carrying else {
+        guard isShown else {
             layout()
             return
         }

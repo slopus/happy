@@ -162,24 +162,6 @@ final class HostedGroupedSidebarTests: XCTestCase {
         XCTAssertEqual(list.cardFrames.count, 4)
     }
 
-    /// A row lifted from its menu leaves its card whole: the card keeps
-    /// its size and the lifted card is the card's fill.
-    func testACarryLeavesTheCardWhole() async throws {
-        let list = try await list()
-        let document = try SpaceSidebar.parse(html)
-        let everything = all(document)
-        list.beginDrag = { [unowned list] row in Drag(holding: row.id, drawn: list.rows, all: everything, document: document) }
-        list.apply(Rows.visible(everything))
-        list.layoutIfNeeded()
-        let cards = list.cardFrames
-        list.armReorder("research")
-        let lifted = try XCTUnwrap(list.liftedCard, "nothing lifted")
-        XCTAssertEqual(ink(lifted.backgroundColor, in: lifted), ink(Palette.groupedCard, in: lifted))
-        XCTAssertTrue(try XCTUnwrap(list.view(for: "research")).isHidden)
-        XCTAssertEqual(list.cardFrames, cards)
-        list.disarm(animated: false)
-    }
-
     /// The plain list (search, the session tree, proposals) draws no card.
     /// A top-level glyph sits on its kind's tile; a nested row has no mark,
     /// so no tile; the plain list draws none.

@@ -95,7 +95,6 @@ enum Glyphs {
         case "eye": .ionicons("eye-outline")
         case "eye-off": .ionicons("eye-off-outline")
         case "more": .materialIcons("more-horiz")
-        case "reorder": .ionicons("swap-vertical-outline")
         case "terminal": .ionicons("terminal-outline")
         default: .ionicons(name)
         }

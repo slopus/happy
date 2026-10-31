@@ -531,9 +531,9 @@ final class UITests: XCTestCase {
         XCTAssertTrue(menu.exists, "no menu under the preview")
         XCTAssertEqual(menu.frame.minY, preview.frame.maxY + 10, accuracy: 0.5)
         XCTAssertEqual(menu.frame.maxX, preview.frame.maxX, accuracy: 0.5)
-        // Only what changes the row: its name, its place, putting it away.
+        // Only what changes the row: its name, putting it away.
         XCTAssertTrue(menu.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Rename")).count == 1, "no Rename in the menu")
-        XCTAssertTrue(menu.buttons["Reorder"].exists, "no Reorder in the menu")
+        XCTAssertFalse(menu.buttons["Reorder"].exists, "the menu still offers Reorder")
         for gone in ["Open", "Show subtasks", "Hide subtasks", "Collapse", "Expand", "Mark as read", "Mark as unread"] {
             XCTAssertFalse(menu.buttons[gone].exists, "the menu still offers \(gone)")
         }
@@ -595,121 +595,6 @@ final class UITests: XCTestCase {
         } else {
             XCTFail("no Hold Me bot to archive")
         }
-    }
-
-    /// A hold lifts a row with its menu; moving carries it (the menu goes),
-    /// its peers glide aside, and the drop lands where the gap was. A
-    /// section carries its rows.
-    func testReorder() {
-        home()
-        pause(1)
-        let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "row:space:"))
-        func order() -> [String] {
-            // Rows named alike (two "Trip notes") can't be told apart by name: left out.
-            let ids = shownRows("row:space:").sorted { $0.frame.minY < $1.frame.minY }.map { $0.identifier }
-            return ids.filter { id in ids.filter { $0 == id }.count == 1 }
-        }
-        // A task a few rows down, carried up two rows.
-        let all = order()
-        guard all.count > 5 else { return XCTFail("too few rows to reorder: \(all)") }
-        let moving = app.descendants(matching: .any)[all[4]]
-        let target = app.descendants(matching: .any)[all[2]]
-        _ = (moving.frame, target.frame)
-        capture("reorder-before")
-        // Held: the menu shows first.
-        moving.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2, thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)), withVelocity: .slow, thenHoldForDuration: 0.8)
-        pause(2)
-        capture("reorder-after")
-        let after = order()
-        // Just over the row it was let go on (a section heading may stand between).
-        let landed = after.firstIndex(of: all[4]) ?? -1
-        XCTAssertTrue(landed < after.firstIndex(of: all[2])! && landed > after.firstIndex(of: all[0])!, "the row did not land over \(all[2]): \(after)")
-        // Released without moving: the preview and menu stay open.
-        moving.press(forDuration: 1.2)
-        XCTAssertTrue(app.descendants(matching: .any)["hold-menu"].waitForExistence(timeout: 2), "the menu did not stay")
-        pause(1)
-        capture("reorder-menu-stays")
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
-        pause(1)
-        // A section, carried with its rows to the top.
-        let sections = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "row:section:"))
-        // A section, carried over the section above it (past its whole block,
-        // as desktop asks: a neighbour is passed by half its height).
-        // Twice desktop's size, two open sections rarely share the screen:
-        // the upper one folded brings the lower up under it.
-        let heads = sections.allElementsBoundByIndex.filter { $0.frame.height > 0 }.sorted { $0.frame.minY < $1.frame.minY }
-        if heads.count > 1 {
-            // By identifier: an element bound by index is another row once the order changes.
-            let section = app.descendants(matching: .any)[heads[heads.count - 1].identifier]
-            let top = app.descendants(matching: .any)[heads[heads.count - 2].identifier]
-            bringIntoView(top)
-            pause(1)
-            let folded = rowUnder(top)?.identifier != section.identifier
-            if folded { tapChevron(top); pause(1.5) }
-            bringIntoView(section)
-            pause(1)
-            capture("reorder-section-before")
-            section.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2, thenDragTo: top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)), withVelocity: .slow, thenHoldForDuration: 0.8)
-            capture("reorder-section-held")
-            pause(1)
-            // Checked at once: Prioritizing may tidy the sidebar again after.
-            capture("reorder-section")
-            XCTAssertLessThan(section.frame.minY, top.frame.minY, "the section did not land over the one above")
-            // Opened again, as the run found it.
-            if folded { tapChevron(top); pause(1) }
-        } else {
-            XCTFail("no two sections")
-        }
-    }
-
-    /// Reorder from the menu: the menu goes and the row stays lifted where
-    /// it was; a finger put down anywhere then carries it, and where it's
-    /// let go it stays. A tap instead puts it back.
-    func testReorderFromMenu() {
-        home()
-        pause(1)
-        let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "row:space:"))
-        func order() -> [String] {
-            let screen = app.frame.height
-            let ids = shownRows("row:space:").filter { $0.frame.minY > screen * 0.12 && $0.frame.maxY < screen * 0.8 }.sorted { $0.frame.minY < $1.frame.minY }.map { $0.identifier }
-            return ids.filter { id in ids.filter { $0 == id }.count == 1 }
-        }
-        let all = order()
-        guard all.count > 4 else { return XCTFail("too few rows to reorder: \(all)") }
-        let moving = app.descendants(matching: .any)[all[3]]
-        let target = app.descendants(matching: .any)[all[1]]
-        let from = moving.frame
-        let to = target.frame
-
-        // A tap puts it back where it was.
-        moving.press(forDuration: 1.0)
-        let reorder = app.buttons["Reorder"]
-        XCTAssertTrue(reorder.waitForExistence(timeout: 3), "no Reorder in the menu")
-        reorder.tap()
-        XCTAssertTrue(until(2) { !app.descendants(matching: .any)["hold-menu"].exists }, "the menu stayed")
-        XCTAssertTrue(app.descendants(matching: .any)["lifted"].waitForExistence(timeout: 2), "Reorder lifted nothing")
-        pause(0.8)
-        capture("reorder-armed")
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: from.midX, dy: from.midY)).tap()
-        pause(1)
-        XCTAssertEqual(order(), all, "a tap moved the lifted row")
-
-        // Lifted again: a finger down on it, moved up two rows, let go.
-        moving.press(forDuration: 1.0)
-        XCTAssertTrue(reorder.waitForExistence(timeout: 3))
-        reorder.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["lifted"].waitForExistence(timeout: 2), "Reorder lifted nothing")
-        pause(1)
-        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: from.midX, dy: from.midY))
-        let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: to.midX, dy: to.minY + to.height * 0.2))
-        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.5)
-        pause(2)
-        capture("reorder-menu-dropped")
-        let after = order()
-        let landed = after.firstIndex(of: all[3]) ?? -1
-        XCTAssertTrue(landed >= 0 && landed < (after.firstIndex(of: all[1]) ?? -1) && landed > (after.firstIndex(of: all[0]) ?? -1), "the row didn't stay where it was let go: \(after)")
-        pause(3)
-        XCTAssertEqual(order().firstIndex(of: all[3]), landed, "the row went back")
     }
 
     /// Search in place, on home itself: the header's search button grows

@@ -53,10 +53,10 @@ private actor SyncFixture: AgentTransport {
     }
     var requested: [String] = []
     func requestedPaths() -> [String] { requested }
-    /// V2 turned on from the computer while the phone watches.
-    func turnOnV2() {
+    /// The retired Stem Cells experiment turned on from the computer.
+    func turnOnStemCells() {
         version += 1
-        let setting: JSONValue = .object(["key": .string(DesktopSettingKeys.v2), "value": .bool(true), "version": .string(String(format: "%08d", version)), "updatedAt": .number(Date().timeIntervalSince1970 * 1000)])
+        let setting: JSONValue = .object(["key": .string("happy-desktop.experiments.stemCells"), "value": .bool(true), "version": .string(String(format: "%08d", version)), "updatedAt": .number(Date().timeIntervalSince1970 * 1000)])
         var object = value.objectValue!
         object["userSettings"] = .array([setting])
         value = .object(object)
@@ -182,15 +182,12 @@ final class SyncEngineTests: XCTestCase {
     func testCanonicalDesktopOrderMembershipHierarchyAndVisibility() throws {
         let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: Data(SyncFixture.fixture.utf8))
         let all = SidebarRows.make(desktop, settings: [:])
-        XCTAssertEqual(all.map(\.label), ["Artifacts", "Notes", "Groceries", "Bots", "Happy", "Delegated task", "Tasks", "Last created", "First created", "Projects", "App", "Root chat", "Feature"])
+        XCTAssertEqual(all.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Notes", "Groceries", "—", "Happy", "Delegated task", "—", "Last created", "First created", "—", "App", "Root chat", "Feature"])
         XCTAssertEqual(all.map(\.id).count, Set(all.map(\.id)).count)
         XCTAssertEqual(all.first { $0.label == "Delegated task" }?.depth, 1)
         let settings: [String: JSONValue] = [DesktopSettingKeys.projectsVisibility: .object(["projectsHidden": .bool(true)]), "happy-desktop.bot.happy": .object(["hidden": .bool(true)])]
         let hidden = SidebarRows.make(desktop, settings: settings)
-        XCTAssertEqual(hidden.map(\.label), ["Artifacts", "Notes", "Groceries", "Bots", "Tasks", "Last created", "First created"])
-        let folded = Rows.visible(SidebarRows.make(desktop, settings: [:], collapsed: ["project:p"]))
-        XCTAssertFalse(folded.contains { $0.label == "Root chat" || $0.label == "Feature" })
-        XCTAssertTrue(folded.contains { $0.label == "App" })
+        XCTAssertEqual(hidden.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Notes", "Groceries", "—", "—", "Last created", "First created"])
     }
 
     func testOfflineCacheAndSettingsSurviveAccountRelaunchThenReplay() async throws {
@@ -204,7 +201,7 @@ final class SyncEngineTests: XCTestCase {
         await transport.configure(online: false)
         try await engine.setProjectsHidden(true)
         let optimistic = try await wait(engine) { DesktopSettingKeys.projectsHidden($0.settings) }
-        XCTAssertFalse(optimistic.rows.contains { $0.label == "Projects" })
+        XCTAssertFalse(optimistic.rows.contains { $0.targetKind == "project" })
         await engine.stop()
 
         let reopened = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
@@ -243,24 +240,19 @@ final class SyncEngineTests: XCTestCase {
         await engine.stop()
     }
 
-    /// V2 switched on from the computer while home is open: the
-    /// sidebar it now draws is read at once, not after a relaunch.
-    func testV2TurnedOnRemotelyReadsTheSidebar() async throws {
+    /// Home is the classic sidebar, whatever the computer holds of the
+    /// retired Stem Cells experiment: the spaces sidebar is never read.
+    func testStemCellsSettingLeavesHomeClassic() async throws {
         let transport = SyncFixture()
         let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
         await engine.start()
-        _ = try await wait(engine) { $0.live && $0.loaded && !$0.usesSpaces }
-        let sidebar = "/v0/spaces/sidebar?widgets=true"
-        let before = await transport.requestedPaths()
-        XCTAssertFalse(before.contains(sidebar))
-        await transport.turnOnV2()
-        _ = try await wait(engine) { $0.usesSpaces }
-        for _ in 0..<200 {
-            if (await transport.requestedPaths()).contains(sidebar) { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        let after = await transport.requestedPaths()
-        XCTAssertTrue(after.contains(sidebar))
+        let classic = try await wait(engine) { $0.live && $0.loaded && !$0.syncing }
+        await transport.turnOnStemCells()
+        let after = try await wait(engine) { $0.settings["happy-desktop.experiments.stemCells"] == .bool(true) && !$0.syncing }
+        XCTAssertEqual(after.rows, classic.rows)
+        try await Task.sleep(for: .milliseconds(100))
+        let requested = await transport.requestedPaths()
+        XCTAssertFalse(requested.contains("/v0/spaces/sidebar?widgets=true"))
         await engine.stop()
     }
 }

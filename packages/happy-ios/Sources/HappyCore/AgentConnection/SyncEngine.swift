@@ -7,7 +7,6 @@ public struct HomeSnapshot: Equatable, Sendable {
     /// Bootstrap/sidebar reconciliation is still running. An open stream
     /// alone does not mean the phone has caught up.
     public var syncing = true
-    public var usesSpaces = false
     public var rows: [Row] = []
     public var allRows: [Row] = []
     public var settings: [String: JSONValue] = [:]
@@ -27,7 +26,6 @@ public actor SyncEngine {
     private var storage: SyncStorage?
     private var desktop: DesktopSnapshot?
     private var snapshot = HomeSnapshot()
-    private var collapsed: Set<String> = []
     private var listeners: [UUID: AsyncStream<HomeSnapshot>.Continuation] = [:]
     private var runner: Task<Void, Never>?
     private var refresh: Task<Void, Never>?
@@ -44,11 +42,6 @@ public actor SyncEngine {
     private var dirty = false
     private var revision = 0
     private var sidebarSyncing = false
-    /// Classic rows set down here, by family, drawn where they were put
-    /// until the computer has answered (`ClassicDrag.held`).
-    private var holds: [String: [String]] = [:]
-    /// What the last refused move said, cleared by the next that goes through.
-    private var reorderError: String?
 
     public init(client: AgentClient, directory: URL?) {
         self.client = client
@@ -143,7 +136,6 @@ public actor SyncEngine {
                 cursor = cached.cursor
             }
             snapshot.settings = try await database.settings()
-            if let folds = try await database.checkpoint("folds")?.value.arrayValue { collapsed = Set(folds.compactMap(\.stringValue)) }
             guard current(generation) else { return }
             derive()
             await spaces.startExternal()
@@ -174,7 +166,7 @@ public actor SyncEngine {
                         let hello = try JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8))
                         if hello["gap"] == .bool(true) { scheduleReconcile(generation) }
                         profileChanged()
-                        try await resyncSidebar(generation, loadSidebar: snapshot.usesSpaces)
+                        try await resyncSidebar(generation)
                         continue
                     }
                     guard let event = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8)) else { continue }
@@ -185,12 +177,7 @@ public actor SyncEngine {
                        let setting = try? JSONDecoder().decode(UserSetting.self, from: JSONEncoder().encode(value)) {
                         try await database().receiveSetting(setting.key, value: setting.value, version: setting.version)
                         snapshot.settings = try await database().settings()
-                        // V2 turned on here: its sidebar is read now,
-                        // or the home has nothing to draw until a relaunch.
-                        let previouslySpaces = snapshot.usesSpaces
-                        if !previouslySpaces && snapshot.settings[DesktopSettingKeys.v2] == .bool(true) { snapshot.syncing = true }
                         derive()
-                        if snapshot.usesSpaces && !previouslySpaces { try await resyncSidebar(generation, loadSidebar: true) }
                     }
                     // Events are delivery hints, never a durable checkpoint.
                     // Coalesce catalog invalidations; message token events go
@@ -217,10 +204,10 @@ public actor SyncEngine {
 
     private func current(_ generation: Int) -> Bool { !stopped && !Task.isCancelled && self.generation == generation }
 
-    private func resyncSidebar(_ generation: Int, loadSidebar: Bool) async throws {
+    private func resyncSidebar(_ generation: Int) async throws {
         sidebarSyncing = true
         if !snapshot.syncing { snapshot.syncing = true; publish() }
-        let ready = await spaces.externalResync(loadSidebar: loadSidebar)
+        let ready = await spaces.externalResync(loadSidebar: false)
         guard current(generation) else { throw CancellationError() }
         guard ready else { throw AgentClientError.invalidResponse }
         sidebarSyncing = false
@@ -289,10 +276,7 @@ public actor SyncEngine {
         verified = true
         cursor = desktop.cursor
         snapshot.settings = try await database.settings()
-        let previouslySpaces = snapshot.usesSpaces
-        if !previouslySpaces && snapshot.settings[DesktopSettingKeys.v2] == .bool(true) { snapshot.syncing = true }
         derive()
-        if snapshot.usesSpaces && !previouslySpaces { try await resyncSidebar(generation, loadSidebar: true) }
     }
 
     public func setProjectsHidden(_ hidden: Bool) async throws {
@@ -367,41 +351,10 @@ public actor SyncEngine {
         }
     }
 
-    /// A row set down in the classic sidebar: drawn where it was put at
-    /// once, asked of the computer by desktop's reorder routes, then drawn
-    /// in the computer's own order once it has answered. A refusal puts it
-    /// back and says why over the list.
-    public func reorder(_ move: ClassicMove) async {
-        guard !stopped else { return }
-        holds[move.family] = move.order
-        derive()
-        let generation = generation
-        do {
-            try await client.reorder(move)
-            if let reorderError, snapshot.error == reorderError { snapshot.error = nil }
-            reorderError = nil
-            // The computer's order now, not after the next event's pause.
-            if current(generation) { try? await reconcile(generation) }
-        } catch {
-            reorderError = Store.describe(error)
-            snapshot.error = reorderError
-        }
-        if holds[move.family] == move.order { holds[move.family] = nil }
-        derive()
-    }
-
-    public func fold(_ id: String) async throws {
-        if !collapsed.insert(id).inserted { collapsed.remove(id) }
-        if collapsed.count > 512 { collapsed.remove(collapsed.sorted().first!) }
-        try await database().commit(.init(value: .array(collapsed.sorted().map(JSONValue.string)), cursor: nil), named: "folds")
-        derive()
-    }
-
     private func derive() {
         snapshot.loaded = desktop != nil
-        snapshot.usesSpaces = snapshot.settings[DesktopSettingKeys.v2] == .bool(true)
         if let desktop {
-            snapshot.allRows = ClassicDrag.held(SidebarRows.make(desktop, settings: snapshot.settings, collapsed: collapsed), orders: holds)
+            snapshot.allRows = SidebarRows.make(desktop, settings: snapshot.settings)
             snapshot.rows = Rows.visible(snapshot.allRows)
         }
         publish()

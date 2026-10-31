@@ -88,7 +88,6 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
 
 public enum DesktopSettingKeys {
     public static let projectsVisibility = "happy-desktop.projectsVisibility"
-    public static let v2 = "happy-desktop.experiments.stemCells"
 
     public static func projectsHidden(_ values: [String: JSONValue]) -> Bool {
         values[projectsVisibility]?["projectsHidden"] == .bool(true)
