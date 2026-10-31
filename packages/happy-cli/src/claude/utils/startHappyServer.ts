@@ -14,6 +14,21 @@ import { z } from "zod";
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
+import { appendFile } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
+/**
+ * Resolve the Claude Code session JSONL file path.
+ *
+ * Claude stores sessions at:
+ *   ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
+ * where <encoded-cwd> is the working directory with '/' replaced by '-'.
+ */
+function resolveClaudeSessionFile(workingDir: string, sessionId: string): string {
+    const projectName = workingDir.replace(/\//g, '-');
+    return join(homedir(), '.claude', 'projects', projectName, `${sessionId}.jsonl`);
+}
 
 function createMcpServer(handler: (title: string) => Promise<{ success: boolean; error?: string }>): McpServer {
     const mcp = new McpServer({
@@ -63,11 +78,35 @@ export async function startHappyServer(client: ApiSessionClient) {
     const handler = async (title: string) => {
         logger.debug('[happyMCP] Changing title to:', title);
         try {
+            // Update Happy cloud metadata
             client.sendClaudeSessionMessage({
                 type: 'summary',
                 summary: title,
                 leafUuid: randomUUID()
             });
+
+            // Persist custom-title to Claude Code's local session JSONL.
+            // Claude Code reads {type: "custom-title"} entries for /resume
+            // and status bar display. Without this, titles only update in
+            // Happy's cloud metadata but not in Claude Code's local UI.
+            try {
+                const metadata = client.getMetadata() as Record<string, unknown> | null;
+                const workingDir = metadata?.path as string | undefined;
+                if (workingDir && client.sessionId) {
+                    const sessionFile = resolveClaudeSessionFile(workingDir, client.sessionId);
+                    const entry = JSON.stringify({
+                        type: 'custom-title',
+                        customTitle: title,
+                        sessionId: client.sessionId,
+                    });
+                    await appendFile(sessionFile, entry + '\n');
+                    logger.debug('[happyMCP] Wrote custom-title to Claude JSONL:', sessionFile);
+                }
+            } catch (e) {
+                // Non-fatal: title is still persisted in Happy cloud metadata
+                logger.debug('[happyMCP] Failed to write custom-title to Claude JSONL:', e);
+            }
+
             return { success: true };
         } catch (error) {
             return { success: false, error: String(error) };
