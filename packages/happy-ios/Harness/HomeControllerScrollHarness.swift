@@ -245,7 +245,8 @@ final class HomeControllerScrollHarness: NSObject {
         let top = -insets.top
         let bottom = max(top, height + insets.bottom - sidebar.bounds.height)
         let labels = home.navigationItem.leftBarButtonItem?.customView
-        let banners = Self.find(BannerView.self, in: home.view)
+        // The notice is the list's first row now, not a card over it.
+        let banners = Self.find(SidebarNoticeView.self, in: home.view)
         let nav = home.navigationController?.navigationBar
         return ["event": event, "t": CACurrentMediaTime(), "offset": offset,
                 "height": height, "bounds": rect(sidebar.bounds), "rows": rows,
@@ -255,7 +256,7 @@ final class HomeControllerScrollHarness: NSObject {
                 "bar": nav.map { rect($0.convert($0.bounds, to: window)) } ?? [],
                 "title": labels.map { rect($0.convert($0.bounds, to: window)) } ?? [],
                 "banner": banners.map { rect($0.convert($0.bounds, to: window)) } ?? [],
-                "bannerHidden": banners?.isHidden ?? true, "headerState": String(describing: home.headerState),
+                "bannerHidden": banners == nil, "headerState": String(describing: home.headerState),
                 "order": sidebar.rows.map(\.id), "working": sidebar.rows.filter { $0.status == .working }.map(\.id), "updates": sent]
     }
 }

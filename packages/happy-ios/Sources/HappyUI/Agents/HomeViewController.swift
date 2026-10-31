@@ -20,7 +20,6 @@ final class HomeViewController: UIViewController {
     /// The computer this screen always shows; nil to follow the choice.
     private let fixedAgentConnection: String?
     private let sidebar = SidebarList()
-    private let banner = BannerView()
     private let empty = EmptyView()
     private var session: Session?
     private var accountsObservation: AccountsObservation?
@@ -98,7 +97,6 @@ final class HomeViewController: UIViewController {
         view.addSubview(storiesBand)
         stories.install(in: storiesBand)
         view.addSubview(empty)
-        view.addSubview(banner)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         resultsView.isHidden = true
         resultsView.alpha = 0
@@ -190,8 +188,9 @@ final class HomeViewController: UIViewController {
         applyChrome()
     }
 
-    /// Connection snapshots may change the notice over the list. Its
-    /// arrival never changes the rows' inset or screen positions.
+    /// Connection snapshots may change the notice at the top of the list,
+    /// which comes and goes as a row does (`SidebarList.notice`): the rows'
+    /// inset stays, and rows on screen move only at the list's top.
     func applyConnection(_ home: HomeSnapshot) {
         agentHome = home
         let previous = snapshot.rows
@@ -218,7 +217,7 @@ final class HomeViewController: UIViewController {
         let reason = { (text: String) in text.isEmpty ? Strings.unanswered : text }
         let notice = snapshot.error.map(reason)
         // Prioritizing being off is Settings' business: home says nothing of it.
-        banner.configure(notice: notice)
+        sidebar.notice = notice
         view.setNeedsLayout()
     }
 
@@ -370,18 +369,16 @@ final class HomeViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let bounds = view.bounds
-        let bannerHeight = banner.isEmpty ? 0 : banner.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height
         // Search's results keep clear of the keyboard; home's list never
         // changes for them.
         // On a wide window the list, the stories, what search finds and the
         // empty state all hold to `ContentWidth.maxWidth` and sit in the
         // middle; a phone is as wide as it ever was.
-        let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, bannerHeight: bannerHeight, storiesHeight: sidebar.isHidden ? 0 : stories.inset, maxWidth: ContentWidth.maxWidth, bannerOverlaysList: true)
+        let layout = HomeLayout(size: bounds.size, contentTop: contentInsets.contentTop, chromeTop: contentInsets.chromeTop, listBottom: contentInsets.listBottom, storiesHeight: sidebar.isHidden ? 0 : stories.inset, maxWidth: ContentWidth.maxWidth)
         resultsView.frame = layout.content
         // The results start right at the bar's foot, with no gap of home's.
         let searchInsets = searchContentInsets ?? contentInsets
         resultsView.insets = UIEdgeInsets(top: searchInsets.chromeTop, left: 0, bottom: searchInsets.listBottom, right: 0)
-        banner.frame = layout.banner
         storiesBand.frame = CGRect(x: layout.content.minX, y: contentInsets.chromeTop, width: layout.content.width, height: max(0, bounds.height - contentInsets.chromeTop))
         sidebar.frame = layout.content
         session?.warm.layOut(width: layout.content.width, environment: traitCollection.textEnvironment)
@@ -546,49 +543,6 @@ extension HomeViewController {
         guard let session, !snapshot.allRows.isEmpty else { return }
         let shown = sidebar.shownRows
         session.warm.update(rows: shown.isEmpty ? snapshot.rows : shown, visible: shown.isEmpty ? nil : sidebar.visibleRange, references: snapshot.references)
-    }
-}
-
-/// The note above the list: the last thing the computer refused.
-final class BannerView: UIView {
-    private let title = UILabel()
-    private let card = UIView()
-    private(set) var isEmpty = true
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        card.backgroundColor = UIColor(Palette.rowSelected)
-        card.layer.cornerRadius = 12
-        card.layer.cornerCurve = .continuous
-        addSubview(card)
-        title.font = Fonts.ui(.semiBold, size: 15)
-        title.textColor = UIColor(Palette.rowTextActive)
-        card.addSubview(title)
-        isHidden = true
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    func configure(notice: String?) {
-        isEmpty = notice == nil
-        isHidden = isEmpty
-        title.text = notice
-        setNeedsLayout()
-    }
-
-    private func layout(width: CGFloat) -> BannerLayout {
-        BannerLayout(width: width, title: title.measurable, detail: nil, button: nil)
-    }
-
-    override func sizeThatFits(_ size: CGSize) -> CGSize {
-        isEmpty ? .zero : layout(width: size.width).size
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let layout = layout(width: bounds.width)
-        card.frame = layout.card
-        title.frame = layout.title
     }
 }
 

@@ -65,10 +65,20 @@ final class SidebarList: UIView {
     }
 
     private(set) var rows: [Row] = []
+    /// The note over the rows (the last thing the computer refused), the
+    /// list's first item: it comes and goes as rows do, the rows under it
+    /// moving, and never covers one.
+    var notice: String? {
+        didSet {
+            guard notice != oldValue else { return }
+            update()
+        }
+    }
     /// The room above the rows and below them, and the indicator's.
     private(set) var contentInsets = UIEdgeInsets.zero
     private var prepared: Prepared?
     private var items: [String: SidebarItem] = [:]
+    private var noticeItem: SidebarNoticeItem?
     private var requested: Input?
     private var observation: ApplyObservation?
     private var hold: HoldOverlay?
@@ -86,6 +96,15 @@ final class SidebarList: UIView {
         var textScale: CGFloat
         var selected: String?
         var minute: Int
+        var notice: String?
+    }
+
+    /// The notice over the rows, as worked out off the main thread.
+    struct Notice: Sendable {
+        var text: String
+        /// Its card and title, the item's height with the room under it.
+        var layout: BannerLayout
+        var revision: UInt64
     }
 
     /// One slot of the list, as worked out off the main thread.
@@ -104,9 +123,32 @@ final class SidebarList: UIView {
 
     struct Prepared: Sendable {
         var input: Input
+        /// The rows, their tops under the notice.
         var entries: [Entry]
+        var notice: Notice?
         var contentHeight: CGFloat
         var sequence: UInt64
+
+        /// The list's items, the notice first.
+        var identities: [String] { (notice == nil ? [] : [SidebarNoticeItem.id]) + entries.map(\.row.id) }
+
+        /// Where the list's item `index` starts in the content.
+        func top(at index: Int) -> CGFloat? {
+            guard let row = row(at: index) else { return notice != nil && index == 0 ? 0 : nil }
+            return entries[row].top
+        }
+
+        /// The row the list's item `index` shows; nil for the notice.
+        func row(at index: Int) -> Int? {
+            let row = notice == nil ? index : index - 1
+            return entries.indices.contains(row) ? row : nil
+        }
+
+        /// Each item's box in the content, the notice first.
+        var boxes: [CGRect] {
+            let card = notice.map { [CGRect(origin: .zero, size: $0.layout.size)] } ?? []
+            return card + entries.map { $0.box.offsetBy(dx: 0, dy: $0.top) }
+        }
     }
 
     private lazy var pipeline = ApplyPipeline<Input?, Prepared?, Prepared>(
@@ -190,7 +232,7 @@ final class SidebarList: UIView {
         if requested != prepared?.input { await withCheckedContinuation { waiters.append($0) } }
         let deadline = CACurrentMediaTime() + 1
         while CACurrentMediaTime() < deadline {
-            let ids = prepared?.entries.map(\.row.id) ?? []
+            let ids = prepared?.identities ?? []
             let shown = list.items.map(\.identity) == ids
             // A row redrawn takes its new item once it is measured.
             let current = list.loadedItemViews.allSatisfy { view in
@@ -210,7 +252,8 @@ final class SidebarList: UIView {
             displayScale: traits.displayScale > 0 ? traits.displayScale : 3,
             textScale: StoryRowText.scale(traits), selected: selectedRowId,
             // Only story rows read the clock.
-            minute: rows.contains { $0.story != nil } ? Int(Date().timeIntervalSince1970 / 60) : 0
+            minute: rows.contains { $0.story != nil } ? Int(Date().timeIntervalSince1970 / 60) : 0,
+            notice: notice
         )
         guard input != requested else { return }
         requested = input
@@ -228,6 +271,14 @@ final class SidebarList: UIView {
         for entry in previous?.entries ?? [] { old[entry.row.id] = entry }
         var sequence = previous?.sequence ?? 0
         let now = Date(timeIntervalSince1970: TimeInterval(input.minute * 60))
+        // The notice heads the content; the rows start under it.
+        let notice = input.notice.map { text -> Notice in
+            let layout = BannerLayout(width: input.width, title: SidebarNoticeItem.title(text, scale: input.displayScale), detail: nil, button: nil)
+            if let kept = previous?.notice, kept.text == text, kept.layout == layout { return kept }
+            sequence += 1
+            return Notice(text: text, layout: layout, revision: sequence)
+        }
+        let below = notice?.layout.size.height ?? 0
         let entries = slots.map { slot -> Entry in
             let row = input.rows[slot.row]
             let drawing = SidebarItemDrawing(
@@ -235,7 +286,7 @@ final class SidebarList: UIView {
                 selected: row.id == input.selected, dark: input.dark, displayScale: input.displayScale,
                 textScale: input.textScale, now: row.story == nil ? .distantPast : now
             )
-            var entry = Entry(row: row, size: slot.frame.size, box: slot.box, top: slot.frame.minY, drawing: drawing, revision: 0, titleRun: drawing.shimmers ? drawing.titleAdvance() : nil)
+            var entry = Entry(row: row, size: slot.frame.size, box: slot.box, top: below + slot.frame.minY, drawing: drawing, revision: 0, titleRun: drawing.shimmers ? drawing.titleAdvance() : nil)
             if let kept = old[row.id], kept.drawing == drawing, kept.size == entry.size {
                 entry.revision = kept.revision
             } else {
@@ -244,14 +295,21 @@ final class SidebarList: UIView {
             }
             return entry
         }
-        return Prepared(input: input, entries: entries, contentHeight: result.contentHeight, sequence: sequence)
+        return Prepared(input: input, entries: entries, notice: notice, contentHeight: below + result.contentHeight, sequence: sequence)
     }
 
     private func show(_ next: Prepared) {
-        let previousIDs = prepared?.entries.map(\.row.id)
+        let previousIDs = prepared?.identities
         let target = anchor(next)
         prepared = next
-        var shown: [SidebarItem] = []
+        var shown: [any ListRow] = []
+        if let notice = next.notice {
+            let item = noticeItem.flatMap { $0.revision == notice.revision ? $0 : nil } ?? SidebarNoticeItem(notice: notice)
+            noticeItem = item
+            shown.append(item)
+        } else {
+            noticeItem = nil
+        }
         var kept: [String: SidebarItem] = [:]
         var touched = 0
         for entry in next.entries {
@@ -266,10 +324,16 @@ final class SidebarList: UIView {
             kept[entry.row.id] = item
         }
         items = kept
-        let structural = previousIDs != nil && previousIDs != next.entries.map(\.row.id)
+        let structural = previousIDs != nil && previousIDs != next.identities
         let animated = structural && window != nil && !UIAccessibility.isReduceMotionEnabled
+        if animated, next.notice == nil, previousIDs?.first == SidebarNoticeItem.id { departNotice() }
         ApplyPerf.measure(.homeList) {
             list.applyChanges(items: shown, newSize: bounds.size, scrollTo: target, anchorMode: .automatic, compensatesInsetChange: false, transition: animated ? .easeInOut(0.25) : .none)
+            // A notice coming in slides down from above with the rows it
+            // pushes, rather than fading in over them where they were.
+            if animated, next.notice != nil, previousIDs?.first != SidebarNoticeItem.id {
+                list.animateInsertedBlock(identities: [SidebarNoticeItem.id], from: .top, transition: .easeInOut(0.25))
+            }
             return touched
         }
         edge.contentSize = CGSize(width: bounds.width, height: next.contentHeight)
@@ -279,28 +343,50 @@ final class SidebarList: UIView {
         for waiter in waiting { waiter.resume() }
     }
 
+    /// The notice going: UltraList fades a departing top row where it
+    /// stood, over the rows rising into its room. Instead its picture rises
+    /// with them into the bar, on the list's curve, fading, and what the
+    /// list fades is empty.
+    private func departNotice() {
+        guard let view = list.loadedItemViews.lazy.compactMap({ $0 as? SidebarNoticeView }).first,
+              let ghost = view.snapshotView(afterScreenUpdates: false) else { return }
+        ghost.frame = view.convert(view.bounds, to: edge)
+        ghost.isUserInteractionEnabled = false
+        ghost.accessibilityIdentifier = SidebarNoticeView.leavingIdentifier
+        edge.addSubview(ghost)
+        view.isLeaving = true
+        let rise = view.bounds.height
+        let animator = UIViewPropertyAnimator(duration: 0.25, controlPoint1: CGPoint(x: 0.42, y: 0), controlPoint2: CGPoint(x: 0.58, y: 1)) {
+            ghost.frame.origin.y -= rise
+            ghost.alpha = 0
+        }
+        animator.addCompletion { _ in ghost.removeFromSuperview() }
+        animator.startAnimation()
+    }
+
     /// The reader's place, kept: rows that changed above what is on screen
     /// would otherwise push everything under the eye (a conversation added
     /// or archived elsewhere, Prioritizing's reordering). The unchanged row
     /// `SidebarScrollAnchor` picks stays where it is; at its top the list
-    /// stays at its top, so arrivals show.
+    /// stays at its top, so arrivals show. The notice is one of the rows
+    /// here: coming or going above the screen, it moves nothing on it.
     private func anchor(_ next: Prepared) -> ListScrollTarget? {
-        guard let previous = prepared?.entries, !previous.isEmpty, bounds.height > 0, !isAtTop else { return nil }
-        let ids = previous.map(\.row.id)
-        let nextIDs = next.entries.map(\.row.id)
-        guard ids != nextIDs else { return nil }
+        guard let previous = prepared, !previous.identities.isEmpty, bounds.height > 0, !isAtTop else { return nil }
+        let ids = previous.identities
+        let nextIDs = next.identities
+        guard ids != nextIDs || previous.notice?.layout.size != next.notice?.layout.size else { return nil }
         let offset = contentOffsetY
         let viewport = CGRect(x: 0, y: offset + contentInsets.top, width: bounds.width, height: bounds.height - contentInsets.top - contentInsets.bottom)
-        let boxes = previous.map { $0.box.offsetBy(dx: 0, dy: $0.top) }
-        let nextBoxes = next.entries.map { $0.box.offsetBy(dx: 0, dy: $0.top) }
+        let boxes = previous.boxes
+        let nextBoxes = next.boxes
         guard let index = SidebarScrollAnchor.index(previous: ids, next: nextIDs, boxes: boxes, nextBoxes: nextBoxes, viewport: viewport),
-              let nextIndex = nextIDs.firstIndex(of: ids[index]) else { return nil }
+              let nextIndex = nextIDs.firstIndex(of: ids[index]), let nextTop = next.top(at: nextIndex) else { return nil }
         let moved = nextBoxes[nextIndex].minY - boxes[index].minY
         let top = -contentInsets.top
         let bottom = max(top, next.contentHeight + contentInsets.bottom - bounds.height)
         let place = min(bottom, max(top, offset + moved))
         // The anchor's slot top lands this far past the inset's edge.
-        return ListScrollTarget(index: nextIndex, identity: nextIDs[nextIndex], pointOffset: next.entries[nextIndex].top - place - contentInsets.top)
+        return ListScrollTarget(index: nextIndex, identity: nextIDs[nextIndex], pointOffset: nextTop - place - contentInsets.top)
     }
 
     // MARK: Place
@@ -320,10 +406,10 @@ final class SidebarList: UIView {
     /// The list's place as a scroll view's `contentOffset.y`: `-top` at rest
     /// at its top, less past it under a pull, more as it is read down.
     var contentOffsetY: CGFloat {
-        guard let entries = prepared?.entries else { return -contentInsets.top }
-        for index in list.loadedIndexRange where entries.indices.contains(index) {
-            guard let frame = list.settledFrame(at: index) else { continue }
-            return entries[index].top - frame.minY
+        guard let prepared else { return -contentInsets.top }
+        for index in list.loadedIndexRange {
+            guard let top = prepared.top(at: index), let frame = list.settledFrame(at: index) else { continue }
+            return top - frame.minY
         }
         return -contentInsets.top
     }
@@ -341,12 +427,14 @@ final class SidebarList: UIView {
     /// Moves the list to `offset` (a scroll view's `contentOffset.y`), at
     /// once or gliding there.
     func setContentOffsetY(_ offset: CGFloat, animated: Bool = false) {
-        guard let entries = prepared?.entries, !entries.isEmpty else { return }
-        // Row `index`'s top lands `offset` past the inset's edge: its content
+        guard let prepared else { return }
+        let ids = prepared.identities
+        guard !ids.isEmpty else { return }
+        // Item `index`'s top lands `offset` past the inset's edge: its content
         // place, less where the screen starts in the content.
-        let index = entries.lastIndex { $0.top <= max(0, offset + contentInsets.top) } ?? 0
-        let distance = entries[index].top - offset - contentInsets.top
-        list.scrollTo(ListScrollTarget(index: index, identity: entries[index].row.id, pointOffset: distance), transition: animated ? .uiKitScroll() : .immediate)
+        let index = ids.indices.last { (prepared.top(at: $0) ?? 0) <= max(0, offset + contentInsets.top) } ?? 0
+        let distance = (prepared.top(at: index) ?? 0) - offset - contentInsets.top
+        list.scrollTo(ListScrollTarget(index: index, identity: ids[index], pointOffset: distance), transition: animated ? .uiKitScroll() : .immediate)
         mirror()
     }
 
@@ -430,12 +518,12 @@ final class SidebarList: UIView {
     var visibleRows: [Row] { visibleEntries.map(\.row) }
 
     private var visibleEntries: [Entry] {
-        guard let entries = prepared?.entries else { return [] }
+        guard let prepared else { return [] }
         let window = bounds.inset(by: UIEdgeInsets(top: contentInsets.top, left: 0, bottom: contentInsets.bottom, right: 0))
         return list.loadedIndexRange.compactMap { index in
-            guard entries.indices.contains(index), let frame = list.settledFrame(at: index) else { return nil }
-            let box = entries[index].box.offsetBy(dx: frame.minX, dy: frame.minY)
-            return box.intersects(window) ? entries[index] : nil
+            guard let row = prepared.row(at: index), let frame = list.settledFrame(at: index) else { return nil }
+            let entry = prepared.entries[row]
+            return entry.box.offsetBy(dx: frame.minX, dy: frame.minY).intersects(window) ? entry : nil
         }
     }
 
@@ -576,5 +664,90 @@ final class SidebarItem: ListRow {
     func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? { await node.prepare(width: width, environment: environment) }
     func makeView() -> ListRowView { SidebarItemView(item: self) }
     func apply(to view: ListRowView, transition: ListTransition) { (view as? SidebarItemView)?.apply(self, transition: transition) }
+}
+
+/// The notice at the top of home's list: the last thing the computer
+/// refused, in a quiet card (`BannerLayout`), measured off the main thread
+/// with the rows.
+@MainActor
+final class SidebarNoticeItem: ListRow {
+    nonisolated static let id = "home:notice"
+    let identity = SidebarNoticeItem.id
+    let revision: UInt64
+    let notice: SidebarList.Notice
+
+    init(notice: SidebarList.Notice) {
+        self.notice = notice
+        revision = notice.revision
+    }
+
+    static var font: UIFont { Fonts.ui(.semiBold, size: 15) }
+
+    /// The title's size at a width, on any thread, rounded up to `scale`'s pixels.
+    nonisolated static func title(_ text: String, scale: CGFloat) -> Measurable {
+        let string = NSAttributedString(string: text, attributes: [.font: Fonts.ui(.semiBold, size: 15)])
+        return Measurable { width in
+            let size = string.boundingRect(with: CGSize(width: width, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil).size
+            return CGSize(width: min(width, (size.width * scale).rounded(.up) / scale), height: (size.height * scale).rounded(.up) / scale)
+        }
+    }
+
+    func makeView() -> ListRowView { SidebarNoticeView(item: self) }
+    func apply(to view: ListRowView, transition: ListTransition) { (view as? SidebarNoticeView)?.apply(self) }
+}
+
+/// The notice's card on the list, its frames worked out off the main thread.
+@MainActor
+final class SidebarNoticeView: ListRowView {
+    private(set) var item: SidebarNoticeItem
+    private let card = UIView()
+    let title = UILabel()
+
+    init(item: SidebarNoticeItem) {
+        self.item = item
+        super.init(frame: .zero)
+        card.backgroundColor = UIColor(Palette.rowSelected)
+        card.layer.cornerRadius = 12
+        card.layer.cornerCurve = .continuous
+        addSubview(card)
+        title.font = SidebarNoticeItem.font
+        title.textColor = UIColor(Palette.rowTextActive)
+        title.numberOfLines = 0
+        card.addSubview(title)
+        // VoiceOver reads the card as one line, the list's first.
+        isAccessibilityElement = true
+        accessibilityTraits = .staticText
+        accessibilityIdentifier = "home-notice"
+        apply(item)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// The picture of a notice rising away (`SidebarList.departNotice`).
+    static let leavingIdentifier = "home-notice-leaving"
+
+    /// Gone from the list: its picture rises in its place, so it draws nothing.
+    var isLeaving = false {
+        didSet {
+            card.isHidden = isLeaving
+            isAccessibilityElement = !isLeaving
+        }
+    }
+
+    func apply(_ item: SidebarNoticeItem) {
+        self.item = item
+        isLeaving = false
+        title.text = item.notice.text
+        accessibilityLabel = item.notice.text
+        setNeedsLayout()
+    }
+
+    override func update(width: Double, transition: ListTransition) -> Double { item.notice.layout.size.height }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        card.frame = item.notice.layout.card
+        title.frame = item.notice.layout.title
+    }
 }
 #endif

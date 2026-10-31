@@ -735,7 +735,7 @@ final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
         newStory.frame = CGRect(x: view.bounds.width - 44, y: view.bounds.height - 60, width: 44, height: 44)
         for (index, row) in rows.enumerated() { row.frame = CGRect(x: 0, y: CGFloat(index) * 52, width: view.bounds.width, height: 51) }
         list.contentSize = CGSize(width: view.bounds.width, height: CGFloat(rows.count) * 52)
-        let home = HomeLayout(size: view.bounds.size, contentTop: layout.insets.contentTop, chromeTop: layout.insets.chromeTop, listBottom: layout.insets.listBottom, bannerHeight: 0, storiesHeight: stories.inset)
+        let home = HomeLayout(size: view.bounds.size, contentTop: layout.insets.contentTop, chromeTop: layout.insets.chromeTop, listBottom: layout.insets.listBottom, storiesHeight: stories.inset)
         let insets = UIEdgeInsets(home.listInsets)
         guard list.contentInset != insets else { return }
         let atTop = list.contentOffset.y <= -list.contentInset.top + 1

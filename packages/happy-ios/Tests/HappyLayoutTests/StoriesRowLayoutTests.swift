@@ -55,15 +55,14 @@ final class StoriesRowLayoutTests: XCTestCase {
         XCTAssertEqual(StoriesRowLayout.segments(count: 80).count, 30)
     }
 
-    /// The open stories push the banner and the list down by their room.
+    /// The open stories push the list down by their room.
     func testHomeMakesRoomForTheOpenStories() {
-        let layout = HomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, bannerHeight: 40, storiesHeight: 96)
-        XCTAssertEqual(layout.banner, rect(0, 216, 390, 40))
-        XCTAssertEqual(layout.listInsets, LayoutInsets(top: 256, left: 0, bottom: 90, right: 0))
+        let layout = HomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, storiesHeight: 96)
+        XCTAssertEqual(layout.listInsets, LayoutInsets(top: 216, left: 0, bottom: 90, right: 0))
         XCTAssertEqual(layout.indicatorInsets, LayoutInsets(top: 110, left: 0, bottom: 90, right: 0))
         // Closed or off: home exactly as it was.
-        let off = HomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, bannerHeight: 0, storiesHeight: 0)
-        XCTAssertEqual(off, HomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, bannerHeight: 0))
+        let off = HomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90, storiesHeight: 0)
+        XCTAssertEqual(off, HomeLayout(size: CGSize(width: 390, height: 844), contentTop: 120, chromeTop: 110, listBottom: 90))
         XCTAssertEqual(off.listInsets.top, 120)
     }
 }

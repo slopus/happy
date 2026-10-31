@@ -203,7 +203,7 @@ final class HostedHeaderSteadyTests: XCTestCase {
         }
     }
 
-    func testAgentHomeKeepsItsHeaderAndFirstRowThroughEveryStatus() async throws {
+    func testAgentHomeKeepsItsHeaderThroughEveryStatusItsRowsUnderTheNotice() async throws {
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -237,15 +237,21 @@ final class HostedHeaderSteadyTests: XCTestCase {
         window.layoutIfNeeded()
         let switcher = try XCTUnwrap(home.navigationItem.leftBarButtonItem?.customView as? AccountSwitcherButton)
         let name = try XCTUnwrap(Self.subviews(StyledLabel.self, in: switcher).first { $0.string == switcher.title })
-        let row = try XCTUnwrap(sidebar.view(for: "s:0"))
         func frames() -> [CGRect] {
             window.layoutIfNeeded()
-            return [navigation.navigationBar, switcher, name, sidebar, row].map { $0.convert($0.bounds, to: window) }
+            return [navigation.navigationBar, switcher, name, sidebar].map { $0.convert($0.bounds, to: window) }
+        }
+        /// The first row, as it rests. The offline notice is the list's
+        /// first row (`SidebarList.notice`), so the row stands under it.
+        func firstRow() throws -> CGRect {
+            let row = try XCTUnwrap(sidebar.view(for: "s:0"))
+            return row.convert(row.bounds, to: window)
         }
         home.headerState = .online
         try await Task.sleep(for: .milliseconds(250))
         let original = frames()
-        metrics("home-frames-bar-switcher-title-sidebar-firstRow", original)
+        let originalRow = try firstRow()
+        metrics("home-frames-bar-switcher-title-sidebar-firstRow", original + [originalRow])
         let inset = sidebar.contentInsets
         let offset = sidebar.contentOffsetY
         capture(window, "7-agent-home-online")
@@ -260,8 +266,10 @@ final class HostedHeaderSteadyTests: XCTestCase {
             XCTAssertEqual(sidebar.contentInsets, inset)
             XCTAssertEqual(sidebar.contentOffsetY, offset)
             XCTAssertEqual(sidebar.rows.map(\.id), rows.map(\.id))
-            try await Task.sleep(for: .milliseconds(150))
+            try await Task.sleep(for: .milliseconds(250))
             XCTAssertEqual(frames(), original, "settled at \(state)")
+            let notice = snapshot.error == nil ? 0 : try XCTUnwrap(sidebar.list.settledFrame(at: 0)).height
+            XCTAssertEqual(try firstRow(), originalRow.offsetBy(dx: 0, dy: notice), "the first row isn't under the notice at \(state)")
             capture(window, "agent-home-\(state)")
             if state == .connecting { capture(window, "8-agent-home-connecting") }
         }

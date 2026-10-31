@@ -18,6 +18,11 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     private var observation: AccountsObservation?
     private var switcher: AccountSwitcher?
     private var headerWatch: Watch?
+    /// The list's room under the bar and above the toolbar, as home last
+    /// stood with it.
+    private var room: HomeListRoom?
+    /// On top of the stack, neither coming nor going.
+    private var standing = false
     var headerState: Strings.HeaderStatus.State = .connecting {
         didSet { updateTitle() }
     }
@@ -83,15 +88,31 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         HomeToolbar.show(for: self, animated: animated)
     }
 
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        HomeToolbar.leave(self, animated: animated)
-    }
-
     /// The bar shades whichever list is under it: the results while they
     /// cover home, home's own otherwise.
     private func updateEdge() {
         HeaderBar.edge(v2.resultsList ?? v2.list, in: self)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        standing = true
+        // The bar and the toolbar are where home rests: the list's room is
+        // read from them again (`HomeListRoom`).
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        standing = false
+        HomeToolbar.leave(self, animated: animated)
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        // UIKit doesn't always lay home out after the toolbar's return.
+        view.setNeedsLayout()
     }
 
     override func viewDidLayoutSubviews() {
@@ -99,11 +120,10 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         switcher?.layout()
         let field = search.bar.searchTextField
         let control = field.window == view.window && field.bounds.height > 0 ? field.convert(field.bounds, to: view) : nil
-        let bottom = HomeBottomBarLayout(height: view.bounds.height, safeBottom: view.safeAreaInsets.bottom, control: control).bottomInset
-        var insets = HomeContentInsets(underBar: LayoutInsets(view.safeAreaInsets), dock: 0)
-        insets.listBottom = bottom
-        if !search.isActive { v2.contentInsets = insets }
-        v2.searchContentInsets = insets
+        let room = HomeListRoom(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), control: control, standing: standing, kept: room)
+        self.room = room
+        if !search.isActive { v2.contentInsets = room.insets }
+        v2.searchContentInsets = room.insets
     }
 
     /// The bar's compose: new work, over home.

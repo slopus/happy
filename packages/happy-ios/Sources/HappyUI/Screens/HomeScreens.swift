@@ -44,6 +44,11 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     private var content: UIViewController?
     private var preparesArchives = false
     private var switcher: AccountSwitcher?
+    /// The list's room under the bar and above the toolbar, as home last
+    /// stood with it (`HomeListRoom`).
+    private var room: HomeListRoom?
+    /// On top of the stack, neither coming nor going.
+    private var standing = false
 
     public init(context: AppContext, session: AccountSession) {
         self.context = context
@@ -141,15 +146,33 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         HomeToolbar.show(for: self, animated: animated)
     }
 
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        standing = true
+        // The bar and the toolbar are where home rests: the list's room is
+        // read from them again.
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+    }
+
     public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        standing = false
         HomeToolbar.leave(self, animated: animated)
+    }
+
+    public override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        // UIKit doesn't always lay home out after the toolbar's return.
+        view.setNeedsLayout()
     }
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         switcher?.layout()
-        applyInsets(HomeContentInsets(underBar: LayoutInsets(view.safeAreaInsets), dock: 0))
+        let room = HomeListRoom(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), control: nil, standing: standing, kept: room)
+        self.room = room
+        applyInsets(room.insets)
     }
 
     private var isCurrentAccount: Bool {

@@ -55,6 +55,17 @@ and the corner signal. `SidebarRows.withStories` keeps the tree, unlike the
 spaces sidebar's top-level-only story list, because projects and their
 sessions live here. Nested rows and folders stay plain rows.
 
+What the computer last refused ("The computer did not answer.") is the
+list's first row (`SidebarList.notice`), never a card over it: it slides
+down from above with the rows it pushes and rises back into the bar as it
+goes, and read further down, the rows on screen stay where they are.
+
+The list's room under the bar and above the toolbar's search field is read
+only while home stands on top of the stack (`HomeListRoom`). Coming or going,
+UIKit lays home out with its toolbar on its way, and no layout follows the
+toolbar's return; read then, the list used to end under the search field
+after any way back.
+
 A hold on a conversation's row shows its preview. There is no menu and
 nothing moves: the phone doesn't reorder this list.
 
@@ -74,3 +85,10 @@ reorders all arrive this way. Rings come from the stories store.
   classic and never reads the sidebar document.
 - `ClassicSidebarUITests` (HappyDirectUITests), against a throwaway daemon
   with a driver: the list without titles, and a relaunch.
+- `HostedHomeNoticeRowTests` (HappyUIKitHostedTests): the notice comes and
+  goes through frames between, never over a row, and keeps the reader's
+  place further down.
+- `HostedHomeInsetsTests` (HappyUIKitHostedTests): a long home, a computer's
+  and a Happy account's, at its top and at its end, back by Back, a finished
+  swipe and a let-go swipe: the list's room never changes coming back.
+  `HomeListRoom`'s frames are in `AccountSwitcherLayoutTests`.
