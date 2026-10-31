@@ -65,27 +65,37 @@ final class HomeUltraListTests: XCTestCase {
         }
     }
 
-    func testCustomPlansKeepExistingSessionGeometryAtEveryTextSize() async {
-        for category in [UIContentSizeCategory.large, .extraExtraExtraLarge, .accessibilityExtraExtraExtraLarge] {
+    /// A session's plan is its `FlatSessionRowLayout`, at the lines of the
+    /// text size it was made at: as tall as the layout's height for those
+    /// lines, the avatar centred on it, each line of text one line of its
+    /// style and inside the row; in home's card it is moved in by the
+    /// card's side.
+    func testASessionsPlanIsItsLayoutAtEveryTextSize() async {
+        for category in [UIContentSizeCategory.extraSmall, .large, .extraExtraExtraLarge, .accessibilityExtraExtraExtraLarge] {
             let text = TextEnvironment(scale: TextScale(TextSizeCategory(category)), displayScale: 3)
             let environment = await HomeTextEnvironment.make(text)
+            let lines = environment.rows.sessionLines
             for workspace in [nil, "fix-login"] {
                 let row = HomeRowMeasurerTests.session(workspace: workspace, changes: HomeRowMeasurerTests.changes)
                 // Home's card, and the tablet's full-width row.
                 for (width, carded) in [CGFloat(320), 393, 430].flatMap({ [($0, true), ($0, false)] }) {
+                    let at = "\(category.rawValue) \(width) carded \(carded) workspace \(workspace != nil)"
                     let plan = await Task.detached { HomeRowDrawing.make(.flat(.session(row)), width: width, grouped: false, selected: false, carded: carded, environment: environment, dark: false) }.value
-                    let cell = SessionRowCell(style: .default, reuseIdentifier: nil)
-                    cell.carded = carded
-                    cell.traitOverrides.followsTextSize = true
-                    cell.traitOverrides.preferredContentSizeCategory = category
-                    cell.traitOverrides.displayScale = 3
-                    cell.lines = environment.rows.sessionLines
-                    cell.configure(row, style: .gradient, monochrome: false)
-                    cell.updateTraitsIfNeeded()
-                    let layout = cell.layout(width: cell.contentWidth(width))
-                    let side = carded ? HomeCardLayout.Metrics.side : 0
-                    XCTAssertEqual(plan.size, CGSize(width: width, height: layout.size.height), "\(width) carded \(carded)")
-                    XCTAssertEqual(plan.avatarFrame, layout.avatar.offsetBy(dx: side, dy: 0), "\(width) carded \(carded)")
+                    let avatar = carded ? HomeCardLayout.Metrics.sessionAvatar : FlatSessionRowLayout.Metrics.avatarSize
+                    let height = FlatSessionRowLayout.height(lines: lines, workspace: workspace != nil, changes: true, branchIcon: environment.rows.branchIcon.height, avatarSize: avatar)
+                    XCTAssertEqual(plan.size, CGSize(width: width, height: height), at)
+                    XCTAssertEqual(plan.avatarFrame.size, CGSize(width: avatar, height: avatar), at)
+                    XCTAssertEqual(plan.avatarFrame.midY, height / 2, accuracy: 0.001, at)
+                    XCTAssertGreaterThanOrEqual(plan.avatarFrame.minX, carded ? HomeCardLayout.Metrics.side : 0, at)
+                    var texts: [String: CGRect] = [:]
+                    for case .text(let value, _, _, let frame) in plan.marks { texts[value] = frame }
+                    XCTAssertEqual(texts[row.title ?? ""]?.height, lines.title, at)
+                    XCTAssertEqual(texts[row.projectName]?.height, lines.project, at)
+                    if let workspace { XCTAssertEqual(texts[workspace]?.height, lines.workspace, at) }
+                    XCTAssertEqual(texts["+1.2k"]?.height, lines.changes, at)
+                    for (value, frame) in texts {
+                        XCTAssertTrue(CGRect(origin: .zero, size: plan.size).insetBy(dx: -0.001, dy: -0.001).contains(frame), "\(value) runs out of the row, \(at)")
+                    }
                     XCTAssertTrue(plan.accessibilityLabel.contains("+1.2k"))
                     XCTAssertTrue(plan.accessibilityLabel.contains("-7"))
                 }
@@ -175,10 +185,10 @@ final class HomeUltraListTests: XCTestCase {
             }
         }.value
         for (grouped, (toggle, row, heading)) in zip([false, true], plans) {
-            // ArchiveToggleCell: half-strength content over its page colour.
+            // The archive toggle: half-strength content over its page colour.
             XCTAssertEqual(toggle.press, .dim)
             XCTAssertEqual(toggle.background, grouped ? Palette.groupedBackground : Palette.flatListBackground)
-            XCTAssertEqual(row.press, .fill(Palette.surfaceSelected), "SessionRowCell's selected background")
+            XCTAssertEqual(row.press, .fill(Palette.surfaceSelected), "a flat session's selected background")
             XCTAssertEqual(heading.press, .none)
             // The page colour is the row view's layer, so a press fill can
             // sit between it and the drawing: the drawing leaves it clear.
@@ -245,45 +255,50 @@ final class HomeUltraListTests: XCTestCase {
         }
     }
 
-    func testTabletPlansMatchNativeHeadersAndCardSegments() async throws {
+    /// The tablet's plans: a heading is as tall as the grouped list
+    /// measures it off the main thread (`TabletGroupedHeights`), at every
+    /// width and text size, and draws its title one line of its style; the
+    /// chats' and archived cards' rows keep their height at every size.
+    func testTabletPlansAreTheirMeasuredHeadings() async throws {
         _ = await TranslationCatalog.load("en")
-        for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
-            let environment = await HomeTextEnvironment.make(.init(scale: TextScale(TextSizeCategory(category)), displayScale: 2))
+        var fixed: [String: CGFloat] = [:]
+        for category in [UIContentSizeCategory.extraSmall, .large, .accessibilityExtraExtraExtraLarge] {
+            let text = TextEnvironment(scale: TextScale(TextSizeCategory(category)), displayScale: 2)
+            let environment = await HomeTextEnvironment.make(text)
+            let metrics = TabletGroupedHeights.metrics(text)
             for width in [CGFloat(280), 320] {
-                func check(_ row: TabletGroupedRow, cell: UITableViewCell, title: StyledLabel) throws {
+                let at = "\(category.rawValue) at \(width)"
+                func check(_ row: TabletGroupedRow, title: String, style: TextStyle) throws {
                     let plan = HomeRowDrawing.makeTablet(row, width: width, selected: true, environment: environment, dark: true)
-                    cell.traitOverrides.preferredContentSizeCategory = category
-                    cell.traitOverrides.displayScale = 2; cell.updateTraitsIfNeeded()
-                    cell.frame = CGRect(x: 0, y: 0, width: width, height: plan.size.height)
-                    cell.layoutIfNeeded()
-                    XCTAssertEqual(plan.size, cell.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)))
-                    let frame = try XCTUnwrap(plan.marks.compactMap { mark -> CGRect? in
-                        if case .text(let value, _, _, let frame) = mark, value == title.string { return frame }
+                    let heading = try XCTUnwrap(TabletGroupedHeights.heading(row), "\(row)")
+                    XCTAssertEqual(plan.size, CGSize(width: width, height: TabletGroupedRowHeights.heading(heading, width: width, metrics: metrics)), "\(row) \(at)")
+                    let frame = try XCTUnwrap(plan.marks.lazy.compactMap { mark -> CGRect? in
+                        if case .text(let value, _, _, let frame) = mark, value == title { return frame }
                         return nil
-                    }.first)
-                    let native = title.convert(title.bounds, to: cell.contentView)
-                    XCTAssertEqual(PixelGrid.snap(frame, scale: 2), native)
+                    }.first, "\(row) \(at)")
+                    XCTAssertEqual(frame.height, style.oneLine(in: text), "\(row) \(at)")
                 }
-                let heading = TabletSectionHeaderCell(style: .default, reuseIdentifier: nil)
-                heading.configure(Strings.Tablet.bots)
-                try check(.botsHeader, cell: heading, title: heading.label)
+                try check(.botsHeader, title: Strings.Tablet.bots, style: TextStyles.sessionDayHeader)
+                try check(.machine(id: "m", name: "MacBook Pro"), title: "MacBook Pro", style: TextStyles.tabletMachineName)
                 let workspace = TabletWorkspaceHeader(id: "p", projectName: "happy", avatar: .init(seed: "p"), branch: "main", changes: .init(approximate: false, insertions: 0, deletions: 7), checkout: nil, place: .init(machineId: nil, path: nil, worktreeKey: nil))
-                let header = TabletWorkspaceHeaderCell(style: .default, reuseIdentifier: nil)
-                header.configure(workspace, style: .gradient, monochrome: false)
-                try check(.workspace(workspace), cell: header, title: header.titleLabel)
+                try check(.workspace(workspace), title: "happy", style: TextStyles.tabletWorkspaceTitle)
+                try check(.archiveToggle(hidden: true), title: Strings.Sidebar.showArchived, style: TextStyles.archiveToggle)
+                try check(.bot(HomeRowMeasurerTests.session("b", workspace: "fix-login", changes: HomeRowMeasurerTests.changes)), title: "Fix the build", style: TextStyles.sessionTitle)
+
                 for first in [false, true] {
                     for last in [false, true] {
                         let chat = TabletChatRow(id: "c", title: "A chat title with enough words for two lines", connected: true, indicator: .dot(.working, pulsing: false), showsBorder: !last, first: first, last: last, projectEnd: last)
-                        let cell = TabletChatCell(style: .default, reuseIdentifier: nil); cell.configure(chat)
-                        try check(.chat(chat), cell: cell, title: cell.titleLabel)
+                        let height = HomeRowDrawing.makeTablet(.chat(chat), width: width, selected: true, environment: environment, dark: true).size.height
+                        XCTAssertEqual(height, fixed["chat \(first) \(last) \(width)", default: height], "a chat's row followed the text, \(at)")
+                        fixed["chat \(first) \(last) \(width)"] = height
                     }
                 }
                 let session = SessionRecord(id: "a", seq: 1, createdAt: 0, updatedAt: 0, active: false, activeAt: 0, projectId: nil, metadataVersion: 1, metadataCipher: "", metadata: nil, agentStateVersion: 0, agentStateCipher: nil, agentState: nil, dataKeyCipher: "", decryptable: true, thinking: false, unread: false)
                 var archived = TabletArchivedRow(session, row: HomeRowMeasurerTests.session("a", workspace: nil), now: 10_000, first: true)
                 archived.last = true
-                let cell = TabletArchivedCell(style: .default, reuseIdentifier: nil)
-                cell.configure(archived, style: .gradient, monochrome: false)
-                try check(.archived(archived), cell: cell, title: cell.titleLabel)
+                let height = HomeRowDrawing.makeTablet(.archived(archived), width: width, selected: true, environment: environment, dark: true).size.height
+                XCTAssertEqual(height, fixed["archived \(width)", default: height], "an archived card followed the text, \(at)")
+                fixed["archived \(width)"] = height
             }
         }
     }

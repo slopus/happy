@@ -5,8 +5,8 @@ import HappyLayout
 import UIKit
 import XCTest
 
-/// The text that followed no text size before: the sidebar's bots, against
-/// the heights worked out for them off the main thread; and session info's
+/// The text that followed no text size before: the sidebar's bots, on the
+/// lines home's rows take at that size; and session info's
 /// and the duplicate sheet's text made outside `TextStyle`, scaled by the
 /// multiplier as RN scales any Text, and at the designed size where the
 /// screen doesn't follow the text size.
@@ -37,7 +37,7 @@ final class SecondaryTextSizeTests: XCTestCase {
 
     // MARK: The sidebar's bots
 
-    func testTheSidebarsBotsMatchTheirCellsAtEveryTextSize() async {
+    func testTheSidebarsBotsTakeHomesLinesAtEveryTextSize() async {
         for category in categories {
             for scale in scales {
                 let text = TextEnvironment(scale: TextScale(TextSizeCategory(category)), displayScale: scale)
@@ -46,30 +46,6 @@ final class SecondaryTextSizeTests: XCTestCase {
                 let home = await HomeTextEnvironment.make(text)
                 XCTAssertEqual(metrics.sessionLines, home.rows.sessionLines, category.rawValue)
                 XCTAssertEqual(metrics.branchIcon, home.rows.branchIcon.height, category.rawValue)
-                for width in [280, 320] as [CGFloat] {
-                    let at = "\(width) @\(scale)x, \(category.rawValue)"
-                    for workspace in [nil, "fix-login"] {
-                        for changes in [nil, HomeRowMeasurerTests.changes] {
-                            let session = HomeRowMeasurerTests.session(workspace: workspace, changes: changes)
-                            let cell = SessionRowCell(style: .default, reuseIdentifier: nil)
-                            // As the grouped list configures it.
-                            cell.carded = false
-                            cell.lines = metrics.sessionLines
-                            cell.configure(session, style: .gradient, monochrome: false)
-                            follow(cell, scale: scale, category: category)
-                            cell.frame = CGRect(x: 0, y: 0, width: width, height: 100)
-                            cell.layoutIfNeeded()
-                            let heading = TabletGroupedHeights.heading(.bot(session))
-                            XCTAssertEqual(heading, .bot(workspace: workspace != nil, changes: changes != nil), at)
-                            XCTAssertEqual(
-                                heading.map { TabletGroupedRowHeights.heading($0, width: width, metrics: metrics) },
-                                fitting(cell, width: width).height,
-                                "\(workspace ?? "-") \(changes != nil) at \(at)"
-                            )
-                            XCTAssertEqual(cell.projectLabel.renderedStyle.size, 15 * multiplier(category), at)
-                        }
-                    }
-                }
             }
         }
     }

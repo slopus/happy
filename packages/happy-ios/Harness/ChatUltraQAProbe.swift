@@ -308,10 +308,15 @@ final class ChatUltraQAProbe: NSObject {
     /// The chat rows Home shows on screen, top to bottom, as frames in the
     /// window: where to tap, never what they say.
     private func homeChatFrames(in window: UIWindow) -> [[Double]] {
-        var cells: [UITableViewCell] = []
-        Self.all(UITableViewCell.self, in: window, into: &cells)
-        return cells.filter { $0 is SessionRowCell || $0 is ProjectChatCell }
-            .map { $0.convert($0.bounds, to: window) }
+        var homes: [HomeUltraListView] = []
+        Self.all(HomeUltraListView.self, in: window, into: &homes)
+        return homes.flatMap { home -> [CGRect] in
+            let list = home.list
+            return list.loadedIndexRange.compactMap { index in
+                guard list.items[index].identity.hasPrefix("session:"), let frame = list.settledFrame(at: index) else { return nil }
+                return list.convert(frame, to: window)
+            }
+        }
             .filter { $0.minY >= 0 && $0.maxY <= window.bounds.maxY && $0.height > 20 }
             .sorted { $0.minY < $1.minY }
             .map(rect)

@@ -288,7 +288,7 @@ final class HomeArchiveProbe: NSObject {
         guard !view.isHidden, let window else { return [] }
         let layer = view.layer.presentation() ?? view.layer
         let opacity = inherited * layer.opacity
-        let isRow = view is SessionRowCell || view is ProjectChatCell || view is ListRowView
+        let isRow = view is ListRowView
         let archived = isRow && (view.accessibilityLabel.map { label in
             archivedPrefixes.map { $0.contains { label.hasPrefix($0 + ",") } } ?? label.hasPrefix("Archived fixture")
         } ?? false)

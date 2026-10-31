@@ -20,9 +20,10 @@ private struct NoSockets: WebSocketConnector {
     }
 }
 
-/// Home's list at the person's text size: every row's height and the
-/// notices' worked out off the main thread from one environment, against
-/// the cells and the header drawing at that size; and the list itself, on
+/// Home's list at the person's text size: the notices' height worked out
+/// off the main thread from one environment, against the header drawing
+/// at that size (the rows' plans are `HomeRowPlanTextSizeTests`'s); and
+/// the list itself, on
 /// UltraList in a window, taking a new size without going blank or moving
 /// the row at its top, and refusing any environment or header it did not
 /// last ask for.
@@ -75,76 +76,7 @@ final class HomeListTextSizeTests: XCTestCase {
         view.updateTraitsIfNeeded()
     }
 
-    private func oneLine(_ label: UIView) -> CGFloat {
-        label.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)).height
-    }
-
-    // MARK: Heights against the cells
-
-    func testEveryRowMatchesItsCellAtEveryTextSize() async {
-        for category in categories {
-            for scale in scales {
-                let environment = await HomeTextEnvironment.make(text(category, scale))
-                for width in widths {
-                    let at = "\(width) @\(scale)x, \(category.rawValue)"
-                    func check(_ cell: UITableViewCell, _ kind: HomeRowKind, line: UInt = #line) {
-                        XCTAssertEqual(
-                            HomeRowMeasurer.height(kind, width: width, environment: environment),
-                            height(cell, width: width, scale: scale, category: category),
-                            "\(kind) at \(at)",
-                            line: line
-                        )
-                    }
-
-                    for workspace in [nil, "fix-login"] {
-                        for changes in [nil, HomeRowMeasurerTests.changes] {
-                            let cell = SessionRowCell(style: .default, reuseIdentifier: nil)
-                            // As the list configures it.
-                            cell.lines = environment.rows.sessionLines
-                            cell.configure(HomeRowMeasurerTests.session(workspace: workspace, changes: changes), style: .gradient, monochrome: false)
-                            check(cell, .flatSession(workspace: workspace != nil, changes: changes != nil))
-                            // The lines worked out off main are the lines
-                            // the labels draw.
-                            let lines = environment.rows.sessionLines
-                            XCTAssertEqual(oneLine(cell.titleLabel), lines.title, "title, \(at)")
-                            XCTAssertEqual(oneLine(cell.projectLabel), lines.project, "project, \(at)")
-                            if workspace != nil {
-                                XCTAssertEqual(oneLine(cell.workspaceLabel), lines.workspace, "workspace, \(at)")
-                            }
-                            if changes != nil {
-                                for part in [cell.changes.approximate, cell.changes.added, cell.changes.removed] {
-                                    XCTAssertFalse(part.isHidden, at)
-                                    XCTAssertEqual(oneLine(part), lines.changes, "\(part.string), \(at)")
-                                    XCTAssertEqual(part.renderedStyle.size, 11 * TextScale(TextSizeCategory(category)).multiplier, at)
-                                }
-                            }
-                            XCTAssertEqual(cell.changes.isHidden, changes == nil, at)
-                            XCTAssertEqual(cell.projectLabel.renderedStyle.size, 15 * TextScale(TextSizeCategory(category)).multiplier, at)
-                        }
-                    }
-
-                    for banded in [true, false] {
-                        let toggle = ArchiveToggleCell(style: .default, reuseIdentifier: nil)
-                        toggle.banded = banded
-                        toggle.configure(hidden: true)
-                        check(toggle, .archiveToggle(label: Strings.Sidebar.showArchived, banded: banded))
-                    }
-
-                    let machine = ProjectMachineHeaderCell(style: .default, reuseIdentifier: nil)
-                    machine.configure(name: "MacBook Pro")
-                    check(machine, .machineHeader(name: "MacBook Pro"))
-
-                    // Fixed heights at every size: 52, 48, 48.
-                    check(ProjectCardCell(style: .default, reuseIdentifier: nil), .projectCard)
-                    check(WorktreeCell(style: .default, reuseIdentifier: nil), .worktree)
-                    check(ProjectChatCell(style: .default, reuseIdentifier: nil), .chat)
-                    XCTAssertEqual(HomeRowMeasurer.height(.projectCard, width: width, environment: environment), 52, at)
-                    XCTAssertEqual(HomeRowMeasurer.height(.worktree, width: width, environment: environment), 48, at)
-                    XCTAssertEqual(HomeRowMeasurer.height(.chat, width: width, environment: environment), 48, at)
-                }
-            }
-        }
-    }
+    // MARK: Heights against the views
 
     func testTheNoticesMatchTheHeaderViewAtEveryTextSize() async {
         let cases = [

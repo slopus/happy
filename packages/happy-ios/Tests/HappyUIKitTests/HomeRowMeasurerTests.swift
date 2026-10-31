@@ -5,9 +5,10 @@ import HappyLayout
 import UIKit
 import XCTest
 
-/// The measurer against the views it stands in for: every heading cell, a
-/// session's row and the notices header, at phone widths and screen scales,
-/// at the designed text size (`HomeListTextSizeTests` has the others).
+/// The measurer against the notices header it stands in for, at phone
+/// widths and screen scales, at the designed text size
+/// (`HomeListTextSizeTests` has the others); the rows' plans are
+/// `HomeRowPlanTextSizeTests`'s and `HomeRowLinesTests`'s.
 @MainActor
 final class HomeRowMeasurerTests: XCTestCase {
     private let widths: [CGFloat] = [320, 393, 430]
@@ -30,47 +31,6 @@ final class HomeRowMeasurerTests: XCTestCase {
         view.frame = CGRect(x: 0, y: 0, width: width, height: 100)
         view.layoutIfNeeded()
         return view.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-    }
-
-    func testEveryHeadingMatchesItsCell() async {
-        for scale in scales {
-            let environment = await self.environment(scale)
-            for width in widths {
-                func check(_ cell: UITableViewCell, _ kind: HomeRowKind, line: UInt = #line) {
-                    XCTAssertEqual(
-                        HomeRowMeasurer.height(kind, width: width, environment: environment),
-                        height(cell, width: width, scale: scale),
-                        accuracy: 0.001,
-                        "\(kind) at \(width) @\(scale)x",
-                        line: line
-                    )
-                }
-
-                for banded in [true, false] {
-                    let toggle = ArchiveToggleCell(style: .default, reuseIdentifier: nil)
-                    toggle.banded = banded
-                    toggle.configure(hidden: true)
-                    check(toggle, .archiveToggle(label: Strings.Sidebar.showArchived, banded: banded))
-                }
-
-                let machine = ProjectMachineHeaderCell(style: .default, reuseIdentifier: nil)
-                check(machine, .machineHeader(name: ""))
-                machine.configure(name: "MacBook Pro")
-                check(machine, .machineHeader(name: "MacBook Pro"))
-
-                for workspace in [nil, "fix-login"] {
-                    for changes in [nil, Self.changes] {
-                        let row = SessionRowCell(style: .default, reuseIdentifier: nil)
-                        row.configure(Self.session(workspace: workspace, changes: changes), style: .gradient, monochrome: false)
-                        check(row, .flatSession(workspace: workspace != nil, changes: changes != nil))
-                    }
-                }
-
-                check(ProjectCardCell(style: .default, reuseIdentifier: nil), .projectCard)
-                check(WorktreeCell(style: .default, reuseIdentifier: nil), .worktree)
-                check(ProjectChatCell(style: .default, reuseIdentifier: nil), .chat)
-            }
-        }
     }
 
     func testTheNoticesMatchTheHeaderView() async {

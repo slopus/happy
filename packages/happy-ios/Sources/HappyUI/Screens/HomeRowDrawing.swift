@@ -16,15 +16,15 @@ struct HomeRowDrawing: Sendable {
         case clip(CGRect)
     }
 
-    /// How a row answers a finger, as its table cell does.
+    /// How a row answers a finger, as the table's cells did.
     enum Press: Sendable, Equatable {
-        /// No feedback: headings, and the tablet's cells.
+        /// No feedback: headings, and the tablet's chats and cards.
         case none
-        /// A fill behind the content: a flat session's selected background
-        /// (SessionRowCell), a project row's pressed one (HomeCardCell).
+        /// A fill behind the content: a flat session's selected background,
+        /// a project row's pressed one.
         case fill(ColorToken)
-        /// The content at half strength over an unchanged background
-        /// (ArchiveToggleCell).
+        /// The content at half strength over an unchanged background: the
+        /// archive toggle.
         case dim
     }
 
