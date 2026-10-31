@@ -30,9 +30,7 @@ final class AccountSwitcherLayoutTests: XCTestCase {
         XCTAssertEqual(HomeBottomBarLayout(height: 874, safeBottom: 83, control: nil).bottomInset, 83)
     }
 
-    func testSearchPullMovesOnlyItsSurfaceAndHasACancellationThreshold() {
-        let layout = HomeSearchPresentationLayout(size: CGSize(width: 393, height: 852), pull: 40)
-        XCTAssertEqual(layout.surface, CGRect(x: 0, y: 40, width: 393, height: 852))
+    func testSearchPullHasACancellationThreshold() {
         XCTAssertFalse(HomeSearchPresentationLayout.shouldDismiss(distance: 40, velocity: 0))
         XCTAssertTrue(HomeSearchPresentationLayout.shouldDismiss(distance: 110, velocity: 0))
         XCTAssertTrue(HomeSearchPresentationLayout.shouldDismiss(distance: 30, velocity: 800))

@@ -127,8 +127,9 @@ final class HostedHeaderBarTests: XCTestCase {
             home.search.begin()
             try await Task.sleep(for: .milliseconds(600))
             XCTAssertTrue(home.search.isActive)
-            XCTAssertNil(home.navigationItem.leftBarButtonItems)
-            XCTAssertNil(home.navigationItem.rightBarButtonItems)
+            // The header stays as it was: account and settings, while search is open.
+            XCTAssertEqual(home.navigationItem.leftBarButtonItem?.customView?.accessibilityIdentifier, "account-switcher")
+            XCTAssertEqual(home.navigationItem.rightBarButtonItems?.first?.accessibilityIdentifier, "settings")
             XCTAssertEqual(state(sidebar), before, "opening search moved home")
             let results = try XCTUnwrap(Self.subview(HomeSearchResultsView.self, in: home.view))
             XCTAssertTrue(results.showsResults, "empty search also covers home")

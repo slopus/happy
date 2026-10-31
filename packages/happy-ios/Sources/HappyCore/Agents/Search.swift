@@ -41,6 +41,35 @@ public enum Search {
             .map(\.item)
     }
 
+    /// How many bots and tasks an empty search shows.
+    public static let recentLimit = 8
+
+    /// What an empty search shows: the bots and tasks last active, newest
+    /// first and, among equals, in the sidebar's order; at most `limit`. A
+    /// bot's or task's activity is its own or its subtasks', whichever is
+    /// latest, and it shows alone, without them. One never active isn't
+    /// recent, so a computer with none shows nothing.
+    public static func recent(_ all: [Row], limit: Int = recentLimit) -> [Row] {
+        var active: [(index: Int, time: Double, row: Row)] = []
+        var index = 0
+        while index < all.count {
+            let row = all[index]
+            var end = index + 1
+            while end < all.count, all[end].depth > row.depth { end += 1 }
+            if row.depth == 0, row.kind == .space, row.agentId != nil, row.targetKind == "bot" || row.targetKind == "task",
+               let time = all[index..<end].compactMap(\.activityTime).max() {
+                active.append((index, time, row))
+            }
+            index = row.depth == 0 ? end : index + 1
+        }
+        return active.sorted { ($0.time, -$0.index) > ($1.time, -$1.index) }.prefix(limit).map { entry in
+            var row = entry.row
+            row.collapsed = nil
+            row.hasHiddenSessions = false
+            return row
+        }
+    }
+
     /// The sidebar's rows that answer `query`, folded away or not, in the
     /// sidebar's own order, with what makes sense of each: a nested match
     /// keeps the rows it nests under, and every match keeps its section's

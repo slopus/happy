@@ -69,7 +69,7 @@ final class HomeViewController: UIViewController {
     var list: UIScrollView { sidebar }
 
     /// Search's results over home, while something answers.
-    var resultsList: UIScrollView? { resultsView.showsResults ? resultsView.list : nil }
+    var resultsList: UIScrollView? { search != nil ? resultsView.list : nil }
 
     /// The bar home lays its content under.
     var contentInsets = HomeContentInsets(safeArea: .zero, dock: 0) {
@@ -100,6 +100,7 @@ final class HomeViewController: UIViewController {
         view.addSubview(banner)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         resultsView.isHidden = true
+        resultsView.alpha = 0
         resultsView.list.onSelect = { [weak self] row in self?.open(row) }
         resultsView.onDismiss = { [weak self] in self?.endSearch() }
         resultsView.list.onIntent = { [weak self] row in
@@ -225,21 +226,38 @@ final class HomeViewController: UIViewController {
         showResults()
     }
 
-    /// The bar's field opened. Home stays exactly as it is; the results
-    /// show over it once something is typed.
+    /// The bar's field opened. Home stays exactly as it is, and so does the
+    /// header; the results fade in over home, the conversations last active
+    /// until something is typed.
     func beginSearch() {
         guard session != nil, search == nil, !sidebar.isHidden else { return }
         search = Search()
         resultsView.clear()
+        showResults()
         resultsView.isHidden = false
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+            self.resultsView.alpha = 1
+        }
     }
 
-    /// The field closed: the results go, and home is as it was.
+    /// The field closed: the results fade away, and home is as it was.
     func endSearch(animated: Bool = true) {
         guard search != nil else { return }
         search = nil
-        resultsView.clear()
-        resultsView.isHidden = true
+        let gone = { [weak self] in
+            // Search opened again while it faded: it stays.
+            guard let self, search == nil else { return }
+            resultsView.clear()
+            resultsView.isHidden = true
+        }
+        if animated {
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+                self.resultsView.alpha = 0
+            } completion: { _ in gone() }
+        } else {
+            resultsView.alpha = 0
+            gone()
+        }
         onSearchEnded?()
     }
 
@@ -254,14 +272,17 @@ final class HomeViewController: UIViewController {
     }
 
     /// What answers the query, in the results over home: the rows that
-    /// answer it, then the quick actions and settings that do.
+    /// answer it, then the quick actions and settings that do. Nothing
+    /// typed: the conversations last active.
     private func showResults() {
         guard var search else { return }
         let query = search.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
             search.results = [:]
             self.search = search
-            resultsView.clear()
+            let recent = HappyCore.Search.recent(snapshot.allRows)
+            let heading = Row(id: "search:recent", nodeId: "search:recent", kind: .section, label: Strings.recent)
+            resultsView.show(recent.isEmpty ? [] : [heading] + recent, query: "")
             return
         }
         let found = results(for: query)

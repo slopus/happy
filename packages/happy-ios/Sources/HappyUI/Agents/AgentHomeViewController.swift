@@ -55,7 +55,6 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
             self?.v2.endSearch()
             self?.updateEdge()
         }
-        search.onActiveChanged = { [weak self] in self?.updateBar() }
         v2.onSearchEnded = { [weak self] in self?.search.end() }
         switcher = AccountSwitcher(context: context, controller: self)
         headerWatch = Session.session(for: id, context: context)?.watchHeader { [weak self] in self?.headerState = $0 }
@@ -69,14 +68,10 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         switcher?.subtitle = Strings.HeaderStatus.text(headerState)
     }
 
-    /// Account and settings stay in the header while search lives below.
+    /// Account and settings stay in the header while search lives below:
+    /// the header never changes for it.
     private func updateBar() {
         guard let switcher else { return }
-        if search.isActive {
-            navigationItem.leftBarButtonItems = nil
-            navigationItem.rightBarButtonItems = nil
-            return
-        }
         navigationItem.leftBarButtonItem = switcher.barItem
         navigationItem.rightBarButtonItems = HeaderBar.trailing([
             .settings: HeaderBar.settingsItem { [weak self] in self?.openSettings() },

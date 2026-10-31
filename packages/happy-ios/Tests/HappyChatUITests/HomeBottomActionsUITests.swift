@@ -28,7 +28,7 @@ final class HomeBottomActionsUITests: XCTestCase {
         field.typeText("Conversation 12")
         XCTAssertLessThanOrEqual(field.frame.maxY, keyboard.frame.minY + 1)
         XCTAssertGreaterThan(field.frame.minY, window.frame.midY)
-        XCTAssertFalse(app.buttons["account-switcher"].isHittable)
+        XCTAssertTrue(app.buttons["account-switcher"].isHittable, "the header stays while search is open")
         print("HOME_BOTTOM_ACTIONS search=\(field.frame) keyboard=\(keyboard.frame)")
         capture("home-bottom-search-keyboard")
 
@@ -85,7 +85,7 @@ final class HomeBottomActionsUITests: XCTestCase {
         let layer = app.scrollViews["search-results-list"]
         XCTAssertTrue(layer.waitForExistence(timeout: 5))
         XCTAssertFalse(first.isHittable, "empty search must cover the home list")
-        XCTAssertFalse(app.buttons["account-switcher"].isHittable)
+        XCTAssertTrue(app.buttons["account-switcher"].isHittable, "the header stays while search is open")
         capture("home-search-empty-overlay")
 
         let start = layer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))

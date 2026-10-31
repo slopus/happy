@@ -13,7 +13,6 @@ final class BarSearch: NSObject, UISearchControllerDelegate, UISearchResultsUpda
     var onBegin: (() -> Void)?
     var onChange: ((String) -> Void)?
     var onEnd: (() -> Void)?
-    var onActiveChanged: (() -> Void)?
 
     init(host: UIViewController, placeholder: String, fieldIdentifier: String) {
         self.host = host
@@ -58,7 +57,6 @@ final class BarSearch: NSObject, UISearchControllerDelegate, UISearchResultsUpda
             bar.text = ""
             onEnd?()
         }
-        onActiveChanged?()
     }
 
     func willPresentSearchController(_ searchController: UISearchController) { setActive(true) }

@@ -21,8 +21,8 @@ private actor GroupedHomeTransport: AgentTransport {
 
     private static let now = Date().timeIntervalSince1970 * 1000
 
-    private static func agent(_ id: String, _ title: String, status: String = "idle", question: Bool = false, unread: Bool = false, line: String? = nil, subtasks: [[String: Any]] = [], parent: String? = nil) -> [String: Any] {
-        var agent: [String: Any] = ["id": id, "workspaceId": "w-\(id)", "title": title, "status": status, "subtasks": subtasks, "lastActivityAt": now - 4 * 60_000]
+    private static func agent(_ id: String, _ title: String, status: String = "idle", question: Bool = false, unread: Bool = false, line: String? = nil, subtasks: [[String: Any]] = [], parent: String? = nil, ago minutes: Double = 240) -> [String: Any] {
+        var agent: [String: Any] = ["id": id, "workspaceId": "w-\(id)", "title": title, "status": status, "subtasks": subtasks, "lastActivityAt": now - minutes * 60_000]
         if question { agent["pendingQuestionId"] = "q-\(id)" }
         if unread { agent["unread"] = ["reason": "message", "since": now] }
         if let line { agent["statusLine"] = ["text": line, "updatedAt": now - 6 * 60_000] }
@@ -32,20 +32,20 @@ private actor GroupedHomeTransport: AgentTransport {
 
     static var bots: [[String: Any]] { [
         ["id": "happy", "name": "Happy", "systemKey": "chief_of_staff", "status": "active", "agent": agent("happy-agent", "Happy", line: "Watching the release", subtasks: [
-            agent("happy-sub1", "Triage new issues", status: "working", parent: "happy-agent"),
+            agent("happy-sub1", "Triage new issues", status: "working", parent: "happy-agent", ago: 7),
             agent("happy-sub2", "Weekly digest", parent: "happy-agent"),
-        ])],
-        ["id": "research", "name": "Research Assistant", "status": "active", "agent": agent("research-agent", "Research Assistant", status: "working", line: "Reading the papers")],
-        ["id": "release", "name": "Release Bot", "status": "active", "agent": agent("release-agent", "Release Bot", question: true, line: "Ship 2026.10.4 to TestFlight?")],
+        ], ago: 25)],
+        ["id": "research", "name": "Research Assistant", "status": "active", "agent": agent("research-agent", "Research Assistant", status: "working", line: "Reading the papers", ago: 3)],
+        ["id": "release", "name": "Release Bot", "status": "active", "agent": agent("release-agent", "Release Bot", question: true, line: "Ship 2026.10.4 to TestFlight?", ago: 12)],
     ] }
 
     static var tasks: [[String: Any]] { [
-        ["id": "landing", "name": "Landing page copy", "agent": agent("landing-agent", "Landing page copy", unread: true, line: "Drafted three headlines")],
+        ["id": "landing", "name": "Landing page copy", "agent": agent("landing-agent", "Landing page copy", unread: true, line: "Drafted three headlines", ago: 5)],
         ["id": "crash", "name": "Fix login crash", "agent": agent("crash-agent", "Fix login crash", status: "working", line: "Bisecting the keychain change", subtasks: [
             agent("crash-sub1", "Reproduce on iOS 26", parent: "crash-agent"),
-            agent("crash-sub2", "Write the regression test", status: "working", parent: "crash-agent"),
-        ])],
-        ["id": "report", "name": "Quarterly report", "agent": agent("report-agent", "Quarterly report", line: "Charts are in the doc")],
+            agent("crash-sub2", "Write the regression test", status: "working", parent: "crash-agent", ago: 2),
+        ], ago: 1)],
+        ["id": "report", "name": "Quarterly report", "agent": agent("report-agent", "Quarterly report", line: "Charts are in the doc", ago: 40)],
         ["id": "onboarding", "name": "Onboarding emails", "agent": agent("onboarding-agent", "Onboarding emails")],
     ] }
 
@@ -67,7 +67,7 @@ private actor GroupedHomeTransport: AgentTransport {
                 ["id": "p2", "name": "website", "status": "active", "orderKey": "b", "agents": []],
             ],
             "workspaces": [
-                ["id": "w1", "projectId": "p1", "parentId": "p1", "name": "ios-grouped-home", "kind": "worktree", "status": "active", "orderKey": "a", "agents": [Self.agent("w1-agent", "Grouped home")]],
+                ["id": "w1", "projectId": "p1", "parentId": "p1", "name": "ios-grouped-home", "kind": "worktree", "status": "active", "orderKey": "a", "agents": [Self.agent("w1-agent", "Grouped home", ago: 18)]],
             ],
         ]
     }

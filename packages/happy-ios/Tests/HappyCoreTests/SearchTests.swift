@@ -82,4 +82,34 @@ final class SearchTests: XCTestCase {
         // Separators and the document's Search row never show.
         XCTAssertEqual(Search.rows([Row(id: "s", nodeId: "s", kind: .search, label: "Search")] + all, query: "sea"), [])
     }
+
+    /// An empty search: the bots and tasks last active, newest first, a
+    /// subtask's activity counting for its task; a Surface, a project's
+    /// session, a separator or one never active isn't among them.
+    func testRecentIsTheBotsAndTasksLastActiveNewestFirst() {
+        func row(_ id: String, _ kind: Row.Kind, depth: Int = 0, agent: String? = nil, at minute: Double? = nil, target: String? = nil) -> Row {
+            var row = Row(id: id, nodeId: id, kind: kind, depth: depth, label: id, agentId: agent, targetKind: target)
+            row.activityTime = minute.map { $0 * 60_000 }
+            return row
+        }
+        let rows = [
+            row("artifacts", .space, target: "artifacts"),
+            row("surface", .space, agent: "chat", at: 99, target: "surface"),
+            row("bots", .separator),
+            row("happy", .space, agent: "a-happy", at: 5, target: "bot"),
+            row("sub", .session, depth: 1, agent: "a-sub", at: 9),
+            row("quiet", .space, agent: "a-quiet", target: "bot"),
+            row("tasks", .separator),
+            row("task", .space, agent: "a-task", at: 6, target: "task"),
+            row("old", .space, agent: "a-old", at: 1, target: "task"),
+            row("projects", .separator),
+            row("project", .space, target: "project"),
+            row("session", .session, depth: 1, agent: "a-session", at: 50),
+        ]
+        let recent = Search.recent(rows)
+        XCTAssertEqual(recent.map(\.id), ["happy", "task", "old"])
+        XCTAssertTrue(recent.allSatisfy { $0.collapsed == nil && !$0.hasHiddenSessions })
+        XCTAssertEqual(Search.recent(rows, limit: 2).map(\.id), ["happy", "task"])
+        XCTAssertEqual(Search.recent([row("quiet", .space, agent: "a", target: "bot")]), [])
+    }
 }
