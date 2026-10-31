@@ -40,6 +40,7 @@ androidx-test-runner = "1.7.0"
 androidx-test-uiautomator = "2.3.0"
 benchmark = "1.5.0"
 profileinstaller = "1.4.1"
+recyclerview = "1.4.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
@@ -95,6 +96,7 @@ androidx-test-runner = { module = "androidx.test:runner", version.ref = "android
 androidx-test-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "androidx-test-uiautomator" }
 benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "benchmark" }
 androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
+androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

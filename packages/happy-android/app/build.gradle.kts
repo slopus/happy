@@ -129,6 +129,10 @@ android {
     buildTypes {
         debug {
             resValue("string", "app_name", "Happy (dev)")
+            // -Phappy.debuggable=false: a debug build ART compiles ahead of time, for
+            // frame measurements (research/telegram-chat.md). A debuggable app runs
+            // interpreted and reads two to three times slower than it ships.
+            isDebuggable = providers.gradleProperty("happy.debuggable").orNull != "false"
         }
         release {
             isMinifyEnabled = true
@@ -242,8 +246,11 @@ tasks.configureEach {
 
 androidComponents {
     onVariants { variant ->
+        // -Phappy.applicationId=com.slopus.happy.chatbench: a measuring build installed beside the
+        // signed-in dev app, never over it (research/telegram-chat.md).
         // The baseline profile plugin's build types (nonMinified*, benchmark*) are the bench app's.
-        val applicationId = applicationIds[variant.buildType] ?: applicationIds.getValue("bench")
+        val applicationId = providers.gradleProperty("happy.applicationId").orNull
+            ?: applicationIds[variant.buildType] ?: applicationIds.getValue("bench")
         variant.applicationId.set(applicationId)
         // The system doesn't compile a debuggable app on install: it runs from the APK, and with
         // the dex deflated, every cold start first inflated all of it, about 200 ms on the Fold.
@@ -422,4 +429,6 @@ dependencies {
     androidTestImplementation(libs.androidx.test.uiautomator)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
+    // ChatListBenchmark's Telegram-style RecyclerView cell; not in the app.
+    androidTestImplementation(libs.androidx.recyclerview)
 }
