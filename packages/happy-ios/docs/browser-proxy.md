@@ -16,6 +16,25 @@ limited to 32 KiB and 35 seconds; response bodies have no idle deadline. Closing
 a page cancels its listener, local sockets and upstream requests, including SSE.
 There are at most 64 simultaneous connections per page.
 
+Artifact API requests lease exclusive upstream keep-alive connections from a
+per-page pool (at most six idle connections, reused for five seconds). Local
+WebKit connections still close after each response, so every request is
+classified and authorized independently. No request is pipelined or replayed
+automatically after a transport failure. SSE holds its own lease until the page
+disconnects. A socket returns to the pool only after its exact content length,
+or complete chunk framing and trailers, has arrived. EOF-delimited responses,
+upgrades, `Connection: close`, truncated responses and failed writes are never
+pooled. Closing the page also closes idle and leased upstream sockets.
+
+Daemon responses, including 400, 409 and 413, pass through unchanged. Locally
+generated failures have a `browser_proxy_*` JSON code and `X-Happy-Proxy-Error`
+header: validation is 400, forbidden origins/routes 403, oversized requests 413,
+unavailable routes/capacity 503, and upstream timeout 504. Actual upstream
+transport or malformed-response failures are 502. Native `BrowserProxy` logs
+the same safe code and status, without tokens, URLs, headers or response bodies.
+After a response or opaque tunnel starts, errors close that stream; they never
+append a second HTTP error response to its bytes.
+
 ## Routing
 
 - A chat link uses that chat's workspace. Outside chat, the standard navigation
@@ -127,3 +146,33 @@ They assert no failover/domain exclusions and no view when no connection exists.
 Core tests cover framing, errors, credential boundaries and streaming; pure
 layout tests assert exact frames. WebRTC/UDP is not a supported browser feature
 and is not covered by these HTTP/WebSocket transport tests.
+
+## Real daemon API regression
+
+`HostedBrowserAPITests` is opt-in and uses the real daemon routes, database and
+browser SDK. Start a fresh throwaway fixture for each run:
+
+```sh
+# In a separate happy-agent checkout with dependencies installed:
+pnpm --filter @slopus/happy-agent-modules build
+pnpm --filter @slopus/happy-agent build
+
+# In this repository; keep this process running while Xcode runs the test:
+HAPPY_AGENT_REPO=/absolute/path/to/happy-agent bun packages/happy-ios/scripts/browser-api-gym.ts
+```
+
+Run `HappyUIKitHostedTests/HostedBrowserAPITests` with the `HappyUIKitHosted`
+scheme. The fixture writes its ephemeral connection details to the ignored
+`.context/browser-api-gym.json`; without it, the test explicitly skips. Stop the
+fixture afterwards to close its daemon and delete its test installation. It
+never reads or writes the installed daemon's artifact data.
+
+The 13 scenario groups cover 1,005 batched writes while SSE stays live, raw and
+SDK pagination, write-ID replay, quoted/bare/stale conditional writes, conflict
+bodies, deletes/tombstones, distinct-key changes and future cursors, UTF-8 large
+body round trips, 413/404, and ETag/304. The test also asserts fewer than 30
+upstream connections for the whole run. This uses real WebKit and the production
+proxy, replacing only the remote encrypted link with a byte-transparent local
+TCP-to-Unix adapter. Tailcat's own paired-IPStack regression separately covers
+1,300 short HTTP requests alongside SSE, bounded closing-state eviction and
+late FIN handling; closed flows must not consume its live 256/1,024 budgets.

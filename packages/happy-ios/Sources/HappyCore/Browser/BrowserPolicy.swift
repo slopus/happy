@@ -76,7 +76,7 @@ public enum BrowserPolicy {
 }
 
 public enum BrowserError: Error, Equatable, Sendable {
-    case forbidden, malformed, tooLarge, unavailable, upstream(Int)
+    case forbidden, malformed, tooLarge, unavailable, timeout, upstream(Int)
 }
 
 /// A bounded HTTP head, preserving duplicate response fields (notably Set-Cookie).
@@ -106,7 +106,7 @@ public struct BrowserHTTPHead: Sendable {
         return (BrowserHTTPHead(line: line, fields: fields), Data(data[end.upperBound...]))
     }
 
-    public func artifactRequest(artifactID: String, version: Int, credential: String) throws -> BrowserHTTPHead {
+    public func artifactRequest(artifactID: String, version: Int, credential: String, keepAlive: Bool = false) throws -> BrowserHTTPHead {
         let parts = line.split(separator: " ")
         guard parts.count == 3, parts[2] == "HTTP/1.1", parts[0] != "CONNECT",
               parts[0].utf8.allSatisfy({ (65...90).contains($0) }),
@@ -114,7 +114,7 @@ public struct BrowserHTTPHead: Sendable {
         let target = try BrowserPolicy.artifactPath(target: String(parts[1]), artifactID: artifactID, version: version)
         let stripped: Set<String> = ["host", "authorization", "proxy-authorization", "proxy-connection", "connection", "x-happy-proxy-route", "expect"]
         var fields = self.fields.filter { !stripped.contains($0.0.lowercased()) }
-        fields += [("Host", "server.tailcat"), ("Authorization", "Bearer \(credential)"), ("Connection", value("upgrade") == nil ? "close" : "Upgrade")]
+        fields += [("Host", "server.tailcat"), ("Authorization", "Bearer \(credential)"), ("Connection", value("upgrade") == nil ? (keepAlive ? "keep-alive" : "close") : "Upgrade")]
         return BrowserHTTPHead(line: "\(parts[0]) \(target) HTTP/1.1", fields: fields)
     }
 

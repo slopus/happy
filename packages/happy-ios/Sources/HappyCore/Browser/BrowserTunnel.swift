@@ -29,7 +29,12 @@ extension AgentClient {
             try await Self.connect(stream, target: "/v0/workspaces/\(workspaceID)/proxy", credential: token)
             try await Self.connect(stream, target: target.text, credential: nil)
             return stream
-        } catch { await stream.close(); throw error }
+        } catch {
+            await stream.close()
+            if error is CancellationError { throw error }
+            if case BrowserError.upstream = error { throw error }
+            throw BrowserProxyFailure.upstream(error)
+        }
     }
 
     public func artifactConnection(head: BrowserHTTPHead, artifactID: String, version: Int) async throws -> any BrowserStream {
@@ -74,7 +79,9 @@ public enum BrowserRelay {
                 guard !bytes.isEmpty else { throw BrowserError.malformed }
             }
         } else {
-            guard let length = Int(lengths.first?.1 ?? "0"), (0...1_048_576).contains(length), initial.count <= length else { throw BrowserError.tooLarge }
+            let text = lengths.first?.1 ?? "0"
+            guard !text.isEmpty, text.utf8.allSatisfy({ (48...57).contains($0) }), let length = Int(text), initial.count <= length else { throw BrowserError.malformed }
+            guard length <= 1_048_576 else { throw BrowserError.tooLarge }
             body = initial
             while body.count < length {
                 let bytes = try await stream.read(maximumBytes: min(65536, length - body.count))
@@ -88,19 +95,19 @@ public enum BrowserRelay {
         return (request, body)
     }
 
-    public static func head(_ stream: any BrowserStream) async throws -> (BrowserHTTPHead, Data) {
+    public static func head(_ stream: any BrowserStream, initial: Data = Data()) async throws -> (BrowserHTTPHead, Data) {
         try await withThrowingTaskGroup(of: (BrowserHTTPHead, Data).self) { group in
             group.addTask {
-                var buffer = Data()
+                var buffer = initial
                 while true {
                     try Task.checkCancellation()
+                    if let head = try BrowserHTTPHead.parse(buffer) { return head }
                     let bytes = try await stream.read(maximumBytes: 65536)
                     guard !bytes.isEmpty else { throw BrowserError.unavailable }
                     buffer.append(bytes)
-                    if let head = try BrowserHTTPHead.parse(buffer) { return head }
                 }
             }
-            group.addTask { try await Task.sleep(for: .seconds(35)); await stream.close(); throw BrowserError.unavailable }
+            group.addTask { try await Task.sleep(for: .seconds(35)); await stream.close(); throw BrowserError.timeout }
             defer { group.cancelAll() }
             return try await group.next()!
         }

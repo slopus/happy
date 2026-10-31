@@ -14,9 +14,11 @@ actor BrowserDaemon: AgentTransport {
     var credentials: [String] = []
     var targetCredentials: [String] = []
     let artifactHTML: String?
-    init(artifactHTML: String? = nil) { self.artifactHTML = artifactHTML }
+    let keepAlive: Bool
+    var connections = 0
+    init(artifactHTML: String? = nil, keepAlive: Bool = false) { self.artifactHTML = artifactHTML; self.keepAlive = keepAlive }
 
-    func browserConnection() async throws -> any BrowserStream { Socket(self) }
+    func browserConnection() async throws -> any BrowserStream { connections += 1; return Socket(self) }
     func close() async {}
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let text: String
@@ -57,7 +59,8 @@ actor BrowserDaemon: AgentTransport {
             content = "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>Remote preview</title></head><body style='font:20px -apple-system;padding:24px;background:#f3f6fc;color:#14233a'><h1>Remote preview</h1><p id='js'>Loading script…</p><p id='result'>Connecting…</p><script src='/app.js'></script><script src='http://assets.example.invalid/public.js'></script></body></html>"
             type = "text/html"
         }
-        return (Data("HTTP/1.1 200 OK\r\nContent-Type: \(type); charset=utf-8\r\nContent-Length: \(content.utf8.count)\r\nConnection: close\r\n\r\n\(content)".utf8), false)
+        let reuse = keepAlive && head.value("Connection") == "keep-alive"
+        return (Data("HTTP/1.1 200 OK\r\nContent-Type: \(type); charset=utf-8\r\nContent-Length: \(content.utf8.count)\r\nConnection: \(reuse ? "keep-alive" : "close")\r\n\r\n\(content)".utf8), reuse)
     }
 
     nonisolated static let html = """
@@ -97,6 +100,34 @@ actor BrowserDaemon: AgentTransport {
 
 @MainActor
 final class HostedBrowserTests: XCTestCase {
+    func testArtifactAPIReusesUpstreamWhileSSEStaysOpen() async throws {
+        let daemon = BrowserDaemon(artifactHTML: """
+        <!doctype html><p id="result">Starting</p><script>
+        const events = new EventSource('/api/v1/kv/events');
+        events.onmessage = async () => {
+          try {
+            for (let i = 0; i < 100; i++) {
+              const r = await fetch('/api/v1/kv/entry?key='+i, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({value:i})});
+              if (r.status !== 200 || (await r.json()).value !== 'saved') throw Error('bad response');
+            }
+            document.querySelector('#result').textContent='100 reused writes and SSE';
+          } catch(e) {document.querySelector('#result').textContent=String(e);}
+        };
+        </script>
+        """, keepAlive: true)
+        let client = AgentClient(transport: daemon, token: "native-secret")
+        let page = try await BrowserPage.artifact(client: client, id: "art1", version: 1, entry: "index.html")
+        let browser = BrowserViewController(url: page.url, artifactID: "art1", page: page)
+        let window = hostedKeyWindow(in: try await hostedActiveScene(), root: UINavigationController(rootViewController: browser))
+        defer { window.isHidden = true }
+        let web = try await waitForWeb(browser)
+        try await waitForText("100 reused writes and SSE", web: web)
+        let connections = await daemon.connections
+        let writes = await daemon.requests.filter { $0.hasPrefix("PUT ") }
+        XCTAssertEqual(writes.count, 100)
+        XCTAssertLessThan(connections, 8, "Sequential API requests must reuse upstream sockets alongside SSE")
+    }
+
     func testArtifactWriteAndLiveUpdate() async throws {
         let daemon = BrowserDaemon()
         let client = AgentClient(transport: daemon, token: "native-secret")
