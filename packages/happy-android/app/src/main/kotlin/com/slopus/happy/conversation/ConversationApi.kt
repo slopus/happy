@@ -87,10 +87,15 @@ open class ConversationApi(private val request: AgentRequest) {
     open suspend fun bootstrap(agentId: String): Bootstrap =
         Bootstrap.parse(call("GET", "/v0/agents/${escape(agentId)}/bootstrap")) ?: throw invalid()
 
-    /** The newest runs, or the runs before [before]. Tool data is left out where a presentation stands for it. */
-    open suspend fun messages(agentId: String, before: String? = null, limit: Int = 100): MessagesPage {
+    /**
+     * The newest runs, the runs before the run [before], or the messages
+     * after the message [after] (API.md: what extends the newest run and the
+     * runs started since). Tool data is left out where a presentation stands for it.
+     */
+    open suspend fun messages(agentId: String, before: String? = null, limit: Int = 100, after: String? = null): MessagesPage {
         val query = StringBuilder("limit=$limit&omitToolData=true")
         before?.let { query.append("&before=").append(escape(it)) }
+        after?.let { query.append("&after=").append(escape(it)) }
         return MessagesPage.parse(call("GET", "/v0/agents/${escape(agentId)}/messages?$query")) ?: throw invalid()
     }
 

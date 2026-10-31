@@ -1,5 +1,6 @@
 package com.slopus.happy.conversation
 
+import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.TransportResponse
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
@@ -32,9 +33,14 @@ private class FakeAgent {
     var beforeBootstrap: suspend () -> Unit = {}
     /** `POST /v0/tasks` and `/v0/bots` answer with this status and error instead. */
     var refuseCreate: Int? = null
+    /** Every request waits for this first: the network held. */
+    var gate: CompletableDeferred<Unit>? = null
+    /** What `messages?after=` answers; null answers [page], as a daemon that ignores `after` would. */
+    var afterPage: String? = null
 
     val request: AgentRequest = { method, path, body ->
         requests += Triple(method, path, body as? JsonObject)
+        gate?.await()
         val route = path.substringBefore('?')
         when {
             (route == "/v0/tasks" || route == "/v0/bots") && refuseCreate != null -> TransportResponse(refuseCreate!!, body = """{"error":"Name already taken.","code":"conflict"}""".toByteArray())
@@ -42,6 +48,7 @@ private class FakeAgent {
             route == "/v0/tasks" -> ok("""{"task":{"id":${(body as JsonObject)["id"]},"agent":{"id":"${(body as JsonObject)["agentId"]!!.toString().trim('"')}","workspaceId":"w","status":"idle"}},"membership":{}}""")
             route.endsWith("/bootstrap") -> { beforeBootstrap(); ok(bootstrap) }
             route.endsWith("/messages") && failOlder && "before=" in path -> TransportResponse(503, body = "{}".toByteArray())
+            route.endsWith("/messages") && "after=" in path && afterPage != null -> ok(afterPage!!)
             route.endsWith("/messages") -> ok(page)
             route.endsWith("/send") && failSends > 0 -> { failSends--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/send") -> TransportResponse(sendStatus, body = """{"error":"Unknown model.","code":"invalid_request"}""".toByteArray())
@@ -79,7 +86,7 @@ class ConversationTest {
 
     @After fun cancel() = jobs.forEach { it.cancel() }
 
-    private fun TestScope.conversation(agent: FakeAgent, newTask: NewTask? = null, choice: WorkChoice = WorkChoice(), created: (JsonObject) -> Unit = {}) = Conversation(
+    private fun TestScope.conversation(agent: FakeAgent, newTask: NewTask? = null, choice: WorkChoice = WorkChoice(), keeper: ConversationKeeper? = null, created: (JsonObject) -> Unit = {}) = Conversation(
         api = ConversationApi(agent.request),
         signals = signals,
         // Not backgroundScope: advanceUntilIdle leaves its work alone. Cancelled after each test.
@@ -91,6 +98,8 @@ class ConversationTest {
         lane = StandardTestDispatcher(testScheduler),
         now = { 1000 },
         retryDelayMillis = 1,
+        keeper = keeper,
+        disk = StandardTestDispatcher(testScheduler),
     ).also { it.start() }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
@@ -647,5 +656,124 @@ class ConversationTest {
     @Test fun `default mode reads config defaults`() {
         val config = Json.parseToJsonElement("""{"config":{"defaults":{"providerId":"codex","modelId":"m","effort":"low","permissionMode":"auto"}}}""").jsonObject
         assertEquals(Mode("codex", "m", "low", null, "auto"), ConversationApi.defaultModeOf(config))
+    }
+
+    // Offline first: the kept history opens the chat from disk; the agent is asked only for what came after it.
+
+    private class MemoryKeeper(var value: JsonObject? = null) : ConversationKeeper {
+        var writes = 0
+        override fun read(): JsonObject? = value
+        override fun write(value: JsonObject) {
+            writes++
+            this.value = value
+        }
+    }
+
+    private fun message(id: String, role: String, text: String) =
+        """{"id":"$id","role":"$role","createdAt":1,"content":[{"type":"text","text":"$text"}],"metadata":{}}"""
+
+    private fun run(id: String, status: String, vararg messages: String) =
+        """{"id":"$id","status":"$status","startedAt":1,"messages":[${messages.joinToString(",")}]}"""
+
+    private fun kept(hasMore: Boolean, vararg runs: String): JsonObject =
+        Json.parseToJsonElement("""{"version":1,"hasMore":$hasMore,"pending":[],"runs":[${runs.joinToString(",")}]}""").jsonObject
+
+    private val keptTwoRuns get() = kept(
+        true,
+        run("r1", "completed", message("m1", "user", "Hi"), message("m2", "agent", "Hello")),
+        run("r2", "completed", message("m3", "user", "Fix it"), message("m4", "agent", "Fixed")),
+    )
+
+    @Test fun `a kept chat shows from disk before the agent answers anything`() = runTest {
+        val agent = FakeAgent().apply { gate = CompletableDeferred() }
+        val chat = conversation(agent, keeper = MemoryKeeper(keptTwoRuns))
+        advanceUntilIdle()
+        val state = chat.state.value
+        assertTrue(state.loaded)
+        assertTrue(state.syncing)
+        assertTrue(state.hasMore)
+        assertEquals(listOf("m4:0", "m3:user", "m2:0", "m1:user"), state.rows.map { it.key })
+        assertEquals("Fixed", (state.rows[0] as ConversationRow.Text).text)
+        agent.gate!!.complete(Unit)
+    }
+
+    @Test fun `a kept chat catches up after its newest finished run and keeps the older runs`() = runTest {
+        val agent = FakeAgent()
+        agent.afterPage = """{"runs":[${run("r3", "completed", message("m5", "user", "More"), message("m6", "agent", "Done"))}],"hasMore":false}"""
+        val keeper = MemoryKeeper(keptTwoRuns)
+        val chat = conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        val reads = agent.requests.map { it.second }.filter { "/messages" in it }
+        assertEquals(1, reads.size)
+        assertTrue(reads.single(), "after=m4" in reads.single())
+        assertEquals(listOf("m6:0", "m5:user", "m4:0", "m3:user", "m2:0", "m1:user"), chat.state.value.rows.map { it.key })
+        // Older history is still on the agent, as it was before the catch-up.
+        assertTrue(chat.state.value.hasMore)
+        // And what it shows now is kept for next time.
+        assertTrue(keeper.writes > 0)
+        assertEquals(listOf("r1", "r2", "r3"), KeptConversation.parse(keeper.value)!!.runs.map { it.id })
+    }
+
+    @Test fun `a newest run that was still going is read again whole`() = runTest {
+        val agent = FakeAgent()
+        agent.afterPage = """{"runs":[${run("r2", "completed", message("m3", "user", "Fix it"), message("m4", "agent", "Fixed"))}],"hasMore":false}"""
+        val keeper = MemoryKeeper(kept(false, run("r1", "completed", message("m1", "user", "Hi"), message("m2", "agent", "Hello")), run("r2", "running", message("m3", "user", "Fix it"))))
+        val chat = conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        val read = agent.requests.map { it.second }.single { "/messages" in it }
+        assertTrue(read, "after=m2" in read)
+        assertEquals(listOf("m4:0", "m3:user", "m2:0", "m1:user"), chat.state.value.rows.map { it.key })
+    }
+
+    @Test fun `a daemon that ignores after is read as the newest page`() = runTest {
+        val agent = FakeAgent()
+        // No afterPage: the daemon answers the newest page, the anchor in it.
+        agent.page = """{"runs":[${run("r2", "completed", message("m3", "user", "Fix it"), message("m4", "agent", "Fixed"))}],"hasMore":true}"""
+        val chat = conversation(agent, keeper = MemoryKeeper(keptTwoRuns))
+        advanceUntilIdle()
+        assertEquals(listOf("m4:0", "m3:user"), chat.state.value.rows.map { it.key })
+        assertTrue(chat.state.value.hasMore)
+    }
+
+    @Test fun `offline, a kept chat stays on screen and says why it could not catch up`() = runTest {
+        val agent = FakeAgent()
+        agent.beforeBootstrap = { throw AgentConnectionException(AgentConnectionException.Reason.Unavailable) }
+        val chat = conversation(agent, keeper = MemoryKeeper(keptTwoRuns))
+        advanceUntilIdle()
+        val state = chat.state.value
+        assertTrue(state.loaded)
+        assertFalse(state.syncing)
+        assertTrue(state.error != null)
+        assertEquals(4, state.rows.size)
+    }
+
+    @Test fun `a kept conversation reads back as it was written`() {
+        val kept = KeptConversation(
+            runs = listOf(
+                Run(
+                    "r1", "completed", 5,
+                    listOf(
+                        Message("m1", "user", 1, listOf(Block.Text("Hi"), Block.Image("image/png", "AAAA"))),
+                        Message(
+                            "m2", "agent", 2,
+                            listOf(
+                                Block.Reasoning("hmm"),
+                                Block.ToolCall("c1", "Bash", "completed", Presentation.Command("ls", "a\nb")),
+                                Block.ToolCall("c2", "Shot", "completed", Presentation.Media(listOf(MediaItem("image", "a.png", "image/png", 10.0, 20.0, 2.0, "th", 99.0)), columns = 2)),
+                                Block.ToolCall("c3", "Art", "completed", Presentation.Artifact("ar1", "markdown", "Notes", 3, "page")),
+                                Block.Compaction("completed"),
+                                Block.Unknown("future"),
+                            ),
+                            senderAgentId = "a2",
+                        ),
+                    ),
+                ),
+            ),
+            pending = listOf(Message("m3", "user", 3, listOf(Block.Text("Next")), status = "pending")),
+            hasMore = true,
+            agent = AgentInfo("a1", "w1", null, "Fix it", "idle", null, null, 1, 2, 0, 1, canSendMessages = true, subtask = false),
+            mode = Mode("codex", "m", "low", null, "auto"),
+        )
+        assertEquals(kept, KeptConversation.parse(Json.parseToJsonElement(kept.json().toString()).jsonObject))
     }
 }

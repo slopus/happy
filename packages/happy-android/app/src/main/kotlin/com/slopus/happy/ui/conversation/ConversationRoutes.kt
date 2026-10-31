@@ -33,12 +33,14 @@ import com.slopus.happy.conversation.AgentRequest
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.ConversationApiException
+import com.slopus.happy.conversation.ConversationKeeper
 import com.slopus.happy.conversation.ConversationSignal
 import com.slopus.happy.conversation.MediaItem
 import com.slopus.happy.conversation.NewTask
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.conversation.WorkChoice
 import com.slopus.happy.conversation.WorkKind
+import kotlinx.serialization.json.JsonObject
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -142,6 +144,13 @@ internal fun AgentSession.conversationRequest(): AgentRequest = { method, path, 
     }
 }
 
+/** Where [agentId]'s newest history is kept, beside the connection's catalog and gone with it. */
+internal fun AgentSession.conversationKeeper(agentId: String): ConversationKeeper = object : ConversationKeeper {
+    private val key = "conversation$agentId"
+    override fun read(): JsonObject? = cachedResource(key)
+    override fun write(value: JsonObject) = keepResource(key, value)
+}
+
 /** The connection's journal as one conversation hears it: its own events, and a resync on every (re)connect. */
 internal fun Flow<AgentEvent>.signalsFor(agentId: String): Flow<ConversationSignal> = mapNotNull { event ->
     when {
@@ -196,6 +205,7 @@ internal class ConversationHolder(private val session: AgentSession, route: Conv
                 answer["task"].obj?.let { session.upsertTask(it, answer["membership"].obj) }
                 answer["bot"].obj?.let(session::upsertBot)
             },
+            keeper = session.conversationKeeper(agentId),
         )
         conversation.start()
         saved.takePrefill(route.prefill)?.let(conversation::prefill)

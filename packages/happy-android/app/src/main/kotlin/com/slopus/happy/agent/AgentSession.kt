@@ -6,6 +6,7 @@ import com.slopus.happy.connection.AgentIdentity
 import com.slopus.happy.connection.TailcatTransport
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.conversation.UnsentWork
+import com.slopus.happy.data.DiskThread
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -60,11 +61,13 @@ enum class AgentLinkStatus { Connecting, Connected, Offline, Revoked, UpdateRequ
  * its [client]; the catalog home draws, from `GET /v0/bootstrap/desktop` and
  * then the journal; the journal itself as [events] for the open chat; and
  * [status]. The live link runs while [active] is true (the connection is
- * open and the app in the foreground): health and identity, the snapshot,
- * then `/v0/events/stream` from the snapshot's cursor, reconnecting with
- * socket.io's backoff (1 to 5 s, jitter 0.5) and resuming from the last
- * cursor. A `hello` with `gap` reads the snapshot again. The catalog is
- * kept in [cacheFile], so home shows offline and at once.
+ * open and the app in the foreground): health and identity, the snapshot
+ * unless the catalog already has a cursor, then `/v0/events/stream` from
+ * the cursor, reconnecting with socket.io's backoff (1 to 5 s, jitter 0.5)
+ * and resuming from the last cursor. A `hello` with `gap` reads the
+ * snapshot again. The catalog is kept in [cacheFile] and read off the main
+ * thread as the session starts, so home shows from disk, offline too, and
+ * the next start resumes the journal where this one left it.
  */
 class AgentSession internal constructor(
     val connectionId: String,
@@ -92,7 +95,8 @@ class AgentSession internal constructor(
         }
     }
 
-    private val catalogState = MutableStateFlow(readCache() ?: AgentCatalog())
+    // Empty until the kept catalog is read off the main thread (init), then live.
+    private val catalogState = MutableStateFlow(AgentCatalog())
     private val catalogLock = Mutex()
 
     /** Everything home is drawn from; current to [AgentCatalog.cursor]. */
@@ -159,7 +163,7 @@ class AgentSession internal constructor(
     val profile: AgentProfileSource by lazy { AgentProfileSource(client, events, scope) }
 
     /** Bots' pictures, as home's rows draw them. */
-    val pictures = AgentPictures(connectionId) { path -> client.send("GET", path).body }
+    val pictures = AgentPictures(connectionId, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".pictures") }) { path -> client.send("GET", path).body }
 
     /** One conversation as the catalog knows it, live; null while unknown. */
     fun agent(agentId: String): Flow<WireAgent?> = catalogState
@@ -225,6 +229,8 @@ class AgentSession internal constructor(
 
     init {
         scope.launch {
+            // The kept catalog first: home draws it, and the link resumes from its cursor.
+            readCache()?.let { cached -> catalogLock.withLock { catalogState.update { if (it.loaded) it else cached } } }
             active.distinctUntilChanged().collectLatest { on -> if (on) live() }
         }
         scope.launch {
@@ -248,7 +254,9 @@ class AgentSession internal constructor(
 
     private suspend fun live() {
         var backoff = INITIAL_BACKOFF
-        var snapshotRead = false
+        // A catalog with a cursor (kept, or read before the app went behind) resumes the journal from
+        // there; only a gap or a refused cursor reads the whole snapshot again.
+        var snapshotRead = catalogState.value.let { it.loaded && it.cursor != null }
         while (true) {
             if (statusState.value != AgentLinkStatus.Connected) statusState.value = AgentLinkStatus.Connecting
             try {
@@ -437,13 +445,17 @@ class AgentSession internal constructor(
      * `cachedResource` and `keepResource`), by [key]: the artifact list's
      * first page. Deleted with the catalog when the connection goes.
      */
-    fun cachedResource(key: String): JsonObject? = try {
-        resourceFile(key)?.takeIf { it.exists() }?.readText()?.let { AgentClient.json.parseToJsonElement(it) as? JsonObject }
-    } catch (_: Exception) {
-        null
+    fun cachedResource(key: String): JsonObject? {
+        DiskThread.check()
+        return try {
+            resourceFile(key)?.takeIf { it.exists() }?.readText()?.let { AgentClient.json.parseToJsonElement(it) as? JsonObject }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun keepResource(key: String, value: JsonObject) {
+        DiskThread.check()
         val file = resourceFile(key) ?: return
         try {
             file.parentFile?.mkdirs()
@@ -458,13 +470,17 @@ class AgentSession internal constructor(
     private fun resourceFile(key: String): File? =
         cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + "." + key.filter(Char::isLetterOrDigit) + ".json") }
 
-    private fun readCache(): AgentCatalog? = try {
-        cacheFile?.takeIf { it.exists() }?.readText()?.let { AgentClient.json.decodeFromString(AgentCatalog.serializer(), it) }
-    } catch (_: Exception) {
-        null
+    private fun readCache(): AgentCatalog? {
+        DiskThread.check()
+        return try {
+            cacheFile?.takeIf { it.exists() }?.readText()?.let { AgentClient.json.decodeFromString(AgentCatalog.serializer(), it) }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun writeCache(catalog: AgentCatalog) {
+        DiskThread.check()
         val file = cacheFile ?: return
         try {
             file.parentFile?.mkdirs()

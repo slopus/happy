@@ -9,6 +9,7 @@ import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentEvent
+import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.Todo
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -94,6 +96,29 @@ class AgentPlacesTest {
         calendar.read()
         assertEquals(PlaceRead.Ready(SurfaceBody.Elsewhere), calendar.state.value)
         assertEquals(listOf("GET /v0/surfaces/document/s2"), asked)
+    }
+
+    @Test
+    fun aSurfaceReadOnceShowsFromDiskNextTimeEvenWithNoNetwork() {
+        var kept: JsonObject? = null
+        val online = SurfaceReader(api { _, _ -> """{"document":{"text":"# Plan"}}""" }, scope, "s2", "document", cached = { kept }, keep = { kept = it })
+        online.read()
+        assertEquals(SurfaceBody.Document("# Plan"), await(online.state) { true })
+        runBlocking { withTimeout(5_000) { while (kept == null) kotlinx.coroutines.delay(10) } }
+
+        val offline = SurfaceReader(
+            ConversationApi { _, _, _ -> throw AgentConnectionException(AgentConnectionException.Reason.Unavailable) },
+            scope, "s2", "document", cached = { kept }, keep = { kept = it },
+        )
+        offline.read()
+        assertEquals(SurfaceBody.Document("# Plan"), await(offline.state) { true })
+        // The failed read leaves the kept copy on screen.
+        Thread.sleep(200)
+        assertEquals(PlaceRead.Ready(SurfaceBody.Document("# Plan")), offline.state.value)
+        assertEquals(
+            SurfaceBody.Todos(listOf(Todo("t1", "Eggs", false), Todo("t2", "Milk", true))),
+            SurfaceBody.parse(SurfaceBody.Todos(listOf(Todo("t1", "Eggs", false), Todo("t2", "Milk", true))).json()),
+        )
     }
 
     @Test

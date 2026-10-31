@@ -13,6 +13,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -108,6 +109,10 @@ data class ConversationState(
  * That first send waits in the composer while the work is made; a refusal
  * leaves it there ([ConversationState.workFailure]).
  *
+ * Offline first: with a [keeper], the newest runs are kept on the phone
+ * ([KeptConversation]) and shown as soon as the disk read returns; the agent
+ * is then asked only for what came after the newest finished run.
+ *
  * All state lives on [lane], one coroutine at a time.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -128,6 +133,11 @@ class Conversation(
     private val now: () -> Long = System::currentTimeMillis,
     private val draftDebounceMillis: Long = 300,
     private val retryDelayMillis: Long = 600,
+    /** Where the newest history is kept on this phone; null keeps nothing. */
+    private val keeper: ConversationKeeper? = null,
+    /** Where [keeper] is read and written: never the main thread. */
+    private val disk: CoroutineContext = Dispatchers.IO,
+    private val keepDelayMillis: Long = 1_000,
 ) {
     private class Outgoing(val id: String, val text: String, val images: List<Block.Image>, var accepted: Boolean = false, var failure: Problem? = null)
 
@@ -147,6 +157,8 @@ class Conversation(
     private var snapshot = _state.value
     private val builder = ConversationRowBuilder()
     private val runs = ArrayList<Pair<String, MutableList<String>>>()
+    /** Each run's status and start as last read, so it is kept as it came. */
+    private val runInfo = HashMap<String, Pair<String, Long?>>()
     private val messages = HashMap<String, Message>()
     private val pending = ArrayList<String>()
     private val outgoing = ArrayList<Outgoing>()
@@ -206,6 +218,8 @@ class Conversation(
     fun close() {
         scope.launch(lane) {
             if (!draftSynced && created) saveDraftNow()
+            keeping?.cancel()
+            keepNow()
             following?.cancel()
             reading?.cancel()
         }
@@ -222,19 +236,29 @@ class Conversation(
         }
     }
 
+    /** The kept history has been read from [keeper], or there was none to read. */
+    private var restored = false
+
+    /**
+     * Catches up with the agent. The first read starts from what this phone
+     * kept, shown as soon as the disk answers; then the agent is asked only
+     * for what came after the newest finished run ([anchor]), not the whole
+     * history again.
+     */
     private fun reload() {
         reading?.cancel()
         if (held == null) held = ArrayList()
         reading = scope.launch(lane) {
+            if (!restored) restore()
             publish { it.copy(syncing = true) }
             try {
                 // Their own scope: a failed read is this read's failure, not the conversation's.
-                val (start, page) = coroutineScope {
+                val (start, read) = coroutineScope {
                     val bootstrap = async { api.bootstrap(agentId) }
-                    val messages = async { api.messages(agentId) }
+                    val messages = async { readHistory() }
                     bootstrap.await() to messages.await()
                 }
-                adopt(start, page)
+                adopt(start, read)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -246,30 +270,146 @@ class Conversation(
         }
     }
 
-    private fun adopt(start: Bootstrap, page: MessagesPage) {
+    /** What [readHistory] read: the newest page whole, or the runs after [anchor] to lay over the kept ones. */
+    private class HistoryRead(val runs: List<Run>, val hasMore: Boolean, val anchor: String?)
+
+    /**
+     * The last message of the newest run that has finished, where a catch-up
+     * starts (API.md `after`). The newest run may still be going, so it is
+     * read whole again unless it is known to have finished.
+     */
+    private fun anchor(): String? {
+        val finished = if (running || runInfo[runs.lastOrNull()?.first]?.first == "running") runs.dropLast(1) else runs
+        return finished.lastOrNull { it.second.isNotEmpty() }?.second?.last()
+    }
+
+    private suspend fun readHistory(): HistoryRead {
+        val anchor = anchor() ?: return api.messages(agentId).let { HistoryRead(it.runs, it.hasMore, null) }
+        val runs = ArrayList<Run>()
+        var after: String = anchor
+        repeat(MAX_CATCH_UP_PAGES) {
+            val page = try {
+                api.messages(agentId, after = after)
+            } catch (e: ConversationApiException) {
+                // A daemon that can't read from a message: the newest page whole, as before.
+                if (e.status != 400) throw e
+                return api.messages(agentId).let { HistoryRead(it.runs, it.hasMore, null) }
+            }
+            // A daemon that ignored `after` sent the newest page, anchor and all: that is a whole read.
+            if (page.runs.any { run -> run.messages.any { it.id == anchor } }) return HistoryRead(page.runs, page.hasMore, null)
+            runs += page.runs
+            val last = page.runs.lastOrNull { it.messages.isNotEmpty() }?.messages?.last()?.id
+            if (!page.hasMore || last == null) return HistoryRead(runs, snapshot.hasMore, anchor)
+            after = last
+        }
+        // Too far behind to catch up page by page: the newest page whole.
+        return api.messages(agentId).let { HistoryRead(it.runs, it.hasMore, null) }
+    }
+
+    /** The kept history, read off the main thread and shown at once; the agent's answer follows. */
+    private suspend fun restore() {
+        restored = true
+        val keeper = keeper ?: return
+        val kept = try {
+            withContext(disk) { KeptConversation.parse(keeper.read()) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: return
+        // Something came in while the disk was read: that is newer than what was kept.
+        if (runs.isNotEmpty() || pending.isNotEmpty()) return
+        for (run in kept.runs) putRun(run)
+        for (message in kept.pending) {
+            messages[message.id] = message
+            pending += message.id
+        }
+        agent = agent ?: kept.agent
+        mode = picked ?: mode ?: kept.mode
+        publish { it.copy(loaded = true, hasMore = kept.hasMore) }
+    }
+
+    private fun putRun(run: Run) {
+        runs += run.id to run.messages.mapTo(ArrayList()) { it.id }
+        runInfo[run.id] = run.status to run.startedAt
+        run.messages.forEach { messages[it.id] = it }
+    }
+
+    private fun adopt(start: Bootstrap, read: HistoryRead) {
         agent = start.agent
         mode = picked ?: start.draft?.mode ?: start.mode ?: mode
         start.draft?.let { adoptDraft(it) }
-        runs.clear()
-        messages.clear()
-        pending.clear()
-        for (run in page.runs) {
-            runs += run.id to run.messages.mapTo(ArrayList()) { it.id }
-            run.messages.forEach { messages[it.id] = it }
+        val anchorRun = read.anchor?.let { id -> runs.indexOfFirst { id in it.second } }?.takeIf { it >= 0 }
+        if (anchorRun != null) {
+            // A catch-up: the runs after the anchor's are replaced by what the agent sent; those before stay.
+            while (runs.size > anchorRun + 1) runInfo.remove(runs.removeAt(runs.size - 1).first)
+            for (run in read.runs) {
+                val known = runs.firstOrNull { it.first == run.id }
+                if (known == null) {
+                    putRun(run)
+                } else {
+                    val came = run.messages.map { it.id }
+                    known.second.retainAll { it !in came }
+                    known.second += came
+                    runInfo[run.id] = run.status to run.startedAt
+                    run.messages.forEach { messages[it.id] = it }
+                }
+            }
+            val shown = runs.flatMapTo(HashSet()) { it.second }
+            messages.keys.retainAll { it in shown }
+        } else {
+            runs.clear()
+            runInfo.clear()
+            messages.clear()
+            read.runs.forEach(::putRun)
         }
+        pending.clear()
         for (message in start.pending) {
             messages[message.id] = message
             pending += message.id
         }
         outgoing.removeAll { it.id in messages }
         running = start.agent.isWorking
-        activeRunStartedAt = page.runs.lastOrNull()?.takeIf { start.agent.isWorking && it.status == "running" }?.startedAt
+        activeRunStartedAt = runs.lastOrNull()?.first?.let(runInfo::get)?.takeIf { start.agent.isWorking && it.first == "running" }?.second
         val events = held.orEmpty()
         held = null
         events.forEach(::receive)
-        publish { it.copy(loaded = true, syncing = false, hasMore = page.hasMore, error = null) }
+        publish { it.copy(loaded = true, syncing = false, hasMore = read.hasMore, error = null) }
         if (start.agent.pendingQuestionId != null) readQuestion() else publish { it.copy(question = null) }
         if (visible) markRead()
+        keepSoon()
+    }
+
+    private var keeping: Job? = null
+
+    /** The history as it stands now goes to [keeper] after a pause; changes meanwhile go with it. */
+    private fun keepSoon() {
+        if (keeper == null || !created || keeping?.isActive == true) return
+        keeping = scope.launch(lane) {
+            delay(keepDelayMillis)
+            keepNow()
+        }
+    }
+
+    private suspend fun keepNow() {
+        val keeper = keeper ?: return
+        if (!created || !snapshot.loaded || runs.isEmpty() && pending.isEmpty()) return
+        val newest = runs.takeLast(KeptConversation.KEPT_RUNS)
+        val kept = KeptConversation(
+            runs = newest.map { (id, ids) ->
+                val (status, startedAt) = runInfo[id] ?: ("completed" to null)
+                Run(id, status, startedAt, ids.mapNotNull(messages::get))
+            },
+            pending = pending.mapNotNull(messages::get),
+            hasMore = snapshot.hasMore || newest.size < runs.size,
+            agent = agent,
+            mode = mode,
+        )
+        try {
+            withContext(disk + NonCancellable) { keeper.write(kept.json()) }
+        } catch (_: Exception) {
+            // Kept next time; the agent still has it all.
+        }
     }
 
     /** Runs older than the first one shown. After a failure only [retry] (Retry) asks again. */
@@ -284,9 +424,11 @@ class Conversation(
                     val known = runs.mapTo(HashSet()) { it.first }
                     val older = page.runs.filter { it.id !in known }
                     runs.addAll(0, older.map { run -> run.id to run.messages.mapTo(ArrayList()) { it.id } })
+                    older.forEach { run -> runInfo[run.id] = run.status to run.startedAt }
                     older.forEach { run -> run.messages.forEach { messages[it.id] = it } }
                 }
                 publish { it.copy(loadingOlder = false, hasMore = page.hasMore) }
+                keepSoon()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -342,17 +484,22 @@ class Conversation(
             }
             "run.started" -> {
                 val run = payload["run"].obj ?: return
+                runs.lastOrNull()?.first?.let { last -> runInfo[last]?.let { runInfo[last] = "completed" to it.second } }
                 accept(payload["acceptedMessageIds"].strings(), run["id"].str ?: return)
                 activeRunStartedAt = run["startedAt"].long
                 running = true
+                runInfo[run["id"].str!!] = "running" to run["startedAt"].long
             }
             "run.boundary" -> {
                 val run = payload["startedRun"].obj ?: return
+                runs.lastOrNull()?.first?.let { last -> runInfo[last]?.let { runInfo[last] = "completed" to it.second } }
                 accept(payload["acceptedMessageIds"].strings(), run["id"].str ?: return)
                 activeRunStartedAt = run["startedAt"].long
                 running = true
+                runInfo[run["id"].str!!] = "running" to run["startedAt"].long
             }
             "run.finished" -> {
+                runs.lastOrNull()?.first?.let { last -> runInfo[last] = "completed" to runInfo[last]?.second }
                 activeRunStartedAt = null
                 running = false
                 agent = agent?.copy(status = "idle")
@@ -384,6 +531,7 @@ class Conversation(
             else -> return
         }
         publish()
+        keepSoon()
     }
 
     private fun kotlinx.serialization.json.JsonElement?.strings(): List<String> = arr.orEmpty().mapNotNull { it.str }
@@ -865,6 +1013,9 @@ class Conversation(
     }
 
     companion object {
+        /** Pages of catch-up read after the kept history before reading the newest page whole instead. */
+        const val MAX_CATCH_UP_PAGES = 4
+
         /** A failure worth trying again: the agent unreachable, or the daemon's own fault. */
         fun transient(e: Exception): Boolean = when (e) {
             is AgentConnectionException -> e.reason == AgentConnectionException.Reason.Unavailable

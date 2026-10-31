@@ -70,8 +70,11 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
     /** Held to read [helper] and use its database; [retire] takes it exclusively to close one. */
     private val access = ReentrantReadWriteLock()
 
-    /** Only inside [access]'s read lock, so [retire] cannot close it under a read. */
-    private val db: SQLiteDatabase get() = helper.writableDatabase
+    /** Only inside [access]'s read lock, so [retire] cannot close it under a read. Never on the main thread ([DiskThread]). */
+    private val db: SQLiteDatabase get() {
+        DiskThread.check()
+        return helper.writableDatabase
+    }
 
     private inline fun <T> query(sql: String, args: Array<String>?, block: (Cursor) -> T): T =
         access.read { db.rawQuery(sql, args).use(block) }

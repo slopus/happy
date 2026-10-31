@@ -403,6 +403,21 @@ full listing on first sync and once a day catches deletions. Messages: see
 history below. It runs on sign-in, on every socket connect, and when the app
 returns to the foreground.
 
+**Disk never on the main thread** (research/offline-first.md). A screen
+waits for the disk with its loader, never with a frozen frame, and never
+waits for the network when what it shows is on disk. `DiskThread.check()`
+guards every `HappyStore` access and every agent connection file (catalog,
+kept resources and conversations, pictures); tests turn on
+`DiskThread.strict` (`OfflineFirstJourneyTest`), debug builds log
+StrictMode's disk detection. The graph is built off the main thread
+(`HappyApplication.graphReady`); MainActivity holds its first frame until
+then. An agent connection keeps, beside its catalog, each opened
+conversation's newest 100 runs (`KeptConversation`, iOS's
+`conversation:<agentId>`), its Surfaces' last read, and bots' and
+projects' pictures; a chat shows its kept runs, then asks only
+`messages?after=` the newest finished run's last message. The journal
+resumes from the kept cursor; only a gap reads the snapshot again.
+
 **Store merges** (`HappyStore`). Writes merge instead of overwrite: each
 versioned document (metadata, agentState, daemonState) keeps the higher
 version, presence the newer `activeAt`, counters the maximum, so a slow page

@@ -38,8 +38,8 @@ class AgentSessions(
                     session.close()
                     cacheFile(session.connectionId)?.let { file ->
                         file.delete()
-                        // And the resources kept beside it (`AgentSession.keepResource`).
-                        file.parentFile?.listFiles { f -> f.name.startsWith(file.nameWithoutExtension + ".") }?.forEach { it.delete() }
+                        // And what is kept beside it: resources and conversations (`AgentSession.keepResource`), pictures.
+                        file.parentFile?.listFiles { f -> f.name.startsWith(file.nameWithoutExtension + ".") }?.forEach { it.deleteRecursively() }
                     }
                 }
             }

@@ -165,7 +165,48 @@ class AgentSessionTest {
         first.close()
         open.value = null
         val offline = sessions { error("no network") }.session(id)!!
-        assertEquals(listOf("ab1", "at1"), offline.feed.value.conversations.map { it.agentId })
+        // Read off the main thread, so it comes a moment after the session is made.
+        eventually({ offline.feed.value.conversations.map { it.agentId } }) { it == listOf("ab1", "at1") }
+    }
+
+    @Test
+    fun comingBackResumesTheJournalFromTheKeptCursorWithoutTheSnapshot() = runBlocking {
+        val first = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        agent.frames.send(Wire.frame("c1", "agent.updated", Wire.updated("agentId", "at1", "01", "02", buildJsonObject { put("status", "thinking") })))
+        eventually({ first.catalog.value.cursor }) { it == "c1" }
+        eventually({ File(cacheDir, "$id.json").takeIf { it.exists() }?.readText().orEmpty() }) { "\"c1\"" in it }
+        first.close()
+        agent.calls.clear()
+        agent.streamCursors.clear()
+        agent.frames = Channel(Channel.UNLIMITED)
+
+        // A cold start (or the app back in front): the kept catalog, then the journal from its cursor.
+        val again = sessions().session(id)!!
+        eventually({ agent.streamCursors.size }) { it == 1 }
+        assertEquals("c1", agent.streamCursors.single())
+        assertEquals(0, agent.calls.count { it == "GET /v0/bootstrap/desktop" })
+        eventually({ again.feed.value.conversations.single { it.agentId == "at1" } }) { it.working }
+
+        // A gap is the one thing that reads the snapshot again.
+        agent.frames.send(Wire.hello("c9", gap = true))
+        eventually({ agent.calls.count { it == "GET /v0/bootstrap/desktop" } }) { it == 1 }
+    }
+
+    @Test
+    fun goingBehindAndComingBackDoesNotReadTheSnapshotAgain() = runBlocking {
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        assertEquals(1, agent.calls.count { it == "GET /v0/bootstrap/desktop" })
+        foreground.value = false
+        agent.frames.close()
+        agent.frames = Channel(Channel.UNLIMITED)
+        kotlinx.coroutines.delay(100)
+        foreground.value = true
+        eventually({ agent.streamCursors.size }) { it == 2 }
+        assertEquals("c0", agent.streamCursors[1])
+        assertEquals(1, agent.calls.count { it == "GET /v0/bootstrap/desktop" })
     }
 
     @Test

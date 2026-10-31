@@ -51,6 +51,8 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.agent.AgentFeedRow
+import com.slopus.happy.chat.arr
+import com.slopus.happy.chat.bool
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
@@ -74,12 +76,18 @@ import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 
 /** One Surface the person joined; [name] titles the bar before anything is read. */
 @Serializable data class AgentSurfaceRoute(val connectionId: String, val surfaceId: String, val type: String, val name: String)
@@ -103,6 +111,28 @@ sealed interface SurfaceBody {
     data class Todos(val todos: List<Todo>) : SurfaceBody
     data class Document(val markdown: String) : SurfaceBody
     data object Elsewhere : SurfaceBody
+
+    /** As kept on the phone ([parse] reads it back). */
+    fun json(): JsonObject = buildJsonObject {
+        when (this@SurfaceBody) {
+            is Todos -> putJsonArray("todos") {
+                todos.forEach { todo -> add(buildJsonObject { put("id", todo.id); put("text", todo.text); put("done", todo.done) }) }
+            }
+            is Document -> put("markdown", markdown)
+            Elsewhere -> Unit
+        }
+    }
+
+    companion object {
+        fun parse(value: JsonObject): SurfaceBody? = when {
+            value["todos"] != null -> Todos(value["todos"].arr.orEmpty().mapNotNull { item ->
+                val o = item.obj ?: return@mapNotNull null
+                Todo(o["id"].str ?: return@mapNotNull null, o["text"].str.orEmpty(), o["done"].bool == true)
+            })
+            value["markdown"] != null -> Document(value["markdown"].str.orEmpty())
+            else -> null
+        }
+    }
 }
 
 /**
@@ -115,6 +145,9 @@ internal class SurfaceReader(
     private val scope: CoroutineScope,
     private val surfaceId: String,
     private val type: String,
+    /** What was last read, kept with the connection: shown first, offline included. */
+    private val cached: () -> JsonObject? = { null },
+    private val keep: (JsonObject) -> Unit = {},
 ) {
     private val stateFlow = MutableStateFlow<PlaceRead<SurfaceBody>>(if (readable) PlaceRead.Reading else PlaceRead.Ready(SurfaceBody.Elsewhere))
     val state: StateFlow<PlaceRead<SurfaceBody>> = stateFlow.asStateFlow()
@@ -126,7 +159,7 @@ internal class SurfaceReader(
         (type == TODO && (event.data["surfaceId"].str ?: event.data["todo"].obj?.get("surfaceId").str) == surfaceId)
 
     fun read() {
-        scope.launch { refresh() }
+        scope.launch { restore(); refresh() }
     }
 
     /** One read, returning once it has landed or failed; what a pull waits on. */
@@ -138,11 +171,19 @@ internal class SurfaceReader(
                 else -> SurfaceBody.Document(api.document(surfaceId))
             }
             stateFlow.value = PlaceRead.Ready(body)
+            withContext(Dispatchers.IO) { keep(body.json()) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             if (stateFlow.value !is PlaceRead.Ready) stateFlow.value = PlaceRead.Failed(Conversation.describe(e))
         }
+    }
+
+    /** What was kept, read off the main thread, while nothing newer is on screen. */
+    private suspend fun restore() {
+        if (!readable || stateFlow.value is PlaceRead.Ready) return
+        val kept = withContext(Dispatchers.IO) { cached() }?.let(SurfaceBody::parse) ?: return
+        if (stateFlow.value !is PlaceRead.Ready) stateFlow.value = PlaceRead.Ready(kept)
     }
 
     fun retry() {
@@ -175,7 +216,11 @@ internal class SurfaceReader(
 internal fun AgentSurface(graph: AppGraph, nav: NavHostController, route: AgentSurfaceRoute) {
     val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
     val scope = rememberCoroutineScope()
-    val reader = remember(session) { session?.let { SurfaceReader(ConversationApi(it.conversationRequest()), scope, route.surfaceId, route.type) } }
+    val reader = remember(session) { session?.let { SurfaceReader(
+            ConversationApi(it.conversationRequest()), scope, route.surfaceId, route.type,
+            cached = { it.cachedResource("surface" + route.surfaceId) },
+            keep = { value -> it.keepResource("surface" + route.surfaceId, value) },
+        ) } }
     LaunchedEffect(reader) {
         if (session == null || reader == null) return@LaunchedEffect
         reader.read()
