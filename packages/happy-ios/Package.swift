@@ -47,7 +47,7 @@ let package = Package(
         .package(url: "https://github.com/elevenlabs/elevenlabs-swift-sdk.git", exact: "3.4.0"),
         // Native Home and chat's optional renderer. Pin the pre-1.0 API used by
         // NodeRow and the custom keyframe scroller.
-        .package(url: "https://github.com/slopus/ultraview.git", revision: "ac81d2b1dec7c2637e77f7f8f4d9005dbaf4c24b"),
+        .package(url: "https://github.com/slopus/ultraview.git", revision: "2b819af230dedab6478be39f0fea8c15513dbddc"),
         .package(url: "https://github.com/slopus/tailcat-swift.git", revision: "f62543179c9cd6621ca31db0a8f627d440224ce5"),
         // The state pictures (`StateSceneView`), desktop's Lottie scenes.
         // lottie-spm is Lottie's prebuilt xcframework, so it adds no source
