@@ -51,11 +51,11 @@ final class GroupedSidebarLayoutTests: XCTestCase {
         XCTAssertEqual(result.connectors, [])
 
         // A row fills its card's width: the mark 16 into the card, the title
-        // the plain row's 12 past it (riding 2 up), the trailing column's
+        // the plain row's 12 past it, the trailing column's
         // middle 31 in from the card's right, as the mark's is from its left.
         XCTAssertEqual(frames[0].box, CGRect(x: 16, y: 8, width: 358, height: 48))
         XCTAssertEqual(frames[0].mark, CGRect(x: 32, y: 17, width: 30, height: 30))
-        XCTAssertEqual(frames[0].label, CGRect(x: 74, y: 6, width: 282 + 2 * third, height: 48))
+        XCTAssertEqual(frames[0].label, CGRect(x: 74, y: 8, width: 282 + 2 * third, height: 48))
         // The first row rounds the card's top; a hairline from its title's
         // start to the card's end stands on its bottom edge.
         XCTAssertEqual(frames[0].cell, .init(roundsTop: true, roundsBottom: false, separator: CGRect(x: 74, y: 56 - third, width: 300, height: third)))
@@ -63,7 +63,7 @@ final class GroupedSidebarLayoutTests: XCTestCase {
         // A fold takes the trailing square, its "⌄" ink centred on the column.
         XCTAssertEqual(frames[1].chevron, CGRect(x: 329 + 2 * third, y: 66 + 2 * third, width: 27, height: 27))
         XCTAssertEqual(frames[1].chevronGlyph, CGRect(x: 334, y: 71 + third, width: 18, height: 18))
-        XCTAssertEqual(frames[1].label, CGRect(x: 74, y: 54, width: 317 + 2 * third - 74, height: 48))
+        XCTAssertEqual(frames[1].label, CGRect(x: 74, y: 56, width: 317 + 2 * third - 74, height: 48))
         XCTAssertEqual(frames[1].cell, .init(roundsTop: false, roundsBottom: false, separator: CGRect(x: 74, y: 104 - third, width: 300, height: third)))
 
         // A nested row stays in its parent's card, its mark under the
@@ -71,7 +71,7 @@ final class GroupedSidebarLayoutTests: XCTestCase {
         XCTAssertEqual(frames[2].mark, CGRect(x: 74, y: 113, width: 30, height: 30))
         XCTAssertEqual(frames[2].mark?.minX, frames[1].label.minX)
         XCTAssertEqual(frames[2].trailing, CGRect(x: 329 + 2 * third, y: 114 + 2 * third, width: 27, height: 27))
-        XCTAssertEqual(frames[2].label, CGRect(x: 116, y: 102, width: 317 + 2 * third - 116, height: 48))
+        XCTAssertEqual(frames[2].label, CGRect(x: 116, y: 104, width: 317 + 2 * third - 116, height: 48))
         XCTAssertEqual(frames[2].cell, .init(roundsTop: false, roundsBottom: true, separator: nil))
 
         // The heading: 36 tall over its card, its 18 title line 7 above the
@@ -86,7 +86,7 @@ final class GroupedSidebarLayoutTests: XCTestCase {
         XCTAssertEqual(frames[4].cell, .init(roundsTop: true, roundsBottom: false, separator: CGRect(x: 74, y: 250 - third, width: 300, height: third)))
         // No mark: the title starts where the mark would, and so does nothing else.
         XCTAssertNil(frames[5].mark)
-        XCTAssertEqual(frames[5].label, CGRect(x: 32, y: 248, width: 324 + 2 * third, height: 48))
+        XCTAssertEqual(frames[5].label, CGRect(x: 32, y: 250, width: 324 + 2 * third, height: 48))
         XCTAssertEqual(frames[5].cell, .init(roundsTop: false, roundsBottom: true, separator: nil))
 
         XCTAssertEqual(frames[6].box, CGRect(x: 16, y: 298, width: 358, height: 24))

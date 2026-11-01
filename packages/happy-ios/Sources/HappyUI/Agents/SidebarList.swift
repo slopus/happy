@@ -244,7 +244,7 @@ final class SidebarList: UIView {
     /// drawing, and a new revision only for a slot that draws differently.
     nonisolated static func derive(_ input: Input, previous: Prepared?) -> Prepared {
         typealias G = GroupedSidebarMetrics
-        let layoutRows = SidebarView.layoutRows(input.rows)
+        let layoutRows = SidebarView.layoutRows(input.rows, scale: input.displayScale)
         let result = SidebarLayout.layout(layoutRows, width: input.width, top: G.contentTop, bottom: G.contentBottom, scale: input.displayScale, style: .grouped)
         let slots = SidebarLayout.slots(layoutRows, result, width: input.width)
         var old: [String: Entry] = [:]

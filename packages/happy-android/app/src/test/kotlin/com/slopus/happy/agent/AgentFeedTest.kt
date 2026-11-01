@@ -12,6 +12,23 @@ import org.junit.Test
 
 /** Home's rows from the catalog, and the journal merged into it. */
 class AgentFeedTest {
+    @Test
+    fun lineCountsBelongToTheExactWorkspaceAndDisappearWhenCleanOrUnavailable() {
+        val snapshot = Wire.bootstrap(
+            tasks = listOf(Wire.task("task", "Task", Wire.agent("parent", workspaceId = "root", subtasks = listOf(
+                Wire.agent("child", workspaceId = "child-tree", subtask = true, parent = "parent"),
+            )))),
+            memberships = listOf(Wire.membership("task", "1")),
+        )
+        val counts = WorkspaceLineChanges("ready", 1234, 7, false, 1.0)
+        val feed = AgentFeed.derive(catalog(snapshot), git = mapOf("child-tree" to counts))
+        assertEquals(null, feed.conversations.first { it.agentId == "parent" }.lineChanges)
+        assertEquals(counts, feed.conversations.first { it.agentId == "child" }.lineChanges)
+        for (hidden in listOf(counts.copy(comparison = "unavailable"), counts.copy(insertions = 0, deletions = 0))) {
+            assertTrue(AgentFeed.derive(catalog(snapshot), git = mapOf("child-tree" to hidden)).conversations.all { it.lineChanges == null })
+        }
+    }
+
     private fun catalog(bootstrap: kotlinx.serialization.json.JsonObject) =
         AgentCatalog().withBootstrap(AgentClient.json.decodeFromJsonElement(WireDesktopBootstrap.serializer(), bootstrap))
 

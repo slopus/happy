@@ -126,13 +126,14 @@ extension SidebarLayout {
             frame.trailing = slot
             right = slot.minX - M.trailingGap
         }
-        // A row's title rides up to its marks' middle, as in the plain list.
-        frame.label = CGRect(x: x, y: row.kind == .row ? box.minY - M.titleLift : box.minY, width: max(0, right - x), height: box.height)
+        // The renderer places a font-derived x-height baseline in this row box.
+        frame.label = CGRect(x: x, y: box.minY, width: max(0, right - x), height: box.height)
         if row.hasTrailing == false, row.kind == .row, row.hasWorkingSignal {
             let signal = M.workingSignal
             frame.corner = CGRect(x: slot.midX - signal.width / 2, y: slot.midY - signal.height / 2, width: signal.width, height: signal.height)
             frame.label.size.width = max(0, slot.minX - M.trailingGap - x)
         }
+        reserveLineChanges(row, frame: &frame, activityRight: cardRight - G.markInset, scale: scale)
         return frame
     }
 

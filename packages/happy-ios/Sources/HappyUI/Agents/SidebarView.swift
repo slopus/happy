@@ -301,7 +301,7 @@ final class SidebarView: UIScrollView {
     }
 
     /// The rows as the layout needs them.
-    nonisolated static func layoutRows(_ rows: [Row]) -> [SidebarLayout.Row] {
+    nonisolated static func layoutRows(_ rows: [Row], scale: CGFloat = 3) -> [SidebarLayout.Row] {
         rows.map { row in
             let kind: SidebarLayout.Kind = switch row.kind {
             case .section: .section
@@ -309,14 +309,14 @@ final class SidebarView: UIScrollView {
             case .widget: .widget
             default: .row
             }
-            return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions)
+            return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, lineChangesWidth: SidebarLineChanges.width(row.lineChanges), trailingInk: SidebarTypography.trailingInk(row, scale: scale))
         }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         let shown = rows
-        let input = Self.layoutRows(shown)
+        let input = Self.layoutRows(shown, scale: traitCollection.displayScale)
         let width = bounds.width
         if laidOut?.width != width || laidOut?.rows != input || layoutResult?.frames.count != shown.count {
             // A width change lays out at once even mid-fold: rotation is
@@ -332,7 +332,7 @@ final class SidebarView: UIScrollView {
 
     /// Lays `shown` out and moves each row to its place, gliding when asked.
     private func place(_ shown: [Row], animated: Bool) {
-        let input = Self.layoutRows(shown)
+        let input = Self.layoutRows(shown, scale: traitCollection.displayScale)
         let result = layout(input)
         // A working indicator can change a row's internal frames without
         // changing any row's size or position. Such updates must never touch
@@ -421,7 +421,7 @@ final class SidebarView: UIScrollView {
         // view begins.
         let arriving = entering.filter { id in views[id]?.frames == nil }
         if !arriving.isEmpty {
-            let input = Self.layoutRows(shown)
+            let input = Self.layoutRows(shown, scale: traitCollection.displayScale)
             let result = layout(input)
             UIView.performWithoutAnimation {
                 for (row, frame) in zip(shown, result.frames) where arriving.contains(row.id) {

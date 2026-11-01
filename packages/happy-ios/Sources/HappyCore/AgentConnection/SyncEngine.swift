@@ -75,6 +75,9 @@ public actor SyncEngine {
     private var usersAgain: Set<String> = []
     private var usersDirty = false
     private var usersRead: Task<Void, Never>?
+    private var gitWatcher: Task<Void, Never>?
+    private var gitInterest: Set<String> = []
+    private var gitSnapshots: [String: WorkspaceLineChanges] = [:]
 
     public init(client: AgentClient, directory: URL?) {
         self.client = client
@@ -134,7 +137,8 @@ public actor SyncEngine {
         generation += 1
         verified = false
         let pausedGeneration = generation
-        let tasks = [runner, refresh, delivery, messageDelivery, usersRead].compactMap { $0 }
+        let tasks = [runner, refresh, delivery, messageDelivery, usersRead, gitWatcher].compactMap { $0 }
+        gitWatcher = nil; gitInterest = []
         runner = nil; refresh = nil; delivery = nil; messageDelivery = nil; usersRead = nil
         tasks.forEach { $0.cancel() }
         for task in tasks { await task.value }
@@ -222,6 +226,7 @@ public actor SyncEngine {
                         sidebarSyncing = true
                         snapshot.syncing = true
                         snapshot.live = true; snapshot.error = nil; attempt = 0
+                        watchGit()
                         publish()
                         // The bootstrap cursor precedes its reads. Opening from
                         // it is safe even after a crash, replay or daemon replacement.
@@ -237,6 +242,12 @@ public actor SyncEngine {
                     guard let event = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8)) else { continue }
                     await spaces.externalEvent(event)
                     guard current(generation) else { return }
+                    if event["type"] == .string("git.updated"),
+                       let id = event["payload"]?["workspaceId"]?.stringValue,
+                       gitInterest.contains(id), let value = event["payload"]?["git"],
+                       let state = try? JSONDecoder().decode(WorkspaceLineChanges.self, from: JSONEncoder().encode(value)) {
+                        receiveGit([id: state])
+                    }
                     if event["type"] == .string("profile.updated") {
                         profileChanged()
                         authorChanged(event["payload"]?["userId"]?.stringValue, generation)
@@ -487,13 +498,56 @@ public actor SyncEngine {
         snapshot.loaded = desktop != nil
         if let desktop {
             snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users))
+            for index in snapshot.allRows.indices {
+                snapshot.allRows[index].lineChanges = snapshot.allRows[index].workspaceId.flatMap { gitSnapshots[$0]?.visible }
+            }
             snapshot.rows = Rows.visible(snapshot.allRows)
             snapshot.userId = desktop.profile?.userId
         }
         publish()
     }
 
-    private func publish() { for listener in listeners.values { listener.yield(snapshot) } }
+    private func publish() {
+        if !snapshot.live { gitWatcher?.cancel(); gitWatcher = nil; gitInterest = [] }
+        for listener in listeners.values { listener.yield(snapshot) }
+        watchGit()
+    }
+
+    /// One subscription set per open account, never one request per row.
+    /// Renewing keeps the daemon's bounded watcher interest alive; changes
+    /// themselves arrive on the existing event stream.
+    private func watchGit() {
+        guard snapshot.live, !stopped else { return }
+        let ids = Set(snapshot.rows.compactMap(\.workspaceId))
+        guard gitWatcher == nil || ids != gitInterest else { return }
+        gitWatcher?.cancel()
+        gitInterest = ids
+        gitSnapshots = gitSnapshots.filter { ids.contains($0.key) }
+        let generation = generation
+        gitWatcher = Task {
+            while current(generation), snapshot.live {
+                do {
+                    struct Response: Decodable { var snapshots: [String: WorkspaceLineChanges] }
+                    let response = try await client.decode(Response.self, "POST", "/v0/git/watch", json: .object([
+                        "workspaceIds": .array(ids.sorted().map(JSONValue.string)),
+                    ]))
+                    guard current(generation), gitInterest == ids else { return }
+                    receiveGit(response.snapshots)
+                } catch { if Task.isCancelled { return } }
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            }
+        }
+    }
+
+    private func receiveGit(_ states: [String: WorkspaceLineChanges]) {
+        var changed = false
+        for (id, state) in states where gitInterest.contains(id) {
+            guard state.scannedAt >= (gitSnapshots[id]?.scannedAt ?? 0), state != gitSnapshots[id] else { continue }
+            gitSnapshots[id] = state
+            changed = true
+        }
+        if changed { derive() }
+    }
 
     // MARK: Intents
 

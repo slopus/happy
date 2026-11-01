@@ -1,5 +1,6 @@
 #if canImport(UIKit) && (DEBUG || HAPPY_FIXTURES)
 import Foundation
+import CoreText
 @testable import HappyCore
 import HappyLayout
 @testable import HappyUI
@@ -20,7 +21,8 @@ private struct GroupedHomeSockets: WebSocketConnector {
 private actor GroupedHomeTransport: AgentTransport {
     /// The cloned repo's picture, as the daemon serves it.
     let avatar: Data
-    init(avatar: Data) { self.avatar = avatar }
+    let lineCounts: Bool
+    init(avatar: Data, lineCounts: Bool = false) { self.avatar = avatar; self.lineCounts = lineCounts }
 
     /// Tasks and bots made here, newest first, the ones still to be named
     /// by their first message, and the events stream to tell of them.
@@ -96,6 +98,20 @@ private actor GroupedHomeTransport: AgentTransport {
         let route = path.split(separator: "?").first.map(String.init) ?? path
         if route == "/v0/projects/p1/avatar" { return .init(status: 200, body: avatar) }
         let sent = body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        if route == "/v0/git/watch" {
+            let samples: [String: (Int, Int, Bool)] = lineCounts ? [
+                "w-happy-sub1": (42, 7, true), "w-research-agent": (1250, 0, true),
+                "w-release-agent": (0, 18, true), "w-landing-agent": (128, 34, true),
+                "w-crash-agent": (309, 324, true), "w-crash-sub1": (1, 0, true),
+                "w-crash-sub2": (12345, 1234, false), "p1": (76, 9, true), "w1": (25, 4, true),
+            ] : [:]
+            var snapshots: [String: Any] = [:]
+            for id in sent["workspaceIds"] as? [String] ?? [] {
+                let counts = samples[id] ?? (0, 0, true)
+                snapshots[id] = ["comparison": "ready", "insertions": counts.0, "deletions": counts.1, "countsExact": counts.2, "scannedAt": Self.now]
+            }
+            return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["snapshots": snapshots]))
+        }
         if method == "POST", route == "/v0/tasks" || route == "/v0/bots" {
             let bot = route == "/v0/bots"
             let agentId = sent["agentId"] as? String ?? "made-\(made.count + madeBots.count)"
@@ -168,10 +184,23 @@ private actor GroupedHomeTransport: AgentTransport {
 /// picture.
 @MainActor
 final class GroupedHomeHarness {
+    private var lineCounts = false
     private var account: AccountController?
     private var home: AgentHomeViewController?
 
     init(window: UIWindow, arguments: [String]) {
+        if arguments.contains("-fontMetrics") {
+            let fonts = [Fonts.ui(.medium, size: 17), Fonts.ui(.bold, size: 17), UIFont.monospacedSystemFont(ofSize: 17, weight: .medium), SidebarLineChanges.font]
+            let report = fonts.map { font in
+                let line = CTLineCreateWithAttributedString(NSAttributedString(string: "0123456789", attributes: [.font: font]))
+                let ink = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
+                return "\(font.fontName) size=\(font.pointSize) xHeight=\(font.xHeight) capHeight=\(font.capHeight) ascender=\(font.ascender) descender=\(font.descender) lineHeight=\(font.lineHeight) digits=\(ink)"
+            }.joined(separator: "\n")
+            try? report.write(to: URL.documentsDirectory.appendingPathComponent("font-metrics.txt"), atomically: true, encoding: .utf8)
+        }
+        lineCounts = arguments.contains("-lineCounts")
+        if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
+        if arguments.contains("-light") { window.overrideUserInterfaceStyle = .light }
         let bottom = arguments.contains("-bottom")
         Task {
             await open(window: window)
@@ -197,7 +226,7 @@ final class GroupedHomeHarness {
     }
 
     private func open(window: UIWindow) async {
-        let transport = GroupedHomeTransport(avatar: Self.repoPicture())
+        let transport = GroupedHomeTransport(avatar: Self.repoPicture(), lineCounts: lineCounts)
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/grouped-home",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,

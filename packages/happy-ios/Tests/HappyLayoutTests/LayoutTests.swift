@@ -22,15 +22,15 @@ final class LayoutTests: XCTestCase {
         let frames = result.frames
         // Desktop's pixels half again: the box 8 in, 48 tall (`SIDEBAR_ROW_HEIGHT`
         // 32); a 30 mark centred 24 into the box (32 from the edge), then 12
-        // to the label, which rides 2 up so its x-height's middle is the row's.
+        // to the label, whose renderer centers its x-height in the row.
         XCTAssertEqual(frames[0].box, CGRect(x: 8, y: 9, width: 374, height: 48))
         XCTAssertEqual(frames[0].mark, CGRect(x: 17, y: 18, width: 30, height: 30))
-        XCTAssertEqual(frames[0].label, CGRect(x: 59, y: 7, width: 312 + 2 * third, height: 48))
+        XCTAssertEqual(frames[0].label, CGRect(x: 59, y: 9, width: 312 + 2 * third, height: 48))
         XCTAssertNil(frames[0].trailing)
         // The trailing square, 27, centred 24 in from the box's right (on a
         // 3x pixel); the label stops 12 short of it. Rows stand 3 apart (`SIDEBAR_ROW_GAP` 2).
         XCTAssertEqual(frames[1].trailing, CGRect(x: 344 + 2 * third, y: 70 + 2 * third, width: 27, height: 27))
-        XCTAssertEqual(frames[1].label, CGRect(x: 59, y: 58, width: 273 + 2 * third, height: 48))
+        XCTAssertEqual(frames[1].label, CGRect(x: 59, y: 60, width: 273 + 2 * third, height: 48))
         // The separator is 26 tall, its hairline across the box at its middle.
         XCTAssertEqual(frames[2].box, CGRect(x: 8, y: 111, width: 374, height: 26))
         XCTAssertEqual(frames[2].rule, CGRect(x: 8, y: 123, width: 374, height: 1))
@@ -41,7 +41,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(frames[3].chevron, CGRect(x: 344 + 2 * third, y: 147 + 2 * third, width: 27, height: 27))
         // No mark: no leading space.
         XCTAssertNil(frames[4].mark)
-        XCTAssertEqual(frames[4].label, CGRect(x: 17, y: 183, width: 354 + 2 * third, height: 48))
+        XCTAssertEqual(frames[4].label, CGRect(x: 17, y: 185, width: 354 + 2 * third, height: 48))
         XCTAssertEqual(result.contentHeight, 233 + 9)
     }
 
@@ -87,9 +87,9 @@ final class LayoutTests: XCTestCase {
                 XCTAssertEqual((glyph.minY * 3).rounded(), glyph.minY * 3, accuracy: 0.0001)
                 // Left inset = right inset: the row is balanced.
                 XCTAssertEqual(frame.mark!.midX - box.minX, box.maxX - (glyph.midX + ink.dx), accuracy: third / 2 + 0.001)
-                // The title keeps the mark's 12 and rides 2 up to the marks' middle.
+                // The title keeps the mark's 12 in the same vertical row box.
                 XCTAssertEqual(frame.label.minX - frame.mark!.maxX, 12)
-                XCTAssertEqual(frame.label.midY, box.midY - M.titleLift)
+                XCTAssertEqual(frame.label.midY, box.midY)
             }
             // A section's fold and a status mark stand on the same column.
             XCTAssertEqual(frames[2].chevron!.midX, frames[0].chevron!.midX)
@@ -125,7 +125,7 @@ final class LayoutTests: XCTestCase {
         // A nested row's mark stands 28 right of its parent's.
         XCTAssertEqual(frames[1].mark, CGRect(x: 45, y: 69, width: 30, height: 30))
         XCTAssertEqual(frames[2].mark, CGRect(x: 73, y: 120, width: 30, height: 30))
-        XCTAssertEqual(frames[3].label, CGRect(x: 87, y: 160, width: 301 + 2 * third - 87, height: 48))
+        XCTAssertEqual(frames[3].label, CGRect(x: 87, y: 162, width: 301 + 2 * third - 87, height: 48))
         XCTAssertEqual(result.connectors, [
             // Row 0's children (1 and 3): one stem down its mark's centre, from
             // under the mark to just past the last child's middle, and an elbow
@@ -149,11 +149,11 @@ final class LayoutTests: XCTestCase {
         // The fold takes the trailing square, as a section's does.
         XCTAssertEqual(frames[0].chevron, CGRect(x: 344 + 2 * third, y: 19 + 2 * third, width: 27, height: 27))
         XCTAssertNil(frames[0].trailing)
-        XCTAssertEqual(frames[0].label, CGRect(x: 59, y: 7, width: 273 + 2 * third, height: 48))
+        XCTAssertEqual(frames[0].label, CGRect(x: 59, y: 9, width: 273 + 2 * third, height: 48))
         // A status or dot stands one square before it, and the label stops short of both.
         XCTAssertEqual(frames[1].chevron, CGRect(x: 344 + 2 * third, y: 70 + 2 * third, width: 27, height: 27))
         XCTAssertEqual(frames[1].trailing, CGRect(x: 305 + 2 * third, y: 70 + 2 * third, width: 27, height: 27))
-        XCTAssertEqual(frames[1].label, CGRect(x: 87, y: 58, width: 293 + 2 * third - 87, height: 48))
+        XCTAssertEqual(frames[1].label, CGRect(x: 87, y: 60, width: 293 + 2 * third - 87, height: 48))
         XCTAssertNil(frames[2].chevron)
         // Neither a separator nor a section takes a row's fold.
         let others = SidebarLayout.layout([.init(kind: .separator, hasFold: true), .init(kind: .widget, hasFold: true)], width: 390).frames

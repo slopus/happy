@@ -212,9 +212,6 @@ public enum Metrics {
     public static let markCenter: CGFloat = inset + endInset
     /// The fold's optical centre, and the trailing square's, from the right edge.
     public static let trailingCenter: CGFloat = inset + endInset
-    /// A row's title, lifted so its x-height's middle is the row's middle,
-    /// where the end marks' centres are (`RowInkTests` measures it).
-    public static let titleLift: CGFloat = 2
     /// Where a fold chevron's ink weighs, from its image's centre, at
     /// `chevronGlyph` (alpha-weighted at 3x; `RowInkTests`):
     /// a "⌄" is heavier at its top, a "›" at its left.

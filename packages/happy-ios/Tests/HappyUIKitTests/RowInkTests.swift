@@ -66,10 +66,9 @@ final class RowInkTests: XCTestCase {
             func local(_ rect: CGRect) -> CGRect { rect.offsetBy(dx: -box.minX, dy: -box.minY) }
             let middle = box.height / 2
             // The title: its x-height's ink, "xxxx" in the row's font.
-            let label = UILabel(frame: local(frame.label))
-            label.font = Fonts.ui(.medium, size: M.labelSize)
+            let label = SidebarTitleLabel(frame: local(frame.label))
+            label.attributedText = NSAttributedString(string: "xxxx", attributes: [.font: Fonts.ui(.medium, size: M.labelSize)])
             label.textColor = .black
-            label.text = "xxxx"
             let title = Self.ink(box.size) {
                 UIGraphicsGetCurrentContext()!.translateBy(x: label.frame.minX, y: label.frame.minY)
                 label.drawText(in: label.bounds)

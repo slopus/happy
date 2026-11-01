@@ -409,7 +409,7 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         let side = SessionDetailLayout.Metrics.side
         let cardWidth = max(0, width - 2 * side)
         let familyHeight: CGFloat? = family.isEmpty ? nil : SidebarLayout.layout(
-            SidebarView.layoutRows(family), width: cardWidth, top: Self.treePadding, bottom: Self.treePadding, scale: traitCollection.displayScale
+            SidebarView.layoutRows(family, scale: traitCollection.displayScale), width: cardWidth, top: Self.treePadding, bottom: Self.treePadding, scale: traitCollection.displayScale
         ).contentHeight
         let workCount = (detail?.running.count ?? 0) + (detail?.terminals.count ?? 0)
         let settled = detail?.completed.count ?? 0

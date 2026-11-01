@@ -23,7 +23,8 @@ final class RowView: UIView {
     private let picture = UIImageView()
     /// A grouped row's glyph sits on this softly tinted square.
     private let tile = UIView()
-    private let label = ShimmerLabel()
+    private let label = ShimmerLabel(makeLabel: { SidebarTitleLabel() })
+    private let lineChanges = SidebarLineChangesView()
     private let trailing = UIImageView()
     private let chevron = UIImageView()
     private let rule = UIView()
@@ -98,7 +99,7 @@ final class RowView: UIView {
         separatorLine.isHidden = true
         tile.isUserInteractionEnabled = false
         tile.isHidden = true
-        for view in [fill, separatorLine, tile, seedling, picture, label, trailing, chevron, rule, signal] { addSubview(view) }
+        for view in [fill, separatorLine, tile, seedling, picture, label, lineChanges, trailing, chevron, rule, signal] { addSubview(view) }
         isAccessibilityElement = true
     }
 
@@ -136,7 +137,7 @@ final class RowView: UIView {
         case .clay(let slug): slug
         default: nil
         }
-        let value = [row.isNew ? Strings.newRow : nil, wears, Self.shimmers(row) ? Strings.workingRow : nil].compactMap { $0 }
+        let value = [row.isNew ? Strings.newRow : nil, wears, Self.shimmers(row) ? Strings.workingRow : nil, SidebarLineChanges.accessibility(row.lineChanges)].compactMap { $0 }
         accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
         setNeedsLayout()
     }
@@ -286,6 +287,7 @@ final class RowView: UIView {
     }
 
     private func applyState() {
+        lineChanges.changes = row?.lineChanges
         let ink = UIColor(selected || row?.unread == true || row?.isNew == true ? Palette.rowTextActive : Palette.rowText)
         let heading = grouped && row?.kind == .section
         label.textColor = heading ? UIColor(Palette.settingsSecondary) : ink
@@ -332,6 +334,7 @@ final class RowView: UIView {
         tile.frame = mark
         signal.frame = frames.corner.map(local) ?? .zero
         label.frame = local(frames.label)
+        lineChanges.frame = frames.lineChanges.map(local) ?? .zero
         field?.frame = label.frame
         trailing.frame = frames.trailing.map(local) ?? .zero
         chevron.frame = frames.chevronGlyph.map(local) ?? .zero

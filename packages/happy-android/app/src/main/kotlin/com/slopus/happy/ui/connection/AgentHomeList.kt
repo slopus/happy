@@ -39,6 +39,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -54,6 +55,8 @@ import com.slopus.happy.agent.AgentFeedSection
 import com.slopus.happy.agent.AgentPictures
 import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.agent.FolderMark
+import com.slopus.happy.agent.WorkspaceLineChanges
+import com.slopus.happy.model.compactCount
 import com.slopus.happy.ui.components.HappyDropdownMenu
 import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.components.HomeCardPlace
@@ -95,6 +98,7 @@ object AgentHomeTags {
     const val ROW_MARK = "agentHome.rowMark"
     const val ROW_DIVIDER = HomeCardTags.DIVIDER
     const val ROW_DOT = "agentHome.rowDot"
+    const val ROW_CHANGES = "agentHome.rowChanges"
     /** A Surface row's held menu: Leave. */
     const val LEAVE = "agentHome.leave"
 }
@@ -390,10 +394,11 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> 
                 baseColor = colors.text,
                 highlightColor = ShimmerSpec.sheen(colors.text, colors.surfaceHigh),
                 shimmering = row.running,
-                modifier = Modifier.wrapContentHeight(unbounded = true),
+                modifier = Modifier.wrapContentHeight(unbounded = true).agentTitleBaseline(),
             )
         }
-        Corner(row.blocked, row.unread)
+        WorkspaceCounts(row.lineChanges)
+        Corner(row.blocked, row.unread, row.lineChanges?.visible == true)
     }
 }
 
@@ -445,6 +450,7 @@ private fun PlaceRow(name: String, glyph: Ionicon, tile: RowTile, onClick: () ->
                 .padding(start = AgentHomeSpec.markGap)
                 .weight(1f)
                 .wrapContentHeight(unbounded = true)
+                .agentTitleBaseline()
                 .testTag(AgentHomeTags.ROW_TITLE),
         )
     }
@@ -480,10 +486,31 @@ private fun FolderRow(row: AgentFeedRow.Folder) {
                 baseColor = colors.text,
                 highlightColor = ShimmerSpec.sheen(colors.text, colors.surfaceHigh),
                 shimmering = row.running,
-                modifier = Modifier.wrapContentHeight(unbounded = true),
+                modifier = Modifier.wrapContentHeight(unbounded = true).agentTitleBaseline(),
             )
         }
+        WorkspaceCounts(row.lineChanges)
     }
+}
+
+/** Quiet monospace digits matched to the title's x-height and shared baseline. */
+@Composable
+private fun WorkspaceCounts(changes: WorkspaceLineChanges?) {
+    if (changes == null || !changes.visible) return
+    val exact = listOfNotNull(
+        if (!changes.countsExact) "≈" else null,
+        if (changes.insertions > 0) "+${changes.insertions}" else null,
+        if (changes.deletions > 0) "−${changes.deletions}" else null,
+    ).joinToString(" ")
+    AgentCountInk(
+        parts = listOfNotNull(
+            if (changes.insertions > 0) "+${compactCount(changes.insertions)}" else null,
+            if (changes.deletions > 0) "−${compactCount(changes.deletions)}" else null,
+        ),
+        color = HappyTheme.colors.textSecondary,
+        modifier = Modifier.padding(start = 8.dp).testTag(AgentHomeTags.ROW_CHANGES)
+            .clearAndSetSemantics { contentDescription = exact },
+    )
 }
 
 /**
@@ -492,14 +519,14 @@ private fun FolderRow(row: AgentFeedRow.Folder) {
  * it, on the same line, so the row's height never changes.
  */
 @Composable
-private fun Corner(blocked: Boolean, unread: Boolean) {
+private fun Corner(blocked: Boolean, unread: Boolean, hasCounts: Boolean = false) {
     if (!blocked && !unread) return
     val label = stringResource(if (blocked) R.string.status_input_required else R.string.status_unread)
     StatusDot(
         color = if (blocked) BlockedDotColor else UnreadDotColor,
         size = AgentHomeSpec.dot,
         modifier = Modifier
-            .padding(start = AgentHomeSpec.cornerGap)
+            .padding(start = if (hasCounts) 6.dp else AgentHomeSpec.cornerGap)
             .semantics { contentDescription = label }
             .testTag(AgentHomeTags.ROW_DOT),
     )

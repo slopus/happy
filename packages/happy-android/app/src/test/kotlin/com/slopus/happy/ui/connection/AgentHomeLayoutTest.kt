@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
@@ -117,6 +118,44 @@ class AgentHomeLayoutTest {
     }
 
     private fun feed(bootstrap: JsonObject = sample) = AgentFeed.derive(catalog(bootstrap))
+
+    @Test
+    fun countsStandBeforeTheStatusAndDoNotChangeRowHeight() {
+        val changes = com.slopus.happy.agent.WorkspaceLineChanges("ready", 12345, 1234, false, 1.0)
+        show(AgentFeed.derive(catalog(sample), git = mapOf("wat2" to changes)))
+        val rowTag = AgentHomeTags.row("agent-at2")
+        val counts = rule.onNode(hasTestTag(AgentHomeTags.ROW_CHANGES) and hasAnyAncestor(hasTestTag(rowTag)), useUnmergedTree = true).bounds
+        val title = rule.onNode(hasTestTag(AgentHomeTags.ROW_TITLE) and hasAnyAncestor(hasTestTag(rowTag)), useUnmergedTree = true).bounds
+        val dot = rule.onNode(hasTestTag(AgentHomeTags.ROW_DOT) and hasAnyAncestor(hasTestTag(rowTag)), useUnmergedTree = true).bounds
+        assertTrue(title.right <= counts.left)
+        assertTrue(counts.right <= dot.left)
+        assertDp("unchanged row", 48, rule.node(rowTag).bounds.height)
+        rule.onNodeWithContentDescription("≈ +12345 −1234", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun xHeightCountsShareTheActivityEdgeWithoutAnApproximationMark() {
+        val changes = com.slopus.happy.agent.WorkspaceLineChanges("ready", 12345, 1234, false, 1.0)
+        show(AgentFeed.derive(catalog(sample), git = mapOf("wat1" to changes)))
+        val counts = rule.onNode(hasTestTag(AgentHomeTags.ROW_CHANGES), useUnmergedTree = true).bounds
+        val dot = rule.onNode(hasTestTag(AgentHomeTags.ROW_DOT) and hasAnyAncestor(hasTestTag(AgentHomeTags.row("agent-at2"))), useUnmergedTree = true).bounds
+        assertDp("counts and activity right edge", dot.right, counts.right)
+        assertDp("stable line height", AgentHomeSpec.TITLE_LINE, counts.height)
+        rule.onAllNodesWithText("≈", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun nativeDigitsMatchXHeightWithOneStableBaseline() {
+        for (scale in listOf(1f, 1.3f, 2f)) {
+            val metrics = AgentRowTypography(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.MONOSPACE, 17f * scale)
+            val flat = AgentRowTypography.ink(metrics.countPaint, "1")
+            assertEquals(metrics.xHeight, flat.height(), 0.01f)
+            val height = (22 * scale).toInt()
+            assertEquals(height / 2f, metrics.baseline(height) - metrics.xHeight / 2, 0.5f)
+            assertTrue(metrics.countPaint.textSize < metrics.titlePaint.textSize)
+            println("row typography scale=$scale title=${metrics.titlePaint.textSize} xHeight=${metrics.xHeight} counts=${metrics.countPaint.textSize} baseline=${metrics.baseline(height)}")
+        }
+    }
 
     private fun show(feed: AgentFeed, status: AgentLinkStatus = AgentLinkStatus.Connected, dark: Boolean = false) =
         rule.setHappyContent(dark) { AgentHomeScreen("Studio", feed, status, accounts, actions) }

@@ -48,6 +48,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -122,9 +124,11 @@ class AgentSession internal constructor(
 
     /** The Surfaces being left, each with the agent's answer on its way ([leaveSurface]). */
     private val leaving = MutableStateFlow<Map<String, Deferred<String?>>>(emptyMap())
+    private val gitSnapshots = MutableStateFlow<Map<String, WorkspaceLineChanges>>(emptyMap())
+    private val gitRenewal = MutableStateFlow(0)
 
     /** Home's rows, derived off the main thread; equal rows keep their instances. */
-    val feed: StateFlow<AgentFeed> = combine(catalogState, leaving) { catalog, leaving -> AgentFeed.derive(catalog, leaving.keys) }
+    val feed: StateFlow<AgentFeed> = combine(catalogState, leaving, gitSnapshots) { catalog, leaving, git -> AgentFeed.derive(catalog, leaving.keys, git) }
         .distinctUntilChanged()
         .scan(null as AgentFeed?) { previous, next -> AgentFeed.reuse(previous, next) }
         // The seed is no feed: never shown, so a cached home never blinks empty.
@@ -233,7 +237,10 @@ class AgentSession internal constructor(
         scope.launch {
             // The kept catalog first: home draws it, and the link resumes from its cursor.
             traced("AgentSession.readCache") { readCache() }?.let { cached -> catalogLock.withLock { catalogState.update { if (it.loaded) it else cached } } }
-            active.distinctUntilChanged().collectLatest { on -> if (on) live() }
+            active.distinctUntilChanged().collectLatest { on -> if (on) coroutineScope {
+                launch { watchGit() }
+                live()
+            } }
         }
         scope.launch {
             settingsQueued.receiveAsFlow().collect { deliverSettings() }
@@ -331,10 +338,16 @@ class AgentSession internal constructor(
                         val hello = AgentHello.of(event)
                         if (hello.gap) readSnapshot()
                         statusState.value = AgentLinkStatus.Connected
+                        gitRenewal.update { it + 1 }
                         onConnected()
                         // Every connect sends what was changed while offline.
                         if (catalogState.value.pendingSettings.isNotEmpty()) settingsQueued.trySend(Unit)
                     } else {
+                        if (event.type == "git.updated") {
+                            val id = event.data.string("workspaceId")
+                            val state = WorkspaceLineChanges.parse(event.data["git"])
+                            if (id != null && state != null && id in gitWorkspaceIds(feed.value)) receiveGit(mapOf(id to state))
+                        }
                         apply(event)
                     }
                     eventFlow.emit(event)
@@ -342,6 +355,44 @@ class AgentSession internal constructor(
             }
         } finally {
             stream.close()
+        }
+    }
+
+    private fun gitWorkspaceIds(feed: AgentFeed): Set<String> = feed.rows.mapNotNull { row ->
+        when (row) {
+            is AgentFeedRow.Conversation -> row.workspaceId
+            is AgentFeedRow.Folder -> row.id
+            else -> null
+        }
+    }.toSet()
+
+    /** One renewing subscription per foreground account; rows never start network work. */
+    private suspend fun watchGit() {
+        combine(feed.map(::gitWorkspaceIds).distinctUntilChanged(), gitRenewal, status) { ids, renewal, status ->
+            Triple(ids, renewal, status == AgentLinkStatus.Connected)
+        }.distinctUntilChanged().collectLatest { (ids, _, connected) ->
+            if (!connected) return@collectLatest
+            gitSnapshots.update { it.filterKeys(ids::contains) }
+            while (true) {
+                try {
+                    val response = client.send("POST", "/v0/git/watch", buildJsonObject {
+                        put("workspaceIds", JsonArray(ids.sorted().map(::JsonPrimitive)))
+                    })
+                    val body = AgentClient.json.parseToJsonElement(response.text) as? JsonObject
+                    val snapshots = body?.get("snapshots") as? JsonObject
+                    receiveGit(snapshots.orEmpty().mapNotNull { (id, value) ->
+                        WorkspaceLineChanges.parse(value)?.takeIf { id in ids }?.let { id to it }
+                    }.toMap())
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { /* Git is optional; never block the home feed. */ }
+                delay(30_000)
+            }
+        }
+    }
+
+    private fun receiveGit(states: Map<String, WorkspaceLineChanges>) {
+        gitSnapshots.update { previous ->
+            previous + states.filter { (id, state) -> state.scannedAt >= (previous[id]?.scannedAt ?: 0.0) }
         }
     }
 

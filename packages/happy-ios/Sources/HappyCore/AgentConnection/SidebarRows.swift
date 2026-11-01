@@ -25,8 +25,8 @@ public enum SidebarRows {
         }
         // As desktop draws them: a repo wears its own picture when it has one
         // (a cloned repo), and a project without one or a worktree nothing.
-        func folder(_ id: String, _ title: String, depth: Int, kind: String, mark: Row.Mark = .none) {
-            rows.append(Row(id: id, nodeId: id, kind: .space, depth: depth, label: title, mark: mark, targetKind: kind))
+        func folder(_ id: String, _ title: String, workspaceId: String, depth: Int, kind: String, mark: Row.Mark = .none) {
+            rows.append(Row(id: id, nodeId: id, kind: .space, depth: depth, label: title, mark: mark, workspaceId: workspaceId, targetKind: kind))
         }
         func status(_ agent: AgentWire.Agent) -> Row.Status { Rows.activity(agent) }
         func agentRow(_ agent: AgentWire.Agent, depth: Int, label: String? = nil, owner: DesktopSnapshot.Owner? = nil, kind: String? = nil, muted: Bool = false) {
@@ -80,13 +80,13 @@ public enum SidebarRows {
             separator("direct:projects")
             let projects = desktop.projects.filter { $0.status != "archived" }.sorted { ($0.orderKey, $0.id) < ($1.orderKey, $1.id) }
             for project in projects {
-                folder("project:\(project.id)", project.name, depth: 0, kind: "project", mark: projectMark(project))
+                folder("project:\(project.id)", project.name, workspaceId: project.id, depth: 0, kind: "project", mark: projectMark(project))
                 for agent in project.agents where agent.parentAgentId == nil { agentRow(agent, depth: 1) }
                 let workspaces = desktop.workspaces.filter {
                     $0.projectId == project.id && $0.id != project.id && $0.status != "archived" && $0.status != "archiving" && !descendants.contains($0.id)
                 }.sorted { ($0.orderKey, $0.id) < ($1.orderKey, $1.id) }
                 for workspace in workspaces {
-                    folder("workspace:\(workspace.id)", workspace.name, depth: 1, kind: "workspace")
+                    folder("workspace:\(workspace.id)", workspace.name, workspaceId: workspace.id, depth: 1, kind: "workspace")
                     for agent in workspace.agents where agent.parentAgentId == nil { agentRow(agent, depth: 2) }
                 }
             }

@@ -131,6 +131,7 @@ public struct Row: Equatable, Sendable, Identifiable {
     /// When the conversation last did something (ms since 1970, to the
     /// minute): what search's recent conversations are ordered by.
     public var activityTime: Double?
+    public var lineChanges: GitLineChanges?
 
     public init(id: String, nodeId: String, kind: Kind, depth: Int = 0, label: String, mark: Mark = .none, status: Status = .none, unread: Bool = false, collapsed: Bool? = nil, isHappy: Bool = false, agentId: String? = nil, workspaceId: String? = nil, spaceId: String? = nil, targetKind: String? = nil, isUntouchedSeedling: Bool = false) {
         self.id = id

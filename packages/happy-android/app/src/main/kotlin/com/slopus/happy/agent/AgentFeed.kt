@@ -34,7 +34,7 @@ sealed interface AgentFeedRow {
      * it and none waits on a question (desktop's project and workspace
      * `activity`).
      */
-    data class Folder(val id: String, val name: String, val depth: Int, val mark: FolderMark? = null, val running: Boolean = false) : AgentFeedRow {
+    data class Folder(val id: String, val name: String, val depth: Int, val mark: FolderMark? = null, val running: Boolean = false, val lineChanges: WorkspaceLineChanges? = null) : AgentFeedRow {
         override val key get() = "folder-$id"
     }
 
@@ -63,6 +63,8 @@ sealed interface AgentFeedRow {
         val waiting: Boolean = false,
         /** One of its subtasks listed under it is [running]. */
         val delegating: Boolean = false,
+        val workspaceId: String? = null,
+        val lineChanges: WorkspaceLineChanges? = null,
     ) : AgentFeedRow {
         override val key get() = "agent-$agentId"
 
@@ -139,7 +141,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
          * ([AgentCatalog.projectsHidden]), and the Surfaces being left
          * ([leaving]), gone at once while the agent is asked.
          */
-        fun derive(catalog: AgentCatalog, leaving: Set<String> = emptySet()): AgentFeed {
+        fun derive(catalog: AgentCatalog, leaving: Set<String> = emptySet(), git: Map<String, WorkspaceLineChanges> = emptyMap()): AgentFeed {
             if (!catalog.loaded) return Empty
             val rows = ArrayList<AgentFeedRow>()
             val shown = HashSet<String>()
@@ -172,6 +174,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     activityAt = wire.unread?.since ?: wire.updatedAt,
                     parentId = parentId,
                     waiting = wire.wait != null,
+                    workspaceId = wire.workspaceId,
+                    lineChanges = git[wire.workspaceId]?.takeIf { it.visible },
                 )
                 var delegating = false
                 if (nesting < 2) {
@@ -247,7 +251,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 catalog.projects.values.filter(::active).sortedWith(byOrderKey).forEach { project ->
                     val id = project.string("id") ?: return@forEach
                     val projectAt = rows.size
-                    rows += AgentFeedRow.Folder(id, project.string("name").orEmpty(), 0, FolderMark.of(id, project))
+                    rows += AgentFeedRow.Folder(id, project.string("name").orEmpty(), 0, FolderMark.of(id, project), lineChanges = git[id]?.takeIf { it.visible })
                     fun series(owner: JsonObject, depth: Int) {
                         (owner["agents"] as? JsonArray).orEmpty().forEach { embedded ->
                             val agentId = (embedded as? JsonObject)?.string("id") ?: return@forEach
@@ -262,7 +266,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                         .sortedWith(byOrderKey)
                         .forEach { workspace ->
                             val workspaceAt = rows.size
-                            rows += AgentFeedRow.Folder(workspace.string("id").orEmpty(), workspace.string("name").orEmpty(), 1)
+                            rows += AgentFeedRow.Folder(workspace.string("id").orEmpty(), workspace.string("name").orEmpty(), 1, lineChanges = git[workspace.string("id")]?.takeIf { it.visible })
                             series(workspace, 2)
                             folderActivity(workspaceAt)
                         }

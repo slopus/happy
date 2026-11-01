@@ -57,6 +57,7 @@ extension SidebarLayout {
         moved.chevronGlyph = move(frame.chevronGlyph)
         moved.rule = move(frame.rule)
         moved.corner = move(frame.corner)
+        moved.lineChanges = move(frame.lineChanges)
         if let cell = frame.cell {
             moved.cell = Cell(roundsTop: cell.roundsTop, roundsBottom: cell.roundsBottom, separator: move(cell.separator))
         }

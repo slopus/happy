@@ -210,9 +210,9 @@ final class ShimmerLabel: UIView {
     private let copy: UILabel
     let band: ShimmerBand
 
-    init() {
-        base = UILabel()
-        copy = UILabel()
+    init(makeLabel: () -> UILabel = { UILabel() }) {
+        base = makeLabel()
+        copy = makeLabel()
         band = ShimmerBand(copy: copy)
         super.init(frame: .zero)
         setUp()

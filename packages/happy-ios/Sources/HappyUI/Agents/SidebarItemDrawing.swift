@@ -56,7 +56,10 @@ struct SidebarItemDrawing: Drawing, Equatable {
         default:
             break
         }
-        Self.drawLine(title, in: frame.label, scale: displayScale)
+        SidebarTypography.draw(title, in: frame.label, scale: displayScale)
+        if let box = frame.lineChanges {
+            SidebarLineChanges.draw(row.lineChanges, in: box, scale: displayScale)
+        }
         if (row.kind == .space || row.kind == .session) && row.collapsed != nil, let glyph = frame.chevronGlyph {
             Self.drawGlyph(chevron(Metrics.chevronGlyph), color: UIColor(Palette.rowText), in: glyph)
         }
@@ -100,7 +103,7 @@ struct SidebarItemDrawing: Drawing, Equatable {
         let band = Shimmer.highlight(.sheen, ink: titleInk, ground: ground)
         let ink = UIColor(dark ? band.dark : band.light)
         UITraitCollection(userInterfaceStyle: dark ? .dark : .light).performAsCurrent {
-            Self.drawLine(title(ink), in: CGRect(origin: .zero, size: frame.label.size), scale: displayScale)
+            SidebarTypography.draw(title(ink), in: CGRect(origin: .zero, size: frame.label.size), scale: displayScale)
         }
     }
 

@@ -26,8 +26,10 @@ public enum SidebarLayout {
         /// before its fold, always shown.
         /// The fold points right ("›"), not down ("⌄"): its ink weighs elsewhere.
         public var foldClosed: Bool
+        public var lineChangesWidth: CGFloat
+        public var trailingInk: CGRect?
 
-        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, foldClosed: Bool = false) {
+        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, foldClosed: Bool = false, lineChangesWidth: CGFloat = 0, trailingInk: CGRect? = nil) {
             self.kind = kind
             self.depth = depth
             self.hasMark = hasMark
@@ -35,6 +37,8 @@ public enum SidebarLayout {
             self.hasWorkingSignal = hasWorkingSignal
             self.hasFold = hasFold
             self.foldClosed = foldClosed
+            self.lineChangesWidth = lineChangesWidth
+            self.trailingInk = trailingInk
         }
     }
 
@@ -61,6 +65,7 @@ public enum SidebarLayout {
         /// In a grouped list, the row's place in its card; nil in a plain
         /// list, and for a heading or a separator.
         public var cell: Cell?
+        public var lineChanges: CGRect?
 
         public init(box: CGRect, mark: CGRect? = nil, label: CGRect = .zero, trailing: CGRect? = nil, chevron: CGRect? = nil, chevronGlyph: CGRect? = nil, rule: CGRect? = nil, corner: CGRect? = nil, cell: Cell? = nil) {
             self.box = box
@@ -152,14 +157,15 @@ public enum SidebarLayout {
                     frame.trailing = slot
                     right = slot.minX - M.trailingGap
                 }
-                // A row's title rides up to its marks' middle.
-                frame.label = CGRect(x: x, y: row.kind == .row ? y - M.titleLift : y, width: max(0, right - x), height: height)
+                // The renderer centers the font's x-height in this row box.
+                frame.label = CGRect(x: x, y: y, width: max(0, right - x), height: height)
                 if row.hasTrailing == false, row.kind == .row, row.hasWorkingSignal {
                     let signal = M.workingSignal
                     frame.corner = CGRect(x: slot.midX - signal.width / 2, y: slot.midY - signal.height / 2, width: signal.width, height: signal.height)
                     frame.label.size.width = max(0, slot.minX - M.trailingGap - x)
                 }
             }
+            reserveLineChanges(row, frame: &frame, activityRight: box.maxX - (M.endInset - M.mark / 2), scale: scale)
             frames.append(frame)
             y += height
         }
@@ -168,6 +174,45 @@ public enum SidebarLayout {
 
     /// Between a section's title and its fold: `22 − 18`.
     static let sectionFoldGap: CGFloat = 4 * Metrics.phone
+
+    /// Counts take their measured width before the activity/fold lanes.
+    /// Only the title yields space; no count update changes a row's height.
+    static func reserveLineChanges(_ row: Row, frame: inout Frame, activityRight: CGFloat, scale: CGFloat) {
+        let ink = workingInk(scale: scale)
+        if var corner = frame.corner, !row.hasFold {
+            corner.origin.x = activityRight - ink.maxX
+            corner.origin.y = frame.box.midY - ink.midY
+            frame.corner = corner
+            frame.label.size.width = max(0, corner.minX + ink.minX - 6 - frame.label.minX)
+        }
+        if var trailing = frame.trailing, let statusInk = row.trailingInk, !row.hasFold {
+            trailing.origin.x = activityRight - statusInk.maxX
+            trailing.origin.y = frame.box.midY - statusInk.midY
+            frame.trailing = trailing
+            frame.label.size.width = max(0, trailing.minX + statusInk.minX - 6 - frame.label.minX)
+        }
+        guard row.kind == .row, row.lineChangesWidth > 0 else { return }
+        let right: CGFloat
+        if let corner = frame.corner {
+            right = corner.minX + ink.minX - 6
+        } else {
+            right = !row.hasTrailing && !row.hasFold ? activityRight : frame.label.maxX
+        }
+        let width = min(row.lineChangesWidth, max(0, right - frame.label.minX))
+        frame.lineChanges = CGRect(x: right - width, y: frame.box.minY, width: width, height: frame.box.height)
+        frame.label.size.width = max(0, right - width - 8 - frame.label.minX)
+    }
+
+    static func workingInk(scale: CGFloat) -> CGRect {
+        let scale = max(1, scale)
+        let signal = Metrics.workingSignal
+        let dots = Braille.origins(width: Int((signal.width * scale).rounded()), height: Int((signal.height * scale).rounded()))
+        let left = dots.origins.map(\.x).min() ?? 0
+        let top = dots.origins.map(\.y).min() ?? 0
+        let right = (dots.origins.map(\.x).max() ?? 0) + dots.diameter
+        let bottom = (dots.origins.map(\.y).max() ?? 0) + dots.diameter
+        return CGRect(x: CGFloat(left) / scale, y: CGFloat(top) / scale, width: CGFloat(right - left) / scale, height: CGFloat(bottom - top) / scale)
+    }
 
     /// Where a row's mark (or, without one, its label) starts: a top-level
     /// mark centred `endInset` in from the row box, `indent` more per level.
