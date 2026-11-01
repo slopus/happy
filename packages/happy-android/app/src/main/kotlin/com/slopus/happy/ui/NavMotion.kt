@@ -37,6 +37,8 @@ import androidx.navigation.NavHostController
 import androidx.navigationevent.NavigationEventDispatcher
 import androidx.navigationevent.NavigationEventTransitionState
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import com.slopus.happy.BuildConfig
+import com.slopus.happy.diagnostics.traced
 import com.slopus.happy.ui.components.rememberReduceMotion
 import kotlin.math.roundToInt
 
@@ -98,7 +100,7 @@ class NavMotion(
             return NavMotion(
                 enter = {
                     dims.top(targetState)
-                    slideIntoContainer(SlideDirection.Start, spec(easing, fromFirstFrame = true))
+                    slideIntoContainer(SlideDirection.Start, spec(easing, fromFirstFrame = true, firstMovement = firstMovement(targetState)))
                 },
                 exit = {
                     dims.beneath(initialState, spec(easing, fromFirstFrame = true))
@@ -114,14 +116,20 @@ class NavMotion(
 
         private fun parallax(fullSlide: Int) = (fullSlide * PARALLAX).roundToInt()
 
-        private fun <T> spec(easing: Easing, fromFirstFrame: Boolean): FiniteAnimationSpec<T> =
-            tween<T>(DURATION_MILLIS, easing = easing).let { if (fromFirstFrame) FromFirstFrame(it) else it }
+        private fun <T> spec(easing: Easing, fromFirstFrame: Boolean, firstMovement: (() -> Unit)? = null): FiniteAnimationSpec<T> =
+            tween<T>(DURATION_MILLIS, easing = easing).let { if (fromFirstFrame) FromFirstFrame(it, firstMovement) else it }
+
+        /** Bench only: join this sample's doFrame to FrameTimeline, not merely its composition. */
+        private fun firstMovement(entry: NavBackStackEntry): (() -> Unit)? =
+            if (BuildConfig.BUILD_TYPE == "bench" || BuildConfig.BUILD_TYPE.endsWith("Bench")) {
+                { traced("Happy:navFirstMove:${entry.id}") {} }
+            } else null
 
         private fun pop(easing: Easing, fromFirstFrame: Boolean, dims: PageDims): Pair<NavScope.() -> EnterTransition, NavScope.() -> ExitTransition> =
             Pair(
                 {
                     dims.beneath(targetState, spec(easing, fromFirstFrame))
-                    slideIntoContainer(SlideDirection.End, spec(easing, fromFirstFrame), ::parallax)
+                    slideIntoContainer(SlideDirection.End, spec(easing, fromFirstFrame, firstMovement(targetState)), ::parallax)
                 },
                 {
                     dims.top(initialState)
@@ -189,12 +197,20 @@ fun AnimatedContentScope.DimmedPage(entry: NavBackStackEntry, content: @Composab
  * push would seem to jump. The first sample is taken as one frame in.
  * Duration-based specs only; never for seeking, whose fraction is the time.
  */
-internal class FromFirstFrame<T>(private val spec: DurationBasedAnimationSpec<T>) : FiniteAnimationSpec<T> {
+internal class FromFirstFrame<T>(
+    private val spec: DurationBasedAnimationSpec<T>,
+    private val onFirstMovement: (() -> Unit)? = null,
+) : FiniteAnimationSpec<T> {
     override fun <V : AnimationVector> vectorize(converter: TwoWayConverter<T, V>): VectorizedFiniteAnimationSpec<V> =
-        Vectorized(spec.vectorize(converter))
+        Vectorized(spec.vectorize(converter), converter, onFirstMovement)
 
-    private class Vectorized<V : AnimationVector>(private val spec: VectorizedDurationBasedAnimationSpec<V>) : VectorizedFiniteAnimationSpec<V> {
+    private class Vectorized<T, V : AnimationVector>(
+        private val spec: VectorizedDurationBasedAnimationSpec<V>,
+        private val converter: TwoWayConverter<T, V>,
+        private val onFirstMovement: (() -> Unit)?,
+    ) : VectorizedFiniteAnimationSpec<V> {
         private var start = -1L
+        private var reportedMovement = false
 
         private fun time(playTimeNanos: Long, sampling: Boolean): Long {
             if (playTimeNanos <= 0L) return 0L
@@ -202,8 +218,16 @@ internal class FromFirstFrame<T>(private val spec: DurationBasedAnimationSpec<T>
             return (playTimeNanos - start.coerceAtLeast(0L)).coerceAtLeast(0L)
         }
 
-        override fun getValueFromNanos(playTimeNanos: Long, initialValue: V, targetValue: V, initialVelocity: V): V =
-            spec.getValueFromNanos(time(playTimeNanos, sampling = true), initialValue, targetValue, initialVelocity)
+        override fun getValueFromNanos(playTimeNanos: Long, initialValue: V, targetValue: V, initialVelocity: V): V {
+            val value = spec.getValueFromNanos(time(playTimeNanos, sampling = true), initialValue, targetValue, initialVelocity)
+            // Compare the applied value: IntOffset rounds a subpixel vector, which
+            // must not be reported as a moved page while it still sits offscreen.
+            if (onFirstMovement != null && !reportedMovement && converter.convertFromVector(value) != converter.convertFromVector(initialValue)) {
+                reportedMovement = true
+                onFirstMovement()
+            }
+            return value
+        }
 
         override fun getVelocityFromNanos(playTimeNanos: Long, initialValue: V, targetValue: V, initialVelocity: V): V =
             spec.getVelocityFromNanos(time(playTimeNanos, sampling = false), initialValue, targetValue, initialVelocity)

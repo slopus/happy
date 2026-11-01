@@ -34,5 +34,8 @@ object BenchApp {
     /** Home with its kept rows. */
     fun MacrobenchmarkScope.awaitHome() {
         check(device.wait(Until.hasObject(By.text(HOME_ROW)), TIMEOUT)) { "Home's rows never showed" }
+        // The chat and agent page repeat HOME_ROW in their title. Require the
+        // home-only control too, so a failed pop cannot seed the next sample.
+        check(device.wait(Until.hasObject(By.desc("Settings")), TIMEOUT)) { "Navigation did not return home" }
     }
 }

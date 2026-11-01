@@ -2,6 +2,7 @@ package com.slopus.happy.ui
 
 import android.provider.Settings
 import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.AnimationVector2D
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -163,6 +165,40 @@ class NavMotionTest {
         assertEquals(curve(8.333f / NavMotion.DURATION_MILLIS), at(60f), 0.002f)
         assertEquals(curve(108.333f / NavMotion.DURATION_MILLIS), at(160f), 0.002f)
         assertEquals(1f, at(NavMotion.DURATION_MILLIS + 150f), 0f)
+    }
+
+    @Test
+    fun firstMovementIsReportedOnceWithoutChangingTheAppliedOffsets() {
+        var reports = 0
+        val animation = tween<IntOffset>(NavMotion.DURATION_MILLIS, easing = NavMotion.easing)
+        val converter = IntOffset.VectorConverter
+        val traced = FromFirstFrame(animation) { reports++ }.vectorize(converter)
+        val plain = FromFirstFrame(animation).vectorize(converter)
+        val from = AnimationVector2D(1080f, 0f)
+        val to = AnimationVector2D(0f, 0f)
+        val velocity = AnimationVector2D(0f, 0f)
+        traced.getDurationNanos(from, to, velocity)
+        traced.getVelocityFromNanos(60_000_000L, from, to, velocity)
+        assertEquals("duration and velocity queries are not applied movement", 0, reports)
+        for (ms in listOf(0L, 60L, 160L, 600L)) {
+            val actual = converter.convertFromVector(traced.getValueFromNanos(ms * 1_000_000, from, to, velocity))
+            val expected = converter.convertFromVector(plain.getValueFromNanos(ms * 1_000_000, from, to, velocity))
+            assertEquals("tracing preserves the offset at $ms ms", expected, actual)
+            assertEquals("only the first changed pixel emits a marker", if (ms == 0L) 0 else 1, reports)
+        }
+    }
+
+    @Test
+    fun firstMovementWaitsForTheRoundedOffsetToChange() {
+        var reports = 0
+        val converter = IntOffset.VectorConverter
+        val spec = FromFirstFrame(tween<IntOffset>(NavMotion.DURATION_MILLIS, easing = NavMotion.easing)) { reports++ }.vectorize(converter)
+        val from = AnimationVector2D(0f, 0f)
+        val to = AnimationVector2D(1f, 0f)
+        assertEquals(IntOffset.Zero, converter.convertFromVector(spec.getValueFromNanos(60_000_000L, from, to, from)))
+        assertEquals("a subpixel sample has not moved the page", 0, reports)
+        assertEquals(IntOffset(1, 0), converter.convertFromVector(spec.getValueFromNanos(160_000_000L, from, to, from)))
+        assertEquals(1, reports)
     }
 
     @Test

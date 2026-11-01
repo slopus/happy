@@ -29,6 +29,8 @@ class NavigationBenchmark {
     @get:Rule val rule = MacrobenchmarkRule()
 
     @Test fun settings() = navigation { openSettings() }
+    /** First Settings visit in each process: class verification must not hide in warm samples. */
+    @Test fun settingsCold() = navigation(cold = true) { openSettings() }
     @Test fun chat() = navigation { device.findObject(By.text(BenchApp.HOME_ROW)).click() }
     @Test fun artifacts() = navigation { device.findObject(By.text("Artifacts")).click() }
     @Test fun agentPage() = navigation(
@@ -47,6 +49,7 @@ class NavigationBenchmark {
     }
 
     private fun navigation(
+        cold: Boolean = false,
         prepare: MacrobenchmarkScope.() -> Unit = {},
         finish: MacrobenchmarkScope.() -> Unit = {},
         open: MacrobenchmarkScope.() -> Unit,
@@ -57,6 +60,7 @@ class NavigationBenchmark {
         iterations = 12,
         setupBlock = {
             if (iteration == 0) seed()
+            if (cold) killProcess()
             startActivityAndWait()
             awaitHome()
             device.waitForIdle()
