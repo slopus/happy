@@ -36,19 +36,23 @@ public struct ChatComposerEnvironment {
     /// Where the draft is kept. `account.sender` for a session; a chat still
     /// being started (`pending-chat:`) keeps it in its own record.
     public var draftStorage: any ComposerStorage
+    /// Before the first send, mode picks belong to the creation draft.
+    public var newSession: NewSessionComposer?
 
     public init(
         sessionId: String,
         account: AccountSession,
         sender: any ChatSending,
         controls: any ChatControls,
-        draftStorage: (any ComposerStorage)? = nil
+        draftStorage: (any ComposerStorage)? = nil,
+        newSession: NewSessionComposer? = nil
     ) {
         self.sessionId = sessionId
         self.account = account
         self.sender = sender
         self.controls = controls
         self.draftStorage = draftStorage ?? account.sender
+        self.newSession = newSession
     }
 }
 
@@ -67,13 +71,17 @@ public struct ChatComposerState: Equatable, Sendable {
     /// The agent is waiting on a question the person can answer by typing
     /// (AskUserQuestion / request_user_input); sending answers it.
     public var hasPendingQuestion: Bool
+    public var newSessionChoices: NewSessionChoices?
+    public var isStartingNewSession: Bool
 
-    public init(session: ChatSessionState, usage: ChatUsage? = nil, delivery: [String: OutboxDelivery] = [:], isLoaded: Bool = false, hasPendingQuestion: Bool = false) {
+    public init(session: ChatSessionState, usage: ChatUsage? = nil, delivery: [String: OutboxDelivery] = [:], isLoaded: Bool = false, hasPendingQuestion: Bool = false, newSessionChoices: NewSessionChoices? = nil, isStartingNewSession: Bool = false) {
         self.session = session
         self.usage = usage
         self.delivery = delivery
         self.isLoaded = isLoaded
         self.hasPendingQuestion = hasPendingQuestion
+        self.newSessionChoices = newSessionChoices
+        self.isStartingNewSession = isStartingNewSession
     }
 }
 

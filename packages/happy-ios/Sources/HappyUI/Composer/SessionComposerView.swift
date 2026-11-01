@@ -552,6 +552,16 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {
+        if let creation = environment.newSession {
+            guard !card.configuration.refusesControls else { return }
+            switch chip {
+            case .permission: creation.selectPermission(key)
+            case .model: creation.selectModel(key)
+            case .effort: creation.selectEffort(key)
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
         guard let record = state?.session.record else { return }
         let patch: SessionAgentModesPatch
         switch chip {
@@ -602,7 +612,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     private func applyConfiguration() {
         let record = state?.session.record
-        let chips = ComposerChipSet(modes: modes, record: record, titles: Self.titles)
+        let chips = state?.newSessionChoices.map { ComposerChipSet(choices: $0, titles: Self.titles) }
+            ?? ComposerChipSet(modes: modes, record: record, titles: Self.titles)
         let canAttach = SessionComposerRules.canUseAttachments(record)
         let primary = AgentInputPrimaryAction.resolve(
             hasComposerContent: hasComposerContent,
@@ -616,6 +627,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         configuration.permission = chips.permission.map(Self.chip)
         configuration.model = Self.chip(chips.model)
         configuration.effort = chips.effort.map(Self.chip)
+        configuration.placeholder = state?.newSessionChoices?.promptPlaceholder ?? Strings.Composer.inputPlaceholder
+        configuration.refusesControls = state?.isStartingNewSession == true
         configuration.primaryAction = primary
         configuration.primaryAccessibilityLabel = primary == .voice ? Strings.Voice.title : nil
         configuration.isPrimaryBusy = isAborting

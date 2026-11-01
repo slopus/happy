@@ -16,6 +16,7 @@ extension SessionStarter {
             sessionOps: session.homeSessionOps,
             sender: session.sender,
             metadataTransport: session.realtime,
+            saveInitialModes: { [sender = session.sender] in try await sender.saveInitialModes(sessionId: $0, patch: $1) },
             refreshSessions: { await sync.run(.sessions) },
             paintBotFace: { try await BotFacePainter.png(seed: $0) },
             attachmentPlan: { [sender = session.sender] message, sessionId in

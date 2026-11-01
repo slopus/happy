@@ -12,7 +12,7 @@ import UIKit
 ///   and a line saying what that kind is. Desktop asks a bot's name the
 ///   same way ("generated if left blank"); here a task's too.
 /// - `.session` (a legacy account): the computer, shown only when the
-///   account has more than one, and the folder on it, each a menu.
+///   account has more than one, the folder on it, and the harness.
 final class NewWorkPanel: UIView, UITextFieldDelegate {
     enum Mode {
         case work
@@ -26,6 +26,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     /// `.session`'s rows.
     let machine = NewWorkMenuRow(icon: .ionicons("desktop-outline"))
     let folder = NewWorkMenuRow(icon: .ionicons("folder-outline"))
+    let harness = NewWorkMenuRow(icon: .ionicons("hardware-chip-outline"))
     private let note = UILabel()
 
     /// Every change, as it is made.
@@ -85,8 +86,9 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         case .session:
             machine.accessibilityIdentifier = "new-work-machine"
             folder.accessibilityIdentifier = "new-work-folder"
+            harness.accessibilityIdentifier = "new-work-harness"
             machine.isHidden = true
-            for view in [machine, folder] { addSubview(view) }
+            for view in [machine, folder, harness] { addSubview(view) }
         }
     }
 
@@ -107,7 +109,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
                 }
             )
         case .session:
-            return NewWorkLayout(width: width, top: top, bottom: bottom, kindHeight: nil, rows: showsMachine ? 2 : 1, note: nil)
+            return NewWorkLayout(width: width, top: top, bottom: bottom, kindHeight: nil, rows: showsMachine ? 3 : 2, note: nil)
         }
     }
 
@@ -123,13 +125,14 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             var rows = layout.rows.makeIterator()
             if showsMachine, let frame = rows.next() { machine.frame = frame }
             if let frame = rows.next() { folder.frame = frame }
+            if let frame = rows.next() { harness.frame = frame }
         }
     }
 
     /// Only the controls take touches: a drag anywhere else is the
     /// transcript's, which takes the keyboard down.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        let controls: [UIView] = mode == .work ? [kind, field] : [machine, folder]
+        let controls: [UIView] = mode == .work ? [kind, field] : [machine, folder, harness]
         return controls.contains { !$0.isHidden && $0.frame.insetBy(dx: -8, dy: -8).contains(point) }
     }
 
@@ -140,6 +143,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             name.isEnabled = !isLocked
             machine.isEnabled = !isLocked
             folder.isEnabled = !isLocked
+            harness.isEnabled = !isLocked
         }
     }
 

@@ -271,7 +271,7 @@ public final class NewSessionDraftStore {
             if picked { $0.pickedAgentType = agent }
             $0.permissionMode = defaults.permissionMode
             $0.modelMode = defaults.modelMode
-            if let effort = defaults.effortLevel, !effort.isEmpty { $0.effortLevel = effort }
+            $0.effortLevel = defaults.effortLevel.flatMap { $0.isEmpty ? nil : $0 }
         }
     }
 
