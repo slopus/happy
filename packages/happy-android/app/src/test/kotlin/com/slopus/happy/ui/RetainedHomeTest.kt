@@ -77,12 +77,14 @@ class RetainedHomeTest {
     private fun show(
         direction: LayoutDirection = LayoutDirection.Ltr,
         restoration: StateRestorationTester? = null,
+        placement: NavPlacementTrace? = null,
         home: @Composable () -> Unit = {},
     ) {
         val content: @Composable () -> Unit = {
             nav = rememberNavController()
             events = checkNotNull(LocalNavigationEventDispatcherOwner.current).navigationEventDispatcher
             val motion = rememberNavMotion()
+            motion.dims.placement = placement
             CompositionLocalProvider(LocalLayoutDirection provides direction, LocalPageDims provides motion.dims) {
                 RetainedHome(nav, modifier = Modifier.backdrop(nav), home = {
                     homeLifecycle = LocalLifecycleOwner.current.lifecycle
@@ -97,6 +99,7 @@ class RetainedHomeTest {
                     NavHost(
                         navController = nav,
                         startDestination = HomeRoute,
+                        modifier = Modifier.traceNavPlacement(motion.dims),
                         enterTransition = motion.enter,
                         exitTransition = motion.exit,
                         popEnterTransition = motion.popEnter,
@@ -178,6 +181,24 @@ class RetainedHomeTest {
 
     @Test fun pushAndPopFollowTheExistingAnchorWithoutAHole() = checkMotion(LayoutDirection.Ltr)
     @Test fun rightToLeftUsesTheSameAnchorAndParallax() = checkMotion(LayoutDirection.Rtl)
+
+    @Test
+    fun placementMarkersReportBothIncomingPagesOncePerNavigation() {
+        val reports = mutableListOf<String>()
+        show(placement = NavPlacementTrace { reports.add(it) })
+        assertEquals(0, reports.size)
+        push()
+        assertEquals(1, reports.size)
+        rule.runOnUiThread { nav.popBackStack() }
+        settle()
+        assertEquals(2, reports.size)
+        assertTrue(reports[0] != reports[1])
+        push()
+        rule.runOnUiThread { nav.popBackStack() }
+        settle()
+        assertEquals(4, reports.size)
+        assertEquals(reports[1], reports[3])
+    }
 
     @Test
     fun savedScrollRestoresWhenTheHostIsRecreatedWhileHomeIsCovered() {

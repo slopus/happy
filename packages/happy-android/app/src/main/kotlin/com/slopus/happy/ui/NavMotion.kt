@@ -25,11 +25,13 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph
@@ -100,7 +102,10 @@ class NavMotion(
             return NavMotion(
                 enter = {
                     dims.top(targetState)
-                    slideIntoContainer(SlideDirection.Start, spec(easing, fromFirstFrame = true, firstMovement = firstMovement(targetState)))
+                    slideIntoContainer(SlideDirection.Start, spec(easing, fromFirstFrame = true, firstMovement = firstMovement(targetState))) { initial ->
+                        dims.placement?.expect(initialState.id, targetState.id, initial)
+                        initial
+                    }
                 },
                 exit = {
                     dims.beneath(initialState, spec(easing, fromFirstFrame = true))
@@ -129,7 +134,9 @@ class NavMotion(
             Pair(
                 {
                     dims.beneath(targetState, spec(easing, fromFirstFrame))
-                    slideIntoContainer(SlideDirection.End, spec(easing, fromFirstFrame, firstMovement(targetState)), ::parallax)
+                    slideIntoContainer(SlideDirection.End, spec(easing, fromFirstFrame, firstMovement(targetState))) { full ->
+                        parallax(full).also { initial -> dims.placement?.expect(initialState.id, targetState.id, initial) }
+                    }
                 },
                 {
                     dims.top(initialState)
@@ -147,6 +154,8 @@ class NavMotion(
 @Stable
 class PageDims {
     private val beneath = HashMap<String, FiniteAnimationSpec<Float>>()
+    internal var placement: NavPlacementTrace? =
+        if (BuildConfig.BUILD_TYPE == "bench" || BuildConfig.BUILD_TYPE.endsWith("Bench")) NavPlacementTrace() else null
 
     internal fun beneath(entry: NavBackStackEntry, spec: FiniteAnimationSpec<Float>) {
         beneath[entry.id] = spec
@@ -178,9 +187,13 @@ inline fun <reified T : Any> NavGraphBuilder.page(noinline content: @Composable 
 fun AnimatedContentScope.DimmedPage(entry: NavBackStackEntry, content: @Composable () -> Unit) {
     val dims = LocalPageDims.current
     if (dims == null) return content()
+    val placement = dims.placement
+    if (placement != null) DisposableEffect(entry.id, placement) {
+        onDispose { placement.forget(entry.id) }
+    }
     val covered = transition.animateFloat(transitionSpec = { dims.spec(entry) ?: snap() }, label = "dim") { if (it == EnterExitState.Visible) 0f else 1f }
     Box(
-        Modifier.drawWithContent {
+        Modifier.then(if (placement != null) Modifier.onGloballyPositioned { placement.page(entry.id, it) } else Modifier).drawWithContent {
             drawContent()
             val dim = if (dims.spec(entry) != null) covered.value * NavMotion.DIM else 0f
             if (dim > 0f) drawRect(Color.Black, alpha = dim)

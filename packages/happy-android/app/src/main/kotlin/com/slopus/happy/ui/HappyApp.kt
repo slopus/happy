@@ -157,6 +157,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                     NavHost(
                         navController = nav,
                         startDestination = start,
+                        modifier = Modifier.traceNavPlacement(motion.dims),
                         enterTransition = motion.enter,
                         exitTransition = motion.exit,
                         popEnterTransition = motion.popEnter,

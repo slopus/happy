@@ -451,6 +451,52 @@ their `fold-a45d230-*` counterparts, `dev-a45-timing-settings` and
 `dev-a45-retained-settings`. Tagged APKs preserve each arm; none is an OTA
 or store release.
 
+### System Settings reference: different transitions, different instrumentation
+
+No system option was changed: root Settings → Display, validate the
+brightness page, then Back. Perfetto captured SurfaceFlinger layer
+snapshots plus FrameTimeline. The input timestamp uses the same MONOTONIC
+conversion as the Happy analyzer. Select the incoming SubSettings buffer
+layer's first visible snapshot, then join the snapshot's `vsync_id` to the
+presented display frame. This observes compositor visibility; it does not
+substitute the destination's initial draw or buffer-ready time.
+
+Nothing's twelve repeated samples give median **226.61 ms**, nearest-rank
+p90 **242.71 ms**, to the first visible incoming content. Its transition
+is a slide **and fade**: the incoming surface initially sits 252 px from
+the left with zero visibility; when first visible it has reached roughly
+151–207 px. The Fold pilot is **107.18 ms (n=1)** to first destination
+content, but One UI opens Display as a stationary second pane at x=787.
+That is not slide-motion latency. Repeating it as if it were the same
+animation would not fix the mismatch.
+
+These numbers are references, **not an apples-to-apples claim that Happy
+is faster**. They cover different transitions and use full compositor
+layer tracing, whose overhead was not independently quantified. The Happy
+bench traces use a lightweight app marker and FrameTimeline instead.
+Evidence: `nothing-system-settings-reference/repeated/` (12 traces),
+`fold-system-settings-reference/` (one pilot); capture config, guarded
+navigation script and strict analyzer are preserved with the evidence.
+
+### Placement marker validation
+
+`Happy:navFirstPlacement:<entry>` measures the actual incoming page's layout
+coordinate relative to NavHost, comparing it with the transition's rounded
+initial offset. It covers the predictive transition path too, where the
+first-frame sampling wrapper is intentionally absent. It never changes a
+position or invalidates UI state. The existing sample marker remains for
+comparison. `analyze-navigation.py --placement --include-back` strictly
+joins one push and one Back per trace; no missing sample is dropped.
+
+The retained-Home/original-clock APK based on `f478c57dd` passed all 24
+focused unit/layout tests and twelve cold plus twelve warm device cycles.
+All **48** placement-to-presentation joins succeeded, including Back.
+Nothing cold push median/p90 is 58.88/68.16 ms; warm push 60.02/66.43 ms.
+Cold Back is 80.32/83.42 ms; warm Back 80.65/88.88 ms. These are a new
+placement-based baseline, not a matched attribution against older sampled
+offsets. The <40 ms goal remains unmet. Evidence: `f478-placement-marker/`
+and `f478-placement-marker-bench.apk`.
+
 | Change | Measurement | Decision |
 |---|---|---|
 | Navigation benchmark and bench-only Compose tracing | Settings/chat/artifacts device cases pass; agent-page case added | Infrastructure, no shipping UI change |

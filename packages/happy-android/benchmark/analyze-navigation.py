@@ -89,9 +89,12 @@ def main():
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--trace-processor", default="trace_processor")
     parser.add_argument("--include-back", action="store_true", help="Also join the macrobenchmark's system Back key-up")
+    parser.add_argument("--placement", action="store_true", help="Use actual incoming placement markers instead of animation samples")
     args = parser.parse_args()
     back = "OR i.name LIKE 'dispatchInputEvent KeyEvent ACTION_UP%' OR i.name LIKE 'dispatchInputEvent KeyEvent UP %'"
     query = QUERY.replace("/* back-input */", back if args.include_back else "")
+    if args.placement:
+        query = query.replace("Happy:navFirstMove:", "Happy:navFirstPlacement:").replace("first_movement_sample_ms", "first_movement_placement_ms")
     rows = []
     for trace in sorted(args.traces.glob("NavigationBenchmark_settings*_iter*.perfetto-trace")):
         result = subprocess.run(
@@ -106,7 +109,8 @@ def main():
             row = {"trace": trace.name, "journey": "cold" if "settingsCold" in trace.name else "warm", **sample}
             if not 0 <= float(row["input_queue_ms"]) < 1000:
                 raise RuntimeError(f"Invalid input clock mapping: {row}")
-            if float(row["tap_to_presented_movement_ms"]) < float(row["first_movement_sample_ms"]):
+            movement_key = "first_movement_placement_ms" if args.placement else "first_movement_sample_ms"
+            if float(row["tap_to_presented_movement_ms"]) < float(row[movement_key]):
                 raise RuntimeError(f"Presentation predates movement: {row}")
             rows.append(row)
     if not rows:
