@@ -1,8 +1,10 @@
 #if canImport(UIKit)
 import Foundation
 import HappyCore
+import HappyLayout
 @testable import HappyUI
 import UIKit
+import UltraView
 
 /// A debug app for the chat's UI tests (`Tests/HappyChatUITests`): one
 /// fixture chat under the app's own root (`TabletShellViewController` over a
@@ -66,6 +68,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var groupedHome: GroupedHomeHarness?
     private var chatHeader: ChatHeaderHarness?
     private var avatarSpeeds: AvatarSpeedHarness?
+    private var agentChat: AgentChatHarness?
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -121,6 +124,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "chatHeader" {
             chatHeader = ChatHeaderHarness(window: window, arguments: arguments)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "agentChat" {
+            agentChat = AgentChatHarness(window: window, arguments: arguments)
             return
         }
 
@@ -294,8 +301,19 @@ final class ChatScrollProbe: NSObject {
     /// share of all there is.
     var scrollTo: CGFloat?
 
-    private var list: ChatListView? {
-        chat.flatMap { Self.subview(ChatListView.self, in: $0.view) }
+    /// Either chat's list: the sessions' chat's `ChatListView`, or the
+    /// agents' transcript.
+    private var list: (any ProbedChatList)? {
+        guard let chat else { return nil }
+        if let agent = chat as? ChatViewController {
+            return Self.subview(AgentChatUltraList.self, in: agent.view).map { AgentProbedList(chat: agent, transcript: $0) }
+        }
+        return Self.subview(ChatListView.self, in: chat.view)
+    }
+
+    /// The list's keyboard, in either chat.
+    private func ultraKeyboard(_ chat: UIViewController) -> ChatUltraKeyboard? {
+        (chat as? LegacyChatViewController)?.ultraKeyboard ?? (chat as? ChatViewController)?.ultraKeyboard
     }
 
     private static func subview<T: UIView>(_ type: T.Type, in view: UIView) -> T? {
@@ -346,12 +364,12 @@ final class ChatScrollProbe: NSObject {
         guard let chat, let list else { return }
         window.bringSubviewToFront(element)
         if endEditing.superview != nil { window.bringSubviewToFront(endEditing) }
-        if focusWhenFilled, list.plans.count > 20, list.isDisplayReady,
+        if focusWhenFilled, list.rows > 20, list.isDisplayReady,
            let card = Self.subview(AgentInputCardView.self, in: chat.view) {
             focusWhenFilled = false
             card.textView.becomeFirstResponder()
         }
-        if let share = scrollTo, list.plans.count > 20, list.isDisplayReady {
+        if let share = scrollTo, list.rows > 20, list.isDisplayReady {
             scrollTo = nil
             list.setVisibleMinY(list.maximumVisibleMinY * min(1, max(0, share)))
         }
@@ -370,19 +388,21 @@ final class ChatScrollProbe: NSObject {
 
     private func keyboardTop(_ chat: UIViewController) -> CGFloat {
         let guideTop = chat.view.keyboardLayoutGuide.layoutFrame.minY
-        let top = (chat as? LegacyChatViewController)?.ultraKeyboard?.keyboardTop(guideTop: guideTop) ?? guideTop
+        let top = ultraKeyboard(chat)?.keyboardTop(guideTop: guideTop) ?? guideTop
         return chat.view.convert(CGPoint(x: 0, y: top), to: window).y
     }
 
     /// Who moves the keyboard: UltraView's controller, the list's system
     /// interactive dismissal, or the layout guide while docked.
     private func keyboardDriver(_ chat: UIViewController) -> String {
-        guard let keyboard = (chat as? LegacyChatViewController)?.ultraKeyboard else { return "guide" }
+        guard let keyboard = ultraKeyboard(chat) else { return "guide" }
         return keyboard.isAvailable ? "controller" : "system"
     }
 
-    private func dockView(_ chat: UIViewController) -> ChatDockView? {
-        Self.subview(ChatDockView.self, in: chat.view)
+    /// What sits on the keyboard: the sessions' chat's dock, the agents'
+    /// card.
+    private func dockView(_ chat: UIViewController) -> UIView? {
+        (chat as? ChatViewController)?.card ?? Self.subview(ChatDockView.self, in: chat.view)
     }
 
     private func makeSample() -> Sample? {
@@ -391,11 +411,11 @@ final class ChatScrollProbe: NSObject {
         let presented = dock.map { ($0.layer.presentation() ?? $0.layer).frame.minY } ?? .nan
         return Sample(
             time: CACurrentMediaTime(), fingerY: finger?.y ?? .nan, offset: list.scrollOffset, keyboardTop: keyboardTop(chat),
-            contentHeight: list.contentHeight, rows: list.plans.count, visibleMinY: list.visibleMinY,
+            contentHeight: list.contentHeight, rows: list.rows, visibleMinY: list.visibleMinY,
             tracking: list.isTracking, dragging: list.isDragging,
             active: activeRecognizers(list.scrollGestureView),
             dockPresentedMinY: dock?.superview.map { $0.convert(CGPoint(x: 0, y: presented), to: window).y } ?? .nan,
-            driving: (chat as? LegacyChatViewController)?.ultraKeyboard?.isDriving ?? false
+            driving: ultraKeyboard(chat)?.isDriving ?? false
         )
     }
 
@@ -483,8 +503,7 @@ final class ChatScrollProbe: NSObject {
         rect.map { [$0.minX, $0.minY, $0.width, $0.height] }
     }
 
-    private func report(list: ChatListView, chat: UIViewController) -> String {
-        let inset = list.contentInsets
+    private func report(list: any ProbedChatList, chat: UIViewController) -> String {
         let dock = dockView(chat)
         var value: [String: Any] = [:]
         value["offset"] = list.scrollOffset
@@ -492,16 +511,24 @@ final class ChatScrollProbe: NSObject {
         // How far back the reader can go.
         value["maxDistance"] = list.maximumVisibleMinY
         value["contentHeight"] = list.contentHeight
-        value["rows"] = list.isDisplayReady ? list.plans.count : 0
+        value["rows"] = list.isDisplayReady ? list.rows : 0
         value["renderer"] = "UltraList"
-        value["newestInset"] = inset.top
-        value["oldestInset"] = inset.bottom
+        value["chat"] = chat is ChatViewController ? "agent" : "session"
+        value["newestInset"] = list.newestInset
+        value["oldestInset"] = list.oldestInset
         let safe = chat.view.safeAreaInsets
         value["safeArea"] = [safe.top, safe.left, safe.bottom, safe.right]
-        value["list"] = rect(list.convert(list.bounds, to: window)) as Any
-        value["listSize"] = [list.bounds.width, list.bounds.height]
+        value["list"] = rect(list.listView.convert(list.listView.bounds, to: window)) as Any
+        value["listSize"] = [list.listView.bounds.width, list.listView.bounds.height]
         value["dockMinY"] = dock.map { $0.convert($0.bounds, to: window).minY } as Any
         value["dockMaxY"] = dock.map { $0.convert($0.bounds, to: window).maxY } as Any
+        // How far over the keyboard (or the safe area) the dock stands: the
+        // agents' card keeps the gap under it (`ChatScreenLayout`).
+        if let agent = chat as? ChatViewController {
+            value["dockBelow"] = agent.meter.isHidden ? ChatScreenLayout.Metrics.paddingBottom : ContextMeterLayout.Metrics.height
+        } else {
+            value["dockBelow"] = 0
+        }
         value["keyboardTop"] = keyboardTop(chat)
         value["keyboard"] = keyboardDriver(chat)
         value["window"] = [window.bounds.width, window.bounds.height]
@@ -513,6 +540,57 @@ final class ChatScrollProbe: NSObject {
         value["events"] = window.events
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
+    }
+}
+
+/// What the probe reads of a chat's list.
+@MainActor
+protocol ProbedChatList {
+    var listView: UIView { get }
+    var rows: Int { get }
+    var isDisplayReady: Bool { get }
+    /// How far the reader is from the newest message.
+    var visibleMinY: CGFloat { get }
+    var maximumVisibleMinY: CGFloat { get }
+    var contentHeight: CGFloat { get }
+    var scrollOffset: CGFloat { get }
+    var newestInset: CGFloat { get }
+    var oldestInset: CGFloat { get }
+    var isTracking: Bool { get }
+    var isDragging: Bool { get }
+    var isDecelerating: Bool { get }
+    var scrollGestureView: UIView { get }
+    func setVisibleMinY(_ distance: CGFloat)
+}
+
+extension ChatListView: ProbedChatList {
+    var listView: UIView { self }
+    var rows: Int { plans.count }
+    var newestInset: CGFloat { contentInsets.top }
+    var oldestInset: CGFloat { contentInsets.bottom }
+}
+
+/// The agents' transcript as the probe reads it.
+@MainActor
+struct AgentProbedList: ProbedChatList {
+    let chat: ChatViewController
+    let transcript: AgentChatUltraList
+    var listView: UIView { transcript.list }
+    var rows: Int { chat.plans.count }
+    var isDisplayReady: Bool { !chat.plans.isEmpty && transcript.list.loadedItemView(at: 0) != nil }
+    var visibleMinY: CGFloat { transcript.distanceFromNewest }
+    var maximumVisibleMinY: CGFloat { transcript.distanceFromNewest + transcript.distanceFromOldest }
+    var contentHeight: CGFloat { CGFloat(transcript.list.contentHeight) }
+    var scrollOffset: CGFloat { visibleMinY - newestInset }
+    // Upside down: the list's top inset is the card's end.
+    var newestInset: CGFloat { CGFloat(transcript.list.viewportInsets.top) }
+    var oldestInset: CGFloat { CGFloat(transcript.list.viewportInsets.bottom) }
+    var isTracking: Bool { transcript.list.isTracking }
+    var isDragging: Bool { transcript.list.isDragging }
+    var isDecelerating: Bool { transcript.list.isDecelerating }
+    var scrollGestureView: UIView { transcript.list.scrollGestureHostView }
+    func setVisibleMinY(_ distance: CGFloat) {
+        transcript.list.scrollTo(.init(index: 0, pointOffset: -Double(distance)), transition: .none)
     }
 }
 #endif
