@@ -119,8 +119,6 @@ class TailcatTransport internal constructor(
         requestTimeoutMillis: Long = 35_000,
         fileTimeoutMillis: Long = 15 * 60_000,
     ) : this(port, requestTimeoutMillis, fileTimeoutMillis, { _, key ->
-        // Management can turn Tailcat off while a transport exists: no new client connects.
-        if (!enabled) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
         TailcatClient.connect(address, ClientConfiguration(privateKey = key, mapProvider = derpMap, connectTimeoutMillis = connectTimeoutMillis))
     })
 
@@ -277,9 +275,6 @@ class TailcatTransport internal constructor(
          * after the first fetch.
          */
         @Volatile private var derpMap = DERPMapProvider()
-
-        /** False while management turns Tailcat off (`tailcatEnabled`): nothing connects over it. */
-        @Volatile var enabled = true
 
         fun persistDerpMap(file: File) {
             derpMap = DERPMapProvider(cache = FileDerpMapCache(file))

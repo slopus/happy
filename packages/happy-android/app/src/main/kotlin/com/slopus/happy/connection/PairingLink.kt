@@ -22,11 +22,9 @@ class AgentConnectionException(val reason: Reason) : Exception(reason.message) {
         InvalidResponse("The agent returned an invalid response.", R.string.pairing_error_invalid_response),
         Unavailable("Could not reach the agent. Check its connection and try again.", R.string.pairing_error_unavailable),
         Revoked("This device is no longer authorized. Connect the agent again.", R.string.pairing_error_revoked),
-        /** A team server's sign-in expired and couldn't be refreshed (edge SSO): sign in again. */
-        /** Management turned pairing by code off (`phonePairingEnabled`). */
-        Disabled("Your organization has turned off connecting agents by code.", R.string.team_server_pairing_disabled),
         /** A team server accepts the token but has no profile for the person: they give a name first (API.md, profile gate). */
         ProfileRequired("Add your name to keep using this server.", R.string.team_server_profile_required),
+        /** A team server's sign-in expired and couldn't be refreshed (edge SSO): sign in again. */
         SignInRequired("Your sign-in to this server has expired. Sign in again.", R.string.team_server_error_sign_in_required),
     }
 }

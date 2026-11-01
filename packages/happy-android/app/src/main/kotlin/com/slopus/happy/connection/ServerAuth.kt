@@ -46,8 +46,6 @@ class ServerAuthException(val reason: Reason, cause: Throwable? = null) : Except
         InvalidToken,
         /** The daemon doesn't accept the token it issued. */
         Rejected,
-        /** Managed configuration doesn't allow this server. */
-        NotAllowed,
         /** The access token expired and can't be refreshed: sign in again. */
         SignInRequired,
     }

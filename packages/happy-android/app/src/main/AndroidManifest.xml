@@ -109,10 +109,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/conversation_media_paths" />
         </provider>
-        <!-- Android Enterprise managed configurations (config/ManagedSettings.kt), the edge SSO contract's keys. -->
-        <meta-data
-            android:name="android.content.APP_RESTRICTIONS"
-            android:resource="@xml/app_restrictions" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/notification_icon" />

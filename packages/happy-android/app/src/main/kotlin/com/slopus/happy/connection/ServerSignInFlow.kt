@@ -1,6 +1,5 @@
 package com.slopus.happy.connection
 
-import com.slopus.happy.config.ManagedPolicy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -11,8 +10,8 @@ import kotlinx.coroutines.launch
 
 /** Where one team server sign-in stands, as its screen draws it. */
 sealed interface ServerSignInState {
-    /** Asks for the server's address; [locked] when management names the only one allowed. */
-    data class Enter(val address: String = "", val locked: Boolean = false) : ServerSignInState
+    /** Asks for the server's address. */
+    data class Enter(val address: String = "") : ServerSignInState
 
     data class Checking(val server: String) : ServerSignInState
 
@@ -46,7 +45,6 @@ class ServerSignInFlow(
     private val scope: CoroutineScope,
     private val connections: AgentConnections,
     private val auth: ServerAuthClient,
-    private val policy: () -> ManagedPolicy,
     val replacing: String? = null,
 ) {
     private val mutableState = MutableStateFlow<ServerSignInState>(ServerSignInState.Enter())
@@ -72,16 +70,9 @@ class ServerSignInFlow(
         mutableState.value = ServerSignInState.NeedsName(address)
     }
 
-    /** Starts at [address] when it is known (management's server, or one signing in again), else asks for it. */
+    /** Starts at [address] when it is known (a server signing in again), else asks for it. */
     fun start(address: String?) {
-        val managed = policy()
-        val locked = managed.allowAdditionalServers == false && managed.serverUrl != null
-        val initial = address ?: managed.serverUrl.takeIf { locked }
-        if (initial == null) {
-            mutableState.value = ServerSignInState.Enter(managed.serverUrl.orEmpty(), locked)
-        } else {
-            submit(initial)
-        }
+        if (address == null) mutableState.value = ServerSignInState.Enter() else submit(address)
     }
 
     /** The address the person typed. */
@@ -90,10 +81,6 @@ class ServerSignInFlow(
             ServerAuthClient.parseAddress(address)
         } catch (e: ServerAuthException) {
             mutableState.value = ServerSignInState.Failed(null, e.reason)
-            return
-        }
-        if (!policy().allowsServer(parsed.value)) {
-            mutableState.value = ServerSignInState.Failed(parsed.value, ServerAuthException.Reason.NotAllowed)
             return
         }
         origin = parsed
@@ -176,7 +163,7 @@ class ServerSignInFlow(
         val method = method
         mutableState.value = when {
             origin != null && method != null -> ServerSignInState.Ready(origin.value, method)
-            else -> ServerSignInState.Enter(origin?.value ?: policy().serverUrl.orEmpty(), policy().let { it.allowAdditionalServers == false && it.serverUrl != null })
+            else -> ServerSignInState.Enter(origin?.value.orEmpty())
         }
     }
 

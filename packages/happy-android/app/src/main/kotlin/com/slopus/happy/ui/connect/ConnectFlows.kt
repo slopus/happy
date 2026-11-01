@@ -323,13 +323,8 @@ fun rememberAddFlow(graph: AppGraph): ConnectFlow = rememberAddConnect(
 fun rememberAddConnect(approve: suspend (url: String) -> Unit): ConnectFlow {
     val haptics = LocalHapticFeedback.current
     val failed = stringResource(R.string.modals_failed_to_connect_terminal)
-    val relayOff = stringResource(R.string.team_server_relay_disabled)
     val flow = rememberConnectFlow(ConnectKind.Add, approve) { flow, error ->
-        when {
-            error == null -> haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-            error is com.slopus.happy.auth.RelayDisabledException -> flow.alert = flow.errorAlert(relayOff)
-            else -> flow.alert = flow.errorAlert(failed)
-        }
+        if (error == null) haptics.performHapticFeedback(HapticFeedbackType.Confirm) else flow.alert = flow.errorAlert(failed)
     }
     flow.onUnavailable = { flow.enteringLink = true }
     if (flow.enteringLink) {

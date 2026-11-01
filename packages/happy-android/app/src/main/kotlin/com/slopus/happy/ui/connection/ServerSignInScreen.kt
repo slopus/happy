@@ -50,7 +50,6 @@ object ServerSignInTags {
     const val BROWSER = "serverSignIn.browser"
     const val SPINNER = "serverSignIn.spinner"
     const val RETRY = "serverSignIn.retry"
-    const val LOCKED = "serverSignIn.locked"
 }
 
 /** Sizes of [ServerSignInScreen], as PairingScreen's. */
@@ -67,8 +66,7 @@ object ServerSignInSpec {
 /**
  * Signing in to a team server (edge SSO), PairingScreen's layout: the
  * standard header, then one centred column 24 in from the sides, 16
- * between parts, by [state]: the address field (locked to the managed
- * server when management allows no other) and Continue; a spinner while
+ * between parts, by [state]: the address field and Continue; a spinner while
  * the server is asked; the server's sign-in name on a button with the host
  * the browser will show under it; waiting for the browser, with Open
  * browser again; a spinner while the code is exchanged; a new member's
@@ -118,7 +116,7 @@ fun ServerSignInScreen(
             )
 
             @Composable
-            fun Field(value: String, onChange: (String) -> Unit, placeholder: String, tag: String, enabled: Boolean, keyboard: KeyboardOptions) = HappyTextField(
+            fun Field(value: String, onChange: (String) -> Unit, placeholder: String, tag: String, enabled: Boolean = true, keyboard: KeyboardOptions) = HappyTextField(
                 value = value,
                 onValueChange = onChange,
                 placeholder = placeholder,
@@ -141,10 +139,8 @@ fun ServerSignInScreen(
                         { address = it },
                         stringResource(R.string.team_server_address_placeholder),
                         ServerSignInTags.ADDRESS,
-                        enabled = !state.locked,
                         keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Go),
                     )
-                    if (state.locked) Line(stringResource(R.string.managed_by_organization), note, secondary = true, modifier = Modifier.testTag(ServerSignInTags.LOCKED))
                     Spacer(Modifier.height(8.dp))
                     RoundButton(
                         stringResource(R.string.common_continue),
@@ -225,6 +221,5 @@ internal fun failureText(reason: ServerAuthException.Reason): Int = when (reason
     ServerAuthException.Reason.Expired -> R.string.team_server_error_expired
     ServerAuthException.Reason.InvalidToken -> R.string.team_server_error_invalid_token
     ServerAuthException.Reason.Rejected -> R.string.team_server_error_rejected
-    ServerAuthException.Reason.NotAllowed -> R.string.team_server_error_not_allowed
     ServerAuthException.Reason.SignInRequired -> R.string.team_server_error_sign_in_required
 }

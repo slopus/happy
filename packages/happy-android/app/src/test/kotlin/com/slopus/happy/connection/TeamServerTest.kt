@@ -6,7 +6,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.auth.ExpoSecureStore
-import com.slopus.happy.config.ManagedPolicy
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -222,7 +221,7 @@ class TeamServerTest {
         val connections = connections()
         // The daemon's origin is this mock (discovery and profile), and so is the SSO.
         val server = "https://localhost:${sso.port}"
-        val flow = ServerSignInFlow(scope, connections, auth, { ManagedPolicy() })
+        val flow = ServerSignInFlow(scope, connections, auth)
         sso.enqueue(json("""{"authenticated":false,"userId":null,"methods":[{"type":"oauth","id":"jwt","name":"Acme SSO","authorizationUrl":"$server/authorize","tokenUrl":"$server/token","refreshUrl":"$server/token","clientId":"happy","resource":"https://happy.acme.example"}]}"""))
         flow.start(server)
         val ready = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Ready } } as ServerSignInState.Ready
@@ -247,19 +246,5 @@ class TeamServerTest {
         assertEquals("refresh-2", connections.credentials(done.account.id)?.oauth?.refreshToken)
         val patches = (0 until sso.requestCount).map { sso.takeRequest() }.filter { it.method == "PATCH" }
         assertEquals(listOf("Bearer access-1", "Bearer access-2"), patches.map { it.headers["Authorization"] })
-    }
-
-    @Test
-    fun managementLimitsWhichServerCanBeAdded() = runBlocking {
-        // A managed server that refuses connections at once, so nothing waits on DNS.
-        val policy = ManagedPolicy(serverUrl = "https://127.0.0.1:1", allowAdditionalServers = false)
-        val flow = ServerSignInFlow(scope, connections(), auth, { policy })
-        flow.start(null)
-        // Locked to the managed server, which it starts checking at once.
-        assertTrue(flow.state.value.let { it is ServerSignInState.Checking && it.server == "https://127.0.0.1:1" })
-        flow.close()
-        val other = ServerSignInFlow(scope, connections(), auth, { policy })
-        other.start("https://other.example")
-        assertEquals(ServerSignInState.Failed("https://other.example", ServerAuthException.Reason.NotAllowed), other.state.value)
     }
 }

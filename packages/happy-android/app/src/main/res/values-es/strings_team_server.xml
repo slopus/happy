@@ -27,24 +27,11 @@
     <string name="team_server_error_expired">Este inicio de sesión caducó. Inténtalo de nuevo.</string>
     <string name="team_server_error_invalid_token">El servicio de inicio de sesión no devolvió un token válido.</string>
     <string name="team_server_error_rejected">El servidor no aceptó este inicio de sesión.</string>
-    <string name="team_server_error_not_allowed">Tu organización no permite añadir este servidor.</string>
     <string name="team_server_error_sign_in_required">Tu sesión en este servidor ha caducado. Vuelve a iniciar sesión.</string>
     <string name="team_server_sign_in_again">Volver a iniciar sesión</string>
     <string name="team_server_status_signed_out">sesión cerrada</string>
     <string name="team_server_settings_signed_out">Sesión cerrada</string>
-    <string name="team_server_relay_disabled">Tu organización ha desactivado el relé alojado de Happy.</string>
-    <string name="team_server_pairing_disabled">Tu organización ha desactivado conectar agentes con un código.</string>
     <string name="browser_tunnels_blocked">La red de este servidor no permite vistas previas.</string>
-    <string name="start_sign_in_server">Iniciar sesión en %1$s</string>
-    <string name="managed_by_organization">Gestionado por tu organización</string>
-    <string name="managed_server_url">URL del servidor del equipo</string>
-    <string name="managed_server_url_description">La dirección https:// del servidor de Happy de tu organización. La app la ofrece al abrirse por primera vez y la conserva.</string>
-    <string name="managed_allow_additional_servers">Permitir otros servidores</string>
-    <string name="managed_analytics_enabled">Analíticas</string>
-    <string name="managed_hosted_relay_enabled">Relé alojado de Happy</string>
-    <string name="managed_tailcat_enabled">Conexiones de Tailcat</string>
-    <string name="managed_phone_pairing_enabled">Conectar agentes con código QR</string>
     <string name="team_server_profile_required">Añade tu nombre para seguir usando este servidor.</string>
     <string name="team_server_add_name">Añadir tu nombre</string>
-    <string name="managed_analytics_enabled_description">Desactivado desactiva la analítica y la bloquea. Activado deja la elección a cada persona.</string>
 </resources>

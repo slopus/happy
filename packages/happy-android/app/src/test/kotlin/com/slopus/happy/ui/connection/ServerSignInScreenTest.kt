@@ -58,10 +58,6 @@ class ServerSignInScreenTest {
         rule.node(ServerSignInTags.CONTINUE).performClick()
         assertEquals(listOf("happy.acme.example"), addresses)
 
-        state = ServerSignInState.Enter("https://happy.acme.example", locked = true)
-        rule.node(ServerSignInTags.LOCKED).assertExists()
-        rule.node(ServerSignInTags.ADDRESS).assertIsNotEnabled()
-
         state = ServerSignInState.Checking("https://happy.acme.example")
         rule.node(ServerSignInTags.SPINNER).assertExists()
         rule.onNodeWithText("happy.acme.example", substring = true).assertExists()

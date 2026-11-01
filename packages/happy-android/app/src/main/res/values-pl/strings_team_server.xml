@@ -27,24 +27,11 @@
     <string name="team_server_error_expired">To logowanie wygasło. Spróbuj ponownie.</string>
     <string name="team_server_error_invalid_token">Usługa logowania nie zwróciła użytecznego tokenu.</string>
     <string name="team_server_error_rejected">Serwer nie zaakceptował tego logowania.</string>
-    <string name="team_server_error_not_allowed">Twoja organizacja nie pozwala dodać tego serwera.</string>
     <string name="team_server_error_sign_in_required">Twoje logowanie do tego serwera wygasło. Zaloguj się ponownie.</string>
     <string name="team_server_sign_in_again">Zaloguj się ponownie</string>
     <string name="team_server_status_signed_out">wylogowano</string>
     <string name="team_server_settings_signed_out">Wylogowano</string>
-    <string name="team_server_relay_disabled">Twoja organizacja wyłączyła hostowany przekaźnik Happy.</string>
-    <string name="team_server_pairing_disabled">Twoja organizacja wyłączyła łączenie agentów kodem.</string>
     <string name="browser_tunnels_blocked">Sieć tego serwera nie pozwala na podglądy.</string>
-    <string name="start_sign_in_server">Zaloguj się do %1$s</string>
-    <string name="managed_by_organization">Zarządzane przez Twoją organizację</string>
-    <string name="managed_server_url">Adres serwera zespołu</string>
-    <string name="managed_server_url_description">Adres https:// serwera Happy Twojej organizacji. Aplikacja proponuje go przy pierwszym uruchomieniu i go zachowuje.</string>
-    <string name="managed_allow_additional_servers">Zezwalaj na inne serwery</string>
-    <string name="managed_analytics_enabled">Analityka</string>
-    <string name="managed_hosted_relay_enabled">Hostowany przekaźnik Happy</string>
-    <string name="managed_tailcat_enabled">Połączenia Tailcat</string>
-    <string name="managed_phone_pairing_enabled">Łączenie agentów kodem QR</string>
     <string name="team_server_profile_required">Dodaj swoje imię, aby dalej korzystać z tego serwera.</string>
     <string name="team_server_add_name">Dodaj imię</string>
-    <string name="managed_analytics_enabled_description">Wyłączenie wyłącza analitykę i blokuje ustawienie. Włączenie pozostawia wybór każdej osobie.</string>
 </resources>

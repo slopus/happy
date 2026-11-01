@@ -826,13 +826,10 @@ change its wire behaviour on Android alone.
   CONNECT route (`<route>/websocket`, `WebSocketTunnel`) when health reports
   `capabilities.webSocketTunnels`; otherwise CONNECT once, and an edge's refusal
   turns tunnels off for that client with a note (`browser_tunnels_blocked`).
-- **Managed configurations** (`config/ManagedSettings.kt`,
-  `res/xml/app_restrictions.xml`): `serverUrl` (https origin, offered first and
-  not removable), `allowAdditionalServers`, `analyticsEnabled` (only `false` is
-  enforced: management can turn analytics off, never on), `hostedRelayEnabled`,
-  `tailcatEnabled`, `phonePairingEnabled`. A set key is enforced in code and its
-  control shows "Managed by your organization"; an unset or wrongly typed one
-  leaves the person's choice.
+- **No device management.** There are no Android Enterprise managed
+  configurations (Steve's decision). Tailcat, the hosted relay and pairing by
+  code are switched on the server (`happy.toml`); the app only hides what the
+  agent reports as off. Analytics is always the person's own choice.
 
 ## Push
 

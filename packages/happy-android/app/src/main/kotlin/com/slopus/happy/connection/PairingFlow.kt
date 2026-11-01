@@ -68,11 +68,6 @@ class PairingFlow(
         }
     }
 
-    /** Says why no pairing can start, without reading the code. */
-    fun refuse(reason: AgentConnectionException.Reason) {
-        if (mutableState.value == null) mutableState.value = PairingState.Failed(null, reason.message, reason)
-    }
-
     /** The person says the emoji match. */
     fun confirm() {
         val compare = mutableState.value as? PairingState.Compare ?: return

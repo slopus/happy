@@ -157,8 +157,8 @@ class AgentSettingsActions(
     /** The person's own name and picture on this agent. */
     val onProfile: () -> Unit = {},
     val onAppearance: () -> Unit = {},
-    /** Disconnects this connection; asked for only after the person confirmed. Null: it can't be (management's server). */
-    val onRemove: (() -> Unit)? = {},
+    /** Disconnects this connection; asked for only after the person confirmed. */
+    val onRemove: () -> Unit = {},
     /** Opens this connection's Chief of Staff with [prefix] typed, unsent. */
     val onAskChief: (prefix: String) -> Unit = {},
 )
@@ -262,7 +262,7 @@ fun AgentConnectionSettingsScreen(
                     SettingsHeader(profile, edit)
                     AccountsCard(accounts, accountActions)
                     for (section in sections) SettingsCard(section)
-                    actions.onRemove?.let { RemoveCard(agent = true, name = profile.name, onRemove = it) }
+                    RemoveCard(agent = true, name = profile.name, onRemove = actions.onRemove)
                 }
             }
         }
@@ -303,8 +303,6 @@ internal fun statusText(status: AgentLinkStatus): String = stringResource(
  * first screen.
  */
 internal suspend fun removeAgentConnection(graph: AppGraph, id: String) = graph.whileSwitching {
-    // Management's team server stays (ManagedPolicy.serverUrl).
-    if (graph.isPinned(id)) return@whileSwitching
     val open = graph.openAgentId.value == id
     val next = graph.accountStore.registry.value.ordered.firstOrNull()?.id
         ?: graph.agentConnections.accounts.value.filter { it.id != id }.minByOrNull { it.addedAt }?.id
@@ -344,7 +342,7 @@ internal fun rememberAccountsCardActions(graph: AppGraph): AccountsCardActions {
                 val open = graph.openAccount.value.id == entry.id
                 if (switcher != null && open) switcher.removingFromSettings(remove) else scope.launch { remove() }
             },
-            canRemove = { (it.agent && !graph.isPinned(it.id)) || (it.active && graph.openAgentId.value == null) },
+            canRemove = { it.agent || (it.active && graph.openAgentId.value == null) },
         )
     }
 }
@@ -372,11 +370,9 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
             onAppearance = { nav.navigate(AgentAppearanceRoute(connectionId)) },
             onAskChief = { prefix -> nav.openChiefOfStaff(connectionId, prefix) },
-            onRemove = if (graph.isPinned(connectionId)) null else {
-                {
-                    if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }
-                    else scope.launch { removeAgentConnection(graph, connectionId) }
-                }
+            onRemove = {
+                if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }
+                else scope.launch { removeAgentConnection(graph, connectionId) }
             },
         )
     }

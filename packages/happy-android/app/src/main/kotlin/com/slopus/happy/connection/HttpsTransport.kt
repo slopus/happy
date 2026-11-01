@@ -14,7 +14,7 @@ import kotlin.coroutines.resumeWithException
 
 fun agentTransport(address: String, port: Int, publicUrl: String?, tailcatAvailable: Boolean = true): Transport = when {
     publicUrl != null -> HttpsTransport(AgentOrigin.parse(publicUrl))
-    tailcatAvailable && TailcatTransport.enabled -> TailcatTransport(address, port)
+    tailcatAvailable -> TailcatTransport(address, port)
     else -> object : Transport {
         override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse =
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
