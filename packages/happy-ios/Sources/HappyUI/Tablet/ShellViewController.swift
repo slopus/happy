@@ -306,6 +306,7 @@ public final class ShellViewController: UIViewController {
         isExpanded = false
         sidebar.setViewControllers([], animated: false)
         main.setViewControllers([placeholder], animated: false)
+        leave(sidebar, main)
         phone.setViewControllers(stack, animated: false)
         placeToggle()
         (stack.first as? MainPanelFollowing)?.mainPanelDidShow(nil)
@@ -319,6 +320,7 @@ public final class ShellViewController: UIViewController {
         let columns = SplitStack.expanded(phone.viewControllers, placeholder: placeholder)
         isExpanded = true
         phone.setViewControllers([], animated: false)
+        leave(phone)
         sidebar.setViewControllers(columns.sidebar, animated: false)
         main.setViewControllers(columns.main, animated: false)
         followMainPanel()
@@ -328,6 +330,17 @@ public final class ShellViewController: UIViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self, let split, isExpanded, sidebarHidden, split.displayMode != .secondaryOnly else { return }
             UIView.performWithoutAnimation { split.hide(.primary) }
+        }
+    }
+
+    /// The screens just taken off `stacks` hear they disappeared now, before
+    /// the stack they move to tells them they appeared: a stack set without
+    /// animation says so at its next layout, which may come after the other
+    /// stack's.
+    private func leave(_ stacks: UINavigationController...) {
+        for stack in stacks where stack.isViewLoaded {
+            stack.view.setNeedsLayout()
+            stack.view.layoutIfNeeded()
         }
     }
 

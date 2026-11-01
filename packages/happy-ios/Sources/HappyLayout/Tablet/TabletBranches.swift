@@ -6,8 +6,9 @@ import CoreGraphics
 /// The tablet branches inside screens other workstreams own: every
 /// `useIsTablet()` / `useHeaderHeight()` decision in happy-app's native iOS
 /// code paths, as values the owning screen reads. Built from the window
-/// (`TabletLayoutTrait` in HappyUI carries `isTablet`) and the device's
-/// header height; each answer names the line it ports.
+/// and the device's header height; each answer names the line it ports.
+/// The app reads the phone's answers only: the iPad's main panel keeps the
+/// phone's screens (docs/IPAD.md).
 ///
 /// Web, Mac Catalyst and Android branches are left out, as is anything
 /// gated by `experiments` (SessionView.tsx's file viewer) or voice.
@@ -130,25 +131,5 @@ public struct TabletBranches: Equatable, Sendable {
     /// Screens with UIKit's own header keep its back button.
     public func plainHeaderShowsBackButton(isOnboardingRoute: Bool) -> Bool {
         !isTablet || isOnboardingRoute
-    }
-}
-
-extension PermissionFooterLayout {
-    /// PermissionFooter.tsx on a tablet (:308, `alignItems: 'flex-end'`):
-    /// each button as wide as its label and padding, never wider than the
-    /// card, against the trailing edge; heights as on a phone.
-    public static func tablet(width: CGFloat, labels input: [Measurable], maxListHeight: CGFloat = .greatestFiniteMagnitude) -> PermissionFooterLayout {
-        typealias M = Metrics
-        var layout = PermissionFooterLayout(width: width, labels: input, maxListHeight: maxListHeight)
-        let right = max(0, width) - M.paddingH
-        let inset = M.buttonPaddingH + M.buttonBorder
-        for index in layout.buttons.indices {
-            let label = layout.labels[index]
-            let button = layout.buttons[index]
-            let hugged = min(button.width, label.width + 2 * inset)
-            layout.buttons[index] = CGRect(x: right - hugged, y: button.minY, width: hugged, height: button.height)
-            layout.labels[index] = CGRect(x: right - hugged + (hugged - label.width) / 2, y: label.minY, width: label.width, height: label.height)
-        }
-        return layout
     }
 }

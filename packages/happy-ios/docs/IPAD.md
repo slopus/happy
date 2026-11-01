@@ -177,5 +177,7 @@ its button instead of the drawer and zen, the system back button instead of
 the persistent one, and the phone's screens in the main panel instead of a
 tablet variant of each. The old shell, its sidebar and its list grouped by
 project (SessionsList.tsx's hierarchy) are gone; the sidebar is home, flat
-or in project cards as home is. `TabletLayoutTrait` and the legacy chat's
-tablet branches remain, unset by the shell.
+or in project cards as home is. So is `TabletLayoutTrait`, with the legacy
+chat's tablet header and permission buttons: in the main panel the legacy
+chat keeps the phone's bar and back button and only docks its list under
+it.

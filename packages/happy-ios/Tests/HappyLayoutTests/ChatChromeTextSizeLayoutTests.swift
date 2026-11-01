@@ -83,34 +83,6 @@ final class ChatChromeTextSizeLayoutTests: XCTestCase {
         XCTAssertEqual(layout.subtitle?.height ?? 0, 50, accuracy: 0.001)
     }
 
-    /// The plain header (a tablet) measures its text to the row the bar
-    /// gives it, at every size; the column grows and stays centred top to
-    /// bottom in the title view, spilling past it as RN's unclipped header
-    /// content does.
-    func testThePlainHeadersColumnGrowsInTheSameRow() {
-        let bar = rect(-100, 0, 1000, 50)
-        let size = CGSize(width: 800, height: 50)
-        XCTAssertEqual(ChatPlainHeaderLayout.textWidth(bar: bar, size: size, maxWidth: 800), 768)
-        XCTAssertEqual(ChatPlainHeaderLayout.subtitleWidth(textWidth: 768, changes: CGSize(width: 40, height: 18)), 724)
-        XCTAssertEqual(ChatPlainHeaderLayout.subtitleWidth(textWidth: 768, changes: nil), 768)
-        XCTAssertEqual(ChatPlainHeaderLayout.subtitleWidth(textWidth: 20, changes: CGSize(width: 40, height: 18)), 0)
-        for scale in scales {
-            let title = line(ChatTextStyles.headerTitle, scale)
-            let subtitle = line(ChatTextStyles.headerPlainSubtitle, scale)
-            let counts = changes(scale)
-            let layout = ChatPlainHeaderLayout(
-                bar: bar, size: size, maxWidth: 800,
-                title: words("Fix the login", ChatTextStyles.headerTitle, scale, maxLines: 1),
-                subtitle: words("main", ChatTextStyles.headerPlainSubtitle, scale, maxLines: 1),
-                changes: counts
-            )
-            let height = title + max(subtitle, counts.height)
-            assertFrame(layout.column, rect(16, (50 - height) / 2, 768, height))
-            assertFrame(layout.title, rect(0, 0, 13 * 8 * scale.multiplier, title))
-            assertFrame(layout.changes, rect(4 * 8 * scale.multiplier + 4, title + (max(subtitle, counts.height) - counts.height) / 2, counts.width, counts.height))
-        }
-    }
-
     // MARK: The CLI warning
 
     /// The pill grows with its label, 7 above and below it; its glyphs

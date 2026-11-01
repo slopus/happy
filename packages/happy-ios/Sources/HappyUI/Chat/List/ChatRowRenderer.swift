@@ -27,9 +27,6 @@ struct ChatRowStyle: Equatable, Sendable {
     var flavor: String?
     /// `settings.showLineNumbersInToolViews`.
     var showLineNumbers = false
-    /// `useIsTablet()`: permission buttons hug their labels at the
-    /// trailing edge (`TabletBranches.permissionButtonsTrailing`).
-    var tablet = false
     /// PermissionFooter's `optionsScroll` maxHeight, min(260, 35% of the
     /// window): a taller list of buttons scrolls.
     var permissionListMaxHeight = PermissionFooterLayout.Metrics.maxListHeight

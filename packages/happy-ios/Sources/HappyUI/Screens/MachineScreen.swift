@@ -47,7 +47,6 @@ final class MachineViewController: UIViewController {
         followsTextSize()
         // Screens pushed from here go back with the chevron alone.
         minimalBackButton()
-        dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         refresh.addTarget(self, action: #selector(pulledToRefresh), for: .valueChanged)
         list.refreshControl = refresh
     }

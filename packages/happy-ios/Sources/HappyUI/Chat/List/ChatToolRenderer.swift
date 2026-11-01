@@ -94,7 +94,7 @@ extension ChatRowRenderer {
             && (body != nil || toolBody(presentation.expandedBody, message: message, views: views, style: style) != nil)
         let tap: ChatRowAction = expandable ? .toggleTool(message.id) : open
         let footer = presentation.showsPermissionFooter ? tool.permission.map {
-            permissionFooter($0, tool: tool, busy: busy, flavor: style.flavor, tablet: style.tablet, maxListHeight: style.permissionListMaxHeight, text: text)
+            permissionFooter($0, tool: tool, busy: busy, flavor: style.flavor, maxListHeight: style.permissionListMaxHeight, text: text)
         } : nil
         let elapsed = presentation.showsElapsed ? elapsedSize(in: environment) : nil
         let glyph = presentation.statusGlyph.map { _ in CGSize(width: ToolCardLayout.Metrics.statusIconSize, height: ToolCardLayout.Metrics.statusIconSize) }
@@ -691,7 +691,7 @@ extension ChatRowRenderer {
     /// The buttons' 34 minimum and the list's cap keep their size at every
     /// text size; taller labels grow the buttons past it.
     static func permissionFooter(
-        _ permission: ToolPermission, tool: ToolCall, busy: PermissionButton.Kind?, flavor: String?, tablet: Bool = false,
+        _ permission: ToolPermission, tool: ToolCall, busy: PermissionButton.Kind?, flavor: String?,
         maxListHeight: CGFloat = PermissionFooterLayout.Metrics.maxListHeight, text: ChatRowText
     ) -> ChatPiece {
         let buttons = ChatPermissionButtons.buttons(permission, toolName: tool.name, toolInput: tool.input, flavor: flavor)
@@ -703,9 +703,7 @@ extension ChatRowRenderer {
         }
         let measurables = labels.map(\.measurable)
         func layout(_ width: CGFloat) -> PermissionFooterLayout {
-            tablet
-                ? .tablet(width: width, labels: measurables, maxListHeight: maxListHeight)
-                : PermissionFooterLayout(width: width, labels: measurables, maxListHeight: maxListHeight)
+            PermissionFooterLayout(width: width, labels: measurables, maxListHeight: maxListHeight)
         }
         return ChatPiece(measurable: Measurable { layout($0).size }) { frame in
             typealias M = PermissionFooterLayout.Metrics

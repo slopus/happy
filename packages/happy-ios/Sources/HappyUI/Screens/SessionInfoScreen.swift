@@ -106,7 +106,6 @@ final class SessionInfoViewController: UIViewController, UIScrollViewDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         minimalBackButton()
-        dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         navigationItem.largeTitleDisplayMode = .never
         // Its name and avatar as home has them, from the first frame. The
         // first frame of the session's own snapshot says the same.

@@ -142,18 +142,4 @@ final class TabletBranchesTests: XCTestCase {
         XCTAssertEqual(window.chatHeaderContentHeight, 52)
         XCTAssertTrue(window.chatShowsBackButton)
     }
-
-    func testTabletPermissionButtonsHugTheirLabelsAtTheTrailingEdge() {
-        let labels = [text("Yes", lineHeight: 18), text(String(repeating: "a", count: 60), lineHeight: 18)]
-        let phone = PermissionFooterLayout(width: 400, labels: labels)
-        assertFrame(phone.buttons[0], rect(6, 4, 388, 34))
-        let tablet = PermissionFooterLayout.tablet(width: 400, labels: labels)
-        assertFrame(tablet.buttons[0], rect(348, 4, 46, 34))
-        assertFrame(tablet.labels[0], rect(359, 12, 24, 18))
-        // Two lines of 45 at 366: 360 wide, 22 of padding and border.
-        assertFrame(tablet.buttons[1], rect(12, 45, 382, 52))
-        assertFrame(tablet.labels[1], rect(23, 53, 360, 36))
-        assertSize(tablet.size, phone.size)
-        assertSize(tablet.size, CGSize(width: 400, height: 105))
-    }
 }

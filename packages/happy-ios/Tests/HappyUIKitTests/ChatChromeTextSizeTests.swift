@@ -166,14 +166,6 @@ final class ChatChromeTextSizeTests: XCTestCase {
             assertDrawn(changes.removed, in: changes.layout.removed, ChatTextStyle(TextStyles.gitLineCount), category)
             XCTAssertEqual(capsule.layout.changes?.size, changes.layout.size)
 
-            let plain = await offMain { ChatHeaderMeasure.plain(ChatPlainHeaderInput(model: model, width: 600, text: text)) }
-            let layout = ChatPlainHeaderLayout(
-                bar: CGRect(x: 0, y: 0, width: 632, height: 50), size: CGSize(width: 632, height: 50), maxWidth: 800,
-                title: .fixed(plain.title.size), subtitle: plain.subtitle.map { .fixed($0.size) }, changes: plain.changes?.layout.size
-            )
-            assertDrawn(plain.title, in: layout.title, ChatTextStyles.headerTitle, category)
-            assertDrawn(plain.subtitle, in: layout.subtitle, ChatTextStyles.headerPlainSubtitle, category)
-
             let label = await offMain { ChatHeaderMeasure.cliWarning(ChatCliWarningInput(label: "CLI Update Required", width: 393, text: text)) }
             let pill = CliWarningPillLayout(width: 393, top: 103, label: .fixed(label.size))
             assertDrawn(label, in: pill.label, ChatTextStyles.cliWarning, category)

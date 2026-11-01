@@ -363,7 +363,30 @@ final class HostedSplitShellTests: XCTestCase {
         withExtendedLifetime(app.coordinator) {}
     }
 
-    /// The breakpoint: 768 still splits, 767 is a phone.
+    /// Moved from stack to stack as the window narrows and widens, a screen
+    /// hears it left the old one before it appears on the new one, so the
+    /// last it heard is that it appeared. Before, the old stack said so at
+    /// its own next layout, after the new one's: a chat that had moved
+    /// thought it was gone and stopped following the keyboard.
+    func testAScreenMovedBetweenStacksEndsAppeared() async throws {
+        let app = try await app()
+        let shell = app.shell
+        let home = try XCTUnwrap(home(shell))
+        let wide = app.window.bounds.width
+        let probe = AppearanceProbe()
+        shell.setStack([home, probe], animated: false)
+        try await settle(shell)
+        for width in [700, wide, 700, wide] {
+            try await resize(app, width: width)
+            try await until("\(width) wide") { (width >= 768) == shell.isExpanded }
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(probe.heard.last, "appeared", "\(width): \(probe.heard)")
+            XCTAssertNotNil(probe.view.window, "\(width)")
+        }
+        withExtendedLifetime(app.coordinator) {}
+    }
+
+
     func testTheWindowSplitsFrom768() async throws {
         let app = try await app()
         let shell = app.shell
@@ -521,6 +544,21 @@ final class HostedSplitShellTests: XCTestCase {
         XCTAssertTrue(shell.sidebar.viewControllers.isEmpty)
         XCTAssertEqual(shell.phone.view.convert(shell.phone.view.bounds, to: app.window), app.window.bounds, "onboarding owns the window")
         withExtendedLifetime(app.coordinator) {}
+    }
+}
+
+/// What a screen is told of its appearance, in order.
+private final class AppearanceProbe: UIViewController {
+    private(set) var heard: [String] = []
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        heard.append("appeared")
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        heard.append("disappeared")
     }
 }
 #endif

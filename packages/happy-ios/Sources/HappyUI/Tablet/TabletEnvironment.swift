@@ -2,18 +2,6 @@
 import HappyLayout
 import UIKit
 
-/// `useIsTablet()` as a trait: happy-app's tablet branches (an opaque bar,
-/// no back button). A screen with a tablet branch reads
-/// `traitCollection.isTabletLayout` and re-lays out on
-/// `registerForTraitChanges([TabletLayoutTrait.self])`.
-///
-/// The split shell (`ShellViewController`) doesn't set it: the iPad's
-/// main panel keeps the phone's bar and back button (docs/IPAD.md).
-public struct TabletLayoutTrait: UITraitDefinition {
-    public static let defaultValue = false
-    public static let name = "HappyTabletLayout"
-}
-
 /// The screen is the iPad's sidebar (`ShellViewController`): home leaves
 /// its ground clear, so the system's sidebar material shows through.
 public struct SidebarColumnTrait: UITraitDefinition {
@@ -23,18 +11,12 @@ public struct SidebarColumnTrait: UITraitDefinition {
 
 extension UITraitCollection {
     public var isSidebarColumn: Bool { self[SidebarColumnTrait.self] }
-    public var isTabletLayout: Bool { self[TabletLayoutTrait.self] }
 }
 
 extension UIMutableTraits {
     public var isSidebarColumn: Bool {
         get { self[SidebarColumnTrait.self] }
         set { self[SidebarColumnTrait.self] = newValue }
-    }
-
-    public var isTabletLayout: Bool {
-        get { self[TabletLayoutTrait.self] }
-        set { self[TabletLayoutTrait.self] = newValue }
     }
 }
 
@@ -85,30 +67,17 @@ enum TabletRoutes {
 }
 
 extension UIViewController {
-    /// The branches of happy-app's tablet layout this screen's window gets
-    /// (`TabletBranches`): the shell's width rule, the screen's
-    /// orientation, the device's header height.
+    /// The branches of happy-app's layout this screen's window gets
+    /// (`TabletBranches`): the screen's orientation and the device's header
+    /// height. Never happy-app's tablet: the iPad's main panel keeps the
+    /// phone's screens (docs/IPAD.md).
     var tabletBranches: TabletBranches {
         let size = view.window?.bounds.size ?? view.bounds.size
         return TabletBranches(
-            isTablet: traitCollection.isTabletLayout,
+            isTablet: false,
             isLandscape: TabletBreakpoint.isLandscape(size),
             headerHeight: DeviceCalculations.headerHeight(isPad: traitCollection.userInterfaceIdiom == .pad)
         )
-    }
-
-    /// navigation/Header.tsx :322. The screens with happy-app's plain header
-    /// (settings, session info, machine, changes, message, What's New) and
-    /// the chat (ChatHeaderView.tsx :59) have no back button on a tablet:
-    /// the persistent header's back serves instead. Call once from
-    /// `viewDidLoad`; it follows the window as it resizes.
-    func dropsBackButtonOnTablet() {
-        applyTabletBackButton()
-        registerForTraitChanges([TabletLayoutTrait.self], action: #selector(applyTabletBackButton))
-    }
-
-    @objc private func applyTabletBackButton() {
-        navigationItem.hidesBackButton = !tabletBranches.plainHeaderShowsBackButton(isOnboardingRoute: false)
     }
 }
 

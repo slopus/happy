@@ -92,8 +92,6 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         pipeline.followDrafts(session.homeFeed, into: \.draftSessionIds)
         self.pipeline = pipeline
         observation = pipeline.observation
-        // Tablet (HappyUI/Tablet): the shell flips this with the window's width.
-        registerForTraitChanges([TabletLayoutTrait.self]) { (self: Self, _) in self.updateNavigation(animated: false) }
         // The link as home's title says it, and as this account's chats do.
         linkWatch = LegacyLink.link(for: session).watch { [weak self] in self?.headerState = $0 }
         networkWatch = NetworkPath.shared.watch { [weak self] satisfied in
@@ -132,8 +130,7 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     /// where a computer is a home of its own, one is reachable. The bar
     /// shows compose only then.
     var canCompose: Bool {
-        guard !traitCollection.isTabletLayout else { return false }
-        return switch state {
+        switch state {
         case nil, .link?: false
         case .offline?: !Preference(variant: context.variant).isAvailable
         default: true
@@ -210,7 +207,7 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     }
 
     private func prepareArchivesIfNeeded() {
-        let wanted = state?.kind == .list && !traitCollection.isTabletLayout
+        let wanted = state?.kind == .list
         guard wanted != preparesArchives else { return }
         preparesArchives = wanted
         pipeline?.update { $0.preparesArchives = wanted }
@@ -323,21 +320,14 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     private func updateNavigation(animated: Bool) {
         guard let state else { return }
         let floating = true
-        // Tablet (HappyUI/Tablet): beside the sidebar the index route draws
-        // nothing, nor its header and dock (MainView.tsx `isTablet`).
-        let blank = floating && traitCollection.isTabletLayout
-        content?.view.isHidden = blank
         if floating {
-            // Beside the sidebar home draws nothing, but the bar is over
-            // the sidebar too: the switcher stays, or a tablet has no way
-            // to the accounts at all.
             navigationItem.leftBarButtonItem = switcher?.barItem
             let items: [HeaderBar.Trailing: UIBarButtonItem] = [.filter: filterItem, .settings: settingsItem]
             // The same items each time: a button rebuilt under a finger
             // drops its tap, and home updates with every connection change.
             let toolbar = canCompose ? composeItems : nil
             if toolbarItems != toolbar { toolbarItems = toolbar }
-            navigationItem.rightBarButtonItems = blank ? nil : HeaderBar.trailing(items)
+            navigationItem.rightBarButtonItems = HeaderBar.trailing(items)
             if navigationController?.topViewController === self { HomeToolbar.show(for: self, animated: animated) }
         }
         view.setNeedsLayout()

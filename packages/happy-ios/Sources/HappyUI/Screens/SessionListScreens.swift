@@ -360,12 +360,8 @@ final class SessionListViewController: UIViewController {
         guard context.account.session === session, let item = self.row(id) else { return }
         switch item {
         case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
-            if !traitCollection.isTabletLayout {
-                guard let intent = session.archiveVisibilityWriter.submit(hidden: !(ultraList.archiveHidden ?? hidden)) else { return }
-                ultraList.showArchiveIntent(intent)
-            } else {
-                session.updateSettings(["hideInactiveSessions": .bool(!hidden)])
-            }
+            guard let intent = session.archiveVisibilityWriter.submit(hidden: !(ultraList.archiveHidden ?? hidden)) else { return }
+            ultraList.showArchiveIntent(intent)
         case .project(.worktreeToggle(let toggle)):
             toggleExpanded(toggle.projectId)
         default:

@@ -58,24 +58,6 @@ struct ChatHeaderTitlePlan: Sendable {
     var changes: ChatGitChangesPlan?
 }
 
-/// What the tablet's plain header is measured from: what it says, what its
-/// column has across (`ChatPlainHeaderLayout.textWidth`), and the text
-/// size and screen.
-struct ChatPlainHeaderInput: Equatable, Sendable {
-    var model: ChatHeaderTitleModel
-    var width: CGFloat
-    var text: TextEnvironment
-}
-
-/// The plain header's text measured at its column's width; where it goes
-/// is worked out on main from these sizes (`ChatPlainHeaderLayout`), which
-/// depends on where the bar put the title view.
-struct ChatPlainHeaderPlan: Sendable {
-    var title: ChatTextLayout
-    var subtitle: ChatTextLayout?
-    var changes: ChatGitChangesPlan?
-}
-
 /// What the CLI warning is measured from: its words, the screen's width,
 /// the text size and screen.
 struct ChatCliWarningInput: Equatable, Sendable {
@@ -108,29 +90,6 @@ enum ChatHeaderMeasure {
         )
     }
 
-    nonisolated static func plain(_ input: ChatPlainHeaderInput) -> ChatPlainHeaderPlan {
-        #if DEBUG
-        dispatchPrecondition(condition: .notOnQueue(.main))
-        #endif
-        let environment = input.text
-        let model = input.model
-        let changes = model.changes.map { ChatGitChangesPlan.plan($0, in: environment) }
-        let title = MeasuredText(
-            ChatTextStyles.headerTitle.string(model.heading, color: Palette.headerTint, lineBreakMode: .byTruncatingTail, in: environment),
-            maxLines: 1
-        )
-        let subtitle = model.subtitle.map {
-            MeasuredText(ChatTextStyles.headerPlainSubtitle.string($0, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
-        }
-        let subtitleWidth = ChatPlainHeaderLayout.subtitleWidth(textWidth: input.width, changes: changes?.layout.size)
-        return ChatPlainHeaderPlan(
-            title: title.layout(width: input.width),
-            subtitle: subtitle?.layout(width: subtitleWidth),
-            changes: changes
-        )
-    }
-
-    /// The warning's label laid out where `CliWarningPillLayout` puts it.
     nonisolated static func cliWarning(_ input: ChatCliWarningInput) -> ChatTextLayout {
         #if DEBUG
         dispatchPrecondition(condition: .notOnQueue(.main))

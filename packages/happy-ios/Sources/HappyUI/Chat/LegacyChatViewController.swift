@@ -50,8 +50,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     private let header = ChatHeaderView()
     private(set) lazy var avatarControl = ChatHeaderAvatarControl()
     private lazy var avatarItem = UIBarButtonItem(customView: avatarControl)
-    /// The title on a tablet, without glass.
-    private lazy var plainTitleView = ChatPlainHeaderTitleView()
     private lazy var cliWarning = ChatCliWarningPill()
     /// SessionView's `hidesLandscapeHeader`: a phone held sideways drops the
     /// header for a floating back button and a strip behind the status bar.
@@ -193,11 +191,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     private var oldestBoundary: String?
     private var inForeground = true
     private var dockDetailsVisible = true
-    /// `traitCollection.isTabletLayout`, kept here so the row inputs can be
-    /// built off the main thread.
-    private var isTabletLayout = false
-    /// A tablet's way to the accounts, where the bar runs over the sidebar.
-    private var switcher: AccountSwitcher?
     /// PermissionFooter's list cap for this window, read on the main thread
     /// and handed to the measure with the rest of the row style.
     private var permissionListMaxHeight = PermissionFooterLayout.Metrics.maxListHeight
@@ -295,13 +288,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             link = state
             applyTitleAndStatus()
         }
-        isTabletLayout = traitCollection.isTabletLayout
-        // A tablet's bar is opaque with the plain title (TabletBranches),
-        // its name in the bar's own text until that is planned.
-        if isTabletLayout { navigationItem.titleView = nil }
         view.backgroundColor = UIColor(Palette.surface)
         minimalBackButton()
-        dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): ChatHeaderView.tsx
         navigationItem.largeTitleDisplayMode = .never
         configureHeaderAppearance()
     }
@@ -337,11 +325,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     }
 
     private func installHeader() {
-        // The header is built a few turns after `viewDidLoad`, and the
-        // window's width settles in between: read the trait again, or a
-        // tablet is handed the phone's header and never hears otherwise,
-        // since the watch below is registered after the change.
-        isTabletLayout = traitCollection.isTabletLayout
         setUpHeader()
         headerScrim.presence = 0
         view.addSubview(headerScrim)
@@ -351,8 +334,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         cliWarning.addTarget(self, action: #selector(dismissCliWarning), for: .touchUpInside)
         view.addSubview(cliWarning)
         view.addSubview(scrim)
-        registerForTraitChanges([TabletLayoutTrait.self, UITraitHorizontalSizeClass.self]) { (self: Self, _) in
-            self.tabletLayoutChanged()
+        registerForTraitChanges([UITraitHorizontalSizeClass.self]) { (self: Self, _) in
+            self.dockChanged()
         }
     }
 
@@ -587,9 +570,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         if !sessionApplied { missing.append("session") }
         if !checkoutApplied { missing.append("checkout") }
         if !rowsApplied { missing.append("rows") }
-        let title: UIView = isTabletLayout ? plainTitleView : header
-        if !hidesHeader && ((isTabletLayout && !plainTitleView.measure.isSettled)
-            || title.window == nil || title.bounds.width <= 1) {
+        if !hidesHeader && (header.window == nil || header.bounds.width <= 1) {
             missing.append("header")
         }
         if !tabStrip.isHidden, !tabStrip.isSettled { missing.append("strip") }
@@ -850,7 +831,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             composeTarget.isHidden = !layout.fits
         }
         header.maxWidth = ChatTitleLayout.maxWidth(barWidth: size.width)
-        plainTitleView.maxWidth = ContentWidth.headerMaxWidth
         dock.setLayoutFrame(screen.dock)
         for (bar, frame) in zip(dockBars, screen.accessories) { bar.view.setLayoutFrame(frame) }
         composer.setLayoutFrame(screen.composer)
@@ -934,12 +914,11 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         !docksList && !hidesHeader
     }
 
-    /// The tablet's docked list (`LegacyChatScreenLayout.Input.docked`):
-    /// on a tablet-wide window, and in the iPad's main panel, which keeps
-    /// the phone's bar but has room for nothing to scroll under it or the
-    /// strip (docs/IPAD.md).
+    /// The docked list (`LegacyChatScreenLayout.Input.docked`) in the
+    /// iPad's main panel, which keeps the phone's bar but has room for
+    /// nothing to scroll under it or the strip (docs/IPAD.md).
     private var docksList: Bool {
-        isTabletLayout || (traitCollection.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass == .regular)
+        traitCollection.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass == .regular
     }
 
     /// TabletBranches' `chatHidesHeaderInLandscape`, as the window is now.
@@ -997,16 +976,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     private func setUpHeader() {
         avatarControl.pictures = account.avatarPictures
         avatarControl.isHidden = true
-        // The tablet's plain title scales; the bar and its controls don't.
-        // The bar holds its title view's own text size to XXL, so the title
-        // is handed the screen's.
-        plainTitleView.traitOverrides.followsTextSize = true
-        updateHeaderText()
-        registerForTraitChanges([UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]) { (self: Self, _) in
-            self.updateHeaderText()
-        }
-        plainTitleView.onPlanned = { [weak self] in self?.headerPlanned() }
-        plainTitleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
         avatarControl.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
         if #available(iOS 26.0, *) {
             // The control is its own glass.
@@ -1019,12 +988,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// permission mode and details are on its profile, which the title opens.
     private var composeItems: [UIBarButtonItem] {
         [HeaderBar.composeItem { [weak self] in self?.compose() }]
-    }
-
-    /// The tablet's plain title is planned: it takes the bar's text's place.
-    private func headerPlanned() {
-        if isTabletLayout { navigationItem.titleView = plainTitleView }
-        opening?.check()
     }
 
     /// The name as the header says it (`updateHeader`).
@@ -1057,8 +1020,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// Whether the spinner turns before it, for tests.
     var headerStatusSpins: Bool { header.statusSpins }
 
-    /// The name and status on the phone's capsule and the tablet's plain
-    /// title alike, the status crossfading as the agent chat's does.
+    /// The name and status on the capsule, the status crossfading as the
+    /// agent chat's does.
     private func applyTitleAndStatus() {
         let status = shownStatus
         if header.titleView.text != headerTitle {
@@ -1068,37 +1031,14 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         header.setStatus(status?.text ?? "", color: status?.color ?? UIColor(Palette.textSecondary))
         header.statusShimmers = status?.working == true
         header.statusSpins = status?.spins == true
-        // Made with the view, at the screen's text size.
-        guard isViewLoaded else { return }
-        plainTitleView.update(title: headerTitle, subtitle: status?.text, changes: nil)
-        plainTitleView.isEnabled = session.record != nil
     }
 
-    /// ChatHeaderView's `glassEnabled` and SessionView's `headerRight`
-    /// (`TabletBranches`): a phone's glass capsule and avatar over the
-    /// scrim, or a tablet's opaque bar (`header.background`) with the plain
-    /// title and no avatar. The back button is `dropsBackButtonOnTablet`'s.
-    ///
-    /// On a tablet the bar runs over the sidebar as well, and the back
-    /// button is gone, so the account switcher takes the left as it does on
-    /// home: with a chat open it is still the way to the accounts. A phone
-    /// has its back button there and home a screen behind. At the right
-    /// only Compose (`composeItems`), set with the title in `init`.
+    /// ChatHeaderView's glass capsule over the scrim, with the back button
+    /// at the left; the iPad's main panel keeps it (docs/IPAD.md). At the
+    /// right only Compose (`composeItems`), set with the title in `init`.
     private func applyHeaderBranch() {
-        let tablet = isTabletLayout
-        configureHeaderAppearance()
-        if !tablet {
-            navigationItem.titleView = header
-        } else if sessionApplied, plainTitleView.measure.isSettled {
-            navigationItem.titleView = plainTitleView
-        }
+        navigationItem.titleView = header
         applyTitleAndStatus()
-        if tablet, switcher == nil { switcher = AccountSwitcher(context: context, controller: self) }
-        // Off a tablet only the switcher goes: the sidebar's toggle stays.
-        if tablet { navigationItem.leftBarButtonItem = switcher?.barItem }
-        else if let item = switcher?.barItem, navigationItem.leftBarButtonItems?.contains(item) == true {
-            navigationItem.leftBarButtonItems = navigationItem.leftBarButtonItems?.filter { $0 !== item }
-        }
         if contentInstalled { tabStrip.glass = !docksList } // TabletBranches.worktreeStripGlass
         floatingDockChanged()
     }
@@ -1107,26 +1047,12 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// any glass controls or text plans exist.
     private func configureHeaderAppearance() {
         let appearance = UINavigationBarAppearance()
-        if isTabletLayout {
-            appearance.configureWithOpaqueBackground()
-            appearance.backgroundColor = UIColor(Palette.headerBackground)
-            appearance.shadowColor = .clear
-        } else {
-            appearance.configureWithTransparentBackground()
-        }
+        appearance.configureWithTransparentBackground()
         appearance.titleTextAttributes = TextStyles.headerTitle.attributes(color: UIColor(Palette.headerTint))
         navigationItem.standardAppearance = appearance
         navigationItem.scrollEdgeAppearance = appearance
         navigationItem.compactAppearance = appearance
         navigationItem.compactScrollEdgeAppearance = appearance
-
-    }
-
-    /// The tablet title's text at the screen's text size
-    /// (`ChatPlainHeaderTitleView.text`). The controller's own traits: in
-    /// its trait change its view's are still the old ones.
-    private func updateHeaderText() {
-        plainTitleView.text = TextEnvironment(traitCollection)
     }
 
     private func updateHeader() {
@@ -1352,20 +1278,11 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         scheduleMeasure()
     }
 
-    /// The window crossed the tablet width: rows plan their tablet
-    /// branches again.
-    private func tabletLayoutChanged() {
-        let tablet = traitCollection.isTabletLayout
-        guard tablet != isTabletLayout else {
-            // The iPad's main panel docks the list without the tablet's bar.
-            applyHeaderBranch()
-            view.setNeedsLayout()
-            return
-        }
-        isTabletLayout = tablet
+    /// The iPad's window crossed the split's width: the list docks under
+    /// the bar, or floats under it again.
+    private func dockChanged() {
         applyHeaderBranch()
         view.setNeedsLayout()
-        scheduleMeasure()
     }
 
     @objc private func openInfo() {
@@ -1721,11 +1638,11 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     }
 
     /// Applies what the rows' derivation worked out. Refused when the list
-    /// was planned for another width, layout or text size: the next pass
+    /// was planned for another width or text size: the next pass
     /// has the new one.
     private func applyRows(_ update: ChatRowsUpdate) -> Bool {
         if update.list != nil,
-           update.width != list.bounds.width || update.tablet != isTabletLayout || update.text != list.traitCollection.textEnvironment {
+           update.width != list.bounds.width || update.text != list.traitCollection.textEnvironment {
             return false
         }
         ApplyPerf.measure(.chatList) {
@@ -1787,7 +1704,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         let view = ChatRowsView(
             width: list.bounds.width,
             maxContentWidth: maxContentWidth,
-            tablet: isTabletLayout,
             text: ChatRowText(environment: list.traitCollection.textEnvironment, words: words),
             permissionListMaxHeight: permissionListMaxHeight,
             inForeground: inForeground,
